@@ -114,11 +114,11 @@ Pick a rule and keep it: logs stay in the terminal until you have read them with
 
 You now have status, events and logs. Sort the problem into one of four shapes, because each has a different first suspect.
 
-Pending means the pod was accepted but never scheduled or never started. Read the Events for FailedScheduling. Typical causes: insufficient CPU or memory on any node, an unsatisfiable node selector or taint, or a PersistentVolumeClaim that cannot bind. Check with `kubectl --context CONTEXT_NAME describe node NODE_NAME` for allocatable resources and `kubectl --context CONTEXT_NAME get pvc -n NAMESPACE` for storage.
+Pending means the pod was accepted but never scheduled or never started. Read the Events for FailedScheduling. Typical causes: insufficient CPU or memory on any node, an unsatisfiable node selector or taint, or a PersistentVolumeClaim that cannot bind. Check with `kubectl --context CONTEXT_NAME describe node NODE_NAME` for allocatable resources and `kubectl --context CONTEXT_NAME get pvc -n NAMESPACE` for storage. The [Pending pods guide](/blog/kubernetes-pod-pending) walks through reading FailedScheduling in full.
 
 ImagePullBackOff (and its sibling ErrImagePull) means the node cannot fetch the image. The event text usually says why: a typo in the image name or tag, a private registry without an imagePullSecret, or a registry rate limit. Verify the exact image string in `kubectl --context CONTEXT_NAME get pod POD_NAME -n NAMESPACE -o jsonpath='{.spec.containers[*].image}'` and compare it to what exists in your registry.
 
-CrashLoopBackOff means the container starts, exits, and Kubernetes backs off between restarts. Go back to the Last State exit code and the `--previous` logs. An OOMKilled reason calls for checking limits, measured usage and node memory pressure before changing resources. Exit 137 by itself is insufficient evidence. A config or missing-secret error shows up in the first lines of the previous log.
+CrashLoopBackOff means the container starts, exits, and Kubernetes backs off between restarts. Go back to the Last State exit code and the `--previous` logs. An OOMKilled reason calls for checking limits, measured usage and node memory pressure before changing resources. Exit 137 by itself is insufficient evidence. A config or missing-secret error shows up in the first lines of the previous log. The [CrashLoopBackOff guide](/blog/kubernetes-crashloopbackoff) covers exit codes and causes in depth.
 
 Running but not Ready calls for checking individual container states, readiness probes and readiness gates. A failed readiness probe is one possible cause, not the only one. Continue with Step 6.
 

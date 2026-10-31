@@ -7,7 +7,7 @@ kind: guide
 
 CrashLoopBackOff is one of the most common states you will see in `kubectl get pods`, and one of the least specific. It tells you a container keeps exiting and Kubernetes is waiting longer between each restart. It does not tell you why. This guide walks through a read-only routine that finds the why: the last termination state, the exit code, the logs of the instance that died, and the events around it. Then it maps the evidence to the usual causes and shows how to confirm the fix.
 
-Prerequisites: kubectl installed, access to the cluster, and permission to read pods, events and pod logs. Everything here follows the official [Kubernetes documentation](https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/). Placeholders used throughout: CONTEXT_NAME, NAMESPACE, POD_NAME, CONTAINER_NAME and DEPLOYMENT_NAME. Replace them before running a command.
+Prerequisites: kubectl installed, access to the cluster, and permission to read pods, events and pod logs. Everything here follows the official [Kubernetes documentation](https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/). Placeholders used throughout: CONTEXT_NAME, NAMESPACE, POD_NAME, CONTAINER_NAME and DEPLOYMENT_NAME. Replace them before running a command. For the broader routine, see the [Kubernetes troubleshooting guide for pods, logs and events](/blog/kubernetes-troubleshooting-pods-logs-and-events).
 
 ## What CrashLoopBackOff actually means
 
@@ -125,7 +125,7 @@ kubectl --context CONTEXT_NAME rollout status deployment/DEPLOYMENT_NAME -n NAME
 kubectl --context CONTEXT_NAME get pods -n NAMESPACE
 ```
 
-Confirm STATUS is Running, READY shows every container ready, and RESTARTS holds still across two checks a few minutes apart. Because the back-off can hold a container for up to five minutes, give a slow loop time to prove it has stopped. Finally, read fresh logs from the new pod and make sure the error you were chasing is gone, not just quieter.
+Confirm STATUS is Running, READY shows every container ready, and RESTARTS holds still across two checks a few minutes apart. Because the back-off can hold a container for up to five minutes, give a slow loop time to prove it has stopped. If the new pod sits in Pending instead of starting, the problem has moved to scheduling: follow the [Pending pods guide](/blog/kubernetes-pod-pending). Finally, read fresh logs from the new pod and make sure the error you were chasing is gone, not just quieter.
 
 Write down the exit code, the log line and the change that fixed it. The next CrashLoopBackOff with the same signature will take minutes instead of an afternoon.
 
