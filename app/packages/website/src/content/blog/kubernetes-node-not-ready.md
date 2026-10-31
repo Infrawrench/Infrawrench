@@ -136,7 +136,7 @@ kubectl --context CONTEXT_NAME drain NODE_NAME --ignore-daemonsets
 kubectl --context CONTEXT_NAME delete node NODE_NAME
 ```
 
-For a node that shut down without warning, pods from a StatefulSet can stay stuck terminating, because a replacement with the same name cannot be created while the old one is still recorded on the dead node. Once you have confirmed the node is really shut down or powered off, not in the middle of restarting, you can add the `node.kubernetes.io/out-of-service` taint with the NoExecute effect. Pods without a matching toleration are then force deleted and their volumes detached, so they can start on another node:
+For a node that shut down without warning, pods from a StatefulSet can stay stuck terminating, because a replacement with the same name cannot be created while the old one is still recorded on the dead node. Once you have confirmed the node is really shut down or powered off, not in the middle of restarting, you can add the `node.kubernetes.io/out-of-service` taint with the NoExecute effect. Pods without a matching toleration are then force deleted and their volumes detached, so they can start on another node. The [guide to pods stuck in Terminating](/blog/kubernetes-pod-stuck-terminating) covers the risks of force deletion for StatefulSets in more detail:
 
 ```
 kubectl --context CONTEXT_NAME taint nodes NODE_NAME node.kubernetes.io/out-of-service:NoExecute
