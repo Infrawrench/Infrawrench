@@ -120,7 +120,7 @@ ImagePullBackOff (and its sibling ErrImagePull) means the node cannot fetch the 
 
 CrashLoopBackOff means the container starts, exits, and Kubernetes backs off between restarts. Go back to the Last State exit code and the `--previous` logs. An OOMKilled reason calls for checking limits, measured usage and node memory pressure before changing resources. Exit 137 by itself is insufficient evidence. The [OOMKilled guide](/blog/kubernetes-oomkilled) walks through confirming and fixing memory kills. A config or missing-secret error shows up in the first lines of the previous log. The [CrashLoopBackOff guide](/blog/kubernetes-crashloopbackoff) covers exit codes and causes in depth.
 
-Running but not Ready calls for checking individual container states, readiness probes and readiness gates. A failed readiness probe is one possible cause, not the only one. Continue with Step 6.
+Running but not Ready calls for checking individual container states, readiness probes and readiness gates. A failed readiness probe is one possible cause, not the only one. The [readiness probe guide](/blog/kubernetes-readiness-probe-failed) covers probe events, settings and readiness gates in depth. Continue with Step 6.
 
 Classify the observed failure before changing anything. A fix that targets the wrong shape wastes time and muddies the evidence. Once you have classified it, the remedy is usually a config change, a resource change or a corrected image reference, applied through your deployment spec. It is not a manual pod deletion.
 
