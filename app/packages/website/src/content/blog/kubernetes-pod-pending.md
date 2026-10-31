@@ -96,7 +96,7 @@ List taints across nodes:
 kubectl --context CONTEXT_NAME get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 ```
 
-If most nodes are tainted and the pod does not tolerate those taints, the scheduler only considers the few untainted nodes left, which may be full. Decide which side is wrong. If the pod belongs on those nodes, add a matching toleration to the workload spec. If the taint is stale, such as a node left cordoned after maintenance, uncordon it with `kubectl uncordon NODE_NAME` after checking with whoever cordoned it. If the taint comes from memory or disk pressure, fix the node, not the pod.
+If most nodes are tainted and the pod does not tolerate those taints, the scheduler only considers the few untainted nodes left, which may be full. Decide which side is wrong. If the pod belongs on those nodes, add a matching toleration to the workload spec. If the taint is stale, such as a node left cordoned after maintenance, uncordon it with `kubectl uncordon NODE_NAME` after checking with whoever cordoned it. If the taint comes from memory or disk pressure, fix the node, not the pod. If nodes carry `node.kubernetes.io/not-ready` or `node.kubernetes.io/unreachable`, they have stopped reporting healthy: follow the [node NotReady guide](/blog/kubernetes-node-not-ready) instead of adding tolerations.
 
 ## Step 5: Selectors and affinity no node matches
 
