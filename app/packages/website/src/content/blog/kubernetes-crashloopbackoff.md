@@ -92,7 +92,7 @@ With the exit code, the previous logs and the events in hand, most crash loops f
 
 **Wrong command or entrypoint.** Exit code 126 or 127, often with an empty previous log. Check the `command` and `args` fields against the image's actual entrypoint. A common slip is setting `command` when you meant `args`, which replaces the image's entrypoint instead of passing it arguments.
 
-**Out of memory.** Reason OOMKilled. Compare the container's memory limit with what the application actually uses at startup and under load. Raise the limit or fix the memory growth; lowering load is a workaround, not a fix.
+**Out of memory.** Reason OOMKilled. Compare the container's memory limit with what the application actually uses at startup and under load. Raise the limit or fix the memory growth; lowering load is a workaround, not a fix. The [OOMKilled guide](/blog/kubernetes-oomkilled) covers telling a limit kill from node pressure or an eviction.
 
 **Liveness probe killing a healthy app.** Events show "Liveness probe failed" before each restart, and the app's own logs look normal until it is stopped. Check the probe's path, port, `initialDelaySeconds`, `timeoutSeconds` and `failureThreshold`. Slow-starting apps should use a [startup probe](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/) so liveness checks do not begin until the app is up. A liveness probe should never depend on a downstream service.
 
