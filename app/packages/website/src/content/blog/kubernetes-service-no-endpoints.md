@@ -59,7 +59,7 @@ nslookup SERVICE_NAME.NAMESPACE.svc.cluster.local
 
 `cluster.local` is the default cluster domain, but yours can differ. If the qualified name works and the short one does not, the client is in another namespace: use the qualified name in the client, or move the two into the same namespace. If only the fully qualified name works, check the pod's `/etc/resolv.conf`: its `search` line needs the namespace suffixes, and `options ndots` must be high enough for search paths to apply. Kubernetes sets `ndots` to 5 by default.
 
-If nothing resolves, test the API server's own Service with `nslookup kubernetes.default`. If that fails too, the problem is cluster DNS, not your Service.
+If nothing resolves, test the API server's own Service with `nslookup kubernetes.default`. If that fails too, the problem is cluster DNS, not your Service: follow the [Kubernetes DNS troubleshooting guide](/blog/kubernetes-dns-troubleshooting).
 
 ## Step 4: Does the Service answer by IP?
 
