@@ -132,7 +132,7 @@ Each gate names a condition type that something outside the kubelet, usually a c
 kubectl --context CONTEXT_NAME get endpointslices -n NAMESPACE -l kubernetes.io/service-name=SERVICE_NAME -o wide
 ```
 
-A pod that is not Ready is not used as a ready endpoint for Service traffic. If every pod behind a Service is not Ready, the Service has nowhere to send requests, which is often the first symptom anyone reports.
+A pod that is not Ready is not used as a ready endpoint for Service traffic. If every pod behind a Service is not Ready, the Service has nowhere to send requests, which is often the first symptom anyone reports. If the pods are Ready and the Service still fails, the [Service troubleshooting guide](/blog/kubernetes-service-no-endpoints) walks the rest of the path.
 
 ## Step 7: Fix through the spec and verify
 
