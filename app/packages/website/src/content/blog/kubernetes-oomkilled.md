@@ -105,7 +105,7 @@ An evicted pod was not OOMKilled. The kubelet chose to stop the whole pod to pro
 kubectl --context CONTEXT_NAME get pods -n NAMESPACE --field-selector=status.phase=Failed
 ```
 
-When choosing pods to evict, the kubelet considers whether a pod's usage exceeds its requests, then its priority, then how far its usage exceeds its requests. Pods using more memory than they request are the first candidates. The fix is the same as Step 3: requests that match real usage. One more difference matters: an OOMKilled container can be restarted by the kubelet according to its `restartPolicy`, while an evicted pod is gone and only its controller replaces it.
+When choosing pods to evict, the kubelet considers whether a pod's usage exceeds its requests, then its priority, then how far its usage exceeds its requests. Pods using more memory than they request are the first candidates. The fix is the same as Step 3: requests that match real usage. One more difference matters: an OOMKilled container can be restarted by the kubelet according to its `restartPolicy`, while an evicted pod is gone and only its controller replaces it. The [evicted pods guide](/blog/kubernetes-evicted-pods) covers every kind of eviction and how to tell them apart.
 
 ## Step 5: Fix it in the spec
 
