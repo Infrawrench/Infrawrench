@@ -115,10 +115,10 @@ If a workload with a lot of local state should wait longer before being moved, s
 
 ```yaml
 tolerations:
-- key: "node.kubernetes.io/unreachable"
-  operator: "Exists"
-  effect: "NoExecute"
-  tolerationSeconds: 6000
+  - key: "node.kubernetes.io/unreachable"
+    operator: "Exists"
+    effect: "NoExecute"
+    tolerationSeconds: 6000
 ```
 
 ## Step 6: Recover or retire the node
