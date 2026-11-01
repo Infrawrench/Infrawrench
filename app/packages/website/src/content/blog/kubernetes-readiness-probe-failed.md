@@ -145,7 +145,7 @@ kubectl --context CONTEXT_NAME rollout status deployment/DEPLOYMENT_NAME -n NAME
 kubectl --context CONTEXT_NAME get pods -n NAMESPACE
 ```
 
-READY should show every container ready, RESTARTS should stay flat, and the Service's EndpointSlices should list the new pods as ready. Watch through a period of real load, since timeouts that only appear under load will not show in the first minute. If the container now restarts instead, follow the [CrashLoopBackOff guide](/blog/kubernetes-crashloopbackoff). If it is being killed for memory, see the [OOMKilled guide](/blog/kubernetes-oomkilled).
+READY should show every container ready, RESTARTS should stay flat, and the Service's EndpointSlices should list the new pods as ready. Watch through a period of real load, since timeouts that only appear under load will not show in the first minute. If the container now restarts instead, follow the [CrashLoopBackOff guide](/blog/kubernetes-crashloopbackoff). If it is being killed for memory, see the [OOMKilled guide](/blog/kubernetes-oomkilled). If the rollout itself never finishes, the [stuck rollout guide](/blog/kubernetes-deployment-rollout-stuck) covers the Deployment side.
 
 Write down the Unhealthy message and the change that fixed it. The next probe failure will take a minute to resolve.
 
