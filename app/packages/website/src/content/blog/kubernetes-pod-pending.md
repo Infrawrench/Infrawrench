@@ -82,6 +82,8 @@ Compare Allocatable with the Allocated resources section, which shows requests a
 
 The fixes, from the official troubleshooting guidance: lower the pod's requests to what it really needs, remove pods you no longer need to free capacity, or add nodes.
 
+If the Pending pods are extra replicas a HorizontalPodAutoscaler just added, the autoscaler is working and the cluster is out of room. The [HPA not scaling guide](/blog/kubernetes-hpa-not-scaling) covers the autoscaler side, including how requests drive its decisions.
+
 ## Step 4: Taints the pod does not tolerate
 
 A taint with effect NoSchedule tells the scheduler to keep pods off a node unless they carry a matching toleration. Some taints you add yourself, for example to reserve GPU nodes. Others the cluster adds for you:
