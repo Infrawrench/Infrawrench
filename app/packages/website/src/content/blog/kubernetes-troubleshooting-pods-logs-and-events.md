@@ -16,6 +16,7 @@ If you already know the status or error you are looking at, jump straight to its
 **Pod will not start**
 
 - Pending, FailedScheduling: [pod stuck in Pending](/blog/kubernetes-pod-pending)
+- ContainerCreating that never finishes: [pod stuck in ContainerCreating](/blog/kubernetes-pod-stuck-containercreating)
 - ImagePullBackOff or ErrImagePull: [image pull errors](/blog/kubernetes-imagepullbackoff)
 - CreateContainerConfigError: [missing ConfigMaps, Secrets and keys](/blog/kubernetes-createcontainerconfigerror)
 - PersistentVolumeClaim Pending: [PVC will not bind](/blog/kubernetes-pvc-pending)
@@ -24,6 +25,7 @@ If you already know the status or error you are looking at, jump straight to its
 **Pod starts, then stops or restarts**
 
 - CrashLoopBackOff: [find the cause of the restart loop](/blog/kubernetes-crashloopbackoff)
+- Restarts after Liveness probe failed events: [liveness probe failed](/blog/kubernetes-liveness-probe-failed)
 - OOMKilled or exit code 137: [out-of-memory kills](/blog/kubernetes-oomkilled)
 - Evicted: [who evicted the pod and why](/blog/kubernetes-evicted-pods)
 - Job failed, BackoffLimitExceeded or a CronJob that did not run: [Job failures](/blog/kubernetes-job-failed)
