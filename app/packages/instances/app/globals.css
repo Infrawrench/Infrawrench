@@ -82,6 +82,9 @@ body {
    scrollbar on the page itself. Below 32rem tall there is no room for that,
    and the page scrolls as one instead. */
 @media (min-height: 32rem) {
+  html:has(main[data-fit-window]) {
+    overscroll-behavior: none;
+  }
   body:has(main[data-fit-window]) {
     height: 100dvh;
     min-height: 0;
@@ -118,9 +121,11 @@ body {
 
 .nav-logo {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .nav-logo-text {
@@ -182,6 +187,7 @@ a.nav-badge:hover {
   font-weight: 500;
   text-decoration: none;
   border: 1px solid #1a1a1a;
+  white-space: nowrap;
   transition:
     border-color 0.15s,
     color 0.15s;
@@ -195,8 +201,24 @@ a.nav-badge:hover {
 @media (max-width: 640px) {
   .nav-inner {
     padding: 0 16px;
+    gap: 12px;
+  }
+  .nav-links {
+    gap: 12px;
   }
   .nav-link {
+    display: none;
+  }
+}
+
+/* A phone has room for the logo, the badge and the language picker; the
+   footer's Cloud link stands in for the button, so nothing pushes the nav
+   (and with it the page) wider than the screen. */
+@media (max-width: 480px) {
+  .nav-logo {
+    gap: 8px;
+  }
+  .nav-links .btn-ghost {
     display: none;
   }
 }

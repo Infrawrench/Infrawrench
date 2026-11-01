@@ -70,7 +70,7 @@ export function AlertForm({ viewId, onClose }: { viewId: string; onClose: () => 
           onChange={(e) => setEmail(e.target.value)}
           // i18n-ignore: example email address
           placeholder="you@example.com"
-          className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent"
+          className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2.5 py-1.5 text-base outline-none focus:border-accent sm:text-sm"
         />
         <button
           type="submit"

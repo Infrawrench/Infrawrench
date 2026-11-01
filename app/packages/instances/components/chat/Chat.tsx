@@ -202,7 +202,7 @@ function Composer({
         placeholder={placeholder ?? gt("Ask about prices, specs, regions or history…")}
         aria-label={gt("Your question")}
         maxLength={4000}
-        className="max-h-[200px] min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] outline-none placeholder:text-ink-3"
+        className="max-h-[200px] min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-base outline-none sm:text-[15px] placeholder:text-ink-3"
       />
       {busy ? (
         <button
@@ -449,9 +449,9 @@ export function SharedView({ data }: { data: ViewData }) {
             data.view.kind === "table" ? gt("Ask about this table") : gt("Ask about this chart")
           }
         />
-        <p className="mt-1.5 flex justify-between px-1 text-[11px] text-ink-3">
+        <p className="mt-1.5 flex justify-between gap-3 px-1 text-[11px] text-ink-3">
           <span>{gt("Answers come from AWS's public price lists; check before you commit.")}</span>
-          <Link href={localePath(locale, "/")} className="hover:text-ink">
+          <Link href={localePath(locale, "/")} className="shrink-0 hover:text-ink">
             {gt("New conversation")}
           </Link>
         </p>
@@ -669,9 +669,9 @@ export function Chat({ conversationId }: { conversationId: string }) {
       </div>
       <div className="sticky bottom-0 z-20 -mx-4 bg-surface/80 px-4 pt-2 pb-4 backdrop-blur-md sm:-mx-7 sm:px-7">
         <Composer onSend={send} onStop={stop} busy={busy} floating />
-        <p className="mt-1.5 flex justify-between px-1 text-[11px] text-ink-3">
+        <p className="mt-1.5 flex justify-between gap-3 px-1 text-[11px] text-ink-3">
           <span>{gt("Answers come from AWS's public price lists; check before you commit.")}</span>
-          <Link href={localePath(locale, "/")} className="hover:text-ink">
+          <Link href={localePath(locale, "/")} className="shrink-0 hover:text-ink">
             {gt("New conversation")}
           </Link>
         </p>

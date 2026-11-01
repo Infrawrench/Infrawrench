@@ -16,7 +16,7 @@ function LanguagePicker() {
   return (
     <select
       aria-label={gt("Language")}
-      className="rounded-md border border-[#1a1a1a] bg-transparent px-2 py-1.5 text-[13px] text-[#9ca3af] hover:border-[#333] focus-visible:outline-2 focus-visible:outline-[#2563eb]"
+      className="rounded-md border border-[#1a1a1a] bg-transparent px-2 py-1.5 text-base text-[#9ca3af] sm:text-[13px] hover:border-[#333] focus-visible:outline-2 focus-visible:outline-[#2563eb]"
       value={locale}
       onChange={(e) => {
         const next = e.target.value;

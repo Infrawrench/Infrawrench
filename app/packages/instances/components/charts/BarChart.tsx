@@ -31,7 +31,7 @@ export function BarChart({
         const content = (
           <>
             <span
-              className={`w-44 shrink-0 truncate text-left ${b.selected ? "font-semibold text-ink" : "text-ink-2"}`}
+              className={`w-28 shrink-0 truncate sm:w-44 text-left ${b.selected ? "font-semibold text-ink" : "text-ink-2"}`}
             >
               {b.label}
               {b.detail && <span className="ml-1 text-ink-3">{b.detail}</span>}

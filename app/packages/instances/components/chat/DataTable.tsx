@@ -166,7 +166,7 @@ export function DataTable({
           }}
           placeholder={gt("Search all columns")}
           aria-label={gt("Search all columns")}
-          className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2.5 py-1.5 text-sm outline-none placeholder:text-ink-3 focus:border-accent"
+          className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2.5 py-1.5 text-base outline-none placeholder:text-ink-3 sm:text-sm focus:border-accent"
         />
         <span className="text-xs text-ink-3 tabular-nums">
           {filtered.length === rows.length
@@ -209,7 +209,11 @@ export function DataTable({
           )}
         </div>
       </div>
-      <div className={fill ? "min-h-0 flex-1 overflow-auto" : "max-h-[32rem] overflow-auto"}>
+      <div
+        className={
+          fill ? "min-h-0 flex-1 overflow-auto overscroll-contain" : "max-h-[32rem] overflow-auto"
+        }
+      >
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-surface-2">
             <tr>
@@ -251,7 +255,7 @@ export function DataTable({
                     }}
                     placeholder={c.numeric ? gt("e.g. <0.1") : gt("Filter")}
                     aria-label={gt("Filter {column}", { column: c.label })}
-                    className={`w-full min-w-16 rounded border border-line bg-surface px-1.5 py-1 text-xs font-normal outline-none placeholder:text-ink-3 focus:border-accent ${c.numeric ? "text-right" : ""}`}
+                    className={`w-full min-w-16 rounded border border-line bg-surface px-1.5 py-1 text-base font-normal outline-none sm:text-xs placeholder:text-ink-3 focus:border-accent ${c.numeric ? "text-right" : ""}`}
                   />
                 </th>
               ))}

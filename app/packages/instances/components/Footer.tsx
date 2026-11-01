@@ -36,7 +36,12 @@ export function Footer() {
         className={`${chat ? "" : "sticky bottom-0 z-10"} border-t border-line bg-surface/90 backdrop-blur-md`}
       >
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-3 text-xs text-ink-3 sm:px-7">
-          <a className="font-semibold text-ink-2 hover:text-ink" href="https://infrawrench.com">
+          {/* On a phone the chat pages need the height more; the nav's logo
+              links to infrawrench.com as well. */}
+          <a
+            className={`font-semibold text-ink-2 hover:text-ink ${chat ? "hidden sm:inline" : ""}`}
+            href="https://infrawrench.com"
+          >
             {gt("Infrawrench: every cloud account in one app")}
           </a>
           <div className="flex flex-wrap gap-x-5 gap-y-2">

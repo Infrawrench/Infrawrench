@@ -32,7 +32,7 @@ function FooterButton({
       type="button"
       onClick={onClick}
       aria-pressed={pressed}
-      className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface hover:text-ink ${pressed ? "text-ink" : "text-ink-2"}`}
+      className={`flex items-center gap-1 rounded-md px-1.5 py-1 text-xs whitespace-nowrap sm:gap-1.5 sm:px-2 transition-colors hover:bg-surface hover:text-ink ${pressed ? "text-ink" : "text-ink-2"}`}
     >
       {children}
     </button>
@@ -106,7 +106,7 @@ export function ViewCard({
           fill={fill}
         />
       ) : (
-        <div className={fill ? "min-h-0 flex-1 overflow-auto" : undefined}>
+        <div className={fill ? "min-h-0 flex-1 overflow-auto overscroll-contain" : undefined}>
           <ViewChart
             spec={view}
             result={result}
@@ -120,8 +120,8 @@ export function ViewCard({
           {view.sql}
         </pre>
       )}
-      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-2 px-2 py-1.5">
-        <span className="flex items-center gap-1.5 px-1 text-xs text-ink-3">
+      <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:justify-between border-t border-line bg-surface-2 px-2 py-1.5">
+        <span className="hidden items-center gap-1.5 px-1 text-xs text-ink-3 sm:flex">
           {view.kind === "table" ? (
             <>
               <TableIcon className="h-3.5 w-3.5" />

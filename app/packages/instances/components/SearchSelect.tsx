@@ -190,7 +190,7 @@ export function SearchSelect({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onKeyDown}
-              className="w-full border-b border-line bg-transparent px-2.5 py-2 text-sm text-ink outline-none placeholder:text-ink-3"
+              className="w-full border-b border-line bg-transparent px-2.5 py-2 text-base text-ink outline-none placeholder:text-ink-3 sm:text-sm"
             />
           )}
           <ul
