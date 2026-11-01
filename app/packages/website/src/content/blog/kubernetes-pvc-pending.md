@@ -71,7 +71,7 @@ The class's `volumeBindingMode` decides when binding and provisioning happen:
 - **Immediate**, the default when the field is not set, binds or provisions a volume as soon as the claim is created.
 - **WaitForFirstConsumer** waits until a pod that uses the claim is created, then provisions or binds a volume that fits the pod's scheduling constraints, such as its zone, node selector, affinity and tolerations.
 
-With WaitForFirstConsumer, a claim that no pod uses yet stays Pending, and that is correct. Create the pod, or the Deployment or StatefulSet that owns it, and the claim binds once the pod is scheduled. If a pod does exist and both stay Pending, the pod cannot be scheduled for some other reason, so read the pod's FailedScheduling event using the [Pending pod guide](/blog/kubernetes-pod-pending).
+With WaitForFirstConsumer, a claim that no pod uses yet stays Pending, and that is correct. Create the pod, or the Deployment or StatefulSet that owns it, and the claim binds once the pod is scheduled. For a StatefulSet whose later pods never appear, see the [StatefulSet troubleshooting guide](/blog/kubernetes-statefulset-pod-stuck). If a pod does exist and both stay Pending, the pod cannot be scheduled for some other reason, so read the pod's FailedScheduling event using the [Pending pod guide](/blog/kubernetes-pod-pending).
 
 One spec mistake breaks this mode: setting `nodeName` on the pod. It bypasses the scheduler, so the claim never learns where the pod is going and stays Pending. Use a nodeSelector on `kubernetes.io/hostname` instead.
 
