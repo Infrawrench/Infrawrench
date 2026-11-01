@@ -6,11 +6,12 @@ sidebar_order: 8
 
 Infrawrench keeps every AWS instance type's attributes and prices, with the full history of both, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List bulk API and refreshed as AWS publishes.
 
-You can read it three ways:
+You can read it four ways:
 
 - **[instances.infrawrench.com](https://instances.infrawrench.com/aws/ec2/m5.large)**, a page per instance type with charts, and a [chat](../features/instance-price-chat.md) that answers questions about the data with tables and charts. No key needed. Append `.md` to any page (or send `Accept: text/markdown`) for the same data as Markdown.
 - **The `@infrawrench/bulk-instances` SDKs**, which download a whole service's data and decode it for you. This page documents the TypeScript one.
 - **The HTTP API**, for one instance at a time, or the raw bundles.
+- **[SQL](./aws-pricing-api.md)**, for questions across instances, regions and time, answered without downloading anything.
 
 Both the SDKs and the HTTP API need an Infrawrench bearer credential: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. Any of them can read everything; no scope is required, because the data is AWS's public price list.
 

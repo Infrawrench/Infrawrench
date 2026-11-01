@@ -105,7 +105,7 @@ const INSTANCE_TYPE = col(
 const FAMILY = col(
   "family",
   "LowCardinality(String)",
-  "Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`; `` when the name does not parse.",
+  "Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`; `''` when the name does not parse.",
 );
 const SIZE = col(
   "size",
@@ -115,7 +115,7 @@ const SIZE = col(
 const ARCHITECTURE = col(
   "architecture",
   "LowCardinality(String)",
-  "CPU architecture: `arm64` (AWS Graviton, Apple silicon) or `x86_64` (Intel, AMD); `` when AWS gives nothing to tell. Use this for ARM vs x86 questions.",
+  "CPU architecture: `arm64` (AWS Graviton, Apple silicon) or `x86_64` (Intel, AMD); `''` when AWS gives nothing to tell. Use this for ARM vs x86 questions.",
 );
 const VCPU = col("vcpu", "Nullable(Float64)", "vCPUs.");
 const MEMORY = col("memory_gib", "Nullable(Float64)", "Memory in GiB.");
@@ -177,21 +177,21 @@ export const PRICES: Table = {
       "LowCardinality(String)",
       "`on_demand`, `reserved` (reserved instances; see lease, offering_class, purchase_option) or `spot` (EC2 spot, Linux and Windows only, from AWS's spot price feed).",
     ),
-    col("lease", "LowCardinality(String)", "Reserved term length: `1yr` or `3yr`; `` otherwise."),
+    col("lease", "LowCardinality(String)", "Reserved term length: `1yr` or `3yr`; `''` otherwise."),
     col(
       "offering_class",
       "LowCardinality(String)",
-      "Reserved offering class: `standard` or `convertible`; `` otherwise.",
+      "Reserved offering class: `standard` or `convertible`; `''` otherwise.",
     ),
     col(
       "purchase_option",
       "LowCardinality(String)",
-      "Reserved payment option: `No Upfront`, `Partial Upfront` or `All Upfront`; `` otherwise.",
+      "Reserved payment option: `No Upfront`, `Partial Upfront` or `All Upfront`; `''` otherwise.",
     ),
     col(
       "operating_system",
       "LowCardinality(String)",
-      "EC2, GameLift and spot: `Linux`, `Windows`, `RHEL`, `SUSE`, `Ubuntu Pro`, `Red Hat Enterprise Linux with HA`, ... ; `` elsewhere.",
+      "EC2, GameLift and spot: `Linux`, `Windows`, `RHEL`, `SUSE`, `Ubuntu Pro`, `Red Hat Enterprise Linux with HA`, ... ; `''` elsewhere.",
     ),
     col(
       "tenancy",
@@ -221,15 +221,15 @@ export const PRICES: Table = {
     col(
       "database_edition",
       "LowCardinality(String)",
-      "RDS: edition for commercial engines (`Standard`, `Enterprise`, `Web`, `Express`, ...); `` for open-source ones.",
+      "RDS: edition for commercial engines (`Standard`, `Enterprise`, `Web`, `Express`, ...); `''` for open-source ones.",
     ),
     col(
       "deployment_option",
       "LowCardinality(String)",
       "RDS: `Single-AZ`, `Multi-AZ`, `Multi-AZ (readable standbys)`, ...",
     ),
-    col("deployment_model", "LowCardinality(String)", "RDS: e.g. `Outposts`; usually ``."),
-    col("engine_media_type", "LowCardinality(String)", "RDS: e.g. `AWS-provided`; usually ``."),
+    col("deployment_model", "LowCardinality(String)", "RDS: e.g. `Outposts`; usually `''`."),
+    col("engine_media_type", "LowCardinality(String)", "RDS: e.g. `AWS-provided`; usually `''`."),
     col(
       "cache_engine",
       "LowCardinality(String)",
@@ -281,7 +281,7 @@ export const PRICES: Table = {
 export const INSTANCE_TYPES: Table = {
   name: "instance_types",
   comment:
-    "One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs AWS does not list are NULL or ``; `attributes` has every attribute AWS publishes, as strings.",
+    "One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs AWS does not list are NULL or `''`; `attributes` has every attribute AWS publishes, as strings.",
   columns: [
     SOURCE,
     PLATFORM,
@@ -352,7 +352,7 @@ export const ATTRIBUTE_CHANGES: Table = {
     col("at", "DateTime", "When the value took effect (UTC)."),
     col("attribute", "String", "AWS attribute key, e.g. `memory`, `networkPerformance`."),
     col("value", "Nullable(String)", "The new value; NULL when the attribute was removed."),
-    col("region", "String", "Region code it applies to, `` for every region."),
+    col("region", "String", "Region code it applies to, `''` for every region."),
   ],
   orderBy: ["platform", "instance_type", "at"],
 };
@@ -422,23 +422,24 @@ export function createTableSql(table: Table, database?: string): string {
  * column lists with their comments, then the conventions a correct query
  * depends on. Deterministic, so it caches with the rest of the prompt.
  */
+/**
+ * How to query the tables correctly, beyond what each column says. Shown to
+ * the chat's model and returned by `GET /api/v1/aws-pricing/schema`.
+ */
+export const SCHEMA_NOTES: readonly string[] = [
+  "All prices are USD. Timestamps are UTC DateTime.",
+  "Usual defaults when a question does not say otherwise: for ec2, operating_system = 'Linux', tenancy = 'Shared', pre_installed_sw = 'NA', capacity_status = 'Used', license_model = 'No License required' and pricing = 'on_demand'; for rds, deployment_option = 'Single-AZ', one database_engine (PostgreSQL if unsaid) and usage_type NOT LIKE '%Unused%' (those rows price unused capacity reservations); for elasticache and memorydb, cache_engine = 'Redis' (or 'Valkey') and usage_type = 'NodeUsage'; region us-east-1.",
+  '"Cheapest" means the lowest effective_hourly_usd among current rows. Hourly to monthly: x 730.',
+  "Spot rows (pricing = 'spot') only exist for ec2 with operating_system 'Linux' or 'Windows'; spot prices move often, so their history is dense.",
+  "Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.",
+  "Use instance_types for specs and to list types; join prices on (platform, instance_type) when you need specs it does not carry.",
+  "prices is large (millions of rows for ec2): always filter on platform and current (or a time range), and aggregate or LIMIT.",
+];
+
 export function describeSchema(): string {
   const tables = TABLES.map((t) => {
     const columns = t.columns.map((c) => `  ${c.name} ${c.type}  -- ${c.comment}`).join("\n");
     return `TABLE ${t.name}  -- ${t.comment}\n${columns}`;
   }).join("\n\n");
-  return `${tables}
-
-Notes:
-- All prices are USD. Timestamps are UTC DateTime.
-- Usual defaults when the question does not say otherwise:
-  - ec2: operating_system = 'Linux', tenancy = 'Shared', pre_installed_sw = 'NA', capacity_status = 'Used', license_model = 'No License required', pricing = 'on_demand'.
-  - rds: deployment_option = 'Single-AZ', and pick a database_engine (PostgreSQL if unsaid).
-  - elasticache / memorydb: cache_engine = 'Redis' (or 'Valkey'), usage_type = 'NodeUsage'.
-  - region: us-east-1.
-- "Cheapest" means the lowest effective_hourly_usd among current rows. Hourly to monthly: x 730.
-- Spot rows (pricing = 'spot') only exist for ec2 with operating_system 'Linux' or 'Windows'; spot prices move often, so their history is dense.
-- Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.
-- Use instance_types for specs and to list types; join prices on (platform, instance_type) when you need specs it does not carry.
-- prices is large (millions of rows for ec2): always filter on platform and current (or a time range), and aggregate or LIMIT.`;
+  return `${tables}\n\nNotes:\n${SCHEMA_NOTES.map((n) => `- ${n}`).join("\n")}`;
 }

@@ -54,6 +54,8 @@ curl https://app.infrawrench.com/api/org/$ORG_ID/accounts \
   -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
 ```
 
+The [AWS pricing SQL API](./aws-pricing-api.md) (`/api/v1/aws-pricing/*`) works the same way: any of the three credentials, no scope, no organization in the path.
+
 To check a credential, or to find out whose it is, call `GET /api/v1/whoami`. It accepts every one of the three, needs no scope and no organization in the path, and answers with `userId`, `organizationId` and `principal` (`user`, `api_key` or `agent`); a `401` means the credential is unknown, revoked, expired or its owner has left the organization.
 
 ```sh

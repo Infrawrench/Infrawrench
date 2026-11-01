@@ -197,6 +197,7 @@ import { alertEmailPublicRoutes, alertEmailRoutes } from "./routes/alert-email";
 import { syncRoutes } from "./routes/sync";
 import { whoamiRoutes } from "./routes/whoami";
 import { awsBulkPricingRoutes } from "./routes/aws-bulk-pricing";
+import { awsPricingRoutes } from "./routes/aws-pricing";
 import { chatRoutes } from "./routes/chat";
 
 import { wellKnownRoutes } from "../mcp/well-known";
@@ -355,6 +356,7 @@ api.route("/api/v1/whoami", whoamiRoutes);
 // AWS bulk pricing data from Workers KV, for the bulk-instances SDKs: any
 // bearer credential, outside the org tree, and not in the OpenAPI spec.
 api.route("/api/v1/aws-bulk-pricing", awsBulkPricingRoutes);
+api.route("/api/v1/aws-pricing", awsPricingRoutes);
 
 // Chat handles its own auth so it can serve both session-cookie UI clients
 // and `iwk_` API-key holders with the `chat:write` scope.

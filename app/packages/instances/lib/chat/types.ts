@@ -1,3 +1,5 @@
+import type { QueryResult } from "@infrawrench/server-core/aws-pricing-warehouse/query";
+
 /**
  * What the chat's server and browser halves share: saved views (a table or a
  * chart over one warehouse query), query results, and the NDJSON events
@@ -66,14 +68,7 @@ export type ViewSpec = TableSpec | ChartSpec;
 /** A view as stored: immutable once saved, addressed by `/v/<id>`. */
 export type StoredView = ViewSpec & { id: string; createdAt: number };
 
-export type Cell = string | number | boolean | null;
-
-export interface QueryResult {
-  columns: { name: string; type: string }[];
-  rows: Cell[][];
-  /** More rows matched than were returned. */
-  truncated: boolean;
-}
+export type { Cell, QueryResult } from "@infrawrench/server-core/aws-pricing-warehouse/query";
 
 export interface ViewData {
   view: StoredView;

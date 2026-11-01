@@ -373,4 +373,7 @@
 // 1.85.0: `GET /api/v1/whoami`, which identifies any bearer credential (API
 // key, agent credential or WorkOS token) without an org in the path or a
 // scope. Additive.
-export const API_VERSION = "1.85.0";
+// 1.86.0: `GET /api/v1/aws-pricing/schema` and `POST /api/v1/aws-pricing/query`,
+// read-only SQL over the AWS pricing warehouse behind instances.infrawrench.com,
+// for any bearer credential with no scope. Additive.
+export const API_VERSION = "1.86.0";

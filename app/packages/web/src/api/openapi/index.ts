@@ -75,6 +75,7 @@ import { registerPagingProviderPaths } from "./paths/paging-providers";
 import { registerQueryMonitorPaths } from "./paths/query-monitors";
 import { registerCarbonPaths } from "./paths/carbon";
 import { registerPriceCatalogPaths } from "./paths/price-catalog";
+import { registerAwsPricingPaths } from "./paths/aws-pricing";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -248,6 +249,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerQueryMonitorPaths(ctx);
   registerCarbonPaths(ctx);
   registerPriceCatalogPaths(ctx);
+  registerAwsPricingPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -576,6 +578,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Price catalog",
         description:
           "Published list prices for every catalog provider, normalized: products with specs (vCPU, memory, GPU, storage) and prices per region, unit and rate type (on-demand, spot, reserved and savings-plan terms where published). Search and compare equivalent instances across providers. These are list prices, never an org's negotiated rates. Providers whose price API needs credentials use one of the org's accounts on that plugin and report `no-account` without one.",
+      },
+      {
+        name: "AWS pricing",
+        description:
+          "Read-only SQL over AWS's public price lists: every instance type's specs and every on-demand, reserved and EC2 spot price in every region, with history, for twelve AWS services. The data behind instances.infrawrench.com, refreshed as AWS publishes. Any bearer credential can use it, with no scope.",
       },
       {
         name: "Carbon",

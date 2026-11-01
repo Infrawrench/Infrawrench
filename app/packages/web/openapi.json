@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.85.0",
+    "version": "1.86.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -235,6 +235,10 @@
     {
       "name": "Price catalog",
       "description": "Published list prices for every catalog provider, normalized: products with specs (vCPU, memory, GPU, storage) and prices per region, unit and rate type (on-demand, spot, reserved and savings-plan terms where published). Search and compare equivalent instances across providers. These are list prices, never an org's negotiated rates. Providers whose price API needs credentials use one of the org's accounts on that plugin and report `no-account` without one."
+    },
+    {
+      "name": "AWS pricing",
+      "description": "Read-only SQL over AWS's public price lists: every instance type's specs and every on-demand, reserved and EC2 spot price in every region, with history, for twelve AWS services. The data behind instances.infrawrench.com, refreshed as AWS publishes. Any bearer credential can use it, with no scope."
     },
     {
       "name": "Carbon",
@@ -40910,6 +40914,221 @@
           "displayCurrency",
           "mixedCurrencies",
           "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "AwsPricingSchemaColumn": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "AwsPricingSchemaTable": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "sortingKey": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filtering on a prefix of these columns is what makes a query fast."
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AwsPricingSchemaColumn"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "sortingKey",
+          "columns"
+        ],
+        "additionalProperties": false
+      },
+      "AwsPricingSource": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "A platform name, or `spot` for EC2 spot prices."
+          },
+          "version": {
+            "type": "string"
+          },
+          "priceListTo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Newest AWS price list in the data (UTC)."
+          },
+          "syncedAt": {
+            "type": "string",
+            "description": "When it was loaded (UTC)."
+          },
+          "priceRows": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "version",
+          "priceListTo",
+          "syncedAt",
+          "priceRows"
+        ],
+        "additionalProperties": false
+      },
+      "AwsPricingSchema": {
+        "type": "object",
+        "properties": {
+          "tables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AwsPricingSchemaTable"
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Conventions a correct query depends on."
+          },
+          "sources": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AwsPricingSource"
+            },
+            "description": "How fresh each bundle is; null when the warehouse could not be reached."
+          }
+        },
+        "required": [
+          "tables",
+          "notes",
+          "sources"
+        ],
+        "additionalProperties": false
+      },
+      "AwsPricingResultColumn": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "instance_type"
+          },
+          "type": {
+            "type": "string",
+            "description": "The ClickHouse type.",
+            "example": "String"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "AwsPricingCell": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "One value. Numbers (including ClickHouse's 64-bit integers and decimals) are JSON numbers; DateTime is `YYYY-MM-DD hh:mm:ss` in UTC; arrays and maps are JSON text."
+      },
+      "AwsPricingQueryResult": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AwsPricingResultColumn"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/AwsPricingCell"
+              }
+            },
+            "description": "Each row's values, in `columns` order."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More rows matched than `maxRows`; add a LIMIT or aggregate to see them all."
+          },
+          "elapsedMs": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "columns",
+          "rows",
+          "truncated",
+          "elapsedMs"
+        ],
+        "additionalProperties": false
+      },
+      "AwsPricingQueryRequest": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000,
+            "description": "One read-only statement: SELECT or WITH (also DESCRIBE, SHOW, EXPLAIN). No FORMAT or SETTINGS clause, no trailing second statement.",
+            "example": "SELECT instance_type, vcpu, memory_gib, effective_hourly_usd FROM prices WHERE platform = 'ec2' AND current AND pricing = 'on_demand' AND region = 'us-east-1' AND operating_system = 'Linux' AND tenancy = 'Shared' AND pre_installed_sw = 'NA' AND capacity_status = 'Used' AND architecture = 'arm64' ORDER BY effective_hourly_usd LIMIT 5"
+          },
+          "maxRows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Rows to return at most. Default 1,000; at most 10,000."
+          }
+        },
+        "required": [
+          "sql"
         ],
         "additionalProperties": false
       },
@@ -98235,6 +98454,130 @@
         },
         "operationId": "getOrgOrgIdPriceCatalogCompare",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/v1/aws-pricing/schema": {
+      "get": {
+        "tags": [
+          "AWS pricing"
+        ],
+        "summary": "Describe the AWS pricing tables",
+        "description": "Every table and column of the AWS pricing warehouse with what it holds, the notes a correct query depends on, and how fresh each source is. Needs no scope.\n\nTables:\n\n- `prices`: Every price AWS has listed for an instance type, one row per period a price held. `current = true` (equivalently `valid_to IS NULL`) is the price on offer now; filter on it unless the question is about history. A product's price is identified by (platform, instance_type, region, pricing, lease, offering_class, purchase_option) plus its variant columns, so always fix the variant columns that matter for the platform (see the defaults in the notes) or you will mix e.g. Windows and Linux prices.\n- `instance_types`: One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs AWS does not list are NULL or `''`; `attributes` has every attribute AWS publishes, as strings.\n- `attribute_changes`: History of instance attributes: the values each type was first listed with, then every change. Use it for questions like when a spec changed.\n- `regions`: Region codes and the names AWS gives them, per platform's price list. Use it to turn a city or country into a region code.\n- `sync_state`: When each bundle was loaded and which AWS price lists it covers; `max(price_list_to)` is how fresh the data is.\n\nNotes:\n\n- All prices are USD. Timestamps are UTC DateTime.\n- Usual defaults when a question does not say otherwise: for ec2, operating_system = 'Linux', tenancy = 'Shared', pre_installed_sw = 'NA', capacity_status = 'Used', license_model = 'No License required' and pricing = 'on_demand'; for rds, deployment_option = 'Single-AZ', one database_engine (PostgreSQL if unsaid) and usage_type NOT LIKE '%Unused%' (those rows price unused capacity reservations); for elasticache and memorydb, cache_engine = 'Redis' (or 'Valkey') and usage_type = 'NodeUsage'; region us-east-1.\n- \"Cheapest\" means the lowest effective_hourly_usd among current rows. Hourly to monthly: x 730.\n- Spot rows (pricing = 'spot') only exist for ec2 with operating_system 'Linux' or 'Windows'; spot prices move often, so their history is dense.\n- Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.\n- Use instance_types for specs and to list types; join prices on (platform, instance_type) when you need specs it does not carry.\n- prices is large (millions of rows for ec2): always filter on platform and current (or a time range), and aggregate or LIMIT.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AwsPricingSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getV1AwsPricingSchema"
+      }
+    },
+    "/api/v1/aws-pricing/query": {
+      "post": {
+        "tags": [
+          "AWS pricing"
+        ],
+        "summary": "Run a read-only SQL query over AWS pricing data",
+        "description": "Runs one read-only ClickHouse statement against the AWS pricing warehouse: every instance type's specs and every price AWS has listed for it (on demand, reserved and EC2 spot), in every region, with history, for EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is the data behind instances.infrawrench.com. Needs no scope. Use `GET /api/v1/aws-pricing/schema` for the columns, or the tables below; filter `prices` on `platform` and `current`.\n\n- `prices`: Every price AWS has listed for an instance type, one row per period a price held. `current = true` (equivalently `valid_to IS NULL`) is the price on offer now; filter on it unless the question is about history. A product's price is identified by (platform, instance_type, region, pricing, lease, offering_class, purchase_option) plus its variant columns, so always fix the variant columns that matter for the platform (see the defaults in the notes) or you will mix e.g. Windows and Linux prices.\n- `instance_types`: One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs AWS does not list are NULL or `''`; `attributes` has every attribute AWS publishes, as strings.\n- `attribute_changes`: History of instance attributes: the values each type was first listed with, then every change. Use it for questions like when a spec changed.\n- `regions`: Region codes and the names AWS gives them, per platform's price list. Use it to turn a city or country into a region code.\n- `sync_state`: When each bundle was loaded and which AWS price lists it covers; `max(price_list_to)` is how fresh the data is.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AwsPricingQueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AwsPricingQueryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The query was refused: not read-only, more than one statement, or ClickHouse's own error (unknown column, syntax), with its message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The warehouse could not answer; try again shortly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "The query ran longer than 30 seconds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postV1AwsPricingQuery"
       }
     },
     "/api/org/{orgId}/dns": {
