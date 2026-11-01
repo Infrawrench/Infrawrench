@@ -72,7 +72,7 @@ If the logs show SERVFAIL for names inside the cluster, check that CoreDNS has p
 kubectl --context CONTEXT_NAME describe clusterrole system:coredns
 ```
 
-The rules should include list and watch on `endpoints`, `namespaces`, `pods`, `services` and `endpointslices.discovery.k8s.io`. Add any that are missing.
+The rules should include list and watch on `endpoints`, `namespaces`, `pods`, `services` and `endpointslices.discovery.k8s.io`. Add any that are missing. If you need to work out which permission a component lacks, the [Kubernetes RBAC forbidden errors guide](/blog/kubernetes-rbac-forbidden) shows how to test it with `kubectl auth can-i --as`.
 
 ## Step 5: Is the DNS Service up, with endpoints?
 
