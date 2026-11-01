@@ -111,7 +111,7 @@ For a missing object or key, you do not need to touch the pod. The kubelet retri
 
 **Invalid variable names from envFrom.** With `envFrom`, keys that are not valid environment variable names are skipped rather than failing the pod. The pod starts, and a Warning event with the reason InvalidEnvironmentVariableNames lists the skipped keys. If an expected variable is missing at runtime, check for that event.
 
-**Updates that do not show up.** ConfigMap values used as environment variables are not updated in a running container: the pod must restart to see a new value. Values mounted as a volume are updated eventually, except when mounted with `subPath`, which never receives updates. If you fixed a value and the application still sees the old one, restart the workload:
+**Updates that do not show up.** ConfigMap values used as environment variables are not updated in a running container: the pod must restart to see a new value. Values mounted as a volume are updated eventually, except when mounted with `subPath`, which never receives updates. If you fixed a value and the application still sees the old one, restart the workload. The [guide to ConfigMap and Secret changes not picked up by pods](/blog/kubernetes-configmap-changes-not-applied) covers every case:
 
 ```
 kubectl --context CONTEXT_NAME rollout restart deployment/DEPLOYMENT_NAME -n NAMESPACE
