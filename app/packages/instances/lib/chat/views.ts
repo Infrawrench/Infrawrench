@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env, waitUntil } from "cloudflare:workers";
 import { query } from "../warehouse";
 import type { StoredView, ViewData, ViewSpec } from "./types";
 
@@ -44,4 +44,57 @@ export async function runView(view: StoredView): Promise<ViewData> {
     maxRows: view.kind === "table" ? TABLE_ROWS : CHART_ROWS,
   });
   return { view, result, ranAt: Date.now() };
+}
+
+/**
+ * Each view's last result, so a shared link or a restored conversation shows
+ * at once instead of waiting on the warehouse. `result:<id>` holds it with the
+ * data version it was run at; `warehouse-version` is bumped by
+ * `POST /api/internal/notify` after every sync load. A result from an older
+ * version is still served, and re-run in the background for the next visit.
+ */
+interface CachedResult {
+  data: ViewData;
+  version: string;
+}
+
+const resultKey = (id: string) => `result:${id}`;
+const VERSION_KEY = "warehouse-version";
+
+/** The version of the warehouse's data; changes when the sync loads something. */
+export async function warehouseVersion(): Promise<string> {
+  return (await env.INSTANCES_CHAT.get(VERSION_KEY, { cacheTtl: 60 })) ?? "0";
+}
+
+/** Record that the warehouse's data changed; returns the new version. */
+export async function bumpWarehouseVersion(): Promise<string> {
+  const version = String(Date.now());
+  await env.INSTANCES_CHAT.put(VERSION_KEY, version);
+  return version;
+}
+
+export async function storeResult(data: ViewData, version?: string): Promise<void> {
+  const cached: CachedResult = { data, version: version ?? (await warehouseVersion()) };
+  await env.INSTANCES_CHAT.put(resultKey(data.view.id), JSON.stringify(cached));
+}
+
+/** A view with its data: the cached result when there is one, else a fresh run (then cached). */
+export async function viewData(view: StoredView): Promise<ViewData> {
+  const [cached, version] = await Promise.all([
+    env.INSTANCES_CHAT.get<CachedResult>(resultKey(view.id), { type: "json", cacheTtl: 60 }),
+    warehouseVersion(),
+  ]);
+  if (cached) {
+    if (cached.version !== version) {
+      waitUntil(
+        runView(view)
+          .then((fresh) => storeResult(fresh, version))
+          .catch((error: unknown) => console.warn(`view ${view.id}: refresh failed`, error)),
+      );
+    }
+    return cached.data;
+  }
+  const data = await runView(view);
+  waitUntil(storeResult(data, version));
+  return data;
 }

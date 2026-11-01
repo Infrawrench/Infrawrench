@@ -3,7 +3,7 @@ import { msg } from "gt-react";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { Chat } from "@/components/chat/Chat";
-import { loadView, runView } from "@/lib/chat/views";
+import { loadView, viewData } from "@/lib/chat/views";
 import { isLocale } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 
@@ -22,7 +22,7 @@ type Params = Promise<{ locale: string; id: string }>;
 
 const load = cache(async (id: string) => {
   const view = await loadView(id);
-  return view ? runView(view) : null;
+  return view ? viewData(view) : null;
 });
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {

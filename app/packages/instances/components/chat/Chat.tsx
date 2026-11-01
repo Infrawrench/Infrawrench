@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { T, Var, useGT, useLocale } from "gt-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { viewRef, type ChatEvent, type ChatTurn, type ViewData } from "@/lib/chat/types";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { loadConversation, newConversationId, saveConversation } from "@/lib/chat/storage";
+import {
+  viewRef,
+  type ChatEvent,
+  type ChatTurn,
+  type ViewData,
+  type ViewRef,
+} from "@/lib/chat/types";
 import { localePath } from "@/lib/i18n/locales";
 import {
   ArrowRightIcon,
@@ -19,11 +27,20 @@ import { Markdown } from "./Markdown";
 import { ViewCard } from "./ViewCard";
 
 /** One message as the page shows it. */
+/**
+ * A piece of a message, in the order it arrived: an answer that shows a
+ * table and then comments on it reads, and lays out, in that order, so text
+ * streaming in after a table goes below it instead of pushing it down.
+ */
+type Part =
+  | { kind: "text"; text: string }
+  /** `data` is missing while a restored conversation fetches it again. */
+  | { kind: "view"; ref: ViewRef; data?: ViewData; watch?: boolean };
+
 interface UiMessage {
   id: string;
   role: "user" | "assistant";
-  text: string;
-  views: { data: ViewData; watch?: boolean }[];
+  parts: Part[];
   /** While the answer is streaming: what it is doing. */
   status?: { kind: "thinking" | "query"; sql?: string };
   error?: string;
@@ -45,15 +62,14 @@ const SERVICES = [
   "Neptune",
 ];
 
-const STORAGE_KEY = "instances-chat:v1";
-
 let counter = 0;
 const nextId = () => `m${Date.now().toString(36)}${(counter++).toString(36)}`;
 
 /**
  * The service in the headline, rolling every few seconds: the outgoing name
- * slides up and out while the next slides up into the same slot, both at
- * once. Held still for reduced motion.
+ * slides up and out while the next slides up into the same slot, and the
+ * slot eases to the new name's width, so the "?" after it moves smoothly and
+ * is never covered. Held still for reduced motion.
  */
 function CyclingService() {
   // The name showing, and the one rolling out (null until the first change).
@@ -61,6 +77,8 @@ function CyclingService() {
     i: 0,
     previous: null,
   });
+  const sizer = useRef<HTMLSpanElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const timer = setInterval(
@@ -69,22 +87,32 @@ function CyclingService() {
     );
     return () => clearInterval(timer);
   }, []);
+  // The slot's width follows the current name (measured from an invisible
+  // copy), and the transition on it does the easing.
+  useLayoutEffect(() => {
+    if (sizer.current) setWidth(sizer.current.offsetWidth);
+  }, [i]);
   return (
-    // One grid cell holds both names; the clip hides each outside the line.
-    // The padding keeps descenders (OpenSearch) inside the clip.
-    <span className="inline-grid overflow-hidden pb-[0.15em] align-bottom -mb-[0.15em] text-accent">
+    <span
+      className="relative inline-block overflow-hidden pb-[0.15em] align-bottom -mb-[0.15em] whitespace-nowrap text-accent transition-[width] duration-[600ms] ease-in-out"
+      style={width === null ? undefined : { width }}
+    >
+      {/* Sets the line's height (and its width before the first measure). */}
+      <span ref={sizer} aria-hidden="true" className="invisible inline-block">
+        {SERVICES[i]}
+      </span>
       {previous !== null && (
         <span
           key={`out-${previous}`}
           aria-hidden="true"
-          className="col-start-1 row-start-1 animate-[service-out_0.6s_ease-in-out_forwards]"
+          className="absolute top-0 left-0 animate-[service-out_0.6s_ease-in-out_forwards]"
         >
           {SERVICES[previous]}
         </span>
       )}
       <span
         key={`in-${i}`}
-        className={`col-start-1 row-start-1 ${previous !== null ? "animate-[service-in_0.6s_ease-in-out]" : ""}`}
+        className={`absolute top-0 left-0 ${previous !== null ? "animate-[service-in_0.6s_ease-in-out]" : ""}`}
       >
         {SERVICES[i]}
       </span>
@@ -219,96 +247,199 @@ function Status({ status }: { status: NonNullable<UiMessage["status"]> }) {
   );
 }
 
+const textOf = (m: UiMessage) =>
+  m.parts
+    .flatMap((p) => (p.kind === "text" ? [p.text] : []))
+    .join("\n\n")
+    .trim();
+
+/** A view whose data is on its way: same frame and title, so nothing moves when it lands. */
+function ViewPlaceholder({ title }: { title: string }) {
+  const gt = useGT();
+  return (
+    <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
+      <header className="border-b border-line px-3 py-2.5 font-semibold">{title}</header>
+      <div className="flex h-48 items-center justify-center text-sm text-ink-3">
+        <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-accent" />
+        {gt("Loading…")}
+      </div>
+    </section>
+  );
+}
+
 function Message({ message }: { message: UiMessage }) {
   const gt = useGT();
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
         <p className="max-w-[85%] rounded-2xl rounded-br-md border border-line bg-surface-2 px-4 py-2.5 whitespace-pre-wrap text-ink">
-          {message.text}
+          {textOf(message)}
         </p>
       </div>
     );
   }
   return (
-    <div>
-      <div className="min-w-0 space-y-4">
-        {message.text && <Markdown text={message.text} />}
-        {message.views.map((v) => (
-          <ViewCard key={v.data.view.id} data={v.data} watch={v.watch ?? false} />
-        ))}
-        {message.pending && message.status && <Status status={message.status} />}
-        {message.error && (
-          <p className="rounded-md border border-warn-line bg-warn-bg px-3 py-2 text-sm">
-            {message.error === "rate_limited"
-              ? gt("That is a lot of questions in a short time. Wait a minute and ask again.")
-              : message.error === "refused"
-                ? gt(
-                    "I can't help with that one. Ask me about AWS instance types and their prices.",
-                  )
-                : gt("Something went wrong answering that. Try again in a moment.")}
-          </p>
-        )}
-      </div>
+    <div className="min-w-0 space-y-4">
+      {message.parts.map((p, i) =>
+        p.kind === "text" ? (
+          p.text.trim() ? (
+            <Markdown key={i} text={p.text} />
+          ) : null
+        ) : p.data ? (
+          <ViewCard key={p.ref.id} data={p.data} watch={p.watch ?? false} />
+        ) : (
+          <ViewPlaceholder key={p.ref.id} title={p.ref.title} />
+        ),
+      )}
+      {message.pending && message.status && <Status status={message.status} />}
+      {message.error && (
+        <p className="rounded-md border border-warn-line bg-warn-bg px-3 py-2 text-sm">
+          {message.error === "rate_limited"
+            ? gt("That is a lot of questions in a short time. Wait a minute and ask again.")
+            : message.error === "refused"
+              ? gt("I can't help with that one. Ask me about AWS instance types and their prices.")
+              : gt("Something went wrong answering that. Try again in a moment.")}
+        </p>
+      )}
     </div>
   );
 }
 
+/**
+ * A message as the browser keeps it: views without their data (a table can
+ * be 2,000 rows), fetched again from `/api/views/<id>` when the conversation
+ * is restored, which also brings them up to date.
+ */
+interface StoredMessage {
+  id: string;
+  role: UiMessage["role"];
+  parts: Part[];
+  error?: string;
+}
+
+const toStored = (m: UiMessage): StoredMessage => ({
+  id: m.id,
+  role: m.role,
+  parts: m.parts.map((p) =>
+    p.kind === "text" ? p : { kind: "view", ref: p.ref, ...(p.watch ? { watch: true } : {}) },
+  ),
+  ...(m.error ? { error: m.error } : {}),
+});
+
+async function loadView(id: string): Promise<ViewData | null> {
+  try {
+    const res = await fetch(`/api/views/${encodeURIComponent(id)}`);
+    return res.ok ? ((await res.json()) as ViewData) : null;
+  } catch {
+    return null;
+  }
+}
+
 const toTurns = (messages: UiMessage[]): ChatTurn[] =>
   messages
-    .filter((m) => !m.pending && (m.text || m.views.length))
-    .map((m) => ({
-      role: m.role,
-      text: m.text,
-      ...(m.views.length ? { views: m.views.map((v) => viewRef(v.data.view)) } : {}),
-    }));
+    .filter((m) => !m.pending && m.parts.length)
+    .map((m) => {
+      const views = m.parts.flatMap((p) => (p.kind === "view" ? [p.ref] : []));
+      return { role: m.role, text: textOf(m), ...(views.length ? { views } : {}) };
+    });
+
+/** The home page: the headline, the question box and suggestions. Asking opens `/chat/<id>`. */
+export function ChatHome() {
+  const gt = useGT();
+  const locale = useLocale();
+  const router = useRouter();
+  const start = useCallback(
+    (text: string, replace = false) => {
+      const href = `${localePath(locale, `/chat/${newConversationId()}`)}?q=${encodeURIComponent(text.slice(0, 4000))}`;
+      if (replace) router.replace(href);
+      else router.push(href);
+    },
+    [locale, router],
+  );
+
+  // `/?q=...` still asks straight away, so questions can be linked.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) start(q, true);
+  }, [start]);
+
+  return (
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto flex min-h-[calc(100vh-110px)] max-w-3xl flex-col justify-center px-4 py-12 sm:px-7"
+    >
+      <h1 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+        {/* The name sits on its own centered line, so changing it moves nothing else. */}
+        <T>
+          What do you want to know about
+          <br />
+          <Var>
+            <CyclingService />
+          </Var>
+          ?
+        </T>
+      </h1>
+      <p className="mx-auto mt-3 max-w-xl text-center text-ink-2">
+        {gt(
+          "Ask in plain language. Answers come from AWS's own price lists for every region, with history, as tables and charts you can share.",
+        )}
+      </p>
+      <div className="mt-8">
+        <Composer onSend={(text) => start(text)} onStop={() => {}} busy={false} autoFocus />
+      </div>
+      <div className="mt-6">
+        <Suggestions onPick={(text) => start(text)} />
+      </div>
+      <div className="mt-10 flex justify-center">
+        <Link
+          href={localePath(locale, "/aws")}
+          className="group inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm text-ink-2 transition-colors hover:border-accent hover:text-ink"
+        >
+          <ServerIcon className="h-4 w-4 text-ink-3 group-hover:text-accent" />
+          {gt("Browse AWS instances")}
+          <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+        </Link>
+      </div>
+    </main>
+  );
+}
 
 /**
- * The chat. On the home page it starts empty, with the headline, the box and
- * suggestions; once asked, it becomes a conversation with the box floating at
- * the bottom. `/v/<id>` starts it with a saved view as the first answer.
+ * A conversation. `/chat/<id>` keeps it in this browser under its id (and
+ * asks its `?q=` on arrival, which is how the home page hands over the first
+ * question); `/v/<id>` starts one with a saved view as the first answer.
  */
-export function Chat({ initial, persist = false }: { initial?: ViewData; persist?: boolean }) {
+export function Chat({ initial, conversationId }: { initial?: ViewData; conversationId?: string }) {
   const gt = useGT();
   const locale = useLocale();
   const [messages, setMessages] = useState<UiMessage[]>(() =>
-    initial ? [{ id: "initial", role: "assistant", text: "", views: [{ data: initial }] }] : [],
+    initial
+      ? [
+          {
+            id: "initial",
+            role: "assistant",
+            parts: [{ kind: "view", ref: viewRef(initial.view), data: initial }],
+          },
+        ]
+      : [],
   );
+  // A stored conversation is read after hydration (the page is a static
+  // shell), so nothing renders until then rather than a flash of empty.
+  const [ready, setReady] = useState(!conversationId);
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
-
-  // The home page's conversation survives going to an instance page and back.
-  useEffect(() => {
-    if (!persist) return;
-    try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) setMessages(JSON.parse(saved) as UiMessage[]);
-    } catch {
-      // Private mode or a stale shape: start fresh.
-    }
-  }, [persist]);
-  useEffect(() => {
-    if (!persist || busy) return;
-    try {
-      if (messages.length) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-      else sessionStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Quota or private mode; only a convenience.
-    }
-  }, [messages, busy, persist]);
-
   const update = (id: string, change: (m: UiMessage) => UiMessage) =>
     setMessages((ms) => ms.map((m) => (m.id === id ? change(m) : m)));
 
   const send = useCallback(
     async (text: string) => {
-      const user: UiMessage = { id: nextId(), role: "user", text, views: [] };
+      const user: UiMessage = { id: nextId(), role: "user", parts: [{ kind: "text", text }] };
       const reply: UiMessage = {
         id: nextId(),
         role: "assistant",
-        text: "",
-        views: [],
+        parts: [],
         pending: true,
         status: { kind: "thinking" },
       };
@@ -338,9 +469,16 @@ export function Chat({ initial, persist = false }: { initial?: ViewData; persist
             buffer = buffer.slice(nl + 1);
             if (!line.trim()) continue;
             const event = JSON.parse(line) as ChatEvent;
-            if (event.type === "text")
-              update(reply.id, (m) => ({ ...m, text: m.text + event.text }));
-            else if (event.type === "status") {
+            if (event.type === "text") {
+              update(reply.id, (m) => {
+                const last = m.parts.at(-1);
+                const parts: Part[] =
+                  last?.kind === "text"
+                    ? [...m.parts.slice(0, -1), { kind: "text", text: last.text + event.text }]
+                    : [...m.parts, { kind: "text", text: event.text }];
+                return { ...m, parts };
+              });
+            } else if (event.type === "status") {
               update(reply.id, (m) => ({
                 ...m,
                 status: { kind: event.status, ...(event.sql ? { sql: event.sql } : {}) },
@@ -348,7 +486,15 @@ export function Chat({ initial, persist = false }: { initial?: ViewData; persist
             } else if (event.type === "view") {
               update(reply.id, (m) => ({
                 ...m,
-                views: [...m.views, { data: event.data, ...(event.watch ? { watch: true } : {}) }],
+                parts: [
+                  ...m.parts,
+                  {
+                    kind: "view",
+                    ref: viewRef(event.data.view),
+                    data: event.data,
+                    ...(event.watch ? { watch: true } : {}),
+                  },
+                ],
               }));
             } else if (event.type === "error") {
               update(reply.id, (m) => ({ ...m, error: event.code ?? "unavailable" }));
@@ -373,58 +519,86 @@ export function Chat({ initial, persist = false }: { initial?: ViewData; persist
     [messages, locale],
   );
 
-  // `/?q=...` asks straight away, so questions can be linked.
+  // Restore this conversation, then ask the question it was opened with
+  // (once: the query string is dropped, so a reload does not ask again).
   const asked = useRef(false);
   useEffect(() => {
-    if (asked.current || initial) return;
-    const q = new URLSearchParams(window.location.search).get("q");
-    if (!q) return;
+    if (!conversationId || asked.current) return;
     asked.current = true;
-    window.history.replaceState(null, "", window.location.pathname);
-    void send(q.slice(0, 4000));
-  }, [send, initial]);
+    // Anything not in the current shape (an older version of this page) is skipped.
+    const saved = loadConversation<StoredMessage>(conversationId)?.filter((m) =>
+      Array.isArray(m.parts),
+    );
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) window.history.replaceState(window.history.state, "", window.location.pathname);
+    if (!saved?.length) {
+      setReady(true);
+      if (q) void send(q.slice(0, 4000));
+      return;
+    }
+    // Text shows at once; each view keeps its place as a placeholder until
+    // its data arrives.
+    setMessages(
+      saved.map((m) => ({
+        id: m.id,
+        role: m.role,
+        parts: m.parts,
+        ...(m.error ? { error: m.error } : {}),
+      })),
+    );
+    setReady(true);
+    const ids = new Set(
+      saved.flatMap((m) => m.parts.flatMap((p) => (p.kind === "view" ? [p.ref.id] : []))),
+    );
+    for (const id of ids) {
+      void loadView(id).then((data) => {
+        setMessages((ms) =>
+          ms.map((m) => ({
+            ...m,
+            // A view that no longer loads is dropped rather than left spinning.
+            parts: m.parts.flatMap((p): Part[] =>
+              p.kind === "view" && p.ref.id === id ? (data ? [{ ...p, data }] : []) : [p],
+            ),
+          })),
+        );
+      });
+    }
+  }, [conversationId, send]);
+
+  // Saved when a message is added and when an answer finishes, not on every
+  // streamed token.
+  const latest = useRef(messages);
+  useEffect(() => {
+    latest.current = messages;
+  });
+  useEffect(() => {
+    if (conversationId && ready && latest.current.length) {
+      saveConversation(conversationId, latest.current.map(toStored));
+    }
+  }, [conversationId, ready, messages.length, busy]);
 
   const stop = () => abort.current?.abort();
+
+  if (!ready) return <main id="main-content" tabIndex={-1} className="min-h-[calc(100dvh-54px)]" />;
 
   if (messages.length === 0) {
     return (
       <main
         id="main-content"
         tabIndex={-1}
-        className="mx-auto flex min-h-[calc(100vh-110px)] max-w-3xl flex-col justify-center px-4 py-12 sm:px-7"
+        className="mx-auto max-w-xl px-4 py-24 text-center sm:px-7"
       >
-        <h1 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
-          {/* The name sits on its own centered line, so changing it moves nothing else. */}
-          <T>
-            What do you want to know about
-            <br />
-            <Var>
-              <CyclingService />
-            </Var>
-            ?
-          </T>
-        </h1>
-        <p className="mx-auto mt-3 max-w-xl text-center text-ink-2">
+        <p className="text-ink-2">
           {gt(
-            "Ask in plain language. Answers come from AWS's own price lists for every region, with history, as tables and charts you can share.",
+            "This conversation is not saved in this browser. Conversations stay on the device they happened on.",
           )}
         </p>
-        <div className="mt-8">
-          <Composer onSend={send} onStop={stop} busy={busy} autoFocus />
-        </div>
-        <div className="mt-6">
-          <Suggestions onPick={send} />
-        </div>
-        <div className="mt-10 flex justify-center">
-          <Link
-            href={localePath(locale, "/aws")}
-            className="group inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm text-ink-2 transition-colors hover:border-accent hover:text-ink"
-          >
-            <ServerIcon className="h-4 w-4 text-ink-3 group-hover:text-accent" />
-            {gt("Browse AWS instances")}
-            <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </div>
+        <Link
+          href={localePath(locale, "/")}
+          className="mt-4 inline-block text-accent hover:underline"
+        >
+          {gt("Start a new conversation")}
+        </Link>
       </main>
     );
   }
@@ -448,16 +622,9 @@ export function Chat({ initial, persist = false }: { initial?: ViewData; persist
         <Composer onSend={send} onStop={stop} busy={busy} floating />
         <p className="mt-1.5 flex justify-between px-1 text-[11px] text-ink-3">
           <span>{gt("Answers come from AWS's public price lists; check before you commit.")}</span>
-          {persist && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setMessages([])}
-              className="hover:text-ink disabled:opacity-50"
-            >
-              {gt("New conversation")}
-            </button>
-          )}
+          <Link href={localePath(locale, "/")} className="hover:text-ink">
+            {gt("New conversation")}
+          </Link>
         </p>
       </div>
     </main>

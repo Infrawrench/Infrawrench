@@ -20,10 +20,11 @@ import { prefersMarkdown } from "@/lib/negotiate";
  * `/api/markdown/...` route. The home page is the chat, which has no Markdown
  * form, so agents get the service list there too.
  *
- * Localized sections: `aws`, `v` (shared chat views) and `alerts` (email
- * alert links) are page trees under `[locale]`; anything else passes through.
+ * Localized sections: `aws`, `chat` (conversations), `v` (shared chat views)
+ * and `alerts` (email alert links) are page trees under `[locale]`; anything
+ * else passes through.
  */
-const SECTIONS = ["aws", "v", "alerts"];
+const SECTIONS = ["aws", "v", "alerts", "chat"];
 
 export function proxy(request: NextRequest) {
   const url = request.nextUrl;
@@ -90,6 +91,7 @@ export const config = {
     "/aws/:path*",
     "/v/:path*",
     "/alerts/:path*",
+    "/chat/:path*",
     "/en",
     "/en/:path*",
     "/:locale",
@@ -98,5 +100,6 @@ export const config = {
     "/:locale/aws/:path*",
     "/:locale/v/:path*",
     "/:locale/alerts/:path*",
+    "/:locale/chat/:path*",
   ],
 };

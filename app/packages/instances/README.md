@@ -14,7 +14,8 @@ Router on Vite) and served by a Cloudflare Worker.
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `/`                                                                | The chat: questions answered from the pricing warehouse as text, tables, charts   |
 | `/aws`                                                             | Every AWS service, with its instance-type and family counts                       |
-| `/v/<id>`                                                          | A table or chart shared from the chat, re-queried, as a new conversation          |
+| `/chat/<id>`                                                       | A conversation, kept in the visitor's browser (`lib/chat/storage.ts`)             |
+| `/v/<id>`                                                          | A table or chart shared from the chat, as a new conversation                      |
 | `/alerts/<id>`                                                     | Confirm or stop an email alert (the link in alert emails)                         |
 | `/aws/<platform>`                                                  | One service: every family and every instance type in it, with a filter            |
 | `/aws/<platform>/<instance>`                                       | The instance page, e.g. `/aws/ec2/m5.large`                                       |

@@ -6,7 +6,7 @@ import {
   type EmailMessage,
 } from "@infrawrench/server-core/email";
 import { emailButton, emailDocument, escapeHtml } from "@infrawrench/server-core/email-html";
-import { randomId, runView, loadView } from "./chat/views";
+import { bumpWarehouseVersion, loadView, randomId, runView, storeResult } from "./chat/views";
 import type { Cell, QueryResult, StoredView } from "./chat/types";
 import { getTranslator } from "./i18n/server";
 import { DEFAULT_LOCALE, isLocale, localePath } from "./i18n/locales";
@@ -322,12 +322,15 @@ export async function notifyChanges(
     if (!meta.confirmed) continue;
     byView.set(meta.viewId, [...(byView.get(meta.viewId) ?? []), id]);
   }
+  // Every cached view result is now out of date; each refreshes on its next visit.
+  const version = await bumpWarehouseVersion();
   const result: NotifyResult = { views: byView.size, changed: 0, sent: 0, failed: 0 };
   for (const [viewId, alertIds] of byView) {
     try {
       const view = await loadView(viewId);
       if (!view) continue;
       const data = await runView(view);
+      await storeResult(data, version);
       const hash = await hashOf(data.result);
       const prev = await env.INSTANCES_CHAT.get<Snapshot>(snapshotKey(viewId), { type: "json" });
       const next = snapshotOf(data.result, hash);

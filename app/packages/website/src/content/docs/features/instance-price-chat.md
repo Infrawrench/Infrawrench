@@ -15,6 +15,8 @@ Some things to ask:
 - "How has the price of db.r6g.large changed since 2023?"
 - "Compare a 3-year all-upfront reserved m7g.large with on demand."
 
+Each conversation gets its own address (`/chat/…`), so the back button, reloading and coming back from an instance page all return to it. Conversations are kept in your browser only, so that address works on the device you asked on; to show someone a result, use a table's **Copy link** instead.
+
 The assistant writes and runs SQL against the price data to answer, so every number comes from AWS's price list rather than from the model's memory. It tells you the assumptions it made, such as the region, operating system or pricing model; ask again with different ones if they are not what you meant. Instance types in answers link to their pages on the site.
 
 ## Tables and charts

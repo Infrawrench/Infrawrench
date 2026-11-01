@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { msg } from "gt-react";
 import { notFound } from "next/navigation";
-import { Chat } from "@/components/chat/Chat";
+import { ChatHome } from "@/components/chat/Chat";
 import { LOCALES, isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 
-/** The page is the same for everyone; the conversation lives in the browser. */
+/** The page is the same for everyone; asking opens a conversation at `/chat/<id>`. */
 export const revalidate = 86400;
 
 /** Rendered on first request and cached, like the instance pages (see there). */
@@ -49,5 +49,5 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 export default async function Page({ params }: { params: Params }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  return <Chat persist />;
+  return <ChatHome />;
 }

@@ -14,7 +14,7 @@ const API_DOCS = "https://infrawrench.com/docs/team-and-billing/bulk-instances-a
 /** Chat pages, where the question box floats at the bottom instead of the footer. */
 function isChatPage(pathname: string): boolean {
   const { path } = splitLocale(pathname);
-  return path === "/" || path.startsWith("/v/");
+  return path.startsWith("/chat/") || path.startsWith("/v/");
 }
 
 export function Footer() {

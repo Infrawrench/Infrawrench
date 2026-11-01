@@ -300,5 +300,8 @@
     },
     "?"
   ],
-  "d61881bd3df64c37": "Mostrar más ({count, plural, one {queda #} other {quedan #}})"
+  "d61881bd3df64c37": "Mostrar más ({count, plural, one {queda #} other {quedan #}})",
+  "559f2f306dda2f79": "Conversación - Infrawrench Instances",
+  "6653bc189ea3c551": "Esta conversación no está guardada en este navegador. Las conversaciones se quedan en el dispositivo donde se tuvieron.",
+  "07453d5be6686484": "Iniciar una conversación nueva"
 }

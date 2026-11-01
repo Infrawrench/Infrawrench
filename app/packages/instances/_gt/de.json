@@ -300,5 +300,8 @@
     },
     " wissen?"
   ],
-  "d61881bd3df64c37": "Mehr anzeigen ({count, plural, one {# weitere} other {# weitere}})"
+  "d61881bd3df64c37": "Mehr anzeigen ({count, plural, one {# weitere} other {# weitere}})",
+  "559f2f306dda2f79": "Unterhaltung - Infrawrench Instances",
+  "6653bc189ea3c551": "Diese Unterhaltung ist in diesem Browser nicht gespeichert. Unterhaltungen bleiben auf dem Gerät, auf dem sie stattgefunden haben.",
+  "07453d5be6686484": "Neue Unterhaltung beginnen"
 }

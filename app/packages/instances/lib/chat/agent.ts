@@ -7,11 +7,11 @@ import type {
   BetaToolResultBlockParam,
   BetaToolUseBlock,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import { env } from "cloudflare:workers";
+import { env, waitUntil } from "cloudflare:workers";
 import { query, QueryError } from "../warehouse";
 import { SYSTEM_PROMPT, languageBlock } from "./prompt";
 import type { ChatEvent, ChatTurn, QueryResult } from "./types";
-import { checkAgainstResult, parseViewSpec, runView, saveView } from "./views";
+import { checkAgainstResult, parseViewSpec, runView, saveView, storeResult } from "./views";
 
 /**
  * One chat turn: Claude (through Cloudflare AI Gateway, called with the AI
@@ -349,6 +349,8 @@ async function runTool(
           true,
         );
       }
+      // Cached, so its share link opens without waiting on the warehouse.
+      waitUntil(storeResult(data));
       emit({ type: "view", data, watch: use.name === "show_table" && input["watch"] === true });
       return done(
         `Shown to the person as ${spec.kind} "${spec.title}" (view ${view.id}).\n${resultText(data.result, 20)}`,

@@ -256,7 +256,13 @@ export function DataTable({
           </thead>
           <tbody>
             {filtered.slice(0, limit).map((row, r) => (
-              <tr key={r} className="border-t border-line hover:bg-surface-2/60">
+              // Keyed by content, not position: links keep the href they
+              // mounted with, so a row reused for another instance after a
+              // sort or filter would open the wrong page.
+              <tr
+                key={`${r}:${JSON.stringify(row)}`}
+                className="border-t border-line hover:bg-surface-2/60"
+              >
                 {shown.map((c) => (
                   <td
                     key={c.index}
