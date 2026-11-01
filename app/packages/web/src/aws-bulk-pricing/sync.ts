@@ -59,16 +59,9 @@ export interface SyncResult {
 }
 
 /**
- * Bundles loaded into the pricing warehouse but not KV. Spot prices have no
- * per-instance KV values (the instances site does not show them yet).
- */
-export const WAREHOUSE_ONLY_SOURCES = ["spot"];
-
-/**
  * Sync every platform, one at a time. One failing does not stop the rest, but
  * the run still fails at the end. With a `warehouse`, each bundle is also
- * loaded there (when the warehouse does not have that version yet), plus the
- * warehouse-only bundles.
+ * loaded there (when the warehouse does not have that version yet).
  */
 export async function syncAwsBulkPricing(
   bucket: BundleBucket,
@@ -110,21 +103,6 @@ export async function syncAwsBulkPricing(
       );
     } catch (error) {
       log(`${platform}: failed: ${error instanceof Error ? error.message : String(error)}`);
-      failures.push(error);
-    }
-  }
-  for (const source of WAREHOUSE_ONLY_SOURCES) {
-    const into = target(source);
-    if (!into) break;
-    try {
-      const result = await syncPlatform(source, bucket, null, null, into);
-      if (!result) log(`${source}: no new bundle`);
-      else {
-        results.push(result);
-        log(`${source}: now ${result.version} (${result.warehouseRows ?? 0} warehouse rows)`);
-      }
-    } catch (error) {
-      log(`${source}: failed: ${error instanceof Error ? error.message : String(error)}`);
       failures.push(error);
     }
   }

@@ -93,3 +93,56 @@ export const file: InstanceFile = {
     null,
   ],
 };
+
+/**
+ * The spot bundle's m5.large: Linux and Windows prices in us-east-1 (Linux
+ * changed once), Linux in a region the EC2 instance has no price in, and no
+ * attributes. Locations are region codes with their own code as regionCode.
+ */
+export const spotFile: InstanceFile = {
+  compression_table: [
+    "us-east-1", // 0
+    "regionCode",
+    "locationType",
+    "AWS Region",
+    "Linux",
+    "Windows", // 5
+    "ap-south-1",
+  ],
+  platform: "spot",
+  offer: "AmazonEC2Spot",
+  name: "m5.large",
+  variant_keys: ["operatingSystem"],
+  regions: [
+    [
+      0,
+      [
+        [2, 3],
+        [1, 0],
+      ],
+    ],
+    [
+      6,
+      [
+        [2, 3],
+        [1, 6],
+      ],
+    ],
+  ],
+  variants: [[4], [5]],
+  reserved_terms: [],
+  instance: [
+    [],
+    [],
+    0.04,
+    [
+      [3000, 0, 0],
+      [3000, 0, 1, 0.12],
+      [3600, 0, 0, 0.035],
+      [3000, 6, 0, 0.02],
+    ],
+    [],
+    3000,
+    null,
+  ],
+};

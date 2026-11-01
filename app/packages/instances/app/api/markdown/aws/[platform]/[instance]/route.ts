@@ -1,6 +1,6 @@
 import { describe } from "@/lib/describe";
 import { getTranslator } from "@/lib/i18n/server";
-import { loadDecoded, loadInstance } from "@/lib/load";
+import { loadDecoded, loadInstance, loadSpot } from "@/lib/load";
 import { renderMarkdown } from "@/lib/markdown";
 import { buildRegionData, findRegion } from "@/lib/model";
 
@@ -23,9 +23,10 @@ export async function GET(
 ) {
   const { platform, instance } = await params;
   const name = decodeURIComponent(instance);
-  const [model, decoded, tr] = await Promise.all([
+  const [model, decoded, spot, tr] = await Promise.all([
     loadInstance(platform, name),
     loadDecoded(platform, name),
+    platform === "ec2" ? loadSpot(name) : null,
     getTranslator("en"),
   ]);
   if (!model || !decoded) {
@@ -43,7 +44,10 @@ export async function GET(
       headers: HEADERS,
     });
   }
-  const data = region === model.defaultRegion ? model.regionData : buildRegionData(decoded, region);
+  const data =
+    region === model.defaultRegion
+      ? model.regionData
+      : buildRegionData(decoded, region, spot?.decoded);
   const body = renderMarkdown(model, data, {
     description: describe(model, tr, "en"),
     pageUrl: `https://instances.infrawrench.com/aws/${model.platform}/${model.name}`,

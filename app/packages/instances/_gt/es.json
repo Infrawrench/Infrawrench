@@ -305,5 +305,9 @@
   "6653bc189ea3c551": "Esta conversación no está guardada en este navegador. Las conversaciones se quedan en el dispositivo donde se tuvieron.",
   "07453d5be6686484": "Iniciar una conversación nueva",
   "caf7afc25ef0d373": "Pregunta sobre esta tabla",
-  "7ca3b64f4959cb63": "Pregunta sobre este gráfico"
+  "7ca3b64f4959cb63": "Pregunta sobre este gráfico",
+  "0574008e003d23e0": "Spot es el precio más bajo entre las zonas de disponibilidad de la región, y cambia a menudo.",
+  "3dd281961662c6eb": "Precios spot a fecha de",
+  "b30b67e8306967a6": "Precio spot por región",
+  "a3ece1fd47be2453": "Precio spot de {name} por región"
 }

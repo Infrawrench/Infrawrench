@@ -1,9 +1,9 @@
 import { msg } from "gt-react";
 import { effectiveHourly, termOptionKey } from "./format";
-import type { InstanceModel, RegionData } from "./model";
+import { spotSystem, type InstanceModel, type RegionData } from "./model";
 
 export interface PriceSeries {
-  id: "od" | "1yr" | "3yr";
+  id: "od" | "1yr" | "3yr" | "spot";
   /** A `msg()` source; translate it where it is shown. */
   label: string;
   /** `[at, USD per hour]`, oldest first; `null` means not offered from then on. */
@@ -17,8 +17,9 @@ export function defaultTermOption(m: InstanceModel): string {
 }
 
 /**
- * On-demand and effective reserved (1- and 3-year, upfront spread over the
- * term) price history for one variant in one region.
+ * On-demand, effective reserved (1- and 3-year, upfront spread over the term)
+ * and, for EC2 variants spot applies to, spot price history for one variant in
+ * one region.
  */
 export function priceHistory(
   m: InstanceModel,
@@ -45,5 +46,8 @@ export function priceHistory(
       ]),
     });
   }
+  const system = spotSystem(m, variant);
+  const spot = system < 0 ? undefined : data.spot?.[system];
+  if (spot) out.push({ id: "spot", label: msg("Spot"), points: spot });
   return out;
 }

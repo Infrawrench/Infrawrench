@@ -305,5 +305,9 @@
   "6653bc189ea3c551": "Diese Unterhaltung ist in diesem Browser nicht gespeichert. Unterhaltungen bleiben auf dem Gerät, auf dem sie stattgefunden haben.",
   "07453d5be6686484": "Neue Unterhaltung beginnen",
   "caf7afc25ef0d373": "Fragen Sie etwas zu dieser Tabelle",
-  "7ca3b64f4959cb63": "Fragen Sie etwas zu diesem Diagramm"
+  "7ca3b64f4959cb63": "Fragen Sie etwas zu diesem Diagramm",
+  "0574008e003d23e0": "Spot ist der niedrigste Preis in den Availability Zones der Region und ändert sich häufig.",
+  "3dd281961662c6eb": "Spot-Preise vom",
+  "b30b67e8306967a6": "Spot-Preis nach Region",
+  "a3ece1fd47be2453": "Spot-Preis von {name} nach Region"
 }

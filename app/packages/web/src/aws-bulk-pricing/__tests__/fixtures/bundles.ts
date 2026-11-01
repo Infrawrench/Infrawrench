@@ -90,3 +90,58 @@ export const EC2_BUNDLE = {
     "m5.large": [[[6, 7]], [], 0.096, [[1790000000, 0, 0]], [], 1790000000, null],
   },
 };
+
+/**
+ * An EC2 spot bundle, as the bundler writes one from AWS's spot price feed:
+ * its own offer code, `operatingSystem` as the only variant key, no attributes,
+ * and region codes for locations, each with its code and type.
+ */
+export const SPOT_BUNDLE = {
+  offer: "AmazonEC2Spot",
+  compression_table: [
+    "us-east-1", // 0
+    "us-east-1-atl-1", // 1
+    "locationType", // 2
+    "regionCode", // 3
+    "AWS Local Zone", // 4
+    "AWS Region", // 5
+    "Linux", // 6
+    "Windows", // 7
+  ],
+  snapshots: [1792022400],
+  regions: [
+    [
+      0,
+      [
+        [2, 5],
+        [3, 0],
+      ],
+    ],
+    [
+      1,
+      [
+        [2, 4],
+        [3, 1],
+      ],
+    ],
+  ],
+  variant_keys: ["operatingSystem"],
+  variants: [[6], [7]],
+  reserved_terms: [],
+  instances: {
+    "m5.large": [
+      [],
+      [],
+      0.0405,
+      [
+        [1792022400, 0, 0],
+        [1792022400, 0, 1, 0.1312],
+        [1792022400, 1, 0, 0.0512],
+      ],
+      [],
+      1792022400,
+      null,
+    ],
+    "t4g.nano": [[], [], 0.0013, [[1792022400, 0, 0]], [], 1792022400, null],
+  },
+};

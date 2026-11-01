@@ -3,7 +3,7 @@
 A chat about AWS instance prices on the home page, and one page per AWS instance type, for every platform the AWS bulk pricing data
 covers (EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune,
 MemoryDB, DAX, SageMaker, EMR and GameLift): specs, current prices in every
-region, and the full history of both.
+region, and the full history of both. EC2 pages also show spot prices.
 
 Built with [vinext](https://github.com/cloudflare/vinext) (the Next.js App
 Router on Vite) and served by a Cloudflare Worker.
@@ -60,6 +60,14 @@ Read straight from the `AWS_BULK_PRICING` Workers KV namespace that
 A busy instance carries tens of thousands of price rows, so the page ships
 current prices for every region plus one region's history (`lib/model.ts`),
 and the rest comes from the region API on demand.
+
+EC2 pages also read the instance's spot prices (`instance:spot:<name>`, from the
+`spot` bundle; `loadSpot` in `lib/load.ts`): the current spot price next to on
+demand and reserved, a spot line in the price history, spot by region, and
+spot sections in the Markdown. Spot only applies to the Linux and Windows,
+shared, license-included variants with nothing pre-installed (`spotSystem` in
+`lib/model.ts`), and its locations are matched to the EC2 instance's by region
+code. The share card leaves spot out.
 
 Other currencies use the ECB's daily euro reference rates (`lib/fx.ts`, parsed by
 server-core's `parseEcbXml`), converted at the latest rate.

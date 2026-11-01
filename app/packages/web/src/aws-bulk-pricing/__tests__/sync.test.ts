@@ -13,7 +13,7 @@ import {
 } from "../format";
 import { KvRest, type KvPair } from "../kv-rest";
 import { syncAwsBulkPricing, syncPlatform, type BundleBucket, type PricingKv } from "../sync";
-import { RDS_BUNDLE } from "./fixtures/bundles";
+import { RDS_BUNDLE, SPOT_BUNDLE } from "./fixtures/bundles";
 import { expandBundle, expandValue } from "./fixtures/expand";
 
 const fixture = (name: string) =>
@@ -118,6 +118,30 @@ describe("syncAwsBulkPricing", () => {
     ]);
     // Platforms with nothing in the bucket yet are skipped, not failed.
     expect(kv.store.has(platformKey("sagemaker"))).toBe(false);
+  });
+
+  it("syncs EC2 spot prices like any other platform, after EC2", async () => {
+    const kv = fakeKv();
+    const results = await syncAwsBulkPricing(
+      fakeBucket({
+        ...BUCKET,
+        "spot-latest": "1792022400\n",
+        "spot-bundle-1792022400.json.xz": fixture("spot-bundle.json.xz"),
+      }),
+      kv,
+      quiet,
+    );
+    expect(results.map((r) => r.platform)).toEqual(["ec2", "rds", "spot"]);
+    const stored = JSON.parse(
+      gunzipSync(kv.store.get(instanceKey("spot", "m5.large"))!.value).toString(),
+    ) as InstanceValue;
+    expect(stored).toMatchObject({ platform: "spot", offer: "AmazonEC2Spot" });
+    expect(expandValue(stored)).toEqual(expandBundle(SPOT_BUNDLE, "m5.large"));
+    expect(state(kv, "spot")).toMatchObject({
+      offer: "AmazonEC2Spot",
+      variant_keys: ["operatingSystem"],
+      instances: { "m5.large": expect.any(String), "t4g.nano": expect.any(String) },
+    });
   });
 
   it("writes a catalog of every platform's instance names", async () => {

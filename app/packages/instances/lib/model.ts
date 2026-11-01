@@ -39,6 +39,72 @@ export interface InstanceModel {
   related: { family: string; name: string }[];
   /** For showing prices in other currencies; `null` when the rates could not be read. */
   fx: FxRates | null;
+  /** EC2 spot prices; `null` on other platforms, or when there are none for this instance. */
+  spot: SpotModel | null;
+}
+
+/**
+ * EC2 spot prices, from the spot bundle's instance of the same name. AWS sells
+ * spot only as {@link SPOT_VARIANT}, for the operating systems in `systems`.
+ */
+export interface SpotModel {
+  /** Each spot variant's operating system (`Linux`, `Windows`), as EC2's `operatingSystem` spells it. */
+  systems: string[];
+  /**
+   * Current spot USD per hour, per region (by index into the instance's
+   * regions), as `[system, hourly]` pairs: the lowest price across the region's
+   * availability zones, as AWS's Spot pricing page shows it.
+   */
+  current: [number, number][][];
+  /** Unix seconds of the newest spot prices. */
+  asOf: number;
+}
+
+/** The EC2 variant fields spot prices apply to, besides the operating system. */
+const SPOT_VARIANT: Readonly<Record<string, string>> = {
+  tenancy: "Shared",
+  licenseModel: "No License required",
+  preInstalledSw: "NA",
+  capacitystatus: "Used",
+};
+
+/** The spot system (index into `spot.systems`) priced like this variant, or -1 when spot does not apply. */
+export function spotSystem(
+  m: Pick<InstanceModel, "spot" | "variantKeys" | "variants">,
+  variant: number,
+): number {
+  const fields = m.variants[variant];
+  if (!m.spot || !fields) return -1;
+  for (const [key, value] of Object.entries(SPOT_VARIANT)) {
+    const k = m.variantKeys.indexOf(key);
+    if (k >= 0 && fields[k] !== value) return -1;
+  }
+  const os = m.variantKeys.indexOf("operatingSystem");
+  return os < 0 ? -1 : m.spot.systems.indexOf(fields[os]!);
+}
+
+/** Where each of the spot bundle's locations is in the instance's regions, by region code; -1 if absent. */
+function spotRegions(spot: DecodedInstance, regions: Region[]): number[] {
+  const byCode = new Map<string, number>();
+  regions.forEach((r, i) => {
+    if (r.code) byCode.set(r.code, i);
+  });
+  // Spot locations are region codes; older spot bundles give no regionCode attribute.
+  return spot.regions.map((r) => byCode.get(r.code ?? r.name) ?? -1);
+}
+
+function buildSpot(spot: DecodedInstance, regions: Region[], asOf: number): SpotModel {
+  const at = spotRegions(spot, regions);
+  const latest = new Map<string, { region: number; variant: number; hourly: number | null }>();
+  for (const r of spot.onDemand) latest.set(`${r.region}:${r.variant}`, r);
+  const current: [number, number][][] = regions.map(() => []);
+  for (const r of latest.values()) {
+    const i = at[r.region] ?? -1;
+    if (i >= 0 && r.hourly !== null) current[i]!.push([r.variant, r.hourly]);
+  }
+  for (const pairs of current) pairs.sort((a, b) => a[0] - b[0]);
+  const os = Math.max(spot.variantKeys.indexOf("operatingSystem"), 0);
+  return { systems: spot.variants.map((v) => v[os] ?? ""), current, asOf };
 }
 
 export interface RegionInfo extends Region {
@@ -59,6 +125,8 @@ export interface RegionData {
   onDemand: Record<number, [number, number | null][]>;
   /** `<variant>:<term>` to `[at, hourly, upfront]` rows, oldest first. */
   reserved: Record<string, [number, number | null, number | null][]>;
+  /** Spot system (index into `SpotModel.systems`) to `[at, hourly]` rows, oldest first; EC2 only. */
+  spot?: Record<number, [number, number | null][]>;
 }
 
 export function regionInfo(regions: Region[]): RegionInfo[] {
@@ -69,7 +137,12 @@ export function findRegion(regions: RegionInfo[], id: string): number {
   return regions.findIndex((r) => r.id === id);
 }
 
-export function buildRegionData(d: DecodedInstance, region: number): RegionData {
+/** One region's full price history; `spot` is the EC2 instance's spot prices, when it has any. */
+export function buildRegionData(
+  d: DecodedInstance,
+  region: number,
+  spot?: DecodedInstance | null,
+): RegionData {
   const onDemand: RegionData["onDemand"] = {};
   for (const r of d.onDemand) {
     if (r.region === region) (onDemand[r.variant] ??= []).push([r.at, r.hourly]);
@@ -80,7 +153,16 @@ export function buildRegionData(d: DecodedInstance, region: number): RegionData 
       (reserved[`${r.variant}:${r.term}`] ??= []).push([r.at, r.hourly, r.upfront]);
     }
   }
-  return { region, onDemand, reserved };
+  const out: RegionData = { region, onDemand, reserved };
+  const code = d.regions[region]?.code;
+  const s = spot && code ? spot.regions.findIndex((r) => (r.code ?? r.name) === code) : -1;
+  if (spot && s >= 0) {
+    const rows: NonNullable<RegionData["spot"]> = {};
+    for (const r of spot.onDemand)
+      if (r.region === s) (rows[r.variant] ??= []).push([r.at, r.hourly]);
+    out.spot = rows;
+  }
+  return out;
 }
 
 /** Variant keys whose value is not already decided by the keys before them. */
@@ -234,6 +316,8 @@ export function buildModel(
     family: FamilyMember[];
     related: { family: string; name: string }[];
     fx: FxRates | null;
+    /** The spot bundle's instance of the same name, and when its prices are from. */
+    spot?: { decoded: DecodedInstance; asOf: number } | null;
   },
 ): InstanceModel {
   const regions = regionInfo(d.regions);
@@ -264,9 +348,10 @@ export function buildModel(
     availability: availability(d),
     defaultRegion: defaults.region,
     defaultVariant: defaults.variant,
-    regionData: buildRegionData(d, defaults.region),
+    regionData: buildRegionData(d, defaults.region, opts.spot?.decoded),
     family: opts.family,
     related: opts.related,
     fx: opts.fx,
+    spot: opts.spot ? buildSpot(opts.spot.decoded, d.regions, opts.spot.asOf) : null,
   };
 }

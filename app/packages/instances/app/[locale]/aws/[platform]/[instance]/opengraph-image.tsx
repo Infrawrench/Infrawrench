@@ -38,6 +38,8 @@ const C = {
   od: "#3987e5",
   "1yr": "#d95926",
   "3yr": "#199e70",
+  // Not drawn (the card leaves spot out), but every series id needs a colour.
+  spot: "#c98500",
 } as const;
 
 /**
@@ -151,7 +153,10 @@ export default async function Image({
   const money = (usd: number) => formatMoney(usd, undefined, locale);
 
   const region = m.regions[m.defaultRegion]!;
-  const series = priceHistory(m, m.regionData, m.defaultVariant, defaultTermOption(m));
+  // Spot changes many times a day: on the card it would be a smear of dots.
+  const series = priceHistory(m, m.regionData, m.defaultVariant, defaultTermOption(m)).filter(
+    (s) => s.id !== "spot",
+  );
   const chart = chartGeometry(series, m.deletedAt ?? m.asOf, locale);
   const onDemand = m.current[m.defaultRegion]?.find(([v]) => v === m.defaultVariant)?.[1];
   const latest = (s: PriceSeries) => s.points.at(-1)?.[1] ?? null;
