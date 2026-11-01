@@ -100,7 +100,7 @@ With the exit code, the previous logs and the events in hand, most crash loops f
 
 **Permissions and security settings.** The previous log shows "permission denied" or "read-only file system". Check `securityContext` settings such as `runAsNonRoot`, `runAsUser` and `readOnlyRootFilesystem` against what the image expects to write and where.
 
-**A process that exits on purpose.** Exit code 0, short runtime. The container ran a one-off task. If it is meant to run once, it belongs in a Job, not a Deployment. If it is meant to keep running, make sure the main process stays in the foreground.
+**A process that exits on purpose.** Exit code 0, short runtime. The container ran a one-off task. If it is meant to run once, it belongs in a Job, not a Deployment; the [Job failure guide](/blog/kubernetes-job-failed) covers how Jobs retry and fail. If it is meant to keep running, make sure the main process stays in the foreground.
 
 ## Step 6: When the logs are not enough, debug a copy
 
