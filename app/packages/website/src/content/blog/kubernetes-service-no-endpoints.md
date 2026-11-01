@@ -30,7 +30,7 @@ Most checks need to run from where clients run, not from your laptop. The offici
 kubectl --context CONTEXT_NAME run -it --rm --restart=Never busybox --image=registry.k8s.io/busybox:1.27.2 -n NAMESPACE -- sh
 ```
 
-Run it in the same namespace as the client that is failing. The pod is removed when you exit. If you would rather use an existing pod, `kubectl exec` into it instead.
+Run it in the same namespace as the client that is failing. The pod is removed when you exit. If you would rather use an existing pod, `kubectl exec` into it instead; the [kubectl exec and port-forward guide](/blog/kubernetes-kubectl-exec-port-forward-errors) covers what to do when that fails.
 
 ## Step 2: Does the Service exist?
 
