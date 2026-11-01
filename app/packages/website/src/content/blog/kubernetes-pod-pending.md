@@ -120,7 +120,7 @@ kubectl --context CONTEXT_NAME get pvc -n NAMESPACE
 kubectl --context CONTEXT_NAME describe pvc PVC_NAME -n NAMESPACE
 ```
 
-A claim stuck in Pending usually has events explaining why: no StorageClass matches, no PersistentVolume satisfies the requested size or access mode, or the provisioner failed.
+A claim stuck in Pending usually has events explaining why: no StorageClass matches, no PersistentVolume satisfies the requested size or access mode, or the provisioner failed. The [PVC Pending guide](/blog/kubernetes-pvc-pending) walks through each of these.
 
 Watch for storage topology too. With a StorageClass whose `volumeBindingMode` is `Immediate`, the default, the volume is bound or provisioned as soon as the claim is created, without knowing where the pod needs to run. For storage that is not reachable from every node, such as zonal disks, the volume can end up somewhere the pod cannot schedule. `WaitForFirstConsumer` delays binding until a pod uses the claim, so the volume follows the pod's scheduling constraints. If you use `WaitForFirstConsumer`, do not set `nodeName` in the pod spec: it bypasses the scheduler and leaves the claim Pending. Use a nodeSelector on `kubernetes.io/hostname` instead.
 
