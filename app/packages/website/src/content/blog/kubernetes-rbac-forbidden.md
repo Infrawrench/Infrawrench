@@ -84,7 +84,7 @@ RBAC matches on the same resource names that appear in the API URL, and on reque
 
 - **The verb.** `get` is for a single named object, `list` for a collection and `watch` for watching. A tool that lists and watches pods needs both `list` and `watch`, not just `get`. Writes use `create`, `update`, `patch`, `delete` and `deletecollection`.
 - **The API group.** Pods, Services, ConfigMaps and Secrets are in the core group, written `""` in a rule. Deployments are in `apps` and Jobs in `batch`. A rule for `deployments` under `apiGroups: [""]` grants nothing.
-- **Subresources.** Pod logs are `pods/log`, exec is `pods/exec` and port forwarding is `pods/portforward`. Permission on `pods` does not include them. They must be listed separately, with a slash.
+- **Subresources.** Pod logs are `pods/log`, exec is `pods/exec` and port forwarding is `pods/portforward`. Permission on `pods` does not include them. They must be listed separately, with a slash. If `kubectl exec` or `kubectl port-forward` fails for reasons other than permissions, see the [kubectl exec and port-forward errors guide](/blog/kubernetes-kubectl-exec-port-forward-errors).
 - **Resource names.** A rule with `resourceNames` only applies to those objects. You cannot restrict `create` on a top level resource or `deletecollection` by name, and a `list` or `watch` restricted by name only works when the client asks for that name with a `metadata.name` field selector.
 
 Note that `get`, `list` and `watch` all return full object contents. Granting `list` on Secrets is the same as granting read access to every Secret it covers.
