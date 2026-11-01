@@ -7,7 +7,7 @@ import { formatDate, formatMoney } from "@/lib/format";
 import { isLocale } from "@/lib/i18n/locales";
 import { getTranslator, type Translate } from "@/lib/i18n/server";
 import { loadInstance } from "@/lib/load";
-import { latestAttributes, type InstanceModel } from "@/lib/model";
+import { latestAttributes, spotSystem, type InstanceModel } from "@/lib/model";
 import { defaultTermOption, priceHistory, type PriceSeries } from "@/lib/series";
 import { stepPaths } from "@/lib/step-path";
 import { timeTicks } from "@/lib/time-ticks";
@@ -38,6 +38,8 @@ const C = {
   od: "#3987e5",
   "1yr": "#d95926",
   "3yr": "#199e70",
+  // The spot line and sparkline; not a series of the main chart.
+  spot: "#c98500",
 } as const;
 
 /**
@@ -119,6 +121,29 @@ function chartGeometry(series: PriceSeries[], end: number, locale: string) {
   return { paths, years, grid: gridValues.map((v) => ({ value: v, top: y(v) })) };
 }
 
+/** The spot sparkline beside the spot price. */
+const SPARK = { width: 120, height: 24 };
+
+/**
+ * A step line through the spot history (one region, one operating system),
+ * scaled to its own range so the movement shows; null without two prices.
+ */
+function sparkline(points: [number, number | null][]): string | null {
+  const priced = points.filter((p): p is [number, number] => p[1] !== null);
+  if (priced.length < 2) return null;
+  const t0 = priced[0]![0];
+  const t1 = priced.at(-1)![0];
+  const lo = Math.min(...priced.map(([, v]) => v));
+  const hi = Math.max(...priced.map(([, v]) => v));
+  const x = (t: number) => (t1 === t0 ? 0 : ((t - t0) / (t1 - t0)) * SPARK.width);
+  // 2px of room top and bottom for the stroke; a flat history sits in the middle.
+  const y = (v: number) =>
+    hi === lo ? SPARK.height / 2 : 2 + (1 - (v - lo) / (hi - lo)) * (SPARK.height - 4);
+  let d = `M${x(priced[0]![0]).toFixed(1)},${y(priced[0]![1]).toFixed(1)}`;
+  for (const [t, v] of priced.slice(1)) d += `H${x(t).toFixed(1)}V${y(v).toFixed(1)}`;
+  return `${d}H${SPARK.width}`;
+}
+
 function specRows(m: InstanceModel, tr: Translate): [string, string][] {
   const a = latestAttributes(m.attributes);
   const { vcpu, memory } = specs(a);
@@ -151,9 +176,19 @@ export default async function Image({
   const money = (usd: number) => formatMoney(usd, undefined, locale);
 
   const region = m.regions[m.defaultRegion]!;
-  const series = priceHistory(m, m.regionData, m.defaultVariant, defaultTermOption(m));
+  const all = priceHistory(m, m.regionData, m.defaultVariant, defaultTermOption(m));
+  // Spot has its own line and sparkline: its 90 days would be a sliver at the
+  // end of a chart that runs back to when the instance was first listed.
+  const series = all.filter((s) => s.id !== "spot");
+  const spotTrend = sparkline(all.find((s) => s.id === "spot")?.points ?? []);
   const chart = chartGeometry(series, m.deletedAt ?? m.asOf, locale);
   const onDemand = m.current[m.defaultRegion]?.find(([v]) => v === m.defaultVariant)?.[1];
+  // EC2's spot price for the same variant and region, when spot applies to it.
+  const system = spotSystem(m, m.defaultVariant);
+  const spotNow =
+    system < 0 || m.deletedAt !== null
+      ? undefined
+      : m.spot?.current[m.defaultRegion]?.find(([s]) => s === system)?.[1];
   const latest = (s: PriceSeries) => s.points.at(-1)?.[1] ?? null;
   const lastPrice = [...series[0]!.points].reverse().find(([, v]) => v !== null)?.[1] ?? undefined;
   const regionsOffering = m.current.filter((pairs) => pairs.length > 0).length;
@@ -180,6 +215,18 @@ export default async function Image({
             })
           : tr(msg("AWS stopped listing it on {date}"), { date: formatDate(m.deletedAt, locale) })
         : region.name,
+    spot:
+      spotNow === undefined
+        ? null
+        : onDemand
+          ? tr(msg("{price}/hr spot, {saving} less"), {
+              price: money(spotNow),
+              saving: new Intl.NumberFormat(locale, {
+                style: "percent",
+                maximumFractionDigits: 0,
+              }).format(1 - spotNow / onDemand),
+            })
+          : tr(msg("{price}/hr spot"), { price: money(spotNow) }),
     legend: series.map((s) => {
       const v = latest(s);
       // "RI" keeps three entries with prices inside the card's width.
@@ -318,17 +365,69 @@ export default async function Image({
           }}
         >
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <div style={{ display: "flex", fontSize: 52, fontWeight: 800, letterSpacing: -1.5 }}>
+            {/* The price never shrinks; a long "per hour" (fr, es) wraps beside it instead. */}
+            <div
+              style={{
+                display: "flex",
+                flexShrink: 0,
+                fontSize: 52,
+                fontWeight: 800,
+                letterSpacing: -1.5,
+              }}
+            >
               {text.headline}
             </div>
             {m.deletedAt === null && onDemand !== undefined && (
               <div style={{ display: "flex", fontSize: 22, color: C.ink2 }}>{text.perHour}</div>
             )}
           </div>
-          <div style={{ display: "flex", fontSize: 18, color: C.ink3, marginTop: 2 }}>
+          <div
+            style={{ display: "flex", flexShrink: 0, fontSize: 18, color: C.ink3, marginTop: 2 }}
+          >
             {text.where}
           </div>
-          <div style={{ display: "flex", gap: 20, marginTop: 18 }}>
+          {text.spot && (
+            <div
+              style={{
+                display: "flex",
+                flexShrink: 0,
+                alignItems: "center",
+                gap: 14,
+                marginTop: 6,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  // One line beside the sparkline, so longer translations (de, fr) step down.
+                  fontSize: text.spot.length > 28 ? 17 : 20,
+                  fontWeight: 600,
+                  color: C.spot,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {text.spot}
+              </div>
+              {spotTrend && (
+                <svg
+                  style={{ flexShrink: 0 }}
+                  width={SPARK.width}
+                  height={SPARK.height}
+                  viewBox={`0 0 ${SPARK.width} ${SPARK.height}`}
+                >
+                  <path
+                    d={spotTrend}
+                    fill="none"
+                    stroke={C.spot}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </div>
+          )}
+          {/* The spot row takes the room these margins would. */}
+          <div style={{ display: "flex", gap: 20, marginTop: text.spot ? 10 : 18 }}>
             {text.legend.map((s) => {
               return (
                 <div
@@ -356,7 +455,13 @@ export default async function Image({
             })}
           </div>
           {chart ? (
-            <div style={{ display: "flex", flexDirection: "column", marginTop: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                marginTop: text.spot ? 6 : 16,
+              }}
+            >
               <div style={{ display: "flex" }}>
                 <div
                   style={{

@@ -1,10 +1,10 @@
 ---
 title: Bulk instances API
-description: AWS instance specs and prices for twelve services, with their full history, from the @infrawrench/bulk-instances SDKs or the HTTP API.
+description: AWS instance specs and prices for twelve services, plus EC2 spot prices, with their full history, from the @infrawrench/bulk-instances SDKs or the HTTP API.
 sidebar_order: 8
 ---
 
-Infrawrench keeps every AWS instance type's attributes and prices, with the full history of both, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List bulk API and refreshed as AWS publishes.
+Infrawrench keeps every AWS instance type's attributes and prices, with the full history of both, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List bulk API and refreshed as AWS publishes. EC2 spot prices, which are not in the price lists, are kept alongside (see [Spot prices](#spot-prices)).
 
 You can read it four ways:
 
@@ -78,6 +78,7 @@ Loads one service's data and returns an `AWSPricingData`. `platform` is one of:
 | `sagemaker`   | SageMaker            |
 | `emr`         | EMR                  |
 | `gamelift`    | GameLift             |
+| `spot`        | EC2 spot prices      |
 
 `AWS_PLATFORMS` exports that list. Any other lowercase name is requested as is, so a service added later works without a new SDK.
 
@@ -177,6 +178,26 @@ rds
 - Price timestamps are AWS's effective dates; attribute changes are dated by the price list that first showed them.
 - When AWS stops listing an instance, removal rows are written for all its prices, so its `pricing` is empty and `deletedAt` is set. If AWS lists it again, `deletedAt` goes back to `null`.
 
+### Spot prices
+
+`spot` holds EC2's spot prices, by instance type, for Linux and Windows. AWS publishes no price list for them, so they come from the feed behind AWS's [Spot pricing page](https://aws.amazon.com/ec2/spot/pricing/), with the history before November 2026 filled in from EC2's spot price history:
+
+- Each price is the lowest across the region's availability zones, as AWS's page shows it. Spot prices are in `pricing.onDemand` and `pricingHistory.onDemand`; there are no reserved prices.
+- `variantKeys` is `["operatingSystem"]`, so `operatingSystem` is `Linux` or `Windows` and the other EC2 fields are `""`. A spot price compares with the EC2 on-demand price that has the same operating system, `Shared` tenancy, `No License required`, no pre-installed software and capacity status `Used`.
+- Locations are region codes, including Local Zones such as `us-east-1-atl-1`, so `region` and `regionCode` are both the code. `regions` gives each its `locationType`.
+- Instances have no attributes; take an instance type's specs from `ec2`.
+- The history starts on 3 August 2026, with a price every hour for the main regions (the rest, and Local Zones, start on 1 November 2026), and has one every 6 hours since 1 November 2026. Spot prices change far more often than on-demand prices, so the history is dense.
+
+```ts
+import { downloadAwsPricingData } from "@infrawrench/bulk-instances";
+
+const spot = await downloadAwsPricingData("spot");
+spot
+  .get("m5.large")!
+  .pricing.onDemand.find((p) => p.regionCode === "us-east-1" && p.operatingSystem === "Linux")
+  ?.hourly; // 0.0405
+```
+
 ## HTTP API
 
 The SDKs use two endpoints, which you can also call directly with `Authorization: Bearer <credential>`.
@@ -203,7 +224,7 @@ curl -H "Authorization: Bearer $INFRAWRENCH_API_KEY" \
 | `GET /latest` (EC2), `GET /<platform>-latest`                                         | The newest bundle's timestamp, as text. |
 | `GET /bundle-<timestamp>.json.xz` (EC2), `GET /<platform>-bundle-<timestamp>.json.xz` | The bundle, xz-compressed.              |
 
-Bundles are served from Cloudflare's edge cache, with `ETag` revalidation and range requests. A new EC2 bundle can appear every few minutes as AWS publishes; the other services are checked every 15 minutes.
+Bundles are served from Cloudflare's edge cache, with `ETag` revalidation and range requests. A new EC2 bundle can appear every few minutes as AWS publishes; the other services are checked every 15 minutes, and spot prices every 6 hours.
 
 ### The bundle encoding
 

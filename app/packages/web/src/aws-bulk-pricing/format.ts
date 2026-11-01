@@ -19,7 +19,12 @@
  * listing pages that would otherwise read every platform's state.
  */
 
-/** Platform name (as in the bundler's `publish-<platform>.sh`) to AWS offer code. */
+/**
+ * Platform name (as in the bundler's `publish-<platform>.sh`) to AWS offer code.
+ * `spot` is EC2's spot prices, which have no AWS price list: the bundler builds
+ * that bundle from AWS's spot price feed under an offer code of its own. It
+ * stays after `ec2`, because its warehouse load takes specs from EC2's.
+ */
 export const PLATFORMS: Readonly<Record<string, string>> = {
   ec2: "AmazonEC2",
   rds: "AmazonRDS",
@@ -33,6 +38,7 @@ export const PLATFORMS: Readonly<Record<string, string>> = {
   sagemaker: "AmazonSageMaker",
   emr: "ElasticMapReduce",
   gamelift: "AmazonGameLift",
+  spot: "AmazonEC2Spot",
 };
 
 /** EC2 bundles predate `offer` and `variant_keys`, so they leave both out. */
@@ -72,7 +78,7 @@ export interface PlatformState {
 /**
  * What `catalog` holds, rebuilt from the platform states at the end of every
  * sync and written only when it changes. instances.infrawrench.com's index and
- * listing pages read it instead of twelve states (EC2's alone carries a hash
+ * listing pages read it instead of every platform's state (EC2's alone carries a hash
  * per instance and every snapshot).
  */
 export interface Catalog {

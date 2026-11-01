@@ -1,13 +1,13 @@
 name: Sync AWS bulk pricing data
 
-# Splits each new AWS price list bundle the instances-bundler publishes to R2
-# into one Workers KV value per instance, for `/api/v1/aws-bulk-pricing` (see
-# app/packages/web/src/aws-bulk-pricing), and loads the same bundles (plus EC2
-# spot prices) into the AWS pricing warehouse, the ClickHouse database
-# instances.infrawrench.com's chat queries (src/aws-bulk-pricing/warehouse.ts).
+# Splits each new bundle the instances-bundler publishes to R2 (an AWS price
+# list per platform, plus EC2 spot prices) into one Workers KV value per
+# instance, for `/api/v1/aws-bulk-pricing` (see app/packages/web/src/aws-bulk-pricing),
+# and loads the same bundles into the AWS pricing warehouse, the ClickHouse
+# database instances.infrawrench.com's chat queries (src/aws-bulk-pricing/warehouse.ts).
 # It runs here rather than in a Worker because an EC2 bundle is over 200 MB of
 # JSON. A run where no bundle has moved reads thirteen small `latest` objects,
-# twelve KV keys and one warehouse table, and writes nothing.
+# thirteen KV keys and one warehouse table, and writes nothing.
 
 on:
   schedule:

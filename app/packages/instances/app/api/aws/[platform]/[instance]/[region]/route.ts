@@ -1,4 +1,4 @@
-import { loadDecoded } from "@/lib/load";
+import { loadDecoded, loadSpot } from "@/lib/load";
 import { buildRegionData, findRegion, regionInfo } from "@/lib/model";
 
 /**
@@ -13,11 +13,15 @@ export async function GET(
   { params }: { params: Promise<{ platform: string; instance: string; region: string }> },
 ) {
   const { platform, instance, region } = await params;
-  const decoded = await loadDecoded(platform, decodeURIComponent(instance));
+  const name = decodeURIComponent(instance);
+  const [decoded, spot] = await Promise.all([
+    loadDecoded(platform, name),
+    platform === "ec2" ? loadSpot(name) : null,
+  ]);
   if (!decoded) return Response.json({ error: "No such instance" }, { status: 404 });
   const index = findRegion(regionInfo(decoded.regions), decodeURIComponent(region));
   if (index < 0) return Response.json({ error: "No such region" }, { status: 404 });
-  return Response.json(buildRegionData(decoded, index), {
+  return Response.json(buildRegionData(decoded, index, spot?.decoded), {
     headers: { "cache-control": "public, max-age=300, stale-while-revalidate=86400" },
   });
 }

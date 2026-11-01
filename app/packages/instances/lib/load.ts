@@ -41,14 +41,33 @@ export const loadDecoded = cache(
   },
 );
 
+/**
+ * EC2's spot prices for one instance type (the spot bundle's instance of the
+ * same name) and when they are from. Null when there are none; a failed read is
+ * null too, since the page works without them.
+ */
+export const loadSpot = cache(
+  async (name: string): Promise<{ decoded: DecodedInstance; asOf: number } | null> => {
+    try {
+      const [file, listed] = await Promise.all([readInstance("spot", name), platformNames("spot")]);
+      if (!file) return null;
+      const decoded = decodeInstance(file);
+      return { decoded, asOf: listed?.asOf ?? decoded.onDemand.at(-1)?.at ?? 0 };
+    } catch {
+      return null;
+    }
+  },
+);
+
 export const loadInstance = cache(
   async (platform: string, name: string): Promise<InstanceModel | null> => {
     const info = platformInfo(platform);
     if (!info) return null;
-    const [decoded, listed, fx] = await Promise.all([
+    const [decoded, listed, fx, spot] = await Promise.all([
       loadDecoded(platform, name),
       platformNames(platform),
       loadFxRates(),
+      platform === "ec2" ? loadSpot(name) : null,
     ]);
     if (!decoded) return null;
 
@@ -74,6 +93,7 @@ export const loadInstance = cache(
       family,
       related,
       fx,
+      spot,
     });
   },
 );

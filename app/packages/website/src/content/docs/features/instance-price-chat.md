@@ -40,7 +40,7 @@ Alerts follow the table's exact query, so ask for the table that changes exactly
 ## Limits
 
 - Questions are limited to a few a minute from one address.
-- The data is AWS's public list prices in USD. It does not include your own discounts, Savings Plans, or taxes; spot prices are EC2 Linux and Windows only.
+- The data is AWS's public list prices in USD. It does not include your own discounts, Savings Plans, or taxes; spot prices are EC2 Linux and Windows only, the lowest across each region's availability zones, and go back to August 2026.
 - Your questions are sent to Anthropic's Claude through Cloudflare's AI Gateway to write the answers, and are not stored. Shared links store only the table's title and query. See the [privacy policy](https://infrawrench.com/privacy#instances-chat).
 
 The same data is available without the chat: browse it at [instances.infrawrench.com/aws](https://instances.infrawrench.com/aws), query it yourself with the [AWS pricing SQL API](../team-and-billing/aws-pricing-api.md) (the same tables the chat queries, so a chat answer's **SQL** runs there unchanged), or download it with the [bulk instances API](../team-and-billing/bulk-instances-api.md).

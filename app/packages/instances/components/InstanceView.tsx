@@ -19,7 +19,7 @@ import {
 } from "@/lib/format";
 import { useDataString } from "@/lib/i18n/data-string";
 import { localePath } from "@/lib/i18n/locales";
-import { findRegion, type InstanceModel, type RegionData } from "@/lib/model";
+import { findRegion, spotSystem, type InstanceModel, type RegionData } from "@/lib/model";
 import {
   attributeTimelines,
   closestOffered,
@@ -49,6 +49,7 @@ const SERIES_COLORS = {
   od: "var(--series-1)",
   "1yr": "var(--series-2)",
   "3yr": "var(--series-3)",
+  spot: "var(--series-4)",
 } as const;
 
 /** Remembers the visitor's currency in this browser; a convenience, so failures are ignored. */
@@ -183,6 +184,13 @@ export function InstanceView({
   const offered = useMemo(() => offeredVariants(m, region), [m, region]);
   const onDemand = offered.get(variant) ?? null;
   const noneOffered = m.current.every((pairs) => pairs.length === 0);
+  // The spot system priced like the selected variant, or -1 where spot does not apply.
+  const system = useMemo(() => spotSystem(m, variant), [m, variant]);
+  const spotIn = useCallback(
+    (r: number) => m.spot?.current[r]?.find(([s]) => s === system)?.[1],
+    [m.spot, system],
+  );
+  const spotEnd = Math.max(m.asOf, m.spot?.asOf ?? 0);
 
   /** The term with this lease and the selected class and purchase option. */
   const termFor = useCallback(
@@ -254,6 +262,29 @@ export function InstanceView({
         })
         .sort((a, b) => a.value - b.value),
     [m, variant, region],
+  );
+
+  const spotBars = useMemo(
+    () =>
+      system < 0
+        ? []
+        : m.regions
+            .flatMap((r, i) => {
+              const hourly = spotIn(i);
+              return hourly === undefined
+                ? []
+                : [
+                    {
+                      id: String(i),
+                      label: r.name,
+                      detail: r.code ?? "",
+                      value: hourly,
+                      selected: i === region,
+                    },
+                  ];
+            })
+            .sort((a, b) => a.value - b.value),
+    [m.regions, system, spotIn, region],
   );
 
   const compareBars = useMemo(
@@ -342,6 +373,7 @@ export function InstanceView({
                     />
                   );
                 })}
+              {system >= 0 && <Price label={gt("Spot")} value={price(spotIn(region) ?? null)} />}
             </div>
             <p className="mt-1 text-xs text-ink-3">
               {gt("Reserved prices include the upfront payment, spread over the term.")}
@@ -354,6 +386,13 @@ export function InstanceView({
                   },
                 )}`}
             </p>
+            {system >= 0 && (
+              <p className="mt-1 text-xs text-ink-3">
+                {gt(
+                  "Spot is the lowest price across the region's availability zones, and changes often.",
+                )}
+              </p>
+            )}
 
             <div className="mt-4 grid grid-cols-2 gap-2">
               <SearchSelect
@@ -442,6 +481,12 @@ export function InstanceView({
               )}
               <dt className="text-ink-3">{gt("Price list as of")}</dt>
               <dd>{formatDate(m.asOf, locale)}</dd>
+              {m.spot && (
+                <>
+                  <dt className="text-ink-3">{gt("Spot prices as of")}</dt>
+                  <dd>{formatDate(m.spot.asOf, locale)}</dd>
+                </>
+              )}
             </dl>
           </section>
 
@@ -511,7 +556,7 @@ export function InstanceView({
           >
             <StepChart
               series={history}
-              end={m.deletedAt ?? m.asOf}
+              end={m.deletedAt ?? spotEnd}
               format={fmt}
               label={gt("Price history of {name} in {region}", {
                 name: m.name,
@@ -526,6 +571,17 @@ export function InstanceView({
                 bars={regionBars}
                 format={fmt}
                 label={gt("On-demand price of {name} by region", { name: m.name })}
+                onSelect={(id) => setRegion(Number(id))}
+              />
+            </ChartSection>
+          )}
+
+          {spotBars.length > 1 && (
+            <ChartSection id="spot-by-region" title={gt("Spot price by region")} className="mt-8">
+              <BarChart
+                bars={spotBars}
+                format={fmt}
+                label={gt("Spot price of {name} by region", { name: m.name })}
                 onSelect={(id) => setRegion(Number(id))}
               />
             </ChartSection>

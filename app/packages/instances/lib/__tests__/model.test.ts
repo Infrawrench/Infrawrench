@@ -11,7 +11,9 @@ import {
   distinguishingKeys,
   latestAttributes,
   relatives,
+  spotSystem,
 } from "../model";
+import { priceHistory } from "../series";
 import { parseName, sizeRank } from "../names";
 import { PLATFORMS } from "../platforms";
 import { renderMarkdown } from "../markdown";
@@ -21,7 +23,7 @@ import { prefersMarkdown } from "../negotiate";
 import { stepPaths } from "../step-path";
 import { timeTicks } from "../time-ticks";
 import { attributeTimelines, closestOffered, variantsAlong, withField } from "../selection";
-import { file } from "./fixture";
+import { file, spotFile } from "./fixture";
 
 const decoded = decodeInstance(file);
 const model = buildModel(decoded, PLATFORMS.ec2!, {
@@ -111,6 +113,78 @@ describe("buildModel", () => {
       },
       reserved: { "0:0": [[1000, 0.06, 0]], "0:1": [[1000, 0.03, 500]] },
     });
+  });
+});
+
+describe("spot", () => {
+  const spot = decodeInstance(spotFile);
+  const withSpot = buildModel(decoded, PLATFORMS.ec2!, {
+    asOf: 5000,
+    family: [],
+    related: [],
+    fx: null,
+    spot: { decoded: spot, asOf: 3600 },
+  });
+
+  it("has no spot prices without a spot instance", () => {
+    expect(model.spot).toBeNull();
+    expect(spotSystem(model, 0)).toBe(-1);
+  });
+
+  it("keeps the current spot price per region, by region code", () => {
+    // ap-south-1 is not one of the EC2 instance's regions, so it is left out.
+    expect(withSpot.spot).toEqual({
+      systems: ["Linux", "Windows"],
+      current: [
+        [
+          [0, 0.035],
+          [1, 0.12],
+        ],
+        [],
+        [],
+      ],
+      asOf: 3600,
+    });
+  });
+
+  it("applies to shared tenancy only, by operating system", () => {
+    expect(spotSystem(withSpot, 0)).toBe(0); // Linux, Shared
+    expect(spotSystem(withSpot, 1)).toBe(1); // Windows, Shared
+    expect(spotSystem(withSpot, 2)).toBe(-1); // Linux, Dedicated
+  });
+
+  it("carries the region's spot history and draws it with the others", () => {
+    const data = buildRegionData(decoded, 0, spot);
+    expect(data.spot).toEqual({
+      0: [
+        [3000, 0.04],
+        [3600, 0.035],
+      ],
+      1: [[3000, 0.12]],
+    });
+    expect(buildRegionData(decoded, 1, spot).spot).toBeUndefined();
+    expect(priceHistory(withSpot, data, 0, "standard|No Upfront").map((s) => s.id)).toEqual([
+      "od",
+      "1yr",
+      "3yr",
+      "spot",
+    ]);
+    expect(priceHistory(withSpot, data, 2, "standard|No Upfront").map((s) => s.id)).not.toContain(
+      "spot",
+    );
+  });
+
+  it("lists spot prices by region and by day in Markdown", () => {
+    const md = renderMarkdown(withSpot, buildRegionData(decoded, 0, spot), {
+      description: "D.",
+      pageUrl: "https://instances.infrawrench.com/aws/ec2/m5.large",
+      tr: translatorFor("en", {}),
+    });
+    expect(md).toContain("## Spot price by region");
+    expect(md).toContain("| US East (N. Virginia) | us-east-1 | $0.035 | 61% |");
+    expect(md).toContain("| 1970-01-01 | $0.035 |");
+    // Spot stays out of the on-demand and reserved history table.
+    expect(md).toContain("| Date | On demand | 1-year reserved | 3-year reserved |");
   });
 });
 

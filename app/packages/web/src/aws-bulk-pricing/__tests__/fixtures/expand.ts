@@ -1,5 +1,13 @@
 import type { InstanceValue } from "../../format";
-import type { RDS_BUNDLE } from "./bundles";
+
+/** The parts of a fixture bundle (`bundles.ts`) that `expandBundle` reads. */
+interface FixtureBundle<Name extends string> {
+  compression_table: string[];
+  variants: number[][];
+  reserved_terms: number[][];
+  regions: unknown[];
+  instances: Record<Name, unknown[]>;
+}
 
 /** Every index in a value resolved back to its string, for comparing two encodings. */
 function expand(
@@ -50,7 +58,7 @@ function expand(
   return result;
 }
 
-export function expandBundle(bundle: typeof RDS_BUNDLE, name: keyof typeof RDS_BUNDLE.instances) {
+export function expandBundle<Name extends string>(bundle: FixtureBundle<Name>, name: Name) {
   return expand(
     bundle.compression_table,
     bundle.variants,

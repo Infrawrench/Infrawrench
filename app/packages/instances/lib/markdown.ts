@@ -2,7 +2,7 @@ import { attributeLabel, variantLabel, variantValueLabel } from "./attributes";
 import { DURATIONS, effectiveHourly, leaseLabel, termLabel, termOptionKey } from "./format";
 import type { Translate } from "./i18n/server";
 import type { PlatformListing, PlatformSummary } from "./load";
-import type { InstanceModel, RegionData } from "./model";
+import { spotSystem, type InstanceModel, type RegionData } from "./model";
 import { attributeTimelines } from "./selection";
 import { defaultTermOption, priceHistory } from "./series";
 
@@ -33,7 +33,7 @@ export function renderMarkdown(
   out.push(`- Price list as of: ${day(m.asOf)}`);
   out.push(`- Web page: ${opts.pageUrl}`);
   out.push(
-    `- Prices are in USD from the AWS Price List bulk API. Add \`?region=<code>\` for another region's full history.`,
+    `- Prices are in USD from the AWS Price List bulk API${m.spot ? ", and spot prices from AWS's Spot pricing page" : ""}. Add \`?region=<code>\` for another region's full history.`,
   );
 
   // Specifications, in this region, with every value an attribute has had.
@@ -122,8 +122,57 @@ export function renderMarkdown(
     );
   }
 
-  // Price history: every change, newest first.
-  const series = priceHistory(m, data, m.defaultVariant, defaultTermOption(m));
+  // Spot, for EC2 variants it applies to: every region now, and this region's history by day.
+  const system = spotSystem(m, m.defaultVariant);
+  if (m.spot && system >= 0) {
+    const spot = m.spot;
+    const bySpot = m.regions
+      .flatMap((r, i) => {
+        const hourly = spot.current[i]?.find(([s]) => s === system)?.[1];
+        const onDemand = m.current[i]?.find(([v]) => v === m.defaultVariant)?.[1];
+        return hourly === undefined ? [] : [{ r, hourly, onDemand }];
+      })
+      .sort((a, b) => a.hourly - b.hourly);
+    if (bySpot.length > 0) {
+      out.push("", "## Spot price by region", "");
+      out.push(
+        `${variantText}. The lowest spot price across each region's availability zones, as of ${day(spot.asOf)}.`,
+        "",
+      );
+      out.push(
+        table(
+          ["Region", "Code", "USD per hour", "Saving on on demand"],
+          bySpot.map(({ r, hourly, onDemand }) => [
+            r.name,
+            r.code ?? "",
+            usd(hourly),
+            onDemand ? `${Math.round((1 - hourly / onDemand) * 100)}%` : "",
+          ]),
+        ),
+      );
+    }
+    const rows = data.spot?.[system] ?? [];
+    if (rows.length > 0) {
+      // Spot prices change many times a day; the last price of each day it changed.
+      const byDay = new Map<string, number | null>();
+      for (const [at, hourly] of rows) byDay.set(day(at), hourly);
+      out.push("", `## Spot price history in ${regionTitle}`, "");
+      out.push(`${variantText}. USD per hour, the last price of each day it changed (UTC).`, "");
+      out.push(
+        table(
+          ["Date", "USD per hour"],
+          [...byDay.entries()]
+            .reverse()
+            .map(([date, hourly]) => [date, hourly === null ? "not offered" : usd(hourly)]),
+        ),
+      );
+    }
+  }
+
+  // Price history: every change, newest first. Spot has its own section above.
+  const series = priceHistory(m, data, m.defaultVariant, defaultTermOption(m)).filter(
+    (s) => s.id !== "spot",
+  );
   const times = [...new Set(series.flatMap((s) => s.points.map(([at]) => at)))].sort(
     (a, b) => b - a,
   );
