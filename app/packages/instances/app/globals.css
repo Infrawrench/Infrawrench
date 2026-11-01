@@ -76,6 +76,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* A page that fits the window (the shared view at /v/<id>): the body is
+   exactly the viewport, the page column hands its height to the main element,
+   and only the table or chart inside it scrolls, so there is never a second
+   scrollbar on the page itself. Below 32rem tall there is no room for that,
+   and the page scrolls as one instead. */
+@media (min-height: 32rem) {
+  body:has(main[data-fit-window]) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  body:has(main[data-fit-window]) > .page-content {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+}
+
 /* ── Nav (mirrors app/packages/website/src/styles/global.css) ── */
 .nav-bar {
   position: sticky;

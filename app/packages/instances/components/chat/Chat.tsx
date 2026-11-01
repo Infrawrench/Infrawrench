@@ -430,12 +430,14 @@ export function SharedView({ data }: { data: ViewData }) {
     );
   };
   return (
-    // The window less the 54px nav: the table scrolls inside the card, and
-    // the footer is below the fold as on the conversation pages.
+    // Fills what the nav and footer leave of the window (`data-fit-window`,
+    // see globals.css): the table or chart scrolls inside the card, and the
+    // page itself does not scroll at all.
     <main
       id="main-content"
       tabIndex={-1}
-      className="flex h-[calc(100dvh-54px)] min-h-[28rem] flex-col gap-3 px-3 pt-3 pb-3 sm:px-5"
+      data-fit-window=""
+      className="flex min-h-0 flex-1 flex-col gap-3 px-3 pt-3 pb-3 sm:px-5"
     >
       <ViewCard data={data} fill />
       <div className="mx-auto mt-auto w-full max-w-3xl shrink-0">

@@ -37,7 +37,7 @@ export default async function RootLayout({
       <body className="flex min-h-screen flex-col">
         <I18nProvider locale={locale} translations={translations}>
           <Nav />
-          <div className="flex-1">{children}</div>
+          <div className="page-content flex-1">{children}</div>
           <Footer />
         </I18nProvider>
       </body>
