@@ -96,7 +96,7 @@ To confirm queries actually reach CoreDNS, add the `log` plugin to its configura
 kubectl --context CONTEXT_NAME -n kube-system edit configmap coredns
 ```
 
-Add a line with `log` inside the `.:53 { ... }` block, save, and wait a minute or two for the change to reach the CoreDNS pods. Then rerun the lookup from Step 1 and read the logs again. Each query shows up as a line with the name, the record type and the response code. If nothing appears, queries are not reaching CoreDNS, so look at the network path between the pod and the Service, including network policies. Remove the `log` line when you are done, because it logs every query.
+Add a line with `log` inside the `.:53 { ... }` block, save, and wait a minute or two for the change to reach the CoreDNS pods. Then rerun the lookup from Step 1 and read the logs again. Each query shows up as a line with the name, the record type and the response code. If nothing appears, queries are not reaching CoreDNS, so look at the network path between the pod and the Service, including network policies: the [NetworkPolicy troubleshooting guide](/blog/kubernetes-networkpolicy-blocking-traffic) shows how to check whether egress to port 53 is allowed. Remove the `log` line when you are done, because it logs every query.
 
 ## Step 6: The name itself
 
