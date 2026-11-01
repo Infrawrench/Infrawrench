@@ -151,6 +151,8 @@ The name should resolve, the request should succeed by name, and the EndpointSli
 
 Write down which link was broken and what fixed it. The same symptom on another Service will take a minute to place.
 
+If the Service works from inside the cluster but requests through an Ingress still fail, the problem is in front of the Service: follow the [Kubernetes Ingress troubleshooting guide](/blog/kubernetes-ingress-502-503).
+
 ## Conclusion
 
 A Service that does not answer is a chain with one broken link. Check, in order: the Service exists, the name resolves, the cluster IP answers, the ports map correctly, the selector matches pods that are ready, the pods answer directly, and the proxy layer routes traffic. Stop at the first check that fails and fix that.
