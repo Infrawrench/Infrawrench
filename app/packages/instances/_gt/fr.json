@@ -303,5 +303,7 @@
   "d61881bd3df64c37": "Afficher plus ({count, plural, one {# restante} other {# restantes}})",
   "559f2f306dda2f79": "Conversation - Infrawrench Instances",
   "6653bc189ea3c551": "Cette conversation n'est pas enregistrée dans ce navigateur. Les conversations restent sur l'appareil où elles ont eu lieu.",
-  "07453d5be6686484": "Commencer une nouvelle conversation"
+  "07453d5be6686484": "Commencer une nouvelle conversation",
+  "caf7afc25ef0d373": "Posez une question sur ce tableau",
+  "7ca3b64f4959cb63": "Posez une question sur ce graphique"
 }

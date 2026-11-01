@@ -2,15 +2,16 @@ import type { Metadata } from "next";
 import { msg } from "gt-react";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import { Chat } from "@/components/chat/Chat";
+import { SharedView } from "@/components/chat/Chat";
 import { loadView, viewData } from "@/lib/chat/views";
 import { isLocale } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 
 /**
- * `/v/<id>`: a table or chart someone shared from the chat, re-queried, as the
- * first answer of a new conversation. Cached like the other pages; the data
- * moves only when the sync loads a new price list.
+ * `/v/<id>`: a table or chart someone shared from the chat, filling the
+ * window, with a box to ask a follow-up (which opens a conversation starting
+ * from it). Cached like the other pages; the data moves only when the sync
+ * loads a new price list.
  */
 export const revalidate = 1800;
 
@@ -48,5 +49,5 @@ export default async function Page({ params }: { params: Params }) {
   if (!isLocale(locale)) notFound();
   const data = await load(id);
   if (!data) notFound();
-  return <Chat key={id} initial={data} />;
+  return <SharedView key={id} data={data} />;
 }

@@ -10,6 +10,7 @@ import {
 } from "../format";
 import { checkAgainstResult, parseViewSpec } from "../spec";
 import { QueryError, checkSql } from "../sql";
+import { toMessages } from "../transcript";
 
 describe("checkSql", () => {
   it("passes reads and strips a trailing semicolon", () => {
@@ -121,5 +122,38 @@ describe("formatting", () => {
         [null, 2],
       ]),
     ).toBe('A,B\n"x,y",1\n,2');
+  });
+});
+
+describe("toMessages", () => {
+  const view = {
+    id: "abc123",
+    kind: "table" as const,
+    title: "x86 EC2 instances",
+    sql: "SELECT instance_type FROM instance_types",
+  };
+
+  it("keeps a shared view that opens the conversation, inside the first question", () => {
+    const messages = toMessages([
+      { role: "assistant", text: "", views: [view] },
+      { role: "user", text: "Which of these has the most vCPUs?" },
+    ]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.role).toBe("user");
+    expect(messages[0]!.content).toContain('[Showed table "x86 EC2 instances" (view abc123)');
+    expect(messages[0]!.content).toContain("SELECT instance_type FROM instance_types");
+    expect(String(messages[0]!.content).endsWith("Which of these has the most vCPUs?")).toBe(true);
+  });
+
+  it("alternates roles, merging repeats", () => {
+    const messages = toMessages([
+      { role: "user", text: "a" },
+      { role: "user", text: "b" },
+      { role: "assistant", text: "c", views: [view] },
+      { role: "user", text: "d" },
+    ]);
+    expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+    expect(messages[0]!.content).toBe("a\n\nb");
+    expect(messages[1]!.content).toContain("view abc123");
   });
 });

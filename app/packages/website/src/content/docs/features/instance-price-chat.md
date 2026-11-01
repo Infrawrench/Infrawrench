@@ -26,7 +26,7 @@ When an answer is a list, it comes as an interactive table; when a graph reads b
 - **Tables** sort by any column (click its header), filter per column (text contains, or on numbers `>4`, `<=0.05` or a range such as `2..8`), search across every column, and let you pick which columns show.
 - **SQL** shows the query behind it.
 - **CSV** downloads the rows as currently filtered and sorted.
-- **Copy link** copies a permanent link to the table or chart. The link re-runs the query, so it always shows current prices, and opens as a new conversation you can ask follow-ups in.
+- **Copy link** copies a permanent link to the table or chart. The link opens it filling the window and re-runs the query, so it always shows current prices. Ask a follow-up in the box under it to start a new conversation that begins with that table.
 - **Email if this changes** subscribes an email address to the table (see below).
 
 <insert [A chat answer showing an interactive table of ARM EC2 instances, with the footer actions (SQL, CSV, Email if this changes, Copy link) visible] here>

@@ -37,6 +37,7 @@ export function DataTable({
   initialSort,
   platform = "ec2",
   visibleRef,
+  fill = false,
 }: {
   columns: DisplayColumn[];
   rows: Cell[][];
@@ -45,6 +46,8 @@ export function DataTable({
   platform?: string;
   /** Receives the columns and rows on screen (after filters and sort), for the CSV download. */
   visibleRef?: React.RefObject<{ columns: DisplayColumn[]; rows: Cell[][] } | null>;
+  /** Takes the height its parent gives it (the shared page) instead of a fixed maximum. */
+  fill?: boolean;
 }) {
   const gt = useGT();
   const locale = useLocale();
@@ -152,7 +155,7 @@ export function DataTable({
   };
 
   return (
-    <div>
+    <div className={fill ? "flex min-h-0 flex-1 flex-col" : undefined}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <input
           type="search"
@@ -206,7 +209,7 @@ export function DataTable({
           )}
         </div>
       </div>
-      <div className="max-h-[32rem] overflow-auto">
+      <div className={fill ? "min-h-0 flex-1 overflow-auto" : "max-h-[32rem] overflow-auto"}>
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-surface-2">
             <tr>

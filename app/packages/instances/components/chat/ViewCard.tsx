@@ -44,7 +44,16 @@ function FooterButton({
  * it is and what can be done with it (see its query, download CSV, email
  * alerts, copy a link to `/v/<id>`).
  */
-export function ViewCard({ data, watch = false }: { data: ViewData; watch?: boolean }) {
+export function ViewCard({
+  data,
+  watch = false,
+  fill = false,
+}: {
+  data: ViewData;
+  watch?: boolean;
+  /** Grows to its parent's height at most (the shared page), the table scrolling inside it. */
+  fill?: boolean;
+}) {
   const gt = useGT();
   const locale = useLocale();
   const { view, result } = data;
@@ -76,8 +85,10 @@ export function ViewCard({ data, watch = false }: { data: ViewData; watch?: bool
   };
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
-      <header className="flex items-baseline justify-between gap-3 border-b border-line px-3 py-2.5">
+    <section
+      className={`overflow-hidden rounded-xl border border-line bg-surface shadow-sm ${fill ? "flex min-h-0 flex-col" : ""}`}
+    >
+      <header className="flex shrink-0 items-baseline justify-between gap-3 border-b border-line px-3 py-2.5">
         <h3 className="font-semibold">{view.title}</h3>
         {result.truncated && (
           <span className="shrink-0 text-xs text-ink-3">
@@ -92,21 +103,24 @@ export function ViewCard({ data, watch = false }: { data: ViewData; watch?: bool
           initialSort={view.sort}
           platform={viewPlatform(view.sql)}
           visibleRef={visible}
+          fill={fill}
         />
       ) : (
-        <ViewChart
-          spec={view}
-          result={result}
-          label={view.title}
-          showAllLabel={(count) => gt("Show all {count}", { count })}
-        />
+        <div className={fill ? "min-h-0 flex-1 overflow-auto" : undefined}>
+          <ViewChart
+            spec={view}
+            result={result}
+            label={view.title}
+            showAllLabel={(count) => gt("Show all {count}", { count })}
+          />
+        </div>
       )}
       {showSql && (
-        <pre className="max-h-64 overflow-auto border-t border-line bg-surface-2 px-3 py-2 text-xs whitespace-pre-wrap">
+        <pre className="max-h-64 shrink-0 overflow-auto border-t border-line bg-surface-2 px-3 py-2 text-xs whitespace-pre-wrap">
           {view.sql}
         </pre>
       )}
-      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-2 px-2 py-1.5">
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-2 px-2 py-1.5">
         <span className="flex items-center gap-1.5 px-1 text-xs text-ink-3">
           {view.kind === "table" ? (
             <>

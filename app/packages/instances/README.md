@@ -10,25 +10,25 @@ Router on Vite) and served by a Cloudflare Worker.
 
 ## Routes
 
-| Path                                                               | What                                                                              |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `/`                                                                | The chat: questions answered from the pricing warehouse as text, tables, charts   |
-| `/aws`                                                             | Every AWS service, with its instance-type and family counts                       |
-| `/chat/<id>`                                                       | A conversation, kept in the visitor's browser (`lib/chat/storage.ts`)             |
-| `/v/<id>`                                                          | A table or chart shared from the chat, as a new conversation                      |
-| `/alerts/<id>`                                                     | Confirm or stop an email alert (the link in alert emails)                         |
-| `/aws/<platform>`                                                  | One service: every family and every instance type in it, with a filter            |
-| `/aws/<platform>/<instance>`                                       | The instance page, e.g. `/aws/ec2/m5.large`                                       |
-| `/<locale>/...`                                                    | Any of the above in `es`, `fr`, `de`, `ja` or `zh` (the desktop app's languages)  |
-| `/index.md`, `/aws/<platform>.md`, `/aws/<platform>/<instance>.md` | Markdown for agents; also served for `Accept: text/markdown`                      |
-| `/aws/<platform>/<instance>/opengraph-image`                       | The share card: specs beside the price history (Satori, `next/og`), per language  |
-| `/sitemap.xml`, `/sitemaps/*.xml`                                  | Sitemap index, the index page and per-platform sitemaps, with hreflang alternates |
-| `/robots.txt`                                                      | Allows everything; points at the sitemap                                          |
-| `/api/aws/<platform>/<instance>/<region>`                          | One region's full price history, fetched when the visitor switches region         |
-| `POST /api/chat`                                                   | One chat turn, streamed as NDJSON                                                 |
-| `/api/views/<id>`, `POST /api/views/<id>/subscribe`                | A saved view with fresh data; start an email alert on it                          |
-| `/api/alerts/<id>`, `POST /api/alerts/<id>/unsubscribe`            | Alert status, confirm and stop; RFC 8058 one-click unsubscribe                    |
-| `POST /api/internal/notify`                                        | Called by the sync after a warehouse load; emails subscribers whose view changed  |
+| Path                                                               | What                                                                               |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `/`                                                                | The chat: questions answered from the pricing warehouse as text, tables, charts    |
+| `/aws`                                                             | Every AWS service, with its instance-type and family counts                        |
+| `/chat/<id>`                                                       | A conversation, kept in the visitor's browser (`lib/chat/storage.ts`)              |
+| `/v/<id>`                                                          | A table or chart shared from the chat, full window; a follow-up opens `/chat/<id>` |
+| `/alerts/<id>`                                                     | Confirm or stop an email alert (the link in alert emails)                          |
+| `/aws/<platform>`                                                  | One service: every family and every instance type in it, with a filter             |
+| `/aws/<platform>/<instance>`                                       | The instance page, e.g. `/aws/ec2/m5.large`                                        |
+| `/<locale>/...`                                                    | Any of the above in `es`, `fr`, `de`, `ja` or `zh` (the desktop app's languages)   |
+| `/index.md`, `/aws/<platform>.md`, `/aws/<platform>/<instance>.md` | Markdown for agents; also served for `Accept: text/markdown`                       |
+| `/aws/<platform>/<instance>/opengraph-image`                       | The share card: specs beside the price history (Satori, `next/og`), per language   |
+| `/sitemap.xml`, `/sitemaps/*.xml`                                  | Sitemap index, the index page and per-platform sitemaps, with hreflang alternates  |
+| `/robots.txt`                                                      | Allows everything; points at the sitemap                                           |
+| `/api/aws/<platform>/<instance>/<region>`                          | One region's full price history, fetched when the visitor switches region          |
+| `POST /api/chat`                                                   | One chat turn, streamed as NDJSON                                                  |
+| `/api/views/<id>`, `POST /api/views/<id>/subscribe`                | A saved view with fresh data; start an email alert on it                           |
+| `/api/alerts/<id>`, `POST /api/alerts/<id>/unsubscribe`            | Alert status, confirm and stop; RFC 8058 one-click unsubscribe                     |
+| `POST /api/internal/notify`                                        | Called by the sync after a warehouse load; emails subscribers whose view changed   |
 
 Pages are ISR, revalidated every 30 minutes.
 

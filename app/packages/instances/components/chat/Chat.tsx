@@ -154,12 +154,15 @@ function Composer({
   busy,
   autoFocus,
   floating,
+  placeholder,
 }: {
   onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
   autoFocus?: boolean;
   floating?: boolean;
+  /** In place of the default question prompt. */
+  placeholder?: string;
 }) {
   const gt = useGT();
   const [text, setText] = useState("");
@@ -196,7 +199,7 @@ function Composer({
             send();
           }
         }}
-        placeholder={gt("Ask about prices, specs, regions or history…")}
+        placeholder={placeholder ?? gt("Ask about prices, specs, regions or history…")}
         aria-label={gt("Your question")}
         maxLength={4000}
         className="max-h-[200px] min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-[15px] outline-none placeholder:text-ink-3"
@@ -406,35 +409,77 @@ export function ChatHome() {
 }
 
 /**
- * A conversation. `/chat/<id>` keeps it in this browser under its id (and
- * asks its `?q=` on arrival, which is how the home page hands over the first
- * question); `/v/<id>` starts one with a saved view as the first answer.
+ * `/v/<id>`: a shared table or chart filling the window, with a question box
+ * under it. Asking opens a new conversation (`/chat/<id>`) that starts with
+ * this view, so the answer can build on it.
  */
-export function Chat({ initial, conversationId }: { initial?: ViewData; conversationId?: string }) {
+export function SharedView({ data }: { data: ViewData }) {
   const gt = useGT();
   const locale = useLocale();
-  const [messages, setMessages] = useState<UiMessage[]>(() =>
-    initial
-      ? [
-          {
-            id: "initial",
-            role: "assistant",
-            parts: [{ kind: "view", ref: viewRef(initial.view), data: initial }],
-          },
-        ]
-      : [],
+  const router = useRouter();
+  const ask = (text: string) => {
+    const id = newConversationId();
+    const first: StoredMessage = {
+      id: nextId(),
+      role: "assistant",
+      parts: [{ kind: "view", ref: viewRef(data.view) }],
+    };
+    saveConversation(id, [first]);
+    router.push(
+      `${localePath(locale, `/chat/${id}`)}?q=${encodeURIComponent(text.slice(0, 4000))}`,
+    );
+  };
+  return (
+    // The window less the 54px nav: the table scrolls inside the card, and
+    // the footer is below the fold as on the conversation pages.
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="flex h-[calc(100dvh-54px)] min-h-[28rem] flex-col gap-3 px-3 pt-3 pb-3 sm:px-5"
+    >
+      <ViewCard data={data} fill />
+      <div className="mx-auto mt-auto w-full max-w-3xl shrink-0">
+        <Composer
+          onSend={ask}
+          onStop={() => {}}
+          busy={false}
+          placeholder={
+            data.view.kind === "table" ? gt("Ask about this table") : gt("Ask about this chart")
+          }
+        />
+        <p className="mt-1.5 flex justify-between px-1 text-[11px] text-ink-3">
+          <span>{gt("Answers come from AWS's public price lists; check before you commit.")}</span>
+          <Link href={localePath(locale, "/")} className="hover:text-ink">
+            {gt("New conversation")}
+          </Link>
+        </p>
+      </div>
+    </main>
   );
+}
+
+/**
+ * A conversation. `/chat/<id>` keeps it in this browser under its id, and
+ * asks its `?q=` on arrival: that is how the home page hands over the first
+ * question, and how a shared view (saved here first) hands over a follow-up.
+ */
+export function Chat({ conversationId }: { conversationId: string }) {
+  const gt = useGT();
+  const locale = useLocale();
+  const [messages, setMessages] = useState<UiMessage[]>([]);
   // A stored conversation is read after hydration (the page is a static
   // shell), so nothing renders until then rather than a flash of empty.
-  const [ready, setReady] = useState(!conversationId);
+  const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const update = (id: string, change: (m: UiMessage) => UiMessage) =>
     setMessages((ms) => ms.map((m) => (m.id === id ? change(m) : m)));
 
+  // `before` is the conversation so far when it was set in this same tick
+  // (a restored conversation asking its `?q=`), which `messages` is not yet.
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, before?: UiMessage[]) => {
       const user: UiMessage = { id: nextId(), role: "user", parts: [{ kind: "text", text }] };
       const reply: UiMessage = {
         id: nextId(),
@@ -443,7 +488,7 @@ export function Chat({ initial, conversationId }: { initial?: ViewData; conversa
         pending: true,
         status: { kind: "thinking" },
       };
-      const history = toTurns([...messages, user]);
+      const history = toTurns([...(before ?? messages), user]);
       setMessages((ms) => [...ms, user, reply]);
       setBusy(true);
       setTimeout(() => bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 50);
@@ -523,7 +568,7 @@ export function Chat({ initial, conversationId }: { initial?: ViewData; conversa
   // (once: the query string is dropped, so a reload does not ask again).
   const asked = useRef(false);
   useEffect(() => {
-    if (!conversationId || asked.current) return;
+    if (asked.current) return;
     asked.current = true;
     // Anything not in the current shape (an older version of this page) is skipped.
     const saved = loadConversation<StoredMessage>(conversationId)?.filter((m) =>
@@ -538,15 +583,17 @@ export function Chat({ initial, conversationId }: { initial?: ViewData; conversa
     }
     // Text shows at once; each view keeps its place as a placeholder until
     // its data arrives.
-    setMessages(
-      saved.map((m) => ({
-        id: m.id,
-        role: m.role,
-        parts: m.parts,
-        ...(m.error ? { error: m.error } : {}),
-      })),
-    );
+    const restored = saved.map((m): UiMessage => ({
+      id: m.id,
+      role: m.role,
+      parts: m.parts,
+      ...(m.error ? { error: m.error } : {}),
+    }));
+    setMessages(restored);
     setReady(true);
+    // A follow-up asked from a shared view arrives as a saved conversation
+    // holding that view, plus the question.
+    if (q) void send(q.slice(0, 4000), restored);
     const ids = new Set(
       saved.flatMap((m) => m.parts.flatMap((p) => (p.kind === "view" ? [p.ref.id] : []))),
     );
@@ -572,7 +619,7 @@ export function Chat({ initial, conversationId }: { initial?: ViewData; conversa
     latest.current = messages;
   });
   useEffect(() => {
-    if (conversationId && ready && latest.current.length) {
+    if (ready && latest.current.length) {
       saveConversation(conversationId, latest.current.map(toStored));
     }
   }, [conversationId, ready, messages.length, busy]);

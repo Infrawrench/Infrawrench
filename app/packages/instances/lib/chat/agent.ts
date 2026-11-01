@@ -2,7 +2,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import type {
   BetaContentBlockParam,
   BetaMessage,
-  BetaMessageParam,
   BetaTool,
   BetaToolResultBlockParam,
   BetaToolUseBlock,
@@ -11,6 +10,7 @@ import { env, waitUntil } from "cloudflare:workers";
 import { query, QueryError } from "../warehouse";
 import { SYSTEM_PROMPT, languageBlock } from "./prompt";
 import type { ChatEvent, ChatTurn, QueryResult } from "./types";
+import { toMessages } from "./transcript";
 import { checkAgainstResult, parseViewSpec, runView, saveView, storeResult } from "./views";
 
 /**
@@ -145,27 +145,6 @@ function resultText(result: QueryResult, limit: number): string {
   const total = result.truncated ? `more than ${result.rows.length}` : String(result.rows.length);
   lines.push(`(${total} rows${shown < result.rows.length ? `, first ${shown} shown` : ""})`);
   return lines.join("\n");
-}
-
-/** The browser's transcript as API messages: text only, with each shown view noted. */
-function toMessages(turns: ChatTurn[]): BetaMessageParam[] {
-  const messages: BetaMessageParam[] = [];
-  for (const turn of turns) {
-    const notes = (turn.views ?? []).map(
-      (v) => `[Showed ${v.kind} "${v.title}" (view ${v.id}) from:\n${v.sql}]`,
-    );
-    const text = [turn.text.trim(), ...notes].filter(Boolean).join("\n\n");
-    if (!text) continue;
-    const last = messages.at(-1);
-    // The API wants alternating roles; merge any repeats.
-    if (last && last.role === turn.role && typeof last.content === "string") {
-      last.content = `${last.content}\n\n${text}`;
-    } else {
-      messages.push({ role: turn.role, content: text });
-    }
-  }
-  while (messages[0]?.role === "assistant") messages.shift();
-  return messages;
 }
 
 /** Request headers the binding forwards to Anthropic. */
