@@ -14,7 +14,7 @@ Prerequisites: kubectl installed, access to the cluster, and permission to read 
 Pending is a pod phase. Kubernetes uses it for a pod that has been accepted by the cluster but whose containers are not yet set up and ready to run. That covers two quite different situations:
 
 - **Not scheduled yet.** The scheduler has not found a node the pod fits on. This is the usual meaning of "stuck in Pending", and it is what this guide is about.
-- **Scheduled, still starting.** The pod has a node, and the kubelet is pulling images or mounting volumes. `kubectl get pods` usually shows ContainerCreating or ErrImagePull here rather than Pending, and the fix is on the node side, not the scheduler side.
+- **Scheduled, still starting.** The pod has a node, and the kubelet is pulling images or mounting volumes. `kubectl get pods` usually shows [ContainerCreating](/blog/kubernetes-pod-stuck-containercreating) or ErrImagePull here rather than Pending, and the fix is on the node side, not the scheduler side.
 
 Telling the two apart is the first step, because the commands and causes differ.
 
