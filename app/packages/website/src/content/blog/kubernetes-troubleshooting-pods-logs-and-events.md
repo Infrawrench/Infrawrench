@@ -9,6 +9,53 @@ This guide gives you a repeatable, read-only-first routine for Kubernetes troubl
 
 Prerequisites: kubectl installed, access to a cluster, and permission to read pods, events and pod logs. Node-level checks additionally require permission to read nodes. Everything below follows the official [Kubernetes documentation](https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/) and kubectl reference. Placeholders used throughout: CONTEXT_NAME, NAMESPACE, POD_NAME and CONTAINER_NAME.
 
+## Find the guide for your symptom
+
+If you already know the status or error you are looking at, jump straight to its guide. Otherwise, start with Step 1 below.
+
+**Pod will not start**
+
+- Pending, FailedScheduling: [pod stuck in Pending](/blog/kubernetes-pod-pending)
+- ImagePullBackOff or ErrImagePull: [image pull errors](/blog/kubernetes-imagepullbackoff)
+- CreateContainerConfigError: [missing ConfigMaps, Secrets and keys](/blog/kubernetes-createcontainerconfigerror)
+- PersistentVolumeClaim Pending: [PVC will not bind](/blog/kubernetes-pvc-pending)
+- StatefulSet pod waiting on the one before it: [StatefulSet pod stuck](/blog/kubernetes-statefulset-pod-stuck)
+
+**Pod starts, then stops or restarts**
+
+- CrashLoopBackOff: [find the cause of the restart loop](/blog/kubernetes-crashloopbackoff)
+- OOMKilled or exit code 137: [out-of-memory kills](/blog/kubernetes-oomkilled)
+- Evicted: [who evicted the pod and why](/blog/kubernetes-evicted-pods)
+- Job failed, BackoffLimitExceeded or a CronJob that did not run: [Job failures](/blog/kubernetes-job-failed)
+- Stuck in Terminating: [pod stuck in Terminating](/blog/kubernetes-pod-stuck-terminating)
+
+**Pod runs, but something is wrong**
+
+- Running but READY 0/1: [readiness probe failed](/blog/kubernetes-readiness-probe-failed)
+- Old configuration after you updated a ConfigMap or Secret: [changes not picked up](/blog/kubernetes-configmap-changes-not-applied)
+
+**Traffic does not reach the pod**
+
+- Service has no endpoints or connection refused: [Service not working](/blog/kubernetes-service-no-endpoints)
+- Ingress returns 502, 503 or 404: [Ingress errors](/blog/kubernetes-ingress-502-503)
+- Name resolution fails inside pods: [DNS not working](/blog/kubernetes-dns-troubleshooting)
+- Connections time out after adding a NetworkPolicy: [NetworkPolicy blocking traffic](/blog/kubernetes-networkpolicy-blocking-traffic)
+
+**Workloads and scaling**
+
+- Deployment rollout never finishes, ProgressDeadlineExceeded: [stuck rollouts](/blog/kubernetes-deployment-rollout-stuck)
+- HorizontalPodAutoscaler shows unknown targets or does not scale: [HPA not scaling](/blog/kubernetes-hpa-not-scaling)
+
+**Nodes**
+
+- Node NotReady: [read node conditions](/blog/kubernetes-node-not-ready)
+- Node DiskPressure: [find what is filling the disk](/blog/kubernetes-node-diskpressure)
+
+**kubectl and access**
+
+- Forbidden errors: [RBAC permissions](/blog/kubernetes-rbac-forbidden)
+- kubectl exec or port-forward fails: [exec and port-forward errors](/blog/kubernetes-kubectl-exec-port-forward-errors)
+
 ## Step 1: Confirm your kubectl context and namespace before anything else
 
 Before you read a single status, find out which cluster and namespace your next command will hit. kubectl acts on whatever your current context points to, and that context is easy to forget you changed.
