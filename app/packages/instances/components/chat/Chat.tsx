@@ -14,7 +14,6 @@ import {
   ServerIcon,
   StopIcon,
   TableIcon,
-  WrenchIcon,
 } from "../icons";
 import { Markdown } from "./Markdown";
 import { ViewCard } from "./ViewCard";
@@ -51,20 +50,44 @@ const STORAGE_KEY = "instances-chat:v1";
 let counter = 0;
 const nextId = () => `m${Date.now().toString(36)}${(counter++).toString(36)}`;
 
-/** The service in the headline, changing every few seconds (held still for reduced motion). */
+/**
+ * The service in the headline, rolling every few seconds: the outgoing name
+ * slides up and out while the next slides up into the same slot, both at
+ * once. Held still for reduced motion.
+ */
 function CyclingService() {
-  const [i, setI] = useState(0);
+  // The name showing, and the one rolling out (null until the first change).
+  const [{ i, previous }, setNames] = useState<{ i: number; previous: number | null }>({
+    i: 0,
+    previous: null,
+  });
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = setInterval(() => setI((n) => (n + 1) % SERVICES.length), 2600);
+    const timer = setInterval(
+      () => setNames(({ i: n }) => ({ i: (n + 1) % SERVICES.length, previous: n })),
+      2600,
+    );
     return () => clearInterval(timer);
   }, []);
   return (
-    <span
-      key={i}
-      className="inline-block bg-gradient-to-r from-[var(--series-1)] to-[var(--series-3)] bg-clip-text text-transparent motion-safe:animate-[service-in_0.5s_ease-out]"
-    >
-      {SERVICES[i]}
+    // One grid cell holds both names; the clip hides each outside the line.
+    // The padding keeps descenders (OpenSearch) inside the clip.
+    <span className="inline-grid overflow-hidden pb-[0.15em] align-bottom -mb-[0.15em] text-accent">
+      {previous !== null && (
+        <span
+          key={`out-${previous}`}
+          aria-hidden="true"
+          className="col-start-1 row-start-1 animate-[service-out_0.6s_ease-in-out_forwards]"
+        >
+          {SERVICES[previous]}
+        </span>
+      )}
+      <span
+        key={`in-${i}`}
+        className={`col-start-1 row-start-1 ${previous !== null ? "animate-[service-in_0.6s_ease-in-out]" : ""}`}
+      >
+        {SERVICES[i]}
+      </span>
     </span>
   );
 }
@@ -201,18 +224,15 @@ function Message({ message }: { message: UiMessage }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <p className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 whitespace-pre-wrap text-white">
+        <p className="max-w-[85%] rounded-2xl rounded-br-md border border-line bg-surface-2 px-4 py-2.5 whitespace-pre-wrap text-ink">
           {message.text}
         </p>
       </div>
     );
   }
   return (
-    <div className="flex gap-3">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--series-1)] to-[var(--series-3)] text-white">
-        <WrenchIcon className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1 space-y-4 pt-1">
+    <div>
+      <div className="min-w-0 space-y-4">
         {message.text && <Markdown text={message.text} />}
         {message.views.map((v) => (
           <ViewCard key={v.data.view.id} data={v.data} watch={v.watch ?? false} />
@@ -410,15 +430,21 @@ export function Chat({ initial, persist = false }: { initial?: ViewData; persist
   }
 
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto max-w-4xl px-4 pt-6 sm:px-7">
+    // At least a screen tall (less the 54px nav), so the box sits at the bottom
+    // of the window even before the conversation fills it.
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto flex min-h-[calc(100dvh-54px)] max-w-4xl flex-col px-4 pt-6 sm:px-7"
+    >
       {/* Conversation content stays out of session replays (see the privacy page). */}
-      <div className="ph-no-capture space-y-6 pb-8">
+      <div className="ph-no-capture flex-1 space-y-6 pb-8">
         {messages.map((m) => (
           <Message key={m.id} message={m} />
         ))}
         <div ref={bottom} />
       </div>
-      <div className="sticky bottom-0 z-20 pb-4">
+      <div className="sticky bottom-0 z-20 -mx-4 bg-surface/80 px-4 pt-2 pb-4 backdrop-blur-md sm:-mx-7 sm:px-7">
         <Composer onSend={send} onStop={stop} busy={busy} floating />
         <p className="mt-1.5 flex justify-between px-1 text-[11px] text-ink-3">
           <span>{gt("Answers come from AWS's public price lists; check before you commit.")}</span>
