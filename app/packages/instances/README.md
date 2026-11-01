@@ -67,7 +67,9 @@ demand and reserved, a spot line in the price history, spot by region, and
 spot sections in the Markdown. Spot only applies to the Linux and Windows,
 shared, license-included variants with nothing pre-installed (`spotSystem` in
 `lib/model.ts`), and its locations are matched to the EC2 instance's by region
-code. The share card leaves spot out.
+code. The share card shows the spot price and its saving under the on-demand
+price, with a sparkline of the spot history; spot is not a line on the card's
+main chart, where 90 days would be a sliver beside years of on-demand history.
 
 Other currencies use the ECB's daily euro reference rates (`lib/fx.ts`, parsed by
 server-core's `parseEcbXml`), converted at the latest rate.

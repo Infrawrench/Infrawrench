@@ -309,5 +309,7 @@
   "0574008e003d23e0": "Spot es el precio más bajo entre las zonas de disponibilidad de la región, y cambia a menudo.",
   "3dd281961662c6eb": "Precios spot a fecha de",
   "b30b67e8306967a6": "Precio spot por región",
-  "a3ece1fd47be2453": "Precio spot de {name} por región"
+  "a3ece1fd47be2453": "Precio spot de {name} por región",
+  "bf22416ab411172a": "Spot {price}/h, {saving} menos",
+  "3d6e4fc03c572c41": "Spot {price}/h"
 }

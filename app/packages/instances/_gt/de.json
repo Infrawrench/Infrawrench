@@ -309,5 +309,7 @@
   "0574008e003d23e0": "Spot ist der niedrigste Preis in den Availability Zones der Region und ändert sich häufig.",
   "3dd281961662c6eb": "Spot-Preise vom",
   "b30b67e8306967a6": "Spot-Preis nach Region",
-  "a3ece1fd47be2453": "Spot-Preis von {name} nach Region"
+  "a3ece1fd47be2453": "Spot-Preis von {name} nach Region",
+  "bf22416ab411172a": "Spot {price}/Std., {saving} günstiger",
+  "3d6e4fc03c572c41": "Spot {price}/Std."
 }
