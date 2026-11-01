@@ -93,7 +93,7 @@ Two details make node-pressure eviction harsher than other kinds. It ignores Pod
 The fix depends on which resource ran out:
 
 - **Memory.** Set memory requests that match real usage, so the scheduler does not pack the node beyond what it can hold and the kubelet does not pick your pods first. The [OOMKilled guide](/blog/kubernetes-oomkilled) covers measuring real usage.
-- **Disk.** Find what is filling the node: container logs, large writable layers, `emptyDir` volumes or images. Set `ephemeral-storage` requests and limits on workloads that write to local disk, and move large or long-lived data to a PersistentVolume.
+- **Disk.** Find what is filling the node: container logs, large writable layers, `emptyDir` volumes or images. Set `ephemeral-storage` requests and limits on workloads that write to local disk, and move large or long-lived data to a PersistentVolume. The [node DiskPressure guide](/blog/kubernetes-node-diskpressure) walks through finding which filesystem is full and what is using it.
 - **Process IDs.** Find the workload creating processes without limit. It is often a bug that spawns child processes and never reaps them.
 
 If an important workload keeps getting evicted, give it a higher [priority class](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/) so it is chosen after less important pods.

@@ -153,7 +153,7 @@ Write down which condition you saw, what the new pods were doing and the change 
 
 ## Conclusion
 
-A stuck rollout means the new ReplicaSet's pods are not becoming available, and the controller will not take down more old pods until they do. Read the Progressing and ReplicaFailure conditions, list the new pods by their `pod-template-hash`, and fix whatever is stopping them: an image, a crash, missing config, no room to schedule, a failing readiness probe or quota. Check that the rollout is not paused, and roll back when the old version is the safe place to be.
+A stuck rollout means the new ReplicaSet's pods are not becoming available, and the controller will not take down more old pods until they do. Read the Progressing and ReplicaFailure conditions, list the new pods by their `pod-template-hash`, and fix whatever is stopping them: an image, a crash, missing config, no room to schedule, a failing readiness probe or quota. Check that the rollout is not paused, and roll back when the old version is the safe place to be. If the rollout finishes but the replica count is not what you expect, and a HorizontalPodAutoscaler manages the Deployment, the [HPA not scaling guide](/blog/kubernetes-hpa-not-scaling) is the next place to look.
 
 If you switch between clusters, cloud consoles and terminals to chase problems like this, Infrawrench brings Kubernetes exec and logs, SSH and the rest of your infrastructure into one workspace. [Download the free desktop app](/) for macOS, Windows or Linux, no account required.
 
