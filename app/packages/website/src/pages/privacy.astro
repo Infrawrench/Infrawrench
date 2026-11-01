@@ -6,7 +6,7 @@ import Footer from "../components/Footer.astro";
 // On demand so middleware can negotiate; see src/middleware.ts.
 export const prerender = false;
 
-const lastUpdated = "October 30, 2026";
+const lastUpdated = "November 1, 2026";
 const contactEmail = "astrid@infrawrench.com";
 
 const title = "Privacy Policy";
@@ -46,8 +46,9 @@ const subprocessors = [
   },
   {
     name: "Cloudflare",
-    purpose: "This website, desktop app downloads and update checks, and the outbound egress proxy",
-    data: "IP address, user agent, requested URL in edge logs",
+    purpose:
+      "This website, desktop app downloads and update checks, the outbound egress proxy, and the instances.infrawrench.com chat (its AI Gateway relays questions to Anthropic, and it stores shared views and email alerts)",
+    data: "IP address, user agent, requested URL in edge logs; chat questions in transit; email addresses subscribed to instance price alerts",
   },
   {
     name: "GitHub",
@@ -67,8 +68,14 @@ const subprocessors = [
   },
   {
     name: "Anthropic / OpenAI",
-    purpose: "Optional alternative chat models, used only when you pick one",
+    purpose:
+      "Optional alternative chat models in the app, used only when you pick one; Anthropic also answers the chat on instances.infrawrench.com",
     data: "Chat messages and the resource context attached to them",
+  },
+  {
+    name: "Mailgun",
+    purpose: "Transactional email: the weekly digest, alert and report emails, and instance price alerts",
+    data: "Recipient email addresses and the contents of those emails",
   },
   {
     name: "Slack, Microsoft Teams, Twilio",
@@ -248,6 +255,22 @@ const subprocessors = [
             If you use the assistant's web search or fetch tools, your query or the URL is sent to the
             search provider and the fetch goes out through our egress proxy, which refuses private and
             internal addresses.
+          </p>
+
+          <h3 id="instances-chat">The chat on instances.infrawrench.com</h3>
+          <p>
+            Questions you ask on <code>instances.infrawrench.com</code> are sent, with the rest of that
+            conversation, to Anthropic's Claude through Cloudflare's AI Gateway to write the answer,
+            which is built from AWS's public price lists. You do not sign in, and we do not keep the
+            conversation: it stays in your browser tab. When an answer shows a table or chart, we
+            store its title and the query behind it (not your question) so its link keeps working;
+            anyone with the link can open it. Conversations are left out of session replays.
+          </p>
+          <p>
+            If you ask to be emailed when a table changes, we store your email address with it and send
+            a confirmation link through Mailgun; nothing else is sent until you confirm. After that we
+            email you only when that table's results change, each email has a link that stops them,
+            and stopping deletes your address. An unconfirmed address is deleted after three days.
           </p>
 
           <h2 id="subprocessors">Sub-processors</h2>

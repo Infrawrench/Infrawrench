@@ -6,6 +6,11 @@ on:
     paths:
       - "app/packages/instances/**"
       - "app/packages/analytics/**"
+      # The chat's system prompt is built from the warehouse schema, and alert
+      # email goes through server-core's Mailgun transport.
+      - "app/packages/server-core/src/aws-pricing-warehouse/**"
+      - "app/packages/server-core/src/email.ts"
+      - "app/packages/server-core/src/email-html.ts"
       - "pnpm-lock.yaml"
 
 concurrency:

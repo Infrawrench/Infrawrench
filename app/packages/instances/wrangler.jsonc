@@ -24,7 +24,30 @@
   // is in app/packages/web/src/aws-bulk-pricing/format.ts. `remote` makes
   // `vite dev` read the real namespace (it is public data) instead of an empty
   // local one; deploys ignore it.
+  // INSTANCES_CHAT: the chat's saved views and email alerts (lib/chat/views.ts,
+  // lib/alerts.ts). Not `remote`: dev gets its own local namespace, so a test
+  // conversation never writes to the real one.
   "kv_namespaces": [
     { "binding": "AWS_BULK_PRICING", "id": "4baca4fd13ec4d4684d41e761f52af01", "remote": true },
+    { "binding": "INSTANCES_CHAT", "id": "59af7c1bc57c437da3bbb254d4e5cea5" },
   ],
+  // Per IP and per Cloudflare location (approximate, see the Workers rate
+  // limiting docs): chat turns each cost a model call, alert sign-ups send mail.
+  "ratelimits": [
+    { "name": "CHAT_LIMITER", "namespace_id": "4101", "simple": { "limit": 10, "period": 60 } },
+    { "name": "ALERT_LIMITER", "namespace_id": "4102", "simple": { "limit": 3, "period": 60 } },
+  ],
+  // The chat calls Claude with the AI binding, through the AI_GATEWAY_ID
+  // gateway on Unified Billing: no provider key or gateway token. `remote`
+  // so `vite dev` reaches the real gateway.
+  "ai": { "binding": "AI", "remote": true },
+  // Secrets (wrangler secret put): PRICING_WAREHOUSE_READ_TOKEN,
+  // NOTIFY_SECRET (shared with the sync workflow), MAILGUN_API_KEY. Local dev
+  // reads them from .dev.vars.
+  "vars": {
+    "PRICING_WAREHOUSE_URL": "https://instances-clickhouse.infrawrench.com/",
+    "AI_GATEWAY_ID": "instances",
+    "MAILGUN_DOMAIN": "infrawrench.com",
+    "EMAIL_FROM": "Infrawrench Instances <instances@infrawrench.com>",
+  },
 }

@@ -191,7 +191,7 @@ export function renderIndexMarkdown(platforms: PlatformSummary[], tr: Translate)
     "",
     "> Specs and prices for every instance type in AWS's compute-priced services, in every region, with the full history of both, from the AWS Price List bulk API.",
     "",
-    `Append \`.md\` to any page (or send \`Accept: text/markdown\`) for Markdown. The same data is available through the [bulk instances API](https://infrawrench.com/docs/team-and-billing/bulk-instances-api).`,
+    `Append \`.md\` to any page (or send \`Accept: text/markdown\`) for Markdown. The same data is available through the [bulk instances API](https://infrawrench.com/docs/team-and-billing/bulk-instances-api). People can also ask questions about it in plain language at ${SITE}/, which answers from the same price lists.`,
     "",
     table(
       ["Service", "What it is", "Instance types", "Families", "Markdown"],

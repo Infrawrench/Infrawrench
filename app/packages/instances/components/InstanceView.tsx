@@ -305,7 +305,7 @@ export function InstanceView({
     <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1280px] px-4 py-4 sm:px-7">
       <Breadcrumbs
         items={[
-          { label: "AWS", href: localePath(locale, "/") },
+          { label: "AWS", href: localePath(locale, "/aws") },
           { label: m.platformLabel, href: localePath(locale, `/aws/${m.platform}`) },
           { label: m.name },
         ]}

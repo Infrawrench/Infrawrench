@@ -13,11 +13,18 @@ import { prefersMarkdown } from "@/lib/negotiate";
  * is sent from an English URL to theirs; first-time visitors and crawlers are
  * not redirected, so a shared link opens in the language it was shared in.
  *
- * Markdown for agents: the index (`/`), a service (`/aws/ec2`) or an instance
- * (`/aws/ec2/m5.large`) requested with `Accept: text/markdown` (preferred over
- * `text/html`), or with `.md` appended (`/index.md` for the index), is
- * rewritten to the matching `/api/markdown/...` route.
+ * Markdown for agents: the home page (`/`) and the service list (`/aws`), a
+ * service (`/aws/ec2`) or an instance (`/aws/ec2/m5.large`) requested with
+ * `Accept: text/markdown` (preferred over `text/html`), or with `.md`
+ * appended (`/index.md` for the home page), is rewritten to the matching
+ * `/api/markdown/...` route. The home page is the chat, which has no Markdown
+ * form, so agents get the service list there too.
+ *
+ * Localized sections: `aws`, `v` (shared chat views) and `alerts` (email
+ * alert links) are page trees under `[locale]`; anything else passes through.
  */
+const SECTIONS = ["aws", "v", "alerts"];
+
 export function proxy(request: NextRequest) {
   const url = request.nextUrl;
   const segments = url.pathname.split("/").filter(Boolean);
@@ -28,7 +35,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(target, 308);
   }
 
-  const prefixed = segments[0] !== "aws" && isLocale(segments[0] ?? "");
+  const prefixed = !SECTIONS.includes(segments[0] ?? "") && isLocale(segments[0] ?? "");
   const locale = prefixed ? segments[0]! : DEFAULT_LOCALE;
   const page = prefixed ? segments.slice(1) : segments;
 
@@ -36,18 +43,16 @@ export function proxy(request: NextRequest) {
   let markdown: string | undefined;
   const md = page.at(-1)?.endsWith(".md") ?? false;
   const strip = (s: string) => (md ? s.slice(0, -3) : s);
-  if (page.length === 0 || (page.length === 1 && page[0] === "index.md"))
+  if (
+    page.length === 0 ||
+    (page.length === 1 && (page[0] === "index.md" || page[0] === "aws" || page[0] === "aws.md"))
+  )
     markdown = "/api/markdown";
   else if (page[0] === "aws" && page.length === 2)
     markdown = `/api/markdown/aws/${strip(page[1]!)}`;
   else if (page[0] === "aws" && page.length === 3) {
     markdown = `/api/markdown/aws/${page[1]}/${strip(page[2]!)}`;
-  } else if (page[0] === "aws" && page.length === 1) {
-    // `/aws` on its own: the index lists the services.
-    const target = url.clone();
-    target.pathname = localePath(locale, "/");
-    return NextResponse.redirect(target, 308);
-  } else if (page[0] !== "aws") {
+  } else if (!SECTIONS.includes(page[0] ?? "")) {
     return NextResponse.next();
   }
 
@@ -81,11 +86,17 @@ export const config = {
     "/",
     "/index.md",
     "/aws",
+    "/aws.md",
     "/aws/:path*",
+    "/v/:path*",
+    "/alerts/:path*",
     "/en",
     "/en/:path*",
     "/:locale",
     "/:locale/index.md",
+    "/:locale/aws.md",
     "/:locale/aws/:path*",
+    "/:locale/v/:path*",
+    "/:locale/alerts/:path*",
   ],
 };

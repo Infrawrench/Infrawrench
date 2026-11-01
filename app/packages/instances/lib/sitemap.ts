@@ -47,9 +47,9 @@ ${urls.join("\n")}
 `;
 }
 
-/** The pages that are not a service's: the index. */
+/** The pages that are not a service's: the home page (the chat) and the service list. */
 export function pagesSitemap(): string {
-  return urlset(["/"]);
+  return urlset(["/", "/aws"]);
 }
 
 /**

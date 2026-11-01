@@ -31,6 +31,7 @@ import {
   type Tables,
 } from "./format";
 import { BULK_MAX_BYTES, BULK_MAX_PAIRS, type KvPair } from "./kv-rest";
+import type { PricingWarehouse } from "./warehouse";
 
 const { XzReadableStream } = xzDecompressModule;
 const gzip = promisify(gzipCallback);
@@ -53,27 +54,50 @@ export interface SyncResult {
   version: string;
   written: number;
   deleted: number;
+  /** Rows loaded into the warehouse's `prices`, when this run loaded the bundle there. */
+  warehouseRows?: number | undefined;
 }
 
 /**
+ * Bundles loaded into the pricing warehouse but not KV. Spot prices have no
+ * per-instance KV values (the instances site does not show them yet).
+ */
+export const WAREHOUSE_ONLY_SOURCES = ["spot"];
+
+/**
  * Sync every platform, one at a time. One failing does not stop the rest, but
- * the run still fails at the end.
+ * the run still fails at the end. With a `warehouse`, each bundle is also
+ * loaded there (when the warehouse does not have that version yet), plus the
+ * warehouse-only bundles.
  */
 export async function syncAwsBulkPricing(
   bucket: BundleBucket,
   kv: PricingKv,
   log: (line: string) => void = console.log,
+  warehouse?: PricingWarehouse,
 ): Promise<SyncResult[]> {
   const results: SyncResult[] = [];
   const failures: unknown[] = [];
   // Each platform's state as it stands after this run, for the catalog.
   const states: Record<string, PlatformState> = {};
+  let loaded: Map<string, string> | null = null;
+  if (warehouse) {
+    try {
+      loaded = await warehouse.versions();
+    } catch (error) {
+      // KV is what the site reads today; a warehouse outage must not stop it.
+      log(`warehouse: unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      failures.push(error);
+    }
+  }
+  const target = (platform: string) =>
+    warehouse && loaded ? { warehouse, version: loaded.get(platform) ?? null } : undefined;
   for (const platform of Object.keys(PLATFORMS)) {
     let previous: PlatformState | null = null;
     try {
       previous = await kv.getJson<PlatformState>(platformKey(platform));
       if (previous) states[platform] = previous;
-      const result = await syncPlatform(platform, bucket, kv, previous);
+      const result = await syncPlatform(platform, bucket, kv, previous, target(platform));
       if (!result) {
         log(`${platform}: no new bundle`);
         continue;
@@ -86,6 +110,21 @@ export async function syncAwsBulkPricing(
       );
     } catch (error) {
       log(`${platform}: failed: ${error instanceof Error ? error.message : String(error)}`);
+      failures.push(error);
+    }
+  }
+  for (const source of WAREHOUSE_ONLY_SOURCES) {
+    const into = target(source);
+    if (!into) break;
+    try {
+      const result = await syncPlatform(source, bucket, null, null, into);
+      if (!result) log(`${source}: no new bundle`);
+      else {
+        results.push(result);
+        log(`${source}: now ${result.version} (${result.warehouseRows ?? 0} warehouse rows)`);
+      }
+    } catch (error) {
+      log(`${source}: failed: ${error instanceof Error ? error.message : String(error)}`);
       failures.push(error);
     }
   }
@@ -116,12 +155,17 @@ async function writeCatalog(
   log(`catalog: ${Object.keys(platforms).length} platform(s)`);
 }
 
-/** Sync one platform; null when its bundle has not moved, or there is none yet. */
+/**
+ * Sync one platform; null when its bundle has not moved, or there is none yet.
+ * `kv` null loads only the warehouse; `into` is the warehouse and the version
+ * it already has.
+ */
 export async function syncPlatform(
   platform: string,
   bucket: BundleBucket,
-  kv: PricingKv,
+  kv: PricingKv | null,
   previous: PlatformState | null,
+  into?: { warehouse: PricingWarehouse; version: string | null },
 ): Promise<SyncResult | null> {
   const prefix = bucketPrefix(platform);
   const latest = await bucket.text(`${prefix}latest`);
@@ -130,14 +174,29 @@ export async function syncPlatform(
   if (!/^[A-Za-z0-9._-]+$/.test(version)) {
     throw new Error(`${prefix}latest holds ${JSON.stringify(version)}, which is not a version`);
   }
-  if (previous?.version === version) return null;
+  const needsKv = kv !== null && previous?.version !== version;
+  const needsWarehouse = into !== undefined && into.version !== version;
+  if (!needsKv && !needsWarehouse) return null;
 
   const bundle = `${prefix}bundle-${version}.json.xz`;
   const before = previous?.instances ?? {};
   const hashes: Record<string, string> = {};
-  const batch = new Batch(kv);
+  const batch = needsKv ? new Batch(kv) : null;
   const raw: Record<string, unknown> = {};
   let tables: Tables | null = null;
+  let load: Awaited<ReturnType<PricingWarehouse["begin"]>> | null = null;
+  // A warehouse failure stops the load but not the KV writes, which the site
+  // reads; it is thrown once KV is done.
+  let warehouseError: unknown = null;
+  const loading = async (step: () => Promise<void>) => {
+    if (warehouseError !== null) return;
+    try {
+      await step();
+    } catch (error) {
+      warehouseError = error;
+      load = null;
+    }
+  };
 
   const json = new XzReadableStream(bucket.stream(bundle)) as ReadableStream<Uint8Array>;
   for await (const event of scanBundle(chunks(json))) {
@@ -147,7 +206,13 @@ export async function syncPlatform(
       continue;
     }
     tables ??= readTables(raw, platform);
-    const value = JSON.stringify(reduceInstance(tables, platform, event.name, event.value));
+    const t = tables;
+    if (needsWarehouse && !load)
+      await loading(async () => void (load = await into.warehouse.begin(platform, t)));
+    const reduced = reduceInstance(tables, platform, event.name, event.value);
+    if (load) await loading(() => load!.add(reduced));
+    if (!batch) continue;
+    const value = JSON.stringify(reduced);
     const hash = createHash("sha256").update(value).digest("hex");
     hashes[event.name] = hash;
     if (before[event.name] === hash) continue;
@@ -158,6 +223,17 @@ export async function syncPlatform(
     });
   }
   tables ??= readTables(raw, platform);
+  let warehouseRows: number | undefined;
+  const snapshots = tables.snapshots;
+  if (load) {
+    await loading(async () => {
+      warehouseRows = (await load!.commit({ version, snapshots })).priceRows;
+    });
+  }
+  if (!batch || !kv) {
+    if (warehouseError !== null) throw warehouseError;
+    return { platform, version, written: 0, deleted: 0, warehouseRows };
+  }
   await batch.flush();
 
   // A bundle keeps deleted instances (with `deletedAt` set), so this only
@@ -178,7 +254,13 @@ export async function syncPlatform(
   await kv.putMany([
     { key: platformKey(platform), value: new TextEncoder().encode(JSON.stringify(state)) },
   ]);
-  return { platform, version, written: batch.written, deleted: gone.length };
+  if (warehouseError !== null) {
+    throw new Error(
+      `${platform}: KV is current, but the warehouse load failed: ${warehouseError instanceof Error ? warehouseError.message : String(warehouseError)}`,
+      { cause: warehouseError },
+    );
+  }
+  return { platform, version, written: batch.written, deleted: gone.length, warehouseRows };
 }
 
 /** Collects pairs into bulk writes as large as the API takes. */

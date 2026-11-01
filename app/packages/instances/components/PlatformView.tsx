@@ -33,7 +33,7 @@ export function PlatformView({ listing }: { listing: PlatformListing }) {
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1280px] px-4 py-4 sm:px-7">
       <Breadcrumbs
-        items={[{ label: "AWS", href: localePath(locale, "/") }, { label: listing.label }]}
+        items={[{ label: "AWS", href: localePath(locale, "/aws") }, { label: listing.label }]}
       />
       <h1 className="text-2xl font-bold">
         {gt("{platform} instance types", { platform: listing.label })}

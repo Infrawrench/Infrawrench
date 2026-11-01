@@ -34,6 +34,11 @@
   --series-3: #1baf7a;
   --bar: #86b6ef;
   --bar-selected: #256abf;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #8a8985;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -55,6 +60,11 @@
     --series-3: #199e70;
     --bar: #1c5cab;
     --bar-selected: #6da7ec;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #8b8a83;
   }
 }
 
@@ -191,6 +201,18 @@ a.nav-badge:hover {
 
 .skip-link:focus {
   transform: translateY(0);
+}
+
+/* The home page headline's service name, sliding in on each change. */
+@keyframes service-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 main:focus {

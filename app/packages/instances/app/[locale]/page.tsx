@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import { msg } from "gt-react";
 import { notFound } from "next/navigation";
-import { IndexView } from "@/components/IndexView";
+import { Chat } from "@/components/chat/Chat";
 import { LOCALES, isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
-import { loadIndex } from "@/lib/load";
 
-/** The sync Action refreshes the data twice an hour. */
-export const revalidate = 1800;
+/** The page is the same for everyone; the conversation lives in the browser. */
+export const revalidate = 86400;
 
 /** Rendered on first request and cached, like the instance pages (see there). */
 export function generateStaticParams() {
@@ -20,10 +19,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const tr = await getTranslator(locale);
-  const title = tr(msg("AWS instance types, specs and prices - Infrawrench Instances"));
+  const title = tr(msg("Ask anything about AWS instance prices - Infrawrench Instances"));
   const description = tr(
     msg(
-      "Specs and prices for every AWS instance type, in every region, with the full history of both.",
+      "Ask in plain language about AWS instance types, specs and prices in every region, with their history, and get answers as tables and charts you can share.",
     ),
   );
   return {
@@ -50,5 +49,5 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 export default async function Page({ params }: { params: Params }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  return <IndexView platforms={await loadIndex()} />;
+  return <Chat persist />;
 }

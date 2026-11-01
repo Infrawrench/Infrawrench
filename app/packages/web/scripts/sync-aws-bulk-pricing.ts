@@ -10,6 +10,12 @@
  *   INSTANCES_BUNDLES_BUCKET                              defaults to instances-bundles
  *   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN           a token that can edit Workers KV
  *   AWS_BULK_PRICING_KV_NAMESPACE_ID                      the namespace the web Worker binds
+ *   PRICING_WAREHOUSE_URL, PRICING_WAREHOUSE_TOKEN        optional: the AWS pricing warehouse
+ *                                                         (ClickHouse HTTP URL, a write token);
+ *                                                         without them only KV is synced
+ *   INSTANCES_NOTIFY_URL, INSTANCES_NOTIFY_SECRET         optional: told after a warehouse load,
+ *                                                         so instances.infrawrench.com can email
+ *                                                         subscribers whose results changed
  *
  * R2 is read with the AWS CLI (preinstalled on GitHub runners), as the
  * instances-bundler publishes with it.
@@ -20,6 +26,7 @@ import { promisify } from "node:util";
 
 import { KvRest } from "../src/aws-bulk-pricing/kv-rest";
 import { syncAwsBulkPricing, type BundleBucket } from "../src/aws-bulk-pricing/sync";
+import { ClickHouseHttp, ClickHouseWarehouse } from "../src/aws-bulk-pricing/warehouse";
 
 const run = promisify(execFile);
 
@@ -91,4 +98,42 @@ const kv = new KvRest({
   apiToken: required("CLOUDFLARE_API_TOKEN"),
 });
 
-await syncAwsBulkPricing(r2Bucket(), kv);
+function warehouse(): ClickHouseWarehouse | undefined {
+  const url = process.env.PRICING_WAREHOUSE_URL;
+  const token = process.env.PRICING_WAREHOUSE_TOKEN;
+  if (!url || !token) {
+    console.log("warehouse: PRICING_WAREHOUSE_URL / PRICING_WAREHOUSE_TOKEN not set, skipping");
+    return undefined;
+  }
+  return new ClickHouseWarehouse(new ClickHouseHttp({ url, token }));
+}
+
+/** Tell the instances site the warehouse moved, so it can check email subscriptions. */
+async function notifyInstances(): Promise<void> {
+  const url = process.env.INSTANCES_NOTIFY_URL;
+  const secret = process.env.INSTANCES_NOTIFY_SECRET;
+  if (!url || !secret) return;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(120_000),
+    });
+    console.log(`notify: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+  } catch (error) {
+    // Subscribers are checked again after the next load; not worth failing the sync.
+    console.log(`notify: failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+let loaded = false;
+try {
+  const results = await syncAwsBulkPricing(r2Bucket(), kv, console.log, warehouse());
+  loaded = results.some((r) => r.warehouseRows !== undefined);
+} catch (error) {
+  // Some platforms may have loaded before another failed.
+  loaded = true;
+  throw error;
+} finally {
+  if (loaded) await notifyInstances();
+}

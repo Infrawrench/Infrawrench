@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@infrawrench/analytics": "workspace:*",
     "@infrawrench/server-core": "workspace:*",
     "@vinext/cloudflare": "1.3.0",

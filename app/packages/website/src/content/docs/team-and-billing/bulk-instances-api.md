@@ -8,7 +8,7 @@ Infrawrench keeps every AWS instance type's attributes and prices, with the full
 
 You can read it three ways:
 
-- **[instances.infrawrench.com](https://instances.infrawrench.com/aws/ec2/m5.large)**, a page per instance type with charts. No key needed. Append `.md` to any page (or send `Accept: text/markdown`) for the same data as Markdown.
+- **[instances.infrawrench.com](https://instances.infrawrench.com/aws/ec2/m5.large)**, a page per instance type with charts, and a [chat](../features/instance-price-chat.md) that answers questions about the data with tables and charts. No key needed. Append `.md` to any page (or send `Accept: text/markdown`) for the same data as Markdown.
 - **The `@infrawrench/bulk-instances` SDKs**, which download a whole service's data and decode it for you. This page documents the TypeScript one.
 - **The HTTP API**, for one instance at a time, or the raw bundles.
 
