@@ -13,7 +13,7 @@ import {
 } from "../format";
 import { KvRest, type KvPair } from "../kv-rest";
 import { syncAwsBulkPricing, syncPlatform, type BundleBucket, type PricingKv } from "../sync";
-import { RDS_BUNDLE, SPOT_BUNDLE } from "./fixtures/bundles";
+import { ALIBABA_BUNDLE, RDS_BUNDLE, RUNPOD_BUNDLE, SPOT_BUNDLE } from "./fixtures/bundles";
 import { expandBundle, expandValue } from "./fixtures/expand";
 
 const fixture = (name: string) =>
@@ -141,6 +141,41 @@ describe("syncAwsBulkPricing", () => {
       offer: "AmazonEC2Spot",
       variant_keys: ["operatingSystem"],
       instances: { "m5.large": expect.any(String), "t4g.nano": expect.any(String) },
+    });
+  });
+
+  it("syncs RunPod and Alibaba Cloud bundles, which carry a `source_version`, after AWS", async () => {
+    const kv = fakeKv();
+    const results = await syncAwsBulkPricing(
+      fakeBucket({
+        ...BUCKET,
+        "runpod-latest": "20261001T000000Z\n",
+        "runpod-bundle-20261001T000000Z.json.xz": fixture("runpod-bundle.json.xz"),
+        "alibaba-latest": "20261001T000000Z\n",
+        "alibaba-bundle-20261001T000000Z.json.xz": fixture("alibaba-bundle.json.xz"),
+      }),
+      kv,
+      quiet,
+    );
+    expect(results.map((r) => r.platform)).toEqual(["ec2", "rds", "runpod", "alibaba"]);
+    const gpu = JSON.parse(
+      gunzipSync(kv.store.get(instanceKey("runpod", "NVIDIA H100 80GB HBM3"))!.value).toString(),
+    ) as InstanceValue;
+    expect(gpu).toMatchObject({
+      platform: "runpod",
+      offer: "RunpodPods",
+      variant_keys: ["cloudType"],
+    });
+    expect(expandValue(gpu)).toEqual(expandBundle(RUNPOD_BUNDLE, "NVIDIA H100 80GB HBM3"));
+    const ecs = JSON.parse(
+      gunzipSync(kv.store.get(instanceKey("alibaba", "ecs.g6.large"))!.value).toString(),
+    ) as InstanceValue;
+    expect(ecs).not.toHaveProperty("source_version");
+    expect(expandValue(ecs)).toEqual(expandBundle(ALIBABA_BUNDLE, "ecs.g6.large"));
+    expect(state(kv, "alibaba")).toMatchObject({
+      offer: "AlibabaECS",
+      variant_keys: ["operatingSystem", "networkType"],
+      bundle: "alibaba-bundle-20261001T000000Z.json.xz",
     });
   });
 

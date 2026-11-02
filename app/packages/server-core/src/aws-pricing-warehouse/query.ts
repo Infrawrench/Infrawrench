@@ -1,7 +1,7 @@
 /**
- * Read-only queries against the AWS pricing warehouse (ClickHouse on
+ * Read-only queries against the instance pricing warehouse (ClickHouse on
  * CloudHouse; tables in `./schema.ts`), shared by instances.infrawrench.com's
- * chat and the web API's `POST /api/v1/aws-pricing/query`.
+ * chat and the web API's `POST /api/v1/instance-pricing/query`.
  *
  * The token is read-only on the warehouse side, which is the real boundary.
  * `checkSql` only turns obvious mistakes into readable errors, and `query`
@@ -13,7 +13,7 @@
 /** The warehouse's public endpoint; the token is what grants access. */
 export const DEFAULT_WAREHOUSE_URL = "https://instances-clickhouse.infrawrench.com/";
 
-/** The most rows one API query returns (`POST /api/v1/aws-pricing/query`). */
+/** The most rows one API query returns (`POST /api/v1/instance-pricing/query`). */
 export const MAX_QUERY_ROWS = 10_000;
 
 export type Cell = string | number | boolean | null;

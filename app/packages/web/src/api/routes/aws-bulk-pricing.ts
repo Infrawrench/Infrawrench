@@ -6,8 +6,9 @@ import { KvRest } from "@/aws-bulk-pricing/kv-rest";
 const app = new Hono();
 
 /**
- * GET /api/v1/aws-bulk-pricing[/<platform>[/<instance>]]: AWS bulk pricing data,
- * from Workers KV (see `aws-bulk-pricing/format.ts` for what is stored and
+ * GET /api/v1/aws-bulk-pricing[/<platform>[/<instance>]]: bulk instance pricing
+ * data for every platform the instances-bundler publishes (the AWS platforms,
+ * `runpod` and `alibaba`; the path predates the other clouds), from Workers KV (see `aws-bulk-pricing/format.ts` for what is stored and
  * `scripts/sync-aws-bulk-pricing.ts` for how it gets there).
  *
  * - `/`: the platforms synced so far, with version, bundle, sync time and count.
@@ -18,7 +19,7 @@ const app = new Hono();
  * Deliberately left out of the OpenAPI spec: the per-instance value is the
  * bulk-instances SDKs' bundle format, so they are its client, not the
  * generated SDKs. Any credential `authenticateApiRequest` accepts may read it,
- * with no scope, like `/api/v1/whoami`: it is AWS's public price list.
+ * with no scope, like `/api/v1/whoami`: it is the providers' public price lists.
  */
 
 /** The KV calls this needs, on a binding or over the REST API. */
@@ -113,7 +114,7 @@ app.get("/:platform/:name{.+}", async (c) => {
 });
 
 function unavailable(c: Context) {
-  return c.json({ error: "AWS bulk pricing data is not available here" }, 503);
+  return c.json({ error: "Bulk pricing data is not available here" }, 503);
 }
 
 export { app as awsBulkPricingRoutes };

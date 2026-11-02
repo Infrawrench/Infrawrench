@@ -1,8 +1,9 @@
 /**
- * AWS bulk pricing data: the format of what is kept in Workers KV.
+ * Bulk instance pricing data: the format of what is kept in Workers KV.
  *
  * The instances-bundler (github.com/Infrawrench/instances-bundler) publishes one
- * bundle per AWS platform to the `instances-bundles` R2 bucket. A scheduled
+ * bundle per platform to the `instances-bundles` R2 bucket: every AWS platform,
+ * plus RunPod and Alibaba Cloud ECS in the same format. A scheduled
  * GitHub Action (`scripts/sync-aws-bulk-pricing.ts`) splits each new bundle into
  * one KV value per instance, and `/api/v1/aws-bulk-pricing` serves them.
  *
@@ -20,10 +21,16 @@
  */
 
 /**
- * Platform name (as in the bundler's `publish-<platform>.sh`) to AWS offer code.
+ * Platform name (as in the bundler's `publish-<platform>.sh`) to offer code.
  * `spot` is EC2's spot prices, which have no AWS price list: the bundler builds
  * that bundle from AWS's spot price feed under an offer code of its own. It
  * stays after `ec2`, because its warehouse load takes specs from EC2's.
+ *
+ * `runpod` (RunPod GPU types and CPU pods) and `alibaba` (Alibaba Cloud ECS)
+ * are other clouds, published by the bundler's `other-instances` tool in the
+ * same format and bucket, under the same `<platform>-` key prefix. Their
+ * bundles always carry `offer` and `variant_keys`, plus a `source_version`
+ * that nothing here reads.
  */
 export const PLATFORMS: Readonly<Record<string, string>> = {
   ec2: "AmazonEC2",
@@ -39,6 +46,8 @@ export const PLATFORMS: Readonly<Record<string, string>> = {
   emr: "ElasticMapReduce",
   gamelift: "AmazonGameLift",
   spot: "AmazonEC2Spot",
+  runpod: "RunpodPods",
+  alibaba: "AlibabaECS",
 };
 
 /** EC2 bundles predate `offer` and `variant_keys`, so they leave both out. */
@@ -92,7 +101,7 @@ export interface CatalogPlatform {
   version: string;
   /** Unix seconds of the newest price list in that bundle, or null if it has none. */
   asOf: number | null;
-  /** Every instance name, sorted; includes instances AWS no longer lists. */
+  /** Every instance name, sorted; includes instances the provider no longer lists. */
   instances: string[];
 }
 

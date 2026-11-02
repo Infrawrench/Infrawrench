@@ -1,6 +1,9 @@
 /**
- * The AWS pricing warehouse: the AWS bulk price lists (and EC2 spot prices)
- * as ClickHouse tables, for instances.infrawrench.com's chat to query.
+ * The instance pricing warehouse: the AWS bulk price lists (and EC2 spot
+ * prices), RunPod's GPU and CPU pod prices and Alibaba Cloud ECS prices as
+ * ClickHouse tables, for instances.infrawrench.com's chat and
+ * `/api/v1/instance-pricing` to query. (The module keeps its `aws-` name from
+ * before the other clouds.)
  *
  * Written by the AWS bulk pricing sync (`web/src/aws-bulk-pricing/warehouse.ts`,
  * run by `.github/workflows/aws-bulk-pricing-sync.yml`) and read, with a
@@ -64,7 +67,7 @@ export interface Table {
 }
 
 /** Sources whose `prices` rows are split into this many shards (about 400,000 rows each). */
-export const SHARDS: Readonly<Record<string, number>> = { ec2: 16, spot: 16 };
+export const SHARDS: Readonly<Record<string, number>> = { ec2: 16, spot: 16, alibaba: 4 };
 
 /** FNV-1a, so a shard is a pure function of the instance type. */
 function fnv1a(s: string): number {
@@ -100,40 +103,45 @@ const SOURCE = col(
 const PLATFORM = col(
   "platform",
   "LowCardinality(String)",
-  "AWS service: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift`. Spot prices are `ec2`.",
+  "Platform. AWS services: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift` (EC2 spot prices are `ec2`). Other clouds: `runpod` (RunPod GPU types and CPU pods) and `alibaba` (Alibaba Cloud ECS).",
 );
 const INSTANCE_TYPE = col(
   "instance_type",
   "String",
-  "The instance type as AWS names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`.",
+  "The instance type as the provider names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`; Alibaba `ecs.g7.large`; RunPod GPU type ids such as `NVIDIA H100 80GB HBM3` and CPU pod ids such as `cpu3c-2-4` (flavor, vCPUs, GB of memory).",
 );
 const FAMILY = col(
   "family",
   "LowCardinality(String)",
-  "Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`; `''` when the name does not parse.",
+  "Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`, `g7` for Alibaba's `ecs.g7.large`, the flavor `cpu3c` for a RunPod CPU pod `cpu3c-2-4`; `''` when the name does not parse (RunPod GPU types).",
 );
 const SIZE = col(
   "size",
   "LowCardinality(String)",
-  "Size part of the name: `nano`, `micro`, `small`, `medium`, `large`, `xlarge`, `2xlarge`, ..., `metal`, `metal-48xl`.",
+  "Size part of the name: `nano`, `micro`, `small`, `medium`, `large`, `xlarge`, `2xlarge`, ..., `metal`, `metal-48xl`; for a RunPod CPU pod, `<vcpus>-<memory GB>` (`2-4`); `''` for RunPod GPU types.",
 );
 const ARCHITECTURE = col(
   "architecture",
   "LowCardinality(String)",
-  "CPU architecture: `arm64` (AWS Graviton, Apple silicon) or `x86_64` (Intel, AMD); `''` when AWS gives nothing to tell. Use this for ARM vs x86 questions.",
+  "CPU architecture: `arm64` (AWS Graviton, Apple silicon, Alibaba Yitian and Ampere) or `x86_64` (Intel, AMD, Hygon); `''` when the provider gives nothing to tell (RunPod). Use this for ARM vs x86 questions.",
 );
-const VCPU = col("vcpu", "Nullable(Float64)", "vCPUs.");
-const MEMORY = col("memory_gib", "Nullable(Float64)", "Memory in GiB.");
+const VCPU = col("vcpu", "Nullable(Float64)", "vCPUs; NULL for RunPod GPU types.");
+const MEMORY = col(
+  "memory_gib",
+  "Nullable(Float64)",
+  "Memory in GiB (RunPod reports GB); NULL for RunPod GPU types, whose memory is GPU memory (instance_types.gpu_memory_gib).",
+);
 const GPUS = col(
   "gpus",
   "Nullable(UInt32)",
-  "Number of GPUs (or accelerators); NULL when it has none listed.",
+  "Number of GPUs (or accelerators); NULL when it has none listed. 1 for a RunPod GPU type, which is priced per GPU.",
 );
 
 /**
- * Variant fields AWS prices products by, as their own columns. Price list keys
- * map onto these (several platforms share `usagetype`, `licenseModel`); a key
- * not listed here lands in `prices.variant`.
+ * Variant fields products are priced by, as their own columns. Price list keys
+ * map onto these (several platforms share `usagetype`, `licenseModel`, and
+ * Alibaba's `operatingSystem` shares EC2's); a key not listed here lands in
+ * `prices.variant` (Alibaba's `networkType`, RunPod's `cloudType`).
  */
 export const VARIANT_COLUMNS: Readonly<Record<string, string>> = {
   operatingSystem: "operating_system",
@@ -156,7 +164,7 @@ export const VARIANT_COLUMNS: Readonly<Record<string, string>> = {
 export const PRICES: Table = {
   name: "prices",
   comment:
-    "Every price AWS has listed for an instance type, one row per period a price held. `current = true` (equivalently `valid_to IS NULL`) is the price on offer now; filter on it unless the question is about history. A product's price is identified by (platform, instance_type, region, pricing, lease, offering_class, purchase_option) plus its variant columns, so always fix the variant columns that matter for the platform (see the defaults in the notes) or you will mix e.g. Windows and Linux prices.",
+    "Every price the provider has listed for an instance type, one row per period a price held. `current = true` (equivalently `valid_to IS NULL`) is the price on offer now; filter on it unless the question is about history. A product's price is identified by (platform, instance_type, region, pricing, lease, offering_class, purchase_option) plus its variant columns, so always fix the variant columns that matter for the platform (see the defaults in the notes) or you will mix e.g. Windows and Linux prices.",
   columns: [
     SOURCE,
     col(
@@ -175,28 +183,32 @@ export const PRICES: Table = {
     col(
       "region",
       "LowCardinality(String)",
-      "Region code, e.g. `us-east-1`, `eu-central-1`, or a Local Zone / Wavelength code such as `us-east-1-atl-1`. For the few locations AWS gives no code it is the location name. Join `regions` for the human name.",
+      "Region code, e.g. `us-east-1`, `eu-central-1`, or a Local Zone / Wavelength code such as `us-east-1-atl-1`. For the few locations AWS gives no code it is the location name. Alibaba uses its region ids (`cn-hangzhou`, `ap-southeast-1`, and its own `us-east-1`, Virginia). RunPod prices are the same in every data center, so every RunPod row is `global`. Join `regions` (on source or platform too, since codes repeat across clouds) for the human name.",
     ),
     col(
       "pricing",
       "LowCardinality(String)",
-      "`on_demand`, `reserved` (reserved instances; see lease, offering_class, purchase_option) or `spot` (EC2 spot, Linux and Windows only, from AWS's spot price feed).",
+      "`on_demand` (Alibaba: pay-as-you-go), `reserved` (any committed price: AWS reserved instances, Alibaba subscriptions and reserved instances, RunPod savings plans; see lease, offering_class, purchase_option) or `spot` (EC2 spot, Linux and Windows only, from AWS's spot price feed).",
     ),
-    col("lease", "LowCardinality(String)", "Reserved term length: `1yr` or `3yr`; `''` otherwise."),
+    col(
+      "lease",
+      "LowCardinality(String)",
+      "Committed term length: `1yr` or `3yr` (AWS, Alibaba reserved instances), `1mo` or `1yr` to `5yr` (Alibaba subscriptions), `3mo` or `6mo` (RunPod savings plans); `''` for on-demand and spot.",
+    ),
     col(
       "offering_class",
       "LowCardinality(String)",
-      "Reserved offering class: `standard` or `convertible`; `''` otherwise.",
+      "What kind of commitment: AWS reserved instances `standard` or `convertible`; Alibaba `Subscription` or `Reserved Instance`; RunPod `Savings Plan`; `''` otherwise.",
     ),
     col(
       "purchase_option",
       "LowCardinality(String)",
-      "Reserved payment option: `No Upfront`, `Partial Upfront` or `All Upfront`; `''` otherwise.",
+      "Payment option: `No Upfront`, `Partial Upfront` or `All Upfront` (Alibaba subscriptions and RunPod savings plans are always `All Upfront`); `''` otherwise.",
     ),
     col(
       "operating_system",
       "LowCardinality(String)",
-      "EC2, GameLift and spot: `Linux`, `Windows`, `RHEL`, `SUSE`, `Ubuntu Pro`, `Red Hat Enterprise Linux with HA`, ... ; `''` elsewhere.",
+      "EC2, GameLift and spot: `Linux`, `Windows`, `RHEL`, `SUSE`, `Ubuntu Pro`, `Red Hat Enterprise Linux with HA`, ... ; Alibaba: `Linux` or `Windows`; `''` elsewhere.",
     ),
     col(
       "tenancy",
@@ -254,24 +266,24 @@ export const PRICES: Table = {
     col(
       "variant",
       "Map(String, String)",
-      "Any other price list variant fields, by their AWS key (e.g. Neptune `mncu`, SageMaker `platoinstancetype`). Usually empty.",
+      "Any other variant fields, by their price list key: Neptune `mncu`, SageMaker `platoinstancetype`; Alibaba `networkType` (`VPC`, or `Classic` in older history); RunPod `cloudType` (`Secure Cloud` or `Community Cloud`). Read with variant['networkType'].",
     ),
     col(
       "hourly_usd",
       "Float64",
-      "Hourly price in USD. For reserved rows it is the recurring hourly fee only; see effective_hourly_usd.",
+      "Hourly price in USD. For reserved rows it is the recurring hourly fee only (0 for All Upfront terms and Alibaba subscriptions); see effective_hourly_usd. A RunPod savings plan's hourly_usd is its effective hourly rate. RunPod GPU prices are per GPU.",
     ),
     col(
       "upfront_usd",
       "Float64",
-      "One-off upfront payment in USD for a reserved term; 0 otherwise.",
+      "One-off upfront payment in USD for a committed term (an Alibaba subscription's whole price); 0 otherwise.",
     ),
     col(
       "effective_hourly_usd",
       "Float64",
-      "What an hour costs all in: hourly_usd plus upfront_usd spread over the term (8,760 hours a year). Compare on this. A month is 730 hours.",
+      "What an hour costs all in: hourly_usd plus upfront_usd spread over the term (8,760 hours a year, 730 a month). Compare on this. A month is 730 hours.",
     ),
-    col("valid_from", "DateTime", "When AWS started listing this price (UTC)."),
+    col("valid_from", "DateTime", "When the provider started listing this price (UTC)."),
     col(
       "valid_to",
       "Nullable(DateTime)",
@@ -286,7 +298,7 @@ export const PRICES: Table = {
 export const INSTANCE_TYPES: Table = {
   name: "instance_types",
   comment:
-    "One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs AWS does not list are NULL or `''`; `attributes` has every attribute AWS publishes, as strings.",
+    "One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs the provider does not list are NULL or `''`; `attributes` has every attribute it publishes, as strings (AWS's price list keys, Alibaba's DescribeInstanceTypes fields such as `CpuCoreCount` and `CpuOptions.ThreadsPerCore`, RunPod's GraphQL fields such as `maxGpuCountSecureCloud` and `dataCenters`).",
   columns: [
     SOURCE,
     PLATFORM,
@@ -297,18 +309,26 @@ export const INSTANCE_TYPES: Table = {
     VCPU,
     MEMORY,
     GPUS,
-    col("gpu_memory_gib", "Nullable(Float64)", "Total GPU memory in GiB."),
-    col("gpu_model", "String", "GPU model when AWS names it, e.g. `NVIDIA A10G`."),
+    col(
+      "gpu_memory_gib",
+      "Nullable(Float64)",
+      "Total GPU memory in GiB (RunPod: the one GPU's memory in GB).",
+    ),
+    col(
+      "gpu_model",
+      "String",
+      "GPU model when the provider names it, e.g. `NVIDIA A10G`, Alibaba `NVIDIA A10`, RunPod's display name `H100 SXM`.",
+    ),
     col(
       "processor",
       "String",
-      "Physical processor, e.g. `AWS Graviton3 Processor`, `Intel Xeon Platinum 8488C`, `AMD EPYC 9R14`.",
+      "Physical processor, e.g. `AWS Graviton3 Processor`, `Intel Xeon Platinum 8488C`, `AMD EPYC 9R14`; `''` for RunPod.",
     ),
     col("clock_speed_ghz", "Nullable(Float64)", "Sustained clock speed in GHz."),
     col(
       "network_performance",
       "String",
-      "As AWS writes it, e.g. `Up to 12.5 Gigabit`, `25 Gigabit`, `Moderate`.",
+      "As AWS writes it, e.g. `Up to 12.5 Gigabit`, `25 Gigabit`, `Moderate`; Alibaba's receive bandwidth as `<n> Gbit/s`; `''` for RunPod.",
     ),
     col(
       "network_gbps",
@@ -318,17 +338,17 @@ export const INSTANCE_TYPES: Table = {
     col(
       "storage",
       "String",
-      "Instance storage as AWS writes it, e.g. `EBS only`, `1 x 237 NVMe SSD`.",
+      "Instance storage as AWS writes it, e.g. `EBS only`, `1 x 237 NVMe SSD`; Alibaba local disks as `<count> x <GiB> GiB <category>`; `''` when there is none listed.",
     ),
     col(
       "category",
       "LowCardinality(String)",
-      "AWS's family category: `General purpose`, `Compute optimized`, `Memory optimized`, `Storage optimized`, `GPU instance`, `Accelerated Computing`, `Machine Learning ASIC Instances`, ...",
+      "The provider's family category: AWS `General purpose`, `Compute optimized`, `Memory optimized`, `Storage optimized`, `GPU instance`, `Accelerated Computing`, ...; Alibaba `General-purpose`, `Compute-optimized`, `Memory-optimized`, `GPU`, ...; RunPod `GPU`, or a CPU pod's flavor (`Compute-Optimized`, `General Purpose`, `Memory-Optimized`).",
     ),
     col(
       "current_generation",
       "Bool",
-      "False for previous-generation types AWS still sells but no longer recommends.",
+      "False for previous-generation types AWS still sells but no longer recommends; always true for RunPod and Alibaba.",
     ),
     col(
       "regions_offered",
@@ -339,9 +359,13 @@ export const INSTANCE_TYPES: Table = {
     col(
       "retired_at",
       "Nullable(DateTime)",
-      "When AWS dropped it from the price list; NULL while it is listed. Filter `retired_at IS NULL` for types you can still buy.",
+      "When the provider dropped it from the price list; NULL while it is listed. Filter `retired_at IS NULL` for types you can still buy.",
     ),
-    col("attributes", "Map(String, String)", "Every attribute AWS lists for it, current values."),
+    col(
+      "attributes",
+      "Map(String, String)",
+      "Every attribute the provider lists for it, current values.",
+    ),
   ],
   orderBy: ["platform", "instance_type"],
 };
@@ -355,7 +379,11 @@ export const ATTRIBUTE_CHANGES: Table = {
     PLATFORM,
     INSTANCE_TYPE,
     col("at", "DateTime", "When the value took effect (UTC)."),
-    col("attribute", "String", "AWS attribute key, e.g. `memory`, `networkPerformance`."),
+    col(
+      "attribute",
+      "String",
+      "The provider's attribute key, e.g. AWS `memory`, `networkPerformance`; Alibaba `MemorySize`.",
+    ),
     col("value", "Nullable(String)", "The new value; NULL when the attribute was removed."),
     col("region", "String", "Region code it applies to, `''` for every region."),
   ],
@@ -365,15 +393,19 @@ export const ATTRIBUTE_CHANGES: Table = {
 export const REGIONS: Table = {
   name: "regions",
   comment:
-    "Region codes and the names AWS gives them, per platform's price list. Use it to turn a city or country into a region code.",
+    "Region codes and the names the provider gives them, per source. Use it to turn a city or country into a region code. Codes repeat across clouds (Alibaba also has `us-east-1`), so filter on source.",
   columns: [
     SOURCE,
     col("region", "String", "Region code as in prices.region, e.g. `eu-central-1`."),
-    col("location", "String", "AWS's location name, e.g. `EU (Frankfurt)`."),
+    col(
+      "location",
+      "String",
+      "The location's name, e.g. AWS `EU (Frankfurt)`, Alibaba `China (Hangzhou)`; RunPod `global`.",
+    ),
     col(
       "location_type",
       "LowCardinality(String)",
-      "`AWS Region`, `AWS Local Zone`, `AWS Wavelength Zone` or `AWS Outposts`.",
+      "`AWS Region`, `AWS Local Zone`, `AWS Wavelength Zone` or `AWS Outposts`; `Alibaba Cloud Region`; RunPod `Global`.",
     ),
   ],
   orderBy: ["region"],
@@ -382,12 +414,12 @@ export const REGIONS: Table = {
 export const SYNC_STATE: Table = {
   name: "sync_state",
   comment:
-    "When each bundle was loaded and which AWS price lists it covers; `max(price_list_to)` is how fresh the data is.",
+    "When each bundle was loaded and which price lists it covers; `max(price_list_to)` is how fresh the data is.",
   columns: [
     SOURCE,
     col("version", "String", "The bundle version loaded."),
     col("schema_version", "UInt32", "Warehouse schema version it was loaded with."),
-    col("price_lists", "UInt32", "How many AWS price list versions the bundle was built from."),
+    col("price_lists", "UInt32", "How many price list versions the bundle was built from."),
     col("price_list_from", "Nullable(DateTime)", "Oldest price list in the bundle (UTC)."),
     col("price_list_to", "Nullable(DateTime)", "Newest price list in the bundle (UTC)."),
     col("synced_at", "DateTime", "When it was loaded (UTC)."),
@@ -514,15 +546,18 @@ export function createTableSql(table: Table, database?: string): string {
  */
 /**
  * How to query the tables correctly, beyond what each column says. Shown to
- * the chat's model and returned by `GET /api/v1/aws-pricing/schema`.
+ * the chat's model and returned by `GET /api/v1/instance-pricing/schema`.
  */
 export const SCHEMA_NOTES: readonly string[] = [
-  "All prices are USD. Timestamps are UTC DateTime.",
+  "All prices are USD (Alibaba's from its international site). Timestamps are UTC DateTime.",
   "Usual defaults when a question does not say otherwise: for ec2, operating_system = 'Linux', tenancy = 'Shared', pre_installed_sw = 'NA', capacity_status = 'Used', license_model = 'No License required' and pricing = 'on_demand'; for rds, deployment_option = 'Single-AZ', one database_engine (PostgreSQL if unsaid) and usage_type NOT LIKE '%Unused%' (those rows price unused capacity reservations); for elasticache and memorydb, cache_engine = 'Redis' (or 'Valkey') and usage_type = 'NodeUsage'; region us-east-1.",
   "EC2 Windows: the price AWS quotes for Windows (license included) is license_model = 'No License required'. The `License Included - Infrastructure` and `Bring your own license` rows price only the compute, at the Linux rate, so never quote them as the Windows price unless the question is about bringing a license. Windows with SQL Server is pre_installed_sw = 'SQL Web', 'SQL Std' or 'SQL Ent'.",
   '"Cheapest" means the lowest effective_hourly_usd among current rows. Hourly to monthly: x 730.',
   "Spot rows (pricing = 'spot') only exist for ec2 with operating_system 'Linux' or 'Windows', and leave tenancy, license_model, pre_installed_sw and capacity_status as '': drop those ec2 defaults for spot (pricing = 'spot' OR (tenancy = 'Shared' AND ...)). A spot price is the lowest across the region's availability zones, as AWS's Spot pricing page shows it. Spot history starts 2026-08-03 with a price every hour (for the 17 main regions; the others and Local Zones start 2026-11-01), and has one every 6 hours since 2026-11-01, so aggregate it (by day, say) rather than listing rows.",
   "Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.",
+  "RunPod (platform = 'runpod'): GPU types are priced per GPU per hour (size and family are '', gpus = 1, gpu_memory_gib is the GPU's memory) and CPU pods per pod per hour; tell them apart with attributes['productFamily'] ('GPU' or 'CPU') on instance_types. Every price is region = 'global'; pick a cloud with variant['cloudType'] = 'Secure Cloud' (the default) or 'Community Cloud' (cheaper, community hosts). Savings plans are pricing = 'reserved', offering_class = 'Savings Plan', lease '3mo' or '6mo', with hourly_usd the effective rate. Which data centers stock a GPU is attributes['dataCenters'] (comma separated); stock levels and spot prices are not included. History starts in November 2026.",
+  "Alibaba Cloud ECS (platform = 'alibaba'): default to operating_system = 'Linux' and variant['networkType'] = 'VPC' (Classic is retired). on_demand is pay-as-you-go. Subscriptions are offering_class = 'Subscription' (lease '1mo' or '1yr' to '5yr', paid in full: hourly_usd = 0, upfront_usd the price); reserved instances are offering_class = 'Reserved Instance' (lease '1yr' or '3yr', with a purchase_option). Prices go back to May 2018; specs (attributes) start in May 2023, so older retired types can have NULL vcpu and memory_gib.",
+  "Comparing clouds: region codes are each provider's own, so join regions on source as well as region and compare by location (Alibaba's us-east-1 is US (Virginia), the same area as AWS's us-east-1). Compare on effective_hourly_usd for similar vcpu and memory_gib, and say which cloud each row is from.",
   "Use instance_types for specs and to list types; join prices on (platform, instance_type) when you need specs it does not carry.",
   "prices is large (millions of rows for ec2): always filter on platform and current (or a time range), and aggregate or LIMIT.",
   "service_events is AWS's public status page history, not a measured uptime: AWS publishes no availability percentage. To estimate downtime, sum dateDiff('minute', impact_started_at, impact_ended_at) (fall back to posted_at and resolved_at when those are NULL) over events with severity 'degraded' or 'disrupted', and say that it covers only events AWS posted publicly. An event filed under `multipleservices` or another service can still have hit the one asked about: also match mapContains(impacted_services, '<service>-<region>').",

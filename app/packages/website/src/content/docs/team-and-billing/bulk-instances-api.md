@@ -1,19 +1,19 @@
 ---
 title: Bulk instances API
-description: AWS instance specs and prices for twelve services, plus EC2 spot prices, with their full history, from the @infrawrench/bulk-instances SDKs or the HTTP API.
+description: AWS instance specs and prices for twelve services, plus EC2 spot prices, RunPod GPU and CPU pods and Alibaba Cloud ECS, with their full history, from the @infrawrench/bulk-instances SDKs or the HTTP API.
 sidebar_order: 8
 ---
 
-Infrawrench keeps every AWS instance type's attributes and prices, with the full history of both, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List bulk API and refreshed as AWS publishes. EC2 spot prices, which are not in the price lists, are kept alongside (see [Spot prices](#spot-prices)).
+Infrawrench keeps every AWS instance type's attributes and prices, with the full history of both, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List bulk API and refreshed as AWS publishes. EC2 spot prices, which are not in the price lists, are kept alongside (see [Spot prices](#spot-prices)), and so are two other clouds in the same format: RunPod's GPU and CPU pods and Alibaba Cloud ECS (see [Other clouds](#other-clouds)).
 
 You can read it four ways:
 
 - **[instances.infrawrench.com](https://instances.infrawrench.com/aws/ec2/m5.large)**, a page per instance type with charts, and a [chat](../features/instance-price-chat.md) that answers questions about the data with tables and charts. No key needed. Append `.md` to any page (or send `Accept: text/markdown`) for the same data as Markdown.
 - **The `@infrawrench/bulk-instances` SDKs**, which download a whole service's data and decode it for you. This page documents the TypeScript one.
 - **The HTTP API**, for one instance at a time, or the raw bundles.
-- **[SQL](./aws-pricing-api.md)**, for questions across instances, regions and time, answered without downloading anything.
+- **[SQL](./instance-pricing-api.md)**, for questions across instances, regions and time, answered without downloading anything.
 
-Both the SDKs and the HTTP API need an Infrawrench bearer credential: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. Any of them can read everything; no scope is required, because the data is AWS's public price list.
+Both the SDKs and the HTTP API need an Infrawrench bearer credential: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. Any of them can read everything; no scope is required, because the data is the providers' public price lists.
 
 ## Install
 
@@ -198,6 +198,29 @@ spot
   ?.hourly; // 0.0405
 ```
 
+### Other clouds
+
+Two more platforms come in the same format, from the same bucket, with their own download functions and types (`RunpodPricingData`, `AlibabaPricingData` and their instances, which have the same members as `AWSPricingData` and `AWSInstance`):
+
+| Platform  | Download function            | What                                                                                           | History from  |
+| --------- | ---------------------------- | ---------------------------------------------------------------------------------------------- | ------------- |
+| `runpod`  | `downloadRunpodPricingData`  | RunPod GPU types (by id, priced per GPU per hour) and CPU pods (`cpu3c-2-4`, per pod per hour) | November 2026 |
+| `alibaba` | `downloadAlibabaPricingData` | Alibaba Cloud ECS instance types (`ecs.g7.large`), from its international site, in USD         | May 2018      |
+
+- **RunPod**: prices are the same in every data center, so every price is in the location `global`. The only variant key is `cloudType` (`Secure Cloud` or `Community Cloud`). Savings plans are reserved prices with the term `3mo` or `6mo`, `Savings Plan`, `All Upfront`, whose `hourly` is the plan's effective hourly rate. A GPU's `dataCenters` attribute lists the data centers that stock it; stock levels and spot prices are not included.
+- **Alibaba Cloud**: locations are region ids (`cn-hangzhou`), and `regions` gives each an English `name`. The variant keys are `operatingSystem` (`Linux`, `Windows`) and `networkType` (`VPC`, or `Classic` in older history). `pricing.onDemand` is pay-as-you-go. Subscriptions are reserved prices with the term `1mo` or `1yr` to `5yr`, `Subscription`, `All Upfront`, paid in full when bought, so `hourly` is 0 and `upfront` is the price; reserved instances have `1yr` or `3yr`, `Reserved Instance` and a purchase option. Attributes are Alibaba's instance type definitions (`CpuCoreCount`, `MemorySize`, ...), from May 2023 on.
+
+```ts
+import { downloadRunpodPricingData } from "@infrawrench/bulk-instances";
+
+const runpod = await downloadRunpodPricingData();
+runpod
+  .get("NVIDIA H100 80GB HBM3")
+  ?.pricing.onDemand.find((p) => p.variant.cloudType === "Secure Cloud")?.hourly;
+```
+
+The single-instance HTTP endpoint below serves them too (`/api/v1/aws-bulk-pricing/runpod/<id>`, `/api/v1/aws-bulk-pricing/alibaba/<instance type>`; URL-encode RunPod's ids, which have spaces).
+
 ## HTTP API
 
 The SDKs use two endpoints, which you can also call directly with `Authorization: Bearer <credential>`.
@@ -206,7 +229,7 @@ The SDKs use two endpoints, which you can also call directly with `Authorization
 
 | Request                                              | Response                                                                                                                                        |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/aws-bulk-pricing`                       | `{ platforms: [...] }`: each service synced so far, with its bundle version, sync time and instance count.                                      |
+| `GET /api/v1/aws-bulk-pricing`                       | `{ platforms: [...] }`: each service (AWS, `runpod` and `alibaba`) synced so far, with its bundle version, sync time and instance count.        |
 | `GET /api/v1/aws-bulk-pricing/<platform>`            | That service's `variant_keys`, price list `snapshots` (Unix seconds) and every instance name.                                                   |
 | `GET /api/v1/aws-bulk-pricing/<platform>/<instance>` | Everything about one instance, in the bundle encoding below, cut down to that instance. Sends an `ETag` and answers `If-None-Match` with `304`. |
 
@@ -224,7 +247,7 @@ curl -H "Authorization: Bearer $INFRAWRENCH_API_KEY" \
 | `GET /latest` (EC2), `GET /<platform>-latest`                                         | The newest bundle's timestamp, as text. |
 | `GET /bundle-<timestamp>.json.xz` (EC2), `GET /<platform>-bundle-<timestamp>.json.xz` | The bundle, xz-compressed.              |
 
-Bundles are served from Cloudflare's edge cache, with `ETag` revalidation and range requests. A new EC2 bundle can appear every few minutes as AWS publishes; the other services are checked every 15 minutes, and spot prices every 6 hours.
+Bundles are served from Cloudflare's edge cache, with `ETag` revalidation and range requests. A new EC2 bundle can appear every few minutes as AWS publishes; the other services are checked every 15 minutes, RunPod every 30 minutes, and spot prices and Alibaba Cloud every 6 hours.
 
 ### The bundle encoding
 

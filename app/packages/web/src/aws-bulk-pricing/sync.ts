@@ -1,5 +1,5 @@
 /**
- * Bring the AWS bulk pricing data in Workers KV up to date with the bundles in
+ * Bring the bulk pricing data (AWS, RunPod, Alibaba Cloud) in Workers KV up to date with the bundles in
  * R2. Runs on a GitHub runner (`scripts/sync-aws-bulk-pricing.ts`), not in a
  * Worker: an EC2 bundle is over 200 MB of JSON.
  *

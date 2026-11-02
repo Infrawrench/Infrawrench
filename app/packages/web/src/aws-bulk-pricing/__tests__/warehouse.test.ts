@@ -12,11 +12,13 @@ import {
   familyAndSize,
   instanceRows,
   isTransient,
+  leaseHours,
   networkGbps,
+  specsOf,
   type PricingWarehouse,
   type WarehouseLoad,
 } from "../warehouse";
-import { RDS_BUNDLE } from "./fixtures/bundles";
+import { ALIBABA_BUNDLE, RDS_BUNDLE, RUNPOD_BUNDLE } from "./fixtures/bundles";
 
 const fixture = (name: string) =>
   new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
@@ -157,12 +159,137 @@ describe("instanceRows", () => {
   });
 });
 
+function reducedFrom(
+  bundle: { instances: Record<string, unknown> },
+  platform: string,
+  name: string,
+) {
+  const tables = readTables(bundle as unknown as Record<string, unknown>, platform);
+  return reduceInstance(tables, platform, name, bundle.instances[name]);
+}
+
+describe("other clouds", () => {
+  it("reads a RunPod GPU type as one GPU, priced per GPU, in `global`", () => {
+    const rows = instanceRows(
+      reducedFrom(RUNPOD_BUNDLE, "runpod", "NVIDIA H100 80GB HBM3"),
+      "runpod",
+    );
+    expect(rows.instanceType).toMatchObject({
+      platform: "runpod",
+      family: "",
+      size: "",
+      vcpu: null,
+      memory_gib: null,
+      gpus: 1,
+      gpu_memory_gib: 80,
+      gpu_model: "H100 SXM",
+      category: "GPU",
+      regions_offered: 1,
+    });
+    const current = rows.prices.filter((p) => p["current"]);
+    expect(current).toContainEqual(
+      expect.objectContaining({
+        region: "global",
+        pricing: "on_demand",
+        variant: { cloudType: "Secure Cloud" },
+        hourly_usd: 2.99,
+      }),
+    );
+    // Community Cloud stopped selling it.
+    expect(
+      current.some(
+        (p) => (p["variant"] as Record<string, string>)["cloudType"] === "Community Cloud",
+      ),
+    ).toBe(false);
+    // A savings plan's hourly is already its effective rate.
+    expect(current).toContainEqual(
+      expect.objectContaining({
+        pricing: "reserved",
+        lease: "3mo",
+        offering_class: "Savings Plan",
+        hourly_usd: 2.89,
+        effective_hourly_usd: 2.89,
+      }),
+    );
+    expect(rows.regions.get("global")).toEqual(["global", "Global"]);
+  });
+
+  it("reads a RunPod CPU pod's flavor, vCPUs and memory from its id and attributes", () => {
+    const rows = instanceRows(reducedFrom(RUNPOD_BUNDLE, "runpod", "cpu3c-2-4"), "runpod");
+    expect(rows.instanceType).toMatchObject({
+      family: "cpu3c",
+      size: "2-4",
+      vcpu: 2,
+      memory_gib: 4,
+      gpus: null,
+      gpu_memory_gib: null,
+      retired_at: 1720000000,
+    });
+  });
+
+  it("reads Alibaba ECS specs, region names and subscriptions", () => {
+    const rows = instanceRows(reducedFrom(ALIBABA_BUNDLE, "alibaba", "ecs.g6.large"), "alibaba");
+    expect(rows.instanceType).toMatchObject({
+      platform: "alibaba",
+      family: "g6",
+      size: "large",
+      // Alibaba's g6 is not Graviton-style ARM.
+      architecture: "",
+      vcpu: 2,
+      memory_gib: 16,
+    });
+    expect(rows.regions.get("cn-hangzhou")).toEqual(["China (Hangzhou)", "Alibaba Cloud Region"]);
+    const subscription = (lease: string) =>
+      rows.prices.find(
+        (p) =>
+          p["current"] &&
+          p["offering_class"] === "Subscription" &&
+          p["lease"] === lease &&
+          p["region"] === "cn-hangzhou" &&
+          p["operating_system"] === "Linux",
+      )!;
+    expect(subscription("1yr")).toMatchObject({ hourly_usd: 0, upfront_usd: 500.5 });
+    expect(subscription("1yr")["effective_hourly_usd"]).toBeCloseTo(500.5 / 8760, 10);
+    expect(subscription("1mo")["effective_hourly_usd"]).toBeCloseTo(50 / 730, 10);
+    expect(rows.prices).toContainEqual(
+      expect.objectContaining({ operating_system: "Linux", variant: { networkType: "VPC" } }),
+    );
+  });
+
+  it("spreads upfront over months as well as years", () => {
+    expect(leaseHours("1mo")).toBe(730);
+    expect(leaseHours("6mo")).toBe(4380);
+    expect(leaseHours("1yr")).toBe(8760);
+    expect(leaseHours("5yr")).toBe(5 * 8760);
+  });
+
+  it("reads Alibaba's architecture from CpuArchitecture", () => {
+    expect(
+      specsOf(
+        "ecs.g8y.large",
+        { CpuArchitecture: "ARM", CpuCoreCount: "2", MemorySize: "8.0" },
+        "alibaba",
+      ),
+    ).toMatchObject({
+      architecture: "arm64",
+      vcpu: 2,
+      memory_gib: 8,
+    });
+    expect(specsOf("ecs.g7.large", { CpuArchitecture: "X86" }, "alibaba").architecture).toBe(
+      "x86_64",
+    );
+  });
+});
+
 describe("spec parsing", () => {
   it("names families and sizes across platforms", () => {
     expect(familyAndSize("db.r6g.xlarge")).toEqual({ family: "r6g", size: "xlarge" });
     expect(familyAndSize("r6g.large.search")).toEqual({ family: "r6g", size: "large" });
     expect(familyAndSize("ml.g5.12xlarge")).toEqual({ family: "g5", size: "12xlarge" });
     expect(familyAndSize("weird")).toEqual({ family: "", size: "" });
+    expect(familyAndSize("ecs.g7.2xlarge")).toEqual({ family: "g7", size: "2xlarge" });
+    expect(familyAndSize("cpu5m-16-128")).toEqual({ family: "cpu5m", size: "16-128" });
+    expect(familyAndSize("NVIDIA H100 80GB HBM3")).toEqual({ family: "", size: "" });
   });
 
   it("tells ARM from x86", () => {

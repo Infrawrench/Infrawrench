@@ -1,5 +1,6 @@
 /**
- * Loads the AWS bulk pricing bundles into the AWS pricing warehouse
+ * Loads the bulk pricing bundles (every AWS platform, RunPod and Alibaba Cloud
+ * ECS) into the instance pricing warehouse
  * (ClickHouse; tables in `@infrawrench/server-core/aws-pricing-warehouse/schema`),
  * which instances.infrawrench.com's chat queries.
  *
@@ -287,8 +288,17 @@ export interface InstanceRows {
 
 const SIZE = /^(nano|micro|small|medium|large|\d*xlarge|metal(?:-\d+xl)?|host)(-.+)?$/;
 
-/** `m7g` and `large` from `db.m7g.large`; the same rule as instances' `lib/names.ts`. */
+/** A RunPod CPU pod id: flavor, vCPUs, GB of memory (`cpu3c-2-4`). */
+const RUNPOD_CPU_POD = /^(cpu\d+[a-z]*)-(\d+-\d+)$/;
+
+/**
+ * `m7g` and `large` from `db.m7g.large` (and `ecs.g7.large`); the same rule as
+ * instances' `lib/names.ts`. A RunPod CPU pod is its flavor and `<vcpu>-<gb>`
+ * (`cpu3c` and `2-4` from `cpu3c-2-4`); a RunPod GPU type has neither.
+ */
 export function familyAndSize(name: string): { family: string; size: string } {
+  const pod = RUNPOD_CPU_POD.exec(name);
+  if (pod) return { family: pod[1]!, size: pod[2]! };
   const tokens = name.split(".");
   for (let i = 1; i < tokens.length; i++) {
     const match = SIZE.exec(tokens[i]!);
@@ -316,13 +326,31 @@ export function networkGbps(value: string | undefined): number | null {
   return /^m/i.test(match[2]!) ? n / 1000 : n;
 }
 
+/** Platforms that are not AWS: their attributes use their provider's own keys. */
+const OTHER_CLOUDS = new Set(["runpod", "alibaba"]);
+
 /**
- * `arm64` or `x86_64` from what AWS lists. The processor names it when there
- * is one; otherwise the family does, by AWS's naming rule that a `g` after the
- * generation number means Graviton (`m7g`, `r6gd`, `c7gn`, `x2gd`, `t4g`).
+ * `arm64` or `x86_64` from what the provider lists. Alibaba says it outright
+ * (`CpuArchitecture`: `X86` or `ARM`). Otherwise the processor names it when
+ * there is one, and failing that the family does, by AWS's naming rule that a
+ * `g` after the generation number means Graviton (`m7g`, `r6gd`, `c7gn`,
+ * `x2gd`, `t4g`). The rule is AWS's, so `platform` other than an AWS one
+ * skips it (Alibaba's `g7` is general purpose, not ARM).
  */
-export function architectureOf(attrs: Record<string, string>, family: string): string {
-  const processor = `${attrs["physicalProcessor"] ?? ""} ${attrs["physicalCpu"] ?? ""}`;
+export function architectureOf(
+  attrs: Record<string, string>,
+  family: string,
+  platform = "ec2",
+): string {
+  const cpuArchitecture = attrs["CpuArchitecture"];
+  if (cpuArchitecture)
+    return /arm/i.test(cpuArchitecture) ? "arm64" : /x86/i.test(cpuArchitecture) ? "x86_64" : "";
+  const processor = `${attrs["physicalProcessor"] ?? ""} ${attrs["physicalCpu"] ?? ""} ${attrs["PhysicalProcessorModel"] ?? ""}`;
+  if (OTHER_CLOUDS.has(platform)) {
+    if (/ampere|yitian|\barm/i.test(processor)) return "arm64";
+    if (/intel|amd|xeon|epyc|hygon/i.test(processor)) return "x86_64";
+    return "";
+  }
   const declared = attrs["processorArchitecture"] ?? "";
   if (/graviton|arm|apple m\d/i.test(processor) || /arm/i.test(declared)) return "arm64";
   if (/intel|amd|xeon|epyc|core i\d|apple.*intel/i.test(processor)) return "x86_64";
@@ -332,17 +360,86 @@ export function architectureOf(attrs: Record<string, string>, family: string): s
   return "";
 }
 
-/** Specs from an instance's current attributes. */
-export function specsOf(name: string, attrs: Record<string, string>): Specs {
+/** A RunPod GPU type (priced per GPU), as opposed to a CPU pod. */
+const isRunpodGpu = (platform: string, attrs: Record<string, string>) =>
+  platform === "runpod" && attrs["productFamily"] === "GPU";
+
+/**
+ * Specs from an instance's current attributes, under whichever keys the
+ * platform uses: AWS's (`vcpu`, `memory`, `gpu`), Alibaba's (`CpuCoreCount`,
+ * `MemorySize`, `GPUAmount`) or RunPod's. A RunPod GPU type is one GPU (its
+ * prices are per GPU) and its `memoryInGb` is the GPU's memory, so it has no
+ * vCPUs or memory of its own; a CPU pod's `memoryInGb` is its RAM.
+ */
+export function specsOf(name: string, attrs: Record<string, string>, platform = "ec2"): Specs {
   const { family, size } = familyAndSize(name);
-  const gpus = number(attrs["gpu"]);
+  if (isRunpodGpu(platform, attrs)) {
+    return { family, size, architecture: "", vcpu: null, memory_gib: null, gpus: 1 };
+  }
+  const gpus = number(attrs["gpu"] ?? attrs["GPUAmount"]);
   return {
     family,
     size,
-    architecture: architectureOf(attrs, family),
-    vcpu: number(attrs["vcpu"] ?? attrs["vCpu"]),
-    memory_gib: number(attrs["memory"] ?? attrs["memoryGib"]),
+    architecture: architectureOf(attrs, family, platform),
+    vcpu: number(attrs["vcpu"] ?? attrs["vCpu"] ?? attrs["CpuCoreCount"]),
+    memory_gib: number(
+      attrs["memory"] ?? attrs["memoryGib"] ?? attrs["MemorySize"] ?? attrs["memoryInGb"],
+    ),
     gpus: gpus === null || gpus === 0 ? null : gpus,
+  };
+}
+
+/** The `instance_types` columns beyond {@link Specs}, by the platform's attribute keys. */
+function detailsOf(platform: string, attrs: Record<string, string>) {
+  if (platform === "runpod") {
+    const gpu = attrs["productFamily"] === "GPU";
+    return {
+      gpu_memory_gib: gpu ? number(attrs["memoryInGb"]) : null,
+      gpu_model: gpu ? usable(attrs["displayName"]) : "",
+      processor: "",
+      clock_speed_ghz: null,
+      network_performance: "",
+      network_gbps: null,
+      storage: "",
+      // A CPU pod's flavor name (`Compute-Optimized`); `GPU` for a GPU type.
+      category: gpu ? "GPU" : usable(attrs["displayName"]),
+      current_generation: true,
+    };
+  }
+  if (platform === "alibaba") {
+    const rx = number(attrs["InstanceBandwidthRx"]);
+    const disks = number(attrs["LocalStorageAmount"]);
+    const capacity = number(attrs["LocalStorageCapacity"]);
+    return {
+      // GPUMemorySize is per GPU.
+      gpu_memory_gib: (() => {
+        const per = number(attrs["GPUMemorySize"]);
+        const count = number(attrs["GPUAmount"]);
+        return per === null ? null : per * (count || 1);
+      })(),
+      gpu_model: usable(attrs["GPUSpec"]),
+      processor: usable(attrs["PhysicalProcessorModel"]),
+      clock_speed_ghz: number(attrs["CpuSpeedFrequency"]),
+      network_performance: rx === null ? "" : `${rx / 1_000_000} Gbit/s`,
+      network_gbps: rx === null ? null : rx / 1_000_000,
+      storage:
+        disks && capacity
+          ? `${disks} x ${capacity} GiB ${attrs["LocalStorageCategory"] ?? ""}`.trim()
+          : "",
+      category: usable(attrs["InstanceCategory"]),
+      current_generation: true,
+    };
+  }
+  return {
+    gpu_memory_gib: number(attrs["gpuMemory"]),
+    gpu_model: usable(attrs["physicalGpu"] ?? attrs["gpuModel"]),
+    processor: usable(attrs["physicalProcessor"] ?? attrs["physicalCpu"]),
+    clock_speed_ghz: number(attrs["clockSpeed"]),
+    network_performance: usable(attrs["networkPerformance"]),
+    network_gbps: networkGbps(attrs["networkPerformance"]),
+    storage: usable(attrs["storage"] ?? attrs["instanceStorage"]),
+    category: usable(attrs["instanceFamily"] ?? attrs["computeType"]),
+    current_generation: (attrs["currentGeneration"] ?? "Yes") !== "No",
   };
 }
 
@@ -355,6 +452,14 @@ const EMPTY_SPECS = (name: string): Specs => ({
 });
 
 const HOURS_PER_YEAR = 8760;
+const HOURS_PER_MONTH = 730;
+
+/** A term's length in hours: `1yr` to `5yr`, or months (`1mo`, `3mo`, `6mo`); a year when unreadable. */
+export function leaseHours(lease: string): number {
+  const match = /^(\d+)\s*(yr|mo)/.exec(lease);
+  if (!match) return HOURS_PER_YEAR;
+  return Number(match[1]) * (match[2] === "mo" ? HOURS_PER_MONTH : HOURS_PER_YEAR);
+}
 
 interface Period {
   key: string;
@@ -394,7 +499,8 @@ export function instanceRows(
     const location = str(loc);
     const code = attrs["regionCode"] || location;
     located.set(loc, code);
-    regions.set(code, [location, attrs["locationType"] ?? ""]);
+    // Alibaba's locations are region ids, with the English name in `name`.
+    regions.set(code, [attrs["name"] || location, attrs["locationType"] ?? ""]);
   }
   const regionOf = (loc: unknown): string => {
     const known = located.get(loc as number);
@@ -452,7 +558,7 @@ export function instanceRows(
 
   const specs = spot
     ? (options.specFor?.(value.name) ?? EMPTY_SPECS(value.name))
-    : specsOf(value.name, attrs);
+    : specsOf(value.name, attrs, platform);
 
   const variantKeys = value.variant_keys;
   const variantColumns = value.variants.map((fields) => {
@@ -499,8 +605,7 @@ export function instanceRows(
   });
   const effectiveUpfront = (p: Period): number => {
     if (!p.upfront) return 0;
-    const years = Number(/^(\d+)/.exec(String(p.base["lease"]))?.[1]) || 1;
-    return p.upfront / (years * HOURS_PER_YEAR);
+    return p.upfront / leaseHours(String(p.base["lease"]));
   };
 
   // [ts, location, variant, price?]: omitted is the base price, null is no
@@ -572,15 +677,7 @@ export function instanceRows(
         platform,
         instance_type: value.name,
         ...specs,
-        gpu_memory_gib: number(attrs["gpuMemory"]),
-        gpu_model: usable(attrs["physicalGpu"] ?? attrs["gpuModel"]),
-        processor: usable(attrs["physicalProcessor"] ?? attrs["physicalCpu"]),
-        clock_speed_ghz: number(attrs["clockSpeed"]),
-        network_performance: usable(attrs["networkPerformance"]),
-        network_gbps: networkGbps(attrs["networkPerformance"]),
-        storage: usable(attrs["storage"] ?? attrs["instanceStorage"]),
-        category: usable(attrs["instanceFamily"] ?? attrs["computeType"]),
-        current_generation: (attrs["currentGeneration"] ?? "Yes") !== "No",
+        ...detailsOf(platform, attrs),
         regions_offered: offeredIn.size,
         first_listed: createdAt,
         retired_at: deletedAt ?? null,
