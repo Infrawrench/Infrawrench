@@ -3,7 +3,7 @@
 interface ImportMetaEnv {
   /** PostHog project API key (phc_…), inlined at build time. Unset turns analytics off. */
   readonly PUBLIC_POSTHOG_KEY?: string;
-  /** PostHog ingestion host; defaults to US Cloud. */
+  /** PostHog ingestion host; defaults to the hedgehogs.infrawrench.com reverse proxy. */
   readonly PUBLIC_POSTHOG_HOST?: string;
 }
 

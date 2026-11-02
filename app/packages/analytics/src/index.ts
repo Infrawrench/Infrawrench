@@ -17,7 +17,7 @@ export { countryNeedsConsent, parseTraceCountry } from "./region";
 export interface AnalyticsOptions {
   /** PostHog project API key (`phc_…`). Without one, everything here is a no-op. */
   key: string | undefined;
-  /** Ingestion host. Defaults to PostHog US Cloud. */
+  /** Ingestion host. Defaults to our managed reverse proxy in front of PostHog US Cloud. */
   host?: string | undefined;
   /**
    * For surfaces that render customer data (the web app): masks every text
@@ -31,6 +31,15 @@ export interface AnalyticsOptions {
    */
   redactUrl?: (url: string) => string;
 }
+
+/**
+ * PostHog's managed reverse proxy on our own subdomain. First-party ingestion
+ * is not on ad-blocker lists the way `*.i.posthog.com` is, so far fewer events
+ * and replays go missing. It forwards to the US Cloud project.
+ */
+const DEFAULT_HOST = "https://hedgehogs.infrawrench.com";
+/** Where links the SDK builds (toolbar, replay) point; needed once ingestion goes through a proxy. */
+const UI_HOST = "https://us.posthog.com";
 
 let enabled = false;
 let promptVisible = false;
@@ -104,7 +113,8 @@ export function initAnalytics(options: AnalyticsOptions): void {
   const { redactUrl, sensitive = false } = options;
 
   posthog.init(options.key, {
-    api_host: options.host || "https://us.i.posthog.com",
+    api_host: options.host || DEFAULT_HOST,
+    ui_host: UI_HOST,
     defaults: "2026-08-30",
     person_profiles: "identified_only",
     cookieless_mode: "on_reject",

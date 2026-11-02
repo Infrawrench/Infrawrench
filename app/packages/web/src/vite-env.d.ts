@@ -7,6 +7,6 @@ interface ImportMetaEnv {
   readonly VITE_GT_DEV_API_KEY?: string;
   /** PostHog project API key (phc_…). Unset turns analytics off entirely. */
   readonly VITE_POSTHOG_KEY?: string;
-  /** PostHog ingestion host; defaults to US Cloud. */
+  /** PostHog ingestion host; defaults to the hedgehogs.infrawrench.com reverse proxy. */
   readonly VITE_POSTHOG_HOST?: string;
 }
