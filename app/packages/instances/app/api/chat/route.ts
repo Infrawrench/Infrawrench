@@ -1,11 +1,17 @@
 import { env } from "cloudflare:workers";
 import { runChat } from "@/lib/chat/agent";
-import type { ChatEvent, ChatTurn } from "@/lib/chat/types";
+import {
+  STEP_HISTORY_ANSWERS,
+  type ChatEvent,
+  type ChatTurn,
+  type SignedToolStep,
+} from "@/lib/chat/types";
 import { DEFAULT_LOCALE, isLocale } from "@/lib/i18n/locales";
 
 /**
  * POST /api/chat: one turn of the instances chat. Takes the transcript the
- * browser keeps (`{ turns: ChatTurn[], locale }`) and streams `ChatEvent`s
+ * browser keeps (`{ turns: ChatTurn[], locale }`, the newest answers with
+ * their signed tool calls) and streams `ChatEvent`s
  * back as NDJSON. Rate limited per IP (`CHAT_LIMITER`); the conversation is
  * not stored.
  */
@@ -15,12 +21,42 @@ const MAX_TURNS = 24;
 /** Characters per turn, and in total. */
 const MAX_TURN_CHARS = 6_000;
 const MAX_TOTAL_CHARS = 60_000;
+/**
+ * Characters of signed tool steps one answer may carry (a step is checked
+ * before use, so this only bounds the work; `openHistory` decides what the
+ * model gets).
+ */
+const MAX_ANSWER_STEP_CHARS = 200_000;
+/** Rounds of tool calls in one answer (the agent's MAX_STEPS). */
+const MAX_ANSWER_STEPS = 10;
+
+/** An answer's signed steps in the expected shape, or undefined when absent, malformed or too large. */
+function parseSteps(raw: unknown): SignedToolStep[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_ANSWER_STEPS) return undefined;
+  let chars = 0;
+  const steps: SignedToolStep[] = [];
+  for (const s of raw) {
+    const { data, sig } = (s ?? {}) as Partial<SignedToolStep>;
+    if (typeof data !== "string" || typeof sig !== "string" || sig.length > 100) return undefined;
+    chars += data.length;
+    steps.push({ data, sig });
+  }
+  return chars <= MAX_ANSWER_STEP_CHARS ? steps : undefined;
+}
 
 function parseTurns(body: unknown): ChatTurn[] | null {
   const raw = (body as { turns?: unknown })?.turns;
   if (!Array.isArray(raw) || raw.length === 0) return null;
   const turns: ChatTurn[] = [];
-  for (const t of raw.slice(-MAX_TURNS)) {
+  const kept = raw.slice(-MAX_TURNS);
+  // Only the newest answers' steps reach the model, so only theirs are read.
+  const withSteps = new Set(
+    kept
+      .map((t, i) => ((t as ChatTurn)?.role === "assistant" && (t as ChatTurn).steps ? i : -1))
+      .filter((i) => i >= 0)
+      .slice(-STEP_HISTORY_ANSWERS),
+  );
+  for (const [i, t] of kept.entries()) {
     const role = (t as ChatTurn)?.role;
     const text = (t as ChatTurn)?.text;
     if ((role !== "user" && role !== "assistant") || typeof text !== "string") return null;
@@ -38,7 +74,13 @@ function parseTurns(body: unknown): ChatTurn[] | null {
             : [],
         )
       : undefined;
-    turns.push({ role, text: text.slice(0, MAX_TURN_CHARS), ...(views ? { views } : {}) });
+    const steps = withSteps.has(i) ? parseSteps((t as ChatTurn).steps) : undefined;
+    turns.push({
+      role,
+      text: text.slice(0, MAX_TURN_CHARS),
+      ...(views ? { views } : {}),
+      ...(steps ? { steps } : {}),
+    });
   }
   let total = 0;
   for (const t of turns)

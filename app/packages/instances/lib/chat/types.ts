@@ -82,6 +82,8 @@ export type ChatEvent =
   | { type: "text"; text: string }
   | { type: "status"; status: "thinking" | "query"; sql?: string }
   | { type: "view"; data: ViewData; watch?: boolean }
+  /** A round of tool calls finished; the browser keeps it with the answer (`ChatTurn.steps`). */
+  | { type: "tool_step"; step: SignedToolStep }
   | { type: "error"; message: string; code?: "rate_limited" | "unavailable" | "refused" }
   | { type: "done" };
 
@@ -93,11 +95,40 @@ export interface ViewRef {
   sql: string;
 }
 
+/** One tool call as the model made it, with the result text it was given. */
+export interface ToolCallRecord {
+  id: string;
+  name: string;
+  input: unknown;
+  result: string;
+  isError?: boolean;
+}
+
+/**
+ * One round of tool calls (the calls the model made in one response, which
+ * run in parallel) as the browser keeps it: `data` is the JSON of its
+ * `ToolCallRecord[]` and `sig` the server's HMAC over it (`lib/chat/steps.ts`),
+ * so a later turn can hand the model its earlier results without trusting
+ * the browser for them.
+ */
+export interface SignedToolStep {
+  data: string;
+  sig: string;
+}
+
+/**
+ * Answers whose tool calls go back to the model, counting back from the
+ * newest. Older answers keep only their text and the SQL of their views.
+ */
+export const STEP_HISTORY_ANSWERS = 3;
+
 /** The transcript the browser keeps and sends back with every message. */
 export interface ChatTurn {
   role: "user" | "assistant";
   text: string;
   views?: ViewRef[];
+  /** An answer's tool calls, in order (only the last `STEP_HISTORY_ANSWERS` answers send them). */
+  steps?: SignedToolStep[];
 }
 
 export const viewRef = (v: StoredView): ViewRef => ({

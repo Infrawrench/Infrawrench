@@ -6,9 +6,11 @@ import { T, Var, useGT, useLocale } from "gt-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { loadConversation, newConversationId, saveConversation } from "@/lib/chat/storage";
 import {
+  STEP_HISTORY_ANSWERS,
   viewRef,
   type ChatEvent,
   type ChatTurn,
+  type SignedToolStep,
   type ViewData,
   type ViewRef,
 } from "@/lib/chat/types";
@@ -46,6 +48,8 @@ interface UiMessage {
   status?: { kind: "thinking" | "query"; sql?: string };
   error?: string;
   pending?: boolean;
+  /** An answer's tool calls, signed by the server; sent back so a follow-up sees them. */
+  steps?: SignedToolStep[];
 }
 
 /** Product names, so never translated. The other clouds come in among AWS's services. */
@@ -340,15 +344,30 @@ interface StoredMessage {
   role: UiMessage["role"];
   parts: Part[];
   error?: string;
+  steps?: SignedToolStep[];
 }
 
-const toStored = (m: UiMessage): StoredMessage => ({
+/**
+ * Only the newest answers' tool calls go back to the server, so only theirs
+ * are kept (they hold query results, which add up in localStorage).
+ */
+function recentSteps(messages: UiMessage[]): Set<string> {
+  return new Set(
+    messages
+      .filter((m) => m.role === "assistant" && m.steps?.length)
+      .slice(-STEP_HISTORY_ANSWERS)
+      .map((m) => m.id),
+  );
+}
+
+const toStored = (m: UiMessage, keepSteps: Set<string>): StoredMessage => ({
   id: m.id,
   role: m.role,
   parts: m.parts.map((p) =>
     p.kind === "text" ? p : { kind: "view", ref: p.ref, ...(p.watch ? { watch: true } : {}) },
   ),
   ...(m.error ? { error: m.error } : {}),
+  ...(m.steps && keepSteps.has(m.id) ? { steps: m.steps } : {}),
 });
 
 async function loadView(id: string): Promise<ViewData | null> {
@@ -360,13 +379,19 @@ async function loadView(id: string): Promise<ViewData | null> {
   }
 }
 
-const toTurns = (messages: UiMessage[]): ChatTurn[] =>
-  messages
-    .filter((m) => !m.pending && m.parts.length)
-    .map((m) => {
-      const views = m.parts.flatMap((p) => (p.kind === "view" ? [p.ref] : []));
-      return { role: m.role, text: textOf(m), ...(views.length ? { views } : {}) };
-    });
+function toTurns(messages: UiMessage[]): ChatTurn[] {
+  const done = messages.filter((m) => !m.pending && m.parts.length);
+  const keepSteps = recentSteps(done);
+  return done.map((m) => {
+    const views = m.parts.flatMap((p) => (p.kind === "view" ? [p.ref] : []));
+    return {
+      role: m.role,
+      text: textOf(m),
+      ...(views.length ? { views } : {}),
+      ...(m.steps && keepSteps.has(m.id) ? { steps: m.steps } : {}),
+    };
+  });
+}
 
 /** The home page: the headline, the question box and suggestions. Asking opens `/chat/<id>`. */
 export function ChatHome() {
@@ -580,6 +605,8 @@ export function Chat({ conversationId }: { conversationId: string }) {
                   },
                 ],
               }));
+            } else if (event.type === "tool_step") {
+              update(reply.id, (m) => ({ ...m, steps: [...(m.steps ?? []), event.step] }));
             } else if (event.type === "error") {
               update(reply.id, (m) => ({ ...m, error: event.code ?? "unavailable" }));
             }
@@ -627,6 +654,7 @@ export function Chat({ conversationId }: { conversationId: string }) {
       role: m.role,
       parts: m.parts,
       ...(m.error ? { error: m.error } : {}),
+      ...(Array.isArray(m.steps) ? { steps: m.steps } : {}),
     }));
     setMessages(restored);
     setReady(true);
@@ -659,7 +687,11 @@ export function Chat({ conversationId }: { conversationId: string }) {
   });
   useEffect(() => {
     if (ready && latest.current.length) {
-      saveConversation(conversationId, latest.current.map(toStored));
+      const keepSteps = recentSteps(latest.current);
+      saveConversation(
+        conversationId,
+        latest.current.map((m) => toStored(m, keepSteps)),
+      );
     }
   }, [conversationId, ready, messages.length, busy]);
 

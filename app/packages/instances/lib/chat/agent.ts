@@ -9,7 +9,9 @@ import type {
 import { env, waitUntil } from "cloudflare:workers";
 import { query, QueryError } from "../warehouse";
 import { SYSTEM_PROMPT, languageBlock } from "./prompt";
-import type { ChatEvent, ChatTurn, QueryResult } from "./types";
+import type { ChatEvent, ChatTurn, QueryResult, ToolCallRecord } from "./types";
+import { catalogText } from "./catalog";
+import { openHistory, signStep } from "./steps";
 import { toMessages } from "./transcript";
 import { checkAgainstResult, parseViewSpec, runView, saveView, storeResult } from "./views";
 
@@ -18,10 +20,12 @@ import { checkAgainstResult, parseViewSpec, runView, saveView, storeResult } fro
  * binding) with three tools over
  * the pricing warehouse, streamed to the browser as `ChatEvent`s.
  *
- * The browser keeps the transcript (`ChatTurn[]`: text plus the views each
- * answer showed) and sends it with every message; nothing about the
- * conversation is stored here. Within a turn the loop is the usual manual
- * tool loop, appending each response's content unchanged.
+ * The browser keeps the transcript (`ChatTurn[]`: text, the views each
+ * answer showed and its signed tool calls) and sends it with every message;
+ * nothing about the conversation is stored here. Within a turn the loop is
+ * the usual manual tool loop, appending each response's content unchanged,
+ * and each round of tool calls is streamed back signed (`tool_step`) so the
+ * next turn can show the model what it queried (`steps.ts`).
  */
 
 export const MODEL = "claude-sonnet-5-5";
@@ -210,14 +214,20 @@ export async function runChat(
   signal: AbortSignal,
 ): Promise<void> {
   const anthropic = client();
-  const messages = toMessages(turns);
+  const secret = env.PRICING_WAREHOUSE_READ_TOKEN;
+  const [history, catalog] = await Promise.all([
+    secret ? openHistory(secret, turns) : turns.map(({ steps: _steps, ...t }) => t),
+    catalogText(),
+  ]);
+  const messages = toMessages(history);
   if (messages.at(-1)?.role !== "user") throw new Error("The last message must be the person's.");
 
   let wroteText = false;
   for (let step = 0; step < MAX_STEPS; step++) {
     emit({ type: "status", status: "thinking" });
     // One moving breakpoint on the newest block caches the turn so far for
-    // the next step (the system prompt holds another; the limit is four).
+    // the next step (the system prompt and the catalog hold two more; the
+    // limit is four).
     for (const m of messages) {
       if (typeof m.content === "string") continue;
       for (const block of m.content) delete (block as { cache_control?: unknown }).cache_control;
@@ -237,6 +247,16 @@ export async function runChat(
         // rejects the field ("Extra inputs are not permitted").
         system: [
           { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+          // Changes only when the data does, so it caches separately.
+          ...(catalog
+            ? [
+                {
+                  type: "text" as const,
+                  text: catalog,
+                  cache_control: { type: "ephemeral" as const },
+                },
+              ]
+            : []),
           { type: "text", text: languageBlock(locale) },
         ],
         tools: TOOLS,
@@ -288,6 +308,16 @@ export async function runChat(
     messages.push({ role: "assistant", content: message.content as BetaContentBlockParam[] });
     const results = await Promise.all(toolUses.map((use) => runTool(use, emit)));
     messages.push({ role: "user", content: results });
+    if (secret) {
+      const calls: ToolCallRecord[] = toolUses.map((use, i) => ({
+        id: use.id,
+        name: use.name,
+        input: use.input,
+        result: String(results[i]!.content ?? ""),
+        ...(results[i]!.is_error ? { isError: true } : {}),
+      }));
+      emit({ type: "tool_step", step: await signStep(secret, calls) });
+    }
   }
   emit({ type: "text", text: "\n\n…" });
 }
