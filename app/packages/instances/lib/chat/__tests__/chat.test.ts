@@ -50,7 +50,9 @@ describe("withRowLimit", () => {
     expect(withRowLimit("WITH x AS (SELECT 1 LIMIT 1) SELECT * FROM x", 5)).toBe(
       "WITH x AS (SELECT 1 LIMIT 1) SELECT * FROM x\nLIMIT 5",
     );
-    expect(withRowLimit("SELECT 'limit' AS \"union\" FROM t /* offset */", 5)).toMatch(/\nLIMIT 5$/);
+    expect(withRowLimit("SELECT 'limit' AS \"union\" FROM t /* offset */", 5)).toMatch(
+      /\nLIMIT 5$/,
+    );
   });
 
   it("leaves alone a query with its own LIMIT, a set operation, an OFFSET or no rows to limit", () => {
