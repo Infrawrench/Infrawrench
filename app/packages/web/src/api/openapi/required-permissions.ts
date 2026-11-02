@@ -969,7 +969,10 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /v1/sync/status": "resources:read",
   // identity check for any bearer credential; reveals only its own owner
   "GET /v1/whoami": null,
-  // AWS's public price list, readable by any bearer credential
+  // the providers' public price lists, readable by any bearer credential
+  // (`aws-pricing` is the deprecated alias of `instance-pricing`)
+  "GET /v1/instance-pricing/schema": null,
+  "POST /v1/instance-pricing/query": null,
   "GET /v1/aws-pricing/schema": null,
   "POST /v1/aws-pricing/query": null,
   // push (device routes are user-scoped; preference/test routes are

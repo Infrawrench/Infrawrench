@@ -446,7 +446,7 @@ app_env = {
   # set it after the Worker, and unset it to roll back.
   # POLLER_SCOPE = "gateway"
 
-  # AWS bulk pricing data (OPTIONAL). The edge Worker reads it from its KV
+  # Bulk pricing data, AWS plus RunPod and Alibaba Cloud (OPTIONAL). The edge Worker reads it from its KV
   # binding; these let the Node gateway read the same namespace over the
   # Cloudflare REST API (a token with Workers KV Storage: Read) instead of
   # answering 503 for `/api/v1/aws-bulk-pricing`.
@@ -454,10 +454,11 @@ app_env = {
   # AWS_BULK_PRICING_KV_NAMESPACE_ID = "4baca4fd13ec4d4684d41e761f52af01"
   # AWS_BULK_PRICING_KV_API_TOKEN    = "..."
 
-  # AWS pricing warehouse (OPTIONAL). The read-only bearer token for the
+  # Instance pricing warehouse (OPTIONAL). The read-only bearer token for the
   # CloudHouse warehouse behind instances.infrawrench.com, which
-  # `/api/v1/aws-pricing/query` runs SQL against; without it that route answers
-  # 503. The same value is the instances Worker's PRICING_WAREHOUSE_READ_TOKEN.
+  # `/api/v1/instance-pricing/query` (and its deprecated alias
+  # `/api/v1/aws-pricing/query`) runs SQL against; without it that route
+  # answers 503. The same value is the instances Worker's PRICING_WAREHOUSE_READ_TOKEN.
   # PRICING_WAREHOUSE_URL is optional (defaults to the public endpoint).
   # PRICING_WAREHOUSE_READ_TOKEN = "..."
 

@@ -380,4 +380,9 @@
 // public status page history since 2008), listed by
 // `GET /api/v1/aws-pricing/schema` and queryable through
 // `POST /api/v1/aws-pricing/query`. Additive.
-export const API_VERSION = "1.87.0";
+// 1.88.0: the pricing warehouse covers RunPod (GPU types and CPU pods) and
+// Alibaba Cloud ECS beside AWS, and its SQL API moves to the cloud-neutral
+// `GET /api/v1/instance-pricing/schema` and `POST /api/v1/instance-pricing/query`.
+// The `/api/v1/aws-pricing/*` paths stay as deprecated aliases that behave
+// identically, so existing clients keep working. Additive.
+export const API_VERSION = "1.88.0";

@@ -1,0 +1,300 @@
+---
+title: Instance pricing SQL API
+description: Query every AWS, RunPod and Alibaba Cloud instance type's specs and every on-demand, committed and spot price, with history, in read-only SQL over the HTTP API.
+sidebar_order: 9
+---
+
+The data behind [instances.infrawrench.com](https://instances.infrawrench.com) and its [chat](../features/instance-price-chat.md) is a ClickHouse database you can query directly in SQL. It holds every instance type's specs, and every price its provider has listed for it (on demand, committed terms and EC2 spot), in every region, with history, for:
+
+- **AWS**, twelve services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift (`platform` is the service, e.g. `ec2`). Built from every published version of the AWS Price List.
+- **RunPod** (`platform = 'runpod'`): GPU types, priced per GPU per hour, and CPU pods, in Secure Cloud and Community Cloud, with 3- and 6-month savings plans. History starts in November 2026.
+- **Alibaba Cloud ECS** (`platform = 'alibaba'`): pay-as-you-go, subscription (1 month to 5 years) and reserved instance prices in every region, from its international site, back to May 2018.
+
+Each is reloaded as its provider publishes. It also holds every incident AWS has posted on its public Health Dashboard since 2008 (`service_events`), for questions about outages and reliability.
+
+Two endpoints, both in the [OpenAPI spec](./openapi.md) (tag **Instance pricing**) and so in every [client SDK](./client-sdks.md):
+
+- `POST /api/v1/instance-pricing/query` runs one read-only statement.
+- `GET /api/v1/instance-pricing/schema` returns the tables below as JSON, with how fresh each platform's data is.
+
+They were served at `/api/v1/aws-pricing/query` and `/api/v1/aws-pricing/schema` before the database covered other clouds. Those paths still work, identically, and are marked deprecated in the spec; use the new ones in new code.
+
+Any Infrawrench bearer credential works: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. No scope is needed, because the data is the providers' public price lists. If you would rather download whole services and work offline, the [bulk instances API](./bulk-instances-api.md) serves the same price lists as files.
+
+## Run a query
+
+```bash
+curl https://app.infrawrench.com/api/v1/instance-pricing/query \
+  -H "Authorization: Bearer $INFRAWRENCH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "SELECT instance_type, vcpu, memory_gib, effective_hourly_usd FROM prices WHERE platform = '\''ec2'\'' AND current AND pricing = '\''on_demand'\'' AND region = '\''us-east-1'\'' AND operating_system = '\''Linux'\'' AND tenancy = '\''Shared'\'' AND pre_installed_sw = '\''NA'\'' AND capacity_status = '\''Used'\'' AND architecture = '\''arm64'\'' ORDER BY effective_hourly_usd LIMIT 3"}'
+```
+
+```json
+{
+  "columns": [
+    { "name": "instance_type", "type": "String" },
+    { "name": "vcpu", "type": "Nullable(Float64)" },
+    { "name": "memory_gib", "type": "Nullable(Float64)" },
+    { "name": "effective_hourly_usd", "type": "Float64" }
+  ],
+  "rows": [
+    ["t4g.nano", 2, 0.5, 0.0042],
+    ["t4g.micro", 2, 1, 0.0084],
+    ["t4g.small", 2, 2, 0.0168]
+  ],
+  "truncated": false,
+  "elapsedMs": 412
+}
+```
+
+The request body is `{ "sql": "...", "maxRows": 1000 }`:
+
+- **`sql`**: one statement, `SELECT` or `WITH` (also `DESCRIBE`, `SHOW` and `EXPLAIN`). No `FORMAT` or `SETTINGS` clause and no second statement; a trailing semicolon is fine. It is ClickHouse SQL, so its functions (`argMin`, `quantile`, `toStartOfMonth`, `arrayJoin`...) and joins work.
+- **`maxRows`**: the most rows to return, 1 to 10,000; 1,000 if left out. When more rows match, `truncated` is `true`: aggregate or add a `LIMIT` rather than raising it.
+
+Values come back in `columns` order. Numbers, including ClickHouse's 64-bit integers and decimals, are JSON numbers (values above 2^53 lose precision); `DateTime` values are `YYYY-MM-DD hh:mm:ss` in UTC; arrays and maps come back as JSON text.
+
+| Status | Means                                                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `200`  | The result.                                                                                                                          |
+| `400`  | The query was refused: not read-only, more than one statement, or ClickHouse's own error (unknown column, syntax), with its message. |
+| `401`  | The credential is missing, unknown or revoked.                                                                                       |
+| `502`  | The database could not answer. Try again shortly; it happens briefly while new data is loading.                                      |
+| `504`  | The query ran longer than 30 seconds.                                                                                                |
+
+## Writing fast, correct queries
+
+- **Filter `prices` on `platform` and `current`** (or a time range on `valid_from` / `valid_to`). It has millions of rows for EC2 alone, sorted by platform, instance type, region and pricing, so filters on those come back fastest.
+- **Fix the variant columns.** One instance type in one region has many prices: per operating system, tenancy, license and bundled software on EC2, per engine and deployment option on RDS, per operating system and network type on Alibaba (`variant['networkType']`), per cloud on RunPod (`variant['cloudType']`), and so on. Leave them open and you will average Windows into Linux. The notes below give the usual defaults.
+- **Compare on `effective_hourly_usd`.** It folds a committed term's upfront payment into the hourly rate (an Alibaba subscription is all upfront), so on-demand, reserved, subscription, savings plan and spot prices compare directly. A month is 730 hours.
+- **Use `instance_types` for specs.** `prices` repeats the common specs (architecture, vCPUs, memory, GPUs) on every row, so most questions need no join; join `instance_types` on `(platform, instance_type)` for anything else.
+
+A few more examples:
+
+```sql
+-- The cheapest current-generation ARM type per family, Linux on demand in eu-west-1
+SELECT family, argMin(instance_type, effective_hourly_usd) AS cheapest, min(effective_hourly_usd) AS per_hour
+FROM prices
+WHERE platform = 'ec2' AND current AND pricing = 'on_demand' AND region = 'eu-west-1'
+  AND operating_system = 'Linux' AND tenancy = 'Shared' AND pre_installed_sw = 'NA'
+  AND capacity_status = 'Used' AND architecture = 'arm64'
+GROUP BY family ORDER BY per_hour
+
+-- How db.r6g.large's PostgreSQL Single-AZ price changed, per region
+SELECT region, valid_from, valid_to, hourly_usd
+FROM prices
+WHERE platform = 'rds' AND instance_type = 'db.r6g.large' AND pricing = 'on_demand'
+  AND database_engine = 'PostgreSQL' AND deployment_option = 'Single-AZ'
+  AND usage_type NOT LIKE '%Unused%'
+ORDER BY region, valid_from
+
+-- Spot discount against on demand for m7g.large in us-east-1
+SELECT pricing, effective_hourly_usd
+FROM prices
+WHERE platform = 'ec2' AND instance_type = 'm7g.large' AND region = 'us-east-1' AND current
+  AND operating_system = 'Linux' AND pricing IN ('spot', 'on_demand')
+  AND (pricing = 'spot' OR (tenancy = 'Shared' AND pre_installed_sw = 'NA' AND capacity_status = 'Used'))
+
+-- Instance types AWS added in the last 90 days
+SELECT platform, instance_type, first_listed FROM instance_types
+WHERE first_listed > now() - INTERVAL 90 DAY ORDER BY first_listed DESC
+
+-- The cheapest GPU on RunPod with at least 80 GB of memory, per GPU-hour, in each cloud
+SELECT p.variant['cloudType'] AS cloud, argMin(p.instance_type, p.hourly_usd) AS gpu, min(p.hourly_usd) AS per_gpu_hour
+FROM prices AS p JOIN instance_types AS t ON t.platform = p.platform AND t.instance_type = p.instance_type
+WHERE p.platform = 'runpod' AND p.current AND p.pricing = 'on_demand' AND t.gpu_memory_gib >= 80
+GROUP BY cloud
+
+-- An 8 vCPU, 32 GiB machine on AWS and Alibaba Cloud in their Virginia regions, Linux on demand
+SELECT platform, argMin(instance_type, effective_hourly_usd) AS cheapest, min(effective_hourly_usd) AS per_hour
+FROM prices
+WHERE platform IN ('ec2', 'alibaba') AND current AND pricing = 'on_demand' AND region = 'us-east-1'
+  AND vcpu = 8 AND memory_gib = 32 AND operating_system = 'Linux'
+  AND ((platform = 'alibaba' AND variant['networkType'] = 'VPC')
+    OR (platform = 'ec2' AND tenancy = 'Shared' AND pre_installed_sw = 'NA'
+      AND capacity_status = 'Used' AND license_model = 'No License required'))
+GROUP BY platform
+
+-- EC2 incidents AWS posted for eu-west-1 each year, and the hours they lasted
+SELECT toYear(posted_at) AS year, count() AS incidents,
+  round(sum(dateDiff('minute', coalesce(impact_started_at, posted_at),
+    coalesce(impact_ended_at, resolved_at, now()))) / 60, 1) AS hours
+FROM service_events
+WHERE region = 'eu-west-1'
+  AND (service = 'ec2' OR mapContains(impacted_services, 'ec2-eu-west-1'))
+GROUP BY year ORDER BY year
+```
+
+## Schema
+
+Six tables, all in the default database. `GET /api/v1/instance-pricing/schema` returns the same descriptions as JSON, and each column also carries its description as a ClickHouse `COMMENT`, so `DESCRIBE TABLE prices` shows it too.
+
+### `prices`
+
+Every price the provider has listed for an instance type, one row per period a price held. `current = true` (equivalently `valid_to IS NULL`) is the price on offer now; filter on it unless the question is about history. A product's price is identified by (platform, instance_type, region, pricing, lease, offering_class, purchase_option) plus its variant columns, so always fix the variant columns that matter for the platform (see the defaults in the notes) or you will mix e.g. Windows and Linux prices.
+
+Sorted by `platform, instance_type, region, pricing, valid_from`.
+
+| Column                 | Type                     | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source`               | `LowCardinality(String)` | Which price list bundle the row was loaded from: the platform name, or `spot` for EC2 spot prices. Rarely needed in queries.                                                                                                                                                                                                                                                                                                                                      |
+| `shard`                | `LowCardinality(String)` | Internal storage partition (the source, split into buckets for ec2 and spot). Never needed in queries.                                                                                                                                                                                                                                                                                                                                                            |
+| `platform`             | `LowCardinality(String)` | Platform. AWS services: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift` (EC2 spot prices are `ec2`). Other clouds: `runpod` (RunPod GPU types and CPU pods) and `alibaba` (Alibaba Cloud ECS).                                                                                                                                                                                     |
+| `instance_type`        | `String`                 | The instance type as the provider names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`; Alibaba `ecs.g7.large`; RunPod GPU type ids such as `NVIDIA H100 80GB HBM3` and CPU pod ids such as `cpu3c-2-4` (flavor, vCPUs, GB of memory).                                                                                                                                                             |
+| `family`               | `LowCardinality(String)` | Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`, `g7` for Alibaba's `ecs.g7.large`, the flavor `cpu3c` for a RunPod CPU pod `cpu3c-2-4`; `''` when the name does not parse (RunPod GPU types).                                                                                                                                                                                                                         |
+| `size`                 | `LowCardinality(String)` | Size part of the name: `nano`, `micro`, `small`, `medium`, `large`, `xlarge`, `2xlarge`, ..., `metal`, `metal-48xl`; for a RunPod CPU pod, `<vcpus>-<memory GB>` (`2-4`); `''` for RunPod GPU types.                                                                                                                                                                                                                                                              |
+| `architecture`         | `LowCardinality(String)` | CPU architecture: `arm64` (AWS Graviton, Apple silicon, Alibaba Yitian and Ampere) or `x86_64` (Intel, AMD, Hygon); `''` when the provider gives nothing to tell (RunPod). Use this for ARM vs x86 questions.                                                                                                                                                                                                                                                     |
+| `vcpu`                 | `Nullable(Float64)`      | vCPUs; NULL for RunPod GPU types.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `memory_gib`           | `Nullable(Float64)`      | Memory in GiB (RunPod reports GB); NULL for RunPod GPU types, whose memory is GPU memory (instance_types.gpu_memory_gib).                                                                                                                                                                                                                                                                                                                                         |
+| `gpus`                 | `Nullable(UInt32)`       | Number of GPUs (or accelerators); NULL when it has none listed. 1 for a RunPod GPU type, which is priced per GPU.                                                                                                                                                                                                                                                                                                                                                 |
+| `region`               | `LowCardinality(String)` | Region code, e.g. `us-east-1`, `eu-central-1`, or a Local Zone / Wavelength code such as `us-east-1-atl-1`. For the few locations AWS gives no code it is the location name. Alibaba uses its region ids (`cn-hangzhou`, `ap-southeast-1`, and its own `us-east-1`, Virginia). RunPod prices are the same in every data center, so every RunPod row is `global`. Join `regions` (on source or platform too, since codes repeat across clouds) for the human name. |
+| `pricing`              | `LowCardinality(String)` | `on_demand` (Alibaba: pay-as-you-go), `reserved` (any committed price: AWS reserved instances, Alibaba subscriptions and reserved instances, RunPod savings plans; see lease, offering_class, purchase_option) or `spot` (EC2 spot, Linux and Windows only, from AWS's spot price feed).                                                                                                                                                                          |
+| `lease`                | `LowCardinality(String)` | Committed term length: `1yr` or `3yr` (AWS, Alibaba reserved instances), `1mo` or `1yr` to `5yr` (Alibaba subscriptions), `3mo` or `6mo` (RunPod savings plans); `''` for on-demand and spot.                                                                                                                                                                                                                                                                     |
+| `offering_class`       | `LowCardinality(String)` | What kind of commitment: AWS reserved instances `standard` or `convertible`; Alibaba `Subscription` or `Reserved Instance`; RunPod `Savings Plan`; `''` otherwise.                                                                                                                                                                                                                                                                                                |
+| `purchase_option`      | `LowCardinality(String)` | Payment option: `No Upfront`, `Partial Upfront` or `All Upfront` (Alibaba subscriptions and RunPod savings plans are always `All Upfront`); `''` otherwise.                                                                                                                                                                                                                                                                                                       |
+| `operating_system`     | `LowCardinality(String)` | EC2, GameLift and spot: `Linux`, `Windows`, `RHEL`, `SUSE`, `Ubuntu Pro`, `Red Hat Enterprise Linux with HA`, ... ; Alibaba: `Linux` or `Windows`; `''` elsewhere.                                                                                                                                                                                                                                                                                                |
+| `tenancy`              | `LowCardinality(String)` | EC2: `Shared` (normal), `Dedicated` (dedicated instance) or `Host` (dedicated host).                                                                                                                                                                                                                                                                                                                                                                              |
+| `license_model`        | `LowCardinality(String)` | EC2: `No License required` (the normal price, Windows license included), `License Included - Infrastructure` and `Bring your own license` (Windows only; both are the compute part alone, without the Windows license). RDS: `No license required`, `License included`, `Bring your own license`, `Bring your own media`, `Marketplace`. Match on the exact value.                                                                                                |
+| `pre_installed_sw`     | `LowCardinality(String)` | EC2: bundled software, `NA` for none, else e.g. `SQL Std`, `SQL Web`, `SQL Ent`.                                                                                                                                                                                                                                                                                                                                                                                  |
+| `capacity_status`      | `LowCardinality(String)` | EC2: `Used` (a normal running instance), `UnusedCapacityReservation` or `AllocatedCapacityReservation`.                                                                                                                                                                                                                                                                                                                                                           |
+| `database_engine`      | `LowCardinality(String)` | RDS: `PostgreSQL`, `MySQL`, `MariaDB`, `Oracle`, `SQL Server`, `Aurora PostgreSQL`, `Aurora MySQL`, `Db2`, ...                                                                                                                                                                                                                                                                                                                                                    |
+| `database_edition`     | `LowCardinality(String)` | RDS: edition for commercial engines (`Standard`, `Enterprise`, `Web`, `Express`, ...); `''` for open-source ones.                                                                                                                                                                                                                                                                                                                                                 |
+| `deployment_option`    | `LowCardinality(String)` | RDS: `Single-AZ`, `Multi-AZ`, `Multi-AZ (readable standbys)`, ...                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `deployment_model`     | `LowCardinality(String)` | RDS: e.g. `Outposts`; usually `''`.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `engine_media_type`    | `LowCardinality(String)` | RDS: e.g. `AWS-provided`; usually `''`.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `cache_engine`         | `LowCardinality(String)` | ElastiCache and MemoryDB: `Redis`, `Valkey`, `Memcached`.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `software_type`        | `LowCardinality(String)` | EMR: the EMR software line, e.g. `EMR`.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `component`            | `LowCardinality(String)` | SageMaker: what the instance runs, e.g. `Hosting`, `Training`, `Notebook`, `Processing`, `studio-jupyterlab`.                                                                                                                                                                                                                                                                                                                                                     |
+| `usage_type`           | `LowCardinality(String)` | AWS usage type with the region prefix removed, e.g. `BoxUsage`, `InstanceUsage`, `Multi-AZUsage`, `NodeUsage`. Distinguishes e.g. Outposts or durability variants.                                                                                                                                                                                                                                                                                                |
+| `variant`              | `Map(String, String)`    | Any other variant fields, by their price list key: Neptune `mncu`, SageMaker `platoinstancetype`; Alibaba `networkType` (`VPC`, or `Classic` in older history); RunPod `cloudType` (`Secure Cloud` or `Community Cloud`). Read with variant['networkType'].                                                                                                                                                                                                       |
+| `hourly_usd`           | `Float64`                | Hourly price in USD. For reserved rows it is the recurring hourly fee only (0 for All Upfront terms and Alibaba subscriptions); see effective_hourly_usd. A RunPod savings plan's hourly_usd is its effective hourly rate. RunPod GPU prices are per GPU.                                                                                                                                                                                                         |
+| `upfront_usd`          | `Float64`                | One-off upfront payment in USD for a committed term (an Alibaba subscription's whole price); 0 otherwise.                                                                                                                                                                                                                                                                                                                                                         |
+| `effective_hourly_usd` | `Float64`                | What an hour costs all in: hourly_usd plus upfront_usd spread over the term (8,760 hours a year, 730 a month). Compare on this. A month is 730 hours.                                                                                                                                                                                                                                                                                                             |
+| `valid_from`           | `DateTime`               | When the provider started listing this price (UTC).                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `valid_to`             | `Nullable(DateTime)`     | When the price stopped applying (replaced, withdrawn or the instance retired); NULL while it is current.                                                                                                                                                                                                                                                                                                                                                          |
+| `current`              | `Bool`                   | True for prices on offer now (valid_to IS NULL).                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+### `instance_types`
+
+One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs the provider does not list are NULL or `''`; `attributes` has every attribute it publishes, as strings (AWS's price list keys, Alibaba's DescribeInstanceTypes fields such as `CpuCoreCount` and `CpuOptions.ThreadsPerCore`, RunPod's GraphQL fields such as `maxGpuCountSecureCloud` and `dataCenters`).
+
+Sorted by `platform, instance_type`.
+
+| Column                | Type                     | What it holds                                                                                                                                                                                                                                                                                                                                        |
+| --------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source`              | `LowCardinality(String)` | Which price list bundle the row was loaded from: the platform name, or `spot` for EC2 spot prices. Rarely needed in queries.                                                                                                                                                                                                                         |
+| `platform`            | `LowCardinality(String)` | Platform. AWS services: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift` (EC2 spot prices are `ec2`). Other clouds: `runpod` (RunPod GPU types and CPU pods) and `alibaba` (Alibaba Cloud ECS).                                                                        |
+| `instance_type`       | `String`                 | The instance type as the provider names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`; Alibaba `ecs.g7.large`; RunPod GPU type ids such as `NVIDIA H100 80GB HBM3` and CPU pod ids such as `cpu3c-2-4` (flavor, vCPUs, GB of memory).                                                |
+| `family`              | `LowCardinality(String)` | Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`, `g7` for Alibaba's `ecs.g7.large`, the flavor `cpu3c` for a RunPod CPU pod `cpu3c-2-4`; `''` when the name does not parse (RunPod GPU types).                                                                                                            |
+| `size`                | `LowCardinality(String)` | Size part of the name: `nano`, `micro`, `small`, `medium`, `large`, `xlarge`, `2xlarge`, ..., `metal`, `metal-48xl`; for a RunPod CPU pod, `<vcpus>-<memory GB>` (`2-4`); `''` for RunPod GPU types.                                                                                                                                                 |
+| `architecture`        | `LowCardinality(String)` | CPU architecture: `arm64` (AWS Graviton, Apple silicon, Alibaba Yitian and Ampere) or `x86_64` (Intel, AMD, Hygon); `''` when the provider gives nothing to tell (RunPod). Use this for ARM vs x86 questions.                                                                                                                                        |
+| `vcpu`                | `Nullable(Float64)`      | vCPUs; NULL for RunPod GPU types.                                                                                                                                                                                                                                                                                                                    |
+| `memory_gib`          | `Nullable(Float64)`      | Memory in GiB (RunPod reports GB); NULL for RunPod GPU types, whose memory is GPU memory (instance_types.gpu_memory_gib).                                                                                                                                                                                                                            |
+| `gpus`                | `Nullable(UInt32)`       | Number of GPUs (or accelerators); NULL when it has none listed. 1 for a RunPod GPU type, which is priced per GPU.                                                                                                                                                                                                                                    |
+| `gpu_memory_gib`      | `Nullable(Float64)`      | Total GPU memory in GiB (RunPod: the one GPU's memory in GB).                                                                                                                                                                                                                                                                                        |
+| `gpu_model`           | `String`                 | GPU model when the provider names it, e.g. `NVIDIA A10G`, Alibaba `NVIDIA A10`, RunPod's display name `H100 SXM`.                                                                                                                                                                                                                                    |
+| `processor`           | `String`                 | Physical processor, e.g. `AWS Graviton3 Processor`, `Intel Xeon Platinum 8488C`, `AMD EPYC 9R14`; `''` for RunPod.                                                                                                                                                                                                                                   |
+| `clock_speed_ghz`     | `Nullable(Float64)`      | Sustained clock speed in GHz.                                                                                                                                                                                                                                                                                                                        |
+| `network_performance` | `String`                 | As AWS writes it, e.g. `Up to 12.5 Gigabit`, `25 Gigabit`, `Moderate`; Alibaba's receive bandwidth as `<n> Gbit/s`; `''` for RunPod.                                                                                                                                                                                                                 |
+| `network_gbps`        | `Nullable(Float64)`      | network_performance as a number of Gbit/s (the burst figure for `Up to`); NULL for `Low`/`Moderate`/`High`.                                                                                                                                                                                                                                          |
+| `storage`             | `String`                 | Instance storage as AWS writes it, e.g. `EBS only`, `1 x 237 NVMe SSD`; Alibaba local disks as `<count> x <GiB> GiB <category>`; `''` when there is none listed.                                                                                                                                                                                     |
+| `category`            | `LowCardinality(String)` | The provider's family category: AWS `General purpose`, `Compute optimized`, `Memory optimized`, `Storage optimized`, `GPU instance`, `Accelerated Computing`, ...; Alibaba `General-purpose`, `Compute-optimized`, `Memory-optimized`, `GPU`, ...; RunPod `GPU`, or a CPU pod's flavor (`Compute-Optimized`, `General Purpose`, `Memory-Optimized`). |
+| `current_generation`  | `Bool`                   | False for previous-generation types AWS still sells but no longer recommends; always true for RunPod and Alibaba.                                                                                                                                                                                                                                    |
+| `regions_offered`     | `UInt32`                 | How many regions offer it on demand now; 0 when it is no longer sold anywhere.                                                                                                                                                                                                                                                                       |
+| `first_listed`        | `DateTime`               | When it first appeared in the price list (UTC).                                                                                                                                                                                                                                                                                                      |
+| `retired_at`          | `Nullable(DateTime)`     | When the provider dropped it from the price list; NULL while it is listed. Filter `retired_at IS NULL` for types you can still buy.                                                                                                                                                                                                                  |
+| `attributes`          | `Map(String, String)`    | Every attribute the provider lists for it, current values.                                                                                                                                                                                                                                                                                           |
+
+### `attribute_changes`
+
+History of instance attributes: the values each type was first listed with, then every change. Use it for questions like when a spec changed.
+
+Sorted by `platform, instance_type, at`.
+
+| Column          | Type                     | What it holds                                                                                                                                                                                                                                                                                         |
+| --------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source`        | `LowCardinality(String)` | Which price list bundle the row was loaded from: the platform name, or `spot` for EC2 spot prices. Rarely needed in queries.                                                                                                                                                                          |
+| `platform`      | `LowCardinality(String)` | Platform. AWS services: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift` (EC2 spot prices are `ec2`). Other clouds: `runpod` (RunPod GPU types and CPU pods) and `alibaba` (Alibaba Cloud ECS).                         |
+| `instance_type` | `String`                 | The instance type as the provider names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`; Alibaba `ecs.g7.large`; RunPod GPU type ids such as `NVIDIA H100 80GB HBM3` and CPU pod ids such as `cpu3c-2-4` (flavor, vCPUs, GB of memory). |
+| `at`            | `DateTime`               | When the value took effect (UTC).                                                                                                                                                                                                                                                                     |
+| `attribute`     | `String`                 | The provider's attribute key, e.g. AWS `memory`, `networkPerformance`; Alibaba `MemorySize`.                                                                                                                                                                                                          |
+| `value`         | `Nullable(String)`       | The new value; NULL when the attribute was removed.                                                                                                                                                                                                                                                   |
+| `region`        | `String`                 | Region code it applies to, `''` for every region.                                                                                                                                                                                                                                                     |
+
+### `regions`
+
+Region codes and the names the provider gives them, per source. Use it to turn a city or country into a region code. Codes repeat across clouds (Alibaba also has `us-east-1`), so filter on source.
+
+Sorted by `region`.
+
+| Column          | Type                     | What it holds                                                                                                                |
+| --------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `source`        | `LowCardinality(String)` | Which price list bundle the row was loaded from: the platform name, or `spot` for EC2 spot prices. Rarely needed in queries. |
+| `region`        | `String`                 | Region code as in prices.region, e.g. `eu-central-1`.                                                                        |
+| `location`      | `String`                 | The location's name, e.g. AWS `EU (Frankfurt)`, Alibaba `China (Hangzhou)`; RunPod `global`.                                 |
+| `location_type` | `LowCardinality(String)` | `AWS Region`, `AWS Local Zone`, `AWS Wavelength Zone` or `AWS Outposts`; `Alibaba Cloud Region`; RunPod `Global`.            |
+
+### `sync_state`
+
+When each bundle was loaded and which price lists it covers; `max(price_list_to)` is how fresh the data is.
+
+Sorted by `source`.
+
+| Column            | Type                     | What it holds                                                                                                                |
+| ----------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `source`          | `LowCardinality(String)` | Which price list bundle the row was loaded from: the platform name, or `spot` for EC2 spot prices. Rarely needed in queries. |
+| `version`         | `String`                 | The bundle version loaded.                                                                                                   |
+| `schema_version`  | `UInt32`                 | Warehouse schema version it was loaded with.                                                                                 |
+| `price_lists`     | `UInt32`                 | How many price list versions the bundle was built from.                                                                      |
+| `price_list_from` | `Nullable(DateTime)`     | Oldest price list in the bundle (UTC).                                                                                       |
+| `price_list_to`   | `Nullable(DateTime)`     | Newest price list in the bundle (UTC).                                                                                       |
+| `synced_at`       | `DateTime`               | When it was loaded (UTC).                                                                                                    |
+| `price_rows`      | `UInt64`                 | Rows it wrote to prices.                                                                                                     |
+
+### `service_events`
+
+Every incident AWS posted on its public Health Dashboard (status page), 2008 to now: one row per event, with when it was posted, when AWS says the impact began and ended, and every update AWS wrote. Only events AWS chose to post publicly; account-specific issues never appear, so no event does not prove no impact. Use it for questions about outages, incidents and how reliable a service or region has been.
+
+Sorted by `provider, service, region, posted_at`.
+
+| Column              | Type                     | What it holds                                                                                                                                                                                                           |
+| ------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider`          | `LowCardinality(String)` | Cloud provider: `aws`.                                                                                                                                                                                                  |
+| `event_key`         | `String`                 | Unique id of the event: AWS's dashboard service key and the epoch second it was posted, e.g. `ec2-eu-west-1\|1680798000`.                                                                                               |
+| `service`           | `LowCardinality(String)` | AWS Health's service code, e.g. `ec2`, `s3`, `lambda`, `rds`, `elasticache`; `multipleservices` for an event AWS posted against several services at once (see impacted_services).                                       |
+| `service_name`      | `String`                 | The service's name, e.g. `Amazon Elastic Compute Cloud`; `''` when AWS's feeds never named it.                                                                                                                          |
+| `region`            | `LowCardinality(String)` | Region code, e.g. `eu-west-1` (Dublin, Ireland); `''` for a global service such as IAM, Route 53 or CloudFront.                                                                                                         |
+| `arn`               | `String`                 | AWS Health's event ARN; `''` for events before 2023.                                                                                                                                                                    |
+| `severity`          | `LowCardinality(String)` | The worst status the event reached, as the dashboard labels it: `impacted` (AWS's informational level), `degraded` or `disrupted`.                                                                                      |
+| `summary`           | `String`                 | AWS's title for the event, e.g. `Increased API Error Rates`.                                                                                                                                                            |
+| `posted_at`         | `DateTime`               | When AWS posted the event (UTC); the impact usually began earlier.                                                                                                                                                      |
+| `last_update_at`    | `DateTime`               | When AWS last updated it (UTC).                                                                                                                                                                                         |
+| `resolved_at`       | `Nullable(DateTime)`     | When AWS posted that it was resolved (UTC); NULL while it is ongoing.                                                                                                                                                   |
+| `impact_started_at` | `Nullable(DateTime)`     | When AWS says the impact began (UTC), read from its resolution message (`Between 6:14 AM and 9:33 AM PDT, ...`); NULL when the message gives no window.                                                                 |
+| `impact_ended_at`   | `Nullable(DateTime)`     | When AWS says the impact ended (UTC), from the same message; NULL when it gives no window.                                                                                                                              |
+| `updates`           | `UInt32`                 | How many updates AWS posted.                                                                                                                                                                                            |
+| `description`       | `String`                 | AWS's last update, as plain text: for a resolved event, its own summary of what happened and when.                                                                                                                      |
+| `event_log`         | `String`                 | Every update, oldest first, each as `YYYY-MM-DD HH:MM UTC  message`, separated by blank lines.                                                                                                                          |
+| `impacted_services` | `Map(String, String)`    | Other services AWS listed as affected (since 2023), by service key (`eks-us-east-1`) to name. `mapContains(impacted_services, 'ec2-eu-west-1')` finds events that hit EC2 in eu-west-1 without being posted against it. |
+
+### Notes for writing queries
+
+- All prices are USD (Alibaba's from its international site). Timestamps are UTC DateTime.
+- Usual defaults when a question does not say otherwise: for ec2, operating_system = 'Linux', tenancy = 'Shared', pre_installed_sw = 'NA', capacity_status = 'Used', license_model = 'No License required' and pricing = 'on_demand'; for rds, deployment_option = 'Single-AZ', one database_engine (PostgreSQL if unsaid) and usage_type NOT LIKE '%Unused%' (those rows price unused capacity reservations); for elasticache and memorydb, cache_engine = 'Redis' (or 'Valkey') and usage_type = 'NodeUsage'; region us-east-1.
+- EC2 Windows: the price AWS quotes for Windows (license included) is license_model = 'No License required'. The `License Included - Infrastructure` and `Bring your own license` rows price only the compute, at the Linux rate, so never quote them as the Windows price unless the question is about bringing a license. Windows with SQL Server is pre_installed_sw = 'SQL Web', 'SQL Std' or 'SQL Ent'.
+- "Cheapest" means the lowest effective_hourly_usd among current rows. Hourly to monthly: x 730.
+- Spot rows (pricing = 'spot') only exist for ec2 with operating_system 'Linux' or 'Windows', and leave tenancy, license_model, pre_installed_sw and capacity_status as '': drop those ec2 defaults for spot (pricing = 'spot' OR (tenancy = 'Shared' AND ...)). A spot price is the lowest across the region's availability zones, as AWS's Spot pricing page shows it. Spot history starts 2026-08-03 with a price every hour (for the 17 main regions; the others and Local Zones start 2026-11-01), and has one every 6 hours since 2026-11-01, so aggregate it (by day, say) rather than listing rows.
+- Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.
+- RunPod (platform = 'runpod'): GPU types are priced per GPU per hour (size and family are '', gpus = 1, gpu_memory_gib is the GPU's memory) and CPU pods per pod per hour; tell them apart with attributes['productFamily'] ('GPU' or 'CPU') on instance_types. Every price is region = 'global'; pick a cloud with variant['cloudType'] = 'Secure Cloud' (the default) or 'Community Cloud' (cheaper, community hosts). Savings plans are pricing = 'reserved', offering_class = 'Savings Plan', lease '3mo' or '6mo', with hourly_usd the effective rate. Which data centers stock a GPU is attributes['dataCenters'] (comma separated); stock levels and spot prices are not included. History starts in November 2026.
+- Alibaba Cloud ECS (platform = 'alibaba'): default to operating_system = 'Linux' and variant['networkType'] = 'VPC' (Classic is retired). on_demand is pay-as-you-go. Subscriptions are offering_class = 'Subscription' (lease '1mo' or '1yr' to '5yr', paid in full: hourly_usd = 0, upfront_usd the price); reserved instances are offering_class = 'Reserved Instance' (lease '1yr' or '3yr', with a purchase_option). Prices go back to May 2018; specs (attributes) start in May 2023, so older retired types can have NULL vcpu and memory_gib.
+- Comparing clouds: region codes are each provider's own, so join regions on source as well as region and compare by location (Alibaba's us-east-1 is US (Virginia), the same area as AWS's us-east-1). Compare on effective_hourly_usd for similar vcpu and memory_gib, and say which cloud each row is from.
+- Use instance_types for specs and to list types; join prices on (platform, instance_type) when you need specs it does not carry.
+- prices is large (millions of rows for ec2): always filter on platform and current (or a time range), and aggregate or LIMIT.
+- service_events is AWS's public status page history, not a measured uptime: AWS publishes no availability percentage. To estimate downtime, sum dateDiff('minute', impact_started_at, impact_ended_at) (fall back to posted_at and resolved_at when those are NULL) over events with severity 'degraded' or 'disrupted', and say that it covers only events AWS posted publicly. An event filed under `multipleservices` or another service can still have hit the one asked about: also match mapContains(impacted_services, '<service>-<region>').
+
+## Freshness
+
+The database is reloaded each time a provider publishes new prices for a service (AWS a new price list, Alibaba a new price version, RunPod a changed price), checked twice an hour. `sync_state` (and the `sources` list in `GET /api/v1/instance-pricing/schema`) says which price lists each service's data comes from and when it was loaded; `max(price_list_to)` is the newest. While a service is being reloaded, a query can briefly fail with a `502`; retry it.
+
+`service_events` is refreshed from the AWS Health Dashboard on the same schedule, so a new or updated incident appears within about half an hour. AWS's dashboard only shows the last twelve months; older years come from archived copies of it and stay in the table. There are none for 2010, and years before 2014 are thinner than AWS's real record.

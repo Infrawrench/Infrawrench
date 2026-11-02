@@ -5,7 +5,7 @@ vi.mock("@/auth/api-auth", () => ({
   authenticateApiRequest: (...a: unknown[]) => mockAuth(...a),
 }));
 
-const { awsPricingRoutes } = await import("@/api/routes/aws-pricing");
+const { instancePricingRoutes } = await import("@/api/routes/instance-pricing");
 
 /** What the warehouse answers, as JSONCompactEachRowWithNamesAndTypes. */
 function warehouseRows(names: string[], types: string[], rows: unknown[][]): Response {
@@ -46,13 +46,13 @@ afterEach(() => {
 });
 
 const post = (body: unknown) =>
-  awsPricingRoutes.request("/query", {
+  instancePricingRoutes.request("/query", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
 
-describe("POST /api/v1/aws-pricing/query", () => {
+describe("POST /api/v1/instance-pricing/query", () => {
   it("runs the statement with the read-only token and returns typed rows", async () => {
     const res = await post({ sql: "SELECT instance_type FROM prices LIMIT 2;" });
     expect(res.status).toBe(200);
@@ -136,7 +136,7 @@ describe("POST /api/v1/aws-pricing/query", () => {
   });
 });
 
-describe("GET /api/v1/aws-pricing/schema", () => {
+describe("GET /api/v1/instance-pricing/schema", () => {
   it("lists every table with its columns, the notes, and each source's freshness", async () => {
     fetchMock.mockResolvedValueOnce(
       warehouseRows(
@@ -145,7 +145,7 @@ describe("GET /api/v1/aws-pricing/schema", () => {
         [["ec2", "1793314931", "2026-10-29 17:56:34", "2026-11-01 16:50:00", "6343195"]],
       ),
     );
-    const res = await awsPricingRoutes.request("/schema");
+    const res = await instancePricingRoutes.request("/schema");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       tables: { name: string; columns: { name: string }[] }[];
@@ -175,7 +175,7 @@ describe("GET /api/v1/aws-pricing/schema", () => {
 
   it("still describes the tables when the warehouse cannot be reached", async () => {
     fetchMock.mockRejectedValueOnce(new Error("offline"));
-    const body = (await (await awsPricingRoutes.request("/schema")).json()) as {
+    const body = (await (await instancePricingRoutes.request("/schema")).json()) as {
       tables: unknown[];
       sources: unknown;
     };
@@ -191,7 +191,7 @@ describe("the docs page", () => {
       await import("@infrawrench/server-core/aws-pricing-warehouse/schema");
     const page = readFileSync(
       new URL(
-        "../../../../../website/src/content/docs/team-and-billing/aws-pricing-api.md",
+        "../../../../../website/src/content/docs/team-and-billing/instance-pricing-api.md",
         import.meta.url,
       ),
       "utf8",

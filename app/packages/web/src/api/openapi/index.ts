@@ -75,7 +75,7 @@ import { registerPagingProviderPaths } from "./paths/paging-providers";
 import { registerQueryMonitorPaths } from "./paths/query-monitors";
 import { registerCarbonPaths } from "./paths/carbon";
 import { registerPriceCatalogPaths } from "./paths/price-catalog";
-import { registerAwsPricingPaths } from "./paths/aws-pricing";
+import { registerInstancePricingPaths } from "./paths/instance-pricing";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -249,7 +249,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerQueryMonitorPaths(ctx);
   registerCarbonPaths(ctx);
   registerPriceCatalogPaths(ctx);
-  registerAwsPricingPaths(ctx);
+  registerInstancePricingPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -580,9 +580,9 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Published list prices for every catalog provider, normalized: products with specs (vCPU, memory, GPU, storage) and prices per region, unit and rate type (on-demand, spot, reserved and savings-plan terms where published). Search and compare equivalent instances across providers. These are list prices, never an org's negotiated rates. Providers whose price API needs credentials use one of the org's accounts on that plugin and report `no-account` without one.",
       },
       {
-        name: "AWS pricing",
+        name: "Instance pricing",
         description:
-          "Read-only SQL over AWS's public price lists: every instance type's specs and every on-demand, reserved and EC2 spot price in every region, with history, for twelve AWS services. The data behind instances.infrawrench.com, refreshed as AWS publishes. Any bearer credential can use it, with no scope.",
+          "Read-only SQL over public instance price lists: every instance type's specs and every on-demand, committed and spot price in every region, with history, for twelve AWS services, RunPod GPU and CPU pods, and Alibaba Cloud ECS. The data behind instances.infrawrench.com, refreshed as each provider publishes. Any bearer credential can use it, with no scope. The older `/api/v1/aws-pricing` paths are deprecated aliases.",
       },
       {
         name: "Carbon",

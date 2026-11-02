@@ -16,18 +16,19 @@ import { authenticateApiRequest } from "@/auth/api-auth";
 const app = new Hono();
 
 /**
- * `/api/v1/aws-pricing`: read-only SQL over the AWS pricing warehouse, the
- * ClickHouse database behind instances.infrawrench.com's chat (tables in
- * `server-core/src/aws-pricing-warehouse/schema.ts`, loaded by the bulk
- * pricing sync).
+ * `/api/v1/instance-pricing`: read-only SQL over the instance pricing
+ * warehouse, the ClickHouse database behind instances.infrawrench.com's chat
+ * (tables in `server-core/src/aws-pricing-warehouse/schema.ts`, loaded by the
+ * bulk pricing sync): every AWS platform, RunPod and Alibaba Cloud ECS. Also
+ * mounted at `/api/v1/aws-pricing`, its path before it covered other clouds.
  *
  * - `GET /schema`: every table and column with what it holds, the notes a
  *   correct query depends on, and how fresh each source is.
  * - `POST /query` `{ sql, maxRows? }`: one read-only statement's result.
  *
  * Any credential `authenticateApiRequest` accepts may call it, with no scope,
- * like `/api/v1/whoami` and `/api/v1/aws-bulk-pricing`: it is AWS's public
- * price list. The warehouse token is read-only, which is the real boundary.
+ * like `/api/v1/whoami` and `/api/v1/aws-bulk-pricing`: it is the providers'
+ * public price lists. The warehouse token is read-only, which is the real boundary.
  */
 
 /** Rows a query returns unless it asks for fewer. */
@@ -40,7 +41,10 @@ function warehouse(): WarehouseConfig | null {
 }
 
 function unavailable(c: Context) {
-  return c.json({ error: "The AWS pricing warehouse is not configured on this deployment" }, 503);
+  return c.json(
+    { error: "The instance pricing warehouse is not configured on this deployment" },
+    503,
+  );
 }
 
 app.use("*", async (c, next) => {
@@ -64,7 +68,7 @@ app.get("/schema", async (c) => {
         Object.fromEntries(result.columns.map((col, i) => [col.name, row[i] ?? null])),
       );
     } catch (error) {
-      console.warn("aws-pricing schema: sync state unavailable", error);
+      console.warn("instance-pricing schema: sync state unavailable", error);
     }
   }
   return c.json(
@@ -122,9 +126,12 @@ app.post("/query", async (c) => {
       return c.json({ error: "The query took longer than 30 seconds" }, 504);
     }
     if (!(error instanceof WarehouseUnavailableError))
-      console.error("aws-pricing query failed", error);
-    return c.json({ error: "The AWS pricing warehouse is unavailable; try again shortly" }, 502);
+      console.error("instance-pricing query failed", error);
+    return c.json(
+      { error: "The instance pricing warehouse is unavailable; try again shortly" },
+      502,
+    );
   }
 });
 
-export { app as awsPricingRoutes };
+export { app as instancePricingRoutes };
