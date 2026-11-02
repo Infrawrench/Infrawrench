@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.89.0",
+    "version": "1.90.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -58713,6 +58713,166 @@
         ],
         "additionalProperties": false
       },
+      "T3CodePolicyProviderInstance": {
+        "type": "object",
+        "properties": {
+          "locked": {
+            "type": "boolean"
+          },
+          "environment": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "binaryPath": {
+            "type": "string"
+          },
+          "launchArgs": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locked"
+        ],
+        "additionalProperties": false
+      },
+      "T3CodePolicy": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "organization": {
+            "type": "string",
+            "description": "Shown to users as \"Managed by <organization>\"."
+          },
+          "supportUrl": {
+            "type": "string"
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "value": {},
+                "locked": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "locked"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Keyed by the setting's dot path in T3 Code's settings.json. `locked: false` sets a default users can change; `locked: true` pins it."
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "maxRuntimeMode": {
+                "type": "string",
+                "enum": [
+                  "approval-required",
+                  "auto-accept-edits",
+                  "auto",
+                  "full-access"
+                ]
+              },
+              "clients": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "desktop",
+                    "local-browser",
+                    "remote"
+                  ]
+                },
+                "description": "Must include `remote`: agent VMs are only reachable remotely."
+              },
+              "connect": {
+                "type": "boolean"
+              },
+              "webhookTasks": {
+                "type": "boolean"
+              },
+              "telemetry": {
+                "type": "boolean"
+              },
+              "browserCookieImport": {
+                "type": "boolean"
+              },
+              "providers": {
+                "type": "object",
+                "properties": {
+                  "allowedDrivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "instances": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/T3CodePolicyProviderInstance"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "updates": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "off"
+                    ]
+                  },
+                  "feedUrl": {
+                    "type": "string"
+                  },
+                  "allowNightly": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "organization"
+        ],
+        "additionalProperties": false,
+        "description": "The organization's T3 Code managed policy, installed on every T3 Code server (`/etc/t3code/policy.json`). On save: omit to keep the stored policy, `null` to remove it. A new T3 Code session is refused when the policy does not allow its tool or turns off the T3 Connect it is reached through."
+      },
       "AgentSettings": {
         "type": [
           "object",
@@ -58762,6 +58922,9 @@
               "t3-connect",
               "tailscale"
             ]
+          },
+          "t3Policy": {
+            "$ref": "#/components/schemas/T3CodePolicy"
           }
         },
         "required": [
@@ -58848,6 +59011,20 @@
               "t3-connect",
               "tailscale"
             ]
+          },
+          "t3Policy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/T3CodePolicy"
+              },
+              {
+                "description": "T3 Code sessions: the managed policy last installed on the server (from the organization's defaults at creation, refreshed when Authorize server runs or the policy is rolled out)."
+              }
+            ]
+          },
+          "t3PolicyRestartPending": {
+            "type": "boolean",
+            "description": "T3 Code sessions: `t3Policy` is installed but T3 Code has not restarted since, so the server still enforces the policy it started with. Cleared by a restarting rollout or Authorize server."
           },
           "serviceInstalls": {
             "type": "array",
@@ -58976,6 +59153,67 @@
         },
         "required": [
           "settings"
+        ],
+        "additionalProperties": false
+      },
+      "AgentT3PolicyApplyResult": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sessionId": {
+                  "type": "string"
+                },
+                "projectName": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "applied",
+                    "installed",
+                    "unchanged",
+                    "skipped",
+                    "setting-up",
+                    "failed"
+                  ],
+                  "description": "`applied`: installed and T3 Code restarted onto it. `installed`: applies at the next restart. `unchanged`: already had it. `skipped`: the policy does not fit this server, which keeps its policy. `setting-up`: setup has not finished; the server starts on this policy. `failed`: see `message`."
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "sessionId",
+                "projectName",
+                "outcome"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "servers"
+        ],
+        "additionalProperties": false
+      },
+      "AgentT3PolicyApplyRequest": {
+        "type": "object",
+        "properties": {
+          "restart": {
+            "type": "boolean",
+            "description": "Restart T3 Code so the policy applies now (interrupts running agent turns), or leave it for the next restart."
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "One server; omitted, every T3 Code server in the organization."
+          }
+        },
+        "required": [
+          "restart"
         ],
         "additionalProperties": false
       },
@@ -114440,6 +114678,71 @@
         "operationId": "deleteOrgOrgIdAgentsSessionsId",
         "x-required-permission": "resources:delete",
         "description": "_Requires permission: `resources:delete`._"
+      }
+    },
+    "/api/org/{orgId}/agents/t3-policy/apply": {
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Roll the T3 Code policy out to existing servers",
+        "description": "Installs the organization's current T3 Code managed policy (or removes the one Infrawrench installed, when there is none) on existing T3 Code servers. T3 Code reads its policy only at startup: `restart: true` restarts it so the policy applies now, interrupting running agent turns, terminals and connected clients; `restart: false` installs the file and marks the session `t3PolicyRestartPending`. Servers that already have the policy, that the policy does not fit, or that are still setting up are not dialled. Requires `resources:execute`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentT3PolicyApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What happened on each T3 Code server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentT3PolicyApplyResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAgentsT3PolicyApply"
       }
     },
     "/api/org/{orgId}/agents/sessions/{id}/reconcile": {
