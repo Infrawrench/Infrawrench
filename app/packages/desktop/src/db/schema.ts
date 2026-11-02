@@ -405,3 +405,23 @@ ALTER TABLE accounts ADD COLUMN oauth_status TEXT;
 `;
 
 MIGRATIONS.push(ACCOUNT_OAUTH_STATUS_MIGRATION);
+
+// The T3 Code managed policy (T3 Code's ManagedPolicyDocument, as JSON): on
+// the defaults, the policy installed on every T3 Code server these defaults
+// create; on a session, the one last installed on its server. NULL means none.
+// Mirrors the cloud's 0173_agent_t3_policy.
+const AGENT_T3_POLICY_MIGRATION = `
+ALTER TABLE agent_settings ADD COLUMN t3_policy_json TEXT;
+ALTER TABLE agent_sessions ADD COLUMN t3_policy_json TEXT;
+`;
+
+MIGRATIONS.push(AGENT_T3_POLICY_MIGRATION);
+
+// A session whose T3 Code policy is installed but not yet loaded: the rollout
+// chose "at the next restart". Mirrors the cloud's
+// 0174_agent_t3_policy_restart_pending.
+const AGENT_T3_POLICY_RESTART_PENDING_MIGRATION = `
+ALTER TABLE agent_sessions ADD COLUMN t3_policy_restart_pending INTEGER NOT NULL DEFAULT 0;
+`;
+
+MIGRATIONS.push(AGENT_T3_POLICY_RESTART_PENDING_MIGRATION);
