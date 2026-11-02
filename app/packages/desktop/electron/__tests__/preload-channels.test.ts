@@ -51,7 +51,6 @@ describe("preload INVOKE_CHANNELS", () => {
       "cloud_agents_get_settings",
       "cloud_agents_link_scopes",
       "cloud_agents_save_settings",
-      "cloud_agents_apply_t3_policy",
       "cloud_agents_list_sessions",
       "cloud_agents_create_session",
       "cloud_agents_open_session",

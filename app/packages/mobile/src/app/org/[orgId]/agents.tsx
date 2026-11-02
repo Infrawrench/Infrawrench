@@ -31,10 +31,6 @@ interface AgentSession {
   agentLinkId?: string | null;
   /** T3 Code only: "t3-connect" or "tailscale". */
   t3Access?: string;
-  /** T3 Code only: the organization's managed policy installed on the server. */
-  t3Policy?: { organization: string } | null;
-  /** T3 Code only: the policy is installed but T3 Code has not restarted onto it. */
-  t3PolicyRestartPending?: boolean;
   /** Services installed on the VM (e.g. Tailscale) and their addresses. */
   serviceInstalls?: Array<{ accountId: string; pluginId: string; address?: string }>;
   branchName: string;
@@ -76,10 +72,7 @@ function sessionSubtitle(session: AgentSession): string {
   }
   if (session.surface === "t3-code") {
     const access = session.t3Access === "tailscale" ? " over Tailscale" : "";
-    const managed = session.t3Policy
-      ? ` · managed by ${session.t3Policy.organization}${session.t3PolicyRestartPending ? " (applies at next restart)" : ""}`
-      : "";
-    return `T3 Code + ${toolLabel(session.tool)}${access}${managed}${network} · ${created}`;
+    return `T3 Code + ${toolLabel(session.tool)}${access}${network} · ${created}`;
   }
   return `${toolLabel(session.tool)} · ${session.branchName}${network} · ${created}`;
 }

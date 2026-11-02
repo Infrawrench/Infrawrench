@@ -5,8 +5,6 @@ import type {
   AgentOpenSessionResult,
   AgentSession,
   AgentSettings,
-  AgentT3PolicyApplyRequest,
-  AgentT3PolicyApplyResult,
   AgentVmAccount,
 } from "@infrawrench/ui/agents";
 import { useUIStore } from "@infrawrench/ui";
@@ -69,11 +67,6 @@ export function createCloudAgentClient(): AgentClient {
       invoke<{ branchName: string; message: string }>("cloud_agents_reconcile_session", {
         orgId: requireOrg(),
         sessionId: id,
-      }),
-    applyT3Policy: async (request: AgentT3PolicyApplyRequest) =>
-      invoke<AgentT3PolicyApplyResult>("cloud_agents_apply_t3_policy", {
-        orgId: requireOrg(),
-        request,
       }),
     deleteSession: async (id: string) => {
       await invoke<void>("cloud_agents_delete_session", {

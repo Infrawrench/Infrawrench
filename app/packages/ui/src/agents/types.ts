@@ -1,5 +1,4 @@
 import type { CreateFieldConfig, SshInstallAccount } from "@infrawrench/plugin-base";
-import type { T3CodePolicy } from "./t3-policy.js";
 
 /** The coding agent CLI installed on the session's VM. */
 export type AgentTool = "codex" | "claude-code";
@@ -126,13 +125,6 @@ export interface AgentSettings {
   serviceAccountIds?: string[];
   /** T3 Code sessions only; absent means T3 Connect. */
   t3Access?: T3CodeAccess;
-  /**
-   * The organization's T3 Code managed policy, installed on every T3 Code
-   * server it provisions (`/etc/t3code/policy.json`). `null` means none.
-   * Saving settings without this key keeps the stored policy, so a client
-   * that predates it cannot wipe it.
-   */
-  t3Policy?: T3CodePolicy | null;
 }
 
 export interface AgentSession {
@@ -148,17 +140,6 @@ export interface AgentSession {
   surface?: AgentSurface;
   serviceAccountIds?: string[];
   t3Access?: T3CodeAccess;
-  /**
-   * T3 Code sessions: the managed policy last installed on the server (set at
-   * creation, refreshed by Authorize server). `null` when none.
-   */
-  t3Policy?: T3CodePolicy | null;
-  /**
-   * T3 Code sessions: `t3Policy` is installed on the server but T3 Code has
-   * not restarted since, so it still enforces the policy it started with (the
-   * server reads its policy only at startup).
-   */
-  t3PolicyRestartPending?: boolean;
   /** Services installed on the VM so far, in attach order. */
   serviceInstalls?: AgentServiceInstall[];
   /**
@@ -255,49 +236,6 @@ export interface AgentClient {
    * local agents, which belong to no organization).
    */
   listLinkableScopes?(): Promise<string[] | null>;
-  /**
-   * Roll the organization's current T3 Code policy out to existing T3 Code
-   * servers (all of them, or `sessionId`'s). Absent where the host cannot
-   * reach its servers; the panel then leaves rollout to Authorize server.
-   */
-  applyT3Policy?(request: AgentT3PolicyApplyRequest): Promise<AgentT3PolicyApplyResult>;
-}
-
-export interface AgentT3PolicyApplyRequest {
-  /**
-   * `true` restarts T3 Code so the policy takes effect now, interrupting
-   * running agent turns, terminals and connected clients. `false` installs
-   * the file and leaves the server on its current policy until it restarts.
-   */
-  restart: boolean;
-  /** One server; omitted, every T3 Code server in the organization. */
-  sessionId?: string;
-}
-
-/**
- * What happened on one server:
- * - `applied`: installed (or removed) and T3 Code restarted onto it.
- * - `installed`: installed; T3 Code applies it at its next restart.
- * - `unchanged`: the server already has this policy.
- * - `skipped`: the policy does not fit this server (it forbids the server's
- *   provider, or turns off the T3 Connect it is reached through), so the
- *   server keeps the policy it has.
- * - `setting-up`: setup has not finished; the server starts on this policy.
- * - `failed`: the server could not be reached or refused the change.
- */
-export type AgentT3PolicyApplyOutcome =
-  "applied" | "installed" | "unchanged" | "skipped" | "setting-up" | "failed";
-
-export interface AgentT3PolicyApplyServerResult {
-  sessionId: string;
-  projectName: string;
-  outcome: AgentT3PolicyApplyOutcome;
-  /** Why, for `skipped` and `failed`. */
-  message?: string;
-}
-
-export interface AgentT3PolicyApplyResult {
-  servers: AgentT3PolicyApplyServerResult[];
 }
 
 /**

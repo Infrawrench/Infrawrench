@@ -389,11 +389,4 @@
 // and Google Cloud Compute Engine (`gcp`), with their pay-as-you-go, spot,
 // reservation, savings plan and committed use prices; the instance pricing
 // descriptions say so. Additive.
-// 1.90.0: `t3Policy` on AgentSettings and AgentSession (the organization's T3
-// Code managed policy, the new `T3CodePolicy` schema). Saving settings without
-// it keeps the stored policy. Creating a T3 Code session is refused when the
-// policy does not allow its tool or turns off its T3 Connect access.
-// `POST /agents/t3-policy/apply` rolls the policy out to existing servers, now
-// or at their next restart, and `t3PolicyRestartPending` on AgentSession says
-// which servers still owe a restart. Additive.
-export const API_VERSION = "1.90.0";
+export const API_VERSION = "1.89.0";

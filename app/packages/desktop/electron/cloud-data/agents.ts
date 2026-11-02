@@ -44,13 +44,6 @@ ipcMain.handle(
     cloudFetch(orgId, "/agents/settings", { method: "PUT", body: JSON.stringify(settings) }),
 );
 
-// Rolls the org's T3 Code policy out to existing servers; the server dials them.
-ipcMain.handle(
-  "cloud_agents_apply_t3_policy",
-  async (_e, { orgId, request }: OrgArgs & { request: unknown }) =>
-    cloudFetch(orgId, "/agents/t3-policy/apply", { method: "POST", body: JSON.stringify(request) }),
-);
-
 ipcMain.handle("cloud_agents_list_sessions", async (_e, { orgId }: OrgArgs) =>
   cloudFetch(orgId, "/agents/sessions"),
 );

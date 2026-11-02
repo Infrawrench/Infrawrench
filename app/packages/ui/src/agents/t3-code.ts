@@ -43,23 +43,7 @@ import {
   shellDoubleQuoteContent,
   shellQuote,
 } from "./launch-command.js";
-import {
-  buildT3CodePolicySnippet,
-  T3_CODE_POLICY_PATH,
-  validateT3CodePolicy,
-  type T3CodePolicy,
-} from "./t3-policy.js";
-import type {
-  AgentSetupPlan,
-  AgentSurface,
-  AgentT3PolicyApplyOutcome,
-  AgentTool,
-  T3CodeAccess,
-} from "./types.js";
-
-// The managed-policy helpers ship in this same React-free entry, so the web
-// API validates and embeds policies without a second package export.
-export * from "./t3-policy.js";
+import type { AgentSetupPlan, AgentSurface, AgentTool, T3CodeAccess } from "./types.js";
 
 /** The hosted T3 Code app that a `t3 connect`-linked environment shows up in. */
 export const T3_CODE_HOSTED_APP_URL = "https://app.t3.codes";
@@ -148,7 +132,6 @@ export function agentSurfaceUsesTool(surface: AgentSurface | string | null | und
 export function createT3CodeSetupPlan(
   tool: AgentTool,
   access: T3CodeAccess = "t3-connect",
-  policy: T3CodePolicy | null = null,
 ): AgentSetupPlan {
   return {
     source: "git-url",
@@ -172,11 +155,6 @@ export function createT3CodeSetupPlan(
       access === "tailscale"
         ? `T3 Code is reached over your tailnet (Tailscale Serve), not T3 Connect. Pairing and the ${agentToolLabel(tool)} sign-in are interactive; finish them from the session's Authorize terminal.`
         : `T3 Connect authorization and the ${agentToolLabel(tool)} sign-in are interactive browser flows; finish them from the session's Authorize terminal.`,
-      ...(policy
-        ? [
-            `T3 Code is managed by ${policy.organization}: the organization's policy is installed at ${T3_CODE_POLICY_PATH}.`,
-          ]
-        : []),
     ],
   };
 }
@@ -193,12 +171,6 @@ export interface T3CodeBootstrapCommandInput {
   installService?: boolean;
   /** Install the GitHub CLI so T3 Code's source-control features work. */
   installGithubCli?: boolean;
-  /**
-   * The organization's managed policy, installed before the service first
-   * starts (the server reads it only at startup). A policy `t3 policy check`
-   * rejects fails the bootstrap: T3 Code would refuse to start with it.
-   */
-  policy?: T3CodePolicy | null;
 }
 
 /**
@@ -310,14 +282,6 @@ install_cli_command t3 t3 'T3 Code' node-pty,msgpackr-extract
 install_cli_command ${shellQuote(toolCommand)} ${shellQuote(toolPackage)} ${shellQuote(agentToolLabel(input.tool))}
 install_cli_command ${shellQuote(companionCommand)} ${shellQuote(companionPackage)} ${shellQuote(agentToolLabel(companionTool))}
 ${installGithubCli ? GITHUB_CLI_SNIPPET : ""}${XDG_OPEN_SHIM_SNIPPET}
-${
-  input.policy
-    ? `${buildT3CodePolicySnippet(input.policy)}
-log_step "Installing the organization's T3 Code policy."
-install_t3_policy || exit 1
-`
-    : ""
-}
 ${installService ? T3_SERVICE_SNIPPET : ""}
 
 log_step "Bootstrap complete."
@@ -634,13 +598,6 @@ export interface T3CodeConnectCommandInput {
    * attached Tailscale account enrolls it during setup).
    */
   access?: T3CodeAccess;
-  /**
-   * The organization's current managed policy. An object is checked and
-   * installed before the restart (which is what makes the server load it);
-   * `null` removes a policy Infrawrench installed earlier; `undefined` leaves
-   * whatever is on the VM alone.
-   */
-  policy?: T3CodePolicy | null;
 }
 
 /**
@@ -693,8 +650,7 @@ export function buildT3CodeConnectCommand(input: T3CodeConnectCommandInput): str
   const includeGithubLogin = input.includeGithubLogin ?? true;
   const viaTailscale = input.access === "tailscale";
   const toolLabel = agentToolLabel(input.tool);
-  const policy = input.policy;
-  const steps = (includeGithubLogin ? 4 : 3) - (viaTailscale ? 1 : 0) + (policy ? 1 : 0);
+  const steps = (includeGithubLogin ? 4 : 3) - (viaTailscale ? 1 : 0);
   let step = 0;
   const heading = (title: string) => {
     step += 1;
@@ -748,23 +704,6 @@ align_git_protocol_with_gh
 `
     : ""
 }
-${
-  policy
-    ? `${heading("Apply the managed T3 Code policy")}
-# The server reads its managed policy only when it starts, so this goes in
-# before the restart below. A policy T3 Code rejects is not installed: the
-# server would refuse to start with it.
-${buildT3CodePolicySnippet(policy)}
-if install_t3_policy; then
-  printf 'Installed the managed policy at ${T3_CODE_POLICY_PATH}; the restart below applies it.\\n'
-fi
-`
-    : policy === null
-      ? `${buildT3CodePolicySnippet(null)}
-remove_t3_policy
-`
-      : ""
-}
 ${heading(viaTailscale ? "Start T3 Code and pair over Tailscale" : "Start T3 Code")}
 # \`t3 connect link\` only records intent; the relay link is provisioned by the
 # next server START. The bootstrap already installed the service, so the
@@ -810,15 +749,7 @@ ${
 pair_t3_over_tailscale
 `
     : T3_CONNECT_LINK_WAIT_SNIPPET
-}${
-    policy
-      ? `
-# Confirms the running server loaded the policy just installed (it prints
-# "Restart T3 Code to apply the installed policy" if it is still on an old one).
-t3 policy show || true
-`
-      : ""
-  }
+}
 exec "\${SHELL:-/bin/bash}" -l
 `;
   return `bash -lc ${shellQuote(script)}`;
@@ -913,166 +844,4 @@ export function t3CodeConnectNextStep(status: T3CodeConnectStatus | null): strin
   if (!status.desired) return "Enable exposure for this server (t3 connect link).";
   if (!status.linked) return "Start T3 Code on the server so it provisions its environment link.";
   return null;
-}
-
-/**
- * Exit codes of {@link buildT3CodePolicyApplyCommand} besides 0, so the
- * caller can say what went wrong without parsing stderr. `timeout` itself
- * exits 124.
- */
-export const T3_CODE_POLICY_APPLY_EXIT = {
-  /** No `t3` on the server: setup never finished, or it was removed. */
-  noCli: 3,
-  /** `t3 policy check` rejected the policy, or the file could not be written. */
-  notInstalled: 4,
-  /** Installed, but T3 Code could not be restarted onto it. */
-  restartFailed: 5,
-} as const;
-
-export interface T3CodePolicyApplyCommandInput {
-  /** The policy to install; `null` removes one Infrawrench installed. */
-  policy: T3CodePolicy | null;
-  /**
-   * Restart T3 Code so it enforces the policy now. The server reads its
-   * policy only at startup, and a restart interrupts running agent turns,
-   * terminals and connected clients, which is why it is the caller's choice.
-   */
-  restart: boolean;
-}
-
-/**
- * Roll a policy out to a running T3 Code server, non-interactively, over the
- * same SSH the setup pipeline uses. The install half is the snippet the
- * bootstrap and Authorize server run (`t3 policy check` first, so a policy
- * T3 Code would refuse to start with never reaches the file).
- */
-export function buildT3CodePolicyApplyCommand(input: T3CodePolicyApplyCommandInput): string {
-  const { noCli, notInstalled, restartFailed } = T3_CODE_POLICY_APPLY_EXIT;
-  const script = `
-export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:$PATH"
-if command -v mise >/dev/null 2>&1; then
-  eval "$(mise activate bash)" || true
-fi
-hash -r
-if ! command -v t3 >/dev/null 2>&1; then
-  echo "The t3 CLI is not installed on this server." >&2
-  exit ${noCli}
-fi
-${buildT3CodePolicySnippet(input.policy)}
-${input.policy ? `install_t3_policy || exit ${notInstalled}` : "remove_t3_policy"}
-${
-  input.restart
-    ? `if ! command -v systemctl >/dev/null 2>&1; then
-  echo "No systemd on this server, so T3 Code was not restarted. Restart it yourself to apply the policy." >&2
-  exit ${restartFailed}
-fi
-: "\${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
-export XDG_RUNTIME_DIR
-if ! systemctl --user restart ${T3_CODE_SYSTEMD_UNIT} 2>/dev/null &&
-  ! systemctl restart ${T3_CODE_SYSTEMD_UNIT} 2>/dev/null; then
-  echo "Could not restart T3 Code (systemctl --user restart ${T3_CODE_SYSTEMD_UNIT})." >&2
-  exit ${restartFailed}
-fi
-# Says whether the running server loaded the installed policy.
-t3 policy show || true
-`
-    : ""
-}`;
-  return `timeout 180s bash -lc ${shellQuote(script)}`;
-}
-
-/** Why {@link buildT3CodePolicyApplyCommand} failed, from its exit code. */
-export function t3CodePolicyApplyFailure(code: number | null, stderr: string): string {
-  const detail = stderr.trim().split(/\r?\n/).filter(Boolean).at(-1);
-  switch (code) {
-    case T3_CODE_POLICY_APPLY_EXIT.noCli:
-      return "T3 Code is not installed on this server.";
-    case T3_CODE_POLICY_APPLY_EXIT.notInstalled:
-      return detail ?? "T3 Code rejected the policy.";
-    case T3_CODE_POLICY_APPLY_EXIT.restartFailed:
-      return detail ?? "The policy was installed but T3 Code could not be restarted.";
-    case 124:
-      return "The server did not finish applying the policy in time.";
-    default:
-      return detail ?? `Applying the policy failed (exit ${code ?? "unknown"}).`;
-  }
-}
-
-/** Two policies (or their absence) are the same document, whatever the key order. */
-export function sameT3CodePolicy(
-  a: T3CodePolicy | null | undefined,
-  b: T3CodePolicy | null | undefined,
-): boolean {
-  return canonicalJson(a ?? null) === canonicalJson(b ?? null);
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-/** The parts of a T3 Code session that decide how a policy rollout treats it. */
-export interface T3CodePolicyRolloutTarget {
-  tool: AgentTool;
-  t3Access?: string | null;
-  /** The policy last installed on the server. */
-  t3Policy?: T3CodePolicy | null;
-  t3PolicyRestartPending?: boolean;
-  /** The setup pipeline has finished on the VM. */
-  setupComplete: boolean;
-}
-
-/**
- * What rolling `current` out does to one server, decided before anything
- * dials it. Shared by the web API and the desktop's local pipeline so the
- * two cannot disagree about which servers a save touches.
- *
- * - `run`: dial the server and run {@link buildT3CodePolicyApplyCommand}.
- * - `snapshot`: setup has not finished; record `current` on the session so
- *   the bootstrap installs it, and dial nothing.
- * - `none`: nothing to do (`unchanged`), or the policy does not fit this
- *   server (`skipped`), which then keeps whatever it has: applying it would
- *   leave T3 Code unable to start or unreachable.
- */
-export type T3CodePolicyRolloutStep =
-  | { kind: "run" }
-  | { kind: "snapshot"; outcome: Extract<AgentT3PolicyApplyOutcome, "setting-up"> }
-  | {
-      kind: "none";
-      outcome: Extract<AgentT3PolicyApplyOutcome, "unchanged" | "skipped">;
-      message?: string;
-    };
-
-export function planT3CodePolicyRollout(
-  target: T3CodePolicyRolloutTarget,
-  current: T3CodePolicy | null,
-  restart: boolean,
-): T3CodePolicyRolloutStep {
-  if (current) {
-    const fit = validateT3CodePolicy(current, {
-      tool: target.tool,
-      access: t3CodeAccessOrDefault(target.t3Access),
-    });
-    if (!fit.ok) {
-      const first = fit.issues.find((issue) => issue.level === "error");
-      return {
-        kind: "none",
-        outcome: "skipped",
-        message: first?.message ?? "The policy does not fit this server.",
-      };
-    }
-  }
-  const installed = sameT3CodePolicy(current, target.t3Policy);
-  // A restart is still owed to a server that has the file but not the policy.
-  if (installed && !(restart && target.t3PolicyRestartPending)) {
-    return { kind: "none", outcome: "unchanged" };
-  }
-  if (!target.setupComplete) return { kind: "snapshot", outcome: "setting-up" };
-  return { kind: "run" };
 }

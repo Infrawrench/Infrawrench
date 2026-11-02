@@ -5,10 +5,7 @@ import type {
   AgentSettings,
   AgentSetupPlan,
   AgentSshTarget,
-  AgentT3PolicyApplyRequest,
-  AgentT3PolicyApplyServerResult,
   AgentVmAccount,
-  T3CodePolicy,
 } from "@infrawrench/ui/agents";
 import {
   AGENT_ENV_REMOTE_PATH,
@@ -28,15 +25,10 @@ import {
   buildT3CodeBootstrapCommand,
   buildT3CodeConnectCommand,
   buildT3CodeLogoutCommand,
-  buildT3CodePolicyApplyCommand,
   createT3CodeSetupPlan,
   isT3CodeSurface,
-  planT3CodePolicyRollout,
   resolveT3CodeAccess,
   t3CodeAccessOrDefault,
-  t3CodePolicyApplyFailure,
-  t3CodePolicyOrNull,
-  validateT3CodePolicy,
   T3_CODE_PROJECTS_DIR,
   buildNibbletsBootstrapCommand,
   buildNibbletsSignInCommand,
@@ -45,7 +37,6 @@ import {
   NIBBLETS_DIR,
 } from "@infrawrench/ui/agents";
 import { dispatchResourcesChanged } from "@infrawrench/ui";
-import { runWithConcurrency } from "@infrawrench/client-core";
 import type {
   AgentVmCapability,
   CreateFieldConfig,
@@ -118,7 +109,6 @@ interface SettingsRow {
   fields_json: string;
   service_account_ids_json?: string | null;
   t3_access?: string | null;
-  t3_policy_json?: string | null;
 }
 
 interface SessionRow {
@@ -140,8 +130,6 @@ interface SessionRow {
   created_resources_json: string;
   service_account_ids_json?: string | null;
   t3_access?: string | null;
-  t3_policy_json?: string | null;
-  t3_policy_restart_pending?: number | null;
   service_installs_json?: string | null;
   created_at: string;
   updated_at: string;
@@ -210,8 +198,6 @@ function rowToSession(row: SessionRow): AgentSession {
     surface: agentSurfaceOrDefault(row.surface),
     serviceAccountIds: parseJson<string[]>(row.service_account_ids_json ?? "[]", []),
     t3Access: t3CodeAccessOrDefault(row.t3_access),
-    t3Policy: t3CodePolicyOrNull(row.t3_policy_json),
-    t3PolicyRestartPending: !!row.t3_policy_restart_pending,
     serviceInstalls: publicLocalServiceInstalls(serviceInstallsForRow(row)),
     branchName: row.branch_name,
     status: row.status,
@@ -220,15 +206,6 @@ function rowToSession(row: SessionRow): AgentSession {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-/** The stored local T3 Code policy (this machine's agent defaults), or null. */
-async function storedT3Policy(): Promise<T3CodePolicy | null> {
-  const db = await getDb();
-  const rows = await db.select<Array<Pick<SettingsRow, "t3_policy_json">>>(
-    "SELECT t3_policy_json FROM agent_settings LIMIT 1",
-  );
-  return t3CodePolicyOrNull(rows[0]?.t3_policy_json);
 }
 
 function serviceInstallsForRow(row: SessionRow): StoredServiceInstall[] {
@@ -287,32 +264,16 @@ export function createDesktopAgentClient(): AgentClient {
         fields: parseJson<Record<string, string>>(row.fields_json, {}),
         serviceAccountIds: parseJson<string[]>(row.service_account_ids_json ?? "[]", []),
         t3Access: t3CodeAccessOrDefault(row.t3_access),
-        t3Policy: t3CodePolicyOrNull(row.t3_policy_json),
       };
     },
     async saveSettings(settings: AgentSettings): Promise<AgentSettings> {
       const db = await getDb();
       const services = await resolveLocalAgentServiceAccounts(settings.serviceAccountIds);
       const t3Access = resolveT3CodeAccess(settings.t3Access, services.pluginIds);
-      // Same three states as the cloud route: absent keeps the stored policy,
-      // null removes it, an object replaces it once it validates.
-      let t3Policy: T3CodePolicy | null;
-      if (settings.t3Policy === undefined) {
-        t3Policy = await storedT3Policy();
-      } else if (settings.t3Policy === null) {
-        t3Policy = null;
-      } else {
-        const validation = validateT3CodePolicy(settings.t3Policy);
-        if (!validation.ok || !validation.policy) {
-          const first = validation.issues.find((i) => i.level === "error");
-          throw new Error(`Invalid T3 Code policy: ${first?.message ?? "not a policy"}`);
-        }
-        t3Policy = validation.policy;
-      }
       await db.execute(
         `INSERT OR REPLACE INTO agent_settings
-         (id, account_id, plugin_id, resource_type_id, tool, surface, fields_json, service_account_ids_json, t3_access, t3_policy_json, updated_at)
-         VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
+         (id, account_id, plugin_id, resource_type_id, tool, surface, fields_json, service_account_ids_json, t3_access, updated_at)
+         VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, datetime('now'))`,
         [
           settings.accountId,
           settings.pluginId,
@@ -322,10 +283,9 @@ export function createDesktopAgentClient(): AgentClient {
           JSON.stringify(settings.fields),
           JSON.stringify(services.accountIds),
           t3Access,
-          t3Policy ? JSON.stringify(t3Policy) : null,
         ],
       );
-      return { ...settings, serviceAccountIds: services.accountIds, t3Access, t3Policy };
+      return { ...settings, serviceAccountIds: services.accountIds, t3Access };
     },
     async pickLocalRepoPath(): Promise<string | null> {
       const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
@@ -386,22 +346,10 @@ export function createDesktopAgentClient(): AgentClient {
       if (isT3Code && t3CodeAccessOrDefault(body.settings.t3Access) !== t3Access) {
         throw new Error("T3 Code over Tailscale needs a Tailscale account attached");
       }
-      // The stored policy, not one from the request: it belongs to the
-      // defaults. Refused before a VM exists when it does not fit the server.
-      const t3Policy = isT3Code ? await storedT3Policy() : null;
-      if (t3Policy) {
-        const fit = validateT3CodePolicy(t3Policy, { tool: body.settings.tool, access: t3Access });
-        if (!fit.ok) {
-          const first = fit.issues.find((i) => i.level === "error");
-          throw new Error(
-            `The T3 Code policy does not fit this server: ${first?.message ?? "invalid policy"}`,
-          );
-        }
-      }
       const setupPlan = isNibblets
         ? createNibbletsSetupPlan(false)
         : isT3Code
-          ? createT3CodeSetupPlan(body.settings.tool, t3Access, t3Policy)
+          ? createT3CodeSetupPlan(body.settings.tool, t3Access)
           : await createAgentSetupPlan(repo, body.settings.tool, workspaceName).catch((error) => {
               throw new Error(`Agent setup plan failed: ${formatErrorMessage(error)}`);
             });
@@ -470,8 +418,8 @@ export function createDesktopAgentClient(): AgentClient {
       const initialStatus = setupAwareStatusFromLogs(updatedLogs, initialVmStatus);
       await db.execute(
         `INSERT INTO agent_sessions
-         (id, repo, project_name, workspace_name, account_id, plugin_id, resource_type_id, tool, surface, branch_name, status, vm_resource_id, logs_json, setup_plan_json, service_account_ids_json, t3_access, t3_policy_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+         (id, repo, project_name, workspace_name, account_id, plugin_id, resource_type_id, tool, surface, branch_name, status, vm_resource_id, logs_json, setup_plan_json, service_account_ids_json, t3_access)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
         [
           id,
           repo,
@@ -489,7 +437,6 @@ export function createDesktopAgentClient(): AgentClient {
           JSON.stringify(setupPlan),
           JSON.stringify(services.accountIds),
           t3Access,
-          t3Policy ? JSON.stringify(t3Policy) : null,
         ],
       );
       // Resources declared by .infrawrench/agent.json (e.g. a db branch).
@@ -559,23 +506,10 @@ export function createDesktopAgentClient(): AgentClient {
         };
       }
       if (isT3CodeSurface(row.surface)) {
-        const access = t3CodeAccessOrDefault(row.t3_access);
-        // The current policy, so re-running Authorize server rolls an edited
-        // policy out; one that no longer fits this server is left off it.
-        const current = await storedT3Policy();
-        const fits = !current || validateT3CodePolicy(current, { tool: row.tool, access }).ok;
-        if (fits) {
-          // The script restarts T3 Code after installing, so nothing is left pending.
-          await db.execute(
-            "UPDATE agent_sessions SET t3_policy_json = $1, t3_policy_restart_pending = 0, updated_at = datetime('now') WHERE id = $2",
-            [current ? JSON.stringify(current) : null, row.id],
-          );
-        }
         return {
           command: buildT3CodeConnectCommand({
             tool: row.tool,
-            access,
-            ...(fits ? { policy: current } : {}),
+            access: t3CodeAccessOrDefault(row.t3_access),
           }),
           cwd: `~/${workspaceNameForRow(row)}`,
           sshKeyId: agentKey.id,
@@ -643,9 +577,6 @@ export function createDesktopAgentClient(): AgentClient {
         repoPath: row.repo,
       });
       return { branchName: row.branch_name, message: result.message };
-    },
-    async applyT3Policy(request: AgentT3PolicyApplyRequest) {
-      return { servers: await applyLocalT3Policy(request) };
     },
     async deleteSession(id: string) {
       const db = await getDb();
@@ -930,7 +861,6 @@ async function ensureAgentVmSetup(
             ? buildT3CodeBootstrapCommand({
                 tool: row.tool,
                 projectsDir: workspaceNameForRow(row),
-                policy: t3CodePolicyOrNull(row.t3_policy_json),
               })
             : buildAgentBootstrapCommand({
                 tool: row.tool,
@@ -1024,87 +954,6 @@ async function revokeT3CodeLinkOnVm(row: SessionRow): Promise<void> {
   );
   const db = await getDb();
   await appendAgentSessionLog(db, row.id, "Revoked the T3 Connect environment link.");
-}
-
-/**
- * The desktop counterpart of the web API's `applyT3CodePolicyToSessions`:
- * roll this machine's stored T3 Code policy out to its T3 Code servers (or
- * one), deciding per server with the shared `planT3CodePolicyRollout`. An
- * unreachable server is reported and stays out of date, not retried.
- */
-async function applyLocalT3Policy(
-  request: AgentT3PolicyApplyRequest,
-): Promise<AgentT3PolicyApplyServerResult[]> {
-  const db = await getDb();
-  const policy = await storedT3Policy();
-  const rows = (
-    request.sessionId
-      ? await db.select<SessionRow[]>("SELECT * FROM agent_sessions WHERE id = $1", [
-          request.sessionId,
-        ])
-      : await db.select<SessionRow[]>("SELECT * FROM agent_sessions")
-  ).filter((row) => isT3CodeSurface(row.surface) && row.vm_resource_id);
-  const policyJson = policy ? JSON.stringify(policy) : null;
-  return runWithConcurrency(rows, 4, async (row) => {
-    const base = { sessionId: row.id, projectName: row.project_name };
-    const step = planT3CodePolicyRollout(
-      {
-        tool: row.tool,
-        t3Access: row.t3_access ?? null,
-        t3Policy: t3CodePolicyOrNull(row.t3_policy_json),
-        t3PolicyRestartPending: !!row.t3_policy_restart_pending,
-        setupComplete: hasAgentSetupComplete(row),
-      },
-      policy,
-      request.restart,
-    );
-    if (step.kind === "none") {
-      return { ...base, outcome: step.outcome, ...(step.message ? { message: step.message } : {}) };
-    }
-    if (step.kind === "snapshot") {
-      await db.execute(
-        "UPDATE agent_sessions SET t3_policy_json = $1, t3_policy_restart_pending = 0, updated_at = datetime('now') WHERE id = $2",
-        [policyJson, row.id],
-      );
-      return { ...base, outcome: step.outcome };
-    }
-    try {
-      const resource = await loadAgentVmResource(row);
-      const target = await resolveAgentSshTarget(row, resource);
-      const agentKey = await ensureAgentSshKey();
-      const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
-      const result = await agentSshExecCommand(
-        { sshHost: target.host, sshPort: target.port, sshUser: target.username, privateKey },
-        buildT3CodePolicyApplyCommand({ policy, restart: request.restart }),
-      );
-      if (result.code !== 0) {
-        const message = t3CodePolicyApplyFailure(result.code, result.stderr);
-        await appendAgentSessionLog(db, row.id, `Could not apply the T3 Code policy: ${message}`);
-        return { ...base, outcome: "failed" as const, message };
-      }
-      await db.execute(
-        "UPDATE agent_sessions SET t3_policy_json = $1, t3_policy_restart_pending = $2, updated_at = datetime('now') WHERE id = $3",
-        [policyJson, request.restart ? 0 : 1, row.id],
-      );
-      await appendAgentSessionLog(
-        db,
-        row.id,
-        policy
-          ? request.restart
-            ? "Applied the T3 Code policy and restarted T3 Code."
-            : "Installed the T3 Code policy; it applies when T3 Code next restarts."
-          : request.restart
-            ? "Removed the T3 Code policy and restarted T3 Code."
-            : "Removed the T3 Code policy; T3 Code keeps enforcing it until it next restarts.",
-      );
-      return {
-        ...base,
-        outcome: request.restart ? ("applied" as const) : ("installed" as const),
-      };
-    } catch (error) {
-      return { ...base, outcome: "failed" as const, message: formatErrorMessage(error) };
-    }
-  });
 }
 
 async function waitForAgentSshTarget(row: SessionRow): Promise<AgentSshTarget> {

@@ -77,45 +77,6 @@ With Tailscale access:
 
 ![Agents configuration menu with the Tailscale account selected under Services and T3 Code access set to Tailscale, showing the explanatory note](https://agent-assets.infrawrench.com/docs-screenshots/features/t3-code/config-menu-tailscale-v2.png)
 
-## Managing T3 Code with a policy
-
-T3 Code supports a [managed policy](https://github.com/pingdotgg/t3code/blob/main/docs/user/managed-policy.md): a machine-wide file that sets defaults and locks for T3 Code's settings and limits what it may do, enforced by the server for every app that connects (desktop, browser, mobile, MCP agents and scheduled tasks). Infrawrench keeps one policy for your organization and installs it on every T3 Code server it provisions, so nobody has to deploy the file by hand.
-
-To set it up, open the Agents configuration menu with **Interface** set to **T3 Code** and select **Add policy** under **T3 Code policy**. The editor saves straight to your organization's agent defaults, so it needs the same permission as saving them. It offers a control for everything T3 Code's policy can do:
-
-- **Organization**: the name T3 Code shows as "Managed by" beside every locked control, and an optional support link.
-- **Permissions**: the broadest permission mode any thread may use, from Supervised to Full access. With a limit set, T3 Code takes each provider's launch settings and environment variables only from the policy.
-- **Access**: which kinds of clients the server accepts, and whether T3 Connect is allowed. Remote clients are always allowed, because an agent VM can only be reached remotely; without them the server would accept nobody. T3 Connect stays on while **T3 Code access** is T3 Connect.
-- **Capabilities**: webhook triggers for scheduled tasks, importing browser cookies, and product usage data.
-- **Providers**: which providers may run, and **Provider settings** to pin environment variables (such as a company gateway URL), a binary path or launch arguments on every instance of a provider, locked or as defaults.
-- **Updates**: whether T3 Code checks for updates, and whether the nightly channel is available.
-- **Settings**: a default or a lock for any T3 Code setting. Common ones have a picker; **Other setting (by path)** takes any path from T3 Code's `settings.json` with a JSON value.
-
-The **JSON** view shows the exact document that goes to the server and accepts anything T3 Code's format does, including keys the form has no control for.
-
-<insert [T3 Code policy editor open over the Agents page, with an organization name, a permission mode limit, and two locked settings] here>
-
-The policy is checked as you edit, with the rules T3 Code itself applies: T3 Code refuses to start with a policy it cannot fully enforce, so a key it does not know, a value of the wrong type, or a default permission mode broader than the limit blocks saving instead. It is also checked against your defaults. A policy that forbids the provider your **Tool** runs, or turns off the T3 Connect your servers are reached through, cannot be used to create a server; the menu says so and creating one is refused before a VM is provisioned.
-
-Every user on the server can read the policy, so keep credentials out of it. The editor warns when a pinned environment variable looks like one.
-
-### How it reaches a server
-
-- **New servers** get the policy during setup, before T3 Code's service first starts. Setup runs `t3 policy check` on it first, and fails rather than install a policy T3 Code would refuse.
-- **Existing servers** get a changed policy when you save it. T3 Code reads its policy only when it starts, and restarting it interrupts running agent turns, terminals and connected apps, so whenever you have T3 Code servers the editor asks when they should apply the change:
-  - **Now, restarting T3 Code** installs the policy on every server and restarts T3 Code on each, so it is enforced at once.
-  - **At their next restart** installs the policy now and leaves each server on its current policy until T3 Code next restarts. Those servers show **Policy installed. T3 Code applies it when it next restarts.** with a **Restart T3 Code** button for when the moment suits.
-
-  A message under the page header then lists what happened on each server. A server that already has the policy is left alone, and one still being set up starts on the new policy once setup finishes. A server whose provider or access the policy does not fit keeps the policy it already has. A server that cannot be reached (for example, because its VM is powered off) is not retried. It shows that it does not have the current policy, with an **Apply and restart** button. **Authorize server** also installs your organization's current policy, restarts T3 Code and finishes with `t3 policy show`, so you can see what the running server loaded.
-
-- **Removing the policy** asks the same question, and takes the policy off each server. Only a policy Infrawrench installed is removed; one an administrator placed on the machine some other way is left alone.
-
-Rolling a policy out runs commands on your servers and may restart them, so it needs permission to run commands on resources, the same as **Authorize server**.
-
-<insert [T3 Code policy editor footer with two existing servers, showing the "Now, restarting T3 Code" and "At their next restart" choices, and the Agents list below with one server showing "Policy installed. T3 Code applies it when it next restarts." and its Restart T3 Code button] here>
-
-Each T3 Code server in the list shows **Managed by** with the organization of the policy it was last given. The policy controls T3 Code only: the provider CLIs it drives read their own configuration, so restrict those with their own managed settings if you need to.
-
 ## Using the server
 
 Once the link reports `provisioned` (or, with Tailscale access, once you have added the pairing link), the machine shows up in T3 Code. Open it from [T3 Code's own app](https://app.t3.codes) or its desktop build and add projects there with the Command Palette (`Cmd/Ctrl + K`) → **Add Project**.
