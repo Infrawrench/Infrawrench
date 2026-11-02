@@ -10,7 +10,7 @@ import {
 } from "../format";
 import { checkAgainstResult, parseViewSpec } from "../spec";
 import { QueryError, checkSql } from "../sql";
-import { withRowLimit } from "@infrawrench/server-core/aws-pricing-warehouse/query";
+import { queryWarehouse, withRowLimit } from "@infrawrench/server-core/aws-pricing-warehouse/query";
 import { formatCatalog } from "../catalog-text";
 import { MAX_HISTORY_STEP_CHARS, openHistory, openStep, signStep } from "../steps";
 import { toMessages } from "../transcript";
@@ -66,6 +66,21 @@ describe("withRowLimit", () => {
     ]) {
       expect(withRowLimit(sql, 5)).toBe(sql);
     }
+  });
+});
+
+describe("queryWarehouse", () => {
+  it("turns a query that runs out of time into a QueryError its author can act on", async () => {
+    const hang: typeof fetch = (_url, init) =>
+      new Promise((_, reject) =>
+        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason)),
+      );
+    await expect(
+      queryWarehouse("SELECT 1", { token: "t", fetch: hang }, { timeoutMs: 10 }),
+    ).rejects.toThrow(QueryError);
+    await expect(
+      queryWarehouse("SELECT 1", { token: "t", fetch: hang }, { timeoutMs: 10 }),
+    ).rejects.toThrow(/took longer than 0.01 s/);
   });
 });
 

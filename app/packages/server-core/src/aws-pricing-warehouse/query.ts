@@ -143,7 +143,28 @@ function parseLine(line: string): unknown[] {
 export async function queryWarehouse(
   raw: string,
   config: WarehouseConfig,
-  { maxRows = 500, timeoutMs = 25_000 }: { maxRows?: number; timeoutMs?: number } = {},
+  options: { maxRows?: number; timeoutMs?: number } = {},
+): Promise<QueryResult> {
+  const timeoutMs = options.timeoutMs ?? 25_000;
+  try {
+    return await runQuery(raw, config, options.maxRows ?? 500, timeoutMs);
+  } catch (error) {
+    // A query too slow for the timeout is the query's to fix, like one the
+    // warehouse refuses: its author (the chat's model) can narrow it.
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new QueryError(
+        `The query took longer than ${timeoutMs / 1000} s. Filter on the columns of the table itself, without a JOIN, and narrow it by platform, region and pricing.`,
+      );
+    }
+    throw error;
+  }
+}
+
+async function runQuery(
+  raw: string,
+  config: WarehouseConfig,
+  maxRows: number,
+  timeoutMs: number,
 ): Promise<QueryResult> {
   const sql = withRowLimit(checkSql(raw), maxRows + 1);
   const doFetch = config.fetch ?? fetch;
