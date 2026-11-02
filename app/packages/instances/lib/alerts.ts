@@ -273,7 +273,7 @@ async function changeEmail(
         };
   const a = section(tr(msg("New rows")), added);
   const r = section(tr(msg("Rows no longer there")), removed);
-  const lead = tr(msg("The results of {title} changed after AWS's latest price list update."), {
+  const lead = tr(msg("The results of {title} changed after the latest price list update."), {
     title: view.title,
   });
   const unsubscribeUrl = `${ORIGIN}/api/alerts/${alert.id}/unsubscribe`;

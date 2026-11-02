@@ -4,7 +4,7 @@ import { pagesSitemap, platformSitemap } from "@/lib/sitemap";
 
 /**
  * GET /sitemaps/<platform>.xml: one platform's listing and every instance page
- * in every language, including instances AWS no longer lists (their pages
+ * in every language, including instances the provider no longer lists (their pages
  * still exist). GET /sitemaps/pages.xml: the index.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ file: string }> }) {

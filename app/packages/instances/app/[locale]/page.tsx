@@ -19,10 +19,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const tr = await getTranslator(locale);
-  const title = tr(msg("Ask anything about AWS instance prices - Infrawrench Instances"));
+  const title = tr(msg("Ask anything about cloud instance prices - Infrawrench Instances"));
   const description = tr(
     msg(
-      "Ask in plain language about AWS instance types, specs and prices in every region, with their history, and get answers as tables and charts you can share.",
+      "Ask in plain language about AWS, Alibaba Cloud and RunPod instance types, specs and prices in every region, with their history, and get answers as tables and charts you can share.",
     ),
   );
   return {

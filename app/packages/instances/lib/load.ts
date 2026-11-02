@@ -11,7 +11,7 @@ import {
   type FamilyMember,
   type InstanceModel,
 } from "./model";
-import { PLATFORMS, platformInfo } from "./platforms";
+import { PLATFORMS, platformInfo, platformsOf, type Cloud } from "./platforms";
 
 /**
  * A platform's instance names and newest price list date. From `catalog`, one
@@ -101,6 +101,7 @@ export const loadInstance = cache(
 /** One service on the index page. */
 export interface PlatformSummary {
   platform: string;
+  cloud: Cloud;
   label: string;
   /** A `msg()` source. */
   summary: string;
@@ -108,9 +109,9 @@ export interface PlatformSummary {
   families: number;
 }
 
-/** Every service synced so far, in `PLATFORMS` order. */
-export const loadIndex = cache(async (): Promise<PlatformSummary[]> => {
-  const platforms = Object.keys(PLATFORMS);
+/** Every service synced so far, in `PLATFORMS` order; with `cloud`, only that cloud's. */
+export const loadIndex = cache(async (cloud?: string): Promise<PlatformSummary[]> => {
+  const platforms = cloud ? platformsOf(cloud) : Object.keys(PLATFORMS);
   const listed = await Promise.all(platforms.map((p) => platformNames(p)));
   return platforms.flatMap((platform, i) => {
     const names = listed[i]?.names;
@@ -119,6 +120,7 @@ export const loadIndex = cache(async (): Promise<PlatformSummary[]> => {
     return [
       {
         platform,
+        cloud: info.cloud,
         label: info.label,
         summary: info.summary,
         instances: names.length,
@@ -131,8 +133,11 @@ export const loadIndex = cache(async (): Promise<PlatformSummary[]> => {
 /** One service's listing page: every family and every instance in it. */
 export interface PlatformListing {
   platform: string;
+  cloud: Cloud;
   label: string;
   summary: string;
+  /** What to call the family of names that do not parse (a `msg()` source). */
+  otherLabel?: string;
   instances: number;
   families: Family[];
 }
@@ -144,8 +149,10 @@ export const loadListing = cache(async (platform: string): Promise<PlatformListi
   if (!names) return null;
   return {
     platform,
+    cloud: info.cloud,
     label: info.label,
     summary: info.summary,
+    ...(info.otherLabel ? { otherLabel: info.otherLabel } : {}),
     instances: names.length,
     families: familiesOf(names),
   };

@@ -67,12 +67,17 @@ export function formatDate(unixSeconds: number, locale = "en"): string {
   return format.format(new Date(unixSeconds * 1000));
 }
 
-const LEASE_HOURS: Readonly<Record<string, number>> = { "1yr": 365 * 24, "3yr": 3 * 365 * 24 };
+/** A lease's length in months: `1yr` is 12, `3mo` (RunPod savings plans, Alibaba subscriptions) 3; null if unknown. */
+export function leaseMonths(lease: string): number | null {
+  const match = /^(\d+)(yr|mo)$/.exec(lease);
+  if (!match) return null;
+  return Number(match[1]) * (match[2] === "yr" ? 12 : 1);
+}
 
 /** What a reservation costs per hour over its lease, counting the upfront payment. */
 export function effectiveHourly(term: ReservedTerm, hourly: number, upfront: number): number {
-  const hours = LEASE_HOURS[term.lease];
-  return hours ? hourly + upfront / hours : hourly;
+  const months = leaseMonths(term.lease);
+  return months ? hourly + upfront / (months * DURATIONS.monthly.hours) : hourly;
 }
 
 const PURCHASE_OPTIONS: Readonly<Record<string, string>> = {
@@ -81,20 +86,55 @@ const PURCHASE_OPTIONS: Readonly<Record<string, string>> = {
   "All Upfront": msg("All Upfront"),
 };
 
-/** "No Upfront", or "No Upfront (Convertible)", in the reader's language. */
+/**
+ * "No Upfront", or "No Upfront (Convertible)", in the reader's language. The
+ * other clouds' commitments are named for what they are: RunPod's savings
+ * plans and Alibaba's subscriptions are always paid upfront, so the option
+ * would add nothing; Alibaba's reserved instances say which they are, since
+ * the same instance also has subscriptions.
+ */
 export function termLabel(term: ReservedTerm, tr: Translate): string {
   const option = tr(PURCHASE_OPTIONS[term.purchaseOption] ?? term.purchaseOption);
-  return term.offeringClass === "convertible"
-    ? tr(msg("{option} (Convertible)"), { option })
-    : option;
+  switch (term.offeringClass) {
+    case "convertible":
+      return tr(msg("{option} (Convertible)"), { option });
+    case "Savings Plan":
+      return tr(msg("Savings plan"));
+    case "Subscription":
+      return tr(msg("Subscription"));
+    case "Reserved Instance":
+      return tr(msg("Reserved instance, {option}"), { option });
+    default:
+      return option;
+  }
 }
 
-/** "1 year", "3 years". */
+/** "1 year", "3 years", "6 months". */
 export function leaseLabel(lease: string, tr: Translate): string {
-  const years = /^(\d+)yr$/.exec(lease)?.[1];
-  return years
-    ? tr(msg("{count, plural, one {# year} other {# years}}"), { count: Number(years) })
-    : lease;
+  const match = /^(\d+)(yr|mo)$/.exec(lease);
+  if (!match) return lease;
+  const count = Number(match[1]);
+  return match[2] === "yr"
+    ? tr(msg("{count, plural, one {# year} other {# years}}"), { count })
+    : tr(msg("{count, plural, one {# month} other {# months}}"), { count });
+}
+
+/**
+ * What a committed price is called beside the on-demand one: "1-year
+ * reserved", "3-month savings plan", "1-year subscription".
+ */
+export function commitmentLabel(term: ReservedTerm, tr: Translate): string {
+  const lease = leaseLabel(term.lease, tr);
+  switch (term.offeringClass) {
+    case "Savings Plan":
+      return tr(msg("Savings plan, {lease}"), { lease });
+    case "Subscription":
+      return tr(msg("Subscription, {lease}"), { lease });
+    default:
+      if (term.lease === "1yr") return tr(msg("1-year reserved"));
+      if (term.lease === "3yr") return tr(msg("3-year reserved"));
+      return tr(msg("Reserved, {lease}"), { lease });
+  }
 }
 
 /** Term options that combine with a lease: everything but the lease length. */

@@ -47,7 +47,7 @@ export function AlertForm({ viewId, onClose }: { viewId: string; onClose: () => 
         <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--series-3)]" />
         <p>
           {gt(
-            "Check your inbox: we sent a link to confirm. After that, you get an email whenever AWS's prices change what this shows.",
+            "Check your inbox: we sent a link to confirm. After that, you get an email whenever a price list update changes what this shows.",
           )}
         </p>
       </div>
@@ -86,7 +86,7 @@ export function AlertForm({ viewId, onClose }: { viewId: string; onClose: () => 
       {state === "error" && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       <p className="mt-2 text-xs text-ink-3">
         {gt(
-          "We check after every AWS price list update. Each email has a link to stop them. Your address is used for nothing else.",
+          "We check after every price list update. Each email has a link to stop them. Your address is used for nothing else.",
         )}
       </p>
     </form>

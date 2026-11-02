@@ -3,6 +3,7 @@ import { getTranslator } from "@/lib/i18n/server";
 import { loadDecoded, loadInstance, loadSpot } from "@/lib/load";
 import { renderMarkdown } from "@/lib/markdown";
 import { buildRegionData, findRegion } from "@/lib/model";
+import { instancePath, platformAt } from "@/lib/platforms";
 
 /**
  * An instance page as Markdown. Not linked directly: `proxy.ts` rewrites an
@@ -19,10 +20,11 @@ const HEADERS = {
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ platform: string; instance: string }> },
+  { params }: { params: Promise<{ cloud: string; platform: string; instance: string }> },
 ) {
-  const { platform, instance } = await params;
+  const { cloud, platform: slug, instance } = await params;
   const name = decodeURIComponent(instance);
+  const platform = platformAt(cloud, slug) ?? "";
   const [model, decoded, spot, tr] = await Promise.all([
     loadInstance(platform, name),
     loadDecoded(platform, name),
@@ -30,10 +32,13 @@ export async function GET(
     getTranslator("en"),
   ]);
   if (!model || !decoded) {
-    return new Response(`# Not found\n\nThere is no ${platform} instance type named ${name}.\n`, {
-      status: 404,
-      headers: HEADERS,
-    });
+    return new Response(
+      `# Not found\n\nThere is no ${cloud} ${slug} instance type named ${name}.\n`,
+      {
+        status: 404,
+        headers: HEADERS,
+      },
+    );
   }
 
   const regionId = new URL(request.url).searchParams.get("region");
@@ -50,7 +55,7 @@ export async function GET(
       : buildRegionData(decoded, region, spot?.decoded);
   const body = renderMarkdown(model, data, {
     description: describe(model, tr, "en"),
-    pageUrl: `https://instances.infrawrench.com/aws/${model.platform}/${model.name}`,
+    pageUrl: `https://instances.infrawrench.com${instancePath(model.platform, model.name)}`,
     tr,
   });
   return new Response(body, { headers: HEADERS });

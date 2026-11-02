@@ -13,6 +13,7 @@ import {
   type ViewRef,
 } from "@/lib/chat/types";
 import { localePath } from "@/lib/i18n/locales";
+import { CLOUDS, CLOUD_IDS } from "@/lib/platforms";
 import {
   ArrowRightIcon,
   ArrowUpIcon,
@@ -47,13 +48,16 @@ interface UiMessage {
   pending?: boolean;
 }
 
-/** Product names, so never translated. */
+/** Product names, so never translated. The other clouds come in among AWS's services. */
 const SERVICES = [
   "Amazon EC2",
+  "RunPod GPUs",
   "Amazon RDS",
+  "Alibaba Cloud ECS",
   "ElastiCache",
   "OpenSearch",
   "SageMaker",
+  "RunPod CPU pods",
   "Redshift",
   "MemoryDB",
   "Amazon EMR",
@@ -125,8 +129,11 @@ function Suggestions({ onPick }: { onPick: (text: string) => void }) {
   const items = [
     { icon: CpuIcon, text: gt("What is the cheapest ARM AWS instance?") },
     { icon: BellIcon, text: gt("Can you notify me if a new cheap ARM EC2 instance is available?") },
-    { icon: TableIcon, text: gt("Build me a table of x86_64 EC2 instances") },
-    { icon: BarChartIcon, text: gt("Show me a bar graph of ARM instance costs running Linux") },
+    { icon: TableIcon, text: gt("Build me a table of RunPod GPUs by price per GB of GPU memory") },
+    {
+      icon: BarChartIcon,
+      text: gt("Compare 4 vCPU, 16 GiB instances on AWS and Alibaba Cloud in Virginia"),
+    },
   ];
   return (
     <ul className="grid gap-3 sm:grid-cols-2">
@@ -311,7 +318,9 @@ function Message({ message }: { message: UiMessage }) {
           {message.error === "rate_limited"
             ? gt("That is a lot of questions in a short time. Wait a minute and ask again.")
             : message.error === "refused"
-              ? gt("I can't help with that one. Ask me about AWS instance types and their prices.")
+              ? gt(
+                  "I can't help with that one. Ask me about cloud instance types and their prices.",
+                )
               : gt("Something went wrong answering that. Try again in a moment.")}
         </p>
       )}
@@ -400,7 +409,7 @@ export function ChatHome() {
       </h1>
       <p className="mx-auto mt-3 max-w-xl text-center text-ink-2">
         {gt(
-          "Ask in plain language. Answers come from AWS's own price lists for every region, with history, as tables and charts you can share.",
+          "Ask in plain language about AWS, Alibaba Cloud and RunPod. Answers come from each provider's own price lists for every region, with history, as tables and charts you can share.",
         )}
       </p>
       <div className="mt-8">
@@ -415,15 +424,18 @@ export function ChatHome() {
       <div className="mt-6">
         <Suggestions onPick={(text) => start(text)} />
       </div>
-      <div className="mt-10 flex justify-center">
-        <Link
-          href={localePath(locale, "/aws")}
-          className="group inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm text-ink-2 transition-colors hover:border-accent hover:text-ink"
-        >
-          <ServerIcon className="h-4 w-4 text-ink-3 group-hover:text-accent" />
-          {gt("Browse AWS instances")}
-          <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-        </Link>
+      <div className="mt-10 flex flex-wrap justify-center gap-2">
+        {CLOUD_IDS.map((cloud) => (
+          <Link
+            key={cloud}
+            href={localePath(locale, `/${cloud}`)}
+            className="group inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm text-ink-2 transition-colors hover:border-accent hover:text-ink"
+          >
+            <ServerIcon className="h-4 w-4 text-ink-3 group-hover:text-accent" />
+            {gt("Browse {provider} instances", { provider: CLOUDS[cloud].label })}
+            <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        ))}
       </div>
     </main>
   );
@@ -471,7 +483,9 @@ export function SharedView({ data }: { data: ViewData }) {
           }
         />
         <p className="mt-1.5 flex justify-between gap-3 px-1 text-[11px] text-ink-3">
-          <span>{gt("Answers come from AWS's public price lists; check before you commit.")}</span>
+          <span>
+            {gt("Answers come from the providers' public price lists; check before you commit.")}
+          </span>
           <Link href={localePath(locale, "/")} className="shrink-0 hover:text-ink">
             {gt("New conversation")}
           </Link>
@@ -691,7 +705,9 @@ export function Chat({ conversationId }: { conversationId: string }) {
       <div className="sticky bottom-0 z-20 -mx-4 bg-surface/80 px-4 pt-2 pb-4 backdrop-blur-md sm:-mx-7 sm:px-7">
         <Composer onSend={send} onStop={stop} busy={busy} floating />
         <p className="mt-1.5 flex justify-between gap-3 px-1 text-[11px] text-ink-3">
-          <span>{gt("Answers come from AWS's public price lists; check before you commit.")}</span>
+          <span>
+            {gt("Answers come from the providers' public price lists; check before you commit.")}
+          </span>
           <Link href={localePath(locale, "/")} className="shrink-0 hover:text-ink">
             {gt("New conversation")}
           </Link>

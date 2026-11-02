@@ -1,10 +1,34 @@
 import { attributeLabel, variantLabel, variantValueLabel } from "./attributes";
-import { DURATIONS, effectiveHourly, leaseLabel, termLabel, termOptionKey } from "./format";
+import {
+  DURATIONS,
+  effectiveHourly,
+  leaseLabel,
+  leaseMonths,
+  termLabel,
+  termOptionKey,
+} from "./format";
 import type { Translate } from "./i18n/server";
 import type { PlatformListing, PlatformSummary } from "./load";
-import { spotSystem, type InstanceModel, type RegionData } from "./model";
+import { latestAttributes, spotSystem, type InstanceModel, type RegionData } from "./model";
 import { attributeTimelines } from "./selection";
-import { defaultTermOption, priceHistory } from "./series";
+import {
+  CLOUDS,
+  CLOUD_IDS,
+  cloudOf,
+  fullLabel,
+  instancePath,
+  platformPath,
+  type Cloud,
+} from "./platforms";
+import { defaultTermOption, priceHistory, seriesLabel } from "./series";
+
+/** Where each cloud's prices come from, for the line under an instance's facts. */
+const SOURCES: Readonly<Record<Cloud, string>> = {
+  aws: "the AWS Price List bulk API",
+  alibaba: "Alibaba Cloud's ECS price list (the international site)",
+  runpod:
+    "RunPod's public API; RunPod charges the same in every data center, so every price is in the location `global`",
+};
 
 /**
  * The instance page as Markdown, for agents: what `proxy.ts` serves when a
@@ -19,29 +43,41 @@ export function renderMarkdown(
 ): string {
   const { tr } = opts;
   const region = m.regions[data.region]!;
-  const regionTitle = region.code ? `${region.name} (${region.code})` : region.name;
+  const regionTitle =
+    region.code && region.code !== region.name ? `${region.name} (${region.code})` : region.name;
   const variant = m.variants[m.defaultVariant]!;
   const variantText = m.shownKeys
     .map((k) => `${tr(variantLabel(m.variantKeys[k]!))}: ${tr(variantValueLabel(variant[k]!))}`)
     .join(", ");
+  // RunPod has one location, `global`, so nothing is "in" a region there.
+  const oneRegion = m.regions.length <= 1;
+  const inRegion = oneRegion ? "" : ` in ${regionTitle}`;
+  /** `variantText` as a sentence of its own, then `rest`; nothing when the platform has no variants. */
+  const lead = (rest = "") =>
+    [variantText ? `${variantText}.` : "", rest].filter(Boolean).join(" ");
   const out: string[] = [];
 
   out.push(`# ${m.name}`, "", `> ${opts.description}`, "");
-  out.push(`- Platform: AWS ${m.platformLabel}`);
+  const cloud = cloudOf(m.platform);
+  out.push(`- Platform: ${fullLabel(m.platform)}`);
   out.push(`- First listed: ${day(m.createdAt)}`);
-  if (m.deletedAt !== null) out.push(`- No longer listed by AWS since: ${day(m.deletedAt)}`);
+  if (m.deletedAt !== null)
+    out.push(`- No longer listed by ${CLOUDS[cloud].label} since: ${day(m.deletedAt)}`);
   out.push(`- Price list as of: ${day(m.asOf)}`);
   out.push(`- Web page: ${opts.pageUrl}`);
   out.push(
-    `- Prices are in USD from the AWS Price List bulk API${m.spot ? ", and spot prices from AWS's Spot pricing page" : ""}. Add \`?region=<code>\` for another region's full history.`,
+    `- Prices are in USD from ${SOURCES[cloud]}${m.spot ? ", and spot prices from AWS's Spot pricing page" : ""}.${m.regions.length > 1 ? " Add `?region=<code>` for another region's full history." : ""}`,
   );
+  if (latestAttributes(m.attributes).priceUnit === "GPU-Hour") {
+    out.push("- Prices are per GPU per hour; a pod can have several GPUs.");
+  }
 
   // Specifications, in this region, with every value an attribute has had.
   const timelines = attributeTimelines(m.attributes, data.region);
   const rows = [...timelines.entries()]
     .filter(([, steps]) => steps.at(-1)?.value != null)
     .sort((a, b) => tr(attributeLabel(a[0])).localeCompare(tr(attributeLabel(b[0]))));
-  out.push("", `## Specifications in ${regionTitle}`, "");
+  out.push("", `## Specifications${inRegion}`, "");
   out.push(
     table(
       ["Attribute", "Key", "Value", "Earlier values"],
@@ -64,8 +100,9 @@ export function renderMarkdown(
       return hourly === undefined ? [] : [{ r, hourly }];
     })
     .sort((a, b) => a.hourly - b.hourly);
-  if (byRegion.length > 0) {
-    out.push("", "## On-demand price by region", "", `${variantText}.`, "");
+  if (!oneRegion && byRegion.length > 0) {
+    out.push("", "## On-demand price by region", "");
+    if (variantText) out.push(lead(), "");
     out.push(
       table(
         ["Region", "Code", "USD per hour", "USD per month"],
@@ -81,8 +118,8 @@ export function renderMarkdown(
 
   // Every variant in this region.
   const here = m.current[data.region] ?? [];
-  if (here.length > 0) {
-    out.push("", `## On-demand price by variant in ${regionTitle}`, "");
+  if (here.length > 0 && m.shownKeys.length > 0) {
+    out.push("", `## On-demand price by variant${inRegion}`, "");
     out.push(
       table(
         [...m.shownKeys.map((k) => tr(variantLabel(m.variantKeys[k]!))), "USD per hour"],
@@ -102,14 +139,15 @@ export function renderMarkdown(
     return last && last[1] !== null ? [{ t, hourly: last[1], upfront: last[2] ?? 0 }] : [];
   });
   if (reserved.length > 0) {
-    out.push("", `## Reserved prices in ${regionTitle}`, "", `${variantText}.`, "");
+    out.push("", `## Reserved prices${inRegion}`, "");
+    if (variantText) out.push(lead(), "");
     out.push(
       table(
         ["Term", "Upfront USD", "USD per hour", "Effective USD per hour"],
         reserved
           .sort(
             (a, b) =>
-              a.t.lease.localeCompare(b.t.lease) ||
+              (leaseMonths(a.t.lease) ?? 0) - (leaseMonths(b.t.lease) ?? 0) ||
               effectiveHourly(a.t, a.hourly, a.upfront) - effectiveHourly(b.t, b.hourly, b.upfront),
           )
           .map(({ t, hourly, upfront }) => [
@@ -178,14 +216,18 @@ export function renderMarkdown(
   );
   if (times.length > 0) {
     const option = m.terms.find((t) => termOptionKey(t) === defaultTermOption(m));
-    out.push("", `## Price history in ${regionTitle}`, "");
+    out.push("", `## Price history${inRegion}`, "");
     out.push(
-      `${variantText}. USD per hour; reserved prices are effective hourly (${option ? termLabel(option, tr) : "standard"}, upfront spread over the term).`,
+      lead(
+        option
+          ? `USD per hour; reserved prices are effective hourly (${termLabel(option, tr)}, upfront spread over the term).`
+          : "USD per hour.",
+      ),
       "",
     );
     out.push(
       table(
-        ["Date", ...series.map((s) => tr(s.label))],
+        ["Date", ...series.map((s) => seriesLabel(m, s, tr))],
         times.map((t) => [
           day(t),
           ...series.map((s) => {
@@ -197,7 +239,7 @@ export function renderMarkdown(
     );
   }
 
-  if (m.availability.length > 0) {
+  if (m.regions.length > 1 && m.availability.length > 0) {
     out.push("", "## Regions offering it on demand over time", "");
     out.push(
       table(
@@ -233,25 +275,53 @@ export function renderMarkdown(
 
 const SITE = "https://instances.infrawrench.com";
 
-/** The index as Markdown: every service, with a link to its listing. */
+function servicesTable(platforms: PlatformSummary[], tr: Translate): string {
+  return table(
+    ["Service", "What it is", "Instance types", "Families", "Markdown"],
+    platforms.map((p) => [
+      `[${fullLabel(p.platform)}](${SITE}${platformPath(p.platform)})`,
+      tr(p.summary),
+      String(p.instances),
+      String(p.families),
+      `${SITE}${platformPath(p.platform)}.md`,
+    ]),
+  );
+}
+
+const ABOUT = `Append \`.md\` to any page (or send \`Accept: text/markdown\`) for Markdown. The same data is available through the [bulk instances API](https://infrawrench.com/docs/team-and-billing/bulk-instances-api). People can also ask questions about it in plain language at ${SITE}/, which answers from the same price lists, and programs can query them in SQL with the [instance pricing SQL API](https://infrawrench.com/docs/team-and-billing/instance-pricing-api).`;
+
+/** The index as Markdown: every cloud's services, with a link to each listing. */
 export function renderIndexMarkdown(platforms: PlatformSummary[], tr: Translate): string {
   const out = [
-    "# AWS instance types",
+    "# Cloud instance types",
     "",
-    "> Specs and prices for every instance type in AWS's compute-priced services, in every region, with the full history of both, from the AWS Price List bulk API.",
+    "> Specs and prices for every instance type in AWS's compute-priced services, Alibaba Cloud ECS and RunPod's GPU and CPU pods, in every region, with the full history of both, from each provider's own price lists.",
     "",
-    `Append \`.md\` to any page (or send \`Accept: text/markdown\`) for Markdown. The same data is available through the [bulk instances API](https://infrawrench.com/docs/team-and-billing/bulk-instances-api). People can also ask questions about it in plain language at ${SITE}/, which answers from the same price lists, and programs can query them in SQL with the [AWS pricing SQL API](https://infrawrench.com/docs/team-and-billing/aws-pricing-api).`,
+    ABOUT,
+  ];
+  for (const cloud of CLOUD_IDS) {
+    const mine = platforms.filter((p) => p.cloud === cloud);
+    if (mine.length === 0) continue;
+    out.push("", `## ${CLOUDS[cloud].label}`, "", `Every service: ${SITE}/${cloud}`, "");
+    out.push(servicesTable(mine, tr));
+  }
+  return `${out.join("\n")}\n`;
+}
+
+/** One cloud's services as Markdown. */
+export function renderCloudMarkdown(
+  cloud: Cloud,
+  platforms: PlatformSummary[],
+  tr: Translate,
+): string {
+  const out = [
+    `# ${CLOUDS[cloud].label} instance types`,
     "",
-    table(
-      ["Service", "What it is", "Instance types", "Families", "Markdown"],
-      platforms.map((p) => [
-        `[AWS ${p.label}](${SITE}/aws/${p.platform})`,
-        tr(p.summary),
-        String(p.instances),
-        String(p.families),
-        `${SITE}/aws/${p.platform}.md`,
-      ]),
-    ),
+    `> Specs and prices for every ${CLOUDS[cloud].label} instance type, in every region, with the full history of both, from ${SOURCES[cloud]}.`,
+    "",
+    ABOUT,
+    "",
+    servicesTable(platforms, tr),
   ];
   return `${out.join("\n")}\n`;
 }
@@ -259,16 +329,16 @@ export function renderIndexMarkdown(platforms: PlatformSummary[], tr: Translate)
 /** A service's listing as Markdown: every family and its instance types. */
 export function renderPlatformMarkdown(listing: PlatformListing, tr: Translate): string {
   const out = [
-    `# AWS ${listing.label} instance types`,
+    `# ${fullLabel(listing.platform)} instance types`,
     "",
     `> ${tr(listing.summary)}. ${listing.instances} instance types in ${listing.families.length} families.`,
     "",
-    `Each instance's page is \`${SITE}/aws/${listing.platform}/<instance>\`; append \`.md\` for Markdown.`,
+    `Each instance's page is \`${SITE}${platformPath(listing.platform)}/<instance>\` (the name URL-encoded); append \`.md\` for Markdown.`,
   ];
   for (const f of listing.families) {
-    out.push("", `## ${f.key ? f.label : "Other"}`, "");
+    out.push("", `## ${f.key ? f.label : tr(listing.otherLabel ?? "Other")}`, "");
     out.push(
-      f.instances.map((n) => `- [${n}](${SITE}/aws/${listing.platform}/${n}.md)`).join("\n"),
+      f.instances.map((n) => `- [${n}](${SITE}${instancePath(listing.platform, n)}.md)`).join("\n"),
     );
   }
   return `${out.join("\n")}\n`;

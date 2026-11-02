@@ -36,7 +36,7 @@ export interface InstanceFile {
 }
 
 export interface Region {
-  /** The AWS location name, e.g. `US East (N. Virginia)`. */
+  /** The location's name, e.g. `US East (N. Virginia)`, Alibaba's `US (Virginia)`, RunPod's `global`. */
   name: string;
   /** e.g. `us-east-1`; missing for locations the price list never gave a code. */
   code?: string;
@@ -149,7 +149,8 @@ export function decodeInstance(file: InstanceFile): DecodedInstance {
   const regions: Region[] = [];
   for (const [loc, pairs] of file.regions) {
     const attrs = Object.fromEntries(pairs.map(([k, v]) => [str(k), str(v)]));
-    const region: Region = { name: str(loc) };
+    // Alibaba's locations are region ids with an English `name`; AWS's are their names already.
+    const region: Region = { name: attrs.name || str(loc) };
     if (attrs.regionCode) region.code = attrs.regionCode;
     if (attrs.locationType) region.type = attrs.locationType;
     regionIndex.set(loc, regions.push(region) - 1);

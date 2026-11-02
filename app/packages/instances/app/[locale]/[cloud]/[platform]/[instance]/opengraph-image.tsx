@@ -2,12 +2,13 @@ import { msg } from "gt-react";
 import { ImageResponse } from "next/og";
 // The logo, 80px (the card draws it at 40), inlined as a data URL at build time.
 import logo from "./og-logo.png?inline";
-import { specs } from "@/lib/attributes";
-import { formatDate, formatMoney } from "@/lib/format";
+import { isGpuType, specs } from "@/lib/attributes";
+import { formatDate, formatMoney, leaseLabel } from "@/lib/format";
 import { isLocale } from "@/lib/i18n/locales";
 import { getTranslator, type Translate } from "@/lib/i18n/server";
 import { loadInstance } from "@/lib/load";
 import { latestAttributes, spotSystem, type InstanceModel } from "@/lib/model";
+import { CLOUDS, cloudOf, fullLabel, platformAt } from "@/lib/platforms";
 import { defaultTermOption, priceHistory, type PriceSeries } from "@/lib/series";
 import { stepPaths } from "@/lib/step-path";
 import { timeTicks } from "@/lib/time-ticks";
@@ -36,11 +37,16 @@ const C = {
   ink3: "#6b7280",
   accent: "#60a5fa",
   od: "#3987e5",
-  "1yr": "#d95926",
-  "3yr": "#199e70",
   // The spot line and sparkline; not a series of the main chart.
   spot: "#c98500",
 } as const;
+
+/** Committed terms by slot, shortest lease first (the page's --series-2, -3, -5). */
+const TERM_COLORS = ["#d95926", "#199e70", "#d4689a"];
+
+function seriesColor(s: Pick<PriceSeries, "id" | "slot">): string {
+  return s.slot !== undefined ? TERM_COLORS[s.slot]! : s.id === "spot" ? C.spot : C.od;
+}
 
 /**
  * The card's inner width is 470: 1200 - 2 * 56 page padding - 520 specs - 40
@@ -109,6 +115,7 @@ function chartGeometry(series: PriceSeries[], end: number, locale: string) {
     const area = contiguous ? `${solid}V${CHART.height}H${start}Z` : null;
     return {
       id: s.id,
+      color: seriesColor(s),
       solid,
       dashed,
       area,
@@ -148,15 +155,32 @@ function specRows(m: InstanceModel, tr: Translate): [string, string][] {
   const a = latestAttributes(m.attributes);
   const { vcpu, memory } = specs(a);
   const known = (v: string | undefined) => (v && v !== "NA" && v !== "0" ? v : undefined);
+  const unit = (v: string | undefined, u: string) => (known(v) ? `${Number(v)} ${u}` : undefined);
+  const gpuCounts = [a.maxGpuCountSecureCloud, a.maxGpuCountCommunityCloud].map(Number);
+  // AWS's keys, then Alibaba's, then RunPod's: a platform only has its own.
   const rows: [string, string | undefined][] = [
     [tr(msg("vCPUs")), vcpu],
     [tr(msg("Memory")), memory],
-    [tr(msg("GPUs")), known(a.gpu)],
-    [tr(msg("Processor")), known(a.physicalProcessor ?? a.physicalCpu)],
+    [
+      tr(msg("GPU memory")),
+      isGpuType(a)
+        ? unit(a.memoryInGb, "GB")
+        : Number(a.GPUAmount) > 0 && Number(a.GPUMemorySize) > 0
+          ? `${Number(a.GPUAmount) * Number(a.GPUMemorySize)} GiB`
+          : undefined,
+    ],
+    [tr(msg("GPUs")), known(a.gpu ?? a.GPUAmount)],
+    [tr(msg("GPU model")), known(a.GPUSpec)],
+    [tr(msg("Manufacturer")), known(a.manufacturer)],
+    [
+      tr(msg("Most GPUs per pod")),
+      Math.max(...gpuCounts) > 0 ? String(Math.max(...gpuCounts)) : undefined,
+    ],
+    [tr(msg("Processor")), known(a.physicalProcessor ?? a.physicalCpu ?? a.PhysicalProcessorModel)],
     [tr(msg("Network")), known(a.networkPerformance)],
     [tr(msg("Storage")), known(a.storage)],
-    [tr(msg("Clock speed")), known(a.clockSpeed)],
-    [tr(msg("Architecture")), known(a.processorArchitecture)],
+    [tr(msg("Clock speed")), known(a.clockSpeed) ?? unit(a.CpuSpeedFrequency, "GHz")],
+    [tr(msg("Architecture")), known(a.processorArchitecture ?? a.CpuArchitecture)],
   ];
   return rows.filter((r): r is [string, string] => r[1] !== undefined).slice(0, 6);
 }
@@ -164,10 +188,11 @@ function specRows(m: InstanceModel, tr: Translate): [string, string][] {
 export default async function Image({
   params,
 }: {
-  params: Promise<{ locale: string; platform: string; instance: string }>;
+  params: Promise<{ locale: string; cloud: string; platform: string; instance: string }>;
 }) {
-  const { locale, platform, instance } = await params;
-  if (!isLocale(locale)) return new Response("Not found", { status: 404 });
+  const { locale, cloud, platform: slug, instance } = await params;
+  const platform = platformAt(cloud, slug);
+  if (!isLocale(locale) || !platform) return new Response("Not found", { status: 404 });
   const [m, tr] = await Promise.all([
     loadInstance(platform, decodeURIComponent(instance)),
     getTranslator(locale),
@@ -179,7 +204,12 @@ export default async function Image({
   const all = priceHistory(m, m.regionData, m.defaultVariant, defaultTermOption(m));
   // Spot has its own line and sparkline: its 90 days would be a sliver at the
   // end of a chart that runs back to when the instance was first listed.
-  const series = all.filter((s) => s.id !== "spot");
+  // At most two committed terms keep the legend inside the card: 1 and 3
+  // years when there are more (Alibaba's subscriptions), else the first two.
+  const terms = all.filter((s) => s.slot !== undefined);
+  const yearly = terms.filter((s) => s.id === "1yr" || s.id === "3yr");
+  const shownTerms = terms.length > 2 && yearly.length > 0 ? yearly : terms.slice(0, 2);
+  const series = all.filter((s) => s.id === "od" || shownTerms.includes(s));
   const spotTrend = sparkline(all.find((s) => s.id === "spot")?.points ?? []);
   const chart = chartGeometry(series, m.deletedAt ?? m.asOf, locale);
   const onDemand = m.current[m.defaultRegion]?.find(([v]) => v === m.defaultVariant)?.[1];
@@ -192,7 +222,11 @@ export default async function Image({
   const latest = (s: PriceSeries) => s.points.at(-1)?.[1] ?? null;
   const lastPrice = [...series[0]!.points].reverse().find(([, v]) => v !== null)?.[1] ?? undefined;
   const regionsOffering = m.current.filter((pairs) => pairs.length > 0).length;
-  const family = latestAttributes(m.attributes).instanceFamily;
+  const attrs = latestAttributes(m.attributes);
+  const family = attrs.instanceFamily ?? attrs.InstanceCategory ?? attrs.displayName;
+  const provider = CLOUDS[cloudOf(m.platform)].label;
+  // RunPod: one price everywhere; the GPU's own list of data centers says where it is stocked.
+  const dataCenters = attrs.dataCenters?.split(",").filter(Boolean).length ?? 0;
   const nameSize = m.name.length > 13 ? Math.max(40, Math.floor((72 * 13) / m.name.length)) : 72;
   const rows = specRows(m, tr);
 
@@ -209,12 +243,20 @@ export default async function Image({
     where:
       m.deletedAt !== null
         ? lastPrice !== undefined
-          ? tr(msg("AWS stopped listing it on {date}; last {price}/hr"), {
+          ? tr(msg("{provider} stopped listing it on {date}; last {price}/hr"), {
+              provider,
               date: formatDate(m.deletedAt, locale),
               price: money(lastPrice),
             })
-          : tr(msg("AWS stopped listing it on {date}"), { date: formatDate(m.deletedAt, locale) })
-        : region.name,
+          : tr(msg("{provider} stopped listing it on {date}"), {
+              provider,
+              date: formatDate(m.deletedAt, locale),
+            })
+        : m.regions.length <= 1
+          ? isGpuType(attrs)
+            ? tr(msg("per GPU, in every data center"))
+            : tr(msg("in every data center"))
+          : region.name,
     spot:
       spotNow === undefined
         ? null
@@ -230,19 +272,35 @@ export default async function Image({
     legend: series.map((s) => {
       const v = latest(s);
       // "RI" keeps three entries with prices inside the card's width.
+      const term = s.term === undefined ? undefined : m.terms[s.term]!;
+      const reserved =
+        term && !["Savings Plan", "Subscription"].includes(term.offeringClass) ? term : undefined;
       const name =
         s.id === "od"
           ? tr(msg("On demand"))
-          : s.id === "1yr"
+          : reserved?.lease === "1yr"
             ? tr(msg("1-yr RI"))
-            : tr(msg("3-yr RI"));
-      return { id: s.id, label: s.id !== "od" && v !== null ? `${name} ${money(v)}` : name };
+            : reserved?.lease === "3yr"
+              ? tr(msg("3-yr RI"))
+              : leaseLabel(s.id, tr);
+      return {
+        id: s.id,
+        color: seriesColor(s),
+        label: s.id !== "od" && v !== null ? `${name} ${money(v)}` : name,
+      };
     }),
     noHistory: tr(msg("No price history")),
     listedSince: tr(msg("Listed since {date}"), { date: formatDate(m.createdAt, locale) }),
-    offeredIn: tr(msg("Offered in {count, plural, one {# region} other {# regions}}"), {
-      count: regionsOffering,
-    }),
+    offeredIn:
+      m.regions.length <= 1
+        ? dataCenters > 0
+          ? tr(msg("Stocked in {count, plural, one {# data center} other {# data centers}}"), {
+              count: dataCenters,
+            })
+          : null
+        : tr(msg("Offered in {count, plural, one {# region} other {# regions}}"), {
+            count: regionsOffering,
+          }),
     fullHistory: tr(msg("Full price and spec history")),
   };
   const fonts = await loadFonts(
@@ -304,7 +362,7 @@ export default async function Image({
               letterSpacing: 2,
             }}
           >
-            {`AWS ${m.platformLabel.toUpperCase()}`}
+            {fullLabel(m.platform).toUpperCase()}
           </div>
           <div
             style={{
@@ -446,7 +504,7 @@ export default async function Image({
                       width: 16,
                       height: 4,
                       borderRadius: 2,
-                      background: C[s.id],
+                      background: s.color,
                     }}
                   />
                   {s.label}
@@ -522,7 +580,7 @@ export default async function Image({
                           key={`${p.id}-gap`}
                           d={p.dashed}
                           fill="none"
-                          stroke={C[p.id]}
+                          stroke={p.color}
                           strokeWidth="2.5"
                           strokeDasharray="7 5"
                           opacity="0.7"
@@ -532,7 +590,7 @@ export default async function Image({
                         key={p.id}
                         d={p.solid}
                         fill="none"
-                        stroke={C[p.id]}
+                        stroke={p.color}
                         strokeWidth="3.5"
                         strokeLinejoin="round"
                       />,
@@ -544,7 +602,7 @@ export default async function Image({
                         cx={dot.cx}
                         cy={dot.cy}
                         r="5"
-                        fill={C[p.id]}
+                        fill={p.color}
                         stroke={C.card}
                         strokeWidth="2.5"
                       />
@@ -598,7 +656,9 @@ export default async function Image({
 
       <div style={{ display: "flex", gap: 28, fontSize: 18, color: C.ink3, marginTop: 22 }}>
         <div style={{ display: "flex" }}>{text.listedSince}</div>
-        {regionsOffering > 0 && <div style={{ display: "flex" }}>{text.offeredIn}</div>}
+        {regionsOffering > 0 && text.offeredIn && (
+          <div style={{ display: "flex" }}>{text.offeredIn}</div>
+        )}
         <div style={{ display: "flex" }}>{text.fullHistory}</div>
       </div>
     </div>,

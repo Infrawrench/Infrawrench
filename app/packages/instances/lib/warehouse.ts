@@ -8,7 +8,7 @@ import {
 /**
  * The chat's read-only queries against the AWS pricing warehouse, through the
  * shared client in server-core (which the web API's
- * `POST /api/v1/aws-pricing/query` also uses).
+ * `POST /api/v1/instance-pricing/query` also uses).
  */
 export { QueryError };
 

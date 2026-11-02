@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     title: tr(msg("{title} - Infrawrench Instances"), { title: data.view.title }),
     description: tr(
       msg(
-        "A table of AWS instance prices, from AWS's price lists, shared from Infrawrench Instances.",
+        "A table of cloud instance prices, from the providers' price lists, shared from Infrawrench Instances.",
       ),
     ),
     // Made by visitors, so kept out of search results.

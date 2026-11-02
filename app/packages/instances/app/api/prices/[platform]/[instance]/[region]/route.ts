@@ -2,8 +2,8 @@ import { loadDecoded, loadSpot } from "@/lib/load";
 import { buildRegionData, findRegion, regionInfo } from "@/lib/model";
 
 /**
- * GET /api/aws/<platform>/<instance>/<region>: one region's full price
- * history (a `RegionData`), which an instance page fetches when the visitor
+ * GET /api/prices/<platform>/<instance>/<region>: one region's full price
+ * history (a `RegionData`; `platform` is the KV key, `alibaba` not `ecs`), which an instance page fetches when the visitor
  * picks a region other than the one it was rendered with.
  */
 export const revalidate = 1800;

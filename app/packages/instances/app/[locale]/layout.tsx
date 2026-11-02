@@ -21,7 +21,9 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   return {
     metadataBase: new URL("https://instances.infrawrench.com"),
     title: "Infrawrench Instances",
-    description: tr(msg("AWS instance specs and prices, with their full history.")),
+    description: tr(
+      msg("Instance specs and prices for AWS, Alibaba Cloud and RunPod, with their full history."),
+    ),
     icons: { icon: "/icon.png" },
   };
 }

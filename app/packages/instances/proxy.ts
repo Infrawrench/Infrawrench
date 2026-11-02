@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { DEFAULT_LOCALE, LOCALE_COOKIE, isLocale, localePath } from "@/lib/i18n/locales";
 import { prefersMarkdown } from "@/lib/negotiate";
+import { CLOUD_IDS } from "@/lib/platforms";
 
 /**
  * Request-time routing, run in the uncached entrypoint before Workers Cache
@@ -13,18 +14,20 @@ import { prefersMarkdown } from "@/lib/negotiate";
  * is sent from an English URL to theirs; first-time visitors and crawlers are
  * not redirected, so a shared link opens in the language it was shared in.
  *
- * Markdown for agents: the home page (`/`) and the service list (`/aws`), a
- * service (`/aws/ec2`) or an instance (`/aws/ec2/m5.large`) requested with
+ * Markdown for agents: the home page (`/`), a cloud's service list (`/aws`),
+ * a service (`/aws/ec2`) or an instance (`/aws/ec2/m5.large`) requested with
  * `Accept: text/markdown` (preferred over `text/html`), or with `.md`
  * appended (`/index.md` for the home page), is rewritten to the matching
  * `/api/markdown/...` route. The home page is the chat, which has no Markdown
- * form, so agents get the service list there too.
+ * form, so agents get every cloud's services there instead.
  *
- * Localized sections: `aws`, `chat` (conversations), `v` (shared chat views)
- * and `alerts` (email alert links) are page trees under `[locale]`; anything
+ * Localized sections: each cloud (`aws`, `alibaba`, `runpod`; see
+ * `lib/platforms.ts`), `chat` (conversations), `v` (shared chat views) and
+ * `alerts` (email alert links) are page trees under `[locale]`; anything
  * else passes through.
  */
-const SECTIONS = ["aws", "v", "alerts", "chat"];
+const CLOUD_SECTIONS: readonly string[] = CLOUD_IDS;
+const SECTIONS = [...CLOUD_SECTIONS, "v", "alerts", "chat"];
 
 export function proxy(request: NextRequest) {
   const url = request.nextUrl;
@@ -44,15 +47,13 @@ export function proxy(request: NextRequest) {
   let markdown: string | undefined;
   const md = page.at(-1)?.endsWith(".md") ?? false;
   const strip = (s: string) => (md ? s.slice(0, -3) : s);
-  if (
-    page.length === 0 ||
-    (page.length === 1 && (page[0] === "index.md" || page[0] === "aws" || page[0] === "aws.md"))
-  )
+  const cloud = CLOUD_SECTIONS.find((c) => page[0] === c || page[0] === `${c}.md`);
+  if (page.length === 0 || (page.length === 1 && page[0] === "index.md"))
     markdown = "/api/markdown";
-  else if (page[0] === "aws" && page.length === 2)
-    markdown = `/api/markdown/aws/${strip(page[1]!)}`;
-  else if (page[0] === "aws" && page.length === 3) {
-    markdown = `/api/markdown/aws/${page[1]}/${strip(page[2]!)}`;
+  else if (cloud && page.length === 1) markdown = `/api/markdown/${cloud}`;
+  else if (cloud && page.length === 2) markdown = `/api/markdown/${cloud}/${strip(page[1]!)}`;
+  else if (cloud && page.length === 3) {
+    markdown = `/api/markdown/${cloud}/${page[1]}/${strip(page[2]!)}`;
   } else if (!SECTIONS.includes(page[0] ?? "")) {
     return NextResponse.next();
   }
@@ -86,9 +87,17 @@ export const config = {
   matcher: [
     "/",
     "/index.md",
+    // One block per cloud in lib/platforms.ts: Next reads `config` statically,
+    // so it cannot be built from CLOUD_IDS.
     "/aws",
     "/aws.md",
     "/aws/:path*",
+    "/alibaba",
+    "/alibaba.md",
+    "/alibaba/:path*",
+    "/runpod",
+    "/runpod.md",
+    "/runpod/:path*",
     "/v/:path*",
     "/alerts/:path*",
     "/chat/:path*",
@@ -98,6 +107,10 @@ export const config = {
     "/:locale/index.md",
     "/:locale/aws.md",
     "/:locale/aws/:path*",
+    "/:locale/alibaba.md",
+    "/:locale/alibaba/:path*",
+    "/:locale/runpod.md",
+    "/:locale/runpod/:path*",
     "/:locale/v/:path*",
     "/:locale/alerts/:path*",
     "/:locale/chat/:path*",

@@ -8,7 +8,7 @@ import { DEFAULT_REGION_CODE, type PlatformInfo } from "./platforms";
  * (m5.large has about 20,000 price rows across 33 regions and 102 variants) is
  * far too big to ship whole, so the page carries the current prices everywhere
  * and the full price history of one region; the rest is fetched per region from
- * `/api/aws/<platform>/<instance>/<region>` as the visitor switches.
+ * `/api/prices/<platform>/<instance>/<region>` as the visitor switches.
  */
 export interface InstanceModel {
   platform: string;
@@ -228,7 +228,8 @@ function pickDefaults(
   info: PlatformInfo,
 ): { region: number; variant: number } {
   const offeredIn = (i: number) => current[i]!.length;
-  let region = regions.findIndex((r, i) => r.code === DEFAULT_REGION_CODE && offeredIn(i) > 0);
+  const preferred = info.defaultRegion ?? DEFAULT_REGION_CODE;
+  let region = regions.findIndex((r, i) => r.code === preferred && offeredIn(i) > 0);
   if (region < 0) {
     region = 0;
     for (let i = 1; i < regions.length; i++) if (offeredIn(i) > offeredIn(region)) region = i;

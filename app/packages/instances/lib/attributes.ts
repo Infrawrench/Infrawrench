@@ -1,9 +1,11 @@
 import { msg } from "gt-react";
 
 /**
- * Labels and grouping for the attributes AWS puts on price list products.
- * Anything not listed here still shows, under "Other", with its key spelled
- * out, so a field AWS adds later is never hidden.
+ * Labels and grouping for the attributes on price list products: AWS's,
+ * Alibaba Cloud's instance type definitions (`CpuCoreCount`, dotted keys for
+ * nested fields) and RunPod's GPU and CPU pod fields. Anything not listed here
+ * still shows, under "Other", with its key spelled out, so a field a provider
+ * adds later is never hidden.
  *
  * Every label is a `msg()` source: the English text, which the gt CLI
  * extracts. Render sites translate it with `useDataString()` (or a server
@@ -39,6 +41,43 @@ const SECTIONS: readonly Section[] = [
       physicalGpu: msg("GPU model"),
       computeType: msg("Compute type"),
       normalizationSizeFactor: msg("Normalization size factor"),
+      // Alibaba Cloud
+      CpuCoreCount: msg("vCPUs"),
+      MemorySize: msg("Memory (GiB)"),
+      CpuArchitecture: msg("Architecture"),
+      PhysicalProcessorModel: msg("Processor"),
+      CpuSpeedFrequency: msg("Clock speed (GHz)"),
+      CpuTurboFrequency: msg("Turbo clock speed (GHz)"),
+      "CpuOptions.Core": msg("Physical cores"),
+      "CpuOptions.ThreadsPerCore": msg("Threads per core"),
+      "CpuOptions.CoreFactor": msg("Core factor"),
+      "CpuOptions.HyperThreadingAdjustable": msg("Adjustable hyper-threading"),
+      "CpuOptions.SupportedTopologyTypes.SupportedTopologyType": msg("CPU topologies"),
+      GPUAmount: msg("GPUs"),
+      GPUSpec: msg("GPU model"),
+      GPUMemorySize: msg("Memory per GPU (GiB)"),
+      // RunPod
+      displayName: msg("Name"),
+      manufacturer: msg("Manufacturer"),
+      memoryInGb: msg("Memory (GB)"),
+      cudaCores: msg("CUDA cores"),
+      vcpuBurstable: msg("Burstable vCPUs"),
+      ramMultiplier: msg("GB of memory per vCPU"),
+    },
+  },
+  {
+    slug: "pods",
+    name: msg("Pods"),
+    keys: {
+      minPodGpuCount: msg("Fewest GPUs per pod"),
+      maxGpuCountSecureCloud: msg("Most GPUs per pod in Secure Cloud"),
+      maxGpuCountCommunityCloud: msg("Most GPUs per pod in Community Cloud"),
+      nodeGroupGpuSizes: msg("GPUs per node"),
+      secureCloud: msg("Secure Cloud"),
+      communityCloud: msg("Community Cloud"),
+      dataCenters: msg("Data centers"),
+      diskLimitPerVcpu: msg("Disk per vCPU (GB)"),
+      priceUnit: msg("Price unit"),
     },
   },
   {
@@ -51,6 +90,12 @@ const SECTIONS: readonly Section[] = [
       usageFamily: msg("Usage family"),
       currentGeneration: msg("Current generation"),
       productFamily: msg("Product family"),
+      InstanceTypeFamily: msg("Instance type family"),
+      InstanceCategory: msg("Category"),
+      InstanceFamilyLevel: msg("Family level"),
+      Generation: msg("Generation"),
+      flavor: msg("Flavor"),
+      groupId: msg("Group"),
     },
   },
   {
@@ -61,6 +106,29 @@ const SECTIONS: readonly Section[] = [
       enhancedNetworkingSupported: msg("Enhanced networking"),
       vpcnetworkingsupport: msg("VPC networking"),
       classicnetworkingsupport: msg("EC2-Classic networking"),
+      InstanceBandwidthRx: msg("Inbound bandwidth (Kbit/s)"),
+      InstanceBandwidthTx: msg("Outbound bandwidth (Kbit/s)"),
+      InstancePpsRx: msg("Inbound packets per second"),
+      InstancePpsTx: msg("Outbound packets per second"),
+      EniQuantity: msg("Network interfaces"),
+      EniTotalQuantity: msg("Network interfaces, including trunked"),
+      EniPrivateIpAddressQuantity: msg("Private IPv4 addresses per interface"),
+      EniIpv6AddressQuantity: msg("IPv6 addresses per interface"),
+      EniTrunkSupported: msg("Interface trunking"),
+      EriQuantity: msg("Elastic RDMA interfaces"),
+      QueuePairNumber: msg("RDMA queue pairs"),
+      PrimaryEniQueueNumber: msg("Queues on the primary interface"),
+      SecondaryEniQueueNumber: msg("Queues per secondary interface"),
+      TotalEniQueueQuantity: msg("Interface queues in total"),
+      MaximumQueueNumberPerEni: msg("Most queues per interface"),
+      NetworkEncryptionSupport: msg("Network encryption"),
+      JumboFrameSupport: msg("Jumbo frames"),
+      "EnhancedNetwork.RssSupport": msg("RSS"),
+      "EnhancedNetwork.SriovSupport": msg("SR-IOV"),
+      "EnhancedNetwork.VfQueueNumberPerEni": msg("VF queues per interface"),
+      NetworkCardQuantity: msg("Network cards"),
+      "NetworkCards.NetworkCardInfo": msg("Network card details"),
+      "Clock.PtpSupport": msg("PTP clock"),
     },
   },
   {
@@ -76,6 +144,12 @@ const SECTIONS: readonly Section[] = [
       dedicatedEbsThroughput: msg("Dedicated EBS throughput"),
       dedicatedEbsThroughputDescription: msg("Dedicated EBS throughput (baseline)"),
       ebsOptimized: msg("EBS optimized"),
+      DiskQuantity: msg("Most data disks"),
+      LocalStorageAmount: msg("Local disks"),
+      LocalStorageCapacity: msg("Local disk size (GiB)"),
+      LocalStorageCategory: msg("Local disk type"),
+      NvmeSupport: msg("NVMe"),
+      "SupportedBootModes.SupportedBootMode": msg("Boot modes"),
     },
   },
 ];
@@ -93,10 +167,24 @@ const KNOWN: Readonly<Record<string, string>> = {
   licenseModel: msg("License"),
 };
 
-/** vCPUs and memory, under whichever keys the platform uses (SageMaker's `vCpu`, OpenSearch's `memoryGib`). */
+/** Whether these are a RunPod GPU type's attributes, priced per GPU, whose `memoryInGb` is the GPU's. */
+export function isGpuType(attrs: Readonly<Record<string, string>>): boolean {
+  return attrs.productFamily === "GPU" && attrs.priceUnit === "GPU-Hour";
+}
+
+/**
+ * vCPUs and memory, under whichever keys the platform uses (SageMaker's
+ * `vCpu`, OpenSearch's `memoryGib`, Alibaba's `CpuCoreCount` and `MemorySize`,
+ * RunPod CPU pods' `memoryInGb`). A RunPod GPU type has neither: its
+ * `memoryInGb` is GPU memory.
+ */
 export function specs(attrs: Readonly<Record<string, string>>): { vcpu?: string; memory?: string } {
-  const vcpu = attrs.vcpu ?? attrs.vCpu;
-  const memory = attrs.memory ?? (attrs.memoryGib ? `${attrs.memoryGib} GiB` : undefined);
+  const vcpu = attrs.vcpu ?? attrs.vCpu ?? attrs.CpuCoreCount;
+  const gib = attrs.memoryGib ?? (attrs.MemorySize ? String(Number(attrs.MemorySize)) : undefined);
+  const memory =
+    attrs.memory ??
+    (gib ? `${gib} GiB` : undefined) ??
+    (attrs.memoryInGb && !isGpuType(attrs) ? `${attrs.memoryInGb} GB` : undefined);
   const known = (v: string | undefined) => v !== undefined && v !== "" && v !== "NA";
   return {
     ...(known(vcpu) ? { vcpu: vcpu! } : {}),
@@ -127,6 +215,8 @@ const VARIANT_LABELS: Readonly<Record<string, string>> = {
   operation: msg("Operation"),
   "m-ncu": msg("NCU"),
   mncu: msg("NCU"),
+  networkType: msg("Network"),
+  cloudType: msg("Cloud"),
 };
 
 /** `dedicatedEbsThroughput` to `Dedicated ebs throughput`. */

@@ -4,14 +4,17 @@ import Link from "next/link";
 import { msg, useGT, useLocale } from "gt-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { attributeLabel, groupAttributes, variantLabel, variantValueLabel } from "@/lib/attributes";
+import { isGpuType } from "@/lib/attributes";
 import {
   DURATIONS,
   USD,
+  commitmentLabel,
   effectiveHourly,
   formatDate,
   formatPrice,
   isDuration,
   leaseLabel,
+  leaseMonths,
   termLabel,
   termOptionKey,
   type Duration,
@@ -28,7 +31,8 @@ import {
   variantsAlong,
   withField,
 } from "@/lib/selection";
-import { defaultTermOption, priceHistory } from "@/lib/series";
+import { CLOUDS, cloudOf, instancePath, platformPath } from "@/lib/platforms";
+import { defaultTermOption, headlineTerms, priceHistory, seriesLabel } from "@/lib/series";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { BarChart } from "./charts/BarChart";
 import { StepChart, type StepSeries } from "./charts/StepChart";
@@ -36,20 +40,21 @@ import { HistoryBadge } from "./HistoryBadge";
 import { SearchSelect } from "./SearchSelect";
 import { CalendarClockIcon, ChartIcon, InfoIcon, ServerIcon } from "./icons";
 
-/** AWS's location types, in picker order, with their group labels (`msg()` sources). */
+/** The location types, in picker order, with their group labels (`msg()` sources). */
 const REGION_GROUPS: Readonly<Record<string, string>> = {
   "AWS Region": msg("AWS Regions"),
   "AWS Local Zone": msg("Local Zones"),
   "AWS Wavelength Zone": msg("Wavelength Zones"),
+  "Alibaba Cloud Region": msg("Alibaba Cloud regions"),
 };
 const GROUP_ORDER = Object.keys(REGION_GROUPS);
 const OTHER_GROUP = msg("Other locations");
 
+/** On demand, spot, and the committed terms by slot (shortest lease first). */
 const SERIES_COLORS = {
   od: "var(--series-1)",
-  "1yr": "var(--series-2)",
-  "3yr": "var(--series-3)",
   spot: "var(--series-4)",
+  terms: ["var(--series-2)", "var(--series-3)", "var(--series-5)"],
 } as const;
 
 /** Remembers the visitor's currency in this browser; a convenience, so failures are ignored. */
@@ -159,7 +164,7 @@ export function InstanceView({
     let cancelled = false;
     setFailed(null);
     fetch(
-      `/api/aws/${m.platform}/${encodeURIComponent(m.name)}/${encodeURIComponent(m.regions[region]!.id)}`,
+      `/api/prices/${m.platform}/${encodeURIComponent(m.name)}/${encodeURIComponent(m.regions[region]!.id)}`,
     )
       .then((res) => {
         if (!res.ok) throw new Error(String(res.status));
@@ -192,12 +197,8 @@ export function InstanceView({
   );
   const spotEnd = Math.max(m.asOf, m.spot?.asOf ?? 0);
 
-  /** The term with this lease and the selected class and purchase option. */
-  const termFor = useCallback(
-    (lease: string) =>
-      m.terms.findIndex((t) => t.lease === lease && termOptionKey(t) === termOption),
-    [m.terms, termOption],
-  );
+  /** The committed terms shown beside on demand, for the selected class and purchase option. */
+  const headline = useMemo(() => headlineTerms(m, termOption), [m, termOption]);
 
   const reservedRows = useCallback(
     (term: number) => (term < 0 || !data ? undefined : data.reserved[`${variant}:${term}`]),
@@ -227,8 +228,13 @@ export function InstanceView({
     () =>
       priceHistory(m, shown, variant, termOption).map((s) => ({
         ...s,
-        label: tr(s.label),
-        color: SERIES_COLORS[s.id],
+        label: seriesLabel(m, s, tr),
+        color:
+          s.slot !== undefined
+            ? SERIES_COLORS.terms[s.slot]!
+            : s.id === "spot"
+              ? SERIES_COLORS.spot
+              : SERIES_COLORS.od,
       })),
     [m, shown, variant, termOption, tr],
   );
@@ -331,13 +337,17 @@ export function InstanceView({
 
   const regionName = m.regions[region]!.name;
   const firstPriced = shown.onDemand[variant]?.[0]?.[0];
+  // RunPod prices every pod the same in every data center: one location, `global`.
+  const oneRegion = m.regions.length <= 1;
+  const provider = CLOUDS[cloudOf(m.platform)].label;
+  const perGpu = isGpuType(attrs);
 
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1280px] px-4 py-4 sm:px-7">
       <Breadcrumbs
         items={[
-          { label: "AWS", href: localePath(locale, "/aws") },
-          { label: m.platformLabel, href: localePath(locale, `/aws/${m.platform}`) },
+          { label: provider, href: localePath(locale, `/${cloudOf(m.platform)}`) },
+          { label: m.platformLabel, href: localePath(locale, platformPath(m.platform)) },
           { label: m.name },
         ]}
         ask={m.name}
@@ -345,7 +355,8 @@ export function InstanceView({
 
       {m.deletedAt !== null && (
         <p className="mb-4 rounded-md border border-warn-line bg-warn-bg px-3 py-2 text-sm">
-          {gt("AWS stopped listing {name} on {date}. The history below runs up to then.", {
+          {gt("{provider} stopped listing {name} on {date}. The history below runs up to then.", {
+            provider,
             name: m.name,
             date: formatDate(m.deletedAt, locale),
           })}
@@ -363,19 +374,23 @@ export function InstanceView({
             </h2>
             <div className="flex flex-wrap gap-x-5 gap-y-2" aria-live="polite" aria-atomic="true">
               <Price label={gt("On demand")} value={noneOffered ? notAvailable : price(onDemand)} />
-              {termOptions.length > 0 &&
-                (["1yr", "3yr"] as const).map((lease) => {
-                  const v = latestReserved(termFor(lease));
-                  return (
-                    <Price
-                      key={lease}
-                      label={lease === "1yr" ? gt("1-year reserved") : gt("3-year reserved")}
-                      value={v === undefined ? "…" : price(v)}
-                    />
-                  );
-                })}
+              {headline.map((term) => {
+                const v = latestReserved(term);
+                return (
+                  <Price
+                    key={term}
+                    label={commitmentLabel(m.terms[term]!, tr)}
+                    value={v === undefined ? "…" : price(v)}
+                  />
+                );
+              })}
               {system >= 0 && <Price label={gt("Spot")} value={price(spotIn(region) ?? null)} />}
             </div>
+            {perGpu && (
+              <p className="mt-1 text-xs text-ink-3">
+                {gt("Prices are per GPU; a pod can have several.")}
+              </p>
+            )}
             <p className="mt-1 text-xs text-ink-3">
               {gt("Reserved prices include the upfront payment, spread over the term.")}
               {money.code !== "USD" &&
@@ -396,26 +411,28 @@ export function InstanceView({
             )}
 
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <SearchSelect
-                className="col-span-2"
-                label={gt("Region")}
-                value={String(region)}
-                onChange={(v) => setRegion(Number(v))}
-                searchable
-                options={regionGroups.flatMap(([group, list]) =>
-                  list.map((i) => {
-                    const r = m.regions[i]!;
-                    const available = noneOffered || (m.current[i]?.length ?? 0) > 0;
-                    return {
-                      value: String(i),
-                      label: available ? r.name : `${r.name} - ${gt("not offered")}`,
-                      detail: r.code ?? "",
-                      group: tr(REGION_GROUPS[group] ?? OTHER_GROUP),
-                      disabled: !available && i !== region,
-                    };
-                  }),
-                )}
-              />
+              {!oneRegion && (
+                <SearchSelect
+                  className="col-span-2"
+                  label={gt("Region")}
+                  value={String(region)}
+                  onChange={(v) => setRegion(Number(v))}
+                  searchable
+                  options={regionGroups.flatMap(([group, list]) =>
+                    list.map((i) => {
+                      const r = m.regions[i]!;
+                      const available = noneOffered || (m.current[i]?.length ?? 0) > 0;
+                      return {
+                        value: String(i),
+                        label: available ? r.name : `${r.name} - ${gt("not offered")}`,
+                        detail: r.code ?? "",
+                        group: tr(REGION_GROUPS[group] ?? OTHER_GROUP),
+                        disabled: !available && i !== region,
+                      };
+                    }),
+                  )}
+                />
+              )}
               {m.shownKeys.map((k) => {
                 const options = fieldOptions(m, k, region);
                 const value = m.variants[variant]![k]!;
@@ -501,10 +518,12 @@ export function InstanceView({
               <InfoIcon /> {gt("Instance details")}
             </h2>
             <p className="mt-1 text-xs text-ink-3">
-              {gt(
-                "In {region}. A clock marks a value that has changed; hover it for every value it has had.",
-                { region: regionName },
-              )}
+              {oneRegion
+                ? gt("A clock marks a value that has changed; hover it for every value it has had.")
+                : gt(
+                    "In {region}. A clock marks a value that has changed; hover it for every value it has had.",
+                    { region: regionName },
+                  )}
             </p>
             {groupAttributes(attrs).map(({ section, keys }) => (
               <table
@@ -547,7 +566,11 @@ export function InstanceView({
           <ChartSection
             id="price-history"
             className="mt-8"
-            title={gt("Price history in {region}", { region: regionName })}
+            title={
+              oneRegion
+                ? gt("Price history")
+                : gt("Price history in {region}", { region: regionName })
+            }
             loading={loading}
             note={
               failed === region
@@ -559,10 +582,14 @@ export function InstanceView({
               series={history}
               end={m.deletedAt ?? spotEnd}
               format={fmt}
-              label={gt("Price history of {name} in {region}", {
-                name: m.name,
-                region: regionName,
-              })}
+              label={
+                oneRegion
+                  ? gt("Price history of {name}", { name: m.name })
+                  : gt("Price history of {name} in {region}", {
+                      name: m.name,
+                      region: regionName,
+                    })
+              }
             />
           </ChartSection>
 
@@ -594,7 +621,9 @@ export function InstanceView({
               className="mt-8"
               title={
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {gt("On-demand price in {region}", { region: regionName })}
+                  {oneRegion
+                    ? gt("On-demand price")
+                    : gt("On-demand price in {region}", { region: regionName })}
                   <span className="flex items-center gap-1.5 text-xs font-normal text-ink-2">
                     {gt("Compare by")}
                     <SearchSelect
@@ -615,17 +644,28 @@ export function InstanceView({
               <BarChart
                 bars={compareBars}
                 format={fmt}
-                label={gt("On-demand price of {name} in {region} by {field}", {
-                  name: m.name,
-                  region: regionName,
-                  field: tr(variantLabel(m.variantKeys[compareKey]!)).toLocaleLowerCase(locale),
-                })}
+                label={
+                  oneRegion
+                    ? gt("On-demand price of {name} by {field}", {
+                        name: m.name,
+                        field: tr(variantLabel(m.variantKeys[compareKey]!)).toLocaleLowerCase(
+                          locale,
+                        ),
+                      })
+                    : gt("On-demand price of {name} in {region} by {field}", {
+                        name: m.name,
+                        region: regionName,
+                        field: tr(variantLabel(m.variantKeys[compareKey]!)).toLocaleLowerCase(
+                          locale,
+                        ),
+                      })
+                }
                 onSelect={(id) => setVariant(Number(id))}
               />
             </ChartSection>
           )}
 
-          {m.availability.length > 0 && (
+          {!oneRegion && m.availability.length > 0 && (
             <ChartSection
               id="availability"
               title={gt("Regions offering it over time")}
@@ -717,7 +757,7 @@ function ReservedTable({
     )
     .sort(
       (a, b) =>
-        a.t.lease.localeCompare(b.t.lease) ||
+        (leaseMonths(a.t.lease) ?? 0) - (leaseMonths(b.t.lease) ?? 0) ||
         a.t.offeringClass.localeCompare(b.t.offeringClass) ||
         a.t.purchaseOption.localeCompare(b.t.purchaseOption),
     );
@@ -799,7 +839,7 @@ function FamilySizes({ m, suffix, locale }: { m: InstanceModel; suffix: string; 
                   ) : (
                     <Link
                       className={linkClass}
-                      href={`${localePath(locale, `/aws/${m.platform}/${f.name}`)}${suffix}`}
+                      href={`${localePath(locale, instancePath(m.platform, f.name))}${suffix}`}
                     >
                       {f.name}
                     </Link>
@@ -829,7 +869,7 @@ function Related({ m, suffix, locale }: { m: InstanceModel; suffix: string; loca
           <li key={r.family}>
             <Link
               className="inline-block rounded border border-line px-2 py-0.5 text-accent hover:border-accent hover:text-accent-hover"
-              href={`${localePath(locale, `/aws/${m.platform}/${r.name}`)}${suffix}`}
+              href={`${localePath(locale, instancePath(m.platform, r.name))}${suffix}`}
               title={r.name}
             >
               {r.family}

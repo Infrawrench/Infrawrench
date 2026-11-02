@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { decodeAttributes, decodeInstance } from "../decode";
 import { describe as describeInstance } from "../describe";
-import { effectiveHourly, formatPrice } from "../format";
+import { specs } from "../attributes";
+import { commitmentLabel, effectiveHourly, formatPrice, leaseMonths, termLabel } from "../format";
 import { rebaseToUsd } from "../fx";
 import { translatorFor } from "../i18n/server";
 import { createLookupOptions, hashMessage } from "gt-i18n/internal";
@@ -13,9 +14,9 @@ import {
   relatives,
   spotSystem,
 } from "../model";
-import { priceHistory } from "../series";
+import { headlineTerms, priceHistory } from "../series";
 import { parseName, sizeRank } from "../names";
-import { PLATFORMS } from "../platforms";
+import { PLATFORMS, fullLabel, instancePath, platformAt } from "../platforms";
 import { renderMarkdown } from "../markdown";
 import { familiesOf } from "../catalog";
 import { pagesSitemap, platformSitemap, sitemapIndex } from "../sitemap";
@@ -335,15 +336,15 @@ describe("describe", () => {
 
   it("summarises specs and the opening price", () => {
     expect(describeInstance(model, en, "en")).toBe(
-      "m5.large is an AWS EC2 instance with 2 vCPUs and 8 GiB of memory. It costs $0.09 per hour on demand in US East (N. Virginia).",
+      "m5.large is an instance type on AWS EC2 with 2 vCPUs and 8 GiB of memory. It costs $0.09 per hour on demand in US East (N. Virginia).",
     );
   });
 
   it("uses the catalog, and the locale's list and number formats", () => {
-    const source = "{name} is an AWS {platform} instance with {specs}.";
+    const source = "{name} is an instance type on {platform} with {specs}.";
     const hash = hashMessage(source, createLookupOptions("fr", {}, "ICU"));
     const fr = translatorFor("fr", {
-      [hash]: "{name} est une instance AWS {platform} avec {specs}.",
+      [hash]: "{name} est une instance {platform} avec {specs}.",
     });
     // French money uses a (narrow) no-break space before the currency.
     expect(describeInstance(model, fr, "fr").replace(/[\u00a0\u202f]/g, " ")).toBe(
@@ -492,5 +493,94 @@ describe("pages sitemap", () => {
     const xml = pagesSitemap();
     expect(xml).toContain("<loc>https://instances.infrawrench.com/</loc>");
     expect(xml).toContain("<loc>https://instances.infrawrench.com/ja</loc>");
+  });
+});
+
+describe("other clouds", () => {
+  const en = translatorFor("en", {});
+
+  it("puts each platform's pages under its cloud", () => {
+    expect(instancePath("ec2", "m5.large")).toBe("/aws/ec2/m5.large");
+    expect(instancePath("alibaba", "ecs.g7.large")).toBe("/alibaba/ecs/ecs.g7.large");
+    expect(instancePath("runpod", "NVIDIA H100 80GB HBM3")).toBe(
+      "/runpod/pods/NVIDIA%20H100%2080GB%20HBM3",
+    );
+    expect(platformAt("alibaba", "ecs")).toBe("alibaba");
+    expect(platformAt("aws", "ecs")).toBeUndefined();
+    expect(fullLabel("runpod")).toBe("RunPod Pods");
+  });
+
+  it("lists every cloud in the pages sitemap and encodes RunPod's names", () => {
+    expect(pagesSitemap()).toContain("<loc>https://instances.infrawrench.com/runpod</loc>");
+    expect(platformSitemap("runpod", ["NVIDIA L4"])).toContain(
+      "<loc>https://instances.infrawrench.com/runpod/pods/NVIDIA%20L4</loc>",
+    );
+  });
+
+  it("parses RunPod CPU pods by flavor and vCPUs, and leaves GPUs alone", () => {
+    expect(parseName("cpu3c-2-4")).toMatchObject({ family: "cpu3c", size: "2-4" });
+    expect(parseName("NVIDIA H100 80GB HBM3")).toBeNull();
+    expect(relatives("cpu3c-4-8", ["cpu3c-16-32", "cpu3c-2-4", "cpu3c-4-8", "cpu3g-4-16"])).toEqual(
+      {
+        family: ["cpu3c-2-4", "cpu3c-4-8", "cpu3c-16-32"],
+        related: [{ family: "cpu3g", name: "cpu3g-4-16" }],
+      },
+    );
+    expect(familiesOf(["cpu3c-8-16", "cpu3c-2-4", "NVIDIA L4"]).map((f) => f.label)).toEqual([
+      "cpu3c",
+      "",
+    ]);
+  });
+
+  it("spreads month and multi-year leases over their length", () => {
+    const sub = (lease: string) => ({
+      lease,
+      offeringClass: "Subscription",
+      purchaseOption: "All Upfront",
+    });
+    expect(leaseMonths("3mo")).toBe(3);
+    expect(leaseMonths("5yr")).toBe(60);
+    expect(effectiveHourly(sub("1mo"), 0, 73)).toBeCloseTo(0.1);
+    expect(effectiveHourly(sub("2yr"), 0, 2 * 8760)).toBeCloseTo(1);
+  });
+
+  it("headlines at most three terms, shortest first", () => {
+    const terms = ["5yr", "1yr", "1mo", "2yr", "3yr", "4yr"].map((lease) => ({
+      lease,
+      offeringClass: "Subscription",
+      purchaseOption: "All Upfront",
+    }));
+    const picked = headlineTerms({ terms }, "Subscription|All Upfront");
+    expect(picked.map((i) => terms[i]!.lease)).toEqual(["1mo", "1yr", "3yr"]);
+    const plans = ["6mo", "3mo"].map((lease) => ({
+      lease,
+      offeringClass: "Savings Plan",
+      purchaseOption: "All Upfront",
+    }));
+    expect(headlineTerms({ terms: plans }, "Savings Plan|All Upfront")).toEqual([1, 0]);
+  });
+
+  it("names each kind of commitment", () => {
+    const term = (offeringClass: string, lease: string, purchaseOption = "All Upfront") => ({
+      lease,
+      offeringClass,
+      purchaseOption,
+    });
+    expect(commitmentLabel(term("standard", "1yr"), en)).toBe("1-year reserved");
+    expect(commitmentLabel(term("Savings Plan", "3mo"), en)).toBe("Savings plan, 3 months");
+    expect(commitmentLabel(term("Subscription", "1mo"), en)).toBe("Subscription, 1 month");
+    expect(termLabel(term("Reserved Instance", "1yr", "No Upfront"), en)).toBe(
+      "Reserved instance, No Upfront",
+    );
+  });
+
+  it("reads Alibaba's and RunPod's specs", () => {
+    expect(specs({ CpuCoreCount: "2", MemorySize: "8.0" })).toEqual({ vcpu: "2", memory: "8 GiB" });
+    expect(specs({ vcpu: "2", memoryInGb: "4", productFamily: "CPU", priceUnit: "Hour" })).toEqual({
+      vcpu: "2",
+      memory: "4 GB",
+    });
+    // A GPU type's memoryInGb is the GPU's own.
+    expect(specs({ memoryInGb: "80", productFamily: "GPU", priceUnit: "GPU-Hour" })).toEqual({});
   });
 });

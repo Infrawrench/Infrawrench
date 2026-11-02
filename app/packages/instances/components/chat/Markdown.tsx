@@ -8,7 +8,7 @@ import { localePath } from "@/lib/i18n/locales";
 /**
  * The subset of Markdown the chat's answers use: paragraphs, headings, bullet
  * and numbered lists, tables, code blocks, and inline bold, italics, code and
- * links. Never raw HTML. Site links (`/aws/ec2/m7g.large`) stay in the
+ * links. Never raw HTML. Site links (`/aws/ec2/m7g.large`, `/runpod/pods/NVIDIA%20L4`) stay in the
  * visitor's language and navigate client-side; other links must be https.
  */
 

@@ -1,8 +1,9 @@
 import { getTranslator } from "@/lib/i18n/server";
 import { loadListing } from "@/lib/load";
 import { renderPlatformMarkdown } from "@/lib/markdown";
+import { platformAt } from "@/lib/platforms";
 
-/** A service's listing as Markdown; `proxy.ts` rewrites `/aws/<platform>` here for agents. */
+/** A service's listing as Markdown; `proxy.ts` rewrites `/<cloud>/<platform>` here for agents. */
 const HEADERS = {
   "content-type": "text/markdown; charset=utf-8",
   "content-language": "en",
@@ -12,12 +13,13 @@ const HEADERS = {
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ platform: string }> },
+  { params }: { params: Promise<{ cloud: string; platform: string }> },
 ) {
-  const { platform } = await params;
-  const listing = await loadListing(platform);
+  const { cloud, platform: slug } = await params;
+  const platform = platformAt(cloud, slug);
+  const listing = platform ? await loadListing(platform) : null;
   if (!listing) {
-    return new Response(`# Not found\n\nThere is no AWS service called ${platform} here.\n`, {
+    return new Response(`# Not found\n\nThere is no ${cloud} service called ${slug} here.\n`, {
       status: 404,
       headers: HEADERS,
     });

@@ -1,4 +1,5 @@
 import { DEFAULT_LOCALE, LOCALES, localePath } from "./i18n/locales";
+import { CLOUD_IDS, instancePath, platformPath } from "./platforms";
 
 export const ORIGIN = "https://instances.infrawrench.com";
 
@@ -47,9 +48,9 @@ ${urls.join("\n")}
 `;
 }
 
-/** The pages that are not a service's: the home page (the chat) and the service list. */
+/** The pages that are not a service's: the home page (the chat) and each cloud's service list. */
 export function pagesSitemap(): string {
-  return urlset(["/", "/aws"]);
+  return urlset(["/", ...CLOUD_IDS.map((c) => `/${c}`)]);
 }
 
 /**
@@ -58,7 +59,7 @@ export function pagesSitemap(): string {
  */
 export function platformSitemap(platform: string, instances: string[]): string {
   return urlset([
-    `/aws/${platform}`,
-    ...[...instances].sort().map((name) => `/aws/${platform}/${encodeURIComponent(name)}`),
+    platformPath(platform),
+    ...[...instances].sort().map((name) => instancePath(platform, name)),
   ]);
 }

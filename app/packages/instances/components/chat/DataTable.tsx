@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCell, numericFilter, type DisplayColumn, type Units } from "@/lib/chat/format";
 import type { Cell } from "@/lib/chat/types";
 import { localePath } from "@/lib/i18n/locales";
+import { instancePath } from "@/lib/platforms";
 import { ColumnsIcon, SortIcon } from "../icons";
 
 /** Rows rendered before "Show more". */
@@ -141,10 +142,7 @@ export function DataTable({
       return (
         <Link
           prefetch={false}
-          href={localePath(
-            locale,
-            `/aws/${encodeURIComponent(rowPlatform)}/${encodeURIComponent(value)}`,
-          )}
+          href={localePath(locale, instancePath(rowPlatform, value))}
           className="font-medium text-accent hover:underline"
         >
           {value}

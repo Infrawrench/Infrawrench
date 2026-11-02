@@ -12,7 +12,7 @@ export default function NotFound() {
       <h1 className="text-2xl font-bold">{gt("Not found")}</h1>
       <p className="mt-2 text-ink-2">
         {gt("There is no such instance type. Pages live at {pattern}, for example", {
-          pattern: "/aws/<platform>/<instance>",
+          pattern: "/<cloud>/<platform>/<instance>",
         })}{" "}
         <Link className="text-accent hover:text-accent-hover underline" href={example}>
           {example}

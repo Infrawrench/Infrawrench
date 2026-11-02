@@ -5,6 +5,7 @@ import { PlatformView } from "@/components/PlatformView";
 import { LOCALES, isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 import { loadListing } from "@/lib/load";
+import { fullLabel, platformAt, platformPath } from "@/lib/platforms";
 
 /** The sync Action refreshes the data twice an hour. */
 export const revalidate = 1800;
@@ -14,12 +15,13 @@ export function generateStaticParams() {
   return [];
 }
 
-type Params = Promise<{ locale: string; platform: string }>;
+type Params = Promise<{ locale: string; cloud: string; platform: string }>;
 
 async function load(params: Params) {
-  const { locale, platform } = await params;
+  const { locale, cloud, platform: slug } = await params;
   if (!isLocale(locale)) notFound();
-  const listing = await loadListing(platform);
+  const platform = platformAt(cloud, slug);
+  const listing = platform ? await loadListing(platform) : null;
   if (!listing) notFound();
   return { locale, listing };
 }
@@ -27,16 +29,23 @@ async function load(params: Params) {
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { locale, listing } = await load(params);
   const tr = await getTranslator(locale);
-  const title = tr(msg("AWS {platform} instance types - Infrawrench Instances"), {
-    platform: listing.label,
-  });
-  const description = tr(
-    msg(
-      "Every AWS {platform} instance type, by family: specs and prices in every region, with their full history.",
-    ),
-    { platform: listing.label },
-  );
-  const path = `/aws/${listing.platform}`;
+  const platform = fullLabel(listing.platform);
+  const title = tr(msg("{platform} instance types - Infrawrench Instances"), { platform });
+  const description =
+    listing.cloud === "runpod"
+      ? tr(
+          msg(
+            "Every {platform} GPU type and CPU pod size: specs and prices, with their full history.",
+          ),
+          { platform },
+        )
+      : tr(
+          msg(
+            "Every {platform} instance type, by family: specs and prices in every region, with their full history.",
+          ),
+          { platform },
+        );
+  const path = platformPath(listing.platform);
   return {
     title,
     description,

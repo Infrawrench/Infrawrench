@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useDataString } from "@/lib/i18n/data-string";
 import { localePath } from "@/lib/i18n/locales";
 import type { PlatformListing } from "@/lib/load";
+import { CLOUDS, fullLabel, instancePath } from "@/lib/platforms";
 import { Breadcrumbs } from "./Breadcrumbs";
 
 /** "m5large" finds "m5.large"; "r6g search" finds "r6g.large.search". */
@@ -33,11 +34,14 @@ export function PlatformView({ listing }: { listing: PlatformListing }) {
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto max-w-[1280px] px-4 py-4 sm:px-7">
       <Breadcrumbs
-        items={[{ label: "AWS", href: localePath(locale, "/aws") }, { label: listing.label }]}
+        items={[
+          { label: CLOUDS[listing.cloud].label, href: localePath(locale, `/${listing.cloud}`) },
+          { label: listing.label },
+        ]}
         ask={listing.label}
       />
       <h1 className="text-2xl font-bold">
-        {gt("{platform} instance types", { platform: listing.label })}
+        {gt("{platform} instance types", { platform: fullLabel(listing.platform) })}
       </h1>
       <p className="mt-1 text-ink-2">{tr(listing.summary)}</p>
       <p className="mt-0.5 text-sm text-ink-3">
@@ -63,7 +67,9 @@ export function PlatformView({ listing }: { listing: PlatformListing }) {
           {families.map((f) => (
             <li key={f.key} className="rounded-lg border border-line p-3">
               <h2 className="flex items-baseline justify-between gap-2">
-                <span className="font-semibold">{f.key ? f.label : gt("Other")}</span>
+                <span className="font-semibold">
+                  {f.key ? f.label : listing.otherLabel ? tr(listing.otherLabel) : gt("Other")}
+                </span>
                 <span className="text-xs text-ink-3">{f.instances.length}</span>
               </h2>
               <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm">
@@ -73,7 +79,7 @@ export function PlatformView({ listing }: { listing: PlatformListing }) {
                         navigate client-side. */}
                     <Link
                       className="text-accent hover:text-accent-hover hover:underline"
-                      href={localePath(locale, `/aws/${listing.platform}/${name}`)}
+                      href={localePath(locale, instancePath(listing.platform, name))}
                       prefetch={false}
                     >
                       {name}

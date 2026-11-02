@@ -2,7 +2,10 @@
  * Instance type names, split into family and size, across every platform's
  * naming: `m5.large`, `db.r5.large`, `cache.r6g.large`, `r6g.large.search`,
  * `ml.c6g.4xlarge-Hosting`, `c8i-flex.16xlarge`, `db.r8i.metal-48xl`,
- * `db.r5b.8xlarge.tpc2.mem3x`, and EC2 Dedicated Hosts (`m5.host`).
+ * `db.r5b.8xlarge.tpc2.mem3x`, EC2 Dedicated Hosts (`m5.host`), Alibaba's
+ * `ecs.g7.large`, and RunPod's CPU pods (`cpu3c-2-4`: flavor, vCPUs, GB of
+ * memory). RunPod's GPU types (`NVIDIA H100 80GB HBM3`) have no sizes and
+ * do not parse.
  */
 
 const SIZE = /^(nano|micro|small|medium|large|\d*xlarge|metal(?:-\d+xl)?|host)(-.+)?$/;
@@ -18,7 +21,19 @@ export interface ParsedName {
   generationKey: string;
 }
 
+/** RunPod CPU pods: `cpu3c-2-4` is flavor `cpu3c` with 2 vCPUs and 4 GB. */
+const RUNPOD_CPU = /^((cpu\d+)[a-z]*)-(\d+-\d+)$/;
+
 export function parseName(name: string): ParsedName | null {
+  const pod = RUNPOD_CPU.exec(name);
+  if (pod) {
+    return {
+      family: pod[1]!,
+      size: pod[3]!,
+      familyKey: `|${pod[1]}|`,
+      generationKey: `|${pod[2]}|`,
+    };
+  }
   const tokens = name.split(".");
   for (let i = 1; i < tokens.length; i++) {
     const match = SIZE.exec(tokens[i]!);
@@ -43,6 +58,9 @@ export function sizeRank(size: string): number {
   if (named >= 0) return named;
   const n = /^(\d+)xlarge$/.exec(size);
   if (n) return 5 + Number(n[1]);
+  // RunPod CPU pods, by vCPUs.
+  const pod = /^(\d+)-\d+$/.exec(size);
+  if (pod) return Number(pod[1]);
   if (size.startsWith("metal")) return 1000 + (Number(/\d+/.exec(size)?.[0]) || 0);
   return 2000;
 }
