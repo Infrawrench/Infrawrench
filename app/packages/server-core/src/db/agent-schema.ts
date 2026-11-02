@@ -26,6 +26,10 @@ export const agentSettings = pgTable("agent_settings", {
   // T3 Code only: "t3-connect" (hosted relay) or "tailscale" (Tailscale
   // Serve on the tailnet; needs a Tailscale service account attached).
   t3Access: text("t3_access").notNull().default("t3-connect"),
+  // T3 Code only: the organization's managed policy (T3 Code's
+  // ManagedPolicyDocument), installed at /etc/t3code/policy.json on every
+  // T3 Code server. NULL means none. Validated by `validateT3CodePolicy`.
+  t3Policy: jsonb("t3_policy").$type<Record<string, unknown>>(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -51,6 +55,11 @@ export const agentSessions = pgTable(
     serviceAccountIds: jsonb("service_account_ids").$type<string[]>().notNull().default([]),
     /** See `agentSettings.t3Access`. */
     t3Access: text("t3_access").notNull().default("t3-connect"),
+    /**
+     * The managed policy last installed on this T3 Code server: copied from
+     * `agentSettings.t3Policy` at creation, refreshed by Authorize server.
+     */
+    t3Policy: jsonb("t3_policy").$type<Record<string, unknown>>(),
     // What each attached service's plugin reported after installing on the
     // VM, including its opaque `ref` (e.g. a tailnet device id) so deleting
     // the session can undo it. `ref` never leaves the server.

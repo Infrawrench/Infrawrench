@@ -43,6 +43,7 @@ import {
   createT3CodeSetupPlan,
   isT3CodeSurface,
   t3CodeAccessOrDefault,
+  t3CodePolicyOrNull,
 } from "@infrawrench/ui/agents/t3-code";
 import {
   buildNibbletsAppLinksFile,
@@ -423,6 +424,9 @@ async function buildSetupBootstrapCommand(
     return buildT3CodeBootstrapCommand({
       tool: sessionTool(row),
       projectsDir: row.workspaceName,
+      // Snapshotted from the organization's defaults when the session was
+      // created; installed before the service first starts.
+      policy: t3CodePolicyOrNull(row.t3Policy),
     });
   }
   const cloneUrl = await resolveAgentCloneUrl(organizationId, row.repo);

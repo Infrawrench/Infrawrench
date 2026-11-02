@@ -14,6 +14,51 @@ const Surface = z.enum(["terminal", "t3-code", "nibblets"]);
 // default) or Tailscale Serve on the tailnet ("tailscale", which needs an
 // attached Tailscale service account).
 const T3Access = z.enum(["t3-connect", "tailscale"]);
+// T3 Code's managed policy document (upstream ManagedPolicyDocument,
+// docs/user/managed-policy.md), installed at /etc/t3code/policy.json on the
+// organization's T3 Code servers. Strict like T3 Code's own decoder: a key it
+// does not know is a server that refuses to start.
+const T3CodeRuntimeMode = z.enum(["approval-required", "auto-accept-edits", "auto", "full-access"]);
+const T3CodePolicyProviderInstance = strict({
+  locked: z.boolean(),
+  environment: z.array(strict({ name: z.string(), value: z.string() })).optional(),
+  binaryPath: z.string().optional(),
+  launchArgs: z.string().optional(),
+}).openapi("T3CodePolicyProviderInstance");
+const T3CodePolicy = strict({
+  schemaVersion: z.literal(1),
+  organization: z
+    .string()
+    .openapi({ description: 'Shown to users as "Managed by <organization>".' }),
+  supportUrl: z.string().optional(),
+  settings: z
+    .record(strict({ value: z.unknown(), locked: z.boolean() }))
+    .optional()
+    .openapi({
+      description:
+        "Keyed by the setting's dot path in T3 Code's settings.json. `locked: false` sets a default users can change; `locked: true` pins it.",
+    }),
+  limits: strict({
+    maxRuntimeMode: T3CodeRuntimeMode.optional(),
+    clients: z
+      .array(z.enum(["desktop", "local-browser", "remote"]))
+      .optional()
+      .openapi({ description: "Must include `remote`: agent VMs are only reachable remotely." }),
+    connect: z.boolean().optional(),
+    webhookTasks: z.boolean().optional(),
+    telemetry: z.boolean().optional(),
+    browserCookieImport: z.boolean().optional(),
+    providers: strict({
+      allowedDrivers: z.array(z.string()).optional(),
+      instances: z.record(T3CodePolicyProviderInstance).optional(),
+    }).optional(),
+    updates: strict({
+      mode: z.enum(["auto", "off"]),
+      feedUrl: z.string().optional(),
+      allowNightly: z.boolean().optional(),
+    }).optional(),
+  }).optional(),
+}).openapi("T3CodePolicy");
 const ServiceAccountIds = z
   .array(z.string())
   .describe(
@@ -51,6 +96,14 @@ const AgentSettings = strict({
   fields: z.record(z.string()),
   serviceAccountIds: ServiceAccountIds.optional(),
   t3Access: T3Access.optional(),
+  t3Policy: T3CodePolicy.nullable()
+    .optional()
+    .openapi({
+      description:
+        "The organization's T3 Code managed policy, installed on every T3 Code server (`/etc/t3code/policy.json`). " +
+        "On save: omit to keep the stored policy, `null` to remove it. A new T3 Code session is refused when the " +
+        "policy does not allow its tool or turns off the T3 Connect it is reached through.",
+    }),
 }).openapi("AgentSettings");
 
 const AgentSession = strict({
@@ -65,6 +118,13 @@ const AgentSession = strict({
   surface: Surface.optional(),
   serviceAccountIds: ServiceAccountIds.optional(),
   t3Access: T3Access.optional(),
+  t3Policy: T3CodePolicy.nullable()
+    .optional()
+    .openapi({
+      description:
+        "T3 Code sessions: the managed policy last installed on the server (from the organization's defaults at " +
+        "creation, refreshed when Authorize server runs).",
+    }),
   serviceInstalls: z.array(AgentServiceInstall).optional(),
   agentLinkId: z
     .string()

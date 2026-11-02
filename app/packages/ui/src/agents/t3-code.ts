@@ -43,7 +43,12 @@ import {
   shellDoubleQuoteContent,
   shellQuote,
 } from "./launch-command.js";
+import { buildT3CodePolicySnippet, T3_CODE_POLICY_PATH, type T3CodePolicy } from "./t3-policy.js";
 import type { AgentSetupPlan, AgentSurface, AgentTool, T3CodeAccess } from "./types.js";
+
+// The managed-policy helpers ship in this same React-free entry, so the web
+// API validates and embeds policies without a second package export.
+export * from "./t3-policy.js";
 
 /** The hosted T3 Code app that a `t3 connect`-linked environment shows up in. */
 export const T3_CODE_HOSTED_APP_URL = "https://app.t3.codes";
@@ -132,6 +137,7 @@ export function agentSurfaceUsesTool(surface: AgentSurface | string | null | und
 export function createT3CodeSetupPlan(
   tool: AgentTool,
   access: T3CodeAccess = "t3-connect",
+  policy: T3CodePolicy | null = null,
 ): AgentSetupPlan {
   return {
     source: "git-url",
@@ -155,6 +161,11 @@ export function createT3CodeSetupPlan(
       access === "tailscale"
         ? `T3 Code is reached over your tailnet (Tailscale Serve), not T3 Connect. Pairing and the ${agentToolLabel(tool)} sign-in are interactive; finish them from the session's Authorize terminal.`
         : `T3 Connect authorization and the ${agentToolLabel(tool)} sign-in are interactive browser flows; finish them from the session's Authorize terminal.`,
+      ...(policy
+        ? [
+            `T3 Code is managed by ${policy.organization}: the organization's policy is installed at ${T3_CODE_POLICY_PATH}.`,
+          ]
+        : []),
     ],
   };
 }
@@ -171,6 +182,12 @@ export interface T3CodeBootstrapCommandInput {
   installService?: boolean;
   /** Install the GitHub CLI so T3 Code's source-control features work. */
   installGithubCli?: boolean;
+  /**
+   * The organization's managed policy, installed before the service first
+   * starts (the server reads it only at startup). A policy `t3 policy check`
+   * rejects fails the bootstrap: T3 Code would refuse to start with it.
+   */
+  policy?: T3CodePolicy | null;
 }
 
 /**
@@ -282,6 +299,14 @@ install_cli_command t3 t3 'T3 Code' node-pty,msgpackr-extract
 install_cli_command ${shellQuote(toolCommand)} ${shellQuote(toolPackage)} ${shellQuote(agentToolLabel(input.tool))}
 install_cli_command ${shellQuote(companionCommand)} ${shellQuote(companionPackage)} ${shellQuote(agentToolLabel(companionTool))}
 ${installGithubCli ? GITHUB_CLI_SNIPPET : ""}${XDG_OPEN_SHIM_SNIPPET}
+${
+  input.policy
+    ? `${buildT3CodePolicySnippet(input.policy)}
+log_step "Installing the organization's T3 Code policy."
+install_t3_policy || exit 1
+`
+    : ""
+}
 ${installService ? T3_SERVICE_SNIPPET : ""}
 
 log_step "Bootstrap complete."
@@ -598,6 +623,13 @@ export interface T3CodeConnectCommandInput {
    * attached Tailscale account enrolls it during setup).
    */
   access?: T3CodeAccess;
+  /**
+   * The organization's current managed policy. An object is checked and
+   * installed before the restart (which is what makes the server load it);
+   * `null` removes a policy Infrawrench installed earlier; `undefined` leaves
+   * whatever is on the VM alone.
+   */
+  policy?: T3CodePolicy | null;
 }
 
 /**
@@ -650,7 +682,8 @@ export function buildT3CodeConnectCommand(input: T3CodeConnectCommandInput): str
   const includeGithubLogin = input.includeGithubLogin ?? true;
   const viaTailscale = input.access === "tailscale";
   const toolLabel = agentToolLabel(input.tool);
-  const steps = (includeGithubLogin ? 4 : 3) - (viaTailscale ? 1 : 0);
+  const policy = input.policy;
+  const steps = (includeGithubLogin ? 4 : 3) - (viaTailscale ? 1 : 0) + (policy ? 1 : 0);
   let step = 0;
   const heading = (title: string) => {
     step += 1;
@@ -704,6 +737,23 @@ align_git_protocol_with_gh
 `
     : ""
 }
+${
+  policy
+    ? `${heading("Apply the managed T3 Code policy")}
+# The server reads its managed policy only when it starts, so this goes in
+# before the restart below. A policy T3 Code rejects is not installed: the
+# server would refuse to start with it.
+${buildT3CodePolicySnippet(policy)}
+if install_t3_policy; then
+  printf 'Installed the managed policy at ${T3_CODE_POLICY_PATH}; the restart below applies it.\\n'
+fi
+`
+    : policy === null
+      ? `${buildT3CodePolicySnippet(null)}
+remove_t3_policy
+`
+      : ""
+}
 ${heading(viaTailscale ? "Start T3 Code and pair over Tailscale" : "Start T3 Code")}
 # \`t3 connect link\` only records intent; the relay link is provisioned by the
 # next server START. The bootstrap already installed the service, so the
@@ -749,7 +799,15 @@ ${
 pair_t3_over_tailscale
 `
     : T3_CONNECT_LINK_WAIT_SNIPPET
-}
+}${
+    policy
+      ? `
+# Confirms the running server loaded the policy just installed (it prints
+# "Restart T3 Code to apply the installed policy" if it is still on an old one).
+t3 policy show || true
+`
+      : ""
+  }
 exec "\${SHELL:-/bin/bash}" -l
 `;
   return `bash -lc ${shellQuote(script)}`;

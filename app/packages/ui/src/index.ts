@@ -89,6 +89,19 @@ export type {
   T3CodeConnectCommandInput,
   T3CodeConnectStatus,
 } from "./agents/t3-code.js";
+export {
+  compactT3CodePolicy,
+  emptyT3CodePolicy,
+  serializeT3CodePolicy,
+  t3CodePolicyOrNull,
+  validateT3CodePolicy,
+  T3_CODE_POLICY_PATH,
+} from "./agents/t3-policy.js";
+export type {
+  T3CodePolicy,
+  T3CodePolicyIssue,
+  T3CodePolicyValidation,
+} from "./agents/t3-policy.js";
 export type {
   AgentClient,
   AgentCreateBody,

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.89.0",
+    "version": "1.90.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -58713,6 +58713,166 @@
         ],
         "additionalProperties": false
       },
+      "T3CodePolicyProviderInstance": {
+        "type": "object",
+        "properties": {
+          "locked": {
+            "type": "boolean"
+          },
+          "environment": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "binaryPath": {
+            "type": "string"
+          },
+          "launchArgs": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locked"
+        ],
+        "additionalProperties": false
+      },
+      "T3CodePolicy": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "enum": [
+              1
+            ]
+          },
+          "organization": {
+            "type": "string",
+            "description": "Shown to users as \"Managed by <organization>\"."
+          },
+          "supportUrl": {
+            "type": "string"
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "value": {},
+                "locked": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "locked"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Keyed by the setting's dot path in T3 Code's settings.json. `locked: false` sets a default users can change; `locked: true` pins it."
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "maxRuntimeMode": {
+                "type": "string",
+                "enum": [
+                  "approval-required",
+                  "auto-accept-edits",
+                  "auto",
+                  "full-access"
+                ]
+              },
+              "clients": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "desktop",
+                    "local-browser",
+                    "remote"
+                  ]
+                },
+                "description": "Must include `remote`: agent VMs are only reachable remotely."
+              },
+              "connect": {
+                "type": "boolean"
+              },
+              "webhookTasks": {
+                "type": "boolean"
+              },
+              "telemetry": {
+                "type": "boolean"
+              },
+              "browserCookieImport": {
+                "type": "boolean"
+              },
+              "providers": {
+                "type": "object",
+                "properties": {
+                  "allowedDrivers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "instances": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/components/schemas/T3CodePolicyProviderInstance"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "updates": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "off"
+                    ]
+                  },
+                  "feedUrl": {
+                    "type": "string"
+                  },
+                  "allowNightly": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "organization"
+        ],
+        "additionalProperties": false,
+        "description": "The organization's T3 Code managed policy, installed on every T3 Code server (`/etc/t3code/policy.json`). On save: omit to keep the stored policy, `null` to remove it. A new T3 Code session is refused when the policy does not allow its tool or turns off the T3 Connect it is reached through."
+      },
       "AgentSettings": {
         "type": [
           "object",
@@ -58762,6 +58922,9 @@
               "t3-connect",
               "tailscale"
             ]
+          },
+          "t3Policy": {
+            "$ref": "#/components/schemas/T3CodePolicy"
           }
         },
         "required": [
@@ -58847,6 +59010,16 @@
             "enum": [
               "t3-connect",
               "tailscale"
+            ]
+          },
+          "t3Policy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/T3CodePolicy"
+              },
+              {
+                "description": "T3 Code sessions: the managed policy last installed on the server (from the organization's defaults at creation, refreshed when Authorize server runs)."
+              }
             ]
           },
           "serviceInstalls": {

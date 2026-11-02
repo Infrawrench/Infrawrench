@@ -1,4 +1,5 @@
 import type { CreateFieldConfig, SshInstallAccount } from "@infrawrench/plugin-base";
+import type { T3CodePolicy } from "./t3-policy.js";
 
 /** The coding agent CLI installed on the session's VM. */
 export type AgentTool = "codex" | "claude-code";
@@ -125,6 +126,13 @@ export interface AgentSettings {
   serviceAccountIds?: string[];
   /** T3 Code sessions only; absent means T3 Connect. */
   t3Access?: T3CodeAccess;
+  /**
+   * The organization's T3 Code managed policy, installed on every T3 Code
+   * server it provisions (`/etc/t3code/policy.json`). `null` means none.
+   * Saving settings without this key keeps the stored policy, so a client
+   * that predates it cannot wipe it.
+   */
+  t3Policy?: T3CodePolicy | null;
 }
 
 export interface AgentSession {
@@ -140,6 +148,11 @@ export interface AgentSession {
   surface?: AgentSurface;
   serviceAccountIds?: string[];
   t3Access?: T3CodeAccess;
+  /**
+   * T3 Code sessions: the managed policy last installed on the server (set at
+   * creation, refreshed by Authorize server). `null` when none.
+   */
+  t3Policy?: T3CodePolicy | null;
   /** Services installed on the VM so far, in attach order. */
   serviceInstalls?: AgentServiceInstall[];
   /**

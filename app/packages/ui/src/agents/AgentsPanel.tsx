@@ -8,6 +8,8 @@ import { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./open-ssh-
 import { ServiceAccountPicker } from "./ServiceAccountPicker.js";
 import { DEFAULT_NIBBLETS_LINK_SCOPES, isNibbletsSurface, NIBBLETS_DIR } from "./nibblets.js";
 import { NibbletsLinkOption, NibbletsSessionDetails } from "./NibbletsParts.js";
+import { T3CodePolicyEditor } from "./T3CodePolicyEditor.js";
+import { t3CodePolicyCounts, validateT3CodePolicy, type T3CodePolicy } from "./t3-policy.js";
 import {
   agentSurfaceOrDefault,
   agentSurfaceRequiresRepo,
@@ -75,6 +77,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   const [message, setMessage] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
+  const [policyEditorOpen, setPolicyEditorOpen] = useState(false);
   const configRef = useRef<HTMLDivElement>(null);
   // Nibblets: what the creator could give the server's agent link (null: they
   // cannot approve links here; undefined: this host has no agent links).
@@ -319,6 +322,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
       ...defaults,
       ...(settings?.serviceAccountIds ? { serviceAccountIds: settings.serviceAccountIds } : {}),
       ...(settings?.t3Access ? { t3Access: settings.t3Access } : {}),
+      ...(settings?.t3Policy ? { t3Policy: settings.t3Policy } : {}),
     };
     setSettings(nextSettings);
     setSaveNotice(false);
@@ -333,6 +337,27 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   function updateField(key: string, value: string) {
     if (!settings) return;
     setSettings({ ...settings, fields: { ...settings.fields, [key]: value } });
+  }
+
+  // The policy is checked against the defaults it ships with: a Tool it does
+  // not allow, or T3 Connect access under `connect: false`, would make every
+  // new server fail to create.
+  const t3Policy = settings?.t3Policy ?? null;
+  const t3PolicyContext = useMemo(
+    () => ({ tool: settings?.tool ?? ("codex" as AgentTool), access: t3Access }),
+    [settings?.tool, t3Access],
+  );
+  const t3PolicyConflict = useMemo(() => {
+    if (!t3Policy) return false;
+    return !validateT3CodePolicy(t3Policy, t3PolicyContext).ok;
+  }, [t3Policy, t3PolicyContext]);
+
+  async function saveT3Policy(policy: T3CodePolicy | null) {
+    if (!settings) return;
+    const saved = await client.saveSettings({ ...settings, t3Policy: policy });
+    setSettings(saved);
+    setPolicyEditorOpen(false);
+    setMessage(null);
   }
 
   async function saveDefaults() {
@@ -485,6 +510,15 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
 
   return (
     <div className="h-full overflow-auto bg-surface text-on-surface">
+      {policyEditorOpen && settings && (
+        <T3CodePolicyEditor
+          initial={t3Policy}
+          context={t3PolicyContext}
+          onSave={(policy) => saveT3Policy(policy)}
+          {...(t3Policy ? { onRemove: () => saveT3Policy(null) } : {})}
+          onClose={() => setPolicyEditorOpen(false)}
+        />
+      )}
       <div className="max-w-6xl mx-auto p-4 space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -597,6 +631,16 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                           )}
                         </>
                       )}
+                    {isT3CodeSurface(selectedSurface) && (
+                      <T3PolicySummary
+                        policy={t3Policy}
+                        conflict={t3PolicyConflict}
+                        onEdit={() => {
+                          setConfigOpen(false);
+                          setPolicyEditorOpen(true);
+                        }}
+                      />
+                    )}
                     {visibleFields.map(([key, value]) => (
                       <FieldRenderer
                         key={key}
@@ -846,6 +890,13 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                                 {session.branchName}
                               </div>
                             </>
+                          )}
+                          {isT3CodeSurface(session.surface) && session.t3Policy && (
+                            <div className="mt-1 text-xs text-on-surface-muted">
+                              {gt("Managed by {organization}", {
+                                organization: session.t3Policy.organization,
+                              })}
+                            </div>
                           )}
                           {isT3CodeSurface(session.surface) && session.t3Access === "tailscale" && (
                             <div className="mt-1 text-xs text-on-surface-muted">
@@ -1145,4 +1196,65 @@ function workspaceNameFromRepo(repo: string): string {
   if (!trimmed) return "project";
   const last = trimmed.split(/[\\/]/).pop() ?? "project";
   return last.replace(/\.git$/i, "") || "project";
+}
+
+/**
+ * The T3 Code policy row in the defaults menu: what is managed, at a glance,
+ * and the way into the editor. The policy belongs to the organization, so it
+ * saves on its own rather than waiting for "Save defaults".
+ */
+function T3PolicySummary({
+  policy,
+  conflict,
+  onEdit,
+}: {
+  policy: T3CodePolicy | null;
+  conflict: boolean;
+  onEdit: () => void;
+}) {
+  const gt = useGT();
+  const counts = policy ? t3CodePolicyCounts(policy) : null;
+  return (
+    <div>
+      <p className="block text-xs font-medium text-on-surface-tertiary mb-2">
+        {gt("T3 Code policy")}
+      </p>
+      <div className="flex items-center gap-2 rounded-lg border border-border-strong px-3 py-2">
+        <div className="min-w-0 flex-1 text-xs">
+          {policy && counts ? (
+            <>
+              <span className="block truncate font-medium text-on-surface">
+                {gt("Managed by {organization}", { organization: policy.organization })}
+              </span>
+              <span className="block truncate text-on-surface-muted">
+                {gt("{locked} locked · {defaults} defaults · {limits} limits", {
+                  locked: counts.lockedSettings,
+                  defaults: counts.defaultSettings,
+                  limits: counts.limits,
+                })}
+              </span>
+            </>
+          ) : (
+            <span className="block text-on-surface-muted">
+              {gt("None. Users configure T3 Code themselves.")}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="shrink-0 rounded border border-border px-2 py-1 text-xs text-on-surface-secondary hover:bg-surface-sunken"
+        >
+          {policy ? gt("Edit") : gt("Add policy")}
+        </button>
+      </div>
+      {conflict && (
+        <p className="mt-1 text-xs text-warning">
+          {gt(
+            "The policy does not fit these defaults, so new T3 Code servers cannot be created. Open it to see why.",
+          )}
+        </p>
+      )}
+    </div>
+  );
 }
