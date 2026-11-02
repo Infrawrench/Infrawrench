@@ -201,7 +201,7 @@ export const PRICES: Table = {
     col(
       "license_model",
       "LowCardinality(String)",
-      "EC2/RDS: `No License required`, `License included`, `Bring your own license`.",
+      "EC2: `No License required` (the normal price, Windows license included), `License Included - Infrastructure` and `Bring your own license` (Windows only; both are the compute part alone, without the Windows license). RDS: `No license required`, `License included`, `Bring your own license`, `Bring your own media`, `Marketplace`. Match on the exact value.",
     ),
     col(
       "pre_installed_sw",
@@ -429,6 +429,7 @@ export function createTableSql(table: Table, database?: string): string {
 export const SCHEMA_NOTES: readonly string[] = [
   "All prices are USD. Timestamps are UTC DateTime.",
   "Usual defaults when a question does not say otherwise: for ec2, operating_system = 'Linux', tenancy = 'Shared', pre_installed_sw = 'NA', capacity_status = 'Used', license_model = 'No License required' and pricing = 'on_demand'; for rds, deployment_option = 'Single-AZ', one database_engine (PostgreSQL if unsaid) and usage_type NOT LIKE '%Unused%' (those rows price unused capacity reservations); for elasticache and memorydb, cache_engine = 'Redis' (or 'Valkey') and usage_type = 'NodeUsage'; region us-east-1.",
+  "EC2 Windows: the price AWS quotes for Windows (license included) is license_model = 'No License required'. The `License Included - Infrastructure` and `Bring your own license` rows price only the compute, at the Linux rate, so never quote them as the Windows price unless the question is about bringing a license. Windows with SQL Server is pre_installed_sw = 'SQL Web', 'SQL Std' or 'SQL Ent'.",
   '"Cheapest" means the lowest effective_hourly_usd among current rows. Hourly to monthly: x 730.',
   "Spot rows (pricing = 'spot') only exist for ec2 with operating_system 'Linux' or 'Windows', and leave tenancy, license_model, pre_installed_sw and capacity_status as '': drop those ec2 defaults for spot (pricing = 'spot' OR (tenancy = 'Shared' AND ...)). A spot price is the lowest across the region's availability zones, as AWS's Spot pricing page shows it. Spot history starts 2026-08-03 with a price every hour (for the 17 main regions; the others and Local Zones start 2026-11-01), and has one every 6 hours since 2026-11-01, so aggregate it (by day, say) rather than listing rows.",
   "Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.",
