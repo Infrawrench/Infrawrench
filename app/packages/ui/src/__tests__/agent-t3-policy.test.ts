@@ -328,9 +328,11 @@ describe("rolling the policy out to existing servers", () => {
   });
 
   it("compares policies regardless of key order", () => {
-    const reordered = JSON.parse(
-      JSON.stringify({ limits: POLICY.limits, organization: POLICY.organization, ...POLICY }),
-    ) as T3CodePolicy;
+    // Every key, in reverse order, the way jsonb may hand it back.
+    const reordered = Object.fromEntries(
+      Object.entries(POLICY).reverse(),
+    ) as unknown as T3CodePolicy;
+    expect(Object.keys(reordered)).not.toEqual(Object.keys(POLICY));
     expect(sameT3CodePolicy(POLICY, reordered)).toBe(true);
     expect(sameT3CodePolicy(POLICY, { ...POLICY, organization: "Other" })).toBe(false);
     expect(sameT3CodePolicy(null, undefined)).toBe(true);
