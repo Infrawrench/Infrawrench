@@ -311,5 +311,6 @@
   "b30b67e8306967a6": "Prix spot par région",
   "a3ece1fd47be2453": "Prix spot de {name} par région",
   "bf22416ab411172a": "Spot {price}/h, {saving} de moins",
-  "3d6e4fc03c572c41": "Spot {price}/h"
+  "3d6e4fc03c572c41": "Spot {price}/h",
+  "b46faff56a7c6f87": "Poser une question sur {name}"
 }

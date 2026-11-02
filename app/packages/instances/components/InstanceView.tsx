@@ -340,6 +340,7 @@ export function InstanceView({
           { label: m.platformLabel, href: localePath(locale, `/aws/${m.platform}`) },
           { label: m.name },
         ]}
+        ask={m.name}
       />
 
       {m.deletedAt !== null && (

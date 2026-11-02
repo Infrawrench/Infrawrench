@@ -12,7 +12,7 @@ Router on Vite) and served by a Cloudflare Worker.
 
 | Path                                                               | What                                                                               |
 | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `/`                                                                | The chat: questions answered from the pricing warehouse as text, tables, charts    |
+| `/`                                                                | The chat; `?q=` asks at once, `?draft=` only fills the box (breadcrumb button)     |
 | `/aws`                                                             | Every AWS service, with its instance-type and family counts                        |
 | `/chat/<id>`                                                       | A conversation, kept in the visitor's browser (`lib/chat/storage.ts`)              |
 | `/v/<id>`                                                          | A table or chart shared from the chat, full window; a follow-up opens `/chat/<id>` |

@@ -155,6 +155,7 @@ function Composer({
   autoFocus,
   floating,
   placeholder,
+  draft,
 }: {
   onSend: (text: string) => void;
   onStop: () => void;
@@ -163,10 +164,20 @@ function Composer({
   floating?: boolean;
   /** In place of the default question prompt. */
   placeholder?: string;
+  /** Text to start the box with, cursor at its end, for the reader to finish. */
+  draft?: string | undefined;
 }) {
   const gt = useGT();
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft);
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(draft.length, draft.length);
+  }, [draft]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -361,9 +372,13 @@ export function ChatHome() {
   );
 
   // `/?q=...` still asks straight away, so questions can be linked.
+  // `/?draft=...` only fills the box: the breadcrumb's "Ask about" button.
+  const [draft, setDraft] = useState<string>();
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search).get("q");
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
     if (q) start(q, true);
+    else setDraft(params.get("draft")?.slice(0, 4000) || undefined);
   }, [start]);
 
   return (
@@ -389,7 +404,13 @@ export function ChatHome() {
         )}
       </p>
       <div className="mt-8">
-        <Composer onSend={(text) => start(text)} onStop={() => {}} busy={false} autoFocus />
+        <Composer
+          onSend={(text) => start(text)}
+          onStop={() => {}}
+          busy={false}
+          autoFocus
+          draft={draft}
+        />
       </div>
       <div className="mt-6">
         <Suggestions onPick={(text) => start(text)} />

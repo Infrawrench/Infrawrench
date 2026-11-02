@@ -311,5 +311,6 @@
   "b30b67e8306967a6": "各区域 Spot 价格",
   "a3ece1fd47be2453": "{name} 各区域 Spot 价格",
   "bf22416ab411172a": "Spot {price}/小时，便宜 {saving}",
-  "3d6e4fc03c572c41": "Spot {price}/小时"
+  "3d6e4fc03c572c41": "Spot {price}/小时",
+  "b46faff56a7c6f87": "询问 {name}"
 }

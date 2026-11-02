@@ -196,6 +196,14 @@ export function ArrowRightIcon(props: IconProps) {
   );
 }
 
+export function MessageIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+    </Icon>
+  );
+}
+
 export function SortIcon({
   direction,
   className,
