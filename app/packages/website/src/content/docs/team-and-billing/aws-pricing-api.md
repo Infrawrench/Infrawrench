@@ -4,7 +4,7 @@ description: Query every AWS instance type's specs and every on-demand, reserved
 sidebar_order: 9
 ---
 
-The data behind [instances.infrawrench.com](https://instances.infrawrench.com) and its [chat](../features/instance-price-chat.md) is a ClickHouse database you can query directly in SQL. It holds every AWS instance type's specs, and every price AWS has listed for it (on demand, reserved and EC2 spot), in every region, with history, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List and reloaded as AWS publishes.
+The data behind [instances.infrawrench.com](https://instances.infrawrench.com) and its [chat](../features/instance-price-chat.md) is a ClickHouse database you can query directly in SQL. It holds every AWS instance type's specs, and every price AWS has listed for it (on demand, reserved and EC2 spot), in every region, with history, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List and reloaded as AWS publishes. It also holds every incident AWS has posted on its public Health Dashboard since 2008 (`service_events`), for questions about outages and reliability.
 
 Two endpoints, both in the [OpenAPI spec](./openapi.md) (tag **AWS pricing**) and so in every [client SDK](./client-sdks.md):
 
@@ -91,11 +91,20 @@ WHERE platform = 'ec2' AND instance_type = 'm7g.large' AND region = 'us-east-1' 
 -- Instance types AWS added in the last 90 days
 SELECT platform, instance_type, first_listed FROM instance_types
 WHERE first_listed > now() - INTERVAL 90 DAY ORDER BY first_listed DESC
+
+-- EC2 incidents AWS posted for eu-west-1 each year, and the hours they lasted
+SELECT toYear(posted_at) AS year, count() AS incidents,
+  round(sum(dateDiff('minute', coalesce(impact_started_at, posted_at),
+    coalesce(impact_ended_at, resolved_at, now()))) / 60, 1) AS hours
+FROM service_events
+WHERE region = 'eu-west-1'
+  AND (service = 'ec2' OR mapContains(impacted_services, 'ec2-eu-west-1'))
+GROUP BY year ORDER BY year
 ```
 
 ## Schema
 
-Five tables, all in the default database. `GET /api/v1/aws-pricing/schema` returns the same descriptions as JSON, and each column also carries its description as a ClickHouse `COMMENT`, so `DESCRIBE TABLE prices` shows it too.
+Six tables, all in the default database. `GET /api/v1/aws-pricing/schema` returns the same descriptions as JSON, and each column also carries its description as a ClickHouse `COMMENT`, so `DESCRIBE TABLE prices` shows it too.
 
 ### `prices`
 
@@ -219,6 +228,32 @@ Sorted by `source`.
 | `synced_at`       | `DateTime`               | When it was loaded (UTC).                                                                                                    |
 | `price_rows`      | `UInt64`                 | Rows it wrote to prices.                                                                                                     |
 
+### `service_events`
+
+Every incident AWS posted on its public Health Dashboard (status page), 2008 to now: one row per event, with when it was posted, when AWS says the impact began and ended, and every update AWS wrote. Only events AWS chose to post publicly; account-specific issues never appear, so no event does not prove no impact. Use it for questions about outages, incidents and how reliable a service or region has been.
+
+Sorted by `provider, service, region, posted_at`.
+
+| Column              | Type                     | What it holds                                                                                                                                                                                                           |
+| ------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider`          | `LowCardinality(String)` | Cloud provider: `aws`.                                                                                                                                                                                                  |
+| `event_key`         | `String`                 | Unique id of the event: AWS's dashboard service key and the epoch second it was posted, e.g. `ec2-eu-west-1\|1680798000`.                                                                                               |
+| `service`           | `LowCardinality(String)` | AWS Health's service code, e.g. `ec2`, `s3`, `lambda`, `rds`, `elasticache`; `multipleservices` for an event AWS posted against several services at once (see impacted_services).                                       |
+| `service_name`      | `String`                 | The service's name, e.g. `Amazon Elastic Compute Cloud`; `''` when AWS's feeds never named it.                                                                                                                          |
+| `region`            | `LowCardinality(String)` | Region code, e.g. `eu-west-1` (Dublin, Ireland); `''` for a global service such as IAM, Route 53 or CloudFront.                                                                                                         |
+| `arn`               | `String`                 | AWS Health's event ARN; `''` for events before 2023.                                                                                                                                                                    |
+| `severity`          | `LowCardinality(String)` | The worst status the event reached, as the dashboard labels it: `impacted` (AWS's informational level), `degraded` or `disrupted`.                                                                                      |
+| `summary`           | `String`                 | AWS's title for the event, e.g. `Increased API Error Rates`.                                                                                                                                                            |
+| `posted_at`         | `DateTime`               | When AWS posted the event (UTC); the impact usually began earlier.                                                                                                                                                      |
+| `last_update_at`    | `DateTime`               | When AWS last updated it (UTC).                                                                                                                                                                                         |
+| `resolved_at`       | `Nullable(DateTime)`     | When AWS posted that it was resolved (UTC); NULL while it is ongoing.                                                                                                                                                   |
+| `impact_started_at` | `Nullable(DateTime)`     | When AWS says the impact began (UTC), read from its resolution message (`Between 6:14 AM and 9:33 AM PDT, ...`); NULL when the message gives no window.                                                                 |
+| `impact_ended_at`   | `Nullable(DateTime)`     | When AWS says the impact ended (UTC), from the same message; NULL when it gives no window.                                                                                                                              |
+| `updates`           | `UInt32`                 | How many updates AWS posted.                                                                                                                                                                                            |
+| `description`       | `String`                 | AWS's last update, as plain text: for a resolved event, its own summary of what happened and when.                                                                                                                      |
+| `event_log`         | `String`                 | Every update, oldest first, each as `YYYY-MM-DD HH:MM UTC  message`, separated by blank lines.                                                                                                                          |
+| `impacted_services` | `Map(String, String)`    | Other services AWS listed as affected (since 2023), by service key (`eks-us-east-1`) to name. `mapContains(impacted_services, 'ec2-eu-west-1')` finds events that hit EC2 in eu-west-1 without being posted against it. |
+
 ### Notes for writing queries
 
 - All prices are USD. Timestamps are UTC DateTime.
@@ -229,7 +264,10 @@ Sorted by `source`.
 - Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.
 - Use instance_types for specs and to list types; join prices on (platform, instance_type) when you need specs it does not carry.
 - prices is large (millions of rows for ec2): always filter on platform and current (or a time range), and aggregate or LIMIT.
+- service_events is AWS's public status page history, not a measured uptime: AWS publishes no availability percentage. To estimate downtime, sum dateDiff('minute', impact_started_at, impact_ended_at) (fall back to posted_at and resolved_at when those are NULL) over events with severity 'degraded' or 'disrupted', and say that it covers only events AWS posted publicly. An event filed under `multipleservices` or another service can still have hit the one asked about: also match mapContains(impacted_services, '<service>-<region>').
 
 ## Freshness
 
 The database is reloaded each time AWS publishes a new price list for a service, checked twice an hour. `sync_state` (and the `sources` list in `GET /api/v1/aws-pricing/schema`) says which price lists each service's data comes from and when it was loaded; `max(price_list_to)` is the newest. While a service is being reloaded, a query can briefly fail with a `502`; retry it.
+
+`service_events` is refreshed from the AWS Health Dashboard on the same schedule, so a new or updated incident appears within about half an hour. AWS's dashboard only shows the last twelve months; older years come from archived copies of it and stay in the table. There are none for 2010, and years before 2014 are thinner than AWS's real record.

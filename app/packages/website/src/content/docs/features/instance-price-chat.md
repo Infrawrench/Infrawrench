@@ -3,7 +3,7 @@ title: Instance price chat
 description: Ask about AWS instance types and prices in plain language on instances.infrawrench.com, and get tables and charts you can filter, share and get email alerts on.
 ---
 
-The home page of [instances.infrawrench.com](https://instances.infrawrench.com) is a chat about AWS instance types and their prices. Ask a question in plain language, in any of the site's languages, and the answer comes from the same data as the rest of the site: every published version of the AWS Price List for EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift, plus EC2 spot prices, in every region, with history. No account is needed.
+The home page of [instances.infrawrench.com](https://instances.infrawrench.com) is a chat about AWS instance types and their prices. Ask a question in plain language, in any of the site's languages, and the answer comes from the same data as the rest of the site: every published version of the AWS Price List for EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift, plus EC2 spot prices, in every region, with history. It also knows every incident AWS has posted on its public Health Dashboard since 2008, so it can answer questions about outages too. No account is needed.
 
 <insert [The instances.infrawrench.com home page: the "What do you want to know about Amazon EC2?" headline, the question box and the four suggestion cards] here>
 
@@ -14,12 +14,13 @@ Some things to ask:
 - "Show me a bar graph of Graviton instance costs running Linux."
 - "How has the price of db.r6g.large changed since 2023?"
 - "Compare a 3-year all-upfront reserved m7g.large with on demand."
+- "How many EC2 incidents did AWS post for Dublin in 2023, and how long did they last?"
 
 Every service and instance page also has an **Ask about** button beside its breadcrumb trail (for example **Ask about g4dn.xlarge**). It opens the chat with that name already in the question box, so you only have to finish the question.
 
 Each conversation gets its own address (`/chat/…`), so the back button, reloading and coming back from an instance page all return to it. Conversations are kept in your browser only, so that address works on the device you asked on; to show someone a result, use a table's **Copy link** instead.
 
-The assistant writes and runs SQL against the price data to answer, so every number comes from AWS's price list rather than from the model's memory. It tells you the assumptions it made, such as the region, operating system or pricing model; ask again with different ones if they are not what you meant. Instance types in answers link to their pages on the site.
+The assistant writes and runs SQL against the price data to answer, so every number comes from AWS's price list rather than from the model's memory. AWS publishes no uptime figure, so for reliability questions it lists and totals the incidents AWS posted publicly, and says that issues AWS only reported to affected accounts are not among them. It tells you the assumptions it made, such as the region, operating system or pricing model; ask again with different ones if they are not what you meant. Instance types in answers link to their pages on the site.
 
 ## Tables and charts
 

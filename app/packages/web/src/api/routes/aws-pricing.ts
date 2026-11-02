@@ -9,7 +9,7 @@ import {
 import {
   SCHEMA_NOTES,
   SYNC_STATE,
-  TABLES,
+  QUERYABLE_TABLES,
 } from "@infrawrench/server-core/aws-pricing-warehouse/schema";
 import { authenticateApiRequest } from "@/auth/api-auth";
 
@@ -69,7 +69,7 @@ app.get("/schema", async (c) => {
   }
   return c.json(
     {
-      tables: TABLES.map((t) => ({
+      tables: QUERYABLE_TABLES.map((t) => ({
         name: t.name,
         description: t.comment,
         sortingKey: t.orderBy,

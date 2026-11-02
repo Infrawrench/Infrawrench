@@ -1,6 +1,8 @@
 /**
  * Sync the AWS bulk pricing data in Workers KV from the bundles in R2; see
- * `src/aws-bulk-pricing/sync.ts`. Run hourly by
+ * `src/aws-bulk-pricing/sync.ts`. With a warehouse, also merge AWS's public
+ * status page history into its `service_events` table
+ * (`src/aws-bulk-pricing/service-events.ts`). Run twice an hour by
  * `.github/workflows/aws-bulk-pricing-sync.yml`.
  *
  *   pnpm --filter @infrawrench/web sync:aws-bulk-pricing
@@ -25,6 +27,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 import { KvRest } from "../src/aws-bulk-pricing/kv-rest";
+import { syncServiceEvents } from "../src/aws-bulk-pricing/service-events";
 import { syncAwsBulkPricing, type BundleBucket } from "../src/aws-bulk-pricing/sync";
 import { ClickHouseHttp, ClickHouseWarehouse } from "../src/aws-bulk-pricing/warehouse";
 
@@ -98,14 +101,15 @@ const kv = new KvRest({
   apiToken: required("CLOUDFLARE_API_TOKEN"),
 });
 
-function warehouse(): ClickHouseWarehouse | undefined {
+function warehouse(): { ch: ClickHouseHttp; pricing: ClickHouseWarehouse } | undefined {
   const url = process.env.PRICING_WAREHOUSE_URL;
   const token = process.env.PRICING_WAREHOUSE_TOKEN;
   if (!url || !token) {
     console.log("warehouse: PRICING_WAREHOUSE_URL / PRICING_WAREHOUSE_TOKEN not set, skipping");
     return undefined;
   }
-  return new ClickHouseWarehouse(new ClickHouseHttp({ url, token }));
+  const ch = new ClickHouseHttp({ url, token });
+  return { ch, pricing: new ClickHouseWarehouse(ch) };
 }
 
 /** Tell the instances site the warehouse moved, so it can check email subscriptions. */
@@ -126,14 +130,29 @@ async function notifyInstances(): Promise<void> {
   }
 }
 
+const store = warehouse();
 let loaded = false;
+let failure: unknown = null;
 try {
-  const results = await syncAwsBulkPricing(r2Bucket(), kv, console.log, warehouse());
+  const results = await syncAwsBulkPricing(r2Bucket(), kv, console.log, store?.pricing);
   loaded = results.some((r) => r.warehouseRows !== undefined);
 } catch (error) {
   // Some platforms may have loaded before another failed.
   loaded = true;
-  throw error;
-} finally {
-  if (loaded) await notifyInstances();
+  failure = error;
 }
+// AWS's public status page history, independent of the price lists: a failure
+// of either still runs the other, and fails the run at the end.
+if (store) {
+  try {
+    const { changed } = await syncServiceEvents(store.ch);
+    if (changed > 0) loaded = true;
+  } catch (error) {
+    console.log(
+      `service events: failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    failure ??= error;
+  }
+}
+if (loaded) await notifyInstances();
+if (failure) throw failure;

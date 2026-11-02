@@ -5,9 +5,12 @@ name: Sync AWS bulk pricing data
 # instance, for `/api/v1/aws-bulk-pricing` (see app/packages/web/src/aws-bulk-pricing),
 # and loads the same bundles into the AWS pricing warehouse, the ClickHouse
 # database instances.infrawrench.com's chat queries (src/aws-bulk-pricing/warehouse.ts).
+# It also merges AWS's public Health Dashboard feeds into the warehouse's
+# `service_events` table (src/aws-bulk-pricing/service-events.ts).
 # It runs here rather than in a Worker because an EC2 bundle is over 200 MB of
 # JSON. A run where no bundle has moved reads thirteen small `latest` objects,
-# thirteen KV keys and one warehouse table, and writes nothing.
+# thirteen KV keys and two warehouse tables, fetches three small public AWS
+# feeds, and writes nothing unless an AWS event is new or updated.
 
 on:
   schedule:

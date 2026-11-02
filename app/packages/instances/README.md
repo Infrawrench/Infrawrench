@@ -80,7 +80,9 @@ server-core's `parseEcbXml`), converted at the latest rate.
 with tools that run read-only SQL against the AWS pricing warehouse (CloudHouse
 on `instances-clickhouse.infrawrench.com`; the schema is
 `@infrawrench/server-core/aws-pricing-warehouse/schema`, loaded by the bulk
-pricing sync). Saved views and email alerts are in the `INSTANCES_CHAT` KV
+pricing sync). The same warehouse has AWS's public status page history
+(`service_events`, every incident AWS posted since 2008), merged in by the
+same sync, so the chat answers outage and reliability questions too. Saved views and email alerts are in the `INSTANCES_CHAT` KV
 namespace. KNOWLEDGE.md ("AWS pricing warehouse and the instances chat") has
 the design. Claude is called with the `AI` binding through the `instances`
 gateway on Unified Billing, so the Worker holds no model key. Secrets, set

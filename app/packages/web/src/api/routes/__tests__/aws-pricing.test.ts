@@ -158,6 +158,7 @@ describe("GET /api/v1/aws-pricing/schema", () => {
       "attribute_changes",
       "regions",
       "sync_state",
+      "service_events",
     ]);
     expect(body.tables[0]!.columns.map((c) => c.name)).toContain("effective_hourly_usd");
     expect(body.notes.length).toBeGreaterThan(3);
@@ -178,7 +179,7 @@ describe("GET /api/v1/aws-pricing/schema", () => {
       tables: unknown[];
       sources: unknown;
     };
-    expect(body.tables).toHaveLength(5);
+    expect(body.tables).toHaveLength(6);
     expect(body.sources).toBeNull();
   });
 });
@@ -186,7 +187,7 @@ describe("GET /api/v1/aws-pricing/schema", () => {
 describe("the docs page", () => {
   it("describes every table, column and note the schema has", async () => {
     const { readFileSync } = await import("node:fs");
-    const { TABLES, SCHEMA_NOTES } =
+    const { QUERYABLE_TABLES, SCHEMA_NOTES } =
       await import("@infrawrench/server-core/aws-pricing-warehouse/schema");
     const page = readFileSync(
       new URL(
@@ -197,7 +198,7 @@ describe("the docs page", () => {
     );
     const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const missing: string[] = [];
-    for (const table of TABLES) {
+    for (const table of QUERYABLE_TABLES) {
       if (!page.includes(`### \`${table.name}\``)) missing.push(`table ${table.name}`);
       for (const col of table.columns) {
         const row = new RegExp(

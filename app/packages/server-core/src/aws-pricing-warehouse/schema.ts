@@ -20,6 +20,11 @@
  *
  * Bump {@link SCHEMA_VERSION} on any change to a table: the next sync drops
  * every table and reloads every bundle.
+ *
+ * {@link SERVICE_EVENTS} (AWS's public status page history) sits beside the
+ * bundle tables rather than among them: it has its own loader and is not
+ * dropped by a schema version bump, since its older years exist only in
+ * archived copies of AWS's feeds.
  */
 
 export const SCHEMA_VERSION = 2;
@@ -391,7 +396,7 @@ export const SYNC_STATE: Table = {
   orderBy: ["source"],
 };
 
-/** Every table, in load order; `sync_state` last, since it says a load finished. */
+/** Every table a price list bundle loads, in load order; `sync_state` last, since it says a load finished. */
 export const TABLES: readonly Table[] = [
   PRICES,
   INSTANCE_TYPES,
@@ -399,6 +404,91 @@ export const TABLES: readonly Table[] = [
   REGIONS,
   SYNC_STATE,
 ];
+
+/**
+ * AWS's public service health history, from the AWS Health Dashboard. Not
+ * part of a bundle load: the same sync merges the dashboard's feeds into it
+ * (`web/src/aws-bulk-pricing/service-events.ts`), and it was seeded from
+ * archived copies of those feeds back to 2008. One partition per provider,
+ * rewritten whole when an event changes; it is a few thousand rows.
+ */
+export const SERVICE_EVENTS: Table = {
+  name: "service_events",
+  comment:
+    "Every incident AWS posted on its public Health Dashboard (status page), 2008 to now: one row per event, with when it was posted, when AWS says the impact began and ended, and every update AWS wrote. Only events AWS chose to post publicly; account-specific issues never appear, so no event does not prove no impact. Use it for questions about outages, incidents and how reliable a service or region has been.",
+  columns: [
+    col("provider", "LowCardinality(String)", "Cloud provider: `aws`."),
+    col(
+      "event_key",
+      "String",
+      "Unique id of the event: AWS's dashboard service key and the epoch second it was posted, e.g. `ec2-eu-west-1|1680798000`.",
+    ),
+    col(
+      "service",
+      "LowCardinality(String)",
+      "AWS Health's service code, e.g. `ec2`, `s3`, `lambda`, `rds`, `elasticache`; `multipleservices` for an event AWS posted against several services at once (see impacted_services).",
+    ),
+    col(
+      "service_name",
+      "String",
+      "The service's name, e.g. `Amazon Elastic Compute Cloud`; `''` when AWS's feeds never named it.",
+    ),
+    col(
+      "region",
+      "LowCardinality(String)",
+      "Region code, e.g. `eu-west-1` (Dublin, Ireland); `''` for a global service such as IAM, Route 53 or CloudFront.",
+    ),
+    col("arn", "String", "AWS Health's event ARN; `''` for events before 2023."),
+    col(
+      "severity",
+      "LowCardinality(String)",
+      "The worst status the event reached, as the dashboard labels it: `impacted` (AWS's informational level), `degraded` or `disrupted`.",
+    ),
+    col("summary", "String", "AWS's title for the event, e.g. `Increased API Error Rates`."),
+    col(
+      "posted_at",
+      "DateTime",
+      "When AWS posted the event (UTC); the impact usually began earlier.",
+    ),
+    col("last_update_at", "DateTime", "When AWS last updated it (UTC)."),
+    col(
+      "resolved_at",
+      "Nullable(DateTime)",
+      "When AWS posted that it was resolved (UTC); NULL while it is ongoing.",
+    ),
+    col(
+      "impact_started_at",
+      "Nullable(DateTime)",
+      "When AWS says the impact began (UTC), read from its resolution message (`Between 6:14 AM and 9:33 AM PDT, ...`); NULL when the message gives no window.",
+    ),
+    col(
+      "impact_ended_at",
+      "Nullable(DateTime)",
+      "When AWS says the impact ended (UTC), from the same message; NULL when it gives no window.",
+    ),
+    col("updates", "UInt32", "How many updates AWS posted."),
+    col(
+      "description",
+      "String",
+      "AWS's last update, as plain text: for a resolved event, its own summary of what happened and when.",
+    ),
+    col(
+      "event_log",
+      "String",
+      "Every update, oldest first, each as `YYYY-MM-DD HH:MM UTC  message`, separated by blank lines.",
+    ),
+    col(
+      "impacted_services",
+      "Map(String, String)",
+      "Other services AWS listed as affected (since 2023), by service key (`eks-us-east-1`) to name. `mapContains(impacted_services, 'ec2-eu-west-1')` finds events that hit EC2 in eu-west-1 without being posted against it.",
+    ),
+  ],
+  orderBy: ["provider", "service", "region", "posted_at"],
+  partitionBy: "provider",
+};
+
+/** Every table the chat and the SQL API can query. */
+export const QUERYABLE_TABLES: readonly Table[] = [...TABLES, SERVICE_EVENTS];
 
 const quote = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 
@@ -435,10 +525,11 @@ export const SCHEMA_NOTES: readonly string[] = [
   "Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.",
   "Use instance_types for specs and to list types; join prices on (platform, instance_type) when you need specs it does not carry.",
   "prices is large (millions of rows for ec2): always filter on platform and current (or a time range), and aggregate or LIMIT.",
+  "service_events is AWS's public status page history, not a measured uptime: AWS publishes no availability percentage. To estimate downtime, sum dateDiff('minute', impact_started_at, impact_ended_at) (fall back to posted_at and resolved_at when those are NULL) over events with severity 'degraded' or 'disrupted', and say that it covers only events AWS posted publicly. An event filed under `multipleservices` or another service can still have hit the one asked about: also match mapContains(impacted_services, '<service>-<region>').",
 ];
 
 export function describeSchema(): string {
-  const tables = TABLES.map((t) => {
+  const tables = QUERYABLE_TABLES.map((t) => {
     const columns = t.columns.map((c) => `  ${c.name} ${c.type}  -- ${c.comment}`).join("\n");
     return `TABLE ${t.name}  -- ${t.comment}\n${columns}`;
   }).join("\n\n");

@@ -376,4 +376,8 @@
 // 1.86.0: `GET /api/v1/aws-pricing/schema` and `POST /api/v1/aws-pricing/query`,
 // read-only SQL over the AWS pricing warehouse behind instances.infrawrench.com,
 // for any bearer credential with no scope. Additive.
-export const API_VERSION = "1.86.0";
+// 1.87.0: the AWS pricing warehouse gains a `service_events` table (AWS's
+// public status page history since 2008), listed by
+// `GET /api/v1/aws-pricing/schema` and queryable through
+// `POST /api/v1/aws-pricing/query`. Additive.
+export const API_VERSION = "1.87.0";

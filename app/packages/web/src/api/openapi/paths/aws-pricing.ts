@@ -1,5 +1,8 @@
 import { MAX_QUERY_ROWS as MAX_ROWS } from "@infrawrench/server-core/aws-pricing-warehouse/query";
-import { SCHEMA_NOTES, TABLES } from "@infrawrench/server-core/aws-pricing-warehouse/schema";
+import {
+  QUERYABLE_TABLES,
+  SCHEMA_NOTES,
+} from "@infrawrench/server-core/aws-pricing-warehouse/schema";
 import { z } from "../zod";
 import { strict, ErrorResponses, ErrorResponse } from "../common";
 import type { BuildContext } from "../context";
@@ -86,7 +89,7 @@ export function registerAwsPricingPaths(ctx: BuildContext) {
       .describe("How fresh each bundle is; null when the warehouse could not be reached."),
   }).openapi("AwsPricingSchema");
 
-  const tableList = TABLES.map((t) => `- \`${t.name}\`: ${t.comment}`).join("\n");
+  const tableList = QUERYABLE_TABLES.map((t) => `- \`${t.name}\`: ${t.comment}`).join("\n");
 
   registry.registerPath({
     method: "get",
