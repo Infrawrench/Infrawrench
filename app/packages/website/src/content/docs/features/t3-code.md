@@ -1,6 +1,6 @@
 ---
-title: T3 Code servers
-description: Run the T3 Code harness on an agent VM, provisioned and authorized from Infrawrench.
+title: Run T3 Code on a remote server
+description: Run T3 Code on a remote VM that Infrawrench provisions with Node, the t3 CLI, Claude Code and Codex, linked to T3 Connect and started on boot.
 sidebar_order: 25
 ---
 
