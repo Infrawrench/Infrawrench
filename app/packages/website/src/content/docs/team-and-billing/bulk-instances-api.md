@@ -1,10 +1,10 @@
 ---
 title: Bulk instances API
-description: AWS instance specs and prices for twelve services, plus EC2 spot prices, RunPod GPU and CPU pods and Alibaba Cloud ECS, with their full history, from the @infrawrench/bulk-instances SDKs or the HTTP API.
+description: AWS instance specs and prices for twelve services, plus EC2 spot prices, Azure Virtual Machines, Google Cloud Compute Engine, Alibaba Cloud ECS and RunPod GPU and CPU pods, with their full history, from the @infrawrench/bulk-instances SDKs or the HTTP API.
 sidebar_order: 8
 ---
 
-Infrawrench keeps every AWS instance type's attributes and prices, with the full history of both, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List bulk API and refreshed as AWS publishes. EC2 spot prices, which are not in the price lists, are kept alongside (see [Spot prices](#spot-prices)), and so are two other clouds in the same format: RunPod's GPU and CPU pods and Alibaba Cloud ECS (see [Other clouds](#other-clouds)).
+Infrawrench keeps every AWS instance type's attributes and prices, with the full history of both, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List bulk API and refreshed as AWS publishes. EC2 spot prices, which are not in the price lists, are kept alongside (see [Spot prices](#spot-prices)), and so are four other clouds in the same format: Azure Virtual Machines, Google Cloud Compute Engine, Alibaba Cloud ECS and RunPod's GPU and CPU pods (see [Other clouds](#other-clouds)).
 
 You can read it four ways:
 
@@ -200,13 +200,17 @@ spot
 
 ### Other clouds
 
-Two more platforms come in the same format, from the same bucket, with their own download functions and types (`RunpodPricingData`, `AlibabaPricingData` and their instances, which have the same members as `AWSPricingData` and `AWSInstance`):
+Four more platforms come in the same format, from the same bucket, with their own download functions and types (`AzurePricingData`, `GCPPricingData`, `RunpodPricingData`, `AlibabaPricingData` and their instances, which have the same members as `AWSPricingData` and `AWSInstance`):
 
 | Platform  | Download function            | What                                                                                           | History from  |
 | --------- | ---------------------------- | ---------------------------------------------------------------------------------------------- | ------------- |
+| `azure`   | `downloadAzurePricingData`   | Azure VM sizes by ARM name (`Standard_D2s_v3`), priced per VM per hour                         | November 2026 |
+| `gcp`     | `downloadGcpPricingData`     | Google Cloud Compute Engine machine types (`n2-standard-2`), priced per VM per hour            | November 2026 |
 | `runpod`  | `downloadRunpodPricingData`  | RunPod GPU types (by id, priced per GPU per hour) and CPU pods (`cpu3c-2-4`, per pod per hour) | November 2026 |
 | `alibaba` | `downloadAlibabaPricingData` | Alibaba Cloud ECS instance types (`ecs.g7.large`), from its international site, in USD         | May 2018      |
 
+- **Azure**: locations are ARM region names (`eastus`), and `regions` gives each Azure's display `name` (`US East`); a few Spot prices that apply everywhere are in the location `Global`. The variant keys are `operatingSystem` (`Linux`, `Windows`) and `priority` (`Regular`, `Spot` or `Low Priority`). `pricing.onDemand` has pay-as-you-go prices, dated by when Azure says they took effect. Reservations are reserved prices with the term `1yr`, `3yr`, `5yr` or `10yr`, `Reserved Instance`, `All Upfront` (`hourly` is 0 and `upfront` the whole term), listed under `Linux` only since a Windows license is billed on top; savings plans have `1yr` or `3yr`, `Savings Plan`, `No Upfront`, and `hourly` is the plan's rate. Attributes are `skuName`, `productName` and, from Azure's pricing calculator, `cores`, `ram` (GiB), `diskSize` (temporary disk, GiB), `gpu` and `series`; about a third of sizes, mostly the newest and retired series, have no calculator specs. Dedicated hosts are not included.
+- **Google Cloud**: locations are region ids (`us-central1`). The only variant key is `provisioningModel` (`Standard` or `Spot`). Google bills most machine types per vCPU and per GiB of memory at their series' rates, plus their GPUs, so each price is worked out from those rates and the machine type's shape; prices leave out bundled Local SSD, OS licenses and sustained use discounts, and TPU, X4, X5 and A4X machine types are not included. Committed use discounts are reserved prices with the term `1yr` or `3yr`, `Committed Use`, `No Upfront`, and `hourly` is the commitment's rate. Attributes are the machine type's fields from the Compute Engine API (`guestCpus`, `memoryMb`, `description`, `isSharedCpu`, ...), `acceleratorType` and `acceleratorCount` for its GPUs, and `zones`, the zones in each region that have it, which differ by region.
 - **RunPod**: prices are the same in every data center, so every price is in the location `global`. The only variant key is `cloudType` (`Secure Cloud` or `Community Cloud`). Savings plans are reserved prices with the term `3mo` or `6mo`, `Savings Plan`, `All Upfront`, whose `hourly` is the plan's effective hourly rate. A GPU's `dataCenters` attribute lists the data centers that stock it; stock levels and spot prices are not included.
 - **Alibaba Cloud**: locations are region ids (`cn-hangzhou`), and `regions` gives each an English `name`. The variant keys are `operatingSystem` (`Linux`, `Windows`) and `networkType` (`VPC`, or `Classic` in older history). `pricing.onDemand` is pay-as-you-go. Subscriptions are reserved prices with the term `1mo` or `1yr` to `5yr`, `Subscription`, `All Upfront`, paid in full when bought, so `hourly` is 0 and `upfront` is the price; reserved instances have `1yr` or `3yr`, `Reserved Instance` and a purchase option. Attributes are Alibaba's instance type definitions (`CpuCoreCount`, `MemorySize`, ...), from May 2023 on.
 
@@ -219,7 +223,7 @@ runpod
   ?.pricing.onDemand.find((p) => p.variant.cloudType === "Secure Cloud")?.hourly;
 ```
 
-The single-instance HTTP endpoint below serves them too (`/api/v1/aws-bulk-pricing/runpod/<id>`, `/api/v1/aws-bulk-pricing/alibaba/<instance type>`; URL-encode RunPod's ids, which have spaces).
+The single-instance HTTP endpoint below serves them too (`/api/v1/aws-bulk-pricing/azure/<size>`, `/api/v1/aws-bulk-pricing/gcp/<machine type>`, `/api/v1/aws-bulk-pricing/runpod/<id>`, `/api/v1/aws-bulk-pricing/alibaba/<instance type>`; URL-encode RunPod's ids, which have spaces). The SDKs have `fetchRunpodInstance` and `fetchAlibabaInstance` for it; for Azure and Google Cloud, download the bundle.
 
 ## HTTP API
 
@@ -227,11 +231,11 @@ The SDKs use two endpoints, which you can also call directly with `Authorization
 
 ### One instance: `app.infrawrench.com/api/v1/aws-bulk-pricing`
 
-| Request                                              | Response                                                                                                                                        |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/aws-bulk-pricing`                       | `{ platforms: [...] }`: each service (AWS, `runpod` and `alibaba`) synced so far, with its bundle version, sync time and instance count.        |
-| `GET /api/v1/aws-bulk-pricing/<platform>`            | That service's `variant_keys`, price list `snapshots` (Unix seconds) and every instance name.                                                   |
-| `GET /api/v1/aws-bulk-pricing/<platform>/<instance>` | Everything about one instance, in the bundle encoding below, cut down to that instance. Sends an `ETag` and answers `If-None-Match` with `304`. |
+| Request                                              | Response                                                                                                                                                 |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/aws-bulk-pricing`                       | `{ platforms: [...] }`: each service (AWS, `azure`, `gcp`, `alibaba` and `runpod`) synced so far, with its bundle version, sync time and instance count. |
+| `GET /api/v1/aws-bulk-pricing/<platform>`            | That service's `variant_keys`, price list `snapshots` (Unix seconds) and every instance name.                                                            |
+| `GET /api/v1/aws-bulk-pricing/<platform>/<instance>` | Everything about one instance, in the bundle encoding below, cut down to that instance. Sends an `ETag` and answers `If-None-Match` with `304`.          |
 
 ```bash
 curl -H "Authorization: Bearer $INFRAWRENCH_API_KEY" \
@@ -247,7 +251,7 @@ curl -H "Authorization: Bearer $INFRAWRENCH_API_KEY" \
 | `GET /latest` (EC2), `GET /<platform>-latest`                                         | The newest bundle's timestamp, as text. |
 | `GET /bundle-<timestamp>.json.xz` (EC2), `GET /<platform>-bundle-<timestamp>.json.xz` | The bundle, xz-compressed.              |
 
-Bundles are served from Cloudflare's edge cache, with `ETag` revalidation and range requests. A new EC2 bundle can appear every few minutes as AWS publishes; the other services are checked every 15 minutes, RunPod every 30 minutes, and spot prices and Alibaba Cloud every 6 hours.
+Bundles are served from Cloudflare's edge cache, with `ETag` revalidation and range requests. A new EC2 bundle can appear every few minutes as AWS publishes; the other services are checked every 15 minutes, RunPod every 30 minutes, Azure and Google Cloud every hour, and spot prices and Alibaba Cloud every 6 hours.
 
 ### The bundle encoding
 

@@ -8,7 +8,7 @@ const app = new Hono();
 /**
  * GET /api/v1/aws-bulk-pricing[/<platform>[/<instance>]]: bulk instance pricing
  * data for every platform the instances-bundler publishes (the AWS platforms,
- * `runpod` and `alibaba`; the path predates the other clouds), from Workers KV (see `aws-bulk-pricing/format.ts` for what is stored and
+ * `runpod`, `alibaba`, `azure` and `gcp`; the path predates the other clouds), from Workers KV (see `aws-bulk-pricing/format.ts` for what is stored and
  * `scripts/sync-aws-bulk-pricing.ts` for how it gets there).
  *
  * - `/`: the platforms synced so far, with version, bundle, sync time and count.

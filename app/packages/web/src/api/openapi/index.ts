@@ -582,7 +582,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Instance pricing",
         description:
-          "Read-only SQL over public instance price lists: every instance type's specs and every on-demand, committed and spot price in every region, with history, for twelve AWS services, RunPod GPU and CPU pods, and Alibaba Cloud ECS. The data behind instances.infrawrench.com, refreshed as each provider publishes. Any bearer credential can use it, with no scope. The older `/api/v1/aws-pricing` paths are deprecated aliases.",
+          "Read-only SQL over public instance price lists: every instance type's specs and every on-demand, committed and spot price in every region, with history, for twelve AWS services, RunPod GPU and CPU pods, Alibaba Cloud ECS, Azure virtual machines and Google Cloud Compute Engine. The data behind instances.infrawrench.com, refreshed as each provider publishes. Any bearer credential can use it, with no scope. The older `/api/v1/aws-pricing` paths are deprecated aliases.",
       },
       {
         name: "Carbon",

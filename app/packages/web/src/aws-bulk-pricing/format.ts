@@ -3,7 +3,7 @@
  *
  * The instances-bundler (github.com/Infrawrench/instances-bundler) publishes one
  * bundle per platform to the `instances-bundles` R2 bucket: every AWS platform,
- * plus RunPod and Alibaba Cloud ECS in the same format. A scheduled
+ * plus RunPod, Alibaba Cloud ECS, Azure and Google Cloud in the same format. A scheduled
  * GitHub Action (`scripts/sync-aws-bulk-pricing.ts`) splits each new bundle into
  * one KV value per instance, and `/api/v1/aws-bulk-pricing` serves them.
  *
@@ -26,8 +26,9 @@
  * that bundle from AWS's spot price feed under an offer code of its own. It
  * stays after `ec2`, because its warehouse load takes specs from EC2's.
  *
- * `runpod` (RunPod GPU types and CPU pods) and `alibaba` (Alibaba Cloud ECS)
- * are other clouds, published by the bundler's `other-instances` tool in the
+ * `runpod` (RunPod GPU types and CPU pods), `alibaba` (Alibaba Cloud ECS),
+ * `azure` (Azure virtual machines) and `gcp` (Google Cloud Compute Engine
+ * machine types) are other clouds, published by the bundler's `other-instances` tool in the
  * same format and bucket, under the same `<platform>-` key prefix. Their
  * bundles always carry `offer` and `variant_keys`, plus a `source_version`
  * that nothing here reads.
@@ -48,6 +49,8 @@ export const PLATFORMS: Readonly<Record<string, string>> = {
   spot: "AmazonEC2Spot",
   runpod: "RunpodPods",
   alibaba: "AlibabaECS",
+  azure: "AzureVM",
+  gcp: "GCPCompute",
 };
 
 /** EC2 bundles predate `offer` and `variant_keys`, so they leave both out. */

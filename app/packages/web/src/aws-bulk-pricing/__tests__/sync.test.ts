@@ -13,7 +13,14 @@ import {
 } from "../format";
 import { KvRest, type KvPair } from "../kv-rest";
 import { syncAwsBulkPricing, syncPlatform, type BundleBucket, type PricingKv } from "../sync";
-import { ALIBABA_BUNDLE, RDS_BUNDLE, RUNPOD_BUNDLE, SPOT_BUNDLE } from "./fixtures/bundles";
+import {
+  ALIBABA_BUNDLE,
+  AZURE_BUNDLE,
+  GCP_BUNDLE,
+  RDS_BUNDLE,
+  RUNPOD_BUNDLE,
+  SPOT_BUNDLE,
+} from "./fixtures/bundles";
 import { expandBundle, expandValue } from "./fixtures/expand";
 
 const fixture = (name: string) =>
@@ -176,6 +183,40 @@ describe("syncAwsBulkPricing", () => {
       offer: "AlibabaECS",
       variant_keys: ["operatingSystem", "networkType"],
       bundle: "alibaba-bundle-20261001T000000Z.json.xz",
+    });
+  });
+
+  it("syncs Azure and Google Cloud bundles after the others", async () => {
+    const kv = fakeKv();
+    const results = await syncAwsBulkPricing(
+      fakeBucket({
+        ...BUCKET,
+        "azure-latest": "20261001T000000Z\n",
+        "azure-bundle-20261001T000000Z.json.xz": fixture("azure-bundle.json.xz"),
+        "gcp-latest": "20261001T000000Z\n",
+        "gcp-bundle-20261001T000000Z.json.xz": fixture("gcp-bundle.json.xz"),
+      }),
+      kv,
+      quiet,
+    );
+    expect(results.map((r) => r.platform)).toEqual(["ec2", "rds", "azure", "gcp"]);
+    const vm = JSON.parse(
+      gunzipSync(kv.store.get(instanceKey("azure", "Standard_D2s_v3"))!.value).toString(),
+    ) as InstanceValue;
+    expect(vm).toMatchObject({
+      platform: "azure",
+      offer: "AzureVM",
+      variant_keys: ["operatingSystem", "priority"],
+    });
+    expect(expandValue(vm)).toEqual(expandBundle(AZURE_BUNDLE, "Standard_D2s_v3"));
+    const machine = JSON.parse(
+      gunzipSync(kv.store.get(instanceKey("gcp", "a2-highgpu-1g"))!.value).toString(),
+    ) as InstanceValue;
+    expect(expandValue(machine)).toEqual(expandBundle(GCP_BUNDLE, "a2-highgpu-1g"));
+    expect(state(kv, "gcp")).toMatchObject({
+      offer: "GCPCompute",
+      variant_keys: ["provisioningModel"],
+      bundle: "gcp-bundle-20261001T000000Z.json.xz",
     });
   });
 

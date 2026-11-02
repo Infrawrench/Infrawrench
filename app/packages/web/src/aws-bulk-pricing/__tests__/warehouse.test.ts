@@ -18,7 +18,13 @@ import {
   type PricingWarehouse,
   type WarehouseLoad,
 } from "../warehouse";
-import { ALIBABA_BUNDLE, RDS_BUNDLE, RUNPOD_BUNDLE } from "./fixtures/bundles";
+import {
+  ALIBABA_BUNDLE,
+  AZURE_BUNDLE,
+  GCP_BUNDLE,
+  RDS_BUNDLE,
+  RUNPOD_BUNDLE,
+} from "./fixtures/bundles";
 
 const fixture = (name: string) =>
   new Uint8Array(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
@@ -256,6 +262,101 @@ describe("other clouds", () => {
     );
   });
 
+  it("reads Azure specs, region names, spot priority, reservations and savings plans", () => {
+    const rows = instanceRows(reducedFrom(AZURE_BUNDLE, "azure", "Standard_D2s_v3"), "azure");
+    expect(rows.instanceType).toMatchObject({
+      platform: "azure",
+      family: "Dsv3",
+      size: "2",
+      architecture: "x86_64",
+      vcpu: 2,
+      memory_gib: 8,
+      storage: "16 GiB temporary disk",
+      category: "General purpose",
+    });
+    expect(rows.regions.get("eastus")).toEqual(["US East", "Azure Region"]);
+    const current = rows.prices.filter((p) => p["current"] && p["region"] === "eastus");
+    expect(current).toContainEqual(
+      expect.objectContaining({
+        pricing: "on_demand",
+        operating_system: "Linux",
+        variant: { priority: "Spot" },
+        hourly_usd: 0.0215,
+      }),
+    );
+    expect(current).toContainEqual(
+      expect.objectContaining({
+        pricing: "reserved",
+        offering_class: "Savings Plan",
+        lease: "1yr",
+        purchase_option: "No Upfront",
+        hourly_usd: 0.06624,
+        effective_hourly_usd: 0.06624,
+      }),
+    );
+    // The 1-year reservation was withdrawn.
+    expect(
+      current.some((p) => p["offering_class"] === "Reserved Instance" && p["lease"] === "1yr"),
+    ).toBe(false);
+    const withdrawn = rows.prices.find((p) => p["offering_class"] === "Reserved Instance")!;
+    expect(withdrawn).toMatchObject({ hourly_usd: 0, upfront_usd: 500 });
+    expect(withdrawn["effective_hourly_usd"]).toBeCloseTo(500 / 8760, 10);
+  });
+
+  it("reads an Azure size without calculator specs from its name", () => {
+    const rows = instanceRows(reducedFrom(AZURE_BUNDLE, "azure", "Standard_D2pds_v7"), "azure");
+    expect(rows.instanceType).toMatchObject({
+      family: "Dpdsv7",
+      size: "2",
+      architecture: "arm64",
+      vcpu: null,
+      memory_gib: null,
+    });
+  });
+
+  it("reads Google Cloud machine types, GPUs, region names and committed use", () => {
+    const rows = instanceRows(reducedFrom(GCP_BUNDLE, "gcp", "a2-highgpu-1g"), "gcp");
+    expect(rows.instanceType).toMatchObject({
+      platform: "gcp",
+      family: "a2",
+      size: "highgpu-1g",
+      architecture: "x86_64",
+      vcpu: 12,
+      memory_gib: 85,
+      gpus: 1,
+      gpu_model: "nvidia-tesla-a100",
+      category: "Accelerator-optimized",
+      retired_at: 1720000000,
+    });
+    expect(rows.regions.get("us-central1")).toEqual([
+      "Council Bluffs, Iowa",
+      "Google Cloud Region",
+    ]);
+    const standard = instanceRows(reducedFrom(GCP_BUNDLE, "gcp", "n2-standard-2"), "gcp");
+    expect(standard.instanceType).toMatchObject({ family: "n2", size: "standard-2", vcpu: 2 });
+    expect(standard.prices).toContainEqual(
+      expect.objectContaining({
+        current: true,
+        region: "us-central1",
+        pricing: "reserved",
+        offering_class: "Committed Use",
+        lease: "3yr",
+        hourly_usd: 0.043706,
+      }),
+    );
+    expect(standard.prices).toContainEqual(
+      expect.objectContaining({
+        current: true,
+        pricing: "on_demand",
+        variant: { provisioningModel: "Spot" },
+      }),
+    );
+    // `zones` differs by region, so each region's value is an attribute change of its own.
+    expect(standard.attributeChanges).toContainEqual(
+      expect.objectContaining({ attribute: "zones", region: "us-central1" }),
+    );
+  });
+
   it("spreads upfront over months as well as years", () => {
     expect(leaseHours("1mo")).toBe(730);
     expect(leaseHours("6mo")).toBe(4380);
@@ -290,6 +391,22 @@ describe("spec parsing", () => {
     expect(familyAndSize("ecs.g7.2xlarge")).toEqual({ family: "g7", size: "2xlarge" });
     expect(familyAndSize("cpu5m-16-128")).toEqual({ family: "cpu5m", size: "16-128" });
     expect(familyAndSize("NVIDIA H100 80GB HBM3")).toEqual({ family: "", size: "" });
+    expect(familyAndSize("Standard_D2s_v3", "azure")).toEqual({ family: "Dsv3", size: "2" });
+    expect(familyAndSize("Standard_E64-16as_v6", "azure")).toEqual({
+      family: "Easv6",
+      size: "64-16",
+    });
+    expect(familyAndSize("Standard_NC96ads_A100_v4", "azure")).toEqual({
+      family: "NCads_A100_v4",
+      size: "96",
+    });
+    expect(familyAndSize("Standard_B1ls", "azure")).toEqual({ family: "Bls", size: "1" });
+    expect(familyAndSize("SPOT_Plus_Usage", "azure")).toEqual({ family: "", size: "" });
+    expect(familyAndSize("c3-standard-4-lssd", "gcp")).toEqual({
+      family: "c3",
+      size: "standard-4-lssd",
+    });
+    expect(familyAndSize("e2-micro", "gcp")).toEqual({ family: "e2", size: "micro" });
   });
 
   it("tells ARM from x86", () => {

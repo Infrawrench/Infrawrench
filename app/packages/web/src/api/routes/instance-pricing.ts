@@ -19,7 +19,8 @@ const app = new Hono();
  * `/api/v1/instance-pricing`: read-only SQL over the instance pricing
  * warehouse, the ClickHouse database behind instances.infrawrench.com's chat
  * (tables in `server-core/src/aws-pricing-warehouse/schema.ts`, loaded by the
- * bulk pricing sync): every AWS platform, RunPod and Alibaba Cloud ECS. Also
+ * bulk pricing sync): every AWS platform, RunPod, Alibaba Cloud ECS, Azure
+ * virtual machines and Google Cloud Compute Engine. Also
  * mounted at `/api/v1/aws-pricing`, its path before it covered other clouds.
  *
  * - `GET /schema`: every table and column with what it holds, the notes a

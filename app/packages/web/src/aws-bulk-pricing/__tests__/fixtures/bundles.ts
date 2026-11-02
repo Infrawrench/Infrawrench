@@ -342,3 +342,246 @@ export const ALIBABA_BUNDLE = {
     ],
   },
 };
+
+/**
+ * An Azure bundle (the bulk-instances SDKs' conformance fixture): VM sizes by
+ * ARM name, ARM region names with an English `name`, `operatingSystem` and
+ * `priority` as variant keys, All Upfront reservations and No Upfront savings
+ * plans, one size withdrawn from its reservation and one without calculator
+ * specs.
+ */
+export const AZURE_BUNDLE = {
+  offer: "AzureVM",
+  compression_table: [
+    "eastus",
+    "westeurope",
+    "locationType",
+    "Azure Region",
+    "name",
+    "US East",
+    "regionCode",
+    "EU West",
+    "Linux",
+    "Regular",
+    "Windows",
+    "Spot",
+    "Low Priority",
+    "1yr",
+    "Reserved Instance",
+    "All Upfront",
+    "Savings Plan",
+    "No Upfront",
+    "3yr",
+    "cores",
+    "2",
+    "diskSize",
+    "16",
+    "isVcpu",
+    "true",
+    "productFamily",
+    "Virtual Machines",
+    "productName",
+    "Virtual Machines DSv3 Series",
+    "ram",
+    "8.0",
+    "series",
+    "Dsv3",
+    "skuName",
+    "D2s v3",
+    "D2pds v7",
+    "Virtual Machines Dpdsv7 Series",
+  ],
+  snapshots: [1700000000, 1710000000],
+  regions: [
+    [
+      0,
+      [
+        [2, 3],
+        [4, 5],
+        [6, 0],
+      ],
+    ],
+    [
+      1,
+      [
+        [2, 3],
+        [4, 7],
+        [6, 1],
+      ],
+    ],
+  ],
+  variant_keys: ["operatingSystem", "priority"],
+  variants: [
+    [8, 9],
+    [10, 9],
+    [8, 11],
+    [10, 12],
+  ],
+  reserved_terms: [
+    [13, 14, 15],
+    [13, 16, 17],
+    [18, 16, 17],
+  ],
+  instances: {
+    Standard_D2s_v3: [
+      [
+        [19, 20],
+        [21, 22],
+        [23, 24],
+        [25, 26],
+        [27, 28],
+        [29, 30],
+        [31, 32],
+        [33, 34],
+      ],
+      [],
+      0.096,
+      [
+        [1668464000, 0, 0],
+        [1668464000, 0, 1, 0.188],
+        [1700000000, 0, 2, 0.01919],
+        [1700000000, 0, 3, 0.075],
+        [1700000000, 1, 0, 0.12],
+        [1710000000, 0, 2, 0.0215],
+      ],
+      [
+        [1700000000, 0, 0, 0, 0, 500],
+        [1700000000, 0, 0, 1, 0.06624],
+        [1700000000, 0, 0, 2, 0.04512],
+        [1710000000, 0, 0, 0, null],
+      ],
+      1700000000,
+      null,
+    ],
+    Standard_D2pds_v7: [
+      [
+        [25, 26],
+        [33, 35],
+      ],
+      [[1710000000, 27, 36, 0]],
+      0.08,
+      [[1710000000, 0, 0]],
+      [],
+      1710000000,
+      null,
+    ],
+  },
+};
+
+/**
+ * A Google Cloud bundle (the bulk-instances SDKs' conformance fixture):
+ * machine types with Compute Engine API attributes, `zones` that differ by
+ * region, Standard and Spot, committed use discounts, and a deleted GPU type.
+ */
+export const GCP_BUNDLE = {
+  offer: "GCPCompute",
+  compression_table: [
+    "us-central1",
+    "europe-west1",
+    "locationType",
+    "Google Cloud Region",
+    "regionCode",
+    "Standard",
+    "Spot",
+    "1yr",
+    "Committed Use",
+    "No Upfront",
+    "3yr",
+    "description",
+    "2 vCPUs 8 GB RAM",
+    "guestCpus",
+    "2",
+    "isSharedCpu",
+    "false",
+    "memoryMb",
+    "8192",
+    "productFamily",
+    "Compute Engine",
+    "zones",
+    "us-central1-a,us-central1-b",
+    "europe-west1-b,europe-west1-c",
+    "us-central1-a",
+    "acceleratorCount",
+    "1",
+    "acceleratorType",
+    "nvidia-tesla-a100",
+    "12",
+    "87040",
+  ],
+  snapshots: [1700000000, 1710000000, 1720000000],
+  regions: [
+    [
+      1,
+      [
+        [2, 3],
+        [4, 1],
+      ],
+    ],
+    [
+      0,
+      [
+        [2, 3],
+        [4, 0],
+      ],
+    ],
+  ],
+  variant_keys: ["provisioningModel"],
+  variants: [[5], [6]],
+  reserved_terms: [
+    [7, 8, 9],
+    [10, 8, 9],
+  ],
+  instances: {
+    "n2-standard-2": [
+      [
+        [11, 12],
+        [13, 14],
+        [15, 16],
+        [17, 18],
+        [19, 20],
+        [21, 22],
+      ],
+      [
+        [1700000000, 21, 23, 1],
+        [1720000000, 21, 24, 0],
+      ],
+      0.097118,
+      [
+        [1700000000, 0, 0],
+        [1700000000, 0, 1, 0.058256],
+        [1700000000, 1, 0, 0.106836],
+        [1710000000, 0, 1, 0.0571],
+      ],
+      [
+        [1700000000, 0, 0, 0, 0.061182],
+        [1700000000, 0, 0, 1, 0.043706],
+      ],
+      1700000000,
+      null,
+    ],
+    "a2-highgpu-1g": [
+      [
+        [25, 26],
+        [27, 28],
+        [13, 29],
+        [17, 30],
+        [19, 20],
+        [21, 24],
+      ],
+      [],
+      3.673385,
+      [
+        [1700000000, 0, 0],
+        [1700000000, 0, 1, 1.98913],
+        [1720000000, 0, 0, null],
+        [1720000000, 0, 1, null],
+      ],
+      [
+        [1700000000, 0, 0, 0, 2.31420704],
+        [1720000000, 0, 0, 0, null],
+      ],
+      1700000000,
+      1720000000,
+    ],
+  },
+};

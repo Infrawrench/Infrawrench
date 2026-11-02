@@ -1,5 +1,5 @@
 /**
- * Sync the bulk pricing data (AWS, RunPod, Alibaba Cloud) in Workers KV from the bundles in R2; see
+ * Sync the bulk pricing data (AWS, RunPod, Alibaba Cloud, Azure, Google Cloud) in Workers KV from the bundles in R2; see
  * `src/aws-bulk-pricing/sync.ts`. With a warehouse, also merge AWS's public
  * status page history into its `service_events` table
  * (`src/aws-bulk-pricing/service-events.ts`). Run twice an hour by

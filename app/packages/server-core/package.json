@@ -322,6 +322,7 @@
     "./digest/recipients": "./src/digest/recipients.ts",
     "./aws-pricing-warehouse/query": "./src/aws-pricing-warehouse/query.ts",
     "./aws-pricing-warehouse/schema": "./src/aws-pricing-warehouse/schema.ts",
+    "./aws-pricing-warehouse/regions": "./src/aws-pricing-warehouse/regions.ts",
     "./email": "./src/email.ts",
     "./email-html": "./src/email-html.ts",
     "./cost/workflow-costs": "./src/cost/workflow-costs.ts",

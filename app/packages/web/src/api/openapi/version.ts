@@ -385,4 +385,8 @@
 // `GET /api/v1/instance-pricing/schema` and `POST /api/v1/instance-pricing/query`.
 // The `/api/v1/aws-pricing/*` paths stay as deprecated aliases that behave
 // identically, so existing clients keep working. Additive.
-export const API_VERSION = "1.88.0";
+// 1.89.0: the pricing warehouse also covers Azure virtual machines (`azure`)
+// and Google Cloud Compute Engine (`gcp`), with their pay-as-you-go, spot,
+// reservation, savings plan and committed use prices; the instance pricing
+// descriptions say so. Additive.
+export const API_VERSION = "1.89.0";

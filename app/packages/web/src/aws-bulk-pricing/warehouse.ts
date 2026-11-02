@@ -1,6 +1,7 @@
 /**
- * Loads the bulk pricing bundles (every AWS platform, RunPod and Alibaba Cloud
- * ECS) into the instance pricing warehouse
+ * Loads the bulk pricing bundles (every AWS platform, RunPod, Alibaba Cloud
+ * ECS, Azure virtual machines and Google Cloud Compute Engine) into the
+ * instance pricing warehouse
  * (ClickHouse; tables in `@infrawrench/server-core/aws-pricing-warehouse/schema`),
  * which instances.infrawrench.com's chat queries.
  *
@@ -33,6 +34,7 @@ import {
   type Column,
   type Table,
 } from "@infrawrench/server-core/aws-pricing-warehouse/schema";
+import { locationName } from "@infrawrench/server-core/aws-pricing-warehouse/regions";
 
 import type { InstanceValue, Tables } from "./format";
 
@@ -292,11 +294,96 @@ const SIZE = /^(nano|micro|small|medium|large|\d*xlarge|metal(?:-\d+xl)?|host)(-
 const RUNPOD_CPU_POD = /^(cpu\d+[a-z]*)-(\d+-\d+)$/;
 
 /**
+ * An Azure VM size: `Standard_` (or `Basic_`), then the family letters, vCPUs,
+ * constrained vCPUs and feature letters (`D2s`, `E64-16as`, `M176-88bds`,
+ * `M176ds-44`), then any spacer parts (`A100`, `xl`), the version (`v5`) and
+ * a suffix (`Promo`). Azure's own sizes page describes the scheme.
+ */
+const AZURE_SIZE = /^([A-Z]+)(\d+)(?:-(\d+))?([a-z]*)(?:-(\d+))?$/;
+
+export interface AzureSize {
+  /** `D`, `NC`, `FX`. */
+  letters: string;
+  /** Feature letters, `s`, `ads`, `pls`. */
+  features: string;
+  /** The series as Azure writes it: `Dsv3`, `Easv5`, `NCads_H100_v5`. */
+  series: string;
+  /** vCPUs, with constrained vCPUs after a dash: `2`, `64-16`. */
+  size: string;
+  /** The version number (`5`), or `''` for a first version. */
+  version: string;
+  /** Anything after the version, such as `Promo`. */
+  suffix: string;
+}
+
+/** `Standard_D2s_v3` as its parts; null for names outside the scheme (`SPOT_Plus_Usage`). */
+export function parseAzureSize(name: string): AzureSize | null {
+  const parts = name.trim().split("_");
+  if (parts.length < 2 || (parts[0] !== "Standard" && parts[0] !== "Basic")) return null;
+  const head = AZURE_SIZE.exec(parts[1]!);
+  if (!head) return null;
+  const rest = parts.slice(2);
+  const v = rest.findIndex((p) => /^v\d+$/.test(p));
+  const middle = v < 0 ? rest : rest.slice(0, v);
+  const version = v < 0 ? "" : rest[v]!.slice(1);
+  const suffix = v < 0 ? "" : rest.slice(v + 1).join("_");
+  const constrained = head[3] ?? head[5];
+  const base = `${head[1]}${head[4]}`;
+  return {
+    letters: head[1]!,
+    features: head[4]!,
+    series:
+      middle.length > 0
+        ? `${base}_${middle.join("_")}${version ? `_v${version}` : ""}`
+        : `${base}${version ? `v${version}` : ""}`,
+    size: constrained ? `${head[2]}-${constrained}` : head[2]!,
+    version,
+    suffix,
+  };
+}
+
+/**
+ * A Google Cloud machine type: series, type and vCPUs (`n2-standard-2`), GPU
+ * count for accelerator types (`a2-highgpu-1g`), a shared-core size
+ * (`e2-micro`), and any suffix (`c3-standard-4-lssd`).
+ */
+const GCP_MACHINE_TYPE =
+  /^([a-z]{1,2}\d+[a-z]*)-(?:([a-z][a-z0-9]*)-)?(\d+g?|micro|small|medium)(-.+)?$/;
+
+/** `n2` and `standard-2` from `n2-standard-2`; null when it does not parse. */
+export function parseGcpMachineType(
+  name: string,
+): { series: string; type: string; size: string; suffix: string } | null {
+  if (name.includes(".")) return null;
+  const match = GCP_MACHINE_TYPE.exec(name);
+  if (!match) return null;
+  return {
+    series: match[1]!,
+    type: match[2] ?? "",
+    size: match[3]!,
+    suffix: match[4]?.slice(1) ?? "",
+  };
+}
+
+/**
  * `m7g` and `large` from `db.m7g.large` (and `ecs.g7.large`); the same rule as
  * instances' `lib/names.ts`. A RunPod CPU pod is its flavor and `<vcpu>-<gb>`
- * (`cpu3c` and `2-4` from `cpu3c-2-4`); a RunPod GPU type has neither.
+ * (`cpu3c` and `2-4` from `cpu3c-2-4`); a RunPod GPU type has neither. An
+ * Azure size is its series and vCPUs (`Dsv3` and `2` from `Standard_D2s_v3`),
+ * a Google Cloud machine type its series and the rest (`n2` and `standard-2`
+ * from `n2-standard-2`). `platform` picks the scheme for the other clouds.
  */
-export function familyAndSize(name: string): { family: string; size: string } {
+export function familyAndSize(name: string, platform = ""): { family: string; size: string } {
+  if (platform === "azure") {
+    const azure = parseAzureSize(name);
+    return azure ? { family: azure.series, size: azure.size } : { family: "", size: "" };
+  }
+  if (platform === "gcp") {
+    const gcp = parseGcpMachineType(name);
+    if (!gcp) return { family: "", size: "" };
+    const size = [gcp.type, gcp.size, gcp.suffix].filter(Boolean).join("-");
+    return { family: gcp.series, size };
+  }
   const pod = RUNPOD_CPU_POD.exec(name);
   if (pod) return { family: pod[1]!, size: pod[2]! };
   const tokens = name.split(".");
@@ -327,7 +414,7 @@ export function networkGbps(value: string | undefined): number | null {
 }
 
 /** Platforms that are not AWS: their attributes use their provider's own keys. */
-const OTHER_CLOUDS = new Set(["runpod", "alibaba"]);
+const OTHER_CLOUDS = new Set(["runpod", "alibaba", "azure", "gcp"]);
 
 /**
  * `arm64` or `x86_64` from what the provider lists. Alibaba says it outright
@@ -342,9 +429,17 @@ export function architectureOf(
   family: string,
   platform = "ec2",
 ): string {
-  const cpuArchitecture = attrs["CpuArchitecture"];
+  const cpuArchitecture = attrs["CpuArchitecture"] ?? attrs["architecture"];
   if (cpuArchitecture)
     return /arm/i.test(cpuArchitecture) ? "arm64" : /x86/i.test(cpuArchitecture) ? "x86_64" : "";
+  // Azure marks Arm sizes (Cobalt, Ampere) with a `p` feature letter; the rest are x86.
+  // `family` is the series (`Dpsv5`): its lower case letters are the features.
+  if (platform === "azure") {
+    if (!family) return "";
+    return /^[A-Z]+[a-z]*p/.test(family) ? "arm64" : "x86_64";
+  }
+  // Google lists `architecture` on every series since Arm arrived; the older ones are x86.
+  if (platform === "gcp") return family ? "x86_64" : "";
   const processor = `${attrs["physicalProcessor"] ?? ""} ${attrs["physicalCpu"] ?? ""} ${attrs["PhysicalProcessorModel"] ?? ""}`;
   if (OTHER_CLOUDS.has(platform)) {
     if (/ampere|yitian|\barm/i.test(processor)) return "arm64";
@@ -367,30 +462,91 @@ const isRunpodGpu = (platform: string, attrs: Record<string, string>) =>
 /**
  * Specs from an instance's current attributes, under whichever keys the
  * platform uses: AWS's (`vcpu`, `memory`, `gpu`), Alibaba's (`CpuCoreCount`,
- * `MemorySize`, `GPUAmount`) or RunPod's. A RunPod GPU type is one GPU (its
- * prices are per GPU) and its `memoryInGb` is the GPU's memory, so it has no
- * vCPUs or memory of its own; a CPU pod's `memoryInGb` is its RAM.
+ * `MemorySize`, `GPUAmount`), Azure's pricing calculator's (`cores`, `ram` in
+ * GiB, `gpu` as `8x H100`), Google Cloud's Compute Engine API's (`guestCpus`,
+ * `memoryMb`, `acceleratorCount`) or RunPod's. A RunPod GPU type is one GPU
+ * (its prices are per GPU) and its `memoryInGb` is the GPU's memory, so it has
+ * no vCPUs or memory of its own; a CPU pod's `memoryInGb` is its RAM.
  */
 export function specsOf(name: string, attrs: Record<string, string>, platform = "ec2"): Specs {
-  const { family, size } = familyAndSize(name);
+  const { family, size } = familyAndSize(name, platform);
   if (isRunpodGpu(platform, attrs)) {
     return { family, size, architecture: "", vcpu: null, memory_gib: null, gpus: 1 };
   }
-  const gpus = number(attrs["gpu"] ?? attrs["GPUAmount"]);
+  const gpus = number(attrs["gpu"] ?? attrs["GPUAmount"] ?? attrs["acceleratorCount"]);
+  const memoryMb = number(attrs["memoryMb"]);
   return {
     family,
     size,
     architecture: architectureOf(attrs, family, platform),
-    vcpu: number(attrs["vcpu"] ?? attrs["vCpu"] ?? attrs["CpuCoreCount"]),
-    memory_gib: number(
-      attrs["memory"] ?? attrs["memoryGib"] ?? attrs["MemorySize"] ?? attrs["memoryInGb"],
+    vcpu: number(
+      attrs["vcpu"] ??
+        attrs["vCpu"] ??
+        attrs["CpuCoreCount"] ??
+        attrs["cores"] ??
+        attrs["guestCpus"],
     ),
+    memory_gib:
+      memoryMb !== null
+        ? memoryMb / 1024
+        : number(
+            attrs["memory"] ??
+              attrs["memoryGib"] ??
+              attrs["MemorySize"] ??
+              attrs["memoryInGb"] ??
+              attrs["ram"],
+          ),
     gpus: gpus === null || gpus === 0 ? null : gpus,
   };
 }
 
+/** Azure's size families by their letters, as its sizes overview groups them; anything else is `''`. */
+const AZURE_CATEGORIES: readonly [RegExp, string][] = [
+  [/^N[CDGV]/, "GPU accelerated"],
+  [/^NP/, "FPGA accelerated"],
+  [/^H/, "High performance compute"],
+  [/^L/, "Storage optimized"],
+  // G and GS are the retired G-series; DS the older premium-storage D sizes (`DS1_v2`).
+  [/^(E|EC|M|G|GS)$/, "Memory optimized"],
+  [/^(F|FX)$/, "Compute optimized"],
+  [/^(A|B|D|DC|DS)$/, "General purpose"],
+];
+
+/** Google Cloud's machine families by series, from its machine families guide. */
+const GCP_CATEGORIES: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
+    [
+      "n4",
+      "n4a",
+      "n4d",
+      "n2",
+      "n2d",
+      "n1",
+      "c4",
+      "c4a",
+      "c4d",
+      "c3",
+      "c3d",
+      "e2",
+      "t2d",
+      "t2a",
+      "f1",
+      "g1",
+    ].map((s) => [s, "General-purpose"]),
+  ),
+  ...Object.fromEntries(["h4d", "h3", "c2", "c2d"].map((s) => [s, "Compute-optimized"])),
+  ...Object.fromEntries(
+    ["x5", "x4", "m4n", "m4", "m3", "m2", "m1"].map((s) => [s, "Memory-optimized"]),
+  ),
+  ...Object.fromEntries(["z3", "z4d", "z4m"].map((s) => [s, "Storage-optimized"])),
+  c4n: "Network-optimized",
+  ...Object.fromEntries(
+    ["a4x", "a4", "a3", "a2", "g4", "g2"].map((s) => [s, "Accelerator-optimized"]),
+  ),
+};
+
 /** The `instance_types` columns beyond {@link Specs}, by the platform's attribute keys. */
-function detailsOf(platform: string, attrs: Record<string, string>) {
+function detailsOf(platform: string, name: string, attrs: Record<string, string>) {
   if (platform === "runpod") {
     const gpu = attrs["productFamily"] === "GPU";
     return {
@@ -428,6 +584,43 @@ function detailsOf(platform: string, attrs: Record<string, string>) {
           : "",
       category: usable(attrs["InstanceCategory"]),
       current_generation: true,
+    };
+  }
+  if (platform === "azure") {
+    const size = parseAzureSize(name);
+    const disk = number(attrs["diskSize"]);
+    return {
+      gpu_memory_gib: null,
+      // `8x H100`, `1X T4`.
+      gpu_model: usable(attrs["gpu"]?.replace(/^\s*\d+\s*x\s*/i, "")),
+      processor: "",
+      clock_speed_ghz: null,
+      network_performance: "",
+      network_gbps: null,
+      storage: disk ? `${disk} GiB temporary disk` : "",
+      category: size
+        ? (AZURE_CATEGORIES.find(([letters]) => letters.test(size.letters))?.[1] ?? "")
+        : "",
+      current_generation: true,
+    };
+  }
+  if (platform === "gcp") {
+    const series = parseGcpMachineType(name)?.series ?? "";
+    const accelerator = attrs["acceleratorType"] ?? "";
+    // The type names its memory when it varies (`nvidia-h100-80gb`); per GPU.
+    const perGpu = number(/(\d+)gb\b/i.exec(accelerator)?.[1]);
+    const count = number(attrs["acceleratorCount"]);
+    const ssds = number(attrs["bundledLocalSsds.partitionCount"]);
+    return {
+      gpu_memory_gib: perGpu !== null && count ? perGpu * count : null,
+      gpu_model: accelerator,
+      processor: "",
+      clock_speed_ghz: null,
+      network_performance: "",
+      network_gbps: null,
+      storage: ssds ? `${ssds} x Local SSD` : "",
+      category: GCP_CATEGORIES[series] ?? "",
+      current_generation: attrs["deprecated"] === undefined,
     };
   }
   return {
@@ -499,8 +692,9 @@ export function instanceRows(
     const location = str(loc);
     const code = attrs["regionCode"] || location;
     located.set(loc, code);
-    // Alibaba's locations are region ids, with the English name in `name`.
-    regions.set(code, [attrs["name"] || location, attrs["locationType"] ?? ""]);
+    // Alibaba's and Azure's locations are region ids, with the English name
+    // in `name`; Google Cloud's have no name, so it comes from a table.
+    regions.set(code, [locationName(platform, location, attrs), attrs["locationType"] ?? ""]);
   }
   const regionOf = (loc: unknown): string => {
     const known = located.get(loc as number);
@@ -677,7 +871,7 @@ export function instanceRows(
         platform,
         instance_type: value.name,
         ...specs,
-        ...detailsOf(platform, attrs),
+        ...detailsOf(platform, value.name, attrs),
         regions_offered: offeredIn.size,
         first_listed: createdAt,
         retired_at: deletedAt ?? null,

@@ -1,7 +1,7 @@
 /**
  * The instance pricing warehouse: the AWS bulk price lists (and EC2 spot
- * prices), RunPod's GPU and CPU pod prices and Alibaba Cloud ECS prices as
- * ClickHouse tables, for instances.infrawrench.com's chat and
+ * prices), RunPod's GPU and CPU pod prices, Alibaba Cloud ECS, Azure virtual
+ * machine and Google Cloud Compute Engine prices as ClickHouse tables, for instances.infrawrench.com's chat and
  * `/api/v1/instance-pricing` to query. (The module keeps its `aws-` name from
  * before the other clouds.)
  *
@@ -69,7 +69,12 @@ export interface Table {
 }
 
 /** Sources whose `prices` rows are split into this many shards (about 400,000 rows each). */
-export const SHARDS: Readonly<Record<string, number>> = { ec2: 16, spot: 16, alibaba: 4 };
+export const SHARDS: Readonly<Record<string, number>> = {
+  ec2: 16,
+  spot: 16,
+  alibaba: 4,
+  azure: 2,
+};
 
 /** FNV-1a, so a shard is a pure function of the instance type. */
 function fnv1a(s: string): number {
@@ -105,45 +110,50 @@ const SOURCE = col(
 const PLATFORM = col(
   "platform",
   "LowCardinality(String)",
-  "Platform. AWS services: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift` (EC2 spot prices are `ec2`). Other clouds: `runpod` (RunPod GPU types and CPU pods) and `alibaba` (Alibaba Cloud ECS).",
+  "Platform. AWS services: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift` (EC2 spot prices are `ec2`). Other clouds: `runpod` (RunPod GPU types and CPU pods), `alibaba` (Alibaba Cloud ECS), `azure` (Azure virtual machines) and `gcp` (Google Cloud Compute Engine).",
 );
 const INSTANCE_TYPE = col(
   "instance_type",
   "String",
-  "The instance type as the provider names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`; Alibaba `ecs.g7.large`; RunPod GPU type ids such as `NVIDIA H100 80GB HBM3` and CPU pod ids such as `cpu3c-2-4` (flavor, vCPUs, GB of memory).",
+  "The instance type as the provider names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`; Alibaba `ecs.g7.large`; Azure VM sizes by ARM name such as `Standard_D2s_v3`; Google Cloud machine types such as `n2-standard-2`; RunPod GPU type ids such as `NVIDIA H100 80GB HBM3` and CPU pod ids such as `cpu3c-2-4` (flavor, vCPUs, GB of memory).",
 );
 const FAMILY = col(
   "family",
   "LowCardinality(String)",
-  "Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`, `g7` for Alibaba's `ecs.g7.large`, the flavor `cpu3c` for a RunPod CPU pod `cpu3c-2-4`; `''` when the name does not parse (RunPod GPU types).",
+  "Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`, `g7` for Alibaba's `ecs.g7.large`, the flavor `cpu3c` for a RunPod CPU pod `cpu3c-2-4`, the Azure series as Azure writes it (`Dsv3` for `Standard_D2s_v3`, `NCads_H100_v5`), the Google Cloud machine series (`n2` for `n2-standard-2`, `c4a`); `''` when the name does not parse (RunPod GPU types, a few Azure oddities).",
 );
 const SIZE = col(
   "size",
   "LowCardinality(String)",
-  "Size part of the name: `nano`, `micro`, `small`, `medium`, `large`, `xlarge`, `2xlarge`, ..., `metal`, `metal-48xl`; for a RunPod CPU pod, `<vcpus>-<memory GB>` (`2-4`); `''` for RunPod GPU types.",
+  "Size part of the name: `nano`, `micro`, `small`, `medium`, `large`, `xlarge`, `2xlarge`, ..., `metal`, `metal-48xl`; for a RunPod CPU pod, `<vcpus>-<memory GB>` (`2-4`); for Azure, the vCPUs in the name (`2`, or `64-16` for a constrained-vCPU size); for Google Cloud, the rest of the name after the series (`standard-2`, `highgpu-1g`, `standard-4-lssd`, `micro`); `''` for RunPod GPU types.",
 );
 const ARCHITECTURE = col(
   "architecture",
   "LowCardinality(String)",
-  "CPU architecture: `arm64` (AWS Graviton, Apple silicon, Alibaba Yitian and Ampere) or `x86_64` (Intel, AMD, Hygon); `''` when the provider gives nothing to tell (RunPod). Use this for ARM vs x86 questions.",
+  "CPU architecture: `arm64` (AWS Graviton, Apple silicon, Alibaba Yitian and Ampere, Azure Cobalt and Ampere, Google Axion and Ampere) or `x86_64` (Intel, AMD, Hygon); `''` when the provider gives nothing to tell (RunPod). Use this for ARM vs x86 questions.",
 );
-const VCPU = col("vcpu", "Nullable(Float64)", "vCPUs; NULL for RunPod GPU types.");
+const VCPU = col(
+  "vcpu",
+  "Nullable(Float64)",
+  "vCPUs; NULL for RunPod GPU types and for the Azure sizes Azure's pricing calculator gives no specs for (mostly the newest and retired series).",
+);
 const MEMORY = col(
   "memory_gib",
   "Nullable(Float64)",
-  "Memory in GiB (RunPod reports GB); NULL for RunPod GPU types, whose memory is GPU memory (instance_types.gpu_memory_gib).",
+  "Memory in GiB (RunPod reports GB); NULL for RunPod GPU types, whose memory is GPU memory (instance_types.gpu_memory_gib), and for Azure sizes without calculator specs.",
 );
 const GPUS = col(
   "gpus",
   "Nullable(UInt32)",
-  "Number of GPUs (or accelerators); NULL when it has none listed. 1 for a RunPod GPU type, which is priced per GPU.",
+  "Number of GPUs (or accelerators); NULL when it has none listed. 1 for a RunPod GPU type, which is priced per GPU. Azure lists GPUs for only some sizes, so an Azure N-series size can have NULL here.",
 );
 
 /**
  * Variant fields products are priced by, as their own columns. Price list keys
  * map onto these (several platforms share `usagetype`, `licenseModel`, and
- * Alibaba's `operatingSystem` shares EC2's); a key not listed here lands in
- * `prices.variant` (Alibaba's `networkType`, RunPod's `cloudType`).
+ * Alibaba's and Azure's `operatingSystem` share EC2's); a key not listed here
+ * lands in `prices.variant` (Alibaba's `networkType`, RunPod's `cloudType`,
+ * Azure's `priority`, Google Cloud's `provisioningModel`).
  */
 export const VARIANT_COLUMNS: Readonly<Record<string, string>> = {
   operatingSystem: "operating_system",
@@ -172,7 +182,7 @@ export const PRICES: Table = {
     col(
       "shard",
       "LowCardinality(String)",
-      "Internal storage partition (the source, split into buckets for ec2 and spot). Never needed in queries.",
+      "Internal storage partition (the source, split into buckets for the largest sources). Never needed in queries.",
     ),
     PLATFORM,
     INSTANCE_TYPE,
@@ -185,32 +195,32 @@ export const PRICES: Table = {
     col(
       "region",
       "LowCardinality(String)",
-      "Region code, e.g. `us-east-1`, `eu-central-1`, or a Local Zone / Wavelength code such as `us-east-1-atl-1`. For the few locations AWS gives no code it is the location name. Alibaba uses its region ids (`cn-hangzhou`, `ap-southeast-1`, and its own `us-east-1`, Virginia). RunPod prices are the same in every data center, so every RunPod row is `global`. Join `regions` (on source or platform too, since codes repeat across clouds) for the human name.",
+      "Region code, e.g. `us-east-1`, `eu-central-1`, or a Local Zone / Wavelength code such as `us-east-1-atl-1`. For the few locations AWS gives no code it is the location name. Alibaba uses its region ids (`cn-hangzhou`, `ap-southeast-1`, and its own `us-east-1`, Virginia). Azure uses its ARM region names (`eastus`, `westeurope`; a few Spot prices that apply in every region are at `Global`), Google Cloud its region ids (`us-central1`, `europe-west4`; prices are per region, not per zone). RunPod prices are the same in every data center, so every RunPod row is `global`. Join `regions` (on source or platform too, since codes repeat across clouds) for the human name.",
     ),
     col(
       "pricing",
       "LowCardinality(String)",
-      "`on_demand` (Alibaba: pay-as-you-go), `reserved` (any committed price: AWS reserved instances, Alibaba subscriptions and reserved instances, RunPod savings plans; see lease, offering_class, purchase_option) or `spot` (EC2 spot, Linux and Windows only, from AWS's spot price feed).",
+      "`on_demand` (Alibaba and Azure: pay-as-you-go; Azure's Spot and Low Priority and Google Cloud's Spot prices are also `on_demand` rows, told apart by variant['priority'] and variant['provisioningModel']), `reserved` (any committed price: AWS reserved instances, Alibaba subscriptions and reserved instances, Azure reservations and savings plans, Google Cloud committed use discounts, RunPod savings plans; see lease, offering_class, purchase_option) or `spot` (EC2 spot only, Linux and Windows, from AWS's spot price feed).",
     ),
     col(
       "lease",
       "LowCardinality(String)",
-      "Committed term length: `1yr` or `3yr` (AWS, Alibaba reserved instances), `1mo` or `1yr` to `5yr` (Alibaba subscriptions), `3mo` or `6mo` (RunPod savings plans); `''` for on-demand and spot.",
+      "Committed term length: `1yr` or `3yr` (AWS, Alibaba reserved instances, Azure savings plans, Google Cloud committed use), `1mo` or `1yr` to `5yr` (Alibaba subscriptions), `1yr`, `3yr`, `5yr` or `10yr` (Azure reservations), `3mo` or `6mo` (RunPod savings plans); `''` for on-demand and spot.",
     ),
     col(
       "offering_class",
       "LowCardinality(String)",
-      "What kind of commitment: AWS reserved instances `standard` or `convertible`; Alibaba `Subscription` or `Reserved Instance`; RunPod `Savings Plan`; `''` otherwise.",
+      "What kind of commitment: AWS reserved instances `standard` or `convertible`; Alibaba `Subscription` or `Reserved Instance`; Azure `Reserved Instance` or `Savings Plan`; Google Cloud `Committed Use`; RunPod `Savings Plan`; `''` otherwise.",
     ),
     col(
       "purchase_option",
       "LowCardinality(String)",
-      "Payment option: `No Upfront`, `Partial Upfront` or `All Upfront` (Alibaba subscriptions and RunPod savings plans are always `All Upfront`); `''` otherwise.",
+      "Payment option: `No Upfront`, `Partial Upfront` or `All Upfront` (Alibaba subscriptions, Azure reservations and RunPod savings plans are always `All Upfront`; Azure savings plans and Google Cloud committed use are `No Upfront`); `''` otherwise.",
     ),
     col(
       "operating_system",
       "LowCardinality(String)",
-      "EC2, GameLift and spot: `Linux`, `Windows`, `RHEL`, `SUSE`, `Ubuntu Pro`, `Red Hat Enterprise Linux with HA`, ... ; Alibaba: `Linux` or `Windows`; `''` elsewhere.",
+      "EC2, GameLift and spot: `Linux`, `Windows`, `RHEL`, `SUSE`, `Ubuntu Pro`, `Red Hat Enterprise Linux with HA`, ... ; Alibaba and Azure: `Linux` or `Windows`; `''` elsewhere (Google Cloud prices leave out OS licenses).",
     ),
     col(
       "tenancy",
@@ -268,17 +278,17 @@ export const PRICES: Table = {
     col(
       "variant",
       "Map(String, String)",
-      "Any other variant fields, by their price list key: Neptune `mncu`, SageMaker `platoinstancetype`; Alibaba `networkType` (`VPC`, or `Classic` in older history); RunPod `cloudType` (`Secure Cloud` or `Community Cloud`). Read with variant['networkType'].",
+      "Any other variant fields, by their price list key: Neptune `mncu`, SageMaker `platoinstancetype`; Alibaba `networkType` (`VPC`, or `Classic` in older history); RunPod `cloudType` (`Secure Cloud` or `Community Cloud`); Azure `priority` (`Regular`, `Spot` or `Low Priority`); Google Cloud `provisioningModel` (`Standard` or `Spot`). Read with variant['networkType'].",
     ),
     col(
       "hourly_usd",
       "Float64",
-      "Hourly price in USD. For reserved rows it is the recurring hourly fee only (0 for All Upfront terms and Alibaba subscriptions); see effective_hourly_usd. A RunPod savings plan's hourly_usd is its effective hourly rate. RunPod GPU prices are per GPU.",
+      "Hourly price in USD. For reserved rows it is the recurring hourly fee only (0 for All Upfront terms, Alibaba subscriptions and Azure reservations); see effective_hourly_usd. A RunPod or Azure savings plan's and a Google Cloud commitment's hourly_usd is its hourly rate. RunPod GPU prices are per GPU.",
     ),
     col(
       "upfront_usd",
       "Float64",
-      "One-off upfront payment in USD for a committed term (an Alibaba subscription's whole price); 0 otherwise.",
+      "One-off upfront payment in USD for a committed term (an Alibaba subscription's or Azure reservation's whole price); 0 otherwise.",
     ),
     col(
       "effective_hourly_usd",
@@ -304,7 +314,7 @@ export const PRICES: Table = {
 export const INSTANCE_TYPES: Table = {
   name: "instance_types",
   comment:
-    "One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs the provider does not list are NULL or `''`; `attributes` has every attribute it publishes, as strings (AWS's price list keys, Alibaba's DescribeInstanceTypes fields such as `CpuCoreCount` and `CpuOptions.ThreadsPerCore`, RunPod's GraphQL fields such as `maxGpuCountSecureCloud` and `dataCenters`).",
+    "One row per instance type per platform with its current specs. EC2 spot prices use the `ec2` rows. Specs the provider does not list are NULL or `''`; `attributes` has every attribute it publishes, as strings (AWS's price list keys, Alibaba's DescribeInstanceTypes fields such as `CpuCoreCount` and `CpuOptions.ThreadsPerCore`, Azure's pricing calculator fields such as `cores`, `ram` and `series`, Google Cloud's Compute Engine machine type fields such as `guestCpus`, `memoryMb` and `zones`, RunPod's GraphQL fields such as `maxGpuCountSecureCloud` and `dataCenters`).",
   columns: [
     SOURCE,
     PLATFORM,
@@ -318,23 +328,23 @@ export const INSTANCE_TYPES: Table = {
     col(
       "gpu_memory_gib",
       "Nullable(Float64)",
-      "Total GPU memory in GiB (RunPod: the one GPU's memory in GB).",
+      "Total GPU memory in GiB (RunPod: the one GPU's memory in GB; Google Cloud: from the accelerator type when it names its memory, as in `nvidia-h100-80gb`); NULL when not listed (Azure).",
     ),
     col(
       "gpu_model",
       "String",
-      "GPU model when the provider names it, e.g. `NVIDIA A10G`, Alibaba `NVIDIA A10`, RunPod's display name `H100 SXM`.",
+      "GPU model when the provider names it, e.g. `NVIDIA A10G`, Alibaba `NVIDIA A10`, Azure `H100` or `V100`, Google Cloud's accelerator type `nvidia-h100-80gb`, RunPod's display name `H100 SXM`.",
     ),
     col(
       "processor",
       "String",
-      "Physical processor, e.g. `AWS Graviton3 Processor`, `Intel Xeon Platinum 8488C`, `AMD EPYC 9R14`; `''` for RunPod.",
+      "Physical processor, e.g. `AWS Graviton3 Processor`, `Intel Xeon Platinum 8488C`, `AMD EPYC 9R14`; `''` for RunPod, Azure and Google Cloud.",
     ),
     col("clock_speed_ghz", "Nullable(Float64)", "Sustained clock speed in GHz."),
     col(
       "network_performance",
       "String",
-      "As AWS writes it, e.g. `Up to 12.5 Gigabit`, `25 Gigabit`, `Moderate`; Alibaba's receive bandwidth as `<n> Gbit/s`; `''` for RunPod.",
+      "As AWS writes it, e.g. `Up to 12.5 Gigabit`, `25 Gigabit`, `Moderate`; Alibaba's receive bandwidth as `<n> Gbit/s`; `''` for RunPod, Azure and Google Cloud.",
     ),
     col(
       "network_gbps",
@@ -344,17 +354,17 @@ export const INSTANCE_TYPES: Table = {
     col(
       "storage",
       "String",
-      "Instance storage as AWS writes it, e.g. `EBS only`, `1 x 237 NVMe SSD`; Alibaba local disks as `<count> x <GiB> GiB <category>`; `''` when there is none listed.",
+      "Instance storage as AWS writes it, e.g. `EBS only`, `1 x 237 NVMe SSD`; Alibaba local disks as `<count> x <GiB> GiB <category>`; Azure's temporary disk as `<GiB> GiB temporary disk`; Google Cloud's bundled Local SSDs as `<count> x Local SSD`; `''` when there is none listed.",
     ),
     col(
       "category",
       "LowCardinality(String)",
-      "The provider's family category: AWS `General purpose`, `Compute optimized`, `Memory optimized`, `Storage optimized`, `GPU instance`, `Accelerated Computing`, ...; Alibaba `General-purpose`, `Compute-optimized`, `Memory-optimized`, `GPU`, ...; RunPod `GPU`, or a CPU pod's flavor (`Compute-Optimized`, `General Purpose`, `Memory-Optimized`).",
+      "The provider's family category: AWS `General purpose`, `Compute optimized`, `Memory optimized`, `Storage optimized`, `GPU instance`, `Accelerated Computing`, ...; Alibaba `General-purpose`, `Compute-optimized`, `Memory-optimized`, `GPU`, ...; Azure `General purpose`, `Compute optimized`, `Memory optimized`, `Storage optimized`, `GPU accelerated`, `FPGA accelerated`, `High performance compute`; Google Cloud `General-purpose`, `Compute-optimized`, `Memory-optimized`, `Storage-optimized`, `Network-optimized`, `Accelerator-optimized`; RunPod `GPU`, or a CPU pod's flavor (`Compute-Optimized`, `General Purpose`, `Memory-Optimized`).",
     ),
     col(
       "current_generation",
       "Bool",
-      "False for previous-generation types AWS still sells but no longer recommends; always true for RunPod and Alibaba.",
+      "False for previous-generation types AWS still sells but no longer recommends, and for Google Cloud machine types Google marks deprecated or obsolete; always true for RunPod, Alibaba and Azure.",
     ),
     col(
       "regions_offered",
@@ -388,7 +398,7 @@ export const ATTRIBUTE_CHANGES: Table = {
     col(
       "attribute",
       "String",
-      "The provider's attribute key, e.g. AWS `memory`, `networkPerformance`; Alibaba `MemorySize`.",
+      "The provider's attribute key, e.g. AWS `memory`, `networkPerformance`; Alibaba `MemorySize`; Azure `ram`; Google Cloud `zones`, which differs by region.",
     ),
     col("value", "Nullable(String)", "The new value; NULL when the attribute was removed."),
     col("region", "String", "Region code it applies to, `''` for every region."),
@@ -399,19 +409,19 @@ export const ATTRIBUTE_CHANGES: Table = {
 export const REGIONS: Table = {
   name: "regions",
   comment:
-    "Region codes and the names the provider gives them, per source. Use it to turn a city or country into a region code. Codes repeat across clouds (Alibaba also has `us-east-1`), so filter on source.",
+    "Region codes and the names the provider gives them, per source. Use it to turn a city or country into a region code. Codes repeat across clouds (Alibaba also has `us-east-1`), so filter on source. Google Cloud's names are the city, state or country from its regions page (`Council Bluffs, Iowa` for us-central1).",
   columns: [
     SOURCE,
     col("region", "String", "Region code as in prices.region, e.g. `eu-central-1`."),
     col(
       "location",
       "String",
-      "The location's name, e.g. AWS `EU (Frankfurt)`, Alibaba `China (Hangzhou)`; RunPod `global`.",
+      "The location's name, e.g. AWS `EU (Frankfurt)`, Alibaba `China (Hangzhou)`, Azure `US East`, Google Cloud `Ashburn, Virginia`; RunPod `global`.",
     ),
     col(
       "location_type",
       "LowCardinality(String)",
-      "`AWS Region`, `AWS Local Zone`, `AWS Wavelength Zone` or `AWS Outposts`; `Alibaba Cloud Region`; RunPod `Global`.",
+      "`AWS Region`, `AWS Local Zone`, `AWS Wavelength Zone` or `AWS Outposts`; `Alibaba Cloud Region`; `Azure Region` (and `Global`, for Azure Spot prices that apply in every region); `Google Cloud Region`; RunPod `Global`.",
     ),
   ],
   orderBy: ["region"],
@@ -564,7 +574,9 @@ export const SCHEMA_NOTES: readonly string[] = [
   "Reserved rows: an All Upfront term has hourly_usd = 0 and the whole cost in upfront_usd; compare reserved and on-demand on effective_hourly_usd.",
   "RunPod (platform = 'runpod'): GPU types are priced per GPU per hour (size and family are '', gpus = 1, gpu_memory_gib is the GPU's memory) and CPU pods per pod per hour; tell them apart with attributes['productFamily'] ('GPU' or 'CPU') on instance_types. Every price is region = 'global'; pick a cloud with variant['cloudType'] = 'Secure Cloud' (the default) or 'Community Cloud' (cheaper, community hosts). Savings plans are pricing = 'reserved', offering_class = 'Savings Plan', lease '3mo' or '6mo', with hourly_usd the effective rate. Which data centers stock a GPU is attributes['dataCenters'] (comma separated); stock levels and spot prices are not included. History starts in November 2026.",
   "Alibaba Cloud ECS (platform = 'alibaba'): default to operating_system = 'Linux' and variant['networkType'] = 'VPC' (Classic is retired). on_demand is pay-as-you-go. Subscriptions are offering_class = 'Subscription' (lease '1mo' or '1yr' to '5yr', paid in full: hourly_usd = 0, upfront_usd the price); reserved instances are offering_class = 'Reserved Instance' (lease '1yr' or '3yr', with a purchase_option). Prices go back to May 2018; specs (attributes) start in May 2023, so older retired types can have NULL vcpu and memory_gib.",
-  "Comparing clouds: region codes are each provider's own, so join regions on source as well as region and compare by location (Alibaba's us-east-1 is US (Virginia), the same area as AWS's us-east-1). Compare on effective_hourly_usd for similar vcpu and memory_gib, and say which cloud each row is from.",
+  "Azure virtual machines (platform = 'azure'): default to operating_system = 'Linux', variant['priority'] = 'Regular' and region 'eastus'. Spot and Low Priority prices are on_demand rows with variant['priority'] = 'Spot' or 'Low Priority', so always fix priority. Reservations are offering_class = 'Reserved Instance', All Upfront (hourly_usd = 0, upfront_usd the whole term), lease '1yr', '3yr' and for some sizes '5yr' or '10yr'; Azure lists them under operating_system = 'Linux' only, since a Windows license is billed on top. Savings plans are offering_class = 'Savings Plan', No Upfront, '1yr' or '3yr', hourly_usd the plan's rate. Specs come from Azure's pricing calculator (attributes 'cores', 'ram', 'diskSize', 'gpu', 'series'); about a third of sizes, mostly the newest and retired series, have none, so vcpu and memory_gib are NULL there: match on instance_type or family (the series) for those. Dedicated hosts are not included. valid_from is when Azure says a price took effect (back to 2017), but changes are tracked from November 2026.",
+  "Google Cloud Compute Engine (platform = 'gcp'): default to variant['provisioningModel'] = 'Standard' and region 'us-central1'; Spot prices are on_demand rows with provisioningModel = 'Spot'. Google bills most machine types per vCPU and per GiB of memory at their series' rates, plus their GPUs, so each price is worked out from those rates and the machine type's shape. Prices leave out bundled Local SSD, OS licenses and sustained use discounts, and TPU, X4, X5 and A4X machine types are not included. Committed use discounts are offering_class = 'Committed Use', No Upfront, '1yr' or '3yr', hourly_usd the commitment's rate. Which zones of a region offer a machine type is attributes['zones'] (comma separated), which differs by region: read it from attribute_changes for the region (attribute = 'zones'), as instance_types holds one region's value. History starts in November 2026.",
+  "Comparing clouds: region codes are each provider's own, so join regions on source as well as region and compare by location (Alibaba's us-east-1 is US (Virginia), the same area as AWS's us-east-1, Azure's eastus and Google Cloud's us-east4). Compare on effective_hourly_usd for similar vcpu and memory_gib, like for like (on demand against pay-as-you-go and Standard; spot against Azure Spot and Google Spot), and say which cloud each row is from.",
   "Use instance_types for specs and to list types; join prices on (platform, instance_type) when you need specs it does not carry.",
   "prices is large (millions of rows for ec2): always filter on platform and current (or a time range), and aggregate or LIMIT.",
   "service_events is AWS's public status page history, not a measured uptime: AWS publishes no availability percentage. To estimate downtime, sum dateDiff('minute', impact_started_at, impact_ended_at) (fall back to posted_at and resolved_at when those are NULL) over events with severity 'degraded' or 'disrupted', and say that it covers only events AWS posted publicly. An event filed under `multipleservices` or another service can still have hit the one asked about: also match mapContains(impacted_services, '<service>-<region>').",
