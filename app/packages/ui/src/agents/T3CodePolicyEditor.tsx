@@ -792,29 +792,35 @@ export function T3CodePolicyEditor({
               </section>
             </>
           )}
-
-          {(errors.length > 0 || warnings.length > 0) && (
-            <ul className="space-y-1">
-              {errors.map((issue, index) => (
-                <li
-                  key={`e${index}`}
-                  className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-danger"
-                >
-                  {issueText(issue, gt)}
-                </li>
-              ))}
-              {warnings.map((issue, index) => (
-                <li
-                  key={`w${index}`}
-                  className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-warning"
-                >
-                  {issueText(issue, gt)}
-                </li>
-              ))}
-            </ul>
-          )}
-          {error && <p className="text-xs text-danger">{error}</p>}
         </div>
+
+        {/* Pinned above the footer rather than at the end of the scrolling body,
+            so the reason Save is disabled is visible without scrolling. */}
+        {(errors.length > 0 || warnings.length > 0 || error) && (
+          <div className="max-h-40 shrink-0 space-y-1 overflow-y-auto border-t border-border px-4 py-3">
+            {(errors.length > 0 || warnings.length > 0) && (
+              <ul className="space-y-1">
+                {errors.map((issue, index) => (
+                  <li
+                    key={`e${index}`}
+                    className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-danger"
+                  >
+                    {issueText(issue, gt)}
+                  </li>
+                ))}
+                {warnings.map((issue, index) => (
+                  <li
+                    key={`w${index}`}
+                    className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-warning"
+                  >
+                    {issueText(issue, gt)}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {error && <p className="text-xs text-danger">{error}</p>}
+          </div>
+        )}
 
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border p-3">
           <div>
