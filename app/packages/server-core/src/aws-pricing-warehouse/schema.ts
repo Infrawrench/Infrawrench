@@ -30,7 +30,7 @@
  * archived copies of AWS's feeds.
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** The database a sync loads a bundle into before swapping it in. */
 export const STAGING_DATABASE = "staging";
@@ -64,6 +64,8 @@ export interface Table {
   orderBy: readonly string[];
   /** The partition key column; `source` unless said otherwise. */
   partitionBy?: string;
+  /** Data skipping indexes, as `name expression TYPE type GRANULARITY n`. */
+  indexes?: readonly string[];
 }
 
 /** Sources whose `prices` rows are split into this many shards (about 400,000 rows each). */
@@ -293,6 +295,10 @@ export const PRICES: Table = {
   ],
   orderBy: ["platform", "instance_type", "region", "pricing", "valid_from"],
   partitionBy: "shard",
+  // `shard` hashes the instance type, so every partition holds some of every
+  // platform: without the index a lookup of one instance type reads a block of
+  // each partition, with it only the partition that has the type.
+  indexes: ["instance_type_bloom instance_type TYPE bloom_filter GRANULARITY 1"],
 };
 
 export const INSTANCE_TYPES: Table = {
@@ -527,9 +533,10 @@ const quote = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'
 /** `CREATE TABLE IF NOT EXISTS`, with every comment, in `database` (the current one by default). */
 export function createTableSql(table: Table, database?: string): string {
   const name = database ? `${database}.${table.name}` : table.name;
-  const columns = table.columns
-    .map((c) => `  ${c.name} ${c.type} COMMENT ${quote(c.comment)}`)
-    .join(",\n");
+  const columns = [
+    ...table.columns.map((c) => `  ${c.name} ${c.type} COMMENT ${quote(c.comment)}`),
+    ...(table.indexes ?? []).map((index) => `  INDEX ${index}`),
+  ].join(",\n");
   return [
     `CREATE TABLE IF NOT EXISTS ${name} (\n${columns}\n)`,
     "ENGINE = MergeTree",
