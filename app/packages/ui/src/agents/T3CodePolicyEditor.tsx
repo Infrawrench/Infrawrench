@@ -37,14 +37,29 @@ interface SettingRow {
   rawError?: boolean;
 }
 
+/**
+ * How a saved change reaches existing T3 Code servers. T3 Code reads its
+ * policy only at startup and a restart interrupts running agent turns, so the
+ * person saving decides: `restart` applies it now, `next-restart` installs the
+ * file and lets each server pick it up when T3 Code next restarts.
+ */
+export type T3CodePolicyRollout = "restart" | "next-restart";
+
 interface T3CodePolicyEditorProps {
   /** The stored policy, or null to start a new one. */
   initial: T3CodePolicy | null;
   /** The server defaults the policy will be installed with. */
   context: T3CodePolicyContext;
-  onSave: (policy: T3CodePolicy) => Promise<void>;
+  /**
+   * Existing T3 Code servers a save rolls out to. Above zero, Save and Remove
+   * wait for a {@link T3CodePolicyRollout} choice; undefined means this host
+   * cannot roll out, and Authorize server is how servers catch up.
+   */
+  servers?: number;
+  /** `rollout` is null when there is nothing to roll out to. */
+  onSave: (policy: T3CodePolicy, rollout: T3CodePolicyRollout | null) => Promise<void>;
   /** Present when a policy is stored: removes it from the defaults. */
-  onRemove?: () => Promise<void>;
+  onRemove?: (rollout: T3CodePolicyRollout | null) => Promise<void>;
   onClose: () => void;
 }
 
@@ -264,6 +279,7 @@ function defaultValueFor(type: T3CodePolicySettingKind): unknown {
 export function T3CodePolicyEditor({
   initial,
   context,
+  servers,
   onSave,
   onRemove,
   onClose,
@@ -279,6 +295,10 @@ export function T3CodePolicyEditor({
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rollout, setRollout] = useState<T3CodePolicyRollout | null>(null);
+  const canRollOut = servers !== undefined;
+  const rolloutRequired = (servers ?? 0) > 0;
+  const rolloutReady = !rolloutRequired || rollout !== null;
 
   const formPolicy = useMemo<T3CodePolicy>(() => {
     const settings: NonNullable<T3CodePolicy["settings"]> = {};
@@ -309,7 +329,7 @@ export function T3CodePolicyEditor({
   const jsonInvalid = mode === "json" && parsedJson === undefined;
   const errors = validation.issues.filter((i) => i.level === "error");
   const warnings = validation.issues.filter((i) => i.level === "warning");
-  const canSave = !busy && validation.ok && !rowsInvalid && !jsonInvalid;
+  const canSave = !busy && validation.ok && !rowsInvalid && !jsonInvalid && rolloutReady;
 
   function loadIntoForm(policy: T3CodePolicy) {
     setOrganization(policy.organization);
@@ -392,7 +412,7 @@ export function T3CodePolicyEditor({
     setBusy(true);
     setError(null);
     try {
-      await onSave(compactT3CodePolicy(validation.policy));
+      await onSave(compactT3CodePolicy(validation.policy), rolloutRequired ? rollout : null);
     } catch (e) {
       setError(formatErrorMessage(e));
       setBusy(false);
@@ -400,12 +420,14 @@ export function T3CodePolicyEditor({
   }
 
   async function remove() {
-    if (!onRemove || busy) return;
+    if (!onRemove || busy || !rolloutReady) return;
     if (
       !window.confirm(
-        gt(
-          "Remove the T3 Code policy? Servers keep the installed policy until Authorize server runs on them again.",
-        ),
+        canRollOut
+          ? gt("Remove the T3 Code policy?")
+          : gt(
+              "Remove the T3 Code policy? Servers keep the installed policy until Authorize server runs on them again.",
+            ),
       )
     ) {
       return;
@@ -413,7 +435,7 @@ export function T3CodePolicyEditor({
     setBusy(true);
     setError(null);
     try {
-      await onRemove();
+      await onRemove(rolloutRequired ? rollout : null);
     } catch (e) {
       setError(formatErrorMessage(e));
       setBusy(false);
@@ -450,10 +472,16 @@ export function T3CodePolicyEditor({
                   <Var>
                     <code className="font-mono">{T3_CODE_POLICY_PATH}</code>
                   </Var>
-                  . The server enforces it for every app that connects. Existing servers pick up
-                  changes the next time Authorize server runs on them.
+                  . The server enforces it for every app that connects.
                 </p>
               </T>
+              {!canRollOut && (
+                <p className="mt-1 text-xs text-on-surface-muted">
+                  {gt(
+                    "Existing servers pick up changes the next time Authorize server runs on them.",
+                  )}
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 rounded-md border border-border-strong bg-surface p-0.5">
               <button
@@ -796,6 +824,36 @@ export function T3CodePolicyEditor({
 
         {/* Pinned above the footer rather than at the end of the scrolling body,
             so the reason Save is disabled is visible without scrolling. */}
+        {rolloutRequired && (
+          <fieldset className="shrink-0 space-y-2 border-t border-border px-4 py-3">
+            <legend className="sr-only">{gt("When existing servers apply the change")}</legend>
+            <p className="text-xs font-medium text-on-surface">
+              {gt("Existing T3 Code servers ({count}) apply the change", { count: servers ?? 0 })}
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <RolloutOption
+                checked={rollout === "restart"}
+                onSelect={() => setRollout("restart")}
+                label={gt("Now, restarting T3 Code")}
+                detail={gt("Interrupts running agent turns, terminals and connected apps.")}
+              />
+              <RolloutOption
+                checked={rollout === "next-restart"}
+                onSelect={() => setRollout("next-restart")}
+                label={gt("At their next restart")}
+                detail={gt(
+                  "Installed now; each server keeps its current policy until T3 Code restarts.",
+                )}
+              />
+            </div>
+            {rollout === null && (
+              <p className="text-xs text-on-surface-muted">
+                {gt("Choose when existing servers apply the change to save it.")}
+              </p>
+            )}
+          </fieldset>
+        )}
+
         {(errors.length > 0 || warnings.length > 0 || error) && (
           <div className="max-h-40 shrink-0 space-y-1 overflow-y-auto border-t border-border px-4 py-3">
             {(errors.length > 0 || warnings.length > 0) && (
@@ -827,7 +885,7 @@ export function T3CodePolicyEditor({
             {onRemove && (
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !rolloutReady}
                 onClick={() => void remove()}
                 className="rounded px-3 py-1.5 text-sm text-danger hover:bg-red-500/10 disabled:opacity-50"
               >
@@ -856,6 +914,38 @@ export function T3CodePolicyEditor({
         </div>
       </div>
     </Modal>
+  );
+}
+
+function RolloutOption({
+  checked,
+  onSelect,
+  label,
+  detail,
+}: {
+  checked: boolean;
+  onSelect: () => void;
+  label: string;
+  detail: string;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 ${
+        checked ? "border-accent bg-accent-muted/40" : "border-border hover:bg-surface-sunken"
+      }`}
+    >
+      <input
+        type="radio"
+        name="t3-policy-rollout"
+        checked={checked}
+        onChange={onSelect}
+        className="mt-0.5"
+      />
+      <span className="min-w-0 text-xs">
+        <span className="block font-medium text-on-surface">{label}</span>
+        <span className="block text-on-surface-muted">{detail}</span>
+      </span>
+    </label>
   );
 }
 

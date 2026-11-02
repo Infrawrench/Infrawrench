@@ -4,6 +4,7 @@ import type {
   AgentOpenSessionResult,
   AgentSession,
   AgentSettings,
+  AgentT3PolicyApplyResult,
   AgentVmAccount,
 } from "@infrawrench/ui/agents";
 import type { SshInstallAccount } from "@infrawrench/plugin-base";
@@ -40,6 +41,10 @@ export function createWebAgentClient(orgId: string): AgentClient {
     reconcileSession: (id: string) =>
       fetch(`${base}/sessions/${id}/reconcile`, jsonInit("POST")).then((r) =>
         jsonOrThrow<{ branchName: string; message: string }>(r),
+      ),
+    applyT3Policy: (request) =>
+      fetch(`${base}/t3-policy/apply`, jsonInit("POST", request)).then((r) =>
+        jsonOrThrow<AgentT3PolicyApplyResult>(r),
       ),
     deleteSession: async (id: string) => {
       await fetch(`${base}/sessions/${id}`, jsonInit("DELETE")).then((r) =>

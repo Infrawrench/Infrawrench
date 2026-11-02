@@ -22728,7 +22728,30 @@
   "aafd7696040124b4": "Chemin du binaire",
   "435c45f0ff8bdb6e": "Arguments de lancement (facultatif)",
   "d118c06deaf33a65": "Arguments de lancement",
-  "7978e5072cc9d970": {
+  "7ecd8881990f5dd4": "Application de la stratégie T3 Code sur {name}...",
+  "1bf7c80eb7615de4": "Déploiement de la stratégie T3 Code sur les serveurs existants...",
+  "914c365dbfe87a4d": "Appliquée avec redémarrage : {servers}.",
+  "513adc9da6e80848": "S'applique au prochain redémarrage de T3 Code : {servers}.",
+  "04245f2e37738740": "Démarrera avec cette stratégie une fois la configuration terminée : {servers}.",
+  "c4cc70735fa87db4": "Non appliquée, la stratégie n'est pas compatible : {servers}.",
+  "57c5d4fbc4cd51c4": "Application impossible : {servers}.",
+  "dab0242c86ce4d6a": "Tous les serveurs T3 Code ont déjà cette stratégie.",
+  "51ad9cb2ddfd8a77": "Stratégie installée. T3 Code l'applique à son prochain redémarrage.",
+  "6ddaed05ddb00f26": "Ce serveur n'a pas la stratégie T3 Code actuelle.",
+  "93c7a0e3a4e521f6": "Ce serveur a encore la stratégie T3 Code qui a été supprimée.",
+  "b61cf4785ba9abf5": "Redémarre T3 Code sur ce serveur et interrompt les tours d'agent en cours.",
+  "d25c50db08889926": "Redémarrer T3 Code",
+  "7d6218ba616accb1": "Appliquer et redémarrer",
+  "036642ad7b659300": "Supprimer la stratégie T3 Code ?",
+  "d20c6d351a8091db": "Les serveurs existants reçoivent les modifications la prochaine fois que « Autoriser le serveur » y est exécuté.",
+  "808bff37190e3f21": "Quand les serveurs existants appliquent le changement",
+  "85359c9f65391461": "Les serveurs T3 Code existants ({count}) appliquent le changement",
+  "29545583c32501c9": "Maintenant, en redémarrant T3 Code",
+  "888eb9a0cac09d45": "Interrompt les tours d'agent, terminaux et applications connectées en cours.",
+  "41d3dd19cf448a4c": "À leur prochain redémarrage",
+  "c5b59cb6f41b8daf": "Installée maintenant ; chaque serveur garde sa stratégie actuelle jusqu'au redémarrage de T3 Code.",
+  "98cf13074d3c14ef": "Choisissez quand les serveurs existants appliquent le changement pour l'enregistrer.",
+  "0fa293b099ab014f": {
     "t": "p",
     "i": 1,
     "c": [
@@ -22739,7 +22762,7 @@
         "k": "_gt_value_2",
         "v": "v"
       },
-      ". Le serveur l'applique à chaque application qui s'y connecte. Les serveurs existants reçoivent les modifications la prochaine fois que « Autoriser le serveur » y est exécuté."
+      ". Le serveur l'applique à chaque application qui s'y connecte."
     ]
   }
 }

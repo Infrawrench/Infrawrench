@@ -22729,7 +22729,30 @@
   "aafd7696040124b4": "Ruta del binario",
   "435c45f0ff8bdb6e": "Argumentos de inicio (opcional)",
   "d118c06deaf33a65": "Argumentos de inicio",
-  "7978e5072cc9d970": {
+  "7ecd8881990f5dd4": "Aplicando la política de T3 Code en {name}...",
+  "1bf7c80eb7615de4": "Desplegando la política de T3 Code en los servidores existentes...",
+  "914c365dbfe87a4d": "Aplicada con reinicio: {servers}.",
+  "513adc9da6e80848": "Se aplica en el próximo reinicio de T3 Code: {servers}.",
+  "04245f2e37738740": "Se iniciará con ella al terminar la configuración: {servers}.",
+  "c4cc70735fa87db4": "No aplicada, la política no encaja: {servers}.",
+  "57c5d4fbc4cd51c4": "No se pudo aplicar: {servers}.",
+  "dab0242c86ce4d6a": "Todos los servidores de T3 Code ya tienen esta política.",
+  "51ad9cb2ddfd8a77": "Política instalada. T3 Code la aplica en su próximo reinicio.",
+  "6ddaed05ddb00f26": "Este servidor no tiene la política actual de T3 Code.",
+  "93c7a0e3a4e521f6": "Este servidor aún tiene la política de T3 Code que se quitó.",
+  "b61cf4785ba9abf5": "Reinicia T3 Code en este servidor e interrumpe los turnos de agente en curso.",
+  "d25c50db08889926": "Reiniciar T3 Code",
+  "7d6218ba616accb1": "Aplicar y reiniciar",
+  "036642ad7b659300": "¿Eliminar la política de T3 Code?",
+  "d20c6d351a8091db": "Los servidores existentes reciben los cambios la próxima vez que se ejecute «Autorizar servidor» en ellos.",
+  "808bff37190e3f21": "Cuándo aplican el cambio los servidores existentes",
+  "85359c9f65391461": "Los servidores de T3 Code existentes ({count}) aplican el cambio",
+  "29545583c32501c9": "Ahora, reiniciando T3 Code",
+  "888eb9a0cac09d45": "Interrumpe los turnos de agente en curso, los terminales y las aplicaciones conectadas.",
+  "41d3dd19cf448a4c": "En su próximo reinicio",
+  "c5b59cb6f41b8daf": "Instalada ahora; cada servidor conserva su política actual hasta que T3 Code se reinicie.",
+  "98cf13074d3c14ef": "Elija cuándo aplican el cambio los servidores existentes para guardarlo.",
+  "0fa293b099ab014f": {
     "t": "p",
     "i": 1,
     "c": [
@@ -22740,7 +22763,7 @@
         "k": "_gt_value_2",
         "v": "v"
       },
-      ". El servidor la aplica a todas las apps que se conectan. Los servidores existentes reciben los cambios la próxima vez que se ejecute «Autorizar servidor» en ellos."
+      ". El servidor la aplica a todas las apps que se conectan."
     ]
   }
 }

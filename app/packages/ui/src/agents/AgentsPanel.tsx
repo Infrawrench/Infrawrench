@@ -8,14 +8,16 @@ import { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./open-ssh-
 import { ServiceAccountPicker } from "./ServiceAccountPicker.js";
 import { DEFAULT_NIBBLETS_LINK_SCOPES, isNibbletsSurface, NIBBLETS_DIR } from "./nibblets.js";
 import { NibbletsLinkOption, NibbletsSessionDetails } from "./NibbletsParts.js";
-import { T3CodePolicyEditor } from "./T3CodePolicyEditor.js";
+import { T3CodePolicyEditor, type T3CodePolicyRollout } from "./T3CodePolicyEditor.js";
 import { t3CodePolicyCounts, validateT3CodePolicy, type T3CodePolicy } from "./t3-policy.js";
 import {
   agentSurfaceOrDefault,
   agentSurfaceRequiresRepo,
   agentSurfaceUsesTool,
   isT3CodeSurface,
+  planT3CodePolicyRollout,
   resolveT3CodeAccess,
+  sameT3CodePolicy,
   T3_CODE_PROJECTS_DIR,
   T3_CODE_TAILSCALE_PLUGIN_ID,
 } from "./t3-code.js";
@@ -27,6 +29,7 @@ import type {
   AgentSession,
   AgentSettings,
   AgentSurface,
+  AgentT3PolicyApplyServerResult,
   AgentTool,
   AgentVmAccount,
   T3CodeAccess,
@@ -74,6 +77,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   const [busy, setBusy] = useState(false);
   const [openingSessionId, setOpeningSessionId] = useState<string | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [applyingPolicySessionId, setApplyingPolicySessionId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
@@ -352,12 +356,63 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
     return !validateT3CodePolicy(t3Policy, t3PolicyContext).ok;
   }, [t3Policy, t3PolicyContext]);
 
-  async function saveT3Policy(policy: T3CodePolicy | null) {
+  // Servers a policy save rolls out to; undefined when this host cannot
+  // reach them, which leaves rollout to Authorize server.
+  const t3Servers = client.applyT3Policy
+    ? sessions.filter((s) => isT3CodeSurface(s.surface)).length
+    : undefined;
+
+  async function saveT3Policy(policy: T3CodePolicy | null, rollout: T3CodePolicyRollout | null) {
     if (!settings) return;
     const saved = await client.saveSettings({ ...settings, t3Policy: policy });
     setSettings(saved);
     setPolicyEditorOpen(false);
     setMessage(null);
+    if (rollout) await rollOutT3Policy(rollout === "restart");
+  }
+
+  async function rollOutT3Policy(restart: boolean, session?: AgentSession) {
+    if (!client.applyT3Policy) return;
+    setApplyingPolicySessionId(session?.id ?? "*");
+    setMessage(
+      session
+        ? gt("Applying the T3 Code policy on {name}...", { name: session.projectName })
+        : gt("Rolling the T3 Code policy out to existing servers..."),
+    );
+    try {
+      const result = await client.applyT3Policy({
+        restart,
+        ...(session ? { sessionId: session.id } : {}),
+      });
+      setMessage(t3PolicyRolloutSummary(result.servers, gt));
+      const nextSessions = await client.listSessions().catch(() => null);
+      if (nextSessions) setSessions(nextSessions.filter(sessionHasVm));
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplyingPolicySessionId(null);
+    }
+  }
+
+  /** What a T3 Code session owes the organization's current policy, if anything. */
+  function sessionPolicyState(session: AgentSession): "restart-pending" | "out-of-date" | null {
+    if (!client.applyT3Policy || !settings || !isT3CodeSurface(session.surface)) return null;
+    if (session.status !== "up") return null;
+    const step = planT3CodePolicyRollout(
+      {
+        tool: session.tool,
+        t3Access: session.t3Access ?? null,
+        t3Policy: session.t3Policy ?? null,
+        t3PolicyRestartPending: session.t3PolicyRestartPending ?? false,
+        setupComplete: true,
+      },
+      t3Policy,
+      true,
+    );
+    if (step.kind !== "run") return null;
+    return session.t3PolicyRestartPending && sameT3CodePolicy(t3Policy, session.t3Policy)
+      ? "restart-pending"
+      : "out-of-date";
   }
 
   async function saveDefaults() {
@@ -514,8 +569,9 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
         <T3CodePolicyEditor
           initial={t3Policy}
           context={t3PolicyContext}
-          onSave={(policy) => saveT3Policy(policy)}
-          {...(t3Policy ? { onRemove: () => saveT3Policy(null) } : {})}
+          {...(t3Servers !== undefined ? { servers: t3Servers } : {})}
+          onSave={(policy, rollout) => saveT3Policy(policy, rollout)}
+          {...(t3Policy ? { onRemove: (rollout) => saveT3Policy(null, rollout) } : {})}
           onClose={() => setPolicyEditorOpen(false)}
         />
       )}
@@ -898,6 +954,18 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               })}
                             </div>
                           )}
+                          {sessionPolicyState(session) === "restart-pending" && (
+                            <div className="mt-1 text-xs text-warning">
+                              {gt("Policy installed. T3 Code applies it when it next restarts.")}
+                            </div>
+                          )}
+                          {sessionPolicyState(session) === "out-of-date" && (
+                            <div className="mt-1 text-xs text-warning">
+                              {t3Policy
+                                ? gt("This server does not have the current T3 Code policy.")
+                                : gt("This server still has the removed T3 Code policy.")}
+                            </div>
+                          )}
                           {isT3CodeSurface(session.surface) && session.t3Access === "tailscale" && (
                             <div className="mt-1 text-xs text-on-surface-muted">
                               {gt("Reached over Tailscale")}
@@ -941,6 +1009,27 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                                     isNibbletsSurface(session.surface)
                                   ? gt("Authorize server")
                                   : gt("Open")}
+                            </button>
+                          )}
+                          {sessionPolicyState(session) !== null && (
+                            <button
+                              type="button"
+                              disabled={!!applyingPolicySessionId}
+                              onClick={() => void rollOutT3Policy(true, session)}
+                              aria-busy={
+                                applyingPolicySessionId === session.id ||
+                                applyingPolicySessionId === "*"
+                              }
+                              title={gt(
+                                "Restarts T3 Code on this server, interrupting running agent turns.",
+                              )}
+                              className="px-2 py-1 rounded border border-border text-xs disabled:opacity-50"
+                            >
+                              {applyingPolicySessionId === session.id
+                                ? gt("Applying...")
+                                : sessionPolicyState(session) === "restart-pending"
+                                  ? gt("Restart T3 Code")
+                                  : gt("Apply and restart")}
                             </button>
                           )}
                           {sessionSetupFailed(session) && (
@@ -1013,6 +1102,39 @@ function sortAccounts(accounts: AgentVmAccount[]): AgentVmAccount[] {
 
 function accountLabel(account: AgentVmAccount): string {
   return `${account.accountName} (${account.pluginName})`;
+}
+
+/**
+ * One message for a rollout: each outcome with the servers it happened to,
+ * by name (which also spares the strings a plural).
+ */
+function t3PolicyRolloutSummary(
+  servers: AgentT3PolicyApplyServerResult[],
+  gt: ReturnType<typeof useGT>,
+): string {
+  const names = (outcome: AgentT3PolicyApplyServerResult["outcome"]) =>
+    servers
+      .filter((s) => s.outcome === outcome)
+      .map((s) => (s.message ? `${s.projectName} (${s.message})` : s.projectName))
+      .join(", ");
+  const parts: string[] = [];
+  const applied = names("applied");
+  const installed = names("installed");
+  const settingUp = names("setting-up");
+  const skipped = names("skipped");
+  const failed = names("failed");
+  if (applied) parts.push(gt("Applied and restarted: {servers}.", { servers: applied }));
+  if (installed) {
+    parts.push(gt("Applies at the next T3 Code restart: {servers}.", { servers: installed }));
+  }
+  if (settingUp) {
+    parts.push(gt("Starts on it once setup finishes: {servers}.", { servers: settingUp }));
+  }
+  if (skipped) {
+    parts.push(gt("Not applied, the policy does not fit: {servers}.", { servers: skipped }));
+  }
+  if (failed) parts.push(gt("Could not apply: {servers}.", { servers: failed }));
+  return parts.length > 0 ? parts.join(" ") : gt("Every T3 Code server already has this policy.");
 }
 
 function sessionHasVm(session: AgentSession): boolean {

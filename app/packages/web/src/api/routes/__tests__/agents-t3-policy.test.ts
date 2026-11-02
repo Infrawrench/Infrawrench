@@ -26,7 +26,9 @@ vi.mock("@/services/agent-services", () => ({
   releaseAgentServices: vi.fn(),
   resolveAgentServiceAccounts: vi.fn(async () => ({ accountIds: [], pluginIds: [] })),
 }));
+const applyT3CodePolicyToSessions = vi.fn();
 vi.mock("@/services/agent-setup", () => ({
+  applyT3CodePolicyToSessions: (...a: unknown[]) => applyT3CodePolicyToSessions(...a),
   createAgentSetupPlanForRepo: vi.fn(),
   ensureAgentVmSetupForSession: vi.fn(),
   hasAgentSetupComplete: vi.fn(),
@@ -171,5 +173,55 @@ describe("POST /sessions under a T3 Code policy", () => {
     // The mocked account lookup fails provisioning; the point is it got there.
     expect(getClientForAccount).toHaveBeenCalled();
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /t3-policy/apply", () => {
+  const apply = (body: unknown) =>
+    app().request("/t3-policy/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("needs an explicit choice about restarting", async () => {
+    const res = await apply({});
+    expect(res.status).toBe(400);
+    expect(applyT3CodePolicyToSessions).not.toHaveBeenCalled();
+  });
+
+  it("rolls the organization's current policy out and audits what changed", async () => {
+    storedPolicy = POLICY;
+    const servers = [
+      { sessionId: "s1", projectName: "one", outcome: "installed" },
+      { sessionId: "s2", projectName: "two", outcome: "unchanged" },
+    ];
+    applyT3CodePolicyToSessions.mockResolvedValueOnce(servers);
+    const res = await apply({ restart: false });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ servers });
+    expect(applyT3CodePolicyToSessions).toHaveBeenCalledWith("org-1", POLICY, { restart: false });
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "agent_t3_policy.apply",
+        metadata: expect.objectContaining({ restart: false, servers: ["s1"] }),
+      }),
+    );
+  });
+
+  it("rolls a removal out as null and skips the audit when nothing changed", async () => {
+    applyT3CodePolicyToSessions.mockResolvedValueOnce([
+      { sessionId: "s1", projectName: "one", outcome: "failed", message: "unreachable" },
+    ]);
+    const res = await apply({ restart: true });
+    expect(res.status).toBe(200);
+    expect(applyT3CodePolicyToSessions).toHaveBeenCalledWith("org-1", null, { restart: true });
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it("404s an unknown server", async () => {
+    const res = await apply({ restart: true, sessionId: "nope" });
+    expect(res.status).toBe(404);
+    expect(applyT3CodePolicyToSessions).not.toHaveBeenCalled();
   });
 });

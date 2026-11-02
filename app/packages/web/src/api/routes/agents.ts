@@ -47,6 +47,7 @@ import { upsertCreatedResource } from "@infrawrench/server-core/created-resource
 import {
   createT3CodeSetupPlan,
   resolveT3CodeAccess,
+  sameT3CodePolicy,
   t3CodeAccessOrDefault,
   t3CodePolicyOrNull,
   validateT3CodePolicy,
@@ -58,6 +59,7 @@ import {
   resolveAgentServiceAccounts,
 } from "../../services/agent-services";
 import {
+  applyT3CodePolicyToSessions,
   createAgentSetupPlanForRepo,
   ensureAgentVmSetupForSession,
   hasAgentSetupComplete,
@@ -256,6 +258,51 @@ app.put("/settings", async (c) => {
     t3Access,
     t3Policy: storedPolicy,
   });
+});
+
+/**
+ * Roll the organization's current T3 Code policy out to existing T3 Code
+ * servers, or to one. T3 Code reads its policy only at startup and a restart
+ * interrupts running agent turns, so whether to restart now is the caller's
+ * choice (`restart`); without it the file is installed and the session is
+ * marked as owing a restart. `resources:execute` because it runs commands on
+ * the servers and may restart them, the same gate as Authorize server.
+ */
+app.post("/t3-policy/apply", async (c) => {
+  requirePermission(c, "resources:execute");
+  const organizationId = orgId(c);
+  const body = await c.req.json<{ restart?: unknown; sessionId?: unknown }>().catch(() => null);
+  if (!body || typeof body.restart !== "boolean") {
+    return c.json({ error: "`restart` (boolean) is required" }, 400);
+  }
+  if (body.sessionId !== undefined && typeof body.sessionId !== "string") {
+    return c.json({ error: "`sessionId` must be a string" }, 400);
+  }
+  const sessionId = body.sessionId as string | undefined;
+  if (sessionId && !(await loadSession(sessionId, organizationId))) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const policy = await orgT3Policy(organizationId);
+  const servers = await applyT3CodePolicyToSessions(organizationId, policy, {
+    restart: body.restart,
+    ...(sessionId ? { sessionId } : {}),
+  });
+  const touched = servers.filter((s) => s.outcome === "applied" || s.outcome === "installed");
+  if (touched.length > 0) {
+    void logAudit({
+      organizationId,
+      ...(c.get("session")?.userId ? { userId: c.get("session").userId } : {}),
+      action: "agent_t3_policy.apply",
+      entityType: "agent_settings",
+      entityId: `${organizationId}:default`,
+      metadata: {
+        restart: body.restart,
+        servers: touched.map((s) => s.sessionId),
+        ...(policy ? { organization: policy.organization } : { removed: true }),
+      },
+    });
+  }
+  return c.json({ servers });
 });
 
 /**
@@ -729,11 +776,13 @@ async function authorizeT3Policy(
 ): Promise<{ policy?: T3CodePolicy | null }> {
   const current = await orgT3Policy(organizationId);
   if (current && !validateT3CodePolicy(current, { tool, access }).ok) return {};
-  if (JSON.stringify(current) !== JSON.stringify(t3CodePolicyOrNull(row.t3Policy))) {
+  // The script restarts T3 Code after installing, so nothing is left pending.
+  if (!sameT3CodePolicy(current, t3CodePolicyOrNull(row.t3Policy)) || row.t3PolicyRestartPending) {
     await db
       .update(agentSessions)
       .set({
         t3Policy: current as unknown as Record<string, unknown> | null,
+        t3PolicyRestartPending: false,
         updatedAt: new Date(),
       })
       .where(eq(agentSessions.id, row.id));
@@ -764,6 +813,7 @@ function rowToSession(row: typeof agentSessions.$inferSelect) {
     serviceAccountIds: row.serviceAccountIds ?? [],
     t3Access: t3CodeAccessOrDefault(row.t3Access),
     t3Policy: t3CodePolicyOrNull(row.t3Policy),
+    t3PolicyRestartPending: row.t3PolicyRestartPending,
     agentLinkId: row.agentLinkId ?? null,
     serviceInstalls: publicServiceInstalls(row.serviceInstallsJson),
     branchName: row.branchName,

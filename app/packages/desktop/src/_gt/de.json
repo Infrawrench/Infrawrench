@@ -22727,7 +22727,30 @@
   "aafd7696040124b4": "Pfad der Binärdatei",
   "435c45f0ff8bdb6e": "Startargumente (optional)",
   "d118c06deaf33a65": "Startargumente",
-  "7978e5072cc9d970": {
+  "7ecd8881990f5dd4": "Die T3-Code-Richtlinie wird auf {name} angewendet...",
+  "1bf7c80eb7615de4": "Die T3-Code-Richtlinie wird auf bestehenden Servern ausgerollt...",
+  "914c365dbfe87a4d": "Angewendet und neu gestartet: {servers}.",
+  "513adc9da6e80848": "Wird beim nächsten Neustart von T3 Code angewendet: {servers}.",
+  "04245f2e37738740": "Startet damit, sobald die Einrichtung abgeschlossen ist: {servers}.",
+  "c4cc70735fa87db4": "Nicht angewendet, die Richtlinie passt nicht: {servers}.",
+  "57c5d4fbc4cd51c4": "Konnte nicht angewendet werden: {servers}.",
+  "dab0242c86ce4d6a": "Jeder T3-Code-Server hat diese Richtlinie bereits.",
+  "51ad9cb2ddfd8a77": "Richtlinie installiert. T3 Code wendet sie beim nächsten Neustart an.",
+  "6ddaed05ddb00f26": "Dieser Server hat nicht die aktuelle T3-Code-Richtlinie.",
+  "93c7a0e3a4e521f6": "Dieser Server hat noch die entfernte T3-Code-Richtlinie.",
+  "b61cf4785ba9abf5": "Startet T3 Code auf diesem Server neu und unterbricht laufende Agent-Turns.",
+  "d25c50db08889926": "T3 Code neu starten",
+  "7d6218ba616accb1": "Anwenden und neu starten",
+  "036642ad7b659300": "T3-Code-Richtlinie entfernen?",
+  "d20c6d351a8091db": "Bestehende Server übernehmen Änderungen, wenn dort das nächste Mal „Server autorisieren“ ausgeführt wird.",
+  "808bff37190e3f21": "Wann bestehende Server die Änderung anwenden",
+  "85359c9f65391461": "Bestehende T3-Code-Server ({count}) wenden die Änderung an",
+  "29545583c32501c9": "Jetzt, mit Neustart von T3 Code",
+  "888eb9a0cac09d45": "Unterbricht laufende Agent-Turns, Terminals und verbundene Apps.",
+  "41d3dd19cf448a4c": "Beim nächsten Neustart",
+  "c5b59cb6f41b8daf": "Jetzt installiert; jeder Server behält seine aktuelle Richtlinie, bis T3 Code neu startet.",
+  "98cf13074d3c14ef": "Wählen Sie, wann bestehende Server die Änderung anwenden, um sie zu speichern.",
+  "0fa293b099ab014f": {
     "t": "p",
     "i": 1,
     "c": [
@@ -22738,7 +22761,7 @@
         "k": "_gt_value_2",
         "v": "v"
       },
-      ". Der Server setzt sie für jede App durch, die sich verbindet. Bestehende Server übernehmen Änderungen, wenn dort das nächste Mal „Server autorisieren“ ausgeführt wird."
+      ". Der Server setzt sie für jede App durch, die sich verbindet."
     ]
   }
 }

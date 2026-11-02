@@ -5,6 +5,8 @@ import type {
   AgentSettings,
   AgentSetupPlan,
   AgentSshTarget,
+  AgentT3PolicyApplyRequest,
+  AgentT3PolicyApplyServerResult,
   AgentVmAccount,
   T3CodePolicy,
 } from "@infrawrench/ui/agents";
@@ -26,10 +28,13 @@ import {
   buildT3CodeBootstrapCommand,
   buildT3CodeConnectCommand,
   buildT3CodeLogoutCommand,
+  buildT3CodePolicyApplyCommand,
   createT3CodeSetupPlan,
   isT3CodeSurface,
+  planT3CodePolicyRollout,
   resolveT3CodeAccess,
   t3CodeAccessOrDefault,
+  t3CodePolicyApplyFailure,
   t3CodePolicyOrNull,
   validateT3CodePolicy,
   T3_CODE_PROJECTS_DIR,
@@ -40,6 +45,7 @@ import {
   NIBBLETS_DIR,
 } from "@infrawrench/ui/agents";
 import { dispatchResourcesChanged } from "@infrawrench/ui";
+import { runWithConcurrency } from "@infrawrench/client-core";
 import type {
   AgentVmCapability,
   CreateFieldConfig,
@@ -135,6 +141,7 @@ interface SessionRow {
   service_account_ids_json?: string | null;
   t3_access?: string | null;
   t3_policy_json?: string | null;
+  t3_policy_restart_pending?: number | null;
   service_installs_json?: string | null;
   created_at: string;
   updated_at: string;
@@ -204,6 +211,7 @@ function rowToSession(row: SessionRow): AgentSession {
     serviceAccountIds: parseJson<string[]>(row.service_account_ids_json ?? "[]", []),
     t3Access: t3CodeAccessOrDefault(row.t3_access),
     t3Policy: t3CodePolicyOrNull(row.t3_policy_json),
+    t3PolicyRestartPending: !!row.t3_policy_restart_pending,
     serviceInstalls: publicLocalServiceInstalls(serviceInstallsForRow(row)),
     branchName: row.branch_name,
     status: row.status,
@@ -557,8 +565,9 @@ export function createDesktopAgentClient(): AgentClient {
         const current = await storedT3Policy();
         const fits = !current || validateT3CodePolicy(current, { tool: row.tool, access }).ok;
         if (fits) {
+          // The script restarts T3 Code after installing, so nothing is left pending.
           await db.execute(
-            "UPDATE agent_sessions SET t3_policy_json = $1, updated_at = datetime('now') WHERE id = $2",
+            "UPDATE agent_sessions SET t3_policy_json = $1, t3_policy_restart_pending = 0, updated_at = datetime('now') WHERE id = $2",
             [current ? JSON.stringify(current) : null, row.id],
           );
         }
@@ -634,6 +643,9 @@ export function createDesktopAgentClient(): AgentClient {
         repoPath: row.repo,
       });
       return { branchName: row.branch_name, message: result.message };
+    },
+    async applyT3Policy(request: AgentT3PolicyApplyRequest) {
+      return { servers: await applyLocalT3Policy(request) };
     },
     async deleteSession(id: string) {
       const db = await getDb();
@@ -1012,6 +1024,87 @@ async function revokeT3CodeLinkOnVm(row: SessionRow): Promise<void> {
   );
   const db = await getDb();
   await appendAgentSessionLog(db, row.id, "Revoked the T3 Connect environment link.");
+}
+
+/**
+ * The desktop counterpart of the web API's `applyT3CodePolicyToSessions`:
+ * roll this machine's stored T3 Code policy out to its T3 Code servers (or
+ * one), deciding per server with the shared `planT3CodePolicyRollout`. An
+ * unreachable server is reported and stays out of date, not retried.
+ */
+async function applyLocalT3Policy(
+  request: AgentT3PolicyApplyRequest,
+): Promise<AgentT3PolicyApplyServerResult[]> {
+  const db = await getDb();
+  const policy = await storedT3Policy();
+  const rows = (
+    request.sessionId
+      ? await db.select<SessionRow[]>("SELECT * FROM agent_sessions WHERE id = $1", [
+          request.sessionId,
+        ])
+      : await db.select<SessionRow[]>("SELECT * FROM agent_sessions")
+  ).filter((row) => isT3CodeSurface(row.surface) && row.vm_resource_id);
+  const policyJson = policy ? JSON.stringify(policy) : null;
+  return runWithConcurrency(rows, 4, async (row) => {
+    const base = { sessionId: row.id, projectName: row.project_name };
+    const step = planT3CodePolicyRollout(
+      {
+        tool: row.tool,
+        t3Access: row.t3_access ?? null,
+        t3Policy: t3CodePolicyOrNull(row.t3_policy_json),
+        t3PolicyRestartPending: !!row.t3_policy_restart_pending,
+        setupComplete: hasAgentSetupComplete(row),
+      },
+      policy,
+      request.restart,
+    );
+    if (step.kind === "none") {
+      return { ...base, outcome: step.outcome, ...(step.message ? { message: step.message } : {}) };
+    }
+    if (step.kind === "snapshot") {
+      await db.execute(
+        "UPDATE agent_sessions SET t3_policy_json = $1, t3_policy_restart_pending = 0, updated_at = datetime('now') WHERE id = $2",
+        [policyJson, row.id],
+      );
+      return { ...base, outcome: step.outcome };
+    }
+    try {
+      const resource = await loadAgentVmResource(row);
+      const target = await resolveAgentSshTarget(row, resource);
+      const agentKey = await ensureAgentSshKey();
+      const privateKey = await invoke<string>("ssh_key_get_private_key", { keyId: agentKey.id });
+      const result = await agentSshExecCommand(
+        { sshHost: target.host, sshPort: target.port, sshUser: target.username, privateKey },
+        buildT3CodePolicyApplyCommand({ policy, restart: request.restart }),
+      );
+      if (result.code !== 0) {
+        const message = t3CodePolicyApplyFailure(result.code, result.stderr);
+        await appendAgentSessionLog(db, row.id, `Could not apply the T3 Code policy: ${message}`);
+        return { ...base, outcome: "failed" as const, message };
+      }
+      await db.execute(
+        "UPDATE agent_sessions SET t3_policy_json = $1, t3_policy_restart_pending = $2, updated_at = datetime('now') WHERE id = $3",
+        [policyJson, request.restart ? 0 : 1, row.id],
+      );
+      await appendAgentSessionLog(
+        db,
+        row.id,
+        policy
+          ? request.restart
+            ? "Applied the T3 Code policy and restarted T3 Code."
+            : "Installed the T3 Code policy; it applies when T3 Code next restarts."
+          : request.restart
+            ? "Removed the T3 Code policy and restarted T3 Code."
+            : "Removed the T3 Code policy; T3 Code keeps enforcing it until it next restarts.",
+      );
+      return {
+        ...base,
+        outcome: request.restart ? ("applied" as const) : ("installed" as const),
+      };
+    } catch (error) {
+      return { ...base, outcome: "failed" as const, message: formatErrorMessage(error) };
+    }
+  });
 }
 
 async function waitForAgentSshTarget(row: SessionRow): Promise<AgentSshTarget> {

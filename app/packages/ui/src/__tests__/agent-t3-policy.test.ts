@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildT3CodeBootstrapCommand,
   buildT3CodeConnectCommand,
+  buildT3CodePolicyApplyCommand,
   compactT3CodePolicy,
+  planT3CodePolicyRollout,
+  sameT3CodePolicy,
+  t3CodePolicyApplyFailure,
+  T3_CODE_POLICY_APPLY_EXIT,
   createT3CodeSetupPlan,
   serializeT3CodePolicy,
   t3CodePolicyCounts,
@@ -278,5 +283,106 @@ describe("installing the policy", () => {
   it("does not touch the policy when none is passed", () => {
     const script = scriptBody(buildT3CodeConnectCommand({ tool: "codex" }));
     expect(script).not.toContain("t3_policy");
+  });
+});
+
+describe("rolling the policy out to existing servers", () => {
+  it("installs, restarts and reports what the server loaded", async () => {
+    const command = buildT3CodePolicyApplyCommand({ policy: POLICY, restart: true });
+    const script = scriptBody(command);
+    expect(command.startsWith("timeout 180s bash -lc ")).toBe(true);
+    expect(script).toContain(`install_t3_policy || exit ${T3_CODE_POLICY_APPLY_EXIT.notInstalled}`);
+    expect(script.indexOf("install_t3_policy ||")).toBeLessThan(
+      script.indexOf("systemctl --user restart t3code.service"),
+    );
+    expect(script).toContain("t3 policy show || true");
+    await bashParses(command);
+  });
+
+  it("installs without restarting when the change waits for the next restart", async () => {
+    const command = buildT3CodePolicyApplyCommand({ policy: POLICY, restart: false });
+    const script = scriptBody(command);
+    expect(script).toContain("install_t3_policy ||");
+    expect(script).not.toContain("systemctl");
+    await bashParses(command);
+  });
+
+  it("removes only what Infrawrench installed when the policy is dropped", async () => {
+    const command = buildT3CodePolicyApplyCommand({ policy: null, restart: true });
+    const script = scriptBody(command);
+    expect(script).toContain("remove_t3_policy\n");
+    expect(script).toContain(`if [ -f '${T3_CODE_POLICY_MARKER_PATH}' ]; then`);
+    expect(script).not.toContain("install_t3_policy");
+    await bashParses(command);
+  });
+
+  it("explains each failure from its exit code", () => {
+    expect(t3CodePolicyApplyFailure(T3_CODE_POLICY_APPLY_EXIT.noCli, "")).toMatch(/not installed/);
+    expect(
+      t3CodePolicyApplyFailure(
+        T3_CODE_POLICY_APPLY_EXIT.notInstalled,
+        "check output\nUnknown key x\n",
+      ),
+    ).toBe("Unknown key x");
+    expect(t3CodePolicyApplyFailure(124, "")).toMatch(/in time/);
+  });
+
+  it("compares policies regardless of key order", () => {
+    const reordered = JSON.parse(
+      JSON.stringify({ limits: POLICY.limits, organization: POLICY.organization, ...POLICY }),
+    ) as T3CodePolicy;
+    expect(sameT3CodePolicy(POLICY, reordered)).toBe(true);
+    expect(sameT3CodePolicy(POLICY, { ...POLICY, organization: "Other" })).toBe(false);
+    expect(sameT3CodePolicy(null, undefined)).toBe(true);
+    expect(sameT3CodePolicy(POLICY, null)).toBe(false);
+  });
+
+  describe("which servers a rollout touches", () => {
+    const server = {
+      tool: "codex" as const,
+      t3Access: "t3-connect",
+      t3Policy: null,
+      t3PolicyRestartPending: false,
+      setupComplete: true,
+    };
+
+    it("dials a server whose policy is out of date", () => {
+      expect(planT3CodePolicyRollout(server, POLICY, false)).toEqual({ kind: "run" });
+      expect(planT3CodePolicyRollout({ ...server, t3Policy: POLICY }, null, true)).toEqual({
+        kind: "run",
+      });
+    });
+
+    it("leaves a server that already has the policy", () => {
+      expect(planT3CodePolicyRollout({ ...server, t3Policy: POLICY }, POLICY, true)).toEqual({
+        kind: "none",
+        outcome: "unchanged",
+      });
+    });
+
+    it("restarts a server that has the file but not yet the policy", () => {
+      const pending = { ...server, t3Policy: POLICY, t3PolicyRestartPending: true };
+      expect(planT3CodePolicyRollout(pending, POLICY, true)).toEqual({ kind: "run" });
+      expect(planT3CodePolicyRollout(pending, POLICY, false)).toMatchObject({
+        outcome: "unchanged",
+      });
+    });
+
+    it("skips a server the policy does not fit, saying why", () => {
+      const step = planT3CodePolicyRollout(
+        server,
+        { ...POLICY, limits: { providers: { allowedDrivers: ["claudeAgent"] } } },
+        true,
+      );
+      expect(step).toMatchObject({ kind: "none", outcome: "skipped" });
+      expect(step.kind === "none" && step.message).toBeTruthy();
+    });
+
+    it("only records the policy on a server still setting up", () => {
+      expect(planT3CodePolicyRollout({ ...server, setupComplete: false }, POLICY, true)).toEqual({
+        kind: "snapshot",
+        outcome: "setting-up",
+      });
+    });
   });
 });

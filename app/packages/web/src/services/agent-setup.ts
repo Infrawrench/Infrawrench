@@ -27,7 +27,9 @@ import type {
   AgentSetupPlan,
   AgentSshTarget,
   AgentStatus,
+  AgentT3PolicyApplyServerResult,
   AgentTool,
+  T3CodePolicy,
 } from "@infrawrench/ui/agents";
 import {
   AGENT_SETUP_FAILED_LOG_PREFIX,
@@ -40,11 +42,15 @@ import {
 import {
   buildT3CodeBootstrapCommand,
   buildT3CodeLogoutCommand,
+  buildT3CodePolicyApplyCommand,
   createT3CodeSetupPlan,
   isT3CodeSurface,
+  planT3CodePolicyRollout,
   t3CodeAccessOrDefault,
+  t3CodePolicyApplyFailure,
   t3CodePolicyOrNull,
 } from "@infrawrench/ui/agents/t3-code";
+import { runWithConcurrency } from "@infrawrench/client-core";
 import {
   buildNibbletsAppLinksFile,
   buildNibbletsAppLinksWriteCommand,
@@ -680,6 +686,110 @@ export async function revokeT3CodeLinkOnVm(
   } catch (error) {
     console.warn(`[agent-setup] could not revoke the T3 Connect link for ${sessionId}`, error);
   }
+}
+
+/** How many servers one rollout dials at once. */
+const T3_POLICY_ROLLOUT_CONCURRENCY = 4;
+
+/**
+ * Roll `policy` (the organization's current T3 Code policy, or null to remove
+ * the one Infrawrench installed) out to the organization's T3 Code servers,
+ * or to `sessionId`'s alone.
+ *
+ * Which servers are touched is `planT3CodePolicyRollout`'s call, shared with
+ * the desktop: a server that already has the policy is left alone, as is one
+ * the policy does not fit, and one still setting up only has its snapshot
+ * updated so the bootstrap installs the new policy. The rest are dialled
+ * over the org's agent key and run `buildT3CodePolicyApplyCommand`. A server
+ * that cannot be reached is reported, not retried: it is still marked out of
+ * date, and Authorize server or another rollout catches it up.
+ */
+export async function applyT3CodePolicyToSessions(
+  organizationId: string,
+  policy: T3CodePolicy | null,
+  options: { restart: boolean; sessionId?: string },
+): Promise<AgentT3PolicyApplyServerResult[]> {
+  const rows = (
+    await db
+      .select()
+      .from(agentSessions)
+      .where(
+        options.sessionId
+          ? and(
+              eq(agentSessions.organizationId, organizationId),
+              eq(agentSessions.id, options.sessionId),
+            )
+          : eq(agentSessions.organizationId, organizationId),
+      )
+  ).filter((row) => isT3CodeSurface(row.surface) && row.vmResourceId);
+  let privateKey: string | null = null;
+  const policyColumn = policy as unknown as Record<string, unknown> | null;
+  return runWithConcurrency(rows, T3_POLICY_ROLLOUT_CONCURRENCY, async (row) => {
+    const base = { sessionId: row.id, projectName: row.projectName };
+    const step = planT3CodePolicyRollout(
+      {
+        tool: sessionTool(row),
+        t3Access: row.t3Access,
+        t3Policy: t3CodePolicyOrNull(row.t3Policy),
+        t3PolicyRestartPending: row.t3PolicyRestartPending,
+        setupComplete: hasAgentSetupComplete(row.logs),
+      },
+      policy,
+      options.restart,
+    );
+    if (step.kind === "none") {
+      return { ...base, outcome: step.outcome, ...(step.message ? { message: step.message } : {}) };
+    }
+    if (step.kind === "snapshot") {
+      await db
+        .update(agentSessions)
+        .set({ t3Policy: policyColumn, t3PolicyRestartPending: false, updatedAt: new Date() })
+        .where(eq(agentSessions.id, row.id));
+      return { ...base, outcome: step.outcome };
+    }
+    try {
+      privateKey ??= await loadOrgAgentSshPrivateKey(organizationId);
+      const target = await resolveAgentSshTargetNow(row, organizationId);
+      if (!target) {
+        return {
+          ...base,
+          outcome: "failed" as const,
+          message: "The server could not be reached. Is the VM running?",
+        };
+      }
+      const result = await agentSshExec(
+        target,
+        privateKey,
+        buildT3CodePolicyApplyCommand({ policy, restart: options.restart }),
+      );
+      if (result.code !== 0) {
+        const message = t3CodePolicyApplyFailure(result.code, result.stderr);
+        await appendAgentSessionLog(row.id, `Could not apply the T3 Code policy: ${message}`);
+        return { ...base, outcome: "failed" as const, message };
+      }
+      await db
+        .update(agentSessions)
+        .set({
+          t3Policy: policyColumn,
+          t3PolicyRestartPending: !options.restart,
+          updatedAt: new Date(),
+        })
+        .where(eq(agentSessions.id, row.id));
+      await appendAgentSessionLog(
+        row.id,
+        policy
+          ? options.restart
+            ? "Applied the organization's T3 Code policy and restarted T3 Code."
+            : "Installed the organization's T3 Code policy; it applies when T3 Code next restarts."
+          : options.restart
+            ? "Removed the T3 Code policy and restarted T3 Code."
+            : "Removed the T3 Code policy; T3 Code keeps enforcing it until it next restarts.",
+      );
+      return { ...base, outcome: options.restart ? ("applied" as const) : ("installed" as const) };
+    } catch (error) {
+      return { ...base, outcome: "failed" as const, message: formatErrorMessage(error) };
+    }
+  });
 }
 
 /**

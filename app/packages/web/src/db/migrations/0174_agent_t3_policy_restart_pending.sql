@@ -1,0 +1,1 @@
+ALTER TABLE "agent_sessions" ADD COLUMN "t3_policy_restart_pending" boolean DEFAULT false NOT NULL;

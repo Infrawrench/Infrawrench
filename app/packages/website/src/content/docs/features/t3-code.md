@@ -102,8 +102,17 @@ Every user on the server can read the policy, so keep credentials out of it. The
 ### How it reaches a server
 
 - **New servers** get the policy during setup, before T3 Code's service first starts. Setup runs `t3 policy check` on it first, and fails rather than install a policy T3 Code would refuse.
-- **Existing servers** pick up a changed policy when **Authorize server** runs on them. It installs your organization's current policy at `/etc/t3code/policy.json`, restarts the server (which only reads the policy when it starts), and finishes with `t3 policy show` so you can see what the running server loaded. A server whose provider or access the current policy does not fit keeps the policy it already has.
-- **Removing the policy** takes it off a server the next time **Authorize server** runs there. Only a policy Infrawrench installed is removed; one an administrator placed on the machine some other way is left alone.
+- **Existing servers** get a changed policy when you save it. T3 Code reads its policy only when it starts, and restarting it interrupts running agent turns, terminals and connected apps, so whenever you have T3 Code servers the editor asks when they should apply the change:
+  - **Now, restarting T3 Code** installs the policy on every server and restarts T3 Code on each, so it is enforced at once.
+  - **At their next restart** installs the policy now and leaves each server on its current policy until T3 Code next restarts. Those servers show **Policy installed. T3 Code applies it when it next restarts.** with a **Restart T3 Code** button for when the moment suits.
+
+  A message under the page header then lists what happened on each server. A server that already has the policy is left alone, and one still being set up starts on the new policy once setup finishes. A server whose provider or access the policy does not fit keeps the policy it already has. A server that cannot be reached (for example, because its VM is powered off) is not retried. It shows that it does not have the current policy, with an **Apply and restart** button. **Authorize server** also installs your organization's current policy, restarts T3 Code and finishes with `t3 policy show`, so you can see what the running server loaded.
+
+- **Removing the policy** asks the same question, and takes the policy off each server. Only a policy Infrawrench installed is removed; one an administrator placed on the machine some other way is left alone.
+
+Rolling a policy out runs commands on your servers and may restart them, so it needs permission to run commands on resources, the same as **Authorize server**.
+
+<insert [T3 Code policy editor footer with two existing servers, showing the "Now, restarting T3 Code" and "At their next restart" choices, and the Agents list below with one server showing "Policy installed. T3 Code applies it when it next restarts." and its Restart T3 Code button] here>
 
 Each T3 Code server in the list shows **Managed by** with the organization of the policy it was last given. The policy controls T3 Code only: the provider CLIs it drives read their own configuration, so restrict those with their own managed settings if you need to.
 

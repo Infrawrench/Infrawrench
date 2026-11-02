@@ -106,6 +106,35 @@ const AgentSettings = strict({
     }),
 }).openapi("AgentSettings");
 
+const AgentT3PolicyApplyRequest = strict({
+  restart: z.boolean().openapi({
+    description:
+      "Restart T3 Code so the policy applies now (interrupts running agent turns), or leave it for the next restart.",
+  }),
+  sessionId: z
+    .string()
+    .optional()
+    .openapi({ description: "One server; omitted, every T3 Code server in the organization." }),
+}).openapi("AgentT3PolicyApplyRequest");
+
+const AgentT3PolicyApplyResult = strict({
+  servers: z.array(
+    strict({
+      sessionId: z.string(),
+      projectName: z.string(),
+      outcome: z
+        .enum(["applied", "installed", "unchanged", "skipped", "setting-up", "failed"])
+        .openapi({
+          description:
+            "`applied`: installed and T3 Code restarted onto it. `installed`: applies at the next restart. " +
+            "`unchanged`: already had it. `skipped`: the policy does not fit this server, which keeps its policy. " +
+            "`setting-up`: setup has not finished; the server starts on this policy. `failed`: see `message`.",
+        }),
+      message: z.string().optional(),
+    }),
+  ),
+}).openapi("AgentT3PolicyApplyResult");
+
 const AgentSession = strict({
   id: z.string(),
   repo: z.string(),
@@ -123,7 +152,15 @@ const AgentSession = strict({
     .openapi({
       description:
         "T3 Code sessions: the managed policy last installed on the server (from the organization's defaults at " +
-        "creation, refreshed when Authorize server runs).",
+        "creation, refreshed when Authorize server runs or the policy is rolled out).",
+    }),
+  t3PolicyRestartPending: z
+    .boolean()
+    .optional()
+    .openapi({
+      description:
+        "T3 Code sessions: `t3Policy` is installed but T3 Code has not restarted since, so the server still " +
+        "enforces the policy it started with. Cleared by a restarting rollout or Authorize server.",
     }),
   serviceInstalls: z.array(AgentServiceInstall).optional(),
   agentLinkId: z
@@ -303,6 +340,35 @@ export function registerAgentPaths(ctx: BuildContext) {
         description: "The provider refused to delete the VM",
         content: { "application/json": { schema: strict({ error: z.string() }) } },
       },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/agents/t3-policy/apply",
+    tags: ["Agents"],
+    summary: "Roll the T3 Code policy out to existing servers",
+    description:
+      "Installs the organization's current T3 Code managed policy (or removes the one Infrawrench installed, when " +
+      "there is none) on existing T3 Code servers. T3 Code reads its policy only at startup: `restart: true` " +
+      "restarts it so the policy applies now, interrupting running agent turns, terminals and connected clients; " +
+      "`restart: false` installs the file and marks the session `t3PolicyRestartPending`. Servers that already " +
+      "have the policy, that the policy does not fit, or that are still setting up are not dialled. Requires " +
+      "`resources:execute`.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: AgentT3PolicyApplyRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "What happened on each T3 Code server",
+        content: { "application/json": { schema: AgentT3PolicyApplyResult } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
     },
   });
 
