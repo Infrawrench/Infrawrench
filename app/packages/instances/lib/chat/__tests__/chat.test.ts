@@ -10,6 +10,7 @@ import {
 } from "../format";
 import { checkAgainstResult, parseViewSpec } from "../spec";
 import { QueryError, checkSql } from "../sql";
+import { withRowLimit } from "@infrawrench/server-core/aws-pricing-warehouse/query";
 import { formatCatalog } from "../catalog-text";
 import { MAX_HISTORY_STEP_CHARS, openHistory, openStep, signStep } from "../steps";
 import { toMessages } from "../transcript";
@@ -37,6 +38,32 @@ describe("checkSql", () => {
 
   it("does not mistake a semicolon in a string for a second statement", () => {
     expect(checkSql("SELECT 'a;b'")).toBe("SELECT 'a;b'");
+  });
+});
+
+describe("withRowLimit", () => {
+  it("adds a LIMIT to a query without one at the top level", () => {
+    expect(withRowLimit("SELECT * FROM prices WHERE vcpu = 4", 101)).toBe(
+      "SELECT * FROM prices WHERE vcpu = 4\nLIMIT 101",
+    );
+    expect(withRowLimit("SELECT 1 -- note", 5)).toBe("SELECT 1 -- note\nLIMIT 5");
+    expect(withRowLimit("WITH x AS (SELECT 1 LIMIT 1) SELECT * FROM x", 5)).toBe(
+      "WITH x AS (SELECT 1 LIMIT 1) SELECT * FROM x\nLIMIT 5",
+    );
+    expect(withRowLimit("SELECT 'limit' AS \"union\" FROM t /* offset */", 5)).toMatch(/\nLIMIT 5$/);
+  });
+
+  it("leaves alone a query with its own LIMIT, a set operation, an OFFSET or no rows to limit", () => {
+    for (const sql of [
+      "SELECT * FROM prices ORDER BY hourly_usd LIMIT 10",
+      "SELECT * FROM prices LIMIT 1 BY platform",
+      "SELECT 1 UNION ALL SELECT 2",
+      "SELECT * FROM prices ORDER BY 1 OFFSET 5 ROWS",
+      "DESCRIBE TABLE prices",
+      "SHOW TABLES",
+    ]) {
+      expect(withRowLimit(sql, 5)).toBe(sql);
+    }
   });
 });
 

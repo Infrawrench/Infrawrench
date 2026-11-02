@@ -61,6 +61,49 @@ export function checkSql(raw: string): string {
   return sql;
 }
 
+/**
+ * `sql` with `LIMIT limit` added when it is a query with no `LIMIT` of its
+ * own at the top level. CloudHouse only splits a scan of a big table across
+ * its shards when the query reduces the rows (`GROUP BY`, `DISTINCT` or
+ * `LIMIT`); a plain `SELECT ... WHERE ...` reads every part in one engine,
+ * which took 12 s alone and 50 s beside the other queries of a chat turn on
+ * 2026-11-02, against 2-3 s with a `LIMIT`. The caller keeps at most
+ * `maxRows` rows anyway, so `maxRows + 1` changes no result. A query with a
+ * top-level `UNION`, `INTERSECT`, `EXCEPT` or `OFFSET` is left alone: a
+ * `LIMIT` there would bind to its last part, or not parse.
+ */
+export function withRowLimit(sql: string, limit: number): string {
+  if (!/^\s*(?:(?:--[^\n]*\n|\/\*[\s\S]*?\*\/)\s*)*(select|with)\b/i.test(sql)) return sql;
+  // The text outside strings, quoted names, comments and parentheses.
+  let top = "";
+  let depth = 0;
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i]!;
+    if (c === "'" || c === '"' || c === "`") {
+      for (i++; i < sql.length && sql[i] !== c; i++) if (sql[i] === "\\") i++;
+      top += " ";
+    } else if (c === "-" && sql[i + 1] === "-") {
+      while (i < sql.length && sql[i] !== "\n") i++;
+      top += " ";
+    } else if (c === "/" && sql[i + 1] === "*") {
+      i = sql.indexOf("*/", i + 2);
+      if (i < 0) return sql;
+      i++;
+      top += " ";
+    } else if (c === "(") {
+      depth++;
+    } else if (c === ")") {
+      depth--;
+      top += " ";
+    } else if (depth === 0) {
+      top += c;
+    }
+  }
+  if (/\b(?:limit|union|intersect|except|offset)\b/i.test(top)) return sql;
+  // On a line of its own, after any trailing `--` comment.
+  return `${sql}\nLIMIT ${limit}`;
+}
+
 /** ClickHouse quotes 64-bit integers and decimals in JSON; numbers are numbers here. */
 function isNumeric(type: string): boolean {
   return /^(?:Nullable\()?(?:LowCardinality\()?(?:U?Int\d+|Float\d+|Decimal)/.test(type);
@@ -102,7 +145,7 @@ export async function queryWarehouse(
   config: WarehouseConfig,
   { maxRows = 500, timeoutMs = 25_000 }: { maxRows?: number; timeoutMs?: number } = {},
 ): Promise<QueryResult> {
-  const sql = checkSql(raw);
+  const sql = withRowLimit(checkSql(raw), maxRows + 1);
   const doFetch = config.fetch ?? fetch;
   const url = new URL(config.url || DEFAULT_WAREHOUSE_URL);
   url.searchParams.set("default_format", "JSONCompactEachRowWithNamesAndTypes");
