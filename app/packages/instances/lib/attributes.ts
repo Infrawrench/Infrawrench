@@ -3,7 +3,9 @@ import { msg } from "gt-react";
 /**
  * Labels and grouping for the attributes on price list products: AWS's,
  * Alibaba Cloud's instance type definitions (`CpuCoreCount`, dotted keys for
- * nested fields) and RunPod's GPU and CPU pod fields. Anything not listed here
+ * nested fields), Azure's pricing calculator fields (`cores`, `ram`), Google
+ * Cloud's Compute Engine machine type fields (`guestCpus`, `memoryMb`) and
+ * RunPod's GPU and CPU pod fields. Anything not listed here
  * still shows, under "Other", with its key spelled out, so a field a provider
  * adds later is never hidden.
  *
@@ -56,6 +58,17 @@ const SECTIONS: readonly Section[] = [
       GPUAmount: msg("GPUs"),
       GPUSpec: msg("GPU model"),
       GPUMemorySize: msg("Memory per GPU (GiB)"),
+      // Azure
+      cores: msg("vCPUs"),
+      ram: msg("Memory (GiB)"),
+      isVcpu: msg("Cores are vCPUs"),
+      // Google Cloud
+      guestCpus: msg("vCPUs"),
+      memoryMb: msg("Memory (MB)"),
+      isSharedCpu: msg("Shared core"),
+      architecture: msg("Architecture"),
+      acceleratorType: msg("GPU model"),
+      acceleratorCount: msg("GPUs"),
       // RunPod
       displayName: msg("Name"),
       manufacturer: msg("Manufacturer"),
@@ -96,6 +109,11 @@ const SECTIONS: readonly Section[] = [
       Generation: msg("Generation"),
       flavor: msg("Flavor"),
       groupId: msg("Group"),
+      series: msg("Series"),
+      skuName: msg("SKU name"),
+      productName: msg("Product name"),
+      description: msg("Description"),
+      deprecated: msg("Deprecation status"),
     },
   },
   {
@@ -150,11 +168,18 @@ const SECTIONS: readonly Section[] = [
       LocalStorageCategory: msg("Local disk type"),
       NvmeSupport: msg("NVMe"),
       "SupportedBootModes.SupportedBootMode": msg("Boot modes"),
+      diskSize: msg("Temporary disk (GiB)"),
+      "bundledLocalSsds.partitionCount": msg("Bundled Local SSDs"),
+      "bundledLocalSsds.defaultInterface": msg("Local SSD interface"),
+      maximumPersistentDisks: msg("Most persistent disks"),
+      maximumPersistentDisksSizeGb: msg("Most persistent disk capacity (GB)"),
+      imageSpaceGb: msg("Image space (GB)"),
     },
   },
 ];
 
 const KNOWN: Readonly<Record<string, string>> = {
+  zones: msg("Zones"),
   availabilityzone: msg("Availability zone"),
   marketoption: msg("Market option"),
   pricingUnit: msg("Pricing unit"),
@@ -167,6 +192,17 @@ const KNOWN: Readonly<Record<string, string>> = {
   licenseModel: msg("License"),
 };
 
+/**
+ * How many GPUs the attributes list, under any platform's key: AWS's `gpu`,
+ * Alibaba's `GPUAmount`, Google Cloud's `acceleratorCount`, or Azure's `gpu`,
+ * which reads `8x H100`. 0 when none are listed.
+ */
+export function gpuCount(attrs: Readonly<Record<string, string>>): number {
+  const raw = attrs.gpu ?? attrs.GPUAmount ?? attrs.acceleratorCount ?? "";
+  const n = Number(/^\s*(\d+(?:\.\d+)?)/.exec(raw)?.[1]);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /** Whether these are a RunPod GPU type's attributes, priced per GPU, whose `memoryInGb` is the GPU's. */
 export function isGpuType(attrs: Readonly<Record<string, string>>): boolean {
   return attrs.productFamily === "GPU" && attrs.priceUnit === "GPU-Hour";
@@ -175,12 +211,18 @@ export function isGpuType(attrs: Readonly<Record<string, string>>): boolean {
 /**
  * vCPUs and memory, under whichever keys the platform uses (SageMaker's
  * `vCpu`, OpenSearch's `memoryGib`, Alibaba's `CpuCoreCount` and `MemorySize`,
+ * Azure's `cores` and `ram`, Google Cloud's `guestCpus` and `memoryMb`,
  * RunPod CPU pods' `memoryInGb`). A RunPod GPU type has neither: its
  * `memoryInGb` is GPU memory.
  */
 export function specs(attrs: Readonly<Record<string, string>>): { vcpu?: string; memory?: string } {
-  const vcpu = attrs.vcpu ?? attrs.vCpu ?? attrs.CpuCoreCount;
-  const gib = attrs.memoryGib ?? (attrs.MemorySize ? String(Number(attrs.MemorySize)) : undefined);
+  const vcpu = attrs.vcpu ?? attrs.vCpu ?? attrs.CpuCoreCount ?? attrs.cores ?? attrs.guestCpus;
+  const plain = (n: number) => String(Math.round(n * 100) / 100);
+  const gib =
+    attrs.memoryGib ??
+    (attrs.MemorySize ? String(Number(attrs.MemorySize)) : undefined) ??
+    (attrs.ram ? String(Number(attrs.ram)) : undefined) ??
+    (attrs.memoryMb ? plain(Number(attrs.memoryMb) / 1024) : undefined);
   const memory =
     attrs.memory ??
     (gib ? `${gib} GiB` : undefined) ??
@@ -217,6 +259,8 @@ const VARIANT_LABELS: Readonly<Record<string, string>> = {
   mncu: msg("NCU"),
   networkType: msg("Network"),
   cloudType: msg("Cloud"),
+  priority: msg("Priority"),
+  provisioningModel: msg("Provisioning model"),
 };
 
 /** `dedicatedEbsThroughput` to `Dedicated ebs throughput`. */

@@ -21,7 +21,7 @@ import { CLOUD_IDS } from "@/lib/platforms";
  * `/api/markdown/...` route. The home page is the chat, which has no Markdown
  * form, so agents get every cloud's services there instead.
  *
- * Localized sections: each cloud (`aws`, `alibaba`, `runpod`; see
+ * Localized sections: each cloud (`aws`, `azure`, `gcp`, `alibaba`, `runpod`; see
  * `lib/platforms.ts`), `chat` (conversations), `v` (shared chat views) and
  * `alerts` (email alert links) are page trees under `[locale]`; anything
  * else passes through.
@@ -92,6 +92,12 @@ export const config = {
     "/aws",
     "/aws.md",
     "/aws/:path*",
+    "/azure",
+    "/azure.md",
+    "/azure/:path*",
+    "/gcp",
+    "/gcp.md",
+    "/gcp/:path*",
     "/alibaba",
     "/alibaba.md",
     "/alibaba/:path*",
@@ -107,6 +113,10 @@ export const config = {
     "/:locale/index.md",
     "/:locale/aws.md",
     "/:locale/aws/:path*",
+    "/:locale/azure.md",
+    "/:locale/azure/:path*",
+    "/:locale/gcp.md",
+    "/:locale/gcp/:path*",
     "/:locale/alibaba.md",
     "/:locale/alibaba/:path*",
     "/:locale/runpod.md",

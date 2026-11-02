@@ -5,6 +5,8 @@
  * `compression_table` and every timestamp is Unix seconds.
  */
 
+import { locationName } from "@infrawrench/server-core/aws-pricing-warehouse/regions";
+
 /** The variant keys of EC2 bundles, which don't list their own. */
 const EC2_VARIANT_KEYS = [
   "operatingSystem",
@@ -36,7 +38,10 @@ export interface InstanceFile {
 }
 
 export interface Region {
-  /** The location's name, e.g. `US East (N. Virginia)`, Alibaba's `US (Virginia)`, RunPod's `global`. */
+  /**
+   * The location's name, e.g. `US East (N. Virginia)`, Alibaba's `US (Virginia)`,
+   * Azure's `US East`, Google Cloud's `Council Bluffs, Iowa`, RunPod's `global`.
+   */
   name: string;
   /** e.g. `us-east-1`; missing for locations the price list never gave a code. */
   code?: string;
@@ -149,8 +154,9 @@ export function decodeInstance(file: InstanceFile): DecodedInstance {
   const regions: Region[] = [];
   for (const [loc, pairs] of file.regions) {
     const attrs = Object.fromEntries(pairs.map(([k, v]) => [str(k), str(v)]));
-    // Alibaba's locations are region ids with an English `name`; AWS's are their names already.
-    const region: Region = { name: attrs.name || str(loc) };
+    // Alibaba's and Azure's locations are region ids with an English `name`,
+    // Google Cloud's are ids named from a table; AWS's are their names already.
+    const region: Region = { name: locationName(file.platform, str(loc), attrs) };
     if (attrs.regionCode) region.code = attrs.regionCode;
     if (attrs.locationType) region.type = attrs.locationType;
     regionIndex.set(loc, regions.push(region) - 1);

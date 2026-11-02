@@ -3,7 +3,8 @@ import { msg } from "gt-react";
 /**
  * The clouds the site covers, in the order the site lists them. Each is the
  * first path segment of its pages (`/aws/ec2/m5.large`,
- * `/alibaba/ecs/ecs.g7.large`, `/runpod/pods/NVIDIA%20H100%2080GB%20HBM3`).
+ * `/alibaba/ecs/ecs.g7.large`, `/azure/vms/Standard_D2s_v3`,
+ * `/gcp/compute/n2-standard-2`, `/runpod/pods/NVIDIA%20H100%2080GB%20HBM3`).
  */
 export interface CloudInfo {
   /** As the provider writes its own name. */
@@ -12,6 +13,8 @@ export interface CloudInfo {
 
 export const CLOUDS = {
   aws: { label: "AWS" },
+  azure: { label: "Azure" },
+  gcp: { label: "Google Cloud" },
   alibaba: { label: "Alibaba Cloud" },
   runpod: { label: "RunPod" },
 } as const satisfies Readonly<Record<string, CloudInfo>>;
@@ -138,6 +141,24 @@ export const PLATFORMS: Readonly<Record<string, PlatformInfo>> = {
     summary: msg("Game servers"),
     preferredVariant: { operatingSystem: "Linux", isSpotInstance: "No" },
   },
+  azure: {
+    cloud: "azure",
+    slug: "vms",
+    label: "Virtual Machines",
+    summary: msg("Virtual machines by size"),
+    preferredVariant: { operatingSystem: "Linux", priority: "Regular" },
+    preferredTerm: "Reserved Instance|All Upfront",
+    defaultRegion: "eastus",
+  },
+  gcp: {
+    cloud: "gcp",
+    slug: "compute",
+    label: "Compute Engine",
+    summary: msg("Virtual machines by machine type"),
+    preferredVariant: { provisioningModel: "Standard" },
+    preferredTerm: "Committed Use|No Upfront",
+    defaultRegion: "us-central1",
+  },
   alibaba: {
     cloud: "alibaba",
     slug: "ecs",
@@ -177,7 +198,7 @@ export function cloudOf(platform: string): Cloud {
   return platformInfo(platform)?.cloud ?? "aws";
 }
 
-/** "AWS EC2", "Alibaba Cloud ECS", "RunPod Pods". */
+/** "AWS EC2", "Azure Virtual Machines", "Google Cloud Compute Engine", "RunPod Pods". */
 export function fullLabel(platform: string): string {
   const info = platformInfo(platform);
   return info ? `${CLOUDS[info.cloud].label} ${info.label}` : platform;
@@ -189,7 +210,7 @@ export function platformPath(platform: string): string {
   return info ? `/${info.cloud}/${info.slug}` : `/aws/${platform}`;
 }
 
-/** `/aws/ec2/m5.large`; the name is encoded, since RunPod's have spaces. */
+/** `/aws/ec2/m5.large`; the name is encoded, since RunPod's have spaces (and a few of Azure's trail one). */
 export function instancePath(platform: string, name: string): string {
   return `${platformPath(platform)}/${encodeURIComponent(name)}`;
 }

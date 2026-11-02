@@ -1,5 +1,5 @@
 import { msg } from "gt-react";
-import { isGpuType, specs } from "./attributes";
+import { gpuCount, isGpuType, specs } from "./attributes";
 import { formatMoney } from "./format";
 import type { Translate } from "./i18n/server";
 import { latestAttributes, type InstanceModel } from "./model";
@@ -19,7 +19,7 @@ export function describe(m: InstanceModel, tr: Translate, locale: string): strin
     parts.push(tr(msg("{count, plural, one {# vCPU} other {# vCPUs}}"), { count: Number(vcpu) }));
   }
   if (memory) parts.push(tr(msg("{memory} of memory"), { memory }));
-  const gpus = Number(a.gpu ?? a.GPUAmount);
+  const gpus = gpuCount(a);
   if (gpus > 0) parts.push(tr(msg("{count, plural, one {# GPU} other {# GPUs}}"), { count: gpus }));
   // A RunPod GPU type's own memory; Alibaba gives each GPU's, so it is multiplied out.
   const gpuMemory = gpuType

@@ -25,6 +25,9 @@ import { defaultTermOption, priceHistory, seriesLabel } from "./series";
 /** Where each cloud's prices come from, for the line under an instance's facts. */
 const SOURCES: Readonly<Record<Cloud, string>> = {
   aws: "the AWS Price List bulk API",
+  azure:
+    "the Azure Retail Prices API, with specs from Azure's pricing calculator; Spot and Low Priority prices are variants of a size's price",
+  gcp: "Google Cloud's Cloud Billing Catalog API, worked out from each machine series' per-vCPU, per-GiB and per-GPU rates and each machine type's shape (without bundled Local SSD, OS licenses or sustained use discounts), with specs from the Compute Engine API",
   alibaba: "Alibaba Cloud's ECS price list (the international site)",
   runpod:
     "RunPod's public API; RunPod charges the same in every data center, so every price is in the location `global`",
@@ -295,7 +298,7 @@ export function renderIndexMarkdown(platforms: PlatformSummary[], tr: Translate)
   const out = [
     "# Cloud instance types",
     "",
-    "> Specs and prices for every instance type in AWS's compute-priced services, Alibaba Cloud ECS and RunPod's GPU and CPU pods, in every region, with the full history of both, from each provider's own price lists.",
+    "> Specs and prices for every instance type in AWS's compute-priced services, Azure Virtual Machines, Google Cloud Compute Engine, Alibaba Cloud ECS and RunPod's GPU and CPU pods, in every region, with the full history of both, from each provider's own price lists.",
     "",
     ABOUT,
   ];

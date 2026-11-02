@@ -11,7 +11,7 @@ import { CLOUDS, isCloud } from "@/lib/platforms";
 export const revalidate = 1800;
 
 /**
- * `/aws`, `/alibaba`, `/runpod`: one cloud's services, linking to each
+ * `/aws`, `/azure`, `/gcp`, `/alibaba`, `/runpod`: one cloud's services, linking to each
  * listing. Rendered on first request and cached, like the instance pages (see
  * there).
  */

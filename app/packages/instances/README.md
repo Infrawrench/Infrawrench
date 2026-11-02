@@ -2,7 +2,8 @@
 
 A chat about cloud instance prices on the home page, and one page per instance type, for every platform the bulk pricing data
 covers: AWS (EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune,
-MemoryDB, DAX, SageMaker, EMR and GameLift), Alibaba Cloud ECS, and RunPod's
+MemoryDB, DAX, SageMaker, EMR and GameLift), Azure Virtual Machines, Google
+Cloud Compute Engine, Alibaba Cloud ECS, and RunPod's
 GPU types and CPU pods: specs, current prices in every region, and the full
 history of both. EC2 pages also show spot prices. The clouds and their
 platforms are listed in `lib/platforms.ts`.
@@ -12,25 +13,25 @@ Router on Vite) and served by a Cloudflare Worker.
 
 ## Routes
 
-| Path                                                                                      | What                                                                                                 |
-| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `/`                                                                                       | The chat; `?q=` asks at once, `?draft=` only fills the box (breadcrumb button)                       |
-| `/<cloud>`                                                                                | One cloud's services (`/aws`, `/alibaba`, `/runpod`), with instance-type and family counts           |
-| `/chat/<id>`                                                                              | A conversation, kept in the visitor's browser (`lib/chat/storage.ts`)                                |
-| `/v/<id>`                                                                                 | A table or chart shared from the chat, full window; a follow-up opens `/chat/<id>`                   |
-| `/alerts/<id>`                                                                            | Confirm or stop an email alert (the link in alert emails)                                            |
-| `/<cloud>/<platform>`                                                                     | One service: every family and every instance type in it, with a filter                               |
-| `/<cloud>/<platform>/<instance>`                                                          | The instance page, e.g. `/aws/ec2/m5.large`, `/alibaba/ecs/ecs.g7.large`, `/runpod/pods/NVIDIA%20L4` |
-| `/<locale>/...`                                                                           | Any of the above in `es`, `fr`, `de`, `ja` or `zh` (the desktop app's languages)                     |
-| `/index.md`, `/<cloud>.md`, `/<cloud>/<platform>.md`, `/<cloud>/<platform>/<instance>.md` | Markdown for agents; also served for `Accept: text/markdown`                                         |
-| `/<cloud>/<platform>/<instance>/opengraph-image`                                          | The share card: specs beside the price history (Satori, `next/og`), per language                     |
-| `/sitemap.xml`, `/sitemaps/*.xml`                                                         | Sitemap index, the home and cloud pages and per-platform sitemaps, with hreflang alternates          |
-| `/robots.txt`                                                                             | Allows everything; points at the sitemap                                                             |
-| `/api/prices/<platform>/<instance>/<region>`                                              | One region's full price history, fetched when the visitor switches region (KV platform name)         |
-| `POST /api/chat`                                                                          | One chat turn, streamed as NDJSON                                                                    |
-| `/api/views/<id>`, `POST /api/views/<id>/subscribe`                                       | A saved view with fresh data; start an email alert on it                                             |
-| `/api/alerts/<id>`, `POST /api/alerts/<id>/unsubscribe`                                   | Alert status, confirm and stop; RFC 8058 one-click unsubscribe                                       |
-| `POST /api/internal/notify`                                                               | Called by the sync after a warehouse load; emails subscribers whose view changed                     |
+| Path                                                                                      | What                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                                                                                       | The chat; `?q=` asks at once, `?draft=` only fills the box (breadcrumb button)                                                                                   |
+| `/<cloud>`                                                                                | One cloud's services (`/aws`, `/azure`, `/gcp`, `/alibaba`, `/runpod`), with instance-type and family counts                                                     |
+| `/chat/<id>`                                                                              | A conversation, kept in the visitor's browser (`lib/chat/storage.ts`)                                                                                            |
+| `/v/<id>`                                                                                 | A table or chart shared from the chat, full window; a follow-up opens `/chat/<id>`                                                                               |
+| `/alerts/<id>`                                                                            | Confirm or stop an email alert (the link in alert emails)                                                                                                        |
+| `/<cloud>/<platform>`                                                                     | One service: every family and every instance type in it, with a filter                                                                                           |
+| `/<cloud>/<platform>/<instance>`                                                          | The instance page, e.g. `/aws/ec2/m5.large`, `/azure/vms/Standard_D2s_v3`, `/gcp/compute/n2-standard-2`, `/alibaba/ecs/ecs.g7.large`, `/runpod/pods/NVIDIA%20L4` |
+| `/<locale>/...`                                                                           | Any of the above in `es`, `fr`, `de`, `ja` or `zh` (the desktop app's languages)                                                                                 |
+| `/index.md`, `/<cloud>.md`, `/<cloud>/<platform>.md`, `/<cloud>/<platform>/<instance>.md` | Markdown for agents; also served for `Accept: text/markdown`                                                                                                     |
+| `/<cloud>/<platform>/<instance>/opengraph-image`                                          | The share card: specs beside the price history (Satori, `next/og`), per language                                                                                 |
+| `/sitemap.xml`, `/sitemaps/*.xml`                                                         | Sitemap index, the home and cloud pages and per-platform sitemaps, with hreflang alternates                                                                      |
+| `/robots.txt`                                                                             | Allows everything; points at the sitemap                                                                                                                         |
+| `/api/prices/<platform>/<instance>/<region>`                                              | One region's full price history, fetched when the visitor switches region (KV platform name)                                                                     |
+| `POST /api/chat`                                                                          | One chat turn, streamed as NDJSON                                                                                                                                |
+| `/api/views/<id>`, `POST /api/views/<id>/subscribe`                                       | A saved view with fresh data; start an email alert on it                                                                                                         |
+| `/api/alerts/<id>`, `POST /api/alerts/<id>/unsubscribe`                                   | Alert status, confirm and stop; RFC 8058 one-click unsubscribe                                                                                                   |
+| `POST /api/internal/notify`                                                               | Called by the sync after a warehouse load; emails subscribers whose view changed                                                                                 |
 
 Pages are ISR, revalidated every 30 minutes.
 

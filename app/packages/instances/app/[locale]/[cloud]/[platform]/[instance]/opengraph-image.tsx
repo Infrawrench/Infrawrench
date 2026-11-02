@@ -2,7 +2,7 @@ import { msg } from "gt-react";
 import { ImageResponse } from "next/og";
 // The logo, 80px (the card draws it at 40), inlined as a data URL at build time.
 import logo from "./og-logo.png?inline";
-import { isGpuType, specs } from "@/lib/attributes";
+import { gpuCount, isGpuType, specs } from "@/lib/attributes";
 import { formatDate, formatMoney, leaseLabel } from "@/lib/format";
 import { isLocale } from "@/lib/i18n/locales";
 import { getTranslator, type Translate } from "@/lib/i18n/server";
@@ -157,7 +157,8 @@ function specRows(m: InstanceModel, tr: Translate): [string, string][] {
   const known = (v: string | undefined) => (v && v !== "NA" && v !== "0" ? v : undefined);
   const unit = (v: string | undefined, u: string) => (known(v) ? `${Number(v)} ${u}` : undefined);
   const gpuCounts = [a.maxGpuCountSecureCloud, a.maxGpuCountCommunityCloud].map(Number);
-  // AWS's keys, then Alibaba's, then RunPod's: a platform only has its own.
+  const gpus = gpuCount(a);
+  // AWS's keys, then Alibaba's, Azure's, Google Cloud's and RunPod's: a platform only has its own.
   const rows: [string, string | undefined][] = [
     [tr(msg("vCPUs")), vcpu],
     [tr(msg("Memory")), memory],
@@ -169,8 +170,12 @@ function specRows(m: InstanceModel, tr: Translate): [string, string][] {
           ? `${Number(a.GPUAmount) * Number(a.GPUMemorySize)} GiB`
           : undefined,
     ],
-    [tr(msg("GPUs")), known(a.gpu ?? a.GPUAmount)],
-    [tr(msg("GPU model")), known(a.GPUSpec)],
+    [tr(msg("GPUs")), gpus > 0 ? String(gpus) : undefined],
+    // Azure writes its `gpu` as `8x H100`.
+    [
+      tr(msg("GPU model")),
+      known(a.GPUSpec ?? a.acceleratorType ?? a.gpu?.replace(/^\s*\d+\s*x\s*/i, "")),
+    ],
     [tr(msg("Manufacturer")), known(a.manufacturer)],
     [
       tr(msg("Most GPUs per pod")),
@@ -178,9 +183,12 @@ function specRows(m: InstanceModel, tr: Translate): [string, string][] {
     ],
     [tr(msg("Processor")), known(a.physicalProcessor ?? a.physicalCpu ?? a.PhysicalProcessorModel)],
     [tr(msg("Network")), known(a.networkPerformance)],
-    [tr(msg("Storage")), known(a.storage)],
+    [tr(msg("Storage")), known(a.storage) ?? unit(a.diskSize, "GiB")],
     [tr(msg("Clock speed")), known(a.clockSpeed) ?? unit(a.CpuSpeedFrequency, "GHz")],
-    [tr(msg("Architecture")), known(a.processorArchitecture ?? a.CpuArchitecture)],
+    [
+      tr(msg("Architecture")),
+      known(a.processorArchitecture ?? a.CpuArchitecture ?? a.architecture),
+    ],
   ];
   return rows.filter((r): r is [string, string] => r[1] !== undefined).slice(0, 6);
 }
@@ -223,7 +231,8 @@ export default async function Image({
   const lastPrice = [...series[0]!.points].reverse().find(([, v]) => v !== null)?.[1] ?? undefined;
   const regionsOffering = m.current.filter((pairs) => pairs.length > 0).length;
   const attrs = latestAttributes(m.attributes);
-  const family = attrs.instanceFamily ?? attrs.InstanceCategory ?? attrs.displayName;
+  const family =
+    attrs.instanceFamily ?? attrs.InstanceCategory ?? attrs.series ?? attrs.displayName;
   const provider = CLOUDS[cloudOf(m.platform)].label;
   // RunPod: one price everywhere; the GPU's own list of data centers says where it is stocked.
   const dataCenters = attrs.dataCenters?.split(",").filter(Boolean).length ?? 0;

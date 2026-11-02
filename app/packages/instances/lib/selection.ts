@@ -104,7 +104,16 @@ export function attributeTimelines(
     const value = local.has(c.key) ? local.get(c.key)! : (global.get(c.key) ?? null);
     const steps = out.get(c.key) ?? [];
     const last = steps.at(-1);
-    if (!last ? value !== null : last.value !== value) steps.push({ at: c.at, value, regional });
+    if (last && last.at === c.at) {
+      // A regional value from the same moment replaces the global one rather
+      // than following it (Google Cloud's `zones`, listed once for one region
+      // and overridden for every other when the type is first listed).
+      if (value === null && steps.length === 1) steps.pop();
+      else if (steps.at(-2)?.value === value) steps.pop();
+      else steps[steps.length - 1] = { at: c.at, value, regional };
+    } else if (!last ? value !== null : last.value !== value) {
+      steps.push({ at: c.at, value, regional });
+    }
     out.set(c.key, steps);
   }
   return out;

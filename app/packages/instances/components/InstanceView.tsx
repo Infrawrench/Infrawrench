@@ -45,6 +45,8 @@ const REGION_GROUPS: Readonly<Record<string, string>> = {
   "AWS Region": msg("AWS Regions"),
   "AWS Local Zone": msg("Local Zones"),
   "AWS Wavelength Zone": msg("Wavelength Zones"),
+  "Azure Region": msg("Azure regions"),
+  "Google Cloud Region": msg("Google Cloud regions"),
   "Alibaba Cloud Region": msg("Alibaba Cloud regions"),
 };
 const GROUP_ORDER = Object.keys(REGION_GROUPS);

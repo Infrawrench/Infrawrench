@@ -51,7 +51,9 @@ interface UiMessage {
 /** Product names, so never translated. The other clouds come in among AWS's services. */
 const SERVICES = [
   "Amazon EC2",
+  "Azure Virtual Machines",
   "RunPod GPUs",
+  "Google Compute Engine",
   "Amazon RDS",
   "Alibaba Cloud ECS",
   "ElastiCache",
@@ -132,7 +134,7 @@ function Suggestions({ onPick }: { onPick: (text: string) => void }) {
     { icon: TableIcon, text: gt("Build me a table of RunPod GPUs by price per GB of GPU memory") },
     {
       icon: BarChartIcon,
-      text: gt("Compare 4 vCPU, 16 GiB instances on AWS and Alibaba Cloud in Virginia"),
+      text: gt("Compare 4 vCPU, 16 GiB instances on AWS, Azure and Google Cloud in Virginia"),
     },
   ];
   return (
@@ -409,7 +411,7 @@ export function ChatHome() {
       </h1>
       <p className="mx-auto mt-3 max-w-xl text-center text-ink-2">
         {gt(
-          "Ask in plain language about AWS, Alibaba Cloud and RunPod. Answers come from each provider's own price lists for every region, with history, as tables and charts you can share.",
+          "Ask in plain language about AWS, Azure, Google Cloud, Alibaba Cloud and RunPod. Answers come from each provider's own price lists for every region, with history, as tables and charts you can share.",
         )}
       </p>
       <div className="mt-8">

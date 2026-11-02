@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeAttributes, decodeInstance } from "../decode";
 import { describe as describeInstance } from "../describe";
-import { specs } from "../attributes";
+import { gpuCount, specs } from "../attributes";
 import { commitmentLabel, effectiveHourly, formatPrice, leaseMonths, termLabel } from "../format";
 import { rebaseToUsd } from "../fx";
 import { translatorFor } from "../i18n/server";
@@ -582,5 +582,148 @@ describe("other clouds", () => {
     });
     // A GPU type's memoryInGb is the GPU's own.
     expect(specs({ memoryInGb: "80", productFamily: "GPU", priceUnit: "GPU-Hour" })).toEqual({});
+  });
+
+  it("puts Azure and Google Cloud under their own clouds", () => {
+    expect(instancePath("azure", "Standard_D2s_v3")).toBe("/azure/vms/Standard_D2s_v3");
+    expect(instancePath("gcp", "n2-standard-2")).toBe("/gcp/compute/n2-standard-2");
+    expect(platformAt("gcp", "compute")).toBe("gcp");
+    expect(fullLabel("azure")).toBe("Azure Virtual Machines");
+    expect(fullLabel("gcp")).toBe("Google Cloud Compute Engine");
+  });
+
+  it("parses Azure sizes by series and vCPUs", () => {
+    expect(parseName("Standard_D2s_v3")).toMatchObject({ family: "Dsv3", size: "2" });
+    expect(parseName("Standard_E64-16as_v6")).toMatchObject({ family: "Easv6", size: "64-16" });
+    expect(parseName("Standard_NC24ads_A100_v4")).toMatchObject({
+      family: "NCads_A100_v4",
+      size: "24",
+    });
+    expect(parseName("Standard_B1ls")).toMatchObject({ family: "Bls", size: "1" });
+    expect(parseName("SPOT_Plus_Usage")).toBeNull();
+    expect(
+      relatives("Standard_D4s_v5", [
+        "Standard_D2s_v5",
+        "Standard_D16s_v5",
+        "Standard_D4s_v5",
+        "Standard_D4ds_v5",
+        "Standard_D8as_v5",
+        "Standard_D4s_v3",
+      ]),
+    ).toEqual({
+      family: ["Standard_D2s_v5", "Standard_D4s_v5", "Standard_D16s_v5"],
+      related: [
+        { family: "Dasv5", name: "Standard_D8as_v5" },
+        { family: "Ddsv5", name: "Standard_D4ds_v5" },
+      ],
+    });
+    expect(
+      familiesOf(["Standard_D2_v2_Promo", "Standard_D2s_v3", "Standard_D16s_v3"]).map((f) => [
+        f.label,
+        f.instances,
+      ]),
+    ).toEqual([
+      ["Dsv3", ["Standard_D2s_v3", "Standard_D16s_v3"]],
+      ["Dv2 (Promo)", ["Standard_D2_v2_Promo"]],
+    ]);
+  });
+
+  it("parses Google Cloud machine types by series, type and vCPUs", () => {
+    expect(parseName("n2-standard-2")).toMatchObject({ family: "n2-standard", size: "2" });
+    expect(parseName("a2-highgpu-1g")).toMatchObject({ family: "a2-highgpu", size: "1g" });
+    expect(parseName("e2-micro")).toMatchObject({ family: "e2", size: "micro" });
+    expect(parseName("m2-ultramem2x-96")).toMatchObject({ family: "m2-ultramem2x", size: "96" });
+    expect(
+      familiesOf(["c3-standard-4-lssd", "c3-standard-88", "c3-standard-8"]).map((f) => [
+        f.label,
+        f.instances,
+      ]),
+    ).toEqual([
+      ["c3-standard", ["c3-standard-8", "c3-standard-88"]],
+      ["c3-standard (lssd)", ["c3-standard-4-lssd"]],
+    ]);
+    expect(
+      relatives("n2-standard-4", [
+        "n2-standard-2",
+        "n2-standard-4",
+        "n2-highmem-4",
+        "n2d-standard-8",
+      ]).related,
+    ).toEqual([
+      { family: "n2-highmem", name: "n2-highmem-4" },
+      { family: "n2d-standard", name: "n2d-standard-8" },
+    ]);
+    // The other clouds' names are not mistaken for these.
+    expect(parseName("cpu3c-2-4")).toMatchObject({ family: "cpu3c" });
+    expect(parseName("c8i-flex.16xlarge")).toMatchObject({ family: "c8i-flex" });
+  });
+
+  it("reads Azure's and Google Cloud's specs", () => {
+    expect(specs({ cores: "2", ram: "8.0" })).toEqual({ vcpu: "2", memory: "8 GiB" });
+    expect(specs({ guestCpus: "12", memoryMb: "87040" })).toEqual({
+      vcpu: "12",
+      memory: "85 GiB",
+    });
+    expect(gpuCount({ gpu: "8x H100" })).toBe(8);
+    expect(gpuCount({ acceleratorCount: "2" })).toBe(2);
+    expect(gpuCount({})).toBe(0);
+  });
+
+  it("names Google Cloud's commitments", () => {
+    const cud = (lease: string) => ({
+      lease,
+      offeringClass: "Committed Use",
+      purchaseOption: "No Upfront",
+    });
+    expect(commitmentLabel(cud("1yr"), en)).toBe("1-year commitment");
+    expect(termLabel(cud("3yr"), en)).toBe("Committed use discount");
+  });
+
+  it("lets a region's value replace the global one listed at the same moment", () => {
+    const zones = attributeTimelines(
+      [
+        { at: 100, key: "zones", value: "asia-east1-c", region: null },
+        { at: 100, key: "zones", value: "us-central1-a,us-central1-b", region: 1 },
+        { at: 200, key: "zones", value: "us-central1-a", region: 1 },
+      ],
+      1,
+    ).get("zones");
+    expect(zones).toEqual([
+      { at: 100, value: "us-central1-a,us-central1-b", regional: true },
+      { at: 200, value: "us-central1-a", regional: true },
+    ]);
+  });
+
+  it("names Google Cloud's regions, which its bundle gives by code alone", () => {
+    const gcp = decodeInstance({
+      compression_table: [
+        "us-central1",
+        "regionCode",
+        "locationType",
+        "Google Cloud Region",
+        "Standard",
+      ],
+      platform: "gcp",
+      offer: "GCPCompute",
+      name: "n2-standard-2",
+      variant_keys: ["provisioningModel"],
+      regions: [
+        [
+          0,
+          [
+            [1, 0],
+            [2, 3],
+          ],
+        ],
+      ],
+      variants: [[4]],
+      reserved_terms: [],
+      instance: [[], [], 0.1, [[1700000000, 0, 0]], [], 1700000000, null],
+    });
+    expect(gcp.regions[0]).toEqual({
+      name: "Council Bluffs, Iowa",
+      code: "us-central1",
+      type: "Google Cloud Region",
+    });
   });
 });

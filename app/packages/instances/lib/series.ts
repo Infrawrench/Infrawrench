@@ -31,8 +31,9 @@ export function defaultTermOption(m: InstanceModel): string {
 /**
  * The terms shown beside the on-demand price for a reserved option, shortest
  * lease first: every lease when there are at most three (AWS's 1 and 3 years,
- * RunPod's 3 and 6 months), else the shortest, 1 year and 3 years (Alibaba
- * subscriptions run from 1 month to 5 years). The rest are in the table of
+ * RunPod's 3 and 6 months, Azure's 1, 3 and 5 years), else the shortest, 1
+ * year and 3 years (Alibaba subscriptions run from 1 month to 5 years, some
+ * Azure reservations to 10). The rest are in the table of
  * every term.
  */
 export function headlineTerms(m: Pick<InstanceModel, "terms">, termOption: string): number[] {
