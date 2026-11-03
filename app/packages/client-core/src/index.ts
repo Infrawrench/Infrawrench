@@ -1018,6 +1018,8 @@ export * from "./jit-access";
 export * from "./credential-hygiene";
 export * from "./credits";
 export * from "./commitments";
+// Saved commitment reports: metric definitions, bucket assembly, CSV.
+export * from "./commitment-reports";
 // What the actions people took actually saved, against a pre-action baseline.
 export * from "./realized-savings";
 // Status lifecycle, detected dates and saved views over every savings finder.

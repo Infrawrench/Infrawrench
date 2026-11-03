@@ -81,6 +81,7 @@ Two of these facts raise alerts of their own — see
 
 ## Everywhere else
 
+- **Reports over time**: [commitment reports](./commitment-reports.md) save coverage, utilization, savings and waste per day, week, month or quarter, filtered and split the way you need, with CSV export and sharing.
 - **CLI** — `infrawrench commitments` prints the holdings table, coverage range and planner recommendations; `--json` is built for a weekly cron that checks for commitments expiring inside your renewal horizon or utilization sagging.
 - **Mobile**, a read-only Commitments section on the **Commitments** tab of the Costs screen.
 - **API / MCP** — `GET /api/org/{orgId}/commitments` (permission `costs:read`), and the `get_commitments` tool for AI assistants.

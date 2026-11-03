@@ -682,6 +682,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_cost_report`               | by id     |                                                      |
 | `infrawrench_resource_report`           | by id     | Columns are ids: `core:`, `field:`, `tag:`, `cost:`  |
 | `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
+| `infrawrench_commitment_report`         | by id     | Files into report folders; `date_preset` or dates    |
 | `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
 | `infrawrench_cost_forecast`             | composite | `<report-id>/<forecast-id>`; one default per report  |
 | `infrawrench_cost_report_anomaly_alert` | by report | One per report; import by the report's id            |
