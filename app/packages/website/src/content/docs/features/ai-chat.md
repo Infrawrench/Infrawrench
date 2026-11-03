@@ -48,6 +48,7 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 - **The web** — `web_search` and `web_fetch`, so the agent can check current documentation instead of relying on training data. Chat-only; see [Reading the web](#reading-the-web).
 - **Questions** — `ask_question`, so the agent can pause for a choice from a list (with an Other field) or a free-text answer instead of asking in the composer. Chat-only; see [Asking you a question](#asking-you-a-question).
 - **Costs & budgets** — `query_costs` for spend questions ("what did we spend on AWS last month?"), `list_cost_dimension_values`, `get_cost_status`, and budget CRUD (`list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`). These enforce the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md). See [Cloud costs](./cloud-costs.md).
+- **Instance pricing** — `get_instance_pricing_schema` and `query_instance_pricing` run read-only SQL over the public instance price lists (AWS, Azure, Google Cloud, Alibaba Cloud, RunPod) and their history. No permission: the data is not the organization's. For this organization's own spend, use `query_costs`. For a short comparison across more providers with no history, use the [price catalog](./price-catalog.md) tools. See [Instance pricing SQL API](../team-and-billing/instance-pricing-api.md).
 
 - **Canvases**: `list_cost_canvases`, `get_cost_canvas`, `run_cost_canvas`, `write_cost_canvas`, `delete_cost_canvas`. Describe a report and the agent builds it as a saved canvas of KPI tiles, charts, tables, budgets, anomalies and narrative that refreshes without the agent. A conversation started from the Canvases page is tied to that canvas, so "split the table by region" edits it. See [Canvases](./ai-canvas.md).
 
@@ -55,7 +56,7 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 
 Two tools let the agent look things up instead of guessing from training data. Like `sleep`, they are chat-only — the [MCP server](./mcp.md) does not expose them, because an MCP client already runs inside a host with its own web access.
 
-- **`web_search`** — asks a question and gets back a summary with source links. Use it for anything that changes: current provider pricing and quotas, a changelog or deprecation notice, an unfamiliar error string, the present shape of a third-party API.
+- **`web_search`** — asks a question and gets back a summary with source links. Use it for anything that changes: provider quotas, pricing the instance pricing tools do not cover, a changelog or deprecation notice, an unfamiliar error string, the present shape of a third-party API.
 - **`web_fetch`** — reads one URL as text. HTML is converted to Markdown and JSON is pretty-printed. It is **GET only** and cannot submit anything.
 
 Both are `read`-tier, so they usually run without an approval prompt. Ask "is the instance type I'm using still current?" and the agent searches, reads the page it finds, and answers with links you can check.

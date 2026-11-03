@@ -99,7 +99,8 @@ export interface ToolDefinition {
    * so the two surfaces can't drift apart.
    *
    * `null` means the tool exposes no organization data at all (static plugin
-   * catalogs) and is safe for any authenticated member. It is deliberately
+   * catalogs, the public instance pricing warehouse) and is safe for any
+   * authenticated member. It is deliberately
    * required rather than optional so a new tool cannot silently default to
    * ungated.
    */
