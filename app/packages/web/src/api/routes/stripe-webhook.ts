@@ -6,6 +6,7 @@ import {
 } from "@infrawrench/server-core/billing/capacity-slots";
 import { db } from "../../db/client";
 import { subscriptions } from "../../db/schema";
+import { reportPaidCheckout } from "../../services/revnu-checkout";
 import { getStripe, getStripeWebhookSecret } from "../../services/stripe";
 import type Stripe from "stripe";
 
@@ -99,9 +100,7 @@ app.post("/", async (c) => {
         const session = event.data.object as Stripe.Checkout.Session;
         if (isPaidCapacitySlotSession(session)) {
           await grantCapacitySlots(stripe, session);
-          break;
-        }
-        if (session.customer && session.subscription) {
+        } else if (session.customer && session.subscription) {
           const sub = await stripe.subscriptions.retrieve(session.subscription as string);
           await db
             .update(subscriptions)
@@ -114,6 +113,12 @@ app.post("/", async (c) => {
               updatedAt: new Date(),
             })
             .where(eq(subscriptions.stripeCustomerId, session.customer as string));
+        }
+        // A redirect to the success URL is not a purchase. Delayed methods
+        // report `completed` while unpaid and settle on `async_payment_succeeded`.
+        // Refunds stay counted, so `charge.refunded` does not report a reversal.
+        if (session.payment_status === "paid") {
+          await reportPaidCheckout(session, event.created);
         }
         break;
       }

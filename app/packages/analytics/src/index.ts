@@ -1,5 +1,19 @@
 import posthog, { type CaptureResult, type Properties } from "posthog-js";
 import { visitorNeedsConsent } from "./region";
+import {
+  REVNU_GOOGLE_CONSENT,
+  revnuAnonymousId,
+  revnuConsentForAnalytics,
+  revnuParentCookie,
+  type RevnuConsent,
+} from "./revnu";
+
+export {
+  REVNU_GOOGLE_CONSENT,
+  revnuAnonymousId,
+  revnuConsentForAnalytics,
+  revnuParentCookie,
+} from "./revnu";
 
 export { countryNeedsConsent, parseTraceCountry } from "./region";
 
@@ -44,6 +58,7 @@ const UI_HOST = "https://us.posthog.com";
 let enabled = false;
 let promptVisible = false;
 const promptListeners = new Set<() => void>();
+const revnuBinders = new Set<() => void>();
 let identity: { id: string; properties: Properties } | null = null;
 let organization: string | null = null;
 let appliedOrganization: string | null = null;
@@ -93,17 +108,31 @@ function applyIdentity(): void {
   }
 }
 
+function notifyRevnuBinders(): void {
+  for (const binder of revnuBinders) {
+    try {
+      binder();
+    } catch {
+      // A measurement listener must not break the analytics prompt.
+    }
+  }
+}
+
 async function settleConsent(): Promise<void> {
-  if (posthog.get_explicit_consent_status() !== "pending") {
+  try {
+    if (posthog.get_explicit_consent_status() !== "pending") {
+      applyIdentity();
+      return;
+    }
+    if (await visitorNeedsConsent()) {
+      setPrompt(true);
+      return;
+    }
+    posthog.opt_in_capturing({ captureEventName: false });
     applyIdentity();
-    return;
+  } finally {
+    notifyRevnuBinders();
   }
-  if (await visitorNeedsConsent()) {
-    setPrompt(true);
-    return;
-  }
-  posthog.opt_in_capturing({ captureEventName: false });
-  applyIdentity();
 }
 
 /** Starts PostHog once per page. Safe to call during SSR, where it does nothing. */
@@ -177,6 +206,7 @@ export function acceptAnalytics(): void {
   if (!enabled || posthog.get_explicit_consent_status() === "granted") return;
   posthog.opt_in_capturing();
   applyIdentity();
+  notifyRevnuBinders();
 }
 
 export function declineAnalytics(): void {
@@ -184,6 +214,7 @@ export function declineAnalytics(): void {
   if (!enabled || posthog.get_explicit_consent_status() === "denied") return;
   posthog.opt_out_capturing();
   appliedOrganization = null;
+  notifyRevnuBinders();
 }
 
 /** Ties events to the signed-in user. Held until consent if it has not been given yet. */
@@ -209,4 +240,74 @@ export function resetAnalytics(): void {
   posthog.reset();
   if (status === "granted") posthog.opt_in_capturing({ captureEventName: false });
   else if (status === "denied") posthog.opt_out_capturing();
+  notifyRevnuBinders();
+}
+
+export interface RevnuConsentSnapshot {
+  consentState: RevnuConsent;
+  anonymousId: string | null;
+  googleAdUserData: "unknown";
+  googleAdPersonalization: "unknown";
+}
+
+function analyticsConsentState(): "granted" | "denied" | "pending" | "inactive" {
+  if (!enabled) return "inactive";
+  const status = posthog.get_explicit_consent_status();
+  if (status === "granted" || status === "denied" || status === "pending") return status;
+  return "pending";
+}
+
+function readTagAnonymousId(): string | null {
+  const revnu = window.revnu;
+  if (!revnu) return null;
+  try {
+    return (
+      revnuAnonymousId(revnu.getContext?.().anonymousId) ?? revnuAnonymousId(revnu.anonymousId)
+    );
+  } catch {
+    return revnuAnonymousId(revnu.anonymousId);
+  }
+}
+
+/**
+ * Mirror the analytics answer onto the Revnu tag. With no PostHog key the
+ * consent manager never runs, so the tag is granted instead of left pending.
+ * Call this only from the website and the web app. The instances site does not.
+ */
+export function bindRevnuToAnalyticsConsent(options?: {
+  onChange?: (snapshot: RevnuConsentSnapshot) => void;
+}): () => void {
+  if (typeof window === "undefined") return () => {};
+  const apply = () => {
+    const consentState = revnuConsentForAnalytics(analyticsConsentState());
+    const beforeDenial = readTagAnonymousId();
+    window.revnu?.consent?.(consentState);
+    window.revnu?.googleConsent?.(REVNU_GOOGLE_CONSENT);
+    const anonymousId = consentState === "denied" ? beforeDenial : readTagAnonymousId();
+    const cookie = revnuParentCookie(
+      consentState,
+      anonymousId,
+      window.location.hostname,
+      window.location.protocol,
+    );
+    if (cookie) document.cookie = cookie;
+    options?.onChange?.({
+      consentState,
+      anonymousId,
+      googleAdUserData: "unknown",
+      googleAdPersonalization: "unknown",
+    });
+  };
+  revnuBinders.add(apply);
+  apply();
+  return () => {
+    revnuBinders.delete(apply);
+  };
+}
+
+/** Status pages do not run analytics. Keep the tag pending so it records nothing. */
+export function holdRevnuWithoutAnalytics(): void {
+  if (typeof window === "undefined") return;
+  window.revnu?.consent?.("pending");
+  window.revnu?.googleConsent?.(REVNU_GOOGLE_CONSENT);
 }

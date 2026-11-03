@@ -16,6 +16,8 @@ import {
   getStripeBuildPriceId,
   getStripeCapacitySlotPriceId,
 } from "../../services/stripe";
+import { parseMeasurement } from "../../services/revnu";
+import { refreshUnreportedConsent, saveCheckoutHandoff } from "../../services/revnu-checkout";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
@@ -115,9 +117,11 @@ app.post("/checkout", async (c) => {
   const priceId = getStripePriceId();
 
   const customerId = await ensureStripeCustomer(c.get("organizationId"), session.email);
+  const orgId = c.get("organizationId");
+  const measurement = measurementFromBody(await c.req.json().catch(() => ({})));
 
   const appUrl = process.env["APP_URL"] ?? "http://localhost:3000";
-  const billingUrl = `${appUrl}/org/${c.get("organizationId")}/settings/billing`;
+  const billingUrl = `${appUrl}/org/${orgId}/settings/billing`;
   const chatPriceId = getStripeChatPriceId();
   const buildPriceId = getStripeBuildPriceId();
   const checkoutSession = await stripe.checkout.sessions.create({
@@ -129,10 +133,23 @@ app.post("/checkout", async (c) => {
       ...(chatPriceId ? [{ price: chatPriceId }] : []),
       ...(buildPriceId ? [{ price: buildPriceId }] : []),
     ],
+    // organizationId lets a later paid webhook find this checkout. The Revnu
+    // visitor id is a spare field; consent is stored on our row, not here.
+    metadata: {
+      organizationId: orgId,
+      ...(measurement.anonymousId ? { revnu_anonymous_id: measurement.anonymousId } : {}),
+    },
     success_url: `${billingUrl}?success=true`,
     cancel_url: billingUrl,
   });
 
+  if (checkoutSession.id) {
+    await saveCheckoutHandoff({
+      organizationId: orgId,
+      stripeCheckoutSessionId: checkoutSession.id,
+      measurement,
+    });
+  }
   if (!checkoutSession.url) return c.json({ error: "Failed to create checkout session" }, 500);
   return c.json({ url: checkoutSession.url });
 });
@@ -185,6 +202,7 @@ app.post("/capacity/checkout", async (c) => {
 
   const appUrl = process.env["APP_URL"] ?? "http://localhost:3000";
   const billingUrl = `${appUrl}/org/${orgId}/settings/billing`;
+  const measurement = measurementFromBody(raw);
   // `kind` is what the webhook matches on. Without it a one-time payment is
   // indistinguishable from any other and the seats never get granted.
   const metadata = { organizationId: orgId, kind: "capacity_slot" };
@@ -201,17 +219,48 @@ app.post("/capacity/checkout", async (c) => {
     // A $200 purchase needs a document for the org's own books; subscription
     // invoices come for free, one-time payments do not unless asked for.
     invoice_creation: { enabled: true },
-    metadata,
+    metadata: {
+      ...metadata,
+      ...(measurement.anonymousId ? { revnu_anonymous_id: measurement.anonymousId } : {}),
+    },
     // Mirrored onto the PaymentIntent so `charge.refunded` (which carries the
-    // payment intent, not the session) can still be traced back.
+    // payment intent, not the session) can still be traced back. The visitor
+    // id stays on the session: a refund is not a new purchase.
     payment_intent_data: { metadata },
     success_url: `${billingUrl}?capacity=purchased`,
     cancel_url: billingUrl,
   });
 
+  if (checkoutSession.id) {
+    await saveCheckoutHandoff({
+      organizationId: orgId,
+      stripeCheckoutSessionId: checkoutSession.id,
+      measurement,
+    });
+  }
   if (!checkoutSession.url) return c.json({ error: "Failed to create checkout session" }, 500);
   return c.json({ url: checkoutSession.url });
 });
+
+/**
+ * POST /api/billing/measurement-consent
+ *
+ * A visitor changed analytics consent after a checkout session was opened and
+ * before it was paid. Update that checkout's saved choice. Reported purchases
+ * are left as they were sent.
+ */
+app.post("/measurement-consent", async (c) => {
+  requirePermission(c, "billing:write");
+  const measurement = measurementFromBody(await c.req.json().catch(() => ({})));
+  const updated = await refreshUnreportedConsent(c.get("organizationId"), measurement);
+  return c.json({ updated });
+});
+
+function measurementFromBody(raw: unknown) {
+  if (!raw || typeof raw !== "object" || !("measurement" in raw))
+    return parseMeasurement(undefined);
+  return parseMeasurement((raw as { measurement: unknown }).measurement);
+}
 
 /** POST /api/billing/portal */
 app.post("/portal", async (c) => {

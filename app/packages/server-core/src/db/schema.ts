@@ -2818,6 +2818,42 @@ export const capacitySlots = pgTable(
   }),
 );
 
+/**
+ * One row per Stripe Checkout Session that might become a Revnu purchase.
+ *
+ * Written when checkout starts, read back from the signed webhook once Stripe
+ * says the session is paid. `reportedAt` is set only after Revnu accepts the
+ * event, so a redelivery reuses this row instead of a later browser session.
+ * Consent stays here: it is not copied into Stripe metadata.
+ */
+export const revnuCheckoutHandoffs = pgTable(
+  "revnu_checkout_handoffs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    stripeCheckoutSessionId: text("stripe_checkout_session_id").notNull(),
+    /** Opaque Revnu visitor id (`ra_` + 32 hex). Null when the browser had none. */
+    anonymousId: text("anonymous_id"),
+    /** "granted" | "denied" | "pending". Null when the visitor never answered. */
+    consentState: text("consent_state"),
+    /** "granted" | "denied" | "unknown". Null when this checkout recorded none. */
+    googleAdUserData: text("google_ad_user_data"),
+    googleAdPersonalization: text("google_ad_personalization"),
+    /** Set when Revnu accepts the purchase event. Retries must not POST again. */
+    reportedAt: timestamp("reported_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionUnique: uniqueIndex("revnu_checkout_handoffs_session_unique").on(
+      t.stripeCheckoutSessionId,
+    ),
+    orgAnonIdx: index("revnu_checkout_handoffs_org_anon_idx").on(t.organizationId, t.anonymousId),
+  }),
+);
+
 export const invitations = pgTable(
   "invitations",
   {

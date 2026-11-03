@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useGT } from "gt-react";
 import type { BillingStatus, CapacitySlot } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
+import { readRevnuMeasurement } from "./revnu-measurement.js";
 
 /**
  * Largest quantity one purchase accepts. Mirrors `MAX_SLOTS_PER_PURCHASE` in
@@ -44,7 +45,11 @@ export function BillingSection() {
     setLoading(true);
     setError(null);
     try {
-      const { url } = await api.post<{ url: string }>(`/api/org/${orgId}/billing/checkout`);
+      const measurement = readRevnuMeasurement();
+      const { url } = await api.post<{ url: string }>(
+        `/api/org/${orgId}/billing/checkout`,
+        measurement ? { measurement } : undefined,
+      );
       openExternal(url, { sameTab: true });
       setLoading(false);
     } catch (e) {
@@ -70,9 +75,10 @@ export function BillingSection() {
     setLoading(true);
     setError(null);
     try {
+      const measurement = readRevnuMeasurement();
       const { url } = await api.post<{ url: string }>(
         `/api/org/${orgId}/billing/capacity/checkout`,
-        { quantity: slotQuantity },
+        { quantity: slotQuantity, ...(measurement ? { measurement } : {}) },
       );
       openExternal(url, { sameTab: true });
       setLoading(false);

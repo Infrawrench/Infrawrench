@@ -937,6 +937,7 @@ export const REQUIRED_PERMISSION: Record<string, string | null> = {
   // billing
   "GET /billing/status": "billing:read",
   "POST /billing/checkout": "billing:write",
+  "POST /billing/measurement-consent": "billing:write",
   "POST /billing/portal": "billing:write",
   // audit
   "GET /audit-logs": "audit:read",

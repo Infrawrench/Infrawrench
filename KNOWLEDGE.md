@@ -3647,6 +3647,7 @@ $20/month per seat. Free tier: 1 user, 3 accounts, no audit/API keys/team.
 
 - `POST /api/v1/webhooks/stripe` — handles checkout.session.completed (+ `async_payment_succeeded`), invoice.paid/failed, subscription.updated/deleted, charge.refunded
 - Server Actions: createCheckoutSession, createBillingPortalSession, getSubscriptionStatus
+- A paid Checkout Session (`payment_status=paid` on `checkout.session.completed` or `checkout.session.async_payment_succeeded`, subscription or capacity slot) is reported to Revnu as `payment_succeeded` when `REVNU_EVENT_KEY` is set. The visitor id rides in Checkout Session metadata `revnu_anonymous_id`; consent stays on `revnu_checkout_handoffs` and is what the webhook sends. `invoice.paid` is not a purchase (it would count the checkout twice and then every renewal). `charge.refunded` still voids capacity seats and does not send a Revnu reversal: refunded purchases stay counted. An unset key logs and acknowledges the webhook so billing still completes.
 
 ### Prepaid capacity slots
 

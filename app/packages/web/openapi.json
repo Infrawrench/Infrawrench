@@ -59870,6 +59870,50 @@
         ],
         "additionalProperties": false
       },
+      "RevnuCheckoutMeasurement": {
+        "type": "object",
+        "properties": {
+          "anonymousId": {
+            "type": "string",
+            "description": "Opaque Revnu visitor id captured in the browser at checkout. Invalid values are ignored."
+          },
+          "consentState": {
+            "type": "string",
+            "enum": [
+              "granted",
+              "denied",
+              "pending"
+            ],
+            "description": "Analytics consent for this checkout. Omitted when the visitor has no saved answer. Never copied into Stripe."
+          },
+          "googleAdUserData": {
+            "type": "string",
+            "enum": [
+              "granted",
+              "denied",
+              "unknown"
+            ]
+          },
+          "googleAdPersonalization": {
+            "type": "string",
+            "enum": [
+              "granted",
+              "denied",
+              "unknown"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SubscriptionCheckoutRequest": {
+        "type": "object",
+        "properties": {
+          "measurement": {
+            "$ref": "#/components/schemas/RevnuCheckoutMeasurement"
+          }
+        },
+        "additionalProperties": false
+      },
       "CapacityCheckoutRequest": {
         "type": "object",
         "properties": {
@@ -59878,8 +59922,25 @@
             "minimum": 1,
             "maximum": 25,
             "description": "Slots to buy. Defaults to 1. The buyer can still adjust it in Checkout."
+          },
+          "measurement": {
+            "$ref": "#/components/schemas/RevnuCheckoutMeasurement"
           }
         },
+        "additionalProperties": false
+      },
+      "RevnuConsentRefresh": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Unpaid checkouts whose saved consent was updated."
+          }
+        },
+        "required": [
+          "updated"
+        ],
         "additionalProperties": false
       },
       "AuditEntry": {
@@ -115491,6 +115552,16 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionCheckoutRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Redirect URL",
@@ -115645,6 +115716,62 @@
         "operationId": "postOrgOrgIdBillingPortal",
         "x-required-permission": "billing:write",
         "description": "_Requires permission: `billing:write`._"
+      }
+    },
+    "/api/org/{orgId}/billing/measurement-consent": {
+      "post": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "Update consent on unpaid checkouts for this visitor",
+        "description": "Rewrites the saved analytics and Google consent on Checkout Sessions that have not yet been reported. A paid session is left as it was sent.\n\n_Requires permission: `billing:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionCheckoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many unpaid checkouts were updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevnuConsentRefresh"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBillingMeasurementConsent",
+        "x-required-permission": "billing:write"
       }
     },
     "/api/org/{orgId}/audit-logs": {

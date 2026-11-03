@@ -4,6 +4,13 @@
 // Switzerland who have not answered yet; see @infrawrench/analytics.
 ---
 
+<script
+  is:inline
+  src="https://revnu.com/v1.js"
+  data-site="rk_3f75e7bd28424c9e9623b127622900bd"
+  data-endpoint="https://revnu.com/api/measurement/collect"
+  data-consent="pending"></script>
+
 <section id="analytics-consent" class="analytics-consent" aria-label="Cookie preferences" hidden>
   <p>
     May we use cookies to understand how this site is used? This turns on PostHog analytics and
@@ -21,6 +28,7 @@
     analyticsEnabled,
     consentPromptVisible,
     declineAnalytics,
+    bindRevnuToAnalyticsConsent,
     initAnalytics,
     openConsentPrompt,
     subscribeConsentPrompt,
@@ -30,6 +38,7 @@
     key: import.meta.env.PUBLIC_POSTHOG_KEY,
     host: import.meta.env.PUBLIC_POSTHOG_HOST,
   });
+  bindRevnuToAnalyticsConsent();
 
   const prompt = document.getElementById("analytics-consent");
   const sync = () => {
