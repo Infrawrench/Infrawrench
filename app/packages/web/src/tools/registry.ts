@@ -26,6 +26,7 @@ import { extendedSupportTools } from "./extended-support";
 import { seatTools } from "./seats";
 import { carbonTools } from "./carbon";
 import { priceCatalogTools } from "./price-catalog";
+import { instancePricingTools } from "./instance-pricing";
 import { aiAttributionTools } from "./ai-attribution";
 import { networkCostTools } from "./network-costs";
 import { momentTools } from "./moment";
@@ -62,6 +63,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...seatTools(),
     ...carbonTools(),
     ...priceCatalogTools(),
+    ...instancePricingTools(),
     ...aiAttributionTools(),
     ...networkCostTools(),
     ...momentTools(),

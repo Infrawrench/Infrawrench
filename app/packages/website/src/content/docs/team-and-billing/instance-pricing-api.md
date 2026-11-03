@@ -23,6 +23,8 @@ They were served at `/api/v1/aws-pricing/query` and `/api/v1/aws-pricing/schema`
 
 Any Infrawrench bearer credential works: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. No scope is needed, because the data is the providers' public price lists. If you would rather download whole services and work offline, the [bulk instances API](./bulk-instances-api.md) serves the same price lists as files.
 
+The [MCP server](../features/mcp.md) and the in-app [AI chat](../features/ai-chat.md) expose the same two calls as tools, `get_instance_pricing_schema` and `query_instance_pricing`. Neither needs a permission. `query_instance_pricing` runs one read-only statement and takes the same `sql` and `maxRows`.
+
 ## Run a query
 
 ```bash
