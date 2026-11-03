@@ -34,7 +34,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "@vitejs/plugin-rsc": "^0.5.38",
     "tailwindcss": "^4.3.3",
-    "typescript": "workspace:@infrawrench/typescript@*",
+    "typescript": "catalog:",
     "vite": "^8.3.5",
     "vitest": "^4.1.10",
     "wrangler": "^4.156.0"

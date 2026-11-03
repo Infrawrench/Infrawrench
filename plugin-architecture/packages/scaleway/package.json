@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "tsdown": "^0.22.14",
-    "typescript": "workspace:@infrawrench/typescript@*",
+    "typescript": "catalog:",
     "vitest": "^4.1.10"
   }
 }

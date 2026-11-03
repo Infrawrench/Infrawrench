@@ -95,15 +95,14 @@ recurse_submodules = false
 # Only include commits touching the desktop app or a workspace package it
 # (transitively) depends on: client-core, ui, workflow-runtime, and every
 # plugin-architecture package (plugin-base, all plugins, sftp-host,
-# ssh-tunnel-core). Recompute this list if desktop's workspace deps change.
+# ssh-tunnel-core). The TypeScript compiler is the npm package
+# `@tsc-rs/typescript` (the workspace catalog), not a workspace package.
+# Recompute this list if desktop's workspace deps change.
 include_paths = [
     "app/packages/desktop/**",
     "app/packages/client-core/**",
     "app/packages/ui/**",
     "app/packages/workflow-runtime/**",
-    # The tsc shim: a devDependency of the desktop and of everything it builds
-    # from, so it emits the declarations those packages ship.
-    "app/packages/typescript/**",
     "plugin-architecture/**",
     # The desktop app ships the remote app server binary, so a change to it is
     # a user-visible desktop change even though it is a standalone Rust module.

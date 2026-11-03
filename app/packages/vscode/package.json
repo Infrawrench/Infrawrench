@@ -206,7 +206,7 @@
     "@types/vscode": "1.90.0",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.25.12",
-    "typescript": "workspace:@infrawrench/typescript@*",
+    "typescript": "catalog:",
     "vitest": "^4.1.10"
   }
 }

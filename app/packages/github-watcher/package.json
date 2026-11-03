@@ -27,7 +27,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "esbuild": "^0.25.12",
     "tsx": "^4.23.11",
-    "typescript": "workspace:@infrawrench/typescript@*",
+    "typescript": "catalog:",
     "vitest": "^4.1.10"
   }
 }

@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
-    "typescript": "workspace:@infrawrench/typescript@*",
+    "typescript": "catalog:",
     "vitest": "^4.1.10"
   }
 }
