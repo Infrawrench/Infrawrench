@@ -544,7 +544,7 @@
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.10",
     "tsx": "^4.23.11",
-    "typescript": "workspace:@infrawrench/typescript@*",
+    "typescript": "catalog:",
     "vitest": "^4.1.10"
   }
 }

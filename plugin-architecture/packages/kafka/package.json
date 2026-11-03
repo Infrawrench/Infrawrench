@@ -37,7 +37,7 @@
   "devDependencies": {
     "kafkajs": "^2.2.4",
     "tsdown": "^0.22.14",
-    "typescript": "workspace:@infrawrench/typescript@*",
+    "typescript": "catalog:",
     "vitest": "^4.1.10"
   }
 }

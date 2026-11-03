@@ -14,7 +14,7 @@ When you make code for providers remember that the user shouldn't have to know t
 
 ## Type checking (tsc-rs)
 
-TypeScript 7 packages depend on `"typescript": "workspace:@infrawrench/typescript@*"`, never the npm `typescript`; a new package copies that line. The shim (`app/packages/typescript`) runs tsc-rs for both `tsc` and tsdown's declaration emit, falling back to TypeScript 7 on platforms tsc-rs has no binary for. A package on plain `typescript` still builds, silently without tsc-rs. Rationale and bump procedure are in KNOWLEDGE.md ("Type checking").
+TypeScript 7 packages depend on `"typescript": "catalog:"`, never the npm `typescript`. The catalog entry is `@tsc-rs/typescript` (tsc-rs installed under the name `typescript`), so `tsc` and tsdown's declaration emit both run the Rust compiler. A package on plain `typescript` still builds, silently without tsc-rs. `website` and `mobile` are the exception: they alias `typescript` to `@typescript/typescript6`. Rationale and the bump procedure are in KNOWLEDGE.md ("Type checking").
 
 ## Editor extensions
 
@@ -68,7 +68,7 @@ The web and desktop UIs, and the instances site (`app/packages/instances`), are 
 
 ## Desktop changelog (git-cliff)
 
-`include_paths` in `cliff.toml` limits the changelog to commits touching the desktop app or a workspace package it transitively depends on. When you add or remove a workspace dependency of `@infrawrench/desktop` (or of anything in its closure), recompute the closure and update the glob list in the same change. Currently that closure is `app/packages/{desktop,client-core,ui,workflow-runtime,typescript}` plus all of `plugin-architecture/`; a new desktop dep on e.g. `@infrawrench/telemetry` would need its path added, and a config key typo fails silently (it's `include_paths`, plural; the CLI flag is singular), so verify with `git-cliff --unreleased` against a commit that should be excluded.
+`include_paths` in `cliff.toml` limits the changelog to commits touching the desktop app or a workspace package it transitively depends on. When you add or remove a workspace dependency of `@infrawrench/desktop` (or of anything in its closure), recompute the closure and update the glob list in the same change. Currently that closure is `app/packages/{desktop,client-core,ui,workflow-runtime}` plus all of `plugin-architecture/`. The TypeScript compiler is an npm package (`@tsc-rs/typescript`, via the workspace catalog), not a workspace package, so it is not in the list. A new desktop dep on e.g. `@infrawrench/telemetry` would need its path added, and a config key typo fails silently (it's `include_paths`, plural; the CLI flag is singular), so verify with `git-cliff --unreleased` against a commit that should be excluded.
 
 ## Terraform provider
 

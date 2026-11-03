@@ -1,0 +1,21 @@
+diff --git a/lib/version.cjs b/lib/version.cjs
+index bf27a2dd02b884ce94775ea0f6243a0029a258b3..0b784fa874e5574bc45c0cb3505c48286d225dac 100644
+--- a/lib/version.cjs
++++ b/lib/version.cjs
+@@ -2,4 +2,7 @@
+ // version that the tsc reports (npm/pack.mjs versionCjs).
+ const { tscVersion: version } = require("../package.json");
+ exports.version = version;
+-exports.versionMajorMinor = "7.1";
++// Infrawrench: rolldown-plugin-dts 0.27 (tsdown 0.22) takes the native declaration
++// compiler only when this is "7.0". The binary still reports 7.1.0-dev.
++// See KNOWLEDGE.md, "Type checking".
++exports.versionMajorMinor = "7.0";
+diff --git a/lib/version.d.cts b/lib/version.d.cts
+index 1939756106417b8a15e852ea975d9652de2ac6bd..b434811c6fd82b57cfd9d1ac1b2c613d6363a5af 100644
+--- a/lib/version.d.cts
++++ b/lib/version.d.cts
+@@ -1,2 +1,2 @@
+ export declare const version: string;
+-export declare const versionMajorMinor = "7.1";
++export declare const versionMajorMinor = "7.0";

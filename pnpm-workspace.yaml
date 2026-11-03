@@ -2,6 +2,12 @@ packages:
   - "plugin-architecture/packages/*"
   - "app/packages/*"
 
+# TypeScript 7 packages depend on this (`"typescript": "catalog:"`). It is
+# tsc-rs installed under the name `typescript` (`@tsc-rs/typescript`). website
+# and mobile do not use the catalog: they alias `typescript` to TypeScript 6.
+catalog:
+  typescript: "npm:@tsc-rs/typescript@0.8.0"
+
 overrides:
   yaml: ">=2.8.3"
   "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
@@ -30,6 +36,13 @@ packageExtensions:
       vite:
         optional: true
 
+# @tsc-rs/typescript is installed under the name `typescript`, but its npm
+# version is the tsc-rs release (0.8.0), not 7.x. Peers that ask for
+# `typescript@^5 || ^6 || ^7` would otherwise warn on every install.
+peerDependencyRules:
+  allowAny:
+    - typescript
+
 # drizzle-orm has no ClickHouse dialect upstream. The patch adds the built
 # `drizzle-orm/clickhouse-core` (dialect, columns, engines, query builders) and
 # `drizzle-orm/clickhouse` (a driver binding for `@clickhouse/client`) from
@@ -42,6 +55,9 @@ packageExtensions:
 # ClickHouse dialect patch"), not re-derive a merge.
 patchedDependencies:
   drizzle-orm@0.45.2: patches/drizzle-orm@0.45.2.patch
+  # versionMajorMinor "7.0" so rolldown-plugin-dts 0.27 emits declarations with
+  # the tsc-rs binary. See KNOWLEDGE.md, "Type checking".
+  "@tsc-rs/typescript@0.8.0": patches/@tsc-rs__typescript@0.8.0.patch
 
 allowBuilds:
   "@google/genai": true
@@ -63,10 +79,11 @@ allowBuilds:
   # The gt CLI pulls this in for parsing Python sources, which this repo never
   # feeds it — TS/TSX parsing doesn't touch it, so skip the native build.
   tree-sitter-python: false
-  # tsc-rs's postinstall only rewrites its own `tsc-rs` bin into a faster sh
-  # launcher. Nothing runs that bin: `tsc` comes from @infrawrench/typescript,
-  # which finds the native binary itself.
-  tsc-rs: false
+  # @tsc-rs/typescript's postinstall rewrites bin/tsc into a sh/JS polyglot so a
+  # direct exec skips Node. The file stays valid JavaScript, so pnpm's
+  # `exec node` wrapper still runs it. This is the `tsc` every TS 7 package
+  # script calls.
+  "@tsc-rs/typescript": true
   # vsce's optional signing helper downloads a platform binary on install.
   # Packaging the VS Code extension (`vsce package`) never signs; publishing
   # to the Marketplace would, and is not done from this repository.

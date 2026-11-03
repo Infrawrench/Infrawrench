@@ -20,7 +20,7 @@
     "posthog-js": "^1.438.21"
   },
   "devDependencies": {
-    "typescript": "workspace:@infrawrench/typescript@*",
+    "typescript": "catalog:",
     "vitest": "^4.1.10"
   }
 }
