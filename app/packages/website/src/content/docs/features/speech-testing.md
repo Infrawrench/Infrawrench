@@ -4,57 +4,64 @@ description: Synthesize speech and transcribe audio against your connected AI pr
 sidebar_order: 6
 ---
 
-Speech providers are hard to evaluate from a dashboard. You want to hear the voice, not read its description — and you want to know your key works before you wire it into anything. The **Speech** tab does both against your own account, with your own credentials.
+Hear a voice, test a transcription and check your key works, all with your own speech provider account and credentials. That's what the **Speech** tab is for.
 
 ![The Speech tab on an ElevenLabs voice, showing the text box, voice picker and an audio player with a synthesized clip](https://agent-assets.infrawrench.com/docs-screenshots/features/speech-testing/tts-elevenlabs-voice.png)
 
 ## Where to find it
 
-Open any resource from a provider that does speech and pick the **Speech** tab. Which half you get depends on what the provider supports:
+Open any resource from a provider that does speech and pick the **Speech** tab. What you see depends on what the provider supports:
 
-- **Text to speech** — a text box, a voice picker, and a model picker. Synthesize, and the clip plays inline with a download link.
-- **Speech to text** — record straight from your microphone or upload a clip, then read the transcript back.
+- **Text to speech:** a text box, a voice picker and a model picker. The clip plays inline with a download link.
+- **Speech to text:** record from your microphone or upload a clip, then read the transcript.
 
-Providers that do both get one tab with both sections.
+If the provider does both, you get both sections on one tab.
 
-## Text to speech
+## Turn text into speech
 
-Pick a voice, type something, press **Synthesize**. The pickers are populated from your account's real voices and models, so you are never typing an id you had to look up somewhere else.
+1. Pick a voice and a model. The lists come from your account, so you never have to look up an id.
+2. Type your text.
+3. Press **Synthesize**.
 
-The character counter reflects that provider's actual per-request limit. Going over it stops the request before it is sent, rather than spending quota on a call the provider will reject.
+The character counter shows the provider's real per-request limit. If you go over, the request isn't sent, so you don't waste quota on a call that would be rejected.
 
-Each clip comes back with a one-line summary — characters billed, model used — and a **Download** link if you want to keep it.
+Each clip comes with a short summary (characters billed, model used) and a **Download** link.
 
-## Speech to text
+## Transcribe audio
 
-Two ways to get audio in:
+Get audio in one of two ways:
 
-- **Record** captures from your microphone in the browser. Press Record, speak, press Stop. Your browser will ask for microphone permission the first time.
-- **Upload a clip** takes an audio file from disk.
+- **Record** from your microphone. Press Record, speak, press Stop. Your browser asks for microphone permission the first time.
+- **Upload a clip** from disk.
 
-Either way you can play the clip back before sending it, then press **Transcribe**.
+Play it back if you want, then press **Transcribe**.
 
-The transcript appears below, with the detected language, clip duration, and confidence where the provider reports them. If the provider returns word-level timings, **Show word timings** expands a table of every word with its start, end, and speaker label.
+The transcript shows up below, with the detected language, clip length and confidence when the provider reports them. If the provider returns word timings, **Show word timings** opens a table of every word with its start, end and speaker label.
 
 ![The speech-to-text half after a recording, showing the transcript and the expanded word-timings table with speaker labels](https://agent-assets.infrawrench.com/docs-screenshots/features/speech-testing/stt-word-timings.png)
 
-## On the phone
+## On your phone
 
-The [mobile app](./mobile-app.md) has the same test surface, pushed as its own screen instead of a tab — tap **Speech** on the resource page. Both halves are there: the voice, model and language pickers open as sheets, the character counter enforces the same limit, and synthesized clips play inline with a **Save** button that hands the file to the share sheet rather than downloading it.
+The [mobile app](./mobile-app.md) has the same features on their own screen. Tap **Speech** on the resource page.
 
-Speech to text records from the phone's microphone — iOS and Android ask for permission the first time — or takes a clip from the file picker. Everything else, including the word-timings table, reads the same as it does on web.
+- Voice, model and language pickers open as sheets.
+- The character counter has the same limit.
+- Clips play inline. **Save** opens the share sheet instead of downloading.
+- Speech to text records from the phone's microphone (iOS and Android ask for permission the first time) or takes a clip from the file picker.
+
+Everything else, including the word-timings table, works the same as on web.
 
 <insert [The mobile Speech screen with the voice picker sheet open over the text box, and below it a synthesized clip with its play button and Save control] here>
 
-## Things to watch
+## Things to know
 
-- **It spends real quota.** Every synthesis and transcription is a billed API call against your own account, exactly as if you had made it yourself. There is no sandbox mode.
-- **Recording needs a secure context.** Browsers only grant microphone access over HTTPS (or on `localhost`). If the Record button is missing, either your browser doesn't support `MediaRecorder` or the provider can't accept what browsers record — Cohere is one such, and says so next to the upload button. Upload a clip instead. On mobile, a denied microphone permission is fixed in the OS settings for the app; picking a clip works either way.
-- **Clip size is capped at 25 MB**, and the app enforces it before uploading. That ceiling is ours, not the provider's — audio is sent base64-encoded inside a JSON request, and base64 inflates by a third. Most providers accept far larger files through their own API; long recordings belong there, not in this panel.
-- **Job-based providers take longer.** Transcription services that queue work (AssemblyAI, Speechmatics, Rev.ai) are polled until the job finishes, so a long clip can sit on "Transcribing…" for a while before the text appears.
-- **On the desktop app this only works for locally-added accounts.** Accounts synced from the cloud aren't bridged for speech yet, and the panel says so rather than failing quietly.
+- **It uses real quota.** Every synthesis and transcription is a billed call on your own account. There's no sandbox mode.
+- **Recording needs HTTPS.** Browsers only allow microphone access over HTTPS (or on `localhost`). If there's no Record button, your browser doesn't support recording or the provider can't accept browser recordings (Cohere is one, and says so next to the upload button). Upload a clip instead. On mobile, if you denied microphone access, turn it back on in your phone's settings for the app. Picking a clip works either way.
+- **Clips are capped at 25 MB.** This is an Infrawrench limit, not the provider's. For long recordings, use the provider's own API.
+- **Some providers take longer.** Services that queue transcription jobs (AssemblyAI, Speechmatics, Rev.ai) can show "Transcribing…" for a while on a long clip.
+- **On desktop, this only works for accounts you added locally.** Cloud-synced accounts aren't supported for speech yet, and the panel tells you so.
 
 ## Related
 
-- [AI chat](./ai-chat.md) — the assistant built into the app, which is separate from these provider accounts.
-- [Send a test message](./send-test-message.md) — the same idea for pub/sub resources.
+- [AI chat](./ai-chat.md): the assistant built into the app, separate from these provider accounts.
+- [Send a test message](./send-test-message.md): the same idea for pub/sub resources.

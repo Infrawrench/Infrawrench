@@ -4,60 +4,63 @@ description: Route SSH connections through one or more SSH jump hosts (ProxyJump
 sidebar_order: 5
 ---
 
-When a target host is on a private network, SSH normally requires a jump host (a "bastion") sitting on the network edge. Infrawrench supports this natively: any SSH plugin account can route through another SSH account, the chain is resolved at connect time, and the entire pipeline — every hop, host-key verification, agent forwarding on the final hop — works the same on desktop, the desktop cloud proxy, and the web app.
+When a server sits on a private network, you usually reach it through a jump host (a "bastion") on the network edge. Infrawrench lets any SSH account connect through another SSH account, one hop or several. It works the same on desktop, desktop cloud mode and the web app, including host-key checks and agent forwarding.
 
-## The mental model
+## How it works
 
-A jumpbox in Infrawrench is just an [SSH plugin](../plugins/ssh.md) account. Marking one as a jumpbox is as simple as setting another SSH account's **Connect through** field to it. The chain is implicit:
+A jumpbox is just an [SSH plugin](../plugins/ssh.md) account. To use one, set another SSH account's **Connect through** field to it:
 
-- Account **A** has `Connect through = ∅` — direct.
-- Account **B** has `Connect through = A` — dials A first, then tunnels to B's host:port through A.
-- Account **C** has `Connect through = B` — dials A, tunnels to B, tunnels to C.
+- Account **A** has no **Connect through**, so it connects directly.
+- Account **B** has **Connect through** set to A. It connects to A first, then on to B.
+- Account **C** has **Connect through** set to B. It goes A, then B, then C.
 
-The chain has a hard cap of 8 hops and cycles are detected and rejected, so misconfiguration fails loudly rather than hanging.
+A chain can have up to 8 hops. Loops are rejected, so a bad setup fails with an error instead of hanging.
 
-## Two ways to create a routed target
+## Route an SSH account through a jumpbox
 
-### From the SSH account form
-
-When adding a new SSH account (sidebar → **Add account** → **SSH**), the credential form includes a **Connect through** dropdown listing your other SSH accounts. Pick one and save — the new account will now dial through it on every terminal/SFTP open.
+1. In the sidebar, choose **Add account** > **SSH**.
+2. In the credential form, pick a jump host from the **Connect through** dropdown. It lists your other SSH accounts.
+3. Save. Every terminal and SFTP session for this account now goes through the jump host.
 
 ![AddAccountModal showing the SSH credential form with the "Connect through" dropdown expanded to show another SSH account](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-jumpbox/connect-through-expanded.png)
 
-### From a cloud VM's detail page
+## Route a cloud VM through a jumpbox
 
-Any cloud VM with an SSH endpoint (EC2 instance, GCE instance, Droplet, Hetzner server, Scaleway instance, OVH instance, Azure VM) gets a **Connect through jumpbox…** button alongside its SSH/SFTP actions. Clicking it opens a small dialog with:
+Any cloud VM with an SSH endpoint (EC2 instance, GCE instance, Droplet, Hetzner server, Scaleway instance, OVH instance, Azure VM) has a **Connect through jumpbox…** button next to its SSH/SFTP actions.
 
-- a dropdown of SSH plugin accounts to use as the jumpbox,
-- a radio choice between the VM's **public** address (default for VMs without a private network) and **private** address (default when one is declared), and
-- a name for the new SSH-target resource it will create.
+1. Click **Connect through jumpbox…**.
+2. Pick the SSH account to use as the jumpbox.
+3. Choose the VM's **public** or **private** address.
+4. Name the new SSH target.
+5. Confirm. The SSH **Add account** form opens with the host, port, username and jumpbox filled in.
+6. Add the private key and save.
 
-On confirm, it opens the standard SSH-plugin **Add account** form pre-filled with host (the chosen IP), port, username, and the selected jumpbox. Add the private key, save, and a new SSH-target resource appears in the sidebar — already wired to dial through the chosen jumpbox.
+The new SSH target appears in the sidebar, already set up to go through your jumpbox.
 
 ![EC2 instance detail page with the "Connect through jumpbox…" button in the action row, and the picker dialog open over it](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-jumpbox/connect-through-jumpbox-dialog.png)
 
-## Public vs private address
+## Public or private address
 
-For cloud VMs that expose both a public and a private IP, the dialog defaults to the private one — most of the time, the jump host is on the same VPC/private network as the target and reaching it on the internal interface is both faster and more secure. Switch to the public address only when the jump host doesn't share a network with the target.
+When a VM has both a public and a private IP, the dialog picks the private one. Usually the jump host is on the same VPC or private network as the target, and the internal address is faster and safer. Switch to public only when the jump host isn't on the same network.
 
-The same option only appears for resource types whose plugin declares a `privateHostOutputKey` on its `sshEndpoint`. If only the public address is available, the dialog skips the radio selector.
+If a VM only has a public address, you won't see the choice.
 
-## Multi-hop chains
+## Add more hops
 
-To extend an existing routed target with another hop in front of it, edit the **jump host** account (not the final target) and set its **Connect through** to a third account. The resolver walks the pointer chain top-down at connect time, so:
+To put another hop in front of an existing chain, edit the **jump host** account (not the final target) and set its **Connect through** to a third account. For example:
 
 ```
 edge → jump → target
 ```
 
-is set up by configuring `target.connectThrough = jump` and `jump.connectThrough = edge`. The chain is followed in order, with each hop's host key verified independently against the same TOFU cache the [SSH terminal](./ssh-terminal.md) uses.
+Set the target's **Connect through** to `jump`, and `jump`'s **Connect through** to `edge`. Each hop's host key is checked separately, using the same trusted host keys as the [SSH terminal](./ssh-terminal.md).
 
-## What gets audited
+## Audit log
 
-Each routed session writes an extra audit log entry per chain open, recording the hop count and the ordered list of intermediate `host:port:username` triples. Per-hop agent-forwarding sign requests still emit the existing `ssh.agent.session_opened` entry; the new `ssh.session.chain_opened` entry covers the chain itself for organisations that need to attribute jump-host usage.
+Each routed session adds an `ssh.session.chain_opened` entry to the audit log, with the hop count and the ordered list of intermediate `host:port:username` hops. Agent-forwarding requests still log the usual `ssh.agent.session_opened` entry. Together they show who used which jump hosts.
 
 ## Limitations
 
-- Routing SSH through a [bastion agent](./bastion-vms.md) is **not** the same feature: bastion agents tunnel cloud-API HTTP egress, not SSH. Jumpbox routing is plain ssh2 `forwardOut` chaining and does not require the bastion agent.
-- Agent forwarding is applied to the **final** hop only — intermediate hops never see the user's agent socket.
-- All hops must be reachable from the host running the SSH session (the desktop process, or the web server on the cloud side). The first hop is always dialled directly.
+- This is different from a [bastion agent](./bastion-vms.md). Bastion agents carry cloud API traffic, not SSH. Jumpbox routing doesn't need a bastion agent.
+- Agent forwarding only applies to the **final** hop. Intermediate hops never see your agent.
+- The first hop must be reachable from wherever the SSH session runs: your computer on desktop, or Infrawrench's server on web.

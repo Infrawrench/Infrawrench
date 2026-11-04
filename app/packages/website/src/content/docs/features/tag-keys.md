@@ -4,16 +4,16 @@ description: Hide noisy tag keys like aws:cloudformation:* from every tag picker
 sidebar_order: 3
 ---
 
-Cloud bills carry far more tag keys than anyone groups by. AWS stamps `aws:cloudformation:stack-id`, `aws:cloudformation:logical-id` and `aws:autoscaling:groupName` on everything it creates, GKE adds `goog-k8s-*` labels, and Kubernetes adds `kubernetes.io/*`. The two or three keys your team actually reports on (`team`, `env`, `cost-centre`) end up buried alphabetically between them in every dropdown.
+Cloud bills carry far more tag keys than anyone groups by. AWS adds `aws:cloudformation:stack-id`, `aws:cloudformation:logical-id` and `aws:autoscaling:groupName` to everything it creates, GKE adds `goog-k8s-*` labels, and Kubernetes adds `kubernetes.io/*`. The two or three keys your team really reports on (`team`, `env`, `cost-centre`) get buried among them in every dropdown.
 
-**Tag key settings** fix that for the whole organization, in one place:
+**Tag key settings** fix that for your whole organization, in one place:
 
 - **Hidden keys** disappear from every tag picker and group-by dropdown. An entry is either an exact key (`Name`) or a prefix pattern ending in `*` (`aws:cloudformation:*`).
 - **Preferred keys** are pinned to the top of every picker, in the order you set, under a **Preferred** heading.
 
-> **A display preference, nothing more.** Hiding a key changes what the pickers offer. The key's cost rows are still collected and stored, [cost exports](./cost-exports.md) still carry it, and a filter or report that names it keeps working. Nothing you have already saved changes what it measures.
+> **This only changes what you see.** Hiding a key changes what the pickers offer, nothing else. Its cost data is still collected, [cost exports](./cost-exports.md) still include it, and any filter or report that uses it keeps working. Nothing you've already saved changes.
 
-> **Cloud only.** The settings are org-level cloud state. They apply on the web app, the desktop app signed into a cloud org, the mobile app, the [CLI](./cli.md) and the [MCP tools](./mcp.md).
+> **Cloud only.** These are organization settings. They apply on the web app, the desktop app signed into a cloud org, the mobile app, the [CLI](./cli.md) and the [MCP tools](./mcp.md).
 
 ## Where the settings apply
 
@@ -26,11 +26,11 @@ Every place you pick a tag key:
 - **Cost export columns**: suggestions for the tag columns to include.
 - **Resource inventory**: the tag picker in a [metric alert](./metric-alerts.md)'s resource selector, which lists keys from your synced resources rather than from cost data.
 
-If something you saved before uses a key you later hide, its picker still shows the key, marked as not in the list, so it is never silently changed.
+If something you saved uses a key you later hide, its picker still shows the key, marked as not in the list. Your saved item never changes behind your back.
 
-## Editing the settings
+## Edit the settings
 
-Open **Settings → Tag Keys** on the web app, or the Settings tab on the desktop app.
+Open **Settings > Tag Keys** on the web app, or the Settings tab on the desktop app.
 
 <insert [Settings → Tag Keys page: the Preferred keys card with team, env and cost-centre in order, the Hidden keys card with aws:cloudformation:* and two suggested patterns, and the discovered keys table below] here>
 
@@ -51,7 +51,7 @@ Pattern rules:
 - A key cannot be both preferred and hidden by its exact name.
 - Up to 200 hidden entries and 50 preferred keys.
 
-Anyone who can see resources can read the settings; changing them needs the `org:settings:write` permission (admins and owners). Every save is recorded in the [audit log](../team-and-billing/audit-log.md).
+Anyone who can see resources can read the settings. Changing them needs the `org:settings:write` permission (admins and owners). Every save is recorded in the [audit log](../team-and-billing/audit-log.md).
 
 ## From the CLI
 
@@ -66,7 +66,7 @@ infrawrench tag-keys unpin team
 
 See [CLI](./cli.md).
 
-## Over the API and Terraform
+## Use the API and Terraform
 
 - `GET /api/org/{orgId}/tag-keys` lists discovered keys with their usage and status.
 - `GET` / `PUT /api/org/{orgId}/tag-keys/settings` reads and replaces the `{ hidden, preferred }` document.

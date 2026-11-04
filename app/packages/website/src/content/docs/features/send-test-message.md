@@ -4,17 +4,26 @@ description: Publish a one-off message into a queue, topic, stream, or event bus
 sidebar_order: 13
 ---
 
-Pub/sub resources (Cloudflare Queues, AWS SQS/SNS/Kinesis/EventBridge, GCP Pub/Sub & Cloud Tasks, Azure Service Bus & Event Hub, Kafka topics) expose a **Publish** tab on their detail page. The tab opens a small editor where you compose one message — body plus a few provider-specific fields — and click Send.
+Send a single test message into a queue, topic, stream or event bus from its detail page. It goes through the same call your producers use, which makes it handy for:
 
-This is the same wire call your producers make, so it's useful for:
-
-- Smoke-testing a brand-new consumer without wiring up a producer first.
+- Smoke-testing a new consumer before you've wired up a producer.
 - Reproducing a bug by replaying a known-bad payload.
-- Verifying that IAM/RBAC actually permits publishing from the account you're using.
+- Checking that IAM/RBAC really lets the account you're using publish.
+
+Supported resources: Cloudflare Queues, AWS SQS/SNS/Kinesis/EventBridge, GCP Pub/Sub and Cloud Tasks, Azure Service Bus and Event Hub, and Kafka topics.
 
 ![Cloudflare Queue detail page with the Publish tab active, JSON body editor populated, and a "Recent sends" entry below showing a successful push](https://agent-assets.infrawrench.com/docs-screenshots/features/send-test-message/cloudflare-queue-publish.png)
 
-## What you get per provider
+## Send a message
+
+1. Open the resource's detail page.
+2. Go to the publish tab (its name depends on the provider, see the table below).
+3. Write the message body and fill in any extra fields.
+4. Click **Send**.
+
+If the body should be JSON, the editor checks that it's valid JSON. Otherwise it's sent as plain text. Errors from the provider (auth, throttling, a malformed payload) show up right under the form.
+
+## Fields by provider
 
 | Provider                    | Tab label   | Inputs beyond the body                                     |
 | --------------------------- | ----------- | ---------------------------------------------------------- |
@@ -29,15 +38,13 @@ This is the same wire call your producers make, so it's useful for:
 | Azure Event Hub namespace   | Send        | Hub name, partition key                                    |
 | Kafka topic                 | Produce     | Key, headers                                               |
 
-The body editor validates as JSON when the panel declares `bodyFormat: "json"` and as plain text otherwise. Errors from the provider (auth, throttling, malformed payload) surface inline under the form — they're not silently swallowed.
+## Recent sends
 
-## Recent sends panel
-
-Every successful or failed publish lands in a "Recent sends" list under the form. Each entry shows the body, the timestamp, and the success/error summary returned by the provider (message id, sequence number, or error message). The history is per-session — it clears when you close the tab.
+Every send, successful or not, appears in the **Recent sends** list under the form. Each entry shows the body, the time, and what the provider returned (a message id, sequence number or error message). The list clears when you close the tab.
 
 ## Limits
 
-- **One message per click.** There's no batch or load-test mode here; this is a console, not a load generator.
-- **Desktop app + cloud-synced accounts.** The publish IPC isn't bridged through the desktop → cloud route yet, so you'll see a clear "not supported yet" message when you try to publish from a cloud-synced account on the desktop. Locally-added accounts on desktop work as expected.
-- **EventBridge sends events to the rule's bus.** The rule itself doesn't publish — it routes — so the panel sends the event onto the bus that the rule lives on (defaulting to `default`). The rule's filter then decides whether it matches.
-- **Azure namespaces require a queue/topic/hub name.** Service Bus and Event Hub are namespace-level resources, so you have to type in the target queue/topic/hub inside that namespace.
+- **One message per click.** There's no batch or load-test mode.
+- **Desktop app with cloud-synced accounts.** Publishing from a cloud-synced account on desktop isn't supported yet, and you'll see a "not supported yet" message. Accounts you added locally on desktop work fine.
+- **EventBridge rules.** A rule routes events rather than publishing them, so the event goes onto the bus the rule lives on (`default` unless you change it). The rule's filter then decides whether it matches.
+- **Azure namespaces need a target name.** Service Bus and Event Hub work at the namespace level, so type the queue, topic or hub you want to send to.

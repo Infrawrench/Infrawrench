@@ -4,19 +4,23 @@ description: Route alerts to Slack channels, approve or deny workflow and agent 
 sidebar_order: 16
 ---
 
-Infrawrench Cloud can post alerts into Slack. It sits alongside Twilio SMS/voice, [mobile push](./mobile-push-notifications.md), and [Microsoft Teams](./teams-alerts.md) as another delivery channel — same triggers, same thresholds — and it is usually the one people actually read during working hours.
+Infrawrench Cloud can post your alerts into Slack. It works alongside Twilio SMS and voice, [mobile push](./mobile-push-notifications.md) and [Microsoft Teams](./teams-alerts.md), with the same triggers and thresholds. During working hours it's usually the one people actually read.
 
-Slack is also the one two-way transport: approval requests arrive with working **Approve** and **Deny** buttons, and a `/infrawrench` slash command answers cost and resource-status questions without leaving the channel. Both halves require [linking your Slack account](#linking-your-slack-account) first.
+Slack also works both ways. Approval requests arrive with working **Approve** and **Deny** buttons, and the `/infrawrench` slash command answers cost and resource status questions without leaving the channel. For both, you first need to [link your Slack account](#link-your-slack-account).
 
-> **Cloud only.** Alerts are dispatched by the cloud's background poller, cost evaluation, and workflow runner. The desktop app has no Slack connection; a workflow page there becomes a native OS notification instead.
+> **Cloud only.** The desktop app has no Slack connection. A workflow page there shows up as a native OS notification instead.
 
-## Connecting a workspace
+## Connect a workspace
 
-Go to **Settings → Notifications**, open the **Channels** tab, and press **Add to Slack**. That opens Slack's own approval screen, where you choose the workspace and confirm the permissions. When you approve, Slack sends you back to Infrawrench and the workspace shows as connected.
+1. Go to **Settings > Notifications** and open the **Channels** tab.
+2. Click **Add to Slack**.
+3. On Slack's approval screen, choose the workspace and confirm the permissions.
 
-The install link is tied to you and to the browser that opens it, and it expires after 30 minutes. If you start from the desktop or mobile app, the link opens in your browser, which asks you to sign in to Infrawrench first if it is not already signed in as you. Forwarding the link to someone else does not work: whoever installs Slack has to start from their own **Add to Slack** button.
+Slack sends you back to Infrawrench and the workspace shows as connected.
 
-![Settings → Notifications page showing the Slack section before connecting, with the Add to Slack button visible](https://agent-assets.infrawrench.com/docs-screenshots/features/slack-alerts/slack-before-connect.png)
+The install link is tied to you and your browser, and expires after 30 minutes. If you start from the desktop or mobile app, the link opens in your browser, which asks you to sign in to Infrawrench if you aren't already. Forwarding the link to someone else won't work; they need to click **Add to Slack** themselves.
+
+![Settings > Notifications page showing the Slack section before connecting, with the Add to Slack button visible](https://agent-assets.infrawrench.com/docs-screenshots/features/slack-alerts/slack-before-connect.png)
 
 Infrawrench asks for six scopes and nothing else:
 
@@ -29,74 +33,84 @@ Infrawrench asks for six scopes and nothing else:
 | `commands`          | Register the `/infrawrench` slash command                                                   |
 | `files:write`       | Upload a [scheduled dashboard's PDF](./dashboard-pdf.md) into the delivery message's thread |
 
-Workspaces connected before `files:write` was added keep working: scheduled dashboard deliveries still post their summary and link, just without the PDF. Disconnect and reconnect Slack to grant the new scope.
+If you connected before `files:write` was added, everything keeps working, but scheduled dashboard deliveries post their summary and link without the PDF. Disconnect and reconnect Slack to grant the new scope.
 
-It never reads message history and never posts as you — messages come from the Infrawrench app itself.
+Infrawrench never reads message history and never posts as you. Messages come from the Infrawrench app.
 
-**Self-hosting?** Slack requires an app registered against your own deployment, so `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` must be set on the server, and the app's redirect URL must be `https://<your-host>/api/slack/oauth/callback`. Until they are, the Slack section says Slack isn't set up on this server and the button is hidden. The two-way half additionally needs `SLACK_SIGNING_SECRET` set, a slash command named `/infrawrench` pointed at `https://<your-host>/api/slack/commands`, and Interactivity enabled with request URL `https://<your-host>/api/slack/interactions` — without the secret, alerts still send but every inbound Slack request is refused.
+**Self-hosting?** You need a Slack app registered against your own deployment:
 
-## Choosing channels
+- Set `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` on the server, and set the app's redirect URL to `https://<your-host>/api/slack/oauth/callback`. Until you do, the Slack section says Slack isn't set up on this server and the button is hidden.
+- For buttons and slash commands, also set `SLACK_SIGNING_SECRET`, create a slash command named `/infrawrench` pointing at `https://<your-host>/api/slack/commands`, and enable Interactivity with request URL `https://<your-host>/api/slack/interactions`. Without the secret, alerts still send but every incoming Slack request is refused.
 
-Press **Add a channel** and pick from the list — it's fetched live from your workspace, so there are no channel IDs to look up. Add as many as you like.
+## Choose channels
 
-Adding a channel makes it a **destination**; which alerts reach it is decided by your [alert routing rules](./alert-routing.md). That is what lets a `#finance` channel take budget crossings without also getting every sync failure — and, unlike the per-channel checkboxes this replaced, what lets it take only the crossings over $500 on the production account.
+Click **Add a channel** and pick from the list. It comes straight from your workspace, so there are no channel IDs to look up. Add as many as you like.
 
-Until you write a rule, an organization routes **everything except resource drift** to every connected channel, so a channel you add today starts receiving alerts immediately. Drift is the exception because it is a continuous feed rather than an exceptional event; what counts as drift, and how often a digest may go out, is configured once for the whole organization in **Settings → Notifications → Resource drift alerts**.
+Each channel you add is a **destination**. Which alerts reach it is up to your [alert routing rules](./alert-routing.md). That's how a `#finance` channel can get budget crossings without every sync failure, or only the crossings over $500 on the production account.
 
-Unlike the mobile push toggles, which each member sets for themselves, routing is org-wide — it takes the **Organization settings** permission to change.
+Until you write a rule, **everything except resource drift** goes to every connected channel, so a channel you add today starts getting alerts straight away. Drift is left out because it's a continuous feed rather than an occasional event. You set what counts as drift, and how often a digest can go out, in **Settings > Notifications > Resource drift alerts**.
 
-![Settings → Notifications Slack section with a workspace connected and two channels listed, above the Alert routing card that decides what reaches them](https://agent-assets.infrawrench.com/docs-screenshots/features/slack-alerts/slack-connected-channels.png)
+Routing applies to the whole organization (unlike mobile push toggles, which each member sets for themselves), so changing it needs the **Organization settings** permission.
 
-**Private channels need an invite.** `chat:write.public` covers public channels, but Slack won't let any app post into a private channel it isn't a member of. Invite the Infrawrench app to the channel first (`/invite @Infrawrench` in Slack), then add it here. If you skip that step, delivery fails with `not_in_channel` — the **Send test message** button surfaces that error verbatim so you can tell it apart from a genuine outage.
+![Settings > Notifications Slack section with a workspace connected and two channels listed, above the Alert routing card that decides what reaches them](https://agent-assets.infrawrench.com/docs-screenshots/features/slack-alerts/slack-connected-channels.png)
+
+**Private channels need an invite.** Slack won't let an app post into a private channel it isn't a member of. Invite the app first (`/invite @Infrawrench` in Slack), then add the channel here. If you skip this, delivery fails with `not_in_channel`. The **Send test message** button shows that error as is, so you can tell it apart from a real outage.
 
 ## What the messages look like
 
-Each alert is a short block: the headline in bold, the alert text below it, and — for budget alerts, drift digests, pages and approval requests — a **View in Infrawrench** button that deep-links to the budget, the change timeline, the workflow, or the approvals inbox. Link previews are suppressed so an alert about a URL doesn't drag an unfurled card into the channel.
+Each alert is a short block: the headline in bold and the alert text below. Budget alerts, drift digests, pages and approval requests also get a **View in Infrawrench** button that opens the budget, the change timeline, the workflow or the approvals inbox. Link previews are turned off, so an alert about a URL doesn't pull an unfurled card into the channel.
 
-An **approval request** carries everything needed to decide without opening the app: what is being approved, the workflow and run that raised it, whether a person or a schedule started that run, when the request expires, and the fact that no decision counts as a denial — plus working **Approve** and **Deny** buttons (see below). A **View in Infrawrench** button still lands on **Settings → Approvals** for the full inbox.
+An **approval request** includes everything you need to decide without opening the app: what's being approved, the workflow and run that raised it, whether a person or a schedule started that run, and when the request expires (no decision counts as a denial). It has **Approve** and **Deny** buttons, plus a **View in Infrawrench** button that opens **Settings > Approvals**.
 
-## Linking your Slack account
+## Link your Slack account
 
-Alerts go out to channels, but anything coming _back_ — a slash command, an Approve button — has to be tied to a specific member before Infrawrench will honour it. That tie is a one-time link between your Slack user and your Infrawrench account.
+Alerts go out to channels, but anything coming back, like a slash command or an Approve click, has to be tied to a specific member. You do this once by linking your Slack user to your Infrawrench account.
 
-Run `/infrawrench link` (or just press any Approve/Deny button, or run any command, while unlinked) and Slack replies — only to you — with a link URL. Opening it asks you to sign in to Infrawrench if you aren't already, checks that you're a member of the organization, and shows a confirmation page naming the Slack user and organization being linked — the mapping is stored when you press **Link account**. The URL expires after 15 minutes; run `/infrawrench link` again for a fresh one.
+1. Run `/infrawrench link`. (Pressing any Approve or Deny button, or running any command, while unlinked does the same.)
+2. Slack replies, only to you, with a link.
+3. Open it. Sign in to Infrawrench if asked. You'll see a confirmation page naming your Slack user and the organization.
+4. Click **Link account**.
+
+The link expires after 15 minutes. Run `/infrawrench link` again for a fresh one.
 
 <insert [Slack ephemeral message shown to an unlinked user, with the "Link your account to <org>" URL visible] here>
 
-`/infrawrench unlink` removes the mapping again. Links are per organization and per workspace, and a link belonging to someone who has since left the organization stops working on its own.
+`/infrawrench unlink` removes the link. Links are per organization and per workspace. If someone leaves the organization, their link stops working on its own.
 
-## Approving from Slack
+## Approve from Slack
 
-Approval requests — a workflow suspended on `infra.waitForApproval(...)`, or the [AI chat agent](./ai-chat.md) waiting on a destructive tool call — arrive with **Approve** and **Deny** buttons. Pressing one decides the request through exactly the same code path as the web UI: one decision wins, racers get told the request was already decided, and an expired request can no longer be approved. The message then updates in place to show who decided and how, with a threaded reply for the channel's history — including when the decision was made from the web instead of the button.
+Approval requests arrive with **Approve** and **Deny** buttons. That covers a workflow waiting on `infra.waitForApproval(...)` and the [AI chat agent](./ai-chat.md) waiting on a destructive tool call.
+
+Clicking a button works exactly like deciding on the web. The first decision wins, anyone else is told it was already decided, and an expired request can't be approved. The message then updates to show who decided and how, with a threaded reply for the channel's history. This also happens when someone decides from the web instead.
 
 <insert [A Slack approval message for a workflow run with Approve and Deny buttons, next to the same message after approval showing "Approved by <name> via Slack" and the threaded reply] here>
 
-Who may press the buttons mirrors the web exactly:
+Who can click the buttons matches the web:
 
-- **Workflow approvals** need the **workflows:approve** permission — the same one the approvals inbox requires, deliberately separate from workflow authorship.
-- **Chat agent tool approvals** can only be decided by the owner of the conversation that raised them, exactly as on the web. Once decided from Slack, the agent conversation picks up the result and continues just as it would after a web decision.
+- **Workflow approvals** need the **workflows:approve** permission, the same one the approvals inbox needs. It's separate from permission to write workflows.
+- **Chat agent tool approvals** can only be decided by the person who owns that conversation. Once decided from Slack, the agent carries on just as it would after a web decision.
 
-Buttons only ever decide approvals that already exist. Destructive actions stay behind the same approval policy everywhere; nothing about Slack creates or bypasses one.
+Buttons only decide approvals that already exist. Destructive actions sit behind the same approval policy everywhere, and Slack can't create or bypass one.
 
-## Slash commands
+## Use slash commands
 
-Anywhere in a connected workspace, linked members can ask:
+Anywhere in a connected workspace, linked members can run:
 
-- **`/infrawrench costs`** — this month's spend so far: the total (and how it compares to the previous period) plus the top services, the same numbers as the costs dashboard. Needs the **costs:read** permission.
-- **`/infrawrench status <resource>`** — a resource's current status: type, account, when it last synced, and its most recent change, with a deep link to the resource. Matching is fuzzy — part of a name is enough — and when several resources match you get a pick-one list of buttons. Needs the **resources:read** permission.
-- **`/infrawrench link`** / **`/infrawrench unlink`** — manage the account link above.
-- **`/infrawrench help`** — the list, in Slack.
+- **`/infrawrench costs`**: this month's spend so far, with the total (and how it compares to the previous period) plus the top services. Same numbers as the costs dashboard. Needs **costs:read**.
+- **`/infrawrench status <resource>`**: a resource's type, account, when it last synced and its most recent change, with a link to the resource. Part of a name is enough. If several resources match, you get buttons to pick one. Needs **resources:read**.
+- **`/infrawrench link`** / **`/infrawrench unlink`**: manage your account link.
+- **`/infrawrench help`**: the list of commands.
 
-Replies are always ephemeral — only you see them, whatever channel you ask in.
+Replies are only visible to you, whatever channel you ask in.
 
 <insert [Slack showing the ephemeral /infrawrench costs reply with a month-to-date total, delta vs the previous period, and top services list] here>
 
-## Turning it off
+## Turn it off
 
-Removing a single channel stops delivery to it and leaves the rest alone. **Disconnect** removes the whole workspace and stops all Slack delivery for the org; the channel choices are kept, so re-connecting the same workspace later restores them rather than making you set everything up again.
+Removing a channel stops delivery to it and leaves the others alone. **Disconnect** removes the whole workspace and stops all Slack delivery for your organization. Your channel choices are kept, so reconnecting the same workspace later restores them.
 
-Disconnecting here does not uninstall the app from Slack. To remove it on the Slack side as well, do it from your workspace's **Manage apps** page.
+Disconnecting doesn't uninstall the app from Slack. To remove it there too, use your workspace's **Manage apps** page.
 
-## Interaction with the paging switch
+## The paging switch
 
-Sync-failure incidents respect the org's master **Paging enabled** switch on the same settings page — turning it off silences incidents on every transport, Slack included. Budget alerts, anomalies, drift digests, pages and approval requests are independent of it, exactly as they are for mobile push.
+Sync failure incidents follow your organization's **Paging enabled** switch on the same settings page. Turning it off silences incidents everywhere, Slack included. Budget alerts, anomalies, drift digests, pages and approval requests aren't affected, just as with mobile push.

@@ -68,11 +68,11 @@ The palette works with a screen reader. Focus stays in the search box, the selec
 
 ## On the desktop
 
-In local mode (no organization selected), the palette searches the cached resource index and your local workflows, so it works offline. It still shows your recent tabs and the actions that apply locally, like creating a dashboard or connecting an account. Once you select a cloud organization, the palette also searches the organization's saved objects and shows your starred items.
+In local mode (no organization selected), the palette searches the resources and workflows already on your machine, so it works offline. It still shows your recent tabs and the actions that apply locally, like creating a dashboard or connecting an account. Once you select a cloud organization, the palette also searches the organization's saved objects and shows your starred items.
 
 ## From other tools
 
-- **CLI**: `infrawrench search <query>` searches the same index, and `infrawrench starred` lists your starred items. Both take `--json`. See [the CLI](./cli.md).
+- **CLI**: `infrawrench search <query>` searches the same things, and `infrawrench starred` lists your starred items. Both take `--json`. See [the CLI](./cli.md).
 - **VS Code and Raycast**: the extensions' search commands also find cost reports, dashboards, budgets, SLOs and the other saved objects, and open them in the web or desktop app.
 - **Mobile**: your starred items are listed above the dashboards on the home tab.
-- **API**: `GET /api/org/{orgId}/search?q=…&kinds=all` returns the index, and `/starred` manages stars. Without `kinds` the endpoint returns resources and workflows only, as it always has.
+- **API**: `GET /api/org/{orgId}/search?q=…&kinds=all` returns search results, and `/starred` manages stars. Without `kinds`, the endpoint returns resources and workflows only.

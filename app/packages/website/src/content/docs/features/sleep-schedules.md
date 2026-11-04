@@ -1,68 +1,72 @@
 ---
 title: Sleep/wake schedules
-description: Stop non-prod resources outside working hours and start them back automatically — off at 19:00, on at 08:00, Mon–Fri — with a projected monthly saving quoted before you save.
+description: Stop non-prod resources outside working hours and start them back automatically (off at 19:00, on at 08:00, Mon to Fri), with a projected monthly saving quoted before you save.
 sidebar_order: 11
 ---
 
-A staging database that runs nights and weekends costs the same as one that doesn't — it just does nothing for two-thirds of the week. A sleep/wake schedule is a no-code weekly window attached to a resource: Infrawrench stops it at the off time and starts it at the on time on the days you pick, in the timezone you pick, and quotes the projected monthly saving before you commit.
+A staging database that runs all night and all weekend costs the same as one doing real work. A sleep/wake schedule stops a resource at an off time and starts it again at an on time, on the days and in the timezone you choose. You see the projected monthly saving before you save it.
 
 ## Which resources can sleep
 
-Eligibility is discovered from each provider plugin, never hard-coded: a resource can carry a schedule when its type declares a lifecycle start/stop action pair. Out of the box that covers:
+Any resource that has start and stop actions can have a schedule. That includes:
 
-- **AWS** — EC2 instances, RDS instances
-- **Google Cloud** — Compute Engine VM instances
-- **Azure** — Virtual machines (stop = deallocate, the one that stops billing), AKS clusters, App Service and Function Apps, container instances, PostgreSQL and MySQL flexible servers, application gateways, Container Apps
-- **DigitalOcean** — Droplets
-- **Hetzner Cloud** — Servers
-- **Crusoe Cloud** — VMs (stop ends compute billing; attached disks keep billing)
-- **Scaleway** — Instances
-- **Fly.io** — Machines
-- **Neon** — Compute endpoints (stop = suspend; note any incoming connection also wakes a suspended endpoint)
-- **Together AI** — Dedicated inference endpoints
-- **Baseten** — Deployments and environments (stop = deactivate; replicas stop and requests fail until reactivated)
-- **ClickHouse Cloud** — Services
-- **Databricks** — Clusters, SQL warehouses, apps
-- **OVHcloud** — Public Cloud instances
-- **CoreWeave**: CKS Node Pools (stop = scale to zero Nodes, start = restore the size it had)
-- **Anyscale**: Workspaces (stop terminates the workspace cluster)
+- **AWS:** EC2 instances, RDS instances
+- **Google Cloud:** Compute Engine VM instances
+- **Azure:** Virtual machines (stop = deallocate, the one that stops billing), AKS clusters, App Service and Function Apps, container instances, PostgreSQL and MySQL flexible servers, application gateways, Container Apps
+- **DigitalOcean:** Droplets
+- **Hetzner Cloud:** Servers
+- **Crusoe Cloud:** VMs (stop ends compute billing; attached disks keep billing)
+- **Scaleway:** Instances
+- **Fly.io:** Machines
+- **Neon:** Compute endpoints (stop = suspend; any incoming connection also wakes a suspended endpoint)
+- **Together AI:** Dedicated inference endpoints
+- **Baseten:** Deployments and environments (stop = deactivate; replicas stop and requests fail until reactivated)
+- **ClickHouse Cloud:** Services
+- **Databricks:** Clusters, SQL warehouses, apps
+- **OVHcloud:** Public Cloud instances
+- **CoreWeave:** CKS Node Pools (stop = scale to zero Nodes, start = restore the size it had)
+- **Anyscale:** Workspaces (stop terminates the workspace cluster)
 
-The same start/stop actions appear as buttons on each resource's detail page, so you can always override a schedule by hand.
+The same start and stop actions are buttons on each resource's detail page, so you can always override a schedule by hand.
 
-Note that a stopped resource isn't always a free resource: DigitalOcean and Hetzner keep billing stopped servers, and disks/IPs attached to a stopped VM keep billing everywhere. The projected saving is an estimate from your actual trailing spend, not a promise.
+A stopped resource isn't always free. DigitalOcean and Hetzner keep billing stopped servers, and disks and IPs attached to a stopped VM keep billing everywhere. The projected saving is an estimate based on your real recent spend, not a promise.
 
-## Creating a schedule
+## Create a schedule
 
-Open an eligible resource and switch to its **Schedule** tab. Pick the working days, the off time, the on time, and the IANA timezone — the editor previews the next few transitions so you can sanity-check the zone, and quotes the projected monthly saving computed from the resource's trailing 30-day spend and the fraction of the week it would be off.
+1. Open an eligible resource and go to its **Schedule** tab.
+2. Pick the working days, the off time and the on time.
+3. Pick the IANA timezone. The editor previews the next few changes so you can check the zone is right.
+4. Check the projected monthly saving. It's based on the resource's spend over the last 30 days and how much of the week it would be off.
+5. Save.
 
-![Screenshot of the Schedule tab on an EC2 instance's detail page showing the editor modal with Mon–Fri selected, off 19:00 / on 08:00, Europe/London, and the projected monthly saving quote](https://agent-assets.infrawrench.com/docs-screenshots/features/sleep-schedules/schedule-tab-editor.png)
+![Screenshot of the Schedule tab on an EC2 instance's detail page showing the editor modal with Mon to Fri selected, off 19:00 / on 08:00, Europe/London, and the projected monthly saving quote](https://agent-assets.infrawrench.com/docs-screenshots/features/sleep-schedules/schedule-tab-editor.png)
 
-One schedule per resource. Times are wall-clock in the chosen zone and stay correct across daylight-saving transitions.
+Each resource can have one schedule. Times are local to the chosen zone and stay correct across daylight saving changes.
 
-## Managing schedules
+## Manage schedules
 
-The **Sleep schedules** section on the Costs panel's **Savings** tab lists every schedule in the org, the window, the next transition, the last run's outcome, and the projected saving, with pause/resume, edit, and delete controls.
+Go to the Costs panel, **Savings** tab, **Sleep schedules** section. It lists every schedule in your organization with its window, next change, last run result and projected saving. From there you can pause, resume, edit or delete.
 
 ![Screenshot of the Sleep schedules section on the Costs panel with several schedules listed, one paused and one showing a "Skipped: freeze" badge](https://agent-assets.infrawrench.com/docs-screenshots/features/sleep-schedules/costs-panel-section.png)
 
-Creating, editing, and deleting a schedule are recorded in the [audit log](../team-and-billing/audit-log.md).
+Creating, editing and deleting schedules are recorded in the [audit log](../team-and-billing/audit-log.md).
 
-## How execution works
+## What happens when a schedule runs
 
-The cloud poller executes due transitions server-side by invoking the plugin's own start/stop action — no agent on the resource, nothing to install. A few behaviors worth knowing:
+Infrawrench runs the resource's own start or stop action from the cloud. There's nothing to install on the resource.
 
-- **Change freezes win.** While an [org change freeze](../team-and-billing/change-freeze.md) is in effect, transitions are skipped, logged, and surfaced on the schedule as "Skipped: freeze" — they do not fire late when the freeze lifts.
-- **Transitions appear in the change timeline** attributed to the schedule ("via schedule"), so a stopped staging VM never reads as unexplained drift in the [change timeline](./change-timeline.md).
-- **Failures are visible.** A failed start/stop is retried for up to an hour and the last error is shown on the schedule everywhere schedules are listed — a schedule never fails silently.
-- **Missed windows resolve to the latest state.** If execution was interrupted for longer than a window, only the most recent transition runs — the one that decides whether the resource should currently be up or down.
+- **Change freezes win.** During an [org change freeze](../team-and-billing/change-freeze.md), changes are skipped and the schedule shows "Skipped: freeze". They don't run late when the freeze ends.
+- **Changes show in the [change timeline](./change-timeline.md)** marked "via schedule", so a stopped staging VM never looks like unexplained drift.
+- **Failures are visible.** A failed start or stop is retried for up to an hour, and the last error shows on the schedule wherever schedules are listed.
+- **Missed windows catch up to the right state.** If a run was missed, only the most recent change runs, so the resource ends up in the state it should be in now.
 
-## Other surfaces
+## Other places to use schedules
 
-- **Remediate** on a schedule row shows the provider CLI stop and start commands for that resource, for running the same thing by hand or from your own cron. See [Remediation commands](./remediation-commands.md).
-- **Mobile** shows the schedule list on the Costs tab (under **Savings**) with a pause/resume toggle and the same commands to copy; creating and editing stays on web and desktop.
-- **CLI**: `infrawrench schedules` lists windows, next transitions, and projected savings (`--json` for scripts).
-- **MCP**: the `list_schedules` and `create_schedule` tools let agents read and create schedules under the same permissions as the UI. In the in-app [AI chat](./ai-chat.md), `create_schedule` waits for your approval, because it arms the poller to stop the resource on a timer.
+- **Remediate** on a schedule row shows the provider CLI commands to stop and start that resource, so you can run them by hand or from your own cron. See [Remediation commands](./remediation-commands.md).
+- **Mobile:** the Costs tab (under **Savings**) lists schedules with a pause/resume toggle and the same commands to copy. Creating and editing stay on web and desktop.
+- **CLI:** `infrawrench schedules` lists windows, next changes and projected savings (`--json` for scripts).
+- **MCP:** the `list_schedules` and `create_schedule` tools let agents read and create schedules with the same permissions as the UI. In the in-app [AI chat](./ai-chat.md), `create_schedule` waits for your approval, because it will stop the resource on a timer.
 
 ## Permissions
 
-Viewing schedules needs `resources:read`. Creating, editing, pausing, and deleting need `resources:write` — the same permission that gates invoking a resource's actions directly.
+Viewing schedules needs `resources:read`. Creating, editing, pausing and deleting need `resources:write`, the same permission as running a resource's actions directly.

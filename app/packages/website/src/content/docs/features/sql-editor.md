@@ -4,36 +4,36 @@ description: Run queries against Postgres, MySQL, Turso, Databricks, Snowflake, 
 sidebar_order: 4
 ---
 
-Infrawrench ships an in-app SQL console so you do not need to juggle psql, mysql, and vendor consoles for quick lookups.
+Run quick queries against your databases without leaving Infrawrench. No need to juggle psql, mysql and vendor consoles for a fast lookup.
 
 ![SQL editor with the schema browser expanded and a result table below](https://agent-assets.infrawrench.com/docs-screenshots/features/sql-editor/sql-editor-results.png)
 
-## Where to open it
+## Open the editor
 
-- **Per-database account** — click the **SQL** button on a Postgres, MySQL, Turso, ClickHouse, or Databricks account.
-- **Per-resource** — many managed databases (RDS instances, PlanetScale branches, Neon branches, Cloud SQL, Turso databases) have their own SQL editor on the detail page so you do not have to add a separate account.
+- **From a database account:** click **SQL** on a Postgres, MySQL, Turso, ClickHouse or Databricks account.
+- **From a resource:** many managed databases (RDS instances, PlanetScale branches, Neon branches, Cloud SQL, Turso databases) have their own SQL editor on the detail page, so you don't need to add a separate account.
 
-## Features
+## What you can do
 
-- **Schema browser** down the left-hand side, from live introspection. Filter it with the **Search tables…** box, expand a table to see its columns and types, and click a table name to drop `SELECT * FROM <table> LIMIT 100;` into the buffer and run it. Primary-key columns are marked with a ⚿.
-- **Result grid** with primary-key columns badged **PK** and nulls shown as `NULL`.
-- **Inline row editing** — where the query selects from a single table and brings back all of its primary-key columns, the pencil on a row turns the non-key cells into inputs and writes an `UPDATE` back.
-- **Export CSV** — downloads the current result set.
-- **Estimate** — on engines that support a dry run (BigQuery, Databricks), prices the query before you run it; the toolbar then shows the bytes and cost, or "cache hit · free".
-- **Run ⌘↵** runs the whole buffer. Tab inserts two spaces rather than moving focus.
+- **Browse the schema** in the left sidebar. Filter it with the **Search tables…** box and expand a table to see its columns and types. Click a table name to run `SELECT * FROM <table> LIMIT 100;`. Primary-key columns are marked with a ⚿.
+- **Read results** in the grid. Primary-key columns are badged **PK** and nulls show as `NULL`.
+- **Edit rows inline.** When your query selects from a single table and returns all of its primary-key columns, click the pencil on a row to edit the non-key cells. Saving writes an `UPDATE` back.
+- **Export CSV** to download the current result set.
+- **Estimate** the cost before you run, on engines that support a dry run (BigQuery, Databricks). The toolbar shows the bytes and cost, or "cache hit · free".
+- **Run ⌘↵** runs the whole buffer. Tab inserts two spaces instead of moving focus.
 
-The editor itself is a plain text area — there is no autocomplete, and no query history is kept between visits.
+The editor is a plain text area. There's no autocomplete, and query history isn't kept between visits.
 
-## Per-driver notes
+## Notes by database
 
-- **Postgres** — full SQL, introspection from `information_schema`.
-- **MySQL / PlanetScale** — PlanetScale uses Vitess, so cross-shard joins can fail; infrawrench surfaces the raw error.
-- **Turso** — libsql dialect. Edge-replicated, so some writes lag on reads until replication catches up.
-- **Databricks** — runs against a SQL warehouse; results are fetched via REST, not a long-lived connection.
-- **Snowflake**: every Snowflake resource has a SQL tab, sent through the SQL API with no driver. A warehouse runs queries on itself; a database or schema runs them in that context, with tables and columns listed from `SHOW COLUMNS`. Results stop at 10,000 rows.
-- **ClickHouse** — HTTP interface. Large result sets stream into the grid.
-- **MongoDB** — not SQL; uses a separate collection browser instead (see the [MongoDB plugin](../plugins/mongodb.md)).
+- **Postgres:** full SQL.
+- **MySQL / PlanetScale:** PlanetScale uses Vitess, so cross-shard joins can fail. You'll see the raw error.
+- **Turso:** libsql dialect. It's edge-replicated, so a read right after a write may not show the change until replication catches up.
+- **Databricks:** queries run against a SQL warehouse.
+- **Snowflake:** every Snowflake resource has a SQL tab. On a warehouse, queries run on that warehouse. On a database or schema, they run in that context and the sidebar lists its tables and columns. Results stop at 10,000 rows.
+- **ClickHouse:** large result sets stream into the grid.
+- **MongoDB:** not SQL. Use the collection browser instead (see the [MongoDB plugin](../plugins/mongodb.md)).
 
-## Writing vs reading
+## Reads and writes
 
-There is no read-only mode by default. If you want a query to dry-run, prepend your statement with `EXPLAIN` (Postgres, MySQL, ClickHouse) or whatever your engine supports.
+There's no read-only mode by default, so write queries will run. To check a query without running it, prefix it with `EXPLAIN` (Postgres, MySQL, ClickHouse) or your engine's equivalent.
