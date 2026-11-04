@@ -1,7 +1,6 @@
 ---
 import { getEntry, render } from "astro:content";
 import DocsLayout from "../../layouts/DocsLayout.astro";
-import DocsWipNotice from "../../components/DocsWipNotice.astro";
 
 // Rendered on demand, not prerendered: a static page is served straight from
 // Cloudflare's asset handler and never reaches middleware, so it could not
@@ -51,8 +50,6 @@ const Content = rendered?.Content;
 >
   <div class="docs-article-with-toc" data-has-toc={tocItems.length > 0 ? "" : undefined}>
     <article class="docs-article docs-article-body">
-      <DocsWipNotice />
-
       <header class="docs-article-header">
         <h1 class="docs-article-title">{entry.data.title}</h1>
         {entry.data.description && <p class="docs-article-lede">{entry.data.description}</p>}
