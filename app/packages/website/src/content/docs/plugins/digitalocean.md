@@ -1,52 +1,59 @@
 ---
 title: DigitalOcean
-description: Manage Droplets, Kubernetes, App Platform, load balancers, firewalls, managed databases, Spaces, and DNS.
+description: Manage DigitalOcean Droplets, Kubernetes, App Platform, load balancers, firewalls, managed databases, Spaces, and DNS.
 sidebar_order: 4
 ---
 
-The most approachable cloud plugin — a single API token is all you need.
+Connect DigitalOcean with a single API token, then manage Droplets, databases, networking, storage and AI resources from Infrawrench.
 
 ## What you can manage
 
-- **Droplets** — list, create (image + size + region + SSH key pickers), delete. Full lifecycle actions from the detail page: power on / off / cycle, reboot, shutdown, snapshot (auto-named or named), rename, resize, rebuild from image, reset root password, enable IPv6, enable/disable/restore backups and change backup policy.
-- **Block-storage volumes** — list, create, delete, attach/detach (drag a volume onto a droplet to attach), resize, snapshot.
-- **Snapshots** — sidebar group listing every droplet _and_ volume snapshot, deletable from the detail page. Restore back into a droplet via the droplet's Actions → Restore from Backup.
-- **Custom images** — your account-owned images (uploaded ISOs, snapshots promoted to images, backups). Distribution and marketplace images are still selectable from the droplet create form.
-- **Network File Storage (NFS)** — create POSIX-compliant NFSv4.1 shares (standard or high-performance tier), pinned to a VPC, mountable across multiple Droplets and DOKS nodes. The share detail page surfaces the mount target and a ready-to-paste `mount -t nfs` command.
-- **Reserved IPs** — list, create, assign / reassign / unassign, and delete the static addresses you can move between Droplets (DigitalOcean's old "floating IPs"). Each address shows its region, the Droplet holding it, its project, and whether DigitalOcean has a pending action on it. Unassigned addresses are flagged by the [orphan finder](../features/orphan-finder.md) — see below.
-- **VPCs** — list, create (name + region, with an optional CIDR range and description) and delete the private networks your Droplets, DOKS nodes, NFS shares and Dedicated Inference endpoints sit in. Each VPC shows its region, IP range, description and whether it's the region's default. A region's default VPC — and any VPC that still has members — can't be deleted; DigitalOcean rejects those with a 403.
-- **NAT gateways**: list, create (region + VPC pickers, size 1-5, TCP/UDP/ICMP timeouts), edit size, name and timeouts, and delete the VPC NAT gateways that give private Droplets outbound internet access through one egress IP. See [Networking services](#networking-services).
+- **Droplets**: list, create (with image, size, region and SSH key pickers) and delete. From the detail page: power on, off and cycle, reboot, shutdown, snapshot (auto-named or named), rename, resize, rebuild from image, reset the root password, enable IPv6, turn backups on or off, restore, and change the backup policy.
+- **Block-storage volumes**: list, create, delete, attach and detach (drag a volume onto a Droplet to attach it), resize, snapshot.
+- **Snapshots**: one sidebar group for every Droplet _and_ volume snapshot, deletable from the detail page. To restore into a Droplet, use the Droplet's **Actions > Restore from Backup**.
+- **Custom images**: your own images (uploaded ISOs, snapshots promoted to images, backups). Distribution and marketplace images are still available in the Droplet create form.
+- **Network File Storage (NFS)**: create NFSv4.1 shares (standard or high-performance) in a VPC, mountable across multiple Droplets and DOKS nodes. The share's detail page shows the mount target and a ready-to-paste `mount -t nfs` command.
+- **Reserved IPs**: list, create, assign, reassign, unassign and delete static addresses you can move between Droplets (formerly "floating IPs"). Each shows its region, the Droplet holding it, its project, and whether DigitalOcean has an action pending on it. Unassigned addresses are flagged by the [orphan finder](../features/orphan-finder.md). See [Reserved IPs](#reserved-ips).
+- **VPCs**: list, create (name and region, with an optional CIDR range and description) and delete the private networks your Droplets, DOKS nodes, NFS shares and Dedicated Inference endpoints sit in. Each shows its region, IP range, description and whether it's the region's default. You can't delete a region's default VPC or a VPC that still has members; DigitalOcean rejects those with a 403.
+- **NAT gateways**: list, create (region and VPC pickers, size 1 to 5, TCP, UDP and ICMP timeouts), edit size, name and timeouts, and delete. They give private Droplets outbound internet access through one egress IP. See [Networking services](#networking-services).
 - **VPC peerings**: connect two VPCs (two VPC pickers), rename, delete.
-- **Load balancers**: create regional HTTP and regional network (TCP/UDP) load balancers, edit them, manage forwarding rules, health check and target Droplets, and chart every load balancer metric DigitalOcean exposes. Global load balancers list and edit but are created in the DigitalOcean console. See [Load balancers](#load-balancers).
-- **Cloud Firewalls**: create with inbound rules, sources and target Droplets/tags; add and remove allow or deny rules, Droplets and tags from the detail page. See [Cloud Firewalls](#cloud-firewalls).
-- **Certificates**: Let's Encrypt certificates for domains whose DNS DigitalOcean hosts (domain picker plus subdomains, wildcards included) or uploaded custom certificates. Expiry dates feed the Expiry radar.
-- **CDN endpoints**: put the Spaces CDN in front of a bucket (bucket picker when the account has Spaces keys), set the cache TTL, attach a custom domain with a certificate, and purge cached paths.
-- **Uptime checks**: HTTP(S) and ping checks from up to four regions, with per-region status, 30-day uptime and the last outage on the detail page, plus alert management (down, latency, SSL expiry; email and Slack). Pause and resume from the header.
-- **App Platform apps**: list, redeploy, force a rebuild, restart (all or chosen components), roll back, cancel a deployment in flight, edit the app spec, delete; with build/deploy/run logs and CPU/memory/restart and daily bandwidth metrics. See [App Platform](#app-platform).
-- **Droplet autoscale pools**: list, edit the scaling configuration (min/max Droplets and CPU/memory targets, or a fixed count), view members and scaling history, chart pool metrics, and delete the pool with or without its Droplets. Pools are created in the DigitalOcean console.
-- **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md), node CPU/memory/bandwidth metrics, and a **Logs** tab listing the cluster's status messages (the notices DigitalOcean posts when something affects the cluster's lifecycle, such as delayed provisioning).
-- **Managed databases** — Postgres, MySQL, Valkey (Redis-compatible caching), MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can reference from the matching client plugins. DigitalOcean retired Managed Redis on 30 June 2025, so the create form provisions Valkey clusters; pre-migration Redis clusters still appear and connect through the same Redis plugin.
-- **Agent Platform** — list, create, and delete Gradient AI agents. The agent's deployment URL is surfaced as an output you can reference from other resources.
-- **Knowledge Bases** — list, create, edit, and delete RAG knowledge bases; manage their data sources (Spaces buckets, web crawls), trigger and cancel indexing jobs, and watch indexing history. The `kbaas.do-ai.run/v1/{uuid}/retrieve` hybrid retrieval endpoint is exposed as an output.
-- **Inference Router** — list, create, and delete model routers (the "right model per call" auto-routing layer that balances cost and latency across multiple foundation models).
-- **Dedicated Inference** — list, create, and delete dedicated GPU-backed model deployments. Public and private VPC endpoints are exposed as outputs.
-- **Batch Inference jobs** — list and cancel async batch jobs running against OpenAI or Anthropic provider APIs.
-- **Model API Keys** — list and delete the keys used to authenticate against `inference.do-ai.run` (serverless inference + OpenAI-compatible SDK access). Creating new keys is done in DigitalOcean's Model Studio (DO retired the create API), so Infrawrench surfaces the existing keys for review/cleanup rather than creating them.
-- **Spaces**: S3-compatible object storage, with the [file browser](../features/file-browsers.md). Buckets are found in every Spaces region, including LON1, TOR1, BLR1, ATL1 and MKC1.
-- **DNS** — domains and records.
-- **Projects** — list, create, edit (name / description / purpose / environment) and delete. Use the **Edit Project…** button at the bottom of the project detail page to rename or repurpose without leaving Infrawrench.
+- **Load balancers**: create regional HTTP and regional network (TCP/UDP) load balancers, edit them, manage forwarding rules, the health check and target Droplets, and chart every metric DigitalOcean offers. Global load balancers can be listed and edited here but are created in the DigitalOcean console. See [Load balancers](#load-balancers).
+- **Cloud Firewalls**: create with inbound rules, sources and target Droplets or tags, then add and remove allow or deny rules, Droplets and tags from the detail page. See [Cloud Firewalls](#cloud-firewalls).
+- **Certificates**: Let's Encrypt certificates for domains whose DNS DigitalOcean hosts (domain picker plus subdomains, wildcards included), or uploaded custom certificates. Expiry dates feed the Expiry radar.
+- **CDN endpoints**: put the Spaces CDN in front of a bucket (with a bucket picker when the account has Spaces keys), set the cache TTL, attach a custom domain with a certificate, and purge cached paths.
+- **Uptime checks**: HTTP(S) and ping checks from up to four regions. The detail page shows status per region, 30-day uptime and the last outage, plus alerts (down, latency, SSL expiry; email and Slack). Pause and resume from the header.
+- **App Platform apps**: list, redeploy, force a rebuild, restart (all or chosen components), roll back, cancel a deployment in progress, edit the app spec, delete. Includes build, deploy and run logs, and CPU, memory, restart and daily bandwidth metrics. See [App Platform](#app-platform).
+- **Droplet autoscale pools**: list, edit the scaling settings (min and max Droplets and CPU or memory targets, or a fixed count), view members and scaling history, chart pool metrics, and delete the pool with or without its Droplets. Create pools in the DigitalOcean console.
+- **Kubernetes (DOKS)**: clusters, with a kubeconfig for the [Kubernetes plugin](./kubernetes.md), node CPU, memory and bandwidth metrics, and a **Logs** tab listing the notices DigitalOcean posts when something affects the cluster (such as delayed provisioning).
+- **Managed databases**: Postgres, MySQL, Valkey (Redis-compatible caching), MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can use from the matching client plugins. DigitalOcean retired Managed Redis on 30 June 2025, so the create form makes Valkey clusters. Older Redis clusters still appear and connect through the Redis plugin.
+- **Agent Platform**: list, create and delete Gradient AI agents. The agent's deployment URL is an output you can reference from other resources.
+- **Knowledge Bases**: list, create, edit and delete RAG knowledge bases. Manage data sources (Spaces buckets, web crawls), start and cancel indexing jobs, and see indexing history. The `kbaas.do-ai.run/v1/{uuid}/retrieve` retrieval endpoint is an output.
+- **Inference Router**: list, create and delete model routers, which pick the right model for each call to balance cost and latency.
+- **Dedicated Inference**: list, create and delete dedicated GPU model deployments. Public and private VPC endpoints are outputs.
+- **Batch Inference jobs**: list and cancel batch jobs running against OpenAI or Anthropic.
+- **Model API Keys**: list and delete the keys for `inference.do-ai.run` (serverless inference and OpenAI-compatible SDK access). Create new keys in DigitalOcean's Model Studio.
+- **Spaces**: S3-compatible object storage, with the [file browser](../features/file-browsers.md). Buckets in every Spaces region are found, including LON1, TOR1, BLR1, ATL1 and MKC1.
+- **DNS**: domains and records.
+- **Projects**: list, create, edit (name, description, purpose, environment) and delete. Click **Edit Project…** at the bottom of the project detail page to rename or repurpose a project.
 
 ![DigitalOcean Project detail page with the Edit Project button at the bottom highlighted](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/project-detail.png)
 
+## Credentials
+
+1. In DigitalOcean, go to **API > Tokens > Generate new token**. Give it read and write scope.
+2. Paste the token into the add-account form.
+
+![DigitalOcean Add-account form with API token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/add-account.png)
+
 ## Droplet detail page
 
-The droplet detail page adds:
+The Droplet detail page gives you:
 
-- A **header action bar** with state-aware Power On / Reboot / Shutdown buttons and a one-click "Take Snapshot" (auto-named with the droplet name + ISO timestamp).
-- An **Actions tab** with everything else — Power Cycle, hard Power Off, named Snapshot, Rename, Resize (with a CPU/RAM-only vs disk-included toggle), Rebuild, Enable IPv6, Reset Root Password, Enable/Disable Backups, Change Backup Policy (daily vs weekly + hour + weekday), Restore from Backup. Destructive actions show a confirmation prompt.
-- A **Metrics tab** charting every metric the DO Monitoring API exposes for droplets: CPU, load (1/5/15 min), memory (total / available / free / cached), disk read/write, filesystem size/free, and bandwidth on both public and private interfaces in both directions. Memory/disk/load/filesystem series only render when the [DO Metrics Agent](https://docs.digitalocean.com/products/monitoring/how-to/install-metrics-agent/) is installed on the droplet.
-- A **Logs** tab reading the Droplet's logs from [DigitalOcean Insights](https://docs.digitalocean.com/products/insights/) (public preview) for the last 24 hours, with an **all** / **errors** dropdown (errors means severity ERROR and above). Logs only exist for Droplets running the Insights Observability agent in a region Insights supports, and the API token needs the `insights:read` scope; the tab says which of those is missing when the search fails.
-- **Backups / Snapshots / Volumes** tabs listing IDs DO has recorded for this droplet, with quick links into the matching detail page where applicable.
+- A **header action bar** with Power On, Reboot and Shutdown buttons that match the Droplet's state, and a one-click **Take Snapshot** (named with the Droplet name and a timestamp).
+- An **Actions tab** with everything else: Power Cycle, hard Power Off, named Snapshot, Rename, Resize (choose CPU and RAM only, or include disk), Rebuild, Enable IPv6, Reset Root Password, Enable or Disable Backups, Change Backup Policy (daily or weekly, plus hour and weekday), and Restore from Backup. Destructive actions ask you to confirm.
+- A **Metrics tab** with CPU, load (1, 5 and 15 min), memory (total, available, free, cached), disk read and write, filesystem size and free space, and bandwidth in and out on public and private interfaces. Memory, disk, load and filesystem charts only appear when the [DO Metrics Agent](https://docs.digitalocean.com/products/monitoring/how-to/install-metrics-agent/) is installed on the Droplet.
+- A **Logs** tab with the last 24 hours of the Droplet's logs from [DigitalOcean Insights](https://docs.digitalocean.com/products/insights/) (public preview). Choose **all** or **errors** (severity ERROR and above). Logs only exist for Droplets running the Insights Observability agent in a supported region, and your token needs the `insights:read` scope. If something's missing, the tab tells you which.
+- **Backups**, **Snapshots** and **Volumes** tabs, with links to each item's detail page where available.
 
 ![DigitalOcean droplet detail page with the Actions tab open showing Power, Snapshot & Image, Configuration, and Backups sections](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/droplet-actions-tab.png)
 
@@ -54,24 +61,25 @@ The droplet detail page adds:
 
 ## Managed databases
 
-Cluster create, list, and delete is straightforward — pick engine, region, node size, node count. Two things to know once the cluster is live:
+To create a cluster, pick the engine, region, node size and node count. Once it's running, here's what to know.
 
 ### Users (and where the password comes from)
 
-DigitalOcean reveals a database user's credential **exactly once**, at creation — the `/users` list always shows empty passwords, and `doadmin` / `do-readonly` never expose theirs.
+DigitalOcean shows a database user's password **only once**, when the user is created. The built-in `doadmin` and `do-readonly` users never show theirs.
 
-- **Postgres / MySQL** — the password comes back inline on the cluster, so the peer-pane tab (SQL editor) just works. Nothing to do.
-- **MongoDB / Valkey / OpenSearch / Kafka** — DO doesn't hand back the built-in user's password, so the peer-pane tab needs a user you mint. Click **+ Make connection user** in the cluster's header: Infrawrench creates the user, captures the credential DO returns once (a password, or for Kafka the mTLS cert/key), and stores it encrypted in your local secret store. The cluster's `connectionString` is then built from that user and the tab starts working. No more "DO returned no password" dead-ends. **Kafka** users also carry an ACL, so the form adds **Topic** and **Permission** fields — they default to `admin` on every topic (`*`) so the user works immediately, but you can narrow them (e.g. `produceconsume` on `events-*`) before creating. Kafka connections use **SASL/SCRAM-SHA-256** over TLS (the port DigitalOcean exposes via the API); this needs the user's password, which DO only returns when your API token has the **`database:view_credentials`** scope — note it is _not_ included in "Full Access" by default, so regenerate the token with that scope ticked if Kafka reports a missing password.
+- **Postgres and MySQL**: the password comes with the cluster, so the SQL editor tab works right away.
+- **MongoDB, Valkey, OpenSearch and Kafka**: you need your own user for the connection tab to work. Click **+ Make connection user** in the cluster's header. Infrawrench creates the user, saves the credential DigitalOcean returns (a password, or for Kafka the mTLS cert and key) encrypted in your local secret store, and the tab starts working.
+- **Kafka** users also need an ACL, so the form adds **Topic** and **Permission** fields. They default to `admin` on every topic (`*`) so the user works straight away, but you can narrow them (for example `produceconsume` on `events-*`) before creating. Kafka connects with **SASL/SCRAM-SHA-256** over TLS, which needs the user's password. DigitalOcean only returns it when your token has the **`database:view_credentials`** scope. That scope is _not_ part of "Full Access", so if Kafka reports a missing password, regenerate the token with it ticked.
 
-You can also mint users from the **DB Users** section on the detail page; the "Make connection user" button is just the one-click version wired to capture + store the credential.
+You can also create users from the **DB Users** section on the detail page. **Make connection user** is the one-click version that also saves the credential.
 
 ### Metrics tab
 
-Every engine charts CPU, memory and disk usage plus load (1, 5 and 15 minute). MySQL clusters add the MySQL-specific series DigitalOcean's Monitoring API documents: the share of reads that use an index, select/insert/update/delete rates, and connected, active and newly created threads.
+Every engine charts CPU, memory and disk usage plus load (1, 5 and 15 minute). MySQL clusters also show the share of reads that use an index, select, insert, update and delete rates, and connected, active and newly created threads.
 
 ### Logs tab
 
-DO doesn't expose process-level logs over the API. The Logs tab surfaces the cluster's **event stream** (`/v2/databases/{id}/events`) — creates, scale events, maintenance, power cycles. Useful as a "what's been happening to this cluster" feed, not a query log.
+DigitalOcean doesn't offer process logs through its API. The Logs tab shows the cluster's **event history** instead: creates, scaling, maintenance and power cycles. Use it to see what's been happening to the cluster, not as a query log.
 
 ![DigitalOcean managed-database detail page with the DB Users section expanded showing a freshly-minted user](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/managed-database-db-users.png)
 
@@ -81,221 +89,228 @@ DO doesn't expose process-level logs over the API. The Logs tab surfaces the clu
 
 Create a share from any project's NFS sidebar group:
 
-1. Pick a region that supports NFS (the create call returns 422 in unsupported regions).
-2. Size — minimum 50 GiB, maximum 16,000 GiB.
-3. Performance tier — Standard ($0.15 / GiB-mo) or High Performance ($0.30 / GiB-mo, GPU-tuned).
-4. VPC — the share is reachable only from droplets/DOKS nodes in this VPC. Add more VPCs after creation in the DO console.
+1. Pick a region that supports NFS. Unsupported regions return a 422 error.
+2. Choose a size: minimum 50 GiB, maximum 16,000 GiB.
+3. Choose a performance tier: Standard ($0.15 / GiB-mo) or High Performance ($0.30 / GiB-mo, tuned for GPUs).
+4. Pick a VPC. Only Droplets and DOKS nodes in this VPC can reach the share. Add more VPCs later in the DigitalOcean console.
 
-After creation, the share's detail page renders the mount target and a copy-paste `sudo mount -t nfs -o nfsvers=4.1 …` command sized for the share.
+The share's detail page then shows the mount target and a copy-paste `sudo mount -t nfs -o nfsvers=4.1 …` command for the share.
 
 ![DigitalOcean NFS share detail page showing the mount target and mount command](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/nfs-share-detail.png)
 
 ## Reserved IPs
 
-A reserved IP is a static address you can move between Droplets without changing DNS. DigitalOcean renamed these from "floating IPs"; the API and the console both call them reserved IPs now.
+A reserved IP is a static address you can move between Droplets without changing DNS. DigitalOcean used to call these "floating IPs".
 
-The pricing is the thing worth knowing: **an assigned reserved IP is free, and an unassigned one costs $5.00/month ($0.01/hour)**. That makes a forgotten address the most common silent line item on a DO invoice, which is why Infrawrench flags it (see below).
+Know the pricing: **an assigned reserved IP is free, and an unassigned one costs $5.00/month ($0.01/hour)**. A forgotten address is a common surprise on a DigitalOcean bill, so Infrawrench flags unassigned ones.
 
-Creating one asks a single question — what is it for?
+When you create one, you choose what it's for:
 
-- **A Droplet** — pick from a Droplet picker. The address is reserved in that Droplet's region and assigned immediately, so it never enters the billed state.
-- **A region** — pick a region (and optionally a project). The address is reserved but unassigned, and billing starts.
+- **A Droplet**: pick the Droplet. The address is reserved in its region and assigned straight away, so it's never billed.
+- **A region**: pick a region (and optionally a project). The address is reserved but unassigned, and billing starts.
 
-From the detail page you can **Assign** (or **Reassign**) it to another Droplet, **Unassign** it, or delete it. The Droplet picker only lists Droplets in the address's own region, because DigitalOcean rejects a cross-region assignment outright. You can also drag a reserved IP onto a Droplet in the sidebar to assign it — same region rule applies, and Infrawrench explains the mismatch rather than passing DigitalOcean's error through.
+From the detail page you can **Assign** (or **Reassign**) it to another Droplet, **Unassign** it, or delete it. The Droplet picker only shows Droplets in the address's region, because DigitalOcean doesn't allow cross-region assignment. You can also drag a reserved IP onto a Droplet in the sidebar; if the regions don't match, Infrawrench tells you why.
 
-While DigitalOcean has an action in flight the address reports as **locked**: the assign and unassign buttons are hidden until it settles, since the API would reject them anyway.
+While DigitalOcean has an action in progress, the address shows as **locked** and the assign and unassign buttons are hidden until it finishes.
 
-Deleting a reserved IP releases the address back to DigitalOcean's pool — you will not get the same one back. Delete is only accepted once the address is unassigned.
+Deleting a reserved IP releases it, and you won't get the same address back. You can only delete it once it's unassigned.
 
 ![DigitalOcean Reserved IP detail page for an unassigned address, showing the Assignment section with the "Billed while unassigned" row and the Assign to Droplet button in the header](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/reserved-ip-unassigned.png)
 
 ## VPCs
 
-Every DigitalOcean account gets one default VPC per region, and everything you create lands in one whether you chose it or not. The **VPCs** sidebar group lists them all with their region, IP range, description and default flag; the uuid is the resource's external id, so it is the same value a Droplet, NFS share or Dedicated Inference endpoint records for its network.
+Every DigitalOcean account has a default VPC in each region, and everything you create lands in one. The **VPCs** sidebar group lists them all with region, IP range, description and default flag.
 
-Because of that, the [dependency graph](../features/dependency-graph.md) draws a Droplet, an NFS share (one edge per VPC it's exported to) and a Dedicated Inference deployment straight onto the VPC they sit in — no wiring needed.
+The [dependency graph](../features/dependency-graph.md) automatically connects Droplets, NFS shares (one edge per VPC they're exported to) and Dedicated Inference deployments to the VPC they're in.
 
-Creating one takes a name and a region; leave **IP Range** blank and DigitalOcean assigns a free `/20` that won't collide with your other networks, or set your own between `/28` and `/16` from the RFC1918 space. Deleting is only possible once the VPC is empty and is not the region's default.
+To create a VPC, enter a name and a region. Leave **IP Range** blank and DigitalOcean picks a free `/20` that won't clash with your other networks, or set your own between `/28` and `/16` from the RFC1918 ranges. You can only delete a VPC when it's empty and isn't the region's default.
 
 ![DigitalOcean VPC detail page showing region, IP range and the default flag](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/vpc-detail.png)
 
 ## Load balancers
 
-The create form takes a name, region, type (regional HTTP or regional network), whether the load balancer is external or internal to its VPC, the node count, and what it sends traffic to: either specific Droplets (a multi-select of your Droplets) or every Droplet carrying a tag (a tag picker). The first forwarding rule and the health check are part of the form; an HTTPS, HTTP/2 or HTTP/3 entry rule asks for a certificate from your account.
+The create form asks for:
 
-**Edit** changes the name, node count (DigitalOcean allows one resize per hour), HTTP idle timeout, HTTP-to-HTTPS redirect, PROXY protocol, backend keepalive and TLS cipher policy. DigitalOcean's update endpoint replaces the whole load balancer, so Infrawrench reads the current configuration and sends it back with only your changes.
+- A name, region and type (regional HTTP or regional network).
+- Whether it's external or internal to its VPC.
+- The node count.
+- What it sends traffic to: specific Droplets (multi-select) or every Droplet with a tag (tag picker).
+- The first forwarding rule and the health check. An HTTPS, HTTP/2 or HTTP/3 entry rule asks for a certificate from your account.
 
-The detail page lists the forwarding rules (each with **Remove**) and the health check, with header actions to **+ Add rule** (including TLS passthrough), edit the **Health check**, and **+ Add Droplets** / **Remove Droplets** (limited to the load balancer's region). The **Metrics** tab charts requests per second, responses by status class, connections and connection limit, load balancer CPU, HTTP/TCP/UDP throughput, TLS connections, firewall drops, backend response time (average, p50, p95, p99), session duration, queue size, backend connections and health checks per Droplet, and Droplet downtime.
+**Edit** changes the name, node count (DigitalOcean allows one resize per hour), HTTP idle timeout, HTTP-to-HTTPS redirect, PROXY protocol, backend keepalive and TLS cipher policy. Everything you don't change stays as it was.
 
-A regional load balancer with no target Droplets and no tag is flagged by the [orphan finder](../features/orphan-finder.md): DigitalOcean bills every node whether or not anything sits behind it.
+The detail page lists the forwarding rules (each with **Remove**) and the health check. Header actions let you **+ Add rule** (including TLS passthrough), edit the **Health check**, and **+ Add Droplets** or **Remove Droplets** (only Droplets in the load balancer's region). The **Metrics** tab charts requests per second, responses by status class, connections and connection limit, load balancer CPU, HTTP, TCP and UDP throughput, TLS connections, firewall drops, backend response time (average, p50, p95, p99), session duration, queue size, backend connections, health checks per Droplet, and Droplet downtime.
+
+A regional load balancer with no target Droplets and no tag is flagged by the [orphan finder](../features/orphan-finder.md), because DigitalOcean bills every node whether or not anything sits behind it.
 
 <insert [DigitalOcean load balancer detail page showing the Forwarding Rules table, Health Check section and the Add rule / Add Droplets header actions] here>
 
 ## Cloud Firewalls
 
-Creating a firewall takes a name, inbound rules as rows of ports plus protocol (blank ports means all ports), the addresses those rules accept traffic from (defaults to anywhere), whether outbound traffic is allowed, and the Droplets and tags to protect. From the detail page you can add a rule in either direction with an **Allow** or **Deny** action, remove any rule, and apply the firewall to (or remove it from) Droplets and tags. **Edit** renames it. A firewall applied to nothing is flagged by the orphan finder.
+To create a firewall, enter:
+
+- A name.
+- Inbound rules, as rows of ports and protocol (leave ports blank for all ports).
+- The addresses those rules accept traffic from (anywhere by default).
+- Whether outbound traffic is allowed.
+- The Droplets and tags to protect.
+
+From the detail page you can add a rule in either direction with an **Allow** or **Deny** action, remove any rule, and apply the firewall to (or remove it from) Droplets and tags. **Edit** renames it. A firewall applied to nothing is flagged by the orphan finder.
 
 ## Networking services
 
-- **NAT gateways** route a VPC's outbound traffic through a single public egress IP, so Droplets without public interfaces can still reach the internet. Each size unit adds 2 Gbps of bandwidth and includes 100 GiB of outbound transfer a month. The egress IP is an output you can reference from other resources.
+- **NAT gateways** send a VPC's outbound traffic through one public egress IP, so Droplets without public interfaces can still reach the internet. Each size unit adds 2 Gbps of bandwidth and includes 100 GiB of outbound transfer a month. The egress IP is an output you can reference from other resources.
 - **VPC peerings** connect two VPCs whose IP ranges don't overlap. Only the name can change after creation.
 
 ## App Platform
 
-Apps list under their project with the phase of the active (or in-progress) deployment, live URL and components. Creating an app means writing an app spec against a Git or container source, so that stays in the DigitalOcean console; everything after that is here:
+Apps are listed under their project with the state of the current deployment, the live URL and components. Create new apps in the DigitalOcean console, since that means writing an app spec against a Git or container source. Everything after that you can do here:
 
-- **Deploy** and **Force rebuild** start a new deployment (the latter ignores cached builds). **Restart…** restarts running instances without a build, for every component or the ones you pick.
-- **Roll back…** redeploys an earlier successful deployment. When the app is pinned to a rollback, **Commit rollback** and **Revert rollback** appear.
-- **Cancel deployment** shows while a deployment is in flight.
-- The **App Spec** tab edits the app spec as JSON; applying it validates and redeploys the app.
-- The **Logs** tab shows run, build, deploy and crashed-instance (`RUN_RESTARTED`) logs; pick the type from the dropdown.
-- The **Metrics** tab charts CPU, memory and restart count per component, plus the app's egress bandwidth per UTC day (`/v2/apps/{id}/metrics/bandwidth_daily`, up to 31 days of the selected range).
+- **Deploy** starts a new deployment, and **Force rebuild** does the same without cached builds. **Restart…** restarts running instances without a build, for all components or the ones you pick.
+- **Roll back…** redeploys an earlier successful deployment. While the app is pinned to a rollback, **Commit rollback** and **Revert rollback** appear.
+- **Cancel deployment** appears while a deployment is in progress.
+- The **App Spec** tab lets you edit the app spec as JSON. Applying it validates and redeploys the app.
+- The **Logs** tab shows run, build, deploy and crashed-instance (`RUN_RESTARTED`) logs. Pick the type from the dropdown.
+- The **Metrics** tab charts CPU, memory and restart count per component, plus the app's outbound bandwidth per UTC day (up to 31 days of the selected range).
 
 <insert [DigitalOcean App Platform app detail page showing the Deployments table and the Deploy / Restart / Roll back header actions] here>
 
 ## Gradient AI Platform & Inference Engine
 
-DigitalOcean's AI surface area covers two adjacent products that share the same control plane:
+DigitalOcean's AI features come in two related products:
 
-- **Gradient AI Platform** (formerly the GenAI Platform) — agents, knowledge bases, and the inference router. Managed via `/v2/gen-ai/…`.
-- **Inference Engine** — serverless inference (`inference.do-ai.run/v1/…`), batch inference jobs, and Dedicated Inference deployments (`/v2/dedicated-inferences`).
+- **Gradient AI Platform** (formerly the GenAI Platform): agents, knowledge bases and the inference router.
+- **Inference Engine**: serverless inference (`inference.do-ai.run/v1/…`), batch inference jobs and Dedicated Inference deployments.
 
-Infrawrench groups them in the sidebar so you can manage agents, knowledge bases, routers, dedicated GPU deployments, batch jobs, and model API keys side by side. None of these resources are project-scoped from the DO API's perspective, so they all show up as top-level groups under the account.
+Infrawrench groups them in the sidebar so you can manage agents, knowledge bases, routers, dedicated GPU deployments, batch jobs and model API keys side by side. They aren't tied to projects, so they appear as top-level groups under the account.
 
 ### Agents
 
-The Agent Platform lets you assemble a chat-style endpoint by pairing a foundation model with an instruction (system prompt), zero or more knowledge bases, and optional function/agent routes. The create form asks for:
+An agent is a chat endpoint built from a foundation model, an instruction (system prompt), any knowledge bases, and optional function or agent routes. The create form asks for:
 
-- **Name** — must be unique within the team.
-- **Workspace** — every agent belongs to a workspace. New accounts have none; leaving the picker empty auto-creates a `default` workspace (matching the DO console's behaviour), or use **+ New workspace** to pick a name explicitly.
-- **Region** — only regions where Gradient AI is deployed appear here (the list is pulled live from `/v2/gen-ai/regions`).
-- **Model source** — choose between a **single foundation model** (picked from `/v2/gen-ai/models?usecases=MODEL_USECASE_AGENT` — Anthropic, OpenAI, and DO-hosted Meta models all appear) or an **Inference Router** (picked from your existing routers, or created inline via the **+ New router** button next to the picker — name, optional description, optional fallback models, all without leaving the agent form). The two are mutually exclusive in DO's API; routing through a router supersedes any single-model selection.
-- **Instruction** — long-form system prompt. Optional; defaults to empty.
+- **Name**: must be unique within the team.
+- **Workspace**: every agent belongs to one. New accounts have none; leave the picker empty and a `default` workspace is created for you (like the DigitalOcean console), or click **+ New workspace** to name one.
+- **Region**: only regions where Gradient AI runs are shown.
+- **Model source**: either a **single foundation model** (Anthropic, OpenAI and DigitalOcean-hosted Meta models are listed) or an **Inference Router**. Pick an existing router, or click **+ New router** next to the picker to create one with a name, optional description and optional fallback models without leaving the form. You can use one or the other, not both.
+- **Instruction**: the system prompt. Optional.
 
-You can also swap an existing agent's model for a router (or vice versa) post-creation via **Edit Agent** on the detail page — the change goes through `PUT /v2/gen-ai/agents/{uuid}` and takes effect immediately.
+You can switch an existing agent between a model and a router at any time with **Edit Agent** on the detail page. The change takes effect immediately.
 
 #### Agent detail page
 
-The agent detail page covers everything the DO console's Overview, Observability, and Resources tabs do, mapped onto Infrawrench's standard chrome:
+The agent detail page covers what the DigitalOcean console's Overview, Observability and Resources tabs do:
 
-- **Playground tab** — chat directly with the deployed agent. Tokens stream in live (OpenAI-compatible SSE under the hood). The first time anyone opens it on an agent, Infrawrench mints a single `infrawrench-playground` endpoint access key and stores it encrypted; on the cloud workspace that key is reused org-wide so the team isn't minting a new token every session (the secret stays server-side and is never exposed to other users). Cmd/Ctrl+Enter sends, Stop cancels mid-stream, New chat resets the history. Per-turn token usage is shown under each assistant reply when the gateway returns it.
-- **Endpoint section** — copyable Deployment URL and OpenAI-compatible base URL (`…/api/v1`), each with a one-click copy button. A **Make Public** / **Make Private** header action flips the agent's endpoint via `PUT /v2/gen-ai/agents/{uuid}/deployment_visibility`; the button label always shows the next action, never the current state.
-- **Embed section** — when the endpoint is public, Infrawrench renders DigitalOcean's chatbot widget `<script>` snippet (the same one the DO console offers) as a copyable code block. Paste it into your site's HTML to embed the chatbot. For private endpoints the section explains that you need to make the endpoint public first.
-- **Endpoint Access Keys** — listed inside the agent as the `agent-api-key` child resource. Create from inside the agent's detail page (the agent UUID is implicit); the secret is returned once on create and persisted encrypted in the local secret store. Delete from the row's context menu.
-- **Metrics tab** — auto-rendered because `supportsMetrics: true`. Pulls from `/v2/gen-ai/agents/{uuid}/usage` with the host's selected time range and renders up to six series: per-bucket Input/Output/Total tokens plus aggregate Throughput (tokens/s), Latency, and Time-to-first-token. Agents with no traffic show the host's standard empty state — no errors.
-- **Knowledge Bases section** — lists every attached KB with a Detach button per row. Attach a KB either by dragging it onto the agent in the sidebar or via the **+ Attach knowledge base** header action.
-- **Function Routes section** — lists each function route's name, FaaS target (`namespace/name`), and description, with a Detach button. **+ Add function route** opens a prompt with function name, FaaS name + namespace, optional input/output JSON Schemas.
-- **Agent Routes (child agents) section** — routes from this agent to others, with optional `route_name` and `if_case`. **+ Route to child agent** opens a picker plus the two optional fields.
-- **Settings** — the standard **Edit Agent** button (name, description, instruction, temperature, max_tokens, k, model/router swap) goes through `PUT /v2/gen-ai/agents/{uuid}`.
+- **Playground tab**: chat with the deployed agent, with replies streaming in live. The first time someone opens it, Infrawrench creates one `infrawrench-playground` access key for the agent and stores it encrypted. In the cloud workspace that key is shared across your org, and the secret stays on the server and is never shown to other users. Cmd/Ctrl+Enter sends, **Stop** cancels a reply, and **New chat** clears the history. Token usage appears under each reply when available.
+- **Endpoint section**: the Deployment URL and the OpenAI-compatible base URL (`…/api/v1`), each with a copy button. The **Make Public** / **Make Private** header button changes who can reach the endpoint; its label always shows the action it will take, not the current state.
+- **Embed section**: when the endpoint is public, you get DigitalOcean's chatbot widget `<script>` snippet to copy into your site's HTML. For private endpoints, the section reminds you to make the endpoint public first.
+- **Endpoint Access Keys**: listed inside the agent. Create one from the agent's detail page; the secret is shown once and stored encrypted in your local secret store. Delete from the row's context menu.
+- **Metrics tab**: input, output and total tokens, plus throughput (tokens/s), latency and time to first token, for the selected time range. Agents with no traffic show an empty state.
+- **Knowledge Bases section**: every attached knowledge base, each with **Detach**. Attach one by dragging it onto the agent in the sidebar or with **+ Attach knowledge base** in the header.
+- **Function Routes section**: each function route's name, FaaS target (`namespace/name`) and description, with **Detach**. **+ Add function route** asks for the function name, FaaS name and namespace, and optional input and output JSON Schemas.
+- **Agent Routes (child agents) section**: routes from this agent to others, with optional `route_name` and `if_case`. **+ Route to child agent** opens a picker plus those two fields.
+- **Settings**: **Edit Agent** changes the name, description, instruction, temperature, max_tokens, k, and the model or router.
 
-After creation the agent's deployment URL is exposed as the `deploymentUrl` output and the `agentEndpoint` alias — the latter matches the OpenAI-compatible base URL, so you can paste it straight into any OpenAI SDK that takes a `baseURL`.
+The agent's deployment URL is available as the `deploymentUrl` output and the `agentEndpoint` alias. `agentEndpoint` is the OpenAI-compatible base URL, so you can paste it into any OpenAI SDK that takes a `baseURL`.
 
 ![DigitalOcean Agent detail page with deployment URL and attached knowledge bases visible](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/agent-detail.png)
 
 ### Knowledge Bases
 
-Create a knowledge base from the sidebar group. The form takes:
+Create a knowledge base from the sidebar group. The form asks for:
 
 - **Name** and optional **tags**.
-- **Region** — same region list as agents.
-- **Embedding model** — picked from `/v2/gen-ai/models?usecases=MODEL_USECASE_KNOWLEDGEBASE`.
+- **Region**: the same regions as agents.
+- **Embedding model**.
 
-Knowledge bases back onto an OpenSearch vector store (the `database_id` field exposes the backing cluster UUID). The `retrievalEndpoint` output is the hybrid retrieval URL — `https://kbaas.do-ai.run/v1/{uuid}/retrieve` — which supports both semantic and lexical search.
+Knowledge bases are stored in an OpenSearch vector database (the `database_id` field shows which cluster). The `retrievalEndpoint` output is the retrieval URL, `https://kbaas.do-ai.run/v1/{uuid}/retrieve`, which supports both semantic and keyword search.
 
-The **Name** and **tags** are editable from the detail page (region and embedding model are fixed at creation — changing them would force a recreate). The detail page also manages the knowledge base's content:
+You can edit the **Name** and **tags** from the detail page. Region and embedding model are fixed once created. The detail page also manages the content:
 
-- **Data Sources** — a table of every source feeding the index, each with its last indexing status and per-row **Reindex** / **Remove** actions. Add a source with the header actions:
-  - **+ Add Spaces source** — index files in a DigitalOcean Spaces bucket. If the account has Spaces API keys configured the bucket is a picker; otherwise enter the bucket name and pick its region. An optional folder/object path scopes indexing to part of the bucket.
-  - **+ Add web source** — crawl a public website from a seed URL. Pick the crawl scope (Scoped, Path, Domain, Subdomains, or Sitemap) and whether to index media. The crawler indexes up to ~5,500 pages.
-- **Reindex all** — start an indexing job over every data source. Existing embeddings stay queryable while the job runs.
-- **Indexing Jobs** — recent indexing history with status, per-job source progress, token usage, and a **Cancel** action for jobs still pending or in progress.
+- **Data Sources**: every source feeding the index, with its last indexing status and **Reindex** and **Remove** on each row. Add sources from the header:
+  - **+ Add Spaces source**: index files in a Spaces bucket. If the account has Spaces API keys, pick the bucket; otherwise type the bucket name and pick its region. An optional folder or object path limits indexing to part of the bucket.
+  - **+ Add web source**: crawl a public website from a starting URL. Pick the crawl scope (Scoped, Path, Domain, Subdomains or Sitemap) and whether to index media. The crawler indexes up to about 5,500 pages.
+- **Reindex all**: start an indexing job over every source. Existing content stays searchable while it runs.
+- **Indexing Jobs**: recent indexing history with status, progress per source, token usage, and **Cancel** for jobs still pending or running.
 
-Adding a source automatically kicks off indexing, so you usually don't need **Reindex** unless the underlying bucket or website content changed.
+Adding a source starts indexing on its own, so you only need **Reindex** when the bucket or website content changes.
 
-File uploads and Dropbox / Google Drive OAuth sources still require the DO console — those need presigned-upload and OAuth flows Infrawrench doesn't model yet.
+File uploads and Dropbox or Google Drive sources still need the DigitalOcean console.
 
 ![DigitalOcean Knowledge Base detail page showing the data sources table, indexing jobs, and the add-source header actions](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/knowledge-base-detail.png)
 
 ### Inference Router
 
-The router is DO's "automatic model selection" layer — point your application at a single endpoint and the router picks the cheapest model that can handle each prompt. Create one when:
+A router gives your app one endpoint and picks the cheapest model that can handle each prompt. Use one when:
 
-- Your workload has **mixed prompt complexity** (some prompts are trivially answerable by smaller models, some need frontier models).
+- Your prompts **vary in difficulty** (some are easy for small models, some need frontier models).
 - You want **automatic fallback** when a model is unavailable.
 
-The create form takes a name, optional description, and a **routing preset** — DigitalOcean's presets prefill the router with a recommended set of models and routing policies (routers are always deployed to all regions, so there's no region picker). Pick "None" to create a bare router and configure it later.
+The create form takes a name, optional description and a **routing preset**. Presets fill the router with recommended models and routing policies. Pick "None" to create an empty router and set it up later. Routers run in all regions, so there's no region picker.
 
-The router detail page shows a **Routing Policies** table (each task → its candidate models → whether it prefers the cheapest, fastest, or balanced option) and a **Fallback Models** table for requests that don't match a policy. You can manage policies right here:
+The router's detail page shows a **Routing Policies** table (each task, its candidate models, and whether it prefers the cheapest, fastest or a balanced option) and a **Fallback Models** table for requests that don't match a policy. Manage policies here:
 
-- **+ Add policy** (header) — pick a task, a selection preference (Balanced / Cheapest / Fastest), and the models it may route to (leave the model list empty to use the task's recommended defaults).
-- **Edit** (per row) — change a policy's models or preference.
-- **Remove** (per row) — drop a policy so its requests fall through to the fallback models.
+- **+ Add policy** (header): pick a task, a preference (Balanced, Cheapest or Fastest), and the models it may use. Leave the models empty to use the task's recommended defaults.
+- **Edit** (per row): change a policy's models or preference.
+- **Remove** (per row): drop a policy so its requests go to the fallback models.
 
-Tasks and their router-eligible models come from DigitalOcean's task presets, so the model choices are always valid.
+Tasks and models come from DigitalOcean's presets, so every choice is valid.
 
 ### Dedicated Inference
 
-Dedicated Inference is the always-on, GPU-backed sibling of serverless inference. Move to it when your request volume is steady, latency SLOs are strict, or you need bring-your-own-model. The create form pulls live data from `/v2/dedicated-inferences/sizes` (regions + GPU sizes + monthly price) and `/v2/dedicated-inferences/accelerators` (which models each GPU size supports):
+Dedicated Inference is the always-on GPU version of serverless inference. Use it when your traffic is steady, you have strict latency targets, or you want to bring your own model. The create form asks for:
 
-- **Region** — only Gradient AI regions appear.
-- **GPU Size** — the picker shows GPU count and monthly price.
-- **Model** — selectable from the accelerator catalog. Pasting a Hugging Face model ID also works for BYOM.
-- **Public endpoint** — when on, both public and private VPC FQDNs are exposed; otherwise only the private one.
-- **VPC** — optional; defaults to the region's default VPC.
-- **Hugging Face token** — only needed for gated HF models.
+- **Region**: only Gradient AI regions are shown.
+- **GPU Size**: shows GPU count and monthly price.
+- **Model**: pick from the list of models each GPU size supports, or paste a Hugging Face model ID to bring your own.
+- **Public endpoint**: when on, you get both public and private VPC addresses; otherwise only the private one.
+- **VPC**: optional; defaults to the region's default VPC.
+- **Hugging Face token**: only needed for gated Hugging Face models.
 
-Once provisioning completes, the `publicEndpointUrl` and `privateEndpointUrl` outputs are populated.
+When provisioning finishes, the `publicEndpointUrl` and `privateEndpointUrl` outputs are filled in.
 
 <insert [DigitalOcean Dedicated Inference create form showing the GPU size picker with prices] here>
 
 ### Batch Inference
 
-Batch jobs let you submit large async workloads against OpenAI or Anthropic provider APIs and get results back within 24 hours at a significantly lower cost than real-time inference. Infrawrench lists every batch job under the account (newest first, 100 per page), with provider, endpoint, status, and request counts. Jobs can be **cancelled** from the detail page but not edited — JSONL input files and outputs are uploaded/downloaded via the DO console or the `inference.do-ai.run/v1/batches/files` endpoints directly.
+Batch jobs run large workloads against OpenAI or Anthropic in the background and return results within 24 hours, at a much lower cost than real-time inference. Infrawrench lists every batch job in the account, newest first, with provider, endpoint, status and request counts. You can **cancel** a job from its detail page but not edit it. Upload input files (JSONL) and download results in the DigitalOcean console or with the `inference.do-ai.run/v1/batches/files` endpoints.
 
 ### Model API Keys
 
-These are the keys used to authenticate against `https://inference.do-ai.run/v1/*` (serverless inference, including the OpenAI-compatible SDK shim). DigitalOcean **retired** the create-key API endpoint — new keys are minted in DigitalOcean's Model Studio. Infrawrench lists your existing model access keys (name, last-used timestamp) and lets you delete them for cleanup; it no longer offers a create form.
+These keys authenticate requests to `https://inference.do-ai.run/v1/*` (serverless inference, including OpenAI-compatible SDKs). DigitalOcean no longer lets you create them through the API, so create new keys in Model Studio. Infrawrench lists your existing keys and lets you delete them.
 
-For account-wide API access (`/v2/...`) keep using the personal access token you added when you set up the plugin.
+For the rest of the DigitalOcean API (`/v2/...`), keep using the personal access token you added when you connected the account.
 
-The detail page is a listing, not a credential: **Name**, **Created By** and **Last Used**, a **Refresh** action, and delete. There is no secret value to reveal — the key material only ever exists in Model Studio, where it was minted. (The **Agent API Keys** resource is the one with a shown-once secret; the two are easy to confuse.)
+The detail page shows **Name**, **Created By** and **Last Used**, with **Refresh** and delete. There's no secret to reveal; the key only exists in Model Studio. Don't confuse these with **Agent API Keys**, which do show a secret once.
 
 <insert [DigitalOcean Model API Key detail page showing the Name / Created By / Last Used details and no secret value] here>
 
 ### Vector Databases (Weaviate / OpenSearch / PostgreSQL)
 
-DO's managed vector database offerings are managed through the existing **Managed Database** group. The engine picker now includes:
+DigitalOcean's vector databases are in the **Managed Database** group. The engine picker includes:
 
-- **Weaviate** (private preview, requires sign-up at digitalocean.com — selecting it in regions that don't host Weaviate yet will return 422).
-- **OpenSearch** — already supported; pair with the [OpenSearch plugin](./opensearch.md) for indices, search, and vector k-NN.
-- **PostgreSQL** with `pgvector` — already supported via the [Postgres plugin](./postgres.md).
+- **Weaviate**: private preview; you need to sign up at digitalocean.com. Choosing it in a region without Weaviate returns a 422 error.
+- **OpenSearch**: pair it with the [OpenSearch plugin](./opensearch.md) for indices, search and vector k-NN.
+- **PostgreSQL** with `pgvector`, through the [Postgres plugin](./postgres.md).
 
-The connection string and CA certificate outputs flow the same way as the other managed databases, so the same peer-pane tabs and secret-export templates work.
-
-## Credentials
-
-1. DigitalOcean → **API → Tokens → Generate new token**. Read + write scope.
-2. Paste into the add-account form.
-
-![DigitalOcean Add-account form with API token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/add-account.png)
+Connection strings and CA certificates work the same way as other managed databases, so the same tabs and secret-export templates apply.
 
 ## Notable flows
 
 - **SSH terminal** on Droplets.
-- **Droplets in [Workflows](../features/workflows.md)** — `droplets.create({...})` autocompletes the real `region` / `size` / `image` fields with live option values, and the `sshPublicKey` field autocompletes your Infrawrench SSH keys by name (resolved to the public key on create). A created Droplet can be reached with `droplet.waitUntilReachable()` then `droplet.ssh("…", { sshKey: "<key name>" })` (full result or streamed).
-- **SQL editor** on managed Postgres and MySQL (via output reference to the [Postgres](./postgres.md) / [MySQL](./mysql.md) plugins).
-- **OpenSearch tab** on managed OpenSearch clusters — indices, search, snapshots via the [OpenSearch plugin](./opensearch.md). Endpoint and CA cert flow through automatically.
+- **Droplets in [Workflows](../features/workflows.md)**: `droplets.create({...})` autocompletes `region`, `size` and `image` with real values, and `sshPublicKey` autocompletes your Infrawrench SSH keys by name. Reach a new Droplet with `droplet.waitUntilReachable()` then `droplet.ssh("…", { sshKey: "<key name>" })` (full result or streamed).
+- **SQL editor** on managed Postgres and MySQL, through the [Postgres](./postgres.md) and [MySQL](./mysql.md) plugins.
+- **OpenSearch tab** on managed OpenSearch clusters (indices, search, snapshots) through the [OpenSearch plugin](./opensearch.md). The endpoint and CA cert are filled in for you.
 - **File browser** on Spaces.
 - **Secret export to K8s** for managed databases and Spaces.
 
 ## Tips & limits
 
-- Droplet creation needs at least one SSH key. Upload via **Settings → SSH keys** on DigitalOcean (not infrawrench) or use an existing key reference.
-- DOKS kubeconfigs rotate periodically. Infrawrench re-fetches on refresh.
+- Creating a Droplet needs at least one SSH key. Upload one in DigitalOcean under **Settings > SSH keys** (not in Infrawrench), or use an existing key.
+- DOKS kubeconfigs rotate from time to time. Refresh to get the latest one.
 
 ## Cost graphs
 
-DigitalOcean accounts feed [cost graphs & budgets](../features/cloud-costs.md) via the Billing Insights API — true daily costs broken down by product and region.
+DigitalOcean accounts feed [cost graphs & budgets](../features/cloud-costs.md) with daily costs by product and region.
 
-- The API token needs the `billing:read` scope (plus `account:read`, which the plugin already uses).
-- DigitalOcean's daily figures are nightly invoice estimates and can drift slightly from month-end invoice totals; insights data exists from December 2025 onward.
+- Your API token needs the `billing:read` scope, plus `account:read`.
+- DigitalOcean's daily figures are nightly estimates and can differ slightly from the month-end invoice. Data is available from December 2025 onward.

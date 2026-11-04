@@ -4,72 +4,79 @@ description: Manage VMs, AKS, Container Apps, App Service, SQL Database, CosmosD
 sidebar_order: 2
 ---
 
+Connect an Azure subscription to browse, create and manage its resources.
+
 ## What you can manage
 
-- **Compute** — Virtual Machines, App Service, Function Apps, App Service Plans, Container Instances.
-- **Container Apps** — container apps, Container Apps jobs, and the Container Apps environments they run in.
-- **Kubernetes** — AKS clusters (links to the [Kubernetes plugin](./kubernetes.md)).
-- **Databases** — SQL Database, CosmosDB, PostgreSQL and MySQL flexible servers.
-- **Caches** — Azure Cache for Redis and its successor, Azure Managed Redis.
-- **AI** — Azure AI Foundry, Azure OpenAI and Azure AI services accounts, with their model deployments.
-- **Storage** — Storage accounts (Blob, File, Queue, Table).
-- **Networking** — VNets, Subnets, NSGs, Load Balancers, NAT gateways, Application gateways, Public IPs.
-- **Security** — Key Vault (keys, secrets, certificates).
+- **Compute**: Virtual Machines, App Service, Function Apps, App Service Plans, Container Instances.
+- **Container Apps**: container apps, Container Apps jobs, and the Container Apps environments they run in.
+- **Kubernetes**: AKS clusters (links to the [Kubernetes plugin](./kubernetes.md)).
+- **Databases**: SQL Database, CosmosDB, PostgreSQL and MySQL flexible servers.
+- **Caches**: Azure Cache for Redis and its successor, Azure Managed Redis.
+- **AI**: Azure AI Foundry, Azure OpenAI and Azure AI services accounts, with their model deployments.
+- **Storage**: Storage accounts (Blob, File, Queue, Table).
+- **Networking**: VNets, Subnets, NSGs, Load Balancers, NAT gateways, Application gateways, Public IPs.
+- **Security**: Key Vault (keys, secrets, certificates).
 
-## Credentials
+## Connect your account
 
-Create a service principal (Azure Portal → Microsoft Entra ID → App registrations → New registration → Certificates & secrets → New client secret). Grant it the roles it needs on the subscription. Paste:
-
-- **Tenant ID**
-- **Client ID**
-- **Client secret**
-- **Subscription ID**
+1. In the Azure Portal, create a service principal: **Microsoft Entra ID > App registrations > New registration > Certificates & secrets > New client secret**.
+2. Grant it the roles it needs on the subscription.
+3. In Infrawrench, paste the **Tenant ID**, **Client ID**, **Client secret** and **Subscription ID**.
 
 ![Azure Add-account form with tenant / client / secret / subscription fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/azure/add-account.png)
 
-## Notable flows
+## What you can do
 
-- **Create resources in-app** — 26 resource types can be provisioned from the create form: container apps, resource groups, VMs (the form auto-creates the VNet, NIC, public IP, and an NSG if you don't pick an existing one), managed disks, VNets (with a default subnet), NSGs, public IPs, load balancers, AKS clusters, storage accounts, SQL Database (on a new or existing server), Cosmos DB, PostgreSQL and MySQL flexible servers, Redis Cache, App Service, Function Apps, container instances, container registries, Key Vaults, Service Bus and Event Hub namespaces, Log Analytics workspaces, managed identities, DNS zones, and Entra ID app registrations (which also mint the matching service principal).
-- **Start, stop and restart** from the detail page header, with the buttons matching the resource's current state: VMs (stop deallocates, restart reboots), AKS clusters, App Service and Function Apps, container instances, PostgreSQL and MySQL flexible servers, application gateways, and container apps. Container Apps jobs get a **Run now** button that starts one execution.
-- **Sleep schedules** for every type above except jobs; see [Sleep schedules](../features/sleep-schedules.md). The stop each one uses is the one that halts compute billing, and what keeps billing is spelled out in the confirmation.
+- **Create resources**: 26 resource types from the create form: container apps, resource groups, VMs (the form creates the VNet, NIC, public IP and an NSG if you don't pick existing ones), managed disks, VNets (with a default subnet), NSGs, public IPs, load balancers, AKS clusters, storage accounts, SQL Database (on a new or existing server), Cosmos DB, PostgreSQL and MySQL flexible servers, Redis Cache, App Service, Function Apps, container instances, container registries, Key Vaults, Service Bus and Event Hub namespaces, Log Analytics workspaces, managed identities, DNS zones, and Entra ID app registrations (which also create the matching service principal).
+- **Start, stop and restart** from the detail page header. The buttons match the resource's current state. This works on VMs (stop deallocates, restart reboots), AKS clusters, App Service and Function Apps, container instances, PostgreSQL and MySQL flexible servers, application gateways, and container apps. Container Apps jobs get a **Run now** button that starts one execution.
+- **Sleep schedules** for every type above except jobs. See [Sleep schedules](../features/sleep-schedules.md). Each one uses the stop that halts compute billing, and the confirmation tells you what keeps billing.
 - **SSH terminal** on Linux VMs.
 - **SQL editor** on Azure SQL Database.
 - **File browser** on Blob Storage.
 - **Secret export to K8s** for SQL Database and Storage accounts.
 - **Read-only manifest view** on every resource.
-- **Send test messages** to queues or topics inside a Service Bus namespace, and events into hubs inside an Event Hub namespace, from a **Send** tab on the detail page — see [Send test messages](../features/send-test-message.md). The service principal needs the **Azure Service Bus Data Sender** or **Azure Event Hubs Data Sender** role on the namespace.
+- **Send test messages** to queues or topics in a Service Bus namespace, and events to hubs in an Event Hub namespace, from the **Send** tab. See [Send test messages](../features/send-test-message.md). The service principal needs the **Azure Service Bus Data Sender** or **Azure Event Hubs Data Sender** role on the namespace.
 
 ## App Service Plans
 
-App Service Plans are listed read-only — Infrawrench does not create them. Each plan shows its SKU, tier and size, the instance count it is scaled to, whether its workers are Linux or Windows, and how many apps are assigned to it. Plans are the billing unit for App Service and Functions, so a dedicated plan with zero apps assigned is flagged by the [orphan finder](../features/orphan-finder.md). Free and Functions consumption tiers bill per execution rather than per instance, so they are never flagged.
+App Service Plans are read-only. Infrawrench doesn't create them. Each plan shows its SKU, tier and size, its instance count, whether its workers are Linux or Windows, and how many apps use it. A dedicated plan with no apps is flagged by the [orphan finder](../features/orphan-finder.md). Free and Functions consumption tiers bill per execution, so they're never flagged.
 
-Web apps and function apps link to the plan they run on in the [dependency graph](../features/dependency-graph.md), so opening a plan shows everything it hosts.
+Web apps and function apps link to their plan in the [dependency graph](../features/dependency-graph.md), so opening a plan shows everything it hosts.
 
-A **Metrics** tab reports the plan-wide CPU and memory percentage, disk and HTTP queue length, data in/out, established TCP connections and outbound sockets — these are the numbers to scale on, since an individual app's metrics don't show plan-level saturation.
+The **Metrics** tab shows plan-wide CPU and memory percentage, disk and HTTP queue length, data in and out, established TCP connections and outbound sockets. Use these to decide when to scale, since one app's metrics don't show plan-level saturation.
 
 ![Azure App Service Plan detail page showing the SKU, tier and instance-count fields, with a Dependencies tab listing the web apps that run on the plan](https://agent-assets.infrawrench.com/docs-screenshots/plugins/azure/app-service-plan-detail.png)
 
 ## Container Apps
 
-Container apps, Container Apps jobs and Container Apps environments are listed from the subscription. An app shows its image, CPU and memory, replica bounds, ingress (external, internal or disabled), target port, revisions mode and latest revision, and links to its environment, the container registry it pulls from, and its managed identities in the [dependency graph](../features/dependency-graph.md). Its public URL is an output.
+Container apps, Container Apps jobs and Container Apps environments are listed from the subscription. An app shows its image, CPU and memory, replica bounds, ingress (external, internal or disabled), target port, revisions mode and latest revision. It links to its environment, container registry and managed identities in the [dependency graph](../features/dependency-graph.md). Its public URL is an output.
 
-**Creating an app** asks for a resource group, an environment (picked from the environments in the subscription; the app is created in the environment's region), an image, a CPU and memory pair from the Consumption sizes Azure accepts, ingress, target port, and the replica range. Pick an **Azure Container Registry** to pull a private image: Infrawrench reads the registry's admin credentials and stores the password as an app secret, so the registry needs its admin user enabled. Leave it empty for public images, or when the app pulls with a managed identity that has AcrPull.
+### Create an app
 
-**Editing an app** changes the image, CPU, memory, and minimum or maximum replicas of its first container. Every other container, probe, volume and scale rule is kept as it is, and Azure rolls the change out as a new revision. Setting min replicas to 0 lets the app scale to zero.
+Pick a resource group, an environment (the app is created in the environment's region), an image, a CPU and memory pair, ingress, target port and the replica range.
 
-The **Metrics** tab shows CPU and memory (as a percentage of the limit and in absolute terms), requests, response time, replica count, restarts, network in and out, resiliency retries and timeouts, GPU utilization on GPU workload profiles, and JVM memory and garbage collections for Java apps. Jobs chart executions, CPU and memory used against what they requested, restarts, and network traffic. Environments chart workload profile node count and the ingress pods' CPU and memory.
+To pull a private image, pick an **Azure Container Registry**. The registry needs its admin user enabled, and its password is stored as an app secret. Leave it empty for public images, or when the app pulls with a managed identity that has AcrPull.
 
-A **Logs** tab streams the same log tails as `az containerapp logs show`. On an app, pick a replica's container from the dropdown for its console output, or **System events** for scaling, revision and probe events; an app scaled to zero has only system events. On an environment the tab shows the environment-wide system event stream. Each fetch returns the last 300 lines at most, the stream's own limit.
+### Edit an app
 
-Jobs show their trigger (manual, schedule with its cron expression, or event), parallelism, timeout and retry limit. Environments show their default domain, static IP, workload profiles, zone redundancy, whether they are internal-only, and their infrastructure subnet.
+You can change the image, CPU, memory, and minimum or maximum replicas of the app's first container. Everything else stays as it is, and Azure rolls out the change as a new revision. Set min replicas to 0 to let the app scale to zero.
+
+### Metrics and logs
+
+The **Metrics** tab shows CPU and memory (as a percentage of the limit and in absolute terms), requests, response time, replica count, restarts, network in and out, resiliency retries and timeouts, GPU utilization on GPU workload profiles, and JVM memory and garbage collections for Java apps. Jobs chart executions, CPU and memory used against what they requested, restarts and network traffic. Environments chart workload profile node count and the ingress pods' CPU and memory.
+
+The **Logs** tab shows the same logs as `az containerapp logs show`. On an app, pick a replica's container from the dropdown for its console output, or **System events** for scaling, revision and probe events. An app scaled to zero has only system events. On an environment, the tab shows environment-wide system events. Each fetch returns up to the last 300 lines.
+
+Jobs show their trigger (manual, schedule with its cron expression, or event), parallelism, timeout and retry limit. Environments show their default domain, static IP, workload profiles, zone redundancy, whether they're internal-only, and their infrastructure subnet.
 
 <insert [Azure Container App detail page showing the image, CPU/memory, replica and ingress fields, the URL output, and Stop in the header] here>
 
 ## Azure Managed Redis
 
-Azure Managed Redis clusters (`Microsoft.Cache/redisEnterprise`) are listed alongside Azure Cache for Redis, which Microsoft is retiring in favour of them. Each cluster shows its SKU, Redis version, high availability and redundancy, minimum TLS version and public network access, plus the settings of its database: client protocol, clustering and eviction policies, modules, persistence, and whether access keys are accepted.
+Azure Managed Redis clusters (`Microsoft.Cache/redisEnterprise`) are listed alongside Azure Cache for Redis, which Microsoft is retiring in their favour. Each cluster shows its SKU, Redis version, high availability and redundancy, minimum TLS version and public network access, plus its database settings: client protocol, clustering and eviction policies, modules, persistence, and whether access keys are accepted.
 
-The hostname, port, primary key and a `rediss://` connection string are outputs, so the **Redis** tab, Kubernetes secret export and output references work as they do for Azure Cache for Redis. New clusters have **access keys disabled** by default (Microsoft Entra ID only); the key outputs then explain that instead of failing silently. Turn on access keys authentication on the cluster's database to use them.
+The hostname, port, primary key and a `rediss://` connection string are outputs, so the **Redis** tab, Kubernetes secret export and output references work the same as for Azure Cache for Redis. New clusters have **access keys disabled** by default (Microsoft Entra ID only), and the key outputs tell you so. To use keys, turn on access keys authentication on the cluster's database.
 
 The **Metrics** tab shows CPU, server load, memory used, operations per second, cache hits and misses, latency, connected clients, evictions and key count.
 
@@ -77,53 +84,53 @@ The **Metrics** tab shows CPU, server load, memory used, operations per second, 
 
 ## AI services and Azure OpenAI
 
-Azure AI Foundry, Azure OpenAI and other Azure AI services accounts (`Microsoft.CognitiveServices/accounts`) are listed with their kind, SKU, endpoint, custom subdomain, network access, and every **model deployment** on the account (deployment name, model and version, deployment SKU and capacity).
+Azure AI Foundry, Azure OpenAI and other Azure AI services accounts (`Microsoft.CognitiveServices/accounts`) show their kind, SKU, endpoint, custom subdomain, network access, and every **model deployment** (name, model and version, deployment SKU and capacity).
 
-The endpoint and an **API key** are outputs, and an **Azure OpenAI** secret export template writes them as `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY`. Accounts with key authentication disabled are Entra ID only, and the key output says so.
+The endpoint and an **API key** are outputs. The **Azure OpenAI** secret export template writes them as `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY`. Accounts with key authentication disabled are Entra ID only, and the key output says so.
 
-The **Metrics** tab shows requests, prompt, completion and total tokens, time to response, availability and provisioned (PTU) utilization for OpenAI and Foundry models, and calls, errors and latency for the other kinds. Posture checks flag accounts that still accept API keys.
+The **Metrics** tab shows requests, prompt, completion and total tokens, time to response, availability and provisioned (PTU) utilization for OpenAI and Foundry models, and calls, errors and latency for other kinds. Posture checks flag accounts that still accept API keys.
 
 ## Metrics and logs
 
-Every resource type except resource groups, networking plumbing (VNets, subnets, NSGs, route tables), managed identities and app registrations has a **Metrics** tab backed by Azure Monitor platform metrics, which need nothing beyond the **Reader** role. Counters (requests, errors, bytes moved) are summed per bucket and gauges are averaged or maxed as Azure Monitor itself defaults them. Buckets are 5 minutes for windows up to 6 hours and widen up to 6 hours for 30-day windows. Metrics a resource's SKU or tier doesn't emit are left out rather than shown empty. Highlights beyond CPU and memory:
+Every resource type has a **Metrics** tab from Azure Monitor, except resource groups, networking plumbing (VNets, subnets, NSGs, route tables), managed identities and app registrations. It needs only the **Reader** role. Metrics a resource's SKU or tier doesn't emit are hidden. Highlights beyond CPU and memory:
 
 - **Virtual machines**: available memory percentage, B-series CPU credits, OS and data disk IOPS and bandwidth consumed, disk latency, VM-level cached and uncached IOPS consumed, inbound and outbound flows, and VM availability.
-- **AKS clusters**: node CPU, memory, disk and network, ready pods, node conditions, unschedulable pods, and the managed control plane's API server CPU, memory and inflight requests and etcd database usage.
+- **AKS clusters**: node CPU, memory, disk and network, ready pods, node conditions, unschedulable pods, and the control plane's API server CPU, memory and inflight requests and etcd database usage.
 - **SQL Database**: CPU, DTU, serverless app CPU and memory, data and log IO, workers, sessions, successful, failed and firewall-blocked connections, deadlocks and availability.
 - **PostgreSQL and MySQL flexible servers**: storage, IOPS and disk queue depth, failed or aborted connections, network in and out, CPU credits, replication lag, backup storage, transaction ID usage (PostgreSQL) and queries and slow queries (MySQL).
 - **Cosmos DB**: requests, request units, normalized RU consumption, throttled requests, server-side latency, availability, provisioned and autoscaled throughput, data, index and document counts.
 - **App Service and Function Apps**: requests, response time, HTTP 2xx/4xx/5xx, data in and out, health check status, queued requests, connections, instance count, and Flex Consumption's on-demand and always-ready executions.
-- **Messaging**: Service Bus active, dead-lettered and scheduled messages, server and user errors, throttling, send latency and namespace CPU and memory; Event Hubs requests, errors, throttling, quota-exceeded errors, connections and Capture bytes and backlog.
-- **Networking**: application gateway requests, failures, healthy hosts, total and backend response time, client RTT and capacity units; load balancer SNAT connections and ports; NAT gateway dropped packets; firewall health, throughput, SNAT port utilization and latency; public IP DDoS status; DNS zone record-set and virtual network link counts.
-- **Storage, registries and vaults**: storage server latency and availability; container registry pulls and pushes (total and successful), data transfer and task run time; Key Vault API results and availability.
+- **Messaging**: Service Bus active, dead-lettered and scheduled messages, server and user errors, throttling, send latency and namespace CPU and memory. Event Hubs requests, errors, throttling, quota-exceeded errors, connections and Capture bytes and backlog.
+- **Networking**: application gateway requests, failures, healthy hosts, total and backend response time, client RTT and capacity units. Load balancer SNAT connections and ports. NAT gateway dropped packets. Firewall health, throughput, SNAT port utilization and latency. Public IP DDoS status. DNS zone record-set and virtual network link counts.
+- **Storage, registries and vaults**: storage server latency and availability. Container registry pulls and pushes (total and successful), data transfer and task run time. Key Vault API results and availability.
 - **Log Analytics workspaces**: ingestion volume and time, query count, failed queries and query availability.
 
-Container instances, container apps and Container Apps environments also have a **Logs** tab. For a container instance it is the tail of the selected container's output with timestamps, read through the ARM `containers/logs` operation; Azure keeps those logs only while the group is running.
+Container instances, container apps and Container Apps environments also have a **Logs** tab. For a container instance, it shows the selected container's recent output with timestamps. Azure keeps those logs only while the group is running.
 
 ## Idle resource findings
 
-Once a day the cloud poller reads Azure Monitor (at a one-day interval) for every synced load balancer, NAT gateway and application gateway and adds the idle ones to [Potential savings](../features/idle-resources.md). It needs `Microsoft.Insights/metrics/read`, which the Reader and Monitoring Reader roles carry:
+Once a day, Infrawrench checks your load balancers, NAT gateways and application gateways and adds idle ones to [Potential savings](../features/idle-resources.md). This needs `Microsoft.Insights/metrics/read`, which the Reader and Monitoring Reader roles include.
 
-- **Load balancers**: Standard SKU with at least one rule (a balancer with no rules bills nothing), judged on `ByteCount`, with `VipAvailability` proving the read reached it. Priced from the Retail Prices API: the first five rules as one hourly meter, each further rule another.
-- **NAT gateways**: one attached to no subnet is flagged straight away, since it bills by the hour either way; otherwise judged on `ByteCount`, with `DatapathAvailability` as the proof and `TotalConnectionCount` as context. Priced at the gateway's hourly meter.
-- **Application gateways**: running v2 gateways, judged on `TotalRequests` and `HealthyHostCount`, with `CapacityUnits` as the proof. Priced at the tier's fixed hourly cost in the gateway's region; reserved capacity units are on top.
+- **Load balancers**: Standard SKU with at least one rule (a balancer with no rules costs nothing), judged on `ByteCount`.
+- **NAT gateways**: one attached to no subnet is flagged right away, since it bills by the hour either way. Otherwise judged on `ByteCount`.
+- **Application gateways**: running v2 gateways, judged on `TotalRequests` and `HealthyHostCount`. Reserved capacity units cost extra on top of the estimate.
 
-The remediation commands are `az network lb delete`, `az network nat gateway delete`, and `az network application-gateway stop` (then `delete`). Azure has no credential check in Infrawrench yet, so the missing-permission message appears on the Idle rules form instead.
+The fixes offered are `az network lb delete`, `az network nat gateway delete`, and `az network application-gateway stop` (then `delete`). Azure has no credential check in Infrawrench yet, so a missing-permission message appears on the Idle rules form instead.
 
-## Tips & limits
+## Tips and limits
 
-- One account ties to one subscription. For multi-subscription tenants, add one infrawrench account per subscription.
-- Key Vault access requires the principal to have an access policy or RBAC role on the vault — the subscription role is not enough.
+- One account connects to one subscription. For tenants with several subscriptions, add one Infrawrench account per subscription.
+- To use Key Vault, the service principal needs an access policy or RBAC role on the vault itself. The subscription role isn't enough.
 
 ## Cost graphs
 
-Azure subscriptions feed [cost graphs & budgets](../features/cloud-costs.md) via the Cost Management Query API, collected daily with service and region breakdowns (13 months of history).
+Azure subscriptions feed [cost graphs and budgets](../features/cloud-costs.md) from Cost Management, collected daily with service and region breakdowns (13 months of history).
 
-- The service principal needs the **Cost Management Reader** role on the subscription — plain **Reader** is not enough.
+- The service principal needs the **Cost Management Reader** role on the subscription. Plain **Reader** isn't enough.
 
 ### Charge types
 
-Cost rows are split by **charge type**, so a month with a reservation purchase in it doesn't read as a month of runaway consumption. Azure's charge types map onto the breakdown you see in cost graphs like this:
+Cost rows are split by **charge type**, so a month with a reservation purchase doesn't look like runaway usage.
 
 | Azure charge type                                     | Shown as                 |
 | ----------------------------------------------------- | ------------------------ |
@@ -137,60 +144,55 @@ Cost rows are split by **charge type**, so a month with a reservation purchase i
 | Tax                                                   | Tax                      |
 | RoundingAdjustment                                    | Adjustment               |
 
-Things worth knowing about the numbers:
+Things to know:
 
-- **Non-usage rows have no service and no region.** Azure's query API allows only two groupings per query, so the charge-type pass spends both on the charge type and the commitment. Nothing is lost by it: Azure reports purchases with "No service name" and "No resource location" regardless.
-- **Which charge types you actually see depends on your agreement.** Reservation and savings-plan purchases and refunds are billing-account records, so a subscription rarely carries them; pay-as-you-go subscriptions never do. Enterprise Agreement accounts don't get refund rows at all.
-- **If your subscription doesn't support the breakdown, collection still works.** Azure only exposes the benefit column on Enterprise Agreement and Microsoft Customer Agreement accounts. When it refuses the query, Infrawrench falls back to the previous single-query collection and every row is recorded as usage.
-- **Amortized amounts are collected too, where Azure serves them.** See below.
+- **Rows that aren't usage have no service and no region.** Azure reports purchases with "No service name" and "No resource location" anyway.
+- **The charge types you see depend on your agreement.** Reservation and savings plan purchases and refunds belong to the billing account, so a subscription rarely shows them, and pay-as-you-go subscriptions never do. Enterprise Agreement accounts get no refund rows.
+- **If your subscription doesn't support the breakdown, costs still work.** Only Enterprise Agreement and Microsoft Customer Agreement accounts support it. Otherwise every row shows as usage.
 
 ### Blended commitment discounts
 
-Azure subscriptions that serve amortized data also report the [blended cost basis](../features/cloud-costs.md#blended). When a collection window has reservation- or savings-plan-covered usage, Infrawrench runs two extra amortized-cost queries (covered usage per meter, and the subscription's own on-demand price per meter) and, for a covered meter that never ran on demand, looks up its public price in the Azure Retail Prices API. No extra role is needed beyond Cost Management Reader. A service whose covered meters can't all be priced keeps its amortized figures on the blended basis.
+Subscriptions that support amortized cost also report the [blended cost basis](../features/cloud-costs.md#blended). No extra role is needed beyond Cost Management Reader. A service whose covered usage can't all be priced keeps its amortized figures on the blended basis.
 
-### Amortized cost, and how coverage is measured
+### Amortized cost and coverage
 
-Azure serves cost data as two datasets. **Actual cost** is the bank statement: a reservation purchase lands whole on the day it was charged, and usage the reservation covers costs **zero**, because you paid for it when you bought the reservation. **Amortized cost** spreads the purchase across the term it buys, so the covered hours are priced at what they are actually worth.
+Azure gives two views of cost. **Actual cost** is like a bank statement: a reservation purchase lands in full on the day you paid, and usage it covers costs zero. **Amortized cost** spreads the purchase over its term, so covered hours show what they're actually worth. Infrawrench collects both, and shows the difference as commitment-covered usage on the amortized [cost basis](../features/cloud-costs.md#cash-amortized-and-blended).
 
-Infrawrench queries both, with the same grouping, and the gap between them for a given service and region is exactly what your commitments delivered there. That cell is then recorded as two rows: on-demand consumption, and commitment-covered consumption worth nothing in cash and its amortized value on the amortized [cost basis](../features/cloud-costs.md#cash-amortized-and-blended).
+This is what powers the [Commitments](../features/commitments.md) coverage figure for Azure. It doesn't need an Enterprise Agreement.
 
-This is what makes the [Commitments](../features/commitments.md) coverage figure work for Azure. It needs no Enterprise Agreement, because it never asks which reservation covered an hour — only whether one did.
+Two things follow:
 
-Two things follow from it:
+- **A reservation purchase counts as zero on the amortized basis.** Its cost is already spread across the covered and unused hours, so counting it again would double it.
+- **Unused commitment hours are shown too.** Azure reports wasted reservation and savings plan hours as `UnusedReservation` and `UnusedSavingsPlan`. They appear as commitment fees on the amortized basis only, so cash totals don't change. They don't count as covered usage, so an oversized reservation shows up as spend without lifting coverage or utilization.
 
-- **A reservation purchase is worth zero on the amortized basis**, deliberately. Its money has been redistributed to the covered hours and to the unused ones below, and counting it again on its purchase day would show the purchase at full price alongside every amortized slice of it.
-- **Unused commitment hours are collected too.** Azure reports what a reservation or savings plan wasted as `UnusedReservation` and `UnusedSavingsPlan`, and only in the amortized dataset. Infrawrench collects them as **commitment fees worth nothing in cash and their real value on the amortized basis**, attributed to the reservation or savings plan that went unused. So an amortized grand total now includes the money a commitment wasted — and no cash total moves, because these rows have no cash side at all.
-
-  They are deliberately **not** counted as covered usage: coverage and utilization measure what a commitment _delivered_, and idle hours are the opposite of that. An underused reservation therefore shows up as spend without lifting either figure, which is exactly the shape that says "this commitment is too big".
-
-**If your subscription doesn't serve amortized data, nothing breaks.** Cost Analysis "doesn't support viewing amortized reservation costs for a pay-as-you-go subscription", and Microsoft Online Services Agreement accounts have no commitment purchases at all. Where the pass is refused, each cell is recorded as one undifferentiated usage row with no amortized figure, and the amortized view falls back to cash for it.
+**If your subscription doesn't support amortized cost, nothing breaks.** Pay-as-you-go subscriptions can't show amortized reservation costs, and Microsoft Online Services Agreement accounts have no commitment purchases. In that case all costs show as usage, and the amortized view matches cash.
 
 ### Upgrading from an earlier version
 
-Nothing is required of you. Days collected by an older version were stored with every row typed as usage, and re-collection replaces them: a usage row keeps exactly the identity it always had. Where it cannot — a service and region whose spend was _only_ a purchase, tax, or refund, so nothing new lands on the old row's identity — every collection compares what it is about to write against what is already stored for the same days and supersedes anything left over. Stale rows are cleared by the next collection that touches their day.
+Nothing is required of you. Older days are corrected automatically the next time they're re-collected.
 
-Earlier builds documented a manual `ALTER TABLE cost_daily DELETE` here. It is no longer needed and should not be run.
+Earlier docs described a manual `ALTER TABLE cost_daily DELETE`. Don't run it. It's no longer needed.
 
 ![Cost graph for an Azure subscription grouped by charge type, showing a Usage series alongside a Commitment fee spike on a reservation purchase day](https://agent-assets.infrawrench.com/docs-screenshots/plugins/azure/cost-graph.png)
 
 ## Commitments
 
-Azure accounts feed the [Commitments](../features/commitments.md) section with **reservations** and **savings plans**, listed daily from the tenant-level `Microsoft.Capacity/reservations` and `Microsoft.BillingBenefits/savingsPlans` APIs.
+Azure accounts feed the [Commitments](../features/commitments.md) section with **reservations** and **savings plans**, refreshed daily.
 
-- The service principal needs **Reader** on the reservations (or the **Reservations Reader** role at tenant scope) — reservation access is granted separately from subscription roles. Savings plans likewise need **Reader** on them (or **Savings plan Reader**); without it they are simply not listed, and reservations still are.
-- **Savings plans report their hourly commitment**, so unlike reservations they show a dollar figure, and utilization is measured against it.
-- Azure's list API reports **no purchase price**, so reservation rows show "price not reported" rather than a dollar figure — the price lives on the reservation order's billing records, not here.
-- Azure is the only provider that reports its **own utilization** (1, 7 and 30-day figures). Those are shown labelled as provider-reported, alongside — never blended with — the utilization Infrawrench derives from your cost rows.
+- The service principal needs **Reader** on the reservations, or the **Reservations Reader** role at tenant scope. Reservation access is granted separately from subscription roles. Savings plans also need **Reader** on them (or **Savings plan Reader**). Without it, savings plans aren't listed, but reservations still are.
+- **Savings plans show their hourly commitment** as a dollar figure, and utilization is measured against it.
+- Azure doesn't report reservation purchase prices here, so reservations show "price not reported".
+- Azure reports its **own utilization** (1, 7 and 30-day figures). These are labelled as provider-reported and shown next to, never mixed with, the utilization Infrawrench calculates from your costs.
 - Savings plans apply across regions, so they show "All regions".
-- **Coverage is measured on amortized figures**, because on the cash figures Azure reports, usage covered by a reservation costs nothing and every account would read 0% however well covered it is. See [Amortized cost, and how coverage is measured](#amortized-cost-and-how-coverage-is-measured) above. Subscriptions that do not serve amortized data contribute no covered spend, and are named as excluded rather than counted as 0%.
-- **Per-reservation utilization needs an Enterprise Agreement or Microsoft Customer Agreement**, because the benefit column that names the specific reservation only exists there. Coverage does not — it only asks whether an hour was covered. The provider-reported utilization figures above are always available.
+- **Coverage uses amortized figures**, since on cash figures covered usage costs nothing and every account would read 0%. See [Amortized cost and coverage](#amortized-cost-and-coverage). Subscriptions without amortized data are listed as excluded rather than counted as 0%.
+- **Per-reservation utilization needs an Enterprise Agreement or Microsoft Customer Agreement.** Coverage doesn't. The provider-reported utilization figures are always available.
 
 ## Vulnerability findings
 
-Azure accounts report **open container image vulnerabilities** found by **Microsoft Defender for Cloud** in the subscription's container registries. Each finding is one CVE in one package of one image, with the scanner's severity, CVSS score, installed and fixed versions and exploit signals where Defender reports them.
+Azure accounts show **open container image vulnerabilities** found by **Microsoft Defender for Cloud** in the subscription's container registries. Each finding is one CVE in one package of one image, with the severity, CVSS score, installed and fixed versions, and exploit signals where Defender reports them.
 
-- **What is read.** Defender's individual `SoftwareUpdate` recommendations on container images (`microsoft.security/assessments` with resource type `.containerimage`), queried through **Azure Resource Graph**, plus the tenant-level `microsoft.security/cvedetails` table for CVSS scores and exploitability that the recommendation itself does not carry. Only unhealthy (open) recommendations are listed. The older grouped sub-assessment model was retired by Microsoft on 31 July 2026 and is not used.
-- **Plan required.** Container image scanning only runs under the paid **Defender for Containers** or **Defender CSPM** plan with **Registry access** turned on (Defender for Cloud, Environment settings, the subscription, the plan's Settings). With neither plan enabled, or with registry access off, the account reports that scanning is not enabled rather than "no vulnerabilities".
-- **Permissions.** The **Reader** role on the subscription the account already needs is enough: it covers `Microsoft.Security/assessments/read` and `Microsoft.Security/pricings/read`. No extra credential field is involved. CVSS scores come from a tenant-wide table: if the service principal cannot see it, findings still appear, with the scanner's severity but no score.
-- **What joins to running resources.** Each finding names the image as `<registry login server>/<repository>` with its digest, and is matched against the images synced on **Container Apps** (every container and init container, while the app is running), **Container Apps jobs**, **Container Instances** groups, and **App Service** and **Function Apps** that run a custom container (`DOCKER|` image), while they are running. AKS workloads are matched through the Kubernetes integration.
-- **Limits.** Collection reads up to 20,000 recommendations per subscription; past that the list is a subset and is marked as such. Images that haven't been pushed or pulled in 30 days and aren't running in a monitored cluster are not rescanned by Defender, so their findings can be stale.
+- **Plan required.** Container image scanning only runs with the paid **Defender for Containers** or **Defender CSPM** plan and **Registry access** turned on (Defender for Cloud, Environment settings, the subscription, the plan's Settings). Without either, the account says scanning isn't enabled rather than showing "no vulnerabilities".
+- **Permissions.** The **Reader** role on the subscription is enough. It covers `Microsoft.Security/assessments/read` and `Microsoft.Security/pricings/read`. CVSS scores come from a tenant-wide table. If the service principal can't see it, findings still appear with severity but no score.
+- **Only open findings** are listed.
+- **Linked to running resources.** Each finding names the image as `<registry login server>/<repository>` with its digest. It's matched against running **Container Apps** (every container and init container), **Container Apps jobs**, **Container Instances** groups, and **App Service** and **Function Apps** running a custom container (`DOCKER|` image). AKS workloads are matched through the Kubernetes integration.
+- **Limits.** Up to 20,000 findings are read per subscription. Past that, the list is a subset and is marked as one. Defender doesn't rescan images that haven't been pushed or pulled in 30 days and aren't running in a monitored cluster, so their findings can be out of date.
