@@ -4,14 +4,16 @@ description: Connect to a Microsoft SQL Server database and run queries from the
 sidebar_order: 12
 ---
 
+Connect a Microsoft SQL Server database to browse it and run T-SQL.
+
 ## What you can manage
 
-- Browse databases (and the tables, views, and stored procedures inside them).
-- Run arbitrary T-SQL — see [SQL editor](../features/sql-editor.md).
+- Databases, plus the tables, views and stored procedures inside them.
+- Any T-SQL you like in the [SQL editor](../features/sql-editor.md).
 
-## Credentials
+## Connect a database
 
-A single **Connection String** field — a SQL Server connection URI:
+There is one field, **Connection String**. Paste a SQL Server connection URI:
 
 ```
 mssql://user:password@host:1433/dbname?encrypt=true&trustServerCertificate=false
@@ -19,12 +21,12 @@ mssql://user:password@host:1433/dbname?encrypt=true&trustServerCertificate=false
 
 ![SQL Server Add-account form with the connection string field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/mssql/add-account.png)
 
-## Notable flows
+## Run queries and reach private servers
 
-- **SQL editor** with a schema browser introspected from `INFORMATION_SCHEMA`.
-- **SSH tunnel** support — if the server only listens on a bastion's loopback, use **Connect service via SSH** on that bastion instead of adding an account here; it creates the account for you. See [SSH tunnels](../features/ssh-tunnels.md).
+- The **SQL editor** comes with a schema browser, so you can see tables and columns while you write.
+- **SSH tunnels** are supported. If the server only listens on a bastion's loopback, don't add an account here. Use **Connect service via SSH** on that bastion instead, and it creates the account for you. See [SSH tunnels](../features/ssh-tunnels.md).
 
-## Tips & limits
+## Tips and limits
 
-- `encrypt=true` is on by default in modern drivers; flip `trustServerCertificate=true` only if your server uses a self-signed cert and you understand the risk.
-- Very large result sets are trimmed in the grid at 10k rows — narrow your query or export to CSV.
+- `encrypt=true` is on by default in modern drivers. Only set `trustServerCertificate=true` if your server uses a self-signed cert and you understand the risk.
+- The results grid stops at 10k rows. Narrow your query or export to CSV.
