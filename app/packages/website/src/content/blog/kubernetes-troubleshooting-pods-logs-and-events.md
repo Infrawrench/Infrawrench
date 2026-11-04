@@ -39,6 +39,7 @@ If you already know the status or error you are looking at, jump straight to its
 **Traffic does not reach the pod**
 
 - Service has no endpoints or connection refused: [Service not working](/blog/kubernetes-service-no-endpoints)
+- LoadBalancer Service stuck on EXTERNAL-IP pending: [LoadBalancer pending](/blog/kubernetes-loadbalancer-external-ip-pending)
 - Ingress returns 502, 503 or 404: [Ingress errors](/blog/kubernetes-ingress-502-503)
 - Name resolution fails inside pods: [DNS not working](/blog/kubernetes-dns-troubleshooting)
 - Connections time out after adding a NetworkPolicy: [NetworkPolicy blocking traffic](/blog/kubernetes-networkpolicy-blocking-traffic)
