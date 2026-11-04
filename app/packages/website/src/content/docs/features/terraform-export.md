@@ -1,29 +1,41 @@
 ---
 title: Terraform export
-description: Eject a resource or a whole account's inventory as ready-to-import Terraform HCL.
+description: Export a single resource or a whole account's inventory as ready-to-import Terraform HCL.
 sidebar_order: 6
 ---
 
-Terraform export turns the resources Infrawrench already knows about into a Terraform configuration you can adopt with `terraform import`. It works entirely from stored state — no extra provider API calls, no credentials involved — and it never inlines a secret: API tokens and account IDs are emitted as `var.*` input variables that you fill in locally.
+Terraform export turns the resources Infrawrench already knows about into a Terraform
+configuration you can adopt with `terraform import`. It uses what Infrawrench has already synced,
+so it makes no extra calls to your provider. It never includes a secret: API tokens and account
+IDs become `var.*` input variables that you fill in locally.
 
 ![Export to Terraform modal on a Hetzner server showing the generated HCL, the resource count line, and the Copy HCL / Download main.tf buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/terraform-export/hetzner-server-modal.png)
 
-## Where to find it
+## Export resources
 
-- **A single resource** — open the resource's detail page and click **Export to Terraform…** in the bottom action row. The export includes the resource and its direct children (a Cloudflare zone brings its DNS records along, for example).
-- **A whole account** — open the account page and click **Export to Terraform** in the header. Every stored resource in the account is considered.
-- **The CLI** — `infrawrench export --account <id|name> --format terraform` prints the same HCL to stdout (redirect it: `infrawrench export -a my-account > main.tf`). `--json` returns the structured result — HCL plus the exported/unsupported resource lists. Warnings go to stderr so redirected output stays clean.
+- **A single resource**: open the resource's detail page and click **Export to Terraform…** in the
+  bottom action row. The export includes the resource and its direct children (for example, a
+  Cloudflare zone brings its DNS records along).
+- **A whole account**: open the account page and click **Export to Terraform** in the header.
+  Every synced resource in the account is included.
+- **The CLI**: `infrawrench export --account <id|name> --format terraform` prints the same HCL.
+  Redirect it to a file with `infrawrench export -a my-account > main.tf`. `--json` returns the
+  HCL plus the lists of exported and unsupported resources. Warnings go to stderr, so redirected
+  output stays clean.
 
 ## What you get
 
-One HCL document containing:
+One HCL file containing:
 
-- a `terraform { required_providers { … } }` block pinned to the provider's current major version,
-- `variable` blocks for credentials (marked `sensitive`) and provider-level IDs,
-- a `provider` block wired to those variables,
-- one `resource` block per exported resource, each preceded by a comment with the exact `terraform import` command to adopt the live resource into state.
+- a `terraform { required_providers { … } }` block pinned to the provider's current major version
+- `variable` blocks for credentials (marked `sensitive`) and provider-level IDs
+- a `provider` block that uses those variables
+- one `resource` block per exported resource, each with a comment above it giving the exact
+  `terraform import` command to bring the live resource into state
 
-Resources that have no mapping yet are listed clearly — in the modal's amber panel, on stderr in the CLI, and in the `unsupported` array of the API response — with the reason, so nothing is dropped silently.
+Resources that can't be exported yet are listed with the reason, so nothing goes missing without
+you knowing. You'll see them in the amber panel in the app, on stderr in the CLI, and in the
+`unsupported` array of the API response.
 
 ![Account page export modal for a mixed account showing the amber "resources have no Terraform mapping yet" panel above the generated HCL](https://agent-assets.infrawrench.com/docs-screenshots/features/terraform-export/account-unsupported-panel.png)
 
@@ -60,21 +72,32 @@ Resources that have no mapping yet are listed clearly — in the modal's amber p
 | Sentry          | `jianyuan/sentry`           | Projects, teams and client keys (`sentry_project`, `sentry_team`, `sentry_key`)                                                                        |
 | Grafana Cloud   | `grafana/grafana`           | Stacks (`grafana_cloud_stack`) with region, description, labels and delete protection                                                                  |
 
-Coverage is per resource type: types that need nested blocks or credentials Infrawrench doesn't store (for example Azure VMs, AWS Lambda packages, Netlify sites) stay in the unsupported list with a reason. A plugin declares its own mapping, so coverage grows type by type.
+Support is per resource type. Types that need nested blocks or credentials Infrawrench doesn't
+store (for example Azure VMs, AWS Lambda packages, Netlify sites) stay in the unsupported list
+with a reason. More types are added over time.
 
-## Adopting the resources
+## Adopt the resources
 
 1. Save the export as `main.tf` in an empty directory.
-2. Create a `terraform.tfvars` (keep it out of git) with the variables the file declares, e.g. `hcloud_token`, `cloudflare_api_token`, `cloudflare_account_id`.
-3. Run `terraform init`, then run the `terraform import` commands from the comments above each resource block.
-4. Run `terraform plan` and reconcile any drift — attributes Infrawrench doesn't store (labels, backup windows, attachments) may need to be filled in by hand before the plan is clean.
+2. Create a `terraform.tfvars` file (keep it out of git) with the variables the file declares,
+   such as `hcloud_token`, `cloudflare_api_token` or `cloudflare_account_id`.
+3. Run `terraform init`, then run the `terraform import` commands from the comments above each
+   resource block.
+4. Run `terraform plan` and fix any drift. Attributes Infrawrench doesn't store (labels, backup
+   windows, attachments) may need filling in by hand before the plan is clean.
 
 ## Things to watch
 
-- The export reflects Infrawrench's **stored state**. Sync the account first if you've changed things on the provider side recently.
-- Volume attachments are noted as comments rather than emitted as attachment resources — model them explicitly (`hcloud_volume_attachment`, `digitalocean_volume_attachment`) before applying.
-- Server `image` attributes describe what the machine was created from; changing them in Terraform forces a rebuild/replacement, not an in-place change.
+- The export reflects what Infrawrench last synced. If you've changed things on the provider side
+  recently, sync the account first.
+- Volume attachments appear as comments, not as attachment resources. Add them yourself
+  (`hcloud_volume_attachment`, `digitalocean_volume_attachment`) before applying.
+- A server's `image` attribute describes what it was created from. Changing it in Terraform
+  rebuilds or replaces the server rather than changing it in place.
 
-## The other direction
+## Going the other way
 
-Exporting is one-way: inventory out as HCL. To go the other way — upload the Terraform state you already have and find out which resources it _doesn't_ cover — see [IaC reconciliation](./iac-reconciliation.md). It reuses the same mappers as this page, so it generates `import` blocks for unmanaged resources instead of leaving you to run `terraform import` by hand.
+Export only goes one way: your inventory out as HCL. To upload the Terraform state you already
+have and find which resources it _doesn't_ cover, see
+[IaC reconciliation](./iac-reconciliation.md). It generates `import` blocks for the unmanaged
+resources, so you don't have to run `terraform import` by hand.

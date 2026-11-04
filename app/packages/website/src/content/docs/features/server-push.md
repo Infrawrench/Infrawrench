@@ -4,9 +4,12 @@ description: Raise on-call pages and report your own cost data over the HTTP API
 sidebar_order: 18
 ---
 
-Most of what Infrawrench knows, it went and fetched. Two things it can't: an alert about something only your code can see, and spend that arrives as an invoice rather than a billing API.
+Most of what Infrawrench knows, it fetches itself. Two things it can't fetch: an alert about
+something only your code can see, and spend that arrives as an invoice rather than through a
+billing API.
 
-Both have an endpoint that pushes **into** Infrawrench, so a health check, a deploy script, or a cron on a box can hand over what it knows and let the org's existing configuration decide what happens next.
+For both, you can push the data **into** Infrawrench. A health check, a deploy script or a cron
+job can send what it knows, and your organization's existing settings decide what happens next.
 
 | You want to                    | Endpoint                           | Permission    |
 | ------------------------------ | ---------------------------------- | ------------- |
@@ -14,11 +17,19 @@ Both have an endpoint that pushes **into** Infrawrench, so a health check, a dep
 | Clear a page's cooldown        | `DELETE /api/org/{orgId}/pages`    | `pages:write` |
 | Report spend from your systems | `POST /api/org/{orgId}/costs/rows` | `costs:write` |
 
-Both authenticate with an [API key](../team-and-billing/api-keys.md) (`Authorization: Bearer iwk_…`) scoped to just that permission — or with a signed-in session, which is what makes them testable from the browser. Neither is in a system role by default: mint a key with the scope, or add it to a custom role.
+Both authenticate with an [API key](../team-and-billing/api-keys.md)
+(`Authorization: Bearer iwk_…`) scoped to just that permission, or with a signed-in session, so
+you can test them from the browser. Neither permission is in a system role by default: create a
+key with the scope, or add it to a custom role.
 
-## Paging
+## Send a page
 
-`POST /pages` raises the same alert a [workflow](./workflows.md#paging-a-human) raises with `infra.page(...)`, and it reaches the same people: SMS (and optionally a voice call) through your org's Twilio credentials, [mobile push](./mobile-push-notifications.md), and any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into pages. Recipients configure themselves under **Settings → Notifications**; the caller doesn't hold a single transport credential.
+`POST /pages` raises the same alert a [workflow](./workflows.md#paging-a-human) raises with
+`infra.page(...)`, and it reaches the same people: SMS (and optionally a voice call) through your
+organization's Twilio credentials, [mobile push](./mobile-push-notifications.md), and any
+[Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel set up for pages.
+Recipients choose their own settings under **Settings > Notifications**, so your code never needs
+SMS or chat credentials.
 
 ```bash
 curl -X POST https://app.infrawrench.com/api/org/$ORG/pages \
@@ -32,13 +43,18 @@ curl -X POST https://app.infrawrench.com/api/org/$ORG/pages \
       }'
 ```
 
-`source` is your name for the system doing the paging. It becomes the notification's sender, and it scopes the throttle — two services paging under the key `disk-full` never silence each other.
+`source` is your name for the system sending the page. It shows as the sender of the
+notification, and repeat pages are tracked per source, so two services paging under the key
+`disk-full` never silence each other.
 
-### Repeat pages are suppressed, not rejected
+### Repeat pages are held back, not rejected
 
-A monitor re-finds the same problem on every tick. Calling this endpoint every minute would be 1,440 messages a day about one broken thing, so every page carries a **key**, and a page under a key that already fired is held quiet until its cooldown elapses — one hour by default.
+A monitor finds the same problem every time it runs. Calling this endpoint every minute would mean
+1,440 messages a day about one broken thing. So every page has a **key**, and once a key has
+fired, further pages under it stay quiet until its cooldown ends (one hour by default).
 
-That means you should **call it unconditionally** and read the response rather than tracking state yourself:
+That means you can **call it every time** and read the response, instead of tracking state
+yourself:
 
 ```json
 {
@@ -52,7 +68,8 @@ That means you should **call it unconditionally** and read the response rather t
 }
 ```
 
-A suppressed page is a `200`. So is a page that reached nobody — but that one does **not** start a cooldown, so the next call tries again instead of going quiet after a failed delivery.
+A held-back page returns `200`. So does a page that reached nobody, but that one does **not**
+start a cooldown, so the next call tries again instead of going quiet after a failed delivery.
 
 | Field             | Default    | What it does                                                                                 |
 | ----------------- | ---------- | -------------------------------------------------------------------------------------------- |
@@ -63,18 +80,21 @@ A suppressed page is a `200`. So is a page that reached nobody — but that one 
 | `cooldownMinutes` | `60`       | How long a key stays quiet after firing. `0` sends every time.                               |
 | `voice`           | `false`    | Also place a voice call to recipients who opted into voice. Reserve it for waking people up. |
 
-When the condition recovers, clear the key so the next occurrence pages immediately instead of waiting out a stale timer:
+When the problem is fixed, clear the key so the next occurrence pages straight away instead of
+waiting out an old cooldown:
 
 ```bash
 curl -X DELETE "https://app.infrawrench.com/api/org/$ORG/pages?source=checkout-api&key=5xx-rate" \
   -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
 ```
 
-![Settings → Notifications with the Pages trigger enabled on a Slack channel and a mobile device, so a reader can see where a pushed page lands](https://agent-assets.infrawrench.com/docs-screenshots/features/server-push/pages-routing-rule.png)
+![Settings > Notifications with the Pages trigger enabled on a Slack channel and a mobile device, showing where a pushed page lands](https://agent-assets.infrawrench.com/docs-screenshots/features/server-push/pages-routing-rule.png)
 
-## Cost rows
+## Report cost rows
 
-`POST /costs/rows` reports spend Infrawrench has no plugin for — a parsed SaaS invoice, an internal chargeback, a colo bill. The rows land in the same store the provider collectors write to, so they appear in [cost graphs](./cloud-costs.md), dimension filters, and budgets with no special-casing.
+`POST /costs/rows` reports spend Infrawrench has no integration for, such as a parsed SaaS
+invoice, an internal chargeback, or a colo bill. The rows show up in
+[cost graphs](./cloud-costs.md), dimension filters and budgets just like provider costs do.
 
 ```bash
 curl -X POST https://app.infrawrench.com/api/org/$ORG/costs/rows \
@@ -91,35 +111,46 @@ curl -X POST https://app.infrawrench.com/api/org/$ORG/costs/rows \
       }'
 ```
 
-Each row is one day of spend for one combination of dimensions. `date`, `currency`, and `amount` are required; `service`, `region`, `resourceId`, `tags`, `usageAmount`, and `usageUnit` are the dimensions you can then group and filter by. `amount` may be negative for a credit.
+Each row is one day of spend for one combination of dimensions. `date`, `currency` and `amount`
+are required. `service`, `region`, `resourceId`, `tags`, `usageAmount` and `usageUnit` are the
+dimensions you can group and filter by. `amount` can be negative for a credit.
 
-If the spend arrives as a file (a CSV or a FOCUS export) rather than from code, a [custom cost source](./custom-cost-sources.md) is usually the better fit: it is its own named provider, keeps an upload history, and lets you delete or replace an upload.
+If your spend comes as a file (a CSV or a FOCUS export) rather than from code, a
+[custom cost source](./custom-cost-sources.md) is usually a better fit. It's its own named
+provider, keeps an upload history, and lets you delete or replace an upload.
 
-Rows show up under the provider **External** and, unless you attribute them to one of your accounts with `accountId`, in the account dimension as "&lt;source&gt; (external)".
+Rows appear under the provider **External**. In the account dimension they show as
+"&lt;source&gt; (external)", unless you assign them to one of your accounts with `accountId`.
 
-### Pushing the same day twice restates it
+### Pushing the same day again replaces it
 
-Writes are keyed by `(source, day, service, region, resourceId, tags, currency)`. Re-pushing a day **replaces** those rows rather than adding to them, so a nightly job can safely re-push a trailing window to absorb late-arriving invoice lines — the same restatement behaviour the provider collectors get.
+Rows are matched on `(source, day, service, region, resourceId, tags, currency)`. Pushing a day
+again **replaces** those rows instead of adding to them. So a nightly job can safely re-push the
+last few days to pick up late invoice lines.
 
-Rows pushed under a source can never overwrite rows a collector wrote, even when you attribute them to a real account, and two sources can never overwrite each other.
+Rows you push can never overwrite costs Infrawrench collected from a provider, even when you
+assign them to a real account, and two sources can never overwrite each other.
 
-The whole batch is validated before anything is stored, so a `400` means nothing was written and the message names the offending row:
+The whole batch is checked before anything is saved. A `400` means nothing was written, and the
+message names the row with the problem:
 
 ```json
 { "error": "costs/rows: row 3 has an invalid currency \"dollars\" (expected a 3-letter ISO code)." }
 ```
 
-Limits: 5,000 rows per call, 32 tags per row, 256 characters per field. Tag keys beginning `infrawrench:` are reserved and rejected — that namespace is what keeps sources from colliding.
+Limits: 5,000 rows per call, 32 tags per row, 256 characters per field. Tag keys starting with
+`infrawrench:` are reserved and rejected.
 
-## From the CLI
+## Use the CLI
 
-The [`infrawrench` CLI](./cli.md) wraps both, which is often the shortest path on a server that already has it installed:
+The [`infrawrench` CLI](./cli.md) does both, which is often the quickest option on a server that
+already has it installed:
 
 ```bash
 # Page, honouring the same cooldown as the API
 infrawrench page "backup did not complete" --source backups --key nightly
 
-# Recovered — re-arm the key
+# Recovered: re-arm the key
 infrawrench page clear --source backups --key nightly
 
 # Push cost rows from a file, or from a pipeline
@@ -127,8 +158,12 @@ infrawrench costs push --source colo --file rows.json
 parse-invoice --json | infrawrench costs push --source colo
 ```
 
-Both accept `--json` for scripting, and both use the CLI's existing sign-in rather than a separate key.
+Both accept `--json` for scripting, and both use your existing CLI sign-in rather than a separate
+key.
 
-## Doing this from a workflow instead
+## Use a workflow instead
 
-If the thing you're checking is reachable from Infrawrench — a cloud API, a database, an SSH host — a [workflow](./workflows.md) is usually less work than a server: it has `infra.page(...)` and `infra.costs.write(...)` built in, runs on a schedule you set in the UI, and needs no key to manage. These endpoints are for code that runs where Infrawrench doesn't.
+If what you're checking is reachable from Infrawrench (a cloud API, a database, an SSH host), a
+[workflow](./workflows.md) is usually less work than running your own server. It has
+`infra.page(...)` and `infra.costs.write(...)` built in, runs on a schedule you set in the app,
+and needs no key. These endpoints are for code that runs where Infrawrench can't reach.

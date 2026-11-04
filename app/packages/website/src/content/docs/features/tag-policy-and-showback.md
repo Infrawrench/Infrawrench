@@ -4,99 +4,103 @@ description: Require tags like owner and env on every resource, score compliance
 sidebar_order: 3
 ---
 
-A **tag policy** is an org-level rule of the form "every resource carries `owner` and `env`". Infrawrench scores each account's compliance with it, reports the spend that doesn't carry the required tags, and — when you switch enforcement on — rejects resource creation that would violate it. **Allocation rules** then map spend onto named **cost centres** for a showback report.
+A **tag policy** is an organization rule like "every resource carries `owner` and `env`". Infrawrench scores each account against it, shows you the spend that's missing the required tags, and, if you turn on enforcement, blocks new resources that would break it. **Allocation rules** then map spend onto named **cost centres** so you can report what each team costs.
 
-> **Cloud only.** The policy, compliance scores, and both reports are org-level cloud state. The desktop app shows the same tag governance section on its Costs panel when signed into a cloud org, and the mobile app shows the showback tree read-only; policy, cost centre and rule editing lives in the web app's org settings.
+> **Cloud only.** On desktop, the Costs panel shows the same tag section when you're signed into a cloud organization. The mobile app shows the showback tree read-only. You edit the policy, cost centres and rules in the web app's organization settings.
 
-Bills full of provider bookkeeping keys (`aws:cloudformation:*`, `goog-k8s-*`) make every tag picker on this page and elsewhere harder to use. [Tag key settings](./tag-keys.md) hide those from pickers and pin the keys you report on to the top, without touching the data.
+Bills full of provider bookkeeping keys (`aws:cloudformation:*`, `goog-k8s-*`) make every tag picker harder to use. [Tag key settings](./tag-keys.md) hide those from pickers and pin the keys you report on to the top, without changing your data.
 
-## Defining the policy
+## Set up the policy
 
-The policy lives in **Settings → Tag Policy**. Anyone with `org:settings:write` (Owner by default) can edit it:
+Open **Settings > Tag Policy**. Anyone with `org:settings:write` (Owner by default) can edit it:
 
-- **Required tag keys** — e.g. `owner`, `env`, `team`. Keys are matched case-insensitively, so `Owner` on an AWS resource satisfies a required `owner`.
-- **Allowed values** (optional, per key) — e.g. `env` must be one of `prod`, `staging`, `dev`. Values are compared exactly.
-- **Enforce at create time** — off by default; see [enforcement](#enforcement-at-create-time).
+- **Required tag keys**: for example `owner`, `env`, `team`. Keys are matched without regard to case, so `Owner` on an AWS resource satisfies a required `owner`.
+- **Allowed values** (optional, per key): for example `env` must be one of `prod`, `staging`, `dev`. Values must match exactly.
+- **Enforce at create time**: off by default. See [Block untagged resources](#block-untagged-resources).
 
-![Settings → Tag Policy page with two required tags (owner with no allowed values, env with prod/staging/dev), the "Enforce at create time" checkbox ticked, and the per-account compliance table below](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/tag-policy-settings.png)
+![Settings > Tag Policy page with two required tags (owner with no allowed values, env with prod/staging/dev), the "Enforce at create time" checkbox ticked, and the per-account compliance table below](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/tag-policy-settings.png)
 
-## How a resource "carries" a tag
+## Which resources are checked
 
-Infrawrench's host is provider-agnostic, so tag detection follows one generic convention: a resource's stored record (its fields or cached outputs) exposes a field named `tags` or `labels`, in any of the shapes providers actually use — a string map, a JSON-encoded map, a list of `key=value` entries, or a list of `{key, value}` objects. Resources whose types expose such a field are **evaluated**; resource types with no tag concept are left out of the score rather than dragging it down.
+Infrawrench checks any resource that has a `tags` or `labels` field, in whatever format the provider uses. Resource types with no concept of tags are left out of the score rather than dragging it down.
 
-## Compliance scores
+## Check compliance
 
-Each account gets a score: the percentage of its evaluated resources that carry every required tag (with an allowed value, where the policy restricts one). The table in **Settings → Tag Policy** shows the score alongside how many resources were evaluated versus how many the account holds in total, so a high score over a small evaluated set doesn't overstate coverage. The same per-account list appears in the **Tags & allocation** section of the Costs panel on web and desktop, and on the mobile app's Costs tab.
+Each account gets a score: the percentage of its checked resources that carry every required tag (with an allowed value, where you set one). The table in **Settings > Tag Policy** shows the score next to how many resources were checked out of the account's total, so a high score over a small set doesn't overstate coverage.
 
-## Enforcement at create time
+You'll see the same per-account list in the **Tags & allocation** section of the Costs panel on web and desktop, and on the mobile app's Costs tab.
 
-With **Enforce at create time** on, creating a resource through Infrawrench (web, desktop, SDKs, API) is checked against the policy:
+## Block untagged resources
 
-- The create form pre-fills the required keys into the type's tag field and shows what the policy demands.
-- Server-side, a create whose tags are missing a required key (or carry a disallowed value) is rejected with **`422 Unprocessable Entity`** and the code `tag_policy_unmet` — the same pattern as the [change freeze](../team-and-billing/change-freeze.md)'s `423`, listing each violation in the body.
-- Resource types whose create form has no `tags`/`labels` field are exempt: a policy cannot demand what a provider cannot store.
+With **Enforce at create time** on, any resource you create through Infrawrench (web, desktop, SDKs, API) is checked against the policy:
 
-Callers holding `tag-policy:override` (Admin and Owner by default) can create anyway by sending the header:
+- The create form pre-fills the required keys in the tag field and shows what the policy needs.
+- A create that's missing a required key (or uses a disallowed value) is rejected with **`422 Unprocessable Entity`** and the code `tag_policy_unmet`, listing each problem in the response body. This works like the [change freeze](../team-and-billing/change-freeze.md)'s `423`.
+- Resource types whose create form has no `tags` or `labels` field are exempt, since the provider can't store them.
+
+People with `tag-policy:override` (Admin and Owner by default) can create anyway by sending this header:
 
 ```
 x-tag-policy-override: true
 ```
 
-Every block and every override is recorded in the [audit log](../team-and-billing/audit-log.md) as `tag_policy.block` / `tag_policy.override`.
+Every block and every override is recorded in the [audit log](../team-and-billing/audit-log.md) as `tag_policy.block` or `tag_policy.override`.
 
 <insert [Resource create modal showing the amber "Org policy requires tags: owner, env (prod | staging | dev)" notice above the form fields, with the tags field pre-filled with "owner=, env="] here>
 
-## Untagged spend
+## Find untagged spend
 
-The payoff for the policy is on the money side: the **Tags & allocation** section on the Costs panel's **Allocation** tab reports how much of the org's spend (from provider billing data) sits on rows missing at least one required tag key, overall, per key, and as a top list of the (account, service) buckets responsible. That's the spend nobody can allocate; the top list is the shortest path to fixing it.
+This is where the policy pays off. On the Costs panel's **Allocation** tab, the **Tags & allocation** section shows how much of your spend (from provider billing data) is missing at least one required tag key. You see it overall, per key, and as a top list of the account and service pairs responsible. That's the spend nobody can allocate, and the top list is the quickest way to fix it.
 
 ![Costs panel "Tags & allocation" section showing the untagged spend card with "$1,234 of $9,876 missing a required tag", the per-account compliance bars, and the showback list below](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/tags-allocation-section.png)
 
-## Cost centres & showback
+## Set up cost centres and showback
 
-**Cost centres** are org-defined buckets ("Platform", "Data", "Growth") that spend is allocated to for showback. **Allocation rules** map spend onto them, matching on any combination of:
+**Cost centres** are buckets you define ("Platform", "Data", "Growth") to allocate spend to. **Allocation rules** map spend onto them, matching on any mix of:
 
 - a **tag** key (or key = value),
 - an **account**,
 - a **provider**,
 - a **service**.
 
-Rules evaluate top-down by priority and the first match wins, so put specific rules (this one account's `team=data` spend → Data) above broad ones (everything on GCP → Platform). Spend no rule claims reports as **Unallocated** — it never disappears. Rules are edited in **Settings → Tag Policy**; the report renders on the Costs panel and answers "what did each team's infrastructure cost this month" without touching a spreadsheet.
+Rules run top to bottom by priority and the first match wins. Put specific rules (this one account's `team=data` spend goes to Data) above broad ones (everything on GCP goes to Platform). Spend that no rule claims shows as **Unallocated**, so nothing disappears.
 
-### Nesting: a tree, not a flat list
+You edit rules in **Settings > Tag Policy**. The report appears on the Costs panel and answers "what did each team's infrastructure cost this month" without a spreadsheet.
 
-Cost centres **nest**. A division holds teams, a team holds products, and "what does Engineering cost" is answered by the whole subtree rather than by one bucket. The tree is built in **Settings → Cost Centres** (create, rename, move, delete) and is at most **four levels** deep.
+### Nest cost centres
 
-![Settings → Cost Centres page showing a three-level tree — Engineering containing Platform and Data, Platform containing Search — with the move dropdown open on one row and the deeper targets greyed out](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/cost-centres-move.png)
+Cost centres can **nest**. A division holds teams, a team holds products, and "what does Engineering cost" covers the whole branch rather than one bucket. Build the tree in **Settings > Cost Centres** (create, rename, move, delete). It can be up to **four levels** deep.
 
-Every centre reports **two** numbers on the Costs panel and in the API:
+![Settings > Cost Centres page showing a three-level tree (Engineering containing Platform and Data, Platform containing Search) with the move dropdown open on one row and the deeper targets greyed out](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/cost-centres-move.png)
 
-| Field           | Means                                              |
-| --------------- | -------------------------------------------------- |
-| `totals`        | Spend allocated **directly** to this centre        |
-| `subtreeTotals` | This centre **plus every descendant** — the rollup |
+Every centre shows **two** numbers on the Costs panel and in the API:
 
-Both matter, because "Engineering $40k, of which Platform $12k" is the shape a budget conversation actually takes. A leaf's two numbers are equal, as are every centre's in an org that doesn't nest.
+| Field           | Means                                                   |
+| --------------- | ------------------------------------------------------- |
+| `totals`        | Spend allocated **directly** to this centre             |
+| `subtreeTotals` | This centre **plus every centre under it** (the rollup) |
 
-If you already had flat cost centres, **nothing changes**: they are all roots, `subtreeTotals` equals `totals` everywhere, and every existing report reads exactly as it did. Nesting is opt-in, one centre at a time.
+You need both, because budget conversations sound like "Engineering $40k, of which Platform $12k". For a centre with nothing under it, the two numbers are the same.
 
-### Parent and child rules
+If you already had flat cost centres, **nothing changes**. They're all top-level, `subtreeTotals` equals `totals`, and your reports read exactly as before. You can nest one centre at a time.
 
-Nesting is a reporting structure — it changes nothing about **matching**. A cost row is still allocated to exactly one centre, so no amount is ever counted twice:
+### How rules work with nested centres
 
-- Rules are one ordered list regardless of where their centres sit in the tree. **Lower priority number fires first, first match wins** — the rule that has always applied.
-- Where a rule targets a parent and another targets its child at the **same priority**, the **more deeply nested centre wins**. A parent-level catch-all ("everything on GCP → Engineering") therefore doesn't quietly swallow spend a child rule ("tag `team=search` → Search") was written for. The parent still gets that spend back through its subtree total.
+Nesting only changes how spend is reported, not how it's matched. Each cost row still goes to exactly one centre, so nothing is counted twice:
 
-`Unallocated` stays a first-class row at the bottom of the tree; it is never folded into a parent.
+- All rules sit in one ordered list, wherever their centres are in the tree. **Lower priority number runs first, and the first match wins.**
+- If one rule targets a parent and another targets its child at the **same priority**, the **child wins**. So a parent catch-all ("everything on GCP goes to Engineering") won't swallow spend meant for a child rule ("tag `team=search` goes to Search"). The parent still sees that spend in its subtree total.
 
-### Deleting a centre
+`Unallocated` always stays its own row at the bottom of the tree and is never folded into a parent.
 
-Deleting a centre **never deletes its children and never touches spend history**:
+### Delete a centre
 
-- Child centres are **re-parented onto the deleted centre's own parent** — delete "Platform" out of Engineering → Platform → Search and Search stays under Engineering. (Deleting a top-level centre leaves its children at the top level.) Promoting everything to the root instead would silently move spend out of an ancestor's subtree total, which is the last thing a chargeback number should do when someone tidies up a middle row.
-- The centre's own **allocation rules are deleted with it**, so the spend they claimed falls through to the next matching rule — often "Unallocated".
+Deleting a centre **never deletes the centres under it and never changes spend history**:
 
-The confirmation dialog spells out both, along with how many children and rules are affected.
+- Its children move up to the deleted centre's parent. Delete "Platform" from Engineering > Platform > Search and Search stays under Engineering. (Delete a top-level centre and its children become top-level.) This keeps their spend inside the right parent's total.
+- The centre's own **allocation rules are deleted with it**, so the spend they claimed falls through to the next matching rule, often "Unallocated".
+
+The confirmation dialog explains both and tells you how many children and rules are affected.
 
 ![Costs panel "Tags & allocation" section showing the showback tree indented two levels, with a parent row displaying its subtree total and a smaller "own" figure beneath it, and the italic Unallocated row last](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/showback-tree.png)
 
@@ -111,11 +115,11 @@ infrawrench showback              # spend by cost centre, last 30 days
 infrawrench showback --from 2026-07-01 --to 2026-07-31
 ```
 
-`showback` prints the centre tree indented. A parent's bar is its **subtree** total with its own directly-allocated spend noted beside it, so the bars deliberately don't sum to the org total — the leaves do. `--json` returns the wire report, `totals` and `subtreeTotals` and all.
+`showback` prints the tree indented. A parent's bar shows its **subtree** total, with its own direct spend noted beside it. That means the bars don't add up to the organization total; the leaves do. `--json` returns the full report, including `totals` and `subtreeTotals`.
 
-## MCP & AI chat
+## MCP and AI chat
 
-Three read-only tools expose the same data to [MCP clients and the AI assistant](./mcp.md): `get_tag_compliance`, `query_untagged_spend`, and `query_showback` — so "which team's spend grew last month" and "how much of our spend is untagged" are answerable in chat. `query_showback` returns the same tree as the panel: quote `subtreeTotals` for a division, `totals` for what that division spends itself, and never add `subtreeTotals` up across entries.
+Three read-only tools give [MCP clients and the AI assistant](./mcp.md) the same data: `get_tag_compliance`, `query_untagged_spend` and `query_showback`. You can ask things like "which team's spend grew last month" or "how much of our spend is untagged" in chat. `query_showback` returns the same tree as the panel: use `subtreeTotals` for a division, `totals` for what that division spends itself, and never add `subtreeTotals` up across entries.
 
 ## Permissions
 

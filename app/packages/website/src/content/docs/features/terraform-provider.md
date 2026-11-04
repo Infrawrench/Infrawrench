@@ -1,20 +1,20 @@
 ---
 title: Terraform provider
-description: Manage Infrawrench's own configuration — budgets and cost policy, probes and alerts, schedules and freezes, accounts, roles and alert routing — as Terraform resources.
+description: Manage Infrawrench's own configuration as Terraform resources, including budgets and cost policy, probes and alerts, schedules and freezes, accounts, roles and alert routing.
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. 77 resources and 8 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider lets you manage **Infrawrench's own configuration** in Terraform: cost allocation and reporting, monitoring, the service catalog, lifecycle governance, connected accounts and access control, and alert delivery. There are 77 resources and 8 data sources, and each one gets its own plan, drift detection and `terraform import`.
 
-It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
+Use it if your team already keeps infrastructure in Terraform and wants the rest of its platform setup to go through the same pull requests and reviews, with a plan that shows exactly what will change.
 
-It does **not** manage your cloud resources. Your cloud provider's own Terraform provider creates the database; this one manages the budget that watches what the database costs, the probe that checks it is up, the schedule that powers it down at night, and the rule that decides who gets paged when it is not.
+It does **not** manage your cloud resources. Your cloud provider's Terraform provider creates the database. This one manages the budget that tracks what the database costs, the probe that checks it is up, the schedule that powers it down at night, and the rule that decides who gets paged when it is not.
 
 <insert [A terraform plan output in a terminal showing an infrawrench_budget being updated in place, with the amount_cents and threshold changes highlighted] here>
 
-## Which Terraform feature is this?
+## Pick the right Terraform feature
 
-Three features have Terraform in the name. They point in different directions, and picking the wrong one costs you an afternoon.
+Three features have Terraform in the name, and they do different jobs.
 
 | Feature                                   | What it manages                                            | Use it when                                                         |
 | ----------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -22,22 +22,11 @@ Three features have Terraform in the name. They point in different directions, a
 | [Config as code](./config-as-code.md)     | **A whole organization's configuration**, as one document  | Cloning an org, seeding staging, disaster recovery                  |
 | **Terraform provider** (this page)        | **Individual Infrawrench objects**, as Terraform resources | Budgets and cost policy belong in your Terraform repo, under review |
 
-The short version: Terraform export is about getting your resources _out_. Config as code moves a whole org _at once_. The provider manages _one object at a time_, continuously.
+In short: Terraform export gets your resources _out_. Config as code moves a whole org _at once_. The provider manages _one object at a time_, continuously.
 
-They compose. Config as code is still the right tool for "make staging look like production in one shot". The provider is the right tool for "the platform team's budget lives in git and changes go through review".
+You can use them together. Config as code is still the right tool for "make staging look like production in one shot". The provider is the right tool for "the platform team's budget lives in git and changes go through review".
 
-## Why not just wrap config as code?
-
-A fair question, and it was the first design considered. [Config as code](./config-as-code.md) already exports, plans and applies configuration, so wrapping it would have meant one implementation of diffing and validation instead of two.
-
-It does not fit, for reasons that are worth knowing because they also tell you when to use each feature:
-
-- **The document doesn't carry most of these objects.** It has sections for budgets, cost centres, tag policy and metric alerts — but not for saved filters, cost reports, cost alerts, scenario models, billing rules, cost exports, business metrics, accounts, roles, API keys, bastions, status pages, schedules, freezes, the alert routing table, or most of the rest.
-- **The document addresses things by name, not by id.** That's exactly what makes one document apply cleanly to a fresh organization. It's also what makes `terraform import` impossible, and what would turn renaming a budget into destroying and recreating it.
-- **Apply is all-or-nothing.** It takes the whole document in one transaction. Terraform walks its graph in parallel, so ten resources applying at once would mean ten overlapping rewrites of one document.
-- **Deleting one object would mean owning all of them.** The document's `replace` mode deletes anything it doesn't name, so removing one budget from Terraform would have destroyed every budget created outside it.
-
-So the provider talks to the API routes directly, one object at a time. That is what buys you per-resource plans, real imports, and deletions that affect exactly one thing.
+Config as code covers far fewer object types, addresses things by name (so a rename would recreate the object and `terraform import` is impossible), and applies everything at once. The provider works one object at a time, which is what gives you per-resource plans, real imports, and deletes that affect exactly one thing.
 
 ## Install
 
@@ -61,7 +50,7 @@ provider "infrawrench" {
 }
 ```
 
-Every argument falls back to an environment variable, which is how you should run it in CI so the credential never lands in a `.tf` file or a saved plan:
+Every argument can come from an environment variable instead. Do that in CI so the credential never lands in a `.tf` file or a saved plan.
 
 | Argument          | Environment variable   | Default                       |
 | ----------------- | ---------------------- | ----------------------------- |
@@ -69,9 +58,11 @@ Every argument falls back to an environment variable, which is how you should ru
 | `api_key`         | `INFRAWRENCH_API_KEY`  | required                      |
 | `organization_id` | `INFRAWRENCH_ORG_ID`   | required                      |
 
-The organization id is the one in your URL when you're signed in — it starts with `org_`.
+Your organization id is in the URL when you're signed in. It starts with `org_`.
 
-Create the credential on **Settings → API keys**. The scope picker lists every permission the server recognises, grouped, with a filter box that matches the permission string itself — so you can paste `costs:` from the table below and tick what you need. The permissions each object needs are the same ones the UI enforces, so a key that can't edit budgets in the app can't edit them through Terraform either:
+### Create an API key
+
+Create the key under **Settings > API keys**. The scope picker has a filter box that matches permission names, so you can paste `costs:` from the table below and tick what you need. Terraform gets the same permissions as the app: a key that can't edit budgets in the app can't edit them through Terraform either.
 
 | Objects                                                                                  | Read             | Write                |
 | ---------------------------------------------------------------------------------------- | ---------------- | -------------------- |
@@ -80,33 +71,46 @@ Create the credential on **Settings → API keys**. The scope picker lists every
 | Tag policy                                                                               | `resources:read` | `org:settings:write` |
 | Billing rules, cost exports                                                              | `costs:read`     | `org:settings:write` |
 
-Billing rules and cost exports are the odd ones: reading them needs only `costs:read`, but changing them needs org settings. A key scoped to `costs:write` will read them and fail to write them.
+Billing rules and cost exports are the odd ones out. Reading them needs only `costs:read`, but changing them needs org settings, so a key with `costs:write` can read them but not change them.
 
-Beyond cost, each area uses the permission the matching page in the app uses — `resources:write` for probes, status pages, sleep schedules and log queries; `metric-alerts:write` for metric alerts; `dashboards:write` for custom graphs; `freezes:write` for change freezes; `bastions:write`, `ssh-keys:write`, `apikeys:write` and `team:role:write` for the access resources; and `org:settings:write` for alert routing, Slack, Teams, the weekly digest and the GitHub issue settings (which read with `github-issues:read`). The full table is in the provider's README.
+Outside cost, each area uses the same permission as its page in the app:
 
-Two of those need care. Alert routing, Slack, Teams and the digest have **no separate read permission** — their GET is gated on `org:settings:write` too, so a read-only key cannot even refresh them. And an account needs three: `accounts:write` to connect, `secrets:write` to rotate its credentials, `accounts:delete` to disconnect.
+- `resources:write` for probes, status pages, sleep schedules and log queries
+- `metric-alerts:write` for metric alerts
+- `dashboards:write` for custom graphs
+- `freezes:write` for change freezes
+- `bastions:write`, `ssh-keys:write`, `apikeys:write` and `team:role:write` for the access resources
+- `org:settings:write` for alert routing, Slack, Teams, the weekly digest and the GitHub issue settings (which read with `github-issues:read`)
 
-`apikeys:write` and `team:role:write` are the two the picker does not offer, because a key holding them would be refused anyway — see below.
+The full table is in the provider's README.
+
+Two things to watch:
+
+- Alert routing, Slack, Teams and the digest have **no separate read permission**. Even reading them needs `org:settings:write`, so a read-only key can't refresh them.
+- An account needs three permissions: `accounts:write` to connect it, `secrets:write` to rotate its credentials, and `accounts:delete` to disconnect it.
+
+The picker doesn't offer `apikeys:write` or `team:role:write`, because a key holding them would be refused anyway (see below).
 
 ### Two resources need a signed-in credential
 
-An API key reaches everything in the provider except two things, whatever scopes you give it:
+An API key can manage everything in the provider except two things, whatever scopes you give it:
 
 | Resource              | With an API key        | Why                                                                                 |
 | --------------------- | ---------------------- | ----------------------------------------------------------------------------------- |
 | `infrawrench_api_key` | Closed entirely        | A key that can mint keys can mint a longer-lived one and outlive its own revocation |
-| `infrawrench_role`    | Readable, not writable | A key shouldn't manufacture durable authority for other principals                  |
+| `infrawrench_role`    | Readable, not writable | A key shouldn't create lasting permissions for other people                         |
 
-`infrawrench_role_default_dashboard` is not in that table on purpose. It sets where a role's members land, not what they may do: the dashboard has to be shared with the role already, so it grants nothing. It lives under `/dashboards` rather than `/team` and needs `org:settings:write`, which a key can hold.
+`infrawrench_role_default_dashboard` is not restricted. It only sets where a role's members land, and the dashboard has to be shared with the role already, so it grants nothing. It needs `org:settings:write`, which a key can hold.
 
-If you manage either, keep them in a separate Terraform root that a person applies with a WorkOS access token — which is the separation the restriction is arguing for anyway. The provider recognises this particular 403 and tells you which resource is affected, rather than leaving you staring at a permission error that isn't about permissions.
+If you manage API keys or roles in Terraform, keep them in a separate Terraform root that a person applies while signed in with a WorkOS access token. If a key hits this restriction, the provider tells you which resource is affected.
 
-<insert [The Create API Key dialog under Settings → API keys, filter box containing "costs:", with Costs (read) and Costs (write) ticked and the selected-count showing 2] here>
+<insert [The Create API Key dialog under Settings > API keys, filter box containing "costs:", with Costs (read) and Costs (write) ticked and the selected-count showing 2] here>
 
 ## A worked example
 
-One file: a saved filter, the cost centre it feeds, the rule that allocates to it, a budget, and an alert.
+One file with a saved filter, the cost centre it feeds, the rule that allocates to it, a budget, and an alert.
 
+````hcl
 ```hcl
 resource "infrawrench_saved_filter" "platform" {
   name        = "Platform team"
@@ -166,10 +170,13 @@ resource "infrawrench_cost_alert" "platform_spike" {
     values    = ["platform"]
   }
 }
-```
+````
 
-Referencing account ids by hand is a mistake waiting to happen, so read them instead:
+````
 
+Don't type account ids by hand. Read them with a data source instead:
+
+```hcl
 ```hcl
 data "infrawrench_accounts" "aws" {
   plugin_id = "aws"
@@ -183,12 +190,15 @@ resource "infrawrench_allocation_rule" "first_aws_account" {
     account_id = data.infrawrench_accounts.aws.accounts[0].id
   }
 }
-```
+````
 
-## Beyond cost
+````
 
-The same file can carry the monitoring, governance and alert-delivery configuration a platform team would otherwise click together by hand.
+## Monitoring, schedules and access
 
+The same file can hold the monitoring, governance and alert setup you'd otherwise click together in the app.
+
+```hcl
 ```hcl
 # One rule written once covers every instance the team creates afterwards:
 # resources are selected by query, never by id.
@@ -229,10 +239,13 @@ resource "infrawrench_role" "finance" {
   description = "Read spend, own budgets, touch nothing else."
   permissions = ["costs:read", "budgets:read", "budgets:write", "invoices:read"]
 }
-```
+````
 
-Powering a development machine down outside working hours is the cheapest saving there is, and the one nobody remembers to apply by hand. Resolve the resource rather than hard-coding its id:
+````
 
+Powering a development machine down outside working hours is an easy saving that nobody remembers to do by hand. Look the resource up rather than hard-coding its id:
+
+```hcl
 ```hcl
 data "infrawrench_resources" "api" {
   account_id       = data.infrawrench_accounts.aws.accounts[0].id
@@ -248,14 +261,17 @@ resource "infrawrench_schedule" "api_nights" {
   start_time   = "08:00"
   timezone     = "Europe/Berlin"
 }
-```
+````
+
+````
 
 <insert [A terraform plan output showing infrawrench_schedule and infrawrench_probe resources being created, with the projected monthly saving visible in the plan] here>
 
-### Alert routing is one resource, in order
+### Set up alert routing
 
-[Alert routing](./alert-routing.md) is a single ordered table rather than one resource per rule, because order is the semantics: the list is evaluated top to bottom and is first-match-wins unless a rule sets `continue_on_match`. A rule cannot meaningfully be written without saying where it sits, so per-rule resources would have needed a position attribute and then a way to stop two configurations claiming the same slot.
+[Alert routing](./alert-routing.md) is one resource holding an ordered list of rules, because order matters: rules are checked top to bottom and the first match wins, unless a rule sets `continue_on_match`.
 
+```hcl
 ```hcl
 data "infrawrench_slack_installations" "workspace" {}
 
@@ -294,12 +310,12 @@ resource "infrawrench_alert_routing" "org" {
       kind = "push"
     }
 
-    # Held overnight, not dropped — a held alert is delivered when the window
+    # Held overnight, not dropped. A held alert is delivered when the window
     # closes, and critical is exempt from the hold entirely.
     quiet_hours {
       timezone        = "Europe/Berlin"
       start_minute    = 1320 # 22:00
-      end_minute      = 420  # 07:00 — an overnight window
+      end_minute      = 420  # 07:00, an overnight window
       days            = [1, 2, 3, 4, 5]
       urgent_override = "critical"
     }
@@ -327,14 +343,24 @@ resource "infrawrench_alert_routing" "org" {
     # without deleting the rules that would otherwise catch it.
   }
 }
-```
+````
 
-Connecting the Slack workspace itself is an OAuth flow, which a Terraform provider cannot perform. Install the app once on **Settings → Alerts**, then read the installation with `data.infrawrench_slack_installations`.
+````
 
-### Alert email
+You can't connect the Slack workspace itself from Terraform, because it's an OAuth sign-in. Install the app once under **Settings > Alerts**, then read the installation with `data.infrawrench_slack_installations`.
 
-[Email alerts](./email-alerts.md) reach people two ways, and both are configured here. A routing rule can name an `email-member` destination (a member, by `user_id`) or an `email-address` destination (a literal `address`). Budgets, cost change alerts, and the anomaly and efficiency alert settings also take `email_member_ids` and `email_addresses`, which are emailed **in addition to** whatever the routing rules decide, whether or not a rule matched, and never held by quiet hours. Read member ids from `data.infrawrench_members` rather than pasting them; a member named by id is reached at their current login address, so an address change follows them.
+**Import before you take over routing.** Each apply replaces the whole routing table, so the resource has to hold **every** field a rule can have, including quiet hours and escalation policies you set up in the app earlier. Import the resource first and check what comes back. Anything your configuration leaves out is cleared on the next apply.
 
+### Send alert email
+
+[Email alerts](./email-alerts.md) can reach people in two ways, and you set both up here:
+
+- A routing rule can use an `email-member` destination (a member, by `user_id`) or an `email-address` destination (a literal `address`).
+- Budgets, cost change alerts, and the anomaly and efficiency alert settings also take `email_member_ids` and `email_addresses`. These are emailed **in addition to** whatever the routing rules decide, whether or not a rule matched, and quiet hours never hold them.
+
+Read member ids from `data.infrawrench_members` rather than pasting them. A member named by id is emailed at their current login address, so if their address changes, alerts follow them.
+
+```hcl
 ```hcl
 data "infrawrench_members" "finance_lead" {
   email = "dana@example.com"
@@ -357,60 +383,62 @@ resource "infrawrench_budget" "platform" {
   email_member_ids = [data.infrawrench_members.finance_lead.members[0].id]
   email_addresses  = ["finance@partner-agency.com"]
 }
-```
+````
 
-A literal address has to pass the organization's external-address policy, which `infrawrench_alert_email_settings` manages: under `member-domains` (the default) it must be on a domain a member signs in with or one in `allowed_domains`. The recipient attributes are optional and computed, so leaving them out of a configuration leaves whatever the app holds; write `[]` to clear a list. Email has no acknowledge button, so a rule routed only to email always escalates.
+````
 
-Because the write replaces the whole table, the resource has to carry **every** field a rule can hold — including quiet hours and escalation policies you may have set up in the app before adopting Terraform. Import the resource first and read what comes back: whatever the configuration does not say, the next apply clears.
+A literal address has to pass your organization's external-address policy, which `infrawrench_alert_email_settings` manages. Under `member-domains` (the default) the address must be on a domain a member signs in with, or one listed in `allowed_domains`.
 
-## Adopting what you already have
+The recipient attributes are optional. If you leave them out, whatever is set in the app stays as it is. Write `[]` to clear a list. Email has no acknowledge button, so a rule routed only to email always escalates.
 
-Nobody starts from an empty organization, so every object with an id imports:
+## Bring existing objects under Terraform
+
+Every object with an id can be imported:
 
 ```sh
 terraform import infrawrench_budget.platform      b1f2c3d4-...
 terraform import infrawrench_cost_centre.platform 9a8b7c6d-...
 terraform import infrawrench_probe.api            2c3d4e5f-...
 terraform import infrawrench_role.finance         1a2b3c4d-...
-```
+````
 
-The id is in the URL when you open the object in the app, and in the `--json` output of the [CLI](./cli.md).
+You'll find the id in the URL when you open the object in the app, and in the `--json` output of the [CLI](./cli.md).
 
-**Organization singletons** — the ones there is only ever one of, with no id of their own — import under the organization id:
+**Organization-wide settings** (things there is only ever one of, with no id of their own) import under your organization id:
 
 ```sh
 terraform import infrawrench_tag_policy.this       org_01HXYZABCDEF
 terraform import infrawrench_alert_routing.org     org_01HXYZABCDEF
 ```
 
-That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, the [vulnerability](./vulnerabilities.md) alert settings, [session recording](./session-recording.md), the [alert email](./email-alerts.md) policy, the [weekly digest](./weekly-digest.md), and the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
+That covers [tag policy](./tag-policy-and-showback.md), [tag key settings](./tag-keys.md), [alert routing](./alert-routing.md), currency settings, the [anomaly](./cost-anomaly-alerts.md) and [efficiency](./commitment-and-unit-cost-alerts.md) alert settings, [realized savings](./realized-savings.md) measurement, the drift, expiry and posture alert settings, the [vulnerability](./vulnerabilities.md) alert settings, [session recording](./session-recording.md), the [alert email](./email-alerts.md) policy, the [weekly digest](./weekly-digest.md), the [Jira](./jira.md) and [Linear](./linear.md) connections, and the [GitHub issue](./github-issues.md) settings.
 
-Two resources import under something other than their own id. A [report notification](./cost-reports.md) hangs off its report, so it takes `<report-id>/<notification-id>`; a workflow schedule takes the id of the [workflow](./workflows.md) it belongs to.
+Two resources import under something other than their own id. A [report notification](./cost-reports.md) belongs to its report, so it takes `<report-id>/<notification-id>`. A workflow schedule takes the id of its [workflow](./workflows.md).
 
-### Secrets don't come back
+### Secrets don't come back on import
 
-Several resources hold write-only material that no route returns. Importing them works — recovering the secret does not. After importing, put it back in your configuration; where the API accepts an omitted credential as "keep the stored one", you can leave it out instead.
+Some resources hold secrets that can never be read back. You can import them, but not recover the secret. After importing, put the secret back in your configuration. Where an empty credential means "keep the stored one", you can leave it out instead.
 
-| Resource                         | Not recoverable                    | What you can still read              |
-| -------------------------------- | ---------------------------------- | ------------------------------------ |
-| `infrawrench_cost_export`        | access key, secret, webhook URL    | `has_credentials`, `credential_hint` |
-| `infrawrench_account`            | the whole `credentials` map        | nothing                              |
-| `infrawrench_api_key`            | `key` — returned once, at creation | `prefix`                             |
-| `infrawrench_ssh_key`            | `private_key` — returned once      | `public_key`, `fingerprint`          |
-| `infrawrench_bastion`            | `token` — returned once            | `token_prefix`                       |
-| `infrawrench_msteams_webhook`    | `url`                              | `url_hint`                           |
-| `infrawrench_event_subscription` | `signing_secret`, returned once    | `secret_hint`                        |
-| `infrawrench_jira_integration`   | `api_token`                        | `token_hint`                         |
-| `infrawrench_linear_integration` | `api_key`                          | `key_hint`                           |
-| `infrawrench_deploy_trigger`     | `answers`                          | nothing                              |
+| Resource                         | Not recoverable                   | What you can still read              |
+| -------------------------------- | --------------------------------- | ------------------------------------ |
+| `infrawrench_cost_export`        | access key, secret, webhook URL   | `has_credentials`, `credential_hint` |
+| `infrawrench_account`            | the whole `credentials` map       | nothing                              |
+| `infrawrench_api_key`            | `key`, returned once, at creation | `prefix`                             |
+| `infrawrench_ssh_key`            | `private_key`, returned once      | `public_key`, `fingerprint`          |
+| `infrawrench_bastion`            | `token`, returned once            | `token_prefix`                       |
+| `infrawrench_msteams_webhook`    | `url`                             | `url_hint`                           |
+| `infrawrench_event_subscription` | `signing_secret`, returned once   | `secret_hint`                        |
+| `infrawrench_jira_integration`   | `api_token`                       | `token_hint`                         |
+| `infrawrench_linear_integration` | `api_key`                         | `key_hint`                           |
+| `infrawrench_deploy_trigger`     | `answers`                         | nothing                              |
 
-The provider can't detect drift on any of these. That's a property of the API rather than a limitation of the provider — the values genuinely aren't returned, deliberately.
+Since these values are never returned, Terraform can't detect drift on them.
 
-### One warning about state files
+### Keep your state file safe
 
-[`infrawrench_api_key`](../team-and-billing/api-keys.md), `infrawrench_ssh_key` in generate mode, and `infrawrench_bastion` each write a credential into your Terraform state in plaintext, because the API returns it exactly once and never again.
+[`infrawrench_api_key`](../team-and-billing/api-keys.md), `infrawrench_ssh_key` in generate mode, and `infrawrench_bastion` each write a credential into your Terraform state in plaintext, because it's only returned once.
 
-Use them only with a state backend you'd put any other secret in — encrypted, access-controlled, not a local file in a repository. Prefer piping the value straight into the secret store that consumes it rather than into a Terraform output.
+Only use them with a state backend you'd trust with any other secret: encrypted, access-controlled, and not a local file in a repository. Where you can, pipe the value straight into the secret store that uses it rather than into a Terraform output.
 
 ## What's managed
 
@@ -531,45 +559,45 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Data sources
 
-| Data source                       | Reads                                                       |
-| --------------------------------- | ----------------------------------------------------------- |
-| `infrawrench_accounts`            | Connected accounts — for resolving account ids              |
-| `infrawrench_plugins`             | Available plugins — for resolving plugin ids                |
-| `infrawrench_cost_centres`        | Cost centres, including ones not managed by Terraform       |
-| `infrawrench_resources`           | Synced resources — for resolving a probe or schedule target |
-| `infrawrench_permissions`         | The permission catalogue roles and keys grant from          |
-| `infrawrench_slack_installations` | Connected Slack workspaces                                  |
-| `infrawrench_members`             | Current members and their login addresses, for alert email  |
-| `infrawrench_service`             | One service by id or slug, with its current member count    |
+| Data source                       | Reads                                                      |
+| --------------------------------- | ---------------------------------------------------------- |
+| `infrawrench_accounts`            | Connected accounts, for resolving account ids              |
+| `infrawrench_plugins`             | Available plugins, for resolving plugin ids                |
+| `infrawrench_cost_centres`        | Cost centres, including ones not managed by Terraform      |
+| `infrawrench_resources`           | Synced resources, for resolving a probe or schedule target |
+| `infrawrench_permissions`         | The permission catalogue roles and keys grant from         |
+| `infrawrench_slack_installations` | Connected Slack workspaces                                 |
+| `infrawrench_members`             | Current members and their login addresses, for alert email |
+| `infrawrench_service`             | One service by id or slug, with its current member count   |
 
-## Things worth knowing
+## Good to know
 
-**Objects deleted outside Terraform come back.** Every resource does a real read on refresh. If someone deletes a budget in the app, the next plan shows it as needing to be created again rather than failing.
+**Objects deleted outside Terraform come back.** If someone deletes a budget in the app, the next plan shows it as needing to be created again rather than failing.
 
-**Live figures aren't in state.** A budget's month-to-date spend, an alert's last-fired time, a probe's uptime, an export's last run — none of it appears as a Terraform attribute. It changes constantly, and putting it in state would make every plan noisy for no benefit. Read those from the app, the [CLI](./cli.md), or the [API](../team-and-billing/openapi.md).
+**Live figures aren't in state.** A budget's month-to-date spend, an alert's last-fired time, a probe's uptime and an export's last run don't appear as Terraform attributes, since they change constantly. Read them from the app, the [CLI](./cli.md), or the [API](../team-and-billing/openapi.md).
 
-**Singletons don't really get destroyed.** There is always exactly one anomaly settings row, one routing table, one tag policy — so `terraform destroy` can't remove them. Each one does the sensible thing instead, and it differs on purpose:
+**Organization-wide settings aren't really destroyed.** There is always exactly one of each, so `terraform destroy` can't remove them. Here's what happens instead:
 
-- The cost settings (including how [realized savings](./realized-savings.md) are measured) and [alert routing](./alert-routing.md) **restore the shipped defaults**. An organization routing nothing at all is a worse state than the default one.
-- Currency settings **clear the display currency** and turn automatic rates off, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
-- [Session recording](./session-recording.md) is deliberately **left running**. Silently disabling an audit control because someone deleted a resource block is not a safe default.
-- The drift, expiry, posture and vulnerability alert settings are **left alone**: they have no documented shipped values to restore to.
-- The [alert email](./email-alerts.md) policy **goes back to `member-domains`** with no extra domains. Of the two ways to be wrong, the one that sends mail to fewer outside mailboxes is the safer.
-- [Network flow collection](./network-costs.md) is **turned off**, and it's the singleton where destroy most deliberately changes something. Collection runs queries your cloud provider bills to your own account; leaving it running for a resource you deleted would keep spending your money with nothing in Terraform left to explain why.
+- The cost settings (including how [realized savings](./realized-savings.md) are measured) and [alert routing](./alert-routing.md) **go back to their defaults**.
+- Currency settings **clear the display currency** and turn automatic rates off, which turns conversion off. Your stated exchange rates are kept, so you can turn it back on without re-entering them.
+- [Session recording](./session-recording.md) is **left running**, so deleting a resource block never quietly switches off an audit control.
+- The drift, expiry, posture and vulnerability alert settings are **left as they are**.
+- The [alert email](./email-alerts.md) policy **goes back to `member-domains`** with no extra domains.
+- [Network flow collection](./network-costs.md) is **turned off**, because it runs queries your cloud provider bills to your account.
 
-**Deletes can be refused.** Saved filters and scenario models something still points at return a conflict rather than being deleted, and the error names what's referencing them. A role members still hold, and a managed account with invoices against it, are refused the same way. Repoint or reassign first — Terraform won't decide for you which permission set those people should get instead.
+**Some deletes are refused.** Saved filters and scenario models that something still uses can't be deleted, and the error names what's using them. The same goes for a role members still hold and a managed account with invoices against it. Repoint or reassign first.
 
-**Some things are create-only.** A probe's linked resource, a schedule's resource and account, a Slack channel's workspace, a deploy trigger's repo and branch — the API has no route to change them, so Terraform replaces instead. The plan says so; it's worth reading before applying to a bastion, where replacing means a new enrollment token and an agent that has to be restarted with it.
+**Some things can't be changed in place.** A probe's linked resource, a schedule's resource and account, a Slack channel's workspace, and a deploy trigger's repo and branch can't be updated, so Terraform replaces the object instead. The plan says so. Read it before applying to a bastion: replacing one means a new enrollment token, and the agent has to be restarted with it.
 
-**Credentials are marked sensitive.** Export keys, account credentials, API keys, SSH private keys, bastion tokens and webhook URLs never appear in plan output in plaintext. They do appear in state — see the warning above.
+**Credentials are marked sensitive.** Export keys, account credentials, API keys, SSH private keys, bastion tokens and webhook URLs never show in plan output in plaintext. They are in state, though (see above).
 
-**Billing rule amounts are in the major currency unit.** Everything else in Infrawrench counts cents; a fixed billing rule's `amount` is dollars. It's the one inconsistency, and it is inherited from the API.
+**Billing rule amounts are in whole currency units.** Everything else in Infrawrench uses cents, but a fixed billing rule's `amount` is in dollars.
 
-**Custom graph source isn't type-checked at plan time.** The API has a checker, but calling it from a plan would mean your code had to compile before Terraform would tell you what it was about to change. A graph whose source doesn't compile is stored and fails when it renders.
+**Custom graph source isn't checked at plan time.** A graph whose source doesn't compile is still saved, and fails when it renders.
 
 ## Related
 
-- [Config as code](./config-as-code.md) — move a whole organization's configuration as one document
-- [Terraform export](./terraform-export.md) — write your cloud resources out as HCL
-- [The CLI](./cli.md) — the same objects from a terminal
-- [HTTP API](../team-and-billing/openapi.md) — what the provider calls underneath
+- [Config as code](./config-as-code.md): move a whole organization's configuration as one document
+- [Terraform export](./terraform-export.md): write your cloud resources out as HCL
+- [The CLI](./cli.md): the same objects from a terminal
+- [HTTP API](../team-and-billing/openapi.md): the API the provider uses

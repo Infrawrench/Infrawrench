@@ -4,50 +4,57 @@ description: Run one command across many hosts at once, with identical output co
 sidebar_order: 4
 ---
 
-The [SSH terminal](./ssh-terminal.md) gives you one shell on one box. **Fan-out SSH** answers the other question: _which of these thirty boxes is the wrong one?_
+The [SSH terminal](./ssh-terminal.md) gives you one shell on one box. **Fan-out SSH** helps you find _which of these thirty boxes is the odd one out_.
 
-Pick a set of SSH-capable hosts, type one command, and Infrawrench runs it on all of them at once. Hosts that produced identical output are collapsed into a single block, and anything that differs is diffed against what the majority said — so "which machine is still on the old kernel" is a glance, not a spreadsheet.
+Pick a set of hosts, type one command, and Infrawrench runs it on all of them at once. Hosts with identical output are collapsed into one block, and anything different is shown as a diff against what most hosts said. Finding the machine still on the old kernel takes a glance.
 
-Open it from **Fan-out** in the sidebar, on web and on desktop.
+Open **Fan-out** from the sidebar, on web or desktop.
 
 ![The Fan-out screen with a host list filtered to one provider, several hosts checked, and a command typed in the box](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-fanout/compose-filtered-hosts.png)
 
-## Picking hosts
+## Pick hosts
 
-The host list contains everything Infrawrench can already SSH into:
+The host list includes everything Infrawrench can already SSH into:
 
-- **SSH accounts** — hosts added through the [SSH plugin](../plugins/ssh.md). These carry their own credentials, so nothing else is needed.
-- **VMs** — any resource whose type exposes an SSH endpoint (EC2 instances, Droplets, Hetzner and Scaleway servers, GCP instances, and so on), exactly the resources that show an **SSH** button on their detail page.
+- **SSH accounts:** hosts added through the [SSH plugin](../plugins/ssh.md). They have their own credentials, so nothing else is needed.
+- **VMs:** any resource with an **SSH** button on its detail page (EC2 instances, Droplets, Hetzner and Scaleway servers, GCP instances and so on).
 
-Narrow the list by search text, provider, resource type, or tag, then use **Toggle all shown** to select everything that matches. Stopped VMs are listed but cannot be selected — a host that is not running has nothing to answer with.
+Filter the list by search text, provider, resource type or tag, then click **Toggle all shown** to select everything that matches. Stopped VMs are listed but can't be selected.
 
-VM hosts need one of your organization's [SSH keys](../team-and-billing/ssh-keys.md), picked once for the whole run, plus an optional username override. SSH accounts ignore both and use their own credentials.
+For VMs, pick one of your organization's [SSH keys](../team-and-billing/ssh-keys.md) for the whole run, and optionally override the username. SSH accounts ignore both and use their own credentials.
 
-## Running
+## Run a command
 
-Fan-out always confirms before it executes, and the confirmation names the number of hosts — **"Run on 14 hosts?"** — along with the command and the first few host names. There is no way to fire a fleet-wide command with one click.
+Fan-out always asks before running. The confirmation shows the number of hosts (**"Run on 14 hosts?"**), the command and the first few host names. You can't fire a fleet-wide command with one click.
 
-Runs are capped at **100 hosts**, with at most **8 connections open at once** (configurable up to 16). Each host gets up to two minutes; output is captured up to 256 KiB per stream.
+Limits:
 
-A run is a mutating operation, so it respects [change freezes](../team-and-billing/change-freeze.md) the same way resource deletion does: while a freeze is in effect the run is blocked, and members holding the freeze-override permission get an **Override freeze and run** button instead. Every run — and every block or override — is written to the [audit log](../team-and-billing/audit-log.md) as `ssh.fanout.run`, with the command's first 200 characters, the host count, and how many hosts failed.
+- Up to **100 hosts** per run.
+- Up to **8 connections at once** by default, configurable up to 16.
+- Up to two minutes per host.
+- Up to 256 KiB of output per stream.
 
-## Reading the results
+A run counts as a change, so it respects [change freezes](../team-and-billing/change-freeze.md). During a freeze the run is blocked, and members with the freeze-override permission see an **Override freeze and run** button instead.
+
+Every run, block and override is recorded in the [audit log](../team-and-billing/audit-log.md) as `ssh.fanout.run`, with the first 200 characters of the command, the host count and how many hosts failed.
+
+## Read the results
 
 Results are grouped by output, not listed per host:
 
-- The largest successful group is labelled **majority** — the answer most of your fleet gave.
-- Every other group is an **outlier**, shown as a diff against the majority: green lines are what only these hosts said, red lines are what the majority said and these did not. Long runs of identical lines are collapsed.
-- Groups where the command could not run at all are labelled **failed** and carry the reason — connection refused, an untrusted host key, a stopped host, an address the server refuses to dial.
+- The largest successful group is labelled **majority**: the answer most of your fleet gave.
+- Every other group is an **outlier**, shown as a diff against the majority. Green lines are what only these hosts said. Red lines are what the majority said and these didn't. Long runs of identical lines are collapsed.
+- Groups where the command couldn't run are labelled **failed**, with the reason: connection refused, an untrusted host key, a stopped host, or an address Infrawrench won't connect to.
 
-Exit codes are part of the grouping, so hosts that printed the same text but exited non-zero form their own group rather than hiding inside the majority. Each host chip shows its exit code when it is not zero, and **Show output** expands any group's full text.
+Exit codes count too. Hosts that printed the same text but exited non-zero form their own group. Each host chip shows its exit code when it isn't zero, and **Show output** expands a group's full text.
 
 ![Results view with a majority group of 29 hosts collapsed and one outlier host showing a red/green kernel-version diff](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-fanout/results-majority-and-outlier.png)
 
-## Saved snippets
+## Save snippets
 
-Commands you run often can be saved with a name. Snippets are stored per organization, so the whole team sees the same list — save `uname -r` once and everyone gets it from the **Insert snippet…** dropdown, on web, on desktop, and in the CLI.
+Save commands you run often with a name. Snippets are shared across your organization, so if you save `uname -r` once, everyone gets it from the **Insert snippet…** dropdown on web, desktop and the CLI.
 
-## From the CLI
+## Use the CLI
 
 The [CLI](./cli.md) has the same feature, with the same confirmation and the same grouped, diffed output:
 
@@ -65,13 +72,21 @@ infrawrench ssh-fanout --snippet kernel --hosts web- --key ops --yes --json
 infrawrench ssh-fanout snippets
 ```
 
-Useful flags: `--hosts <text>` matches a host name, address, or tag; `--plugin` and `--tag` narrow further; `--key <id|name>` supplies the org SSH key VM hosts need; `--user` overrides the username; `--concurrency <n>` changes how many connections run at once; `-y/--yes` skips the confirmation for scripts; `--json` prints the raw per-host results.
+Useful flags:
 
-The CLI's fan-out is cloud-only — the freeze gate, the key store, and the audit trail live server-side. Use the desktop app's Fan-out screen for local-only SSH accounts, which executes through your own machine's SSH stack instead.
+- `--hosts <text>` matches a host name, address or tag.
+- `--plugin` and `--tag` narrow the list further.
+- `--key <id|name>` sets the org SSH key VM hosts need.
+- `--user` overrides the username.
+- `--concurrency <n>` changes how many connections run at once.
+- `-y/--yes` skips the confirmation, for scripts.
+- `--json` prints the raw per-host results.
 
-## Security notes
+The CLI only works with cloud accounts. For SSH accounts that exist only on your machine, use the desktop app's Fan-out screen, which connects from your own computer.
 
-- Host-key pinning applies exactly as it does for a single terminal — a host whose key is unknown or has changed fails that host with a trust error rather than connecting. See [Security notes](./ssh-terminal.md#security-notes).
-- The SSH key must be one you own; you cannot fan out with a teammate's private key.
-- The server refuses to dial hosts that resolve to internal address space, so a resource whose recorded address points inward is reported as blocked rather than connected to.
-- One bad host never fails the run — unreachable machines come back as their own failure group alongside everyone else's results.
+## Security
+
+- Host keys are checked just like in a single terminal. A host whose key is unknown or has changed fails with a trust error instead of connecting. See [Security notes](./ssh-terminal.md#security-notes).
+- You can only use SSH keys you own. You can't fan out with a teammate's private key.
+- Infrawrench won't connect to hosts that resolve to internal addresses. Those hosts are reported as blocked.
+- One bad host never fails the whole run. Unreachable machines show up as their own failure group next to everyone else's results.
