@@ -1,56 +1,63 @@
 ---
 title: Resource leases
-description: Put an expiry on any resource — "a test cluster for 3 days" — get nagged through the expiry radar as it approaches, and optionally have the resource auto-deleted when the lease runs out.
+description: Put an expiry on any resource, like "a test cluster for 3 days", get reminders through the expiry radar as it approaches, and optionally have the resource deleted when the lease runs out.
 sidebar_order: 12
 ---
 
-Test clusters, demo droplets, load-test databases — the resources you spin up "just for a few days" are the ones still billing three months later. A **lease** puts an explicit expiry on any resource: pick a deadline, optionally say why, and Infrawrench keeps the countdown for you. When the deadline approaches, the lease shows up in the [expiry radar](./expiry-radar.md) alongside your certificates and domains, so the same alerts that warn you about a lapsing TLS cert warn you about the cluster you promised to tear down.
+Test clusters, demo droplets, load-test databases: the resources you spin up "just for a few days" are the ones still billing three months later. A **lease** puts an expiry date on any resource. Pick a deadline, optionally say why, and Infrawrench keeps the countdown for you. As the deadline approaches, the lease shows up in the [expiry radar](./expiry-radar.md) next to your certificates and domains, so the same alerts that warn you about a lapsing TLS certificate also remind you about the cluster you promised to tear down.
 
-Leases come in two strengths:
+There are two kinds of lease:
 
-- **Nag-only** (the default) — the lease is purely a reminder. It rides the expiry radar and its alerts; nothing is ever deleted automatically.
-- **Auto-delete** — opt-in, per lease. When the lease expires, Infrawrench deletes the resource through the same plugin delete the UI uses. The resource will be deleted when the lease expires, you'll be warned twice first, and [change freezes](../team-and-billing/change-freeze.md) pause deletion.
+- **Reminder only** (the default). The lease shows in the expiry radar and its alerts. Nothing is ever deleted.
+- **Auto-delete.** You opt in per lease. When the lease expires, Infrawrench deletes the resource, the same as deleting it yourself. You're warned twice first, and [change freezes](../team-and-billing/change-freeze.md) pause deletion.
 
-## Setting a lease
+## Set a lease
 
-Every resource's detail page has a **Lease** tab (web, and desktop when signed into Infrawrench Cloud). Pick a quick preset — 1 day, 3 days, 1 week, 30 days — or a custom date and time, add a note ("Q3 launch load test, ask Dana"), and optionally tick auto-delete. One lease per resource; edit or cancel it from the same tab at any time. Leases reach at most 365 days out.
+1. Open the resource and go to its **Lease** tab (on web, and on desktop when signed in to Infrawrench Cloud).
+2. Pick a preset (1 day, 3 days, 1 week, 30 days) or a custom date and time.
+3. Add a note if you like ("Q3 launch load test, ask Dana").
+4. Tick auto-delete if you want the resource deleted at the end.
+
+Each resource can have one lease. Edit or cancel it from the same tab at any time. A lease can run at most 365 days.
 
 ![The Lease tab on a resource detail page showing the editor with the duration presets, the note field and the auto-delete checkbox with its warning copy](https://agent-assets.infrawrench.com/docs-screenshots/features/resource-leases/lease-editor.png)
 
-An active lease shows how long is left, its note, warning progress for auto-delete leases, and an **auto-delete** badge where it applies.
+An active lease shows how long is left, its note, which auto-delete warnings have gone out, and an **auto-delete** badge where it applies.
 
 ![The Lease tab showing an active auto-delete lease: "Expires in 3d", the note, the red auto-delete badge and "First auto-delete warning sent"](https://agent-assets.infrawrench.com/docs-screenshots/features/resource-leases/lease-active.png)
 
-## The nag
+## Reminders
 
-Active leases appear on the **Expiring** screen (web, desktop, mobile) under their own **Leases** group, sorted into the same severity buckets as everything else, with auto-delete leases badged distinctly. They ride the daily expiry alert to Slack, Microsoft Teams and mobile push, and they show up in the weekly digest's "Expiring soon" line — everything the [expiry radar](./expiry-radar.md) does, leases inherit.
+Active leases appear on the **Expiring** screen (web, desktop, mobile) in their own **Leases** group, sorted by urgency like everything else, with auto-delete leases clearly badged. They're included in the daily expiry alert to Slack, Microsoft Teams and mobile push, and in the weekly digest's "Expiring soon" line. Anything the [expiry radar](./expiry-radar.md) does, leases get too.
 
 ![The Expiring screen with a "Leases" group showing two leases, one carrying the red auto-delete badge](https://agent-assets.infrawrench.com/docs-screenshots/features/resource-leases/expiring-leases-group.png)
 
-## Auto-delete: announced twice, then executed
+## How auto-delete works
 
-An auto-delete lease is never a surprise. The poller announces it **twice** before doing anything:
+An auto-delete lease is never a surprise. You get **two** warnings first:
 
-1. **First warning**, about 72 hours before expiry — "auto-delete is approaching".
-2. **Final warning**, about 24 hours before expiry — "will be auto-deleted in ~24h".
+1. **First warning**, about 72 hours before expiry: "auto-delete is approaching".
+2. **Final warning**, about 24 hours before expiry: "will be auto-deleted in ~24h".
 
-Shorter leases compress the schedule proportionally (a 12-hour lease is warned about immediately and again at its half-life), but the contract never bends: **both warnings always go out before any delete**, even if that means the delete happens later than the lease's nominal expiry. Both warnings fan out over the same channels as expiry alerts.
+Shorter leases get warnings sooner (a 12-hour lease is warned about right away and again halfway through). **Both warnings always go out before anything is deleted**, even if that means the delete happens a little after the lease's expiry. Warnings go to the same channels as expiry alerts.
 
-At expiry, with both warnings on record:
+When the lease expires and both warnings have gone out:
 
-- If an org [change freeze](../team-and-billing/change-freeze.md) is in effect, the delete is deferred — checked again after the freeze lifts, with the deferral recorded on the lease. Nothing is ever deleted during a freeze, and nothing is silently skipped.
-- Otherwise the resource is deleted through its plugin, and a final notification confirms it ("Lease expired: _name_ was deleted").
-- If the provider call keeps failing, it is retried for about an hour and then given up on: the lease is marked **failed** with the error preserved, and the org is told — a failed auto-delete is never silent.
+- If a [change freeze](../team-and-billing/change-freeze.md) is in effect, the delete waits until the freeze lifts, and the lease shows that it was deferred. Nothing is deleted during a freeze.
+- Otherwise the resource is deleted and you get a final notification ("Lease expired: _name_ was deleted").
+- If the provider keeps refusing the delete, Infrawrench retries for about an hour, then marks the lease **failed** with the error and tells your organization.
 
-Deletes performed by a lease are recorded in the [audit log](../team-and-billing/audit-log.md).
+Deletes made by a lease are recorded in the [audit log](../team-and-billing/audit-log.md).
 
 ## Permissions
 
-Reading leases needs `resources:read`; creating, editing and canceling them needs `resources:write`. Turning **auto-delete on** additionally requires `resources:delete` — an auto-delete lease is a standing instruction to delete the resource, so it demands the same permission as deleting it directly.
+- Viewing leases needs `resources:read`.
+- Creating, editing and cancelling them needs `resources:write`.
+- Turning **auto-delete on** also needs `resources:delete`, the same permission as deleting the resource directly.
 
-## The CLI
+## Use the CLI
 
-`infrawrench leases` lists every lease in the organization — deadline, auto-delete flag, status and note — with `--output json` for scripts. Lease deadlines also appear inside `infrawrench expiring` with everything else on the clock.
+`infrawrench leases` lists every lease in your organization with its deadline, auto-delete flag, status and note. Add `--output json` for scripts. Lease deadlines also appear in `infrawrench expiring` alongside everything else that's expiring.
 
 ```
 $ infrawrench leases
@@ -59,11 +66,11 @@ Acme Corp · 3 leases (2 active)
 resource            account     expires                     auto-delete  status              note
 load-test-cluster   Prod DO     in 2d (2026-08-06 17:00Z)   yes          first warning sent  Q3 launch load test
 demo-droplet        Prod DO     in 6d (2026-08-10 09:00Z)   no           active              sales demo
-old-staging-db      Legacy AWS  2026-07-28 12:00Z           yes          deleted             —
+old-staging-db      Legacy AWS  2026-07-28 12:00Z           yes          deleted             -
 ```
 
-## Caveats
+## Limits
 
-- Leases live in Infrawrench Cloud — the desktop app shows the Lease tab when signed in; local-only mode has no lease store.
-- Mobile shows leases in the Expiring screen but has no lease editor — setting and editing leases is a web/desktop task.
-- Auto-delete uses the plugin's delete. A resource type whose plugin doesn't support deletion can still carry a nag-only lease, but its auto-delete would fail and tell you so.
+- Leases need Infrawrench Cloud. The desktop app shows the Lease tab when signed in, but not in local-only mode.
+- On mobile you can see leases on the Expiring screen, but setting and editing them happens on web or desktop.
+- If Infrawrench can't delete a particular resource type, you can still give it a reminder-only lease. An auto-delete lease on it would fail and tell you so.

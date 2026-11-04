@@ -1,128 +1,92 @@
 ---
 title: On-call rotations
-description: Who to wake, rather than which channel to shout into — rotations, covers, and an alert routing destination that keeps meaning "whoever is on call" after Monday's handover.
+description: Set up on-call rotations and covers, and route alerts to whoever is on call so they keep reaching the right person after every handover.
 sidebar_order: 12
 ---
 
-[Alert routing](./alert-routing.md) answers "where does this go". Rotations
-answer the question every team actually means: **who**.
+[Alert routing](./alert-routing.md) decides where an alert goes. Rotations decide **who** gets it.
 
-Find them under **Settings → On-call**.
+Find them under **Settings > On-call**.
 
 <insert [The Settings On-call page showing the "On call right now" card with two rotations, and one rotation expanded to show its next eight shifts] here>
 
-## A rotation
+## Create a rotation
 
-A rotation is a list of people, a shift length, and a handover time in a named
-zone. That is all:
+A rotation is a list of people, a shift length and a handover time in a named time zone:
 
-- **Rotation order** — position in the list is the order. Reordering re-plans
-  the future, which is what dragging a name means.
-- **Shift length** — 7 days is the usual answer; 1 gives a daily rotation.
-- **Handover time and zone** — "09:00, Europe/London".
-- **First shift starts** — a calendar date. Every later boundary is derived
-  from it, so changing it re-anchors the whole rotation.
+- **Rotation order:** the order of the list is the order people go on call. Drag a name to change who's next.
+- **Shift length:** 7 days is typical. 1 gives a daily rotation.
+- **Handover time and zone:** for example "09:00, Europe/London".
+- **First shift starts:** a calendar date. Every later shift is counted from it, so changing it shifts the whole rotation.
 
-Shift boundaries are **calendar days in the rotation's own zone**, never fixed
-24-hour blocks. A rotation stepped in milliseconds drifts an hour at each
-daylight-saving change, until the 09:00 Monday handover happens at 08:00 — or,
-worse, until the boundary lands on the wrong side of the handover and two
-people each think the other is on call.
+Shifts follow **calendar days in the rotation's own time zone**, so a 09:00 Monday handover stays at 09:00 through daylight saving changes.
 
-## Routing to whoever is on call
+## Route alerts to whoever is on call
 
-In **Settings → Notifications → Routing**, a routing rule's destinations now include your
-rotations. Pick one and the rule sends to the person on call at the moment the
-alert fires. Nobody edits the rule at handover.
+In **Settings > Notifications > Routing**, a routing rule's destinations include your rotations. Pick one and the rule sends to whoever is on call when the alert fires. Nobody has to edit the rule at handover.
 
-The on-call destination sends a **push notification to that person**, and it
-still respects their own per-trigger mutes. An organization rule decides
-whether the org is told; a member decides whether their phone rings. Being on
-call does not override that — a rotation is not a licence to bypass somebody's
-own settings.
+The on-call destination sends a **push notification to that person**, and still respects their own per-trigger mutes. Your organization's rules decide whether the org is told. Each member decides whether their phone rings. Being on call doesn't override that.
 
-If a rotation resolves to nobody — it is off, empty, has not started yet, or
-could not be read — the rule's **other destinations still deliver**. An alert
-lost to a misconfigured rotation would be the worst thing this feature could
-do, so it is the one thing it will not do.
+If a rotation has nobody on call (it's off, empty, hasn't started yet, or couldn't be read), the rule's **other destinations still deliver**, so an alert is never lost to a misconfigured rotation.
 
-Two rules that name two rotations with the same person on call this week ring
-that person's phone once, not twice.
+If two rules name two rotations with the same person on call this week, that person's phone rings once, not twice.
 
-## Covers
+## Arrange cover
 
-Somebody is at a wedding on Saturday. Press **Arrange cover**, pick who is
-standing in and for how long.
+Someone's at a wedding on Saturday? Press **Arrange cover** and pick who's standing in and for how long.
 
-A cover beats the rotation for exactly its window and nothing else. Where two
-covers overlap, the one **written most recently** wins — so a later correction
-supersedes an earlier arrangement rather than the answer depending on which row
-the database returns first.
+A cover replaces the rotation for exactly that window. If two covers overlap, the one **created most recently** wins, so a later correction replaces an earlier arrangement.
 
-Escalation still goes to the next person in the **rotation**, never to whoever
-happens to be covering next. A cover is somebody standing in for one shift.
+Escalation still goes to the next person in the **rotation**, not whoever happens to be covering next.
 
 ## Permissions
 
-**Seeing** who is on call needs **Team: read** — every member needs it and
-nobody should have to ask an admin.
+- **Seeing** who's on call needs **Team: read**, so every member can check without asking an admin.
+- **Arranging cover** also needs only **Team: read**, since the person handing over at 17:55 on a Friday is rarely an admin. Every cover is recorded in the audit log.
+- **Creating or editing a rotation** needs **Organization settings: write**.
 
-**Arranging cover** also needs only **Team: read**. Cover gets arranged at
-17:55 on a Friday, and the person handing over is rarely an org admin. Every
-cover is audit-logged, which is the control that makes the looser permission
-safe: the question a reviewer asks afterwards is "who was actually on call",
-and the log answers it.
+## People who leave
 
-**Creating or editing a rotation** needs **Organization settings: write**. A
-rotation decides who gets woken up.
-
-## Leavers
-
-Removing somebody from the organization removes them from every rotation and
-cancels their covers, automatically. A rotation naming somebody who has left
-pages nobody, silently, on their week — which is the worst failure this feature
-could have, so it is enforced by the database rather than by anyone remembering
-to check.
+Removing someone from the organization removes them from every rotation and cancels their covers automatically. Nobody has to remember to check.
 
 ## Paging providers
 
-If your organization already pages people with [PagerDuty](../plugins/pagerduty.md) or [incident.io](../plugins/incident-io.md), connect the account and Infrawrench works with it rather than beside it:
+If your organization already pages people with [PagerDuty](../plugins/pagerduty.md) or [incident.io](../plugins/incident-io.md), connect the account and Infrawrench works with it:
 
 - **Send alerts there.** An [alert routing](./alert-routing.md#pagerduty-and-incidentio) destination opens an alert on a PagerDuty service or an incident.io alert source, and resolves it when the condition recovers.
-- **Push whoever is on call there.** A routing destination can name a PagerDuty schedule or escalation policy, or an incident.io schedule or escalation path. Infrawrench asks the provider who is on call when the alert fires and pushes to the members whose email matches. Somebody on call upstream who is not an Infrawrench member is still paged by the provider, just not by Infrawrench.
-- **See and act on their incidents here.** Under **Settings → On-call → Paging providers**, tick **Show this account's incidents in Infrawrench**. Open incidents then appear at the top of the Incidents tab on web, desktop and mobile, and in `infrawrench paging`, with **Acknowledge** and **Resolve** buttons that write back to the provider as you. **Declare incident** on one opens the [incident mode](./incident-mode.md) form with its title filled in.
+- **Push whoever is on call there.** A routing destination can name a PagerDuty schedule or escalation policy, or an incident.io schedule or escalation path. When the alert fires, Infrawrench asks the provider who's on call and pushes to the members whose email matches. Someone on call upstream who isn't an Infrawrench member is still paged by the provider, just not by Infrawrench.
+- **See and act on their incidents here.** Under **Settings > On-call > Paging providers**, tick **Show this account's incidents in Infrawrench**. Open incidents then appear at the top of the Incidents tab on web, desktop and mobile, and in `infrawrench paging`, with **Acknowledge** and **Resolve** buttons that update the provider as you. **Declare incident** on one opens the [incident mode](./incident-mode.md) form with its title filled in.
 
-The same card shows who is on call on each provider schedule right now, and the alerts Infrawrench recently opened upstream with any send that is being retried or was refused.
+The same card shows who's on call on each provider schedule right now, plus the alerts Infrawrench recently opened there and any that are being retried or were refused.
 
 <insert [Settings, On-call tab, the Paging providers card with a PagerDuty account mirroring incidents (webhook subscribed) and an incident.io account showing its webhook URL and signing secret field] here>
 
-### Keeping the list current
+### Keep the incident list up to date
 
-Incidents are reconciled with the provider every couple of minutes. A webhook makes it near-instant:
+Incidents are refreshed from the provider every couple of minutes. Add a webhook to make updates near-instant:
 
-- **PagerDuty** subscribes one for you when you turn mirroring on, and removes it when you turn it off.
-- **incident.io** has no API for webhook endpoints, so add the URL the card shows as an endpoint under **Settings → Webhooks** in incident.io, subscribe it to incident and escalation events, and paste its **signing secret** into the card.
+- **PagerDuty:** Infrawrench sets up the webhook for you when you turn this on, and removes it when you turn it off.
+- **incident.io:** add the URL the card shows as an endpoint under **Settings > Webhooks** in incident.io, subscribe it to incident and escalation events, and paste its **signing secret** into the card.
 
-Every delivery is checked against its signature (PagerDuty's HMAC, incident.io's signed webhook headers) and then treated as a nudge: the incident is re-read from the provider, so a delivery that arrives out of order cannot roll the list back. Turning mirroring off forgets the mirrored incidents.
+Every webhook delivery is checked against its signature. Turning this off clears the incidents shown from that provider.
 
-Configuring paging providers takes **Organization settings** (`org:settings:write`); acknowledging and resolving their incidents takes `incidents:write`, the same as declared incidents; seeing who is on call takes `team:read`.
+Permissions:
+
+- Setting up paging providers needs **Organization settings** (`org:settings:write`).
+- Acknowledging and resolving their incidents needs `incidents:write`, the same as declared incidents.
+- Seeing who's on call needs `team:read`.
 
 <insert [The Incidents tab with two open PagerDuty incidents above the declared incidents, one marked "opened by an Infrawrench alert", showing the Acknowledge, Resolve and Declare incident buttons] here>
 
-## Not yet
+## Not available yet
 
-There is no per-rotation escalation policy separate from the routing rule's
-own, no round-robin across two rotations, and no phone or SMS leg for the
-on-call destination (the alert routing rules' Twilio paging is org-wide, not
-per-person). The `next` person is exposed by the API and shown in the UI, so
-the escalation half is one step away.
+There's no per-rotation escalation policy separate from the routing rule's own, no round-robin across two rotations, and no phone or SMS for the on-call destination (the alert routing rules' Twilio paging is org-wide, not per person). The UI and API do show who's `next`.
 
-## In Terraform
+## Manage it in Terraform
 
-The paging provider half is an `infrawrench_paging_provider_settings` per account for mirroring, and routing destinations with `kind = "paging-provider"` (`account_id`, `target_id`) or `kind = "provider-on-call"` (`account_id`, `source_id`).
+For paging providers, use `infrawrench_paging_provider_settings` per account, and routing destinations with `kind = "paging-provider"` (`account_id`, `target_id`) or `kind = "provider-on-call"` (`account_id`, `source_id`).
 
-A rotation is an `infrawrench_on_call_schedule`, and a routing rule reaches it
-with a destination whose `kind` is `on-call`:
+A rotation is an `infrawrench_on_call_schedule`. A routing rule reaches it with a destination whose `kind` is `on-call`:
 
 ```hcl
 resource "infrawrench_on_call_schedule" "platform_primary" {
@@ -137,13 +101,8 @@ resource "infrawrench_on_call_schedule" "platform_primary" {
 }
 ```
 
-Covers are deliberately not managed in Terraform: they are arranged the morning
-somebody wakes up ill, and a plan that reverted one would be actively harmful.
-Arrange them in the app. See the
-[Terraform provider](./terraform-provider.md).
+Covers aren't managed in Terraform, since they're often arranged the morning someone wakes up ill and a plan could undo them. Arrange them in the app. See the [Terraform provider](./terraform-provider.md).
 
-## Over the API
+## Use the API
 
-`GET /api/org/{orgId}/on-call/now` answers "who is on call" in one call —
-useful for a status page, a Slack command or a dashboard tile. See the
-[OpenAPI reference](../team-and-billing/openapi.md).
+`GET /api/org/{orgId}/on-call/now` tells you who's on call in one call. It's handy for a status page, a Slack command or a dashboard tile. See the [OpenAPI reference](../team-and-billing/openapi.md).

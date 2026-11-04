@@ -1,101 +1,66 @@
 ---
 title: Operations calendar
-description: Every dated thing your infrastructure already knows about, on one axis — change freezes, sleep windows, expiring certificates and leases, commitment terms, scheduled runs and incidents. Subscribe to it from any calendar app.
+description: See change freezes, sleep windows, expiring certificates and leases, commitment terms, scheduled runs and incidents on one calendar, and subscribe to it from any calendar app.
 sidebar_order: 10
 ---
 
-Your infrastructure already knows a dozen dates. The freeze someone declared
-for the end of the quarter. The nightly window that stops staging. The
-certificate that lapses on the 3rd. The reservation whose term ends and quietly
-puts you back on on-demand pricing. The cron workflow that runs at 02:00. The
-incident that ran from Tuesday night into Wednesday.
+Your infrastructure already knows a lot of dates. The freeze someone declared for the end of the quarter. The nightly window that stops staging. The certificate that lapses on the 3rd. The reservation whose term ends and puts you back on on-demand pricing. The cron workflow that runs at 02:00. The incident that ran from Tuesday night into Wednesday.
 
-Every one of those lives on a different page. **Calendar** is the one axis they
-share, so "is anything happening next Tuesday?" becomes a question you can
-answer by looking.
+Each of those lives on a different page. **Calendar** puts them all in one place, so you can answer "is anything happening next Tuesday?" just by looking.
 
 Open it from the sidebar.
 
 <insert [The Calendar workspace tab on the month view, showing a week with a change-freeze bar running across several days, a nightly sleep-window chip repeating, and a red certificate deadline] here>
 
-## What it shows
+## What's on the calendar
 
-Six sources, each already recorded elsewhere:
+| On the calendar    | Comes from                                                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| **Freezes**        | [Change freezes](../team-and-billing/change-freeze.md): the windows when deploys are blocked                |
+| **Sleep windows**  | [Sleep schedules](./sleep-schedules.md): when each resource is actually stopped                             |
+| **Deadlines**      | [Expiry radar](./expiry-radar.md): certificates, domains, keys, and [resource leases](./resource-leases.md) |
+| **Commitments**    | [Commitments](./commitments.md): the day a reservation or savings plan's term ends                          |
+| **Scheduled runs** | [Workflows](./workflows.md) with a cron trigger                                                             |
+| **Incidents**      | [Incident mode](./incident-mode.md): declared incidents, from start to resolution                           |
 
-| On the calendar    | Comes from                                                                                                   |
-| ------------------ | ------------------------------------------------------------------------------------------------------------ |
-| **Freezes**        | [Change freezes](../team-and-billing/change-freeze.md) — the windows that make a deploy refuse               |
-| **Sleep windows**  | [Sleep schedules](./sleep-schedules.md) — when each resource is actually stopped                             |
-| **Deadlines**      | [Expiry radar](./expiry-radar.md) — certificates, domains, keys, and [resource leases](./resource-leases.md) |
-| **Commitments**    | [Commitments](./commitments.md) — the day a reservation or savings plan's term ends                          |
-| **Scheduled runs** | [Workflows](./workflows.md) with a cron trigger                                                              |
-| **Incidents**      | [Incident mode](./incident-mode.md) — declared incidents, from start to resolution                           |
+The calendar is always up to date with those sources. End a freeze early and it stops on the calendar at the moment you ended it.
 
-Nothing here is a new record. The calendar is a projection recomputed every
-time you open it, so there is nothing to keep in step and nothing that can go
-stale: end a freeze early and it stops on the calendar at the moment you ended
-it, not at the date it was declared to run to.
+Spans show as bars. Deadlines show as all-day markers. A freeze with no end, or an incident that's still open, runs to the edge of the view.
 
-Spans draw as bars and deadlines draw as all-day markers, because a certificate
-expiry read off a date field is a _day_ — showing it at whatever midnight the
-provider happened to store would be false precision.
+## Filter and switch views
 
-A freeze with no end, or an incident that is still open, runs to the edge of
-the view rather than stopping at an invented end.
+The chips along the top turn each source on and off. A source with nothing in the current window tells you so.
 
-## Filters and views
+- **Month:** the grid. Click a day to see everything on it.
+- **Agenda:** the same events as a list, soonest first.
 
-The chips along the top turn each source on and off; a source with nothing in
-the window says so rather than looking broken.
+Click an event to open what it came from. A sleep window opens its resource, a deadline opens the resource or the expiry radar, and an incident opens Incidents.
 
-- **Month** — the grid. Click a day to see everything on it.
-- **Agenda** — the same events as a flat list, soonest first.
+If one source can't be loaded, the calendar tells you which one and still shows everything else.
 
-Clicking an event opens the thing it came from: a sleep window opens its
-resource, a deadline opens the resource or the expiry radar, an incident opens
-Incidents.
+## Subscribe from your calendar app
 
-If one source cannot be read, the calendar says which and shows everything
-else. A summary page that silently drops a source is worse than one that admits
-it.
-
-## Subscribing from a calendar app
-
-The **Subscriptions** tab mints a URL you can paste into Google Calendar,
-Outlook, Apple Calendar or your phone. It refreshes on its own, roughly hourly.
+The **Subscriptions** tab creates a URL you can paste into Google Calendar, Outlook, Apple Calendar or your phone. It refreshes on its own, roughly every hour.
 
 <insert [The Subscriptions tab with one live subscription listed and the one-time URL panel visible after creating it] here>
 
-Choose which kinds the feed carries when you create it. Selecting nothing means
-everything — including kinds added to Infrawrench later, which is usually what
-you want for a team calendar.
+When you create a feed, choose which kinds of events it includes. Choosing nothing means everything, including kinds added to Infrawrench later. That's usually what you want for a team calendar.
 
-**Treat the URL as a password.** It runs outside every sign-in, because a
-calendar client cannot hold a session — the random token in the URL is the only
-credential. Two things follow:
+**Treat the URL like a password.** Anyone with the link can read the feed without signing in.
 
-- The URL is shown **once**, when you create it. There is no way to read it
-  again; if you lose it, revoke the feed and mint another.
-- The feed carries names, times and kinds only. No credentials, no costs, no
-  resource ids, and no organization id — so a leaked feed exposes your
-  schedule and nothing you could act on.
+- The URL is shown **once**, when you create it. If you lose it, revoke the feed and create another.
+- The feed only includes names, times and kinds. No credentials, costs, resource ids or organization id, so a leaked feed exposes your schedule and nothing anyone could act on.
 
-Revoking stops a URL immediately. The row stays in the list so the audit trail
-still resolves, and you can see when each feed was last fetched before deciding
-whether anyone still needs it.
+Revoking stops a URL immediately. The feed stays in the list for your audit trail, and you can see when each one was last fetched before deciding whether anyone still uses it.
 
-Creating and revoking subscriptions needs **Organization settings: write**;
-reading the calendar itself needs only **Resources: read**.
+Creating and revoking subscriptions needs **Organization settings: write**. Viewing the calendar needs only **Resources: read**.
 
 ## Limits
 
-- A window may span at most 400 days. The default view fetches the six weeks
-  the month grid draws.
-- Recurring sources (sleep windows, cron runs) are expanded to at most 400
-  occurrences each, so one nightly schedule cannot flood a long query.
-- An organization may hold 25 live subscriptions. Revoking makes room.
+- A window can span at most 400 days. The default view loads the six weeks the month grid shows.
+- Recurring items (sleep windows, cron runs) show at most 400 occurrences each.
+- An organization can have 25 live subscriptions. Revoke one to make room.
 
-## Over the API
+## Use the API
 
-`GET /api/org/{orgId}/calendar?from=…&to=…&kinds=…` returns the same events the
-page draws. See the [OpenAPI reference](../team-and-billing/openapi.md).
+`GET /api/org/{orgId}/calendar?from=…&to=…&kinds=…` returns the same events the page shows. See the [OpenAPI reference](../team-and-billing/openapi.md).

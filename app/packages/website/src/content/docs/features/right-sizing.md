@@ -4,72 +4,68 @@ description: Find machines whose two-week p95 CPU (and memory, where measured) s
 sidebar_order: 14
 ---
 
-The [orphan finder](./orphan-finder.md) answers "what is wasted entirely". Right-sizing answers the quieter half of the same question: "what is running real work on a machine twice the size it needs". Infrawrench computes the 95th-percentile CPU and memory utilisation over the last 14 days of the metrics it already stores, and when a machine sits well under its size, matches it against the provider's own size catalog — the same sizes the create form offers, with live prices — and recommends the cheapest smaller size that still leaves comfortable headroom.
+The [orphan finder](./orphan-finder.md) shows what's wasted entirely. Right-sizing shows the quieter waste: real work running on a machine twice the size it needs. Infrawrench looks at the 95th-percentile CPU and memory use over the last 14 days. When a machine is well under its size, it checks the provider's own size list (the same sizes the create form offers, with live prices) and recommends the cheapest smaller size that still leaves comfortable headroom.
 
-Each finding here also appears in the [savings findings](./savings-findings.md) list at the top of the Savings tab, where it gets a status (Ready for review, In progress, Completed, Archived), a detected date, and a place in saved views.
+Each finding also appears in the [savings findings](./savings-findings.md) list at the top of the Savings tab, where it gets a status (Ready for review, In progress, Completed, Archived), a detected date, and a place in saved views.
 
-No new metric collection and no guesswork tables: the percentiles come from the metrics Infrawrench already records for resources pinned to a dashboard, and the candidate sizes and prices come from each provider's live catalog.
+The numbers come from the metrics Infrawrench already records for resources pinned to a dashboard, and the sizes and prices come from each provider's live catalog.
 
-## Where to find it
+## Find oversized machines
 
-Open **Costs** in the sidebar, go to the **Savings** tab, and find **Oversized**. Each row shows the machine, its current and recommended size, the p95 CPU and memory figures backing the call, and the estimated monthly saving, with the [estimated CO2e](./carbon.md) the resize would save each month beneath it.
+Open **Costs** in the sidebar, go to the **Savings** tab, and find **Oversized**. Each row shows the machine, its current and recommended size, the p95 CPU and memory figures behind the recommendation, and the estimated monthly saving, with the [estimated CO2e](./carbon.md) the resize would save each month below it.
 
-![Costs page Savings tab showing the Oversized section, showing a flagged server row with current → recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button](https://agent-assets.infrawrench.com/docs-screenshots/features/right-sizing/oversized-section.png)
+![Costs page Savings tab showing the Oversized section, showing a flagged server row with current and recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button](https://agent-assets.infrawrench.com/docs-screenshots/features/right-sizing/oversized-section.png)
 
-**Remediate** on a row shows the same resize as provider CLI commands (stop, resize, start, in whatever order the provider requires), ready to copy, and a Terraform hint instead when the machine is managed by Terraform. See [Remediation commands](./remediation-commands.md).
+**Remediate** on a row shows the same resize as provider CLI commands (stop, resize, start, in whatever order the provider needs), ready to copy. If Terraform manages the machine, you get a Terraform hint instead. See [Remediation commands](./remediation-commands.md).
 
-The same list is on the mobile app's Costs tab, under **Savings** (read-only, apply from web or desktop), in the `infrawrench oversized` CLI subcommand (`--json` for scripts), and as the `list_oversized_resources` [MCP tool](./mcp.md).
+You can also see the list:
+
+- in the mobile app's Costs tab, under **Savings** (read-only, apply from web or desktop)
+- with `infrawrench oversized` in the CLI (`--json` for scripts)
+- through the `list_oversized_resources` [MCP tool](./mcp.md)
 
 ## When a machine is flagged
 
-A machine is flagged when, over the trailing 14 days:
+A machine is flagged when, over the last 14 days:
 
-- its p95 CPU utilisation is under 20%, **and**
-- where the provider reports a memory metric, its p95 memory utilisation is under 40%, **and**
-- there are at least three days of stored metrics to back the numbers.
+- its p95 CPU use is under 20%, **and**
+- where the provider reports memory, its p95 memory use is under 40%, **and**
+- there are at least three days of metrics behind the numbers.
 
-The recommended size is the cheapest catalog size on which the observed p95 still fits under ~70% of capacity — the recommendation keeps headroom rather than sizing you to your busiest moment. Sizes the provider would reject are never suggested: a different CPU architecture or family, a size unavailable in the machine's region, or one whose included disk is smaller than the disk the machine already has.
+The recommended size is the cheapest one where your p95 still fits under about 70% of capacity, so you keep headroom. You'll never be offered a size the provider would reject: a different CPU architecture or family, a size not available in that region, or one with a smaller included disk than the machine already has.
 
-Not every provider measures memory. Where none exists (Hetzner, EC2, Compute Engine without an agent), the row says **memory not measured**, the recommendation is CPU-driven, and it will never suggest cutting RAM below half the current size — the confirm dialog repeats the caveat so you can check the workload's memory yourself before applying.
+Not every provider measures memory. Where it isn't available (Hetzner, EC2, Compute Engine without an agent), the row says **memory not measured**, the recommendation is based on CPU, and it will never suggest cutting RAM below half the current size. The confirm dialog repeats this so you can check the workload's memory yourself before applying.
 
-## Which providers are covered
+## Supported providers
 
-Right-sizing is declared by each provider plugin, never hard-coded. It ships for:
+- **Hetzner Cloud:** Servers (per-location EUR prices; CPU only, as Hetzner doesn't report memory)
+- **DigitalOcean:** Droplets (USD prices; memory measured where the DO Metrics Agent runs on the Droplet)
+- **AWS:** EC2 instances (live per-region on-demand prices; needs the `pricing:GetProducts` permission)
+- **Azure:** Virtual machines (memory from the Available Memory Bytes metric)
+- **Google Cloud:** Compute Engine VM instances (Cloud Billing catalog prices)
+- **Linode (Akamai Cloud):** Linodes (regional USD prices; CPU only, as Linode doesn't report memory; LKE worker nodes are resized through their node pool instead)
 
-- **Hetzner Cloud** — Servers (per-location EUR prices from the server-type catalog; CPU only — the API exposes no memory metric)
-- **DigitalOcean** — Droplets (USD prices from the sizes catalog; memory measured where the DO Metrics Agent runs on the Droplet)
-- **AWS** — EC2 instances (live per-region on-demand prices from the AWS Price List API; needs the `pricing:GetProducts` permission)
-- **Azure** — Virtual machines (keyless Retail Prices API; memory from the platform's Available Memory Bytes metric)
-- **Google Cloud** — Compute Engine VM instances (Cloud Billing catalog prices)
-- **Linode (Akamai Cloud)**: Linodes (regional USD prices from the live plan catalog; CPU only, as Linode's statistics have no memory series; LKE worker nodes are resized through their node pool instead)
+## Apply a resize
 
-## Applying a resize
+Click **Apply resize**. The confirm dialog shows exactly what will change: both sizes with their vCPU and RAM, the expected use on the new size, the saving, and the provider's own requirement, because there almost always is one:
 
-**Apply resize** shows a confirm dialog quoting exactly what will change — both sizes with their vCPU/RAM, the projected utilisation on the new size, the saving, and the provider's own constraint, because there almost always is one:
-
-- Hetzner, EC2 and Compute Engine only resize a **stopped** machine — stop it first (or let a [sleep schedule](./sleep-schedules.md) window do it), apply, then start it again.
-- DigitalOcean powers the Droplet off for the resize automatically and boots it afterwards.
-- Linode powers the instance off, migrates it to the new plan and boots it again; a smaller plan only works when the data fits on its disk.
+- Hetzner, EC2 and Compute Engine only resize a **stopped** machine. Stop it first (or let a [sleep schedule](./sleep-schedules.md) window do it), apply, then start it again.
+- DigitalOcean powers the Droplet off for the resize and boots it afterwards.
+- Linode powers the instance off, moves it to the new plan and boots it again. A smaller plan only works if your data fits on its disk.
 - Azure resizes a running VM but **restarts** it during the change.
 
-<insert [Apply resize confirm dialog quoting the change — current and recommended size with vCPU/RAM, p95 figures, monthly saving, and the provider note that the server must be powered off first] here>
+<insert [Apply resize confirm dialog quoting the change: current and recommended size with vCPU/RAM, p95 figures, monthly saving, and the provider note that the server must be powered off first] here>
 
-Applying goes through the same update path as the resource's Edit form, so it plays by the same rules as every other change: an active [change freeze](../team-and-billing/change-freeze.md) blocks it with the freeze's own message, and every applied resize lands in the [audit log](../team-and-billing/audit-log.md). Disk is never touched — where the provider distinguishes, Infrawrench always requests the CPU/RAM-only resize, which is the reversible one.
+A resize follows the same rules as any edit: an active [change freeze](../team-and-billing/change-freeze.md) blocks it with the freeze's message, and every resize is recorded in the [audit log](../team-and-billing/audit-log.md). Disks are never touched. Where the provider offers a choice, Infrawrench always requests the CPU and RAM only resize, which you can reverse.
 
-## Why a machine you expected isn't listed
+## Why a machine isn't listed
 
-- **No stored metrics.** Percentiles come from the metrics warehouse, which records resources pinned to a dashboard. Pin the machine and give it a few days.
-- **Less than ~3 days of data.** Thin coverage produces no recommendation rather than a shaky one.
-- **It's stopped.** A stopped machine's utilisation describes nothing; the right tool for one that stays stopped is a [sleep schedule](./sleep-schedules.md) or deletion.
-- **No cheaper size fits.** The catalog has no smaller same-family size in that region that clears the headroom rule — the good outcome.
-- **It's already the smallest size of its family.**
+- **No metrics yet.** Only machines pinned to a dashboard have metrics recorded. Pin the machine and give it a few days.
+- **Less than about 3 days of data.** You get no recommendation rather than a shaky one.
+- **It's stopped.** For a machine that stays stopped, use a [sleep schedule](./sleep-schedules.md) or delete it.
+- **No cheaper size fits.** There's no smaller size in the same family and region that keeps enough headroom. Good news.
+- **It's already the smallest size in its family.**
 
-## Filing a recommendation as an issue
+## File a recommendation as an issue
 
-A resize is often somebody else's change to make, or one that needs scheduling. With
-[Jira](./jira.md), [Linear](./linear.md) or [GitHub](./github-issues.md) connected, each row in the Oversized section has a
-file link that opens an issue prefilled with the resource, its current and recommended size,
-the p95 CPU and memory behind the recommendation, and the estimated monthly saving. Filed
-rows show their issue key from then on. When Terraform manages the machine, **Open PR** proposes
-the size change in your repository instead; see
-[GitHub issues and pull requests](./github-issues.md#terraform-pull-requests).
+A resize is often someone else's change to make, or one that needs scheduling. With [Jira](./jira.md), [Linear](./linear.md) or [GitHub](./github-issues.md) connected, each row in the Oversized section has a link that opens an issue prefilled with the resource, its current and recommended size, the p95 CPU and memory, and the estimated monthly saving. Once filed, the row shows the issue key. When Terraform manages the machine, **Open PR** proposes the size change in your repository instead. See [GitHub issues and pull requests](./github-issues.md#terraform-pull-requests).
