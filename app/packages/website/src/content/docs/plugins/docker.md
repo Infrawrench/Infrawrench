@@ -4,30 +4,30 @@ description: Control containers on a local or remote Docker host.
 sidebar_order: 23
 ---
 
-See [Docker controls](../features/docker-controls.md) for the feature page. This page covers setup.
+This page covers setup. For the feature itself, see [Docker controls](../features/docker-controls.md).
 
 ## What you can manage
 
-- Containers (start / stop / restart / remove)
+- Containers: start, stop, restart and remove
 - Inspect data and logs
 
-## Credentials
+## Connect a Docker host
 
-A single **Docker Host** field — the address of the Docker daemon to talk to. Two common shapes:
+There is one field, **Docker Host**: the address of the Docker daemon. It usually looks like one of these:
 
 - **Local Unix socket** (desktop only): `unix:///var/run/docker.sock`
 - **Remote TCP**: `tcp://host:2376` (TLS) or `tcp://host:2375` (plaintext, insecure)
 
-Control of a Docker engine amounts to administrator access on the machine that runs it, so the desktop app asks in a system dialog before it saves a Docker host. After that, the saved account connects without asking. A host reached through the account's SSH tunnel never asks. If the dialog appears when you didn't just add or open a Docker account, choose **Cancel**.
+Controlling a Docker engine is the same as having admin access to the machine it runs on, so the desktop app asks you to confirm in a system dialog before it saves a Docker host. After that, the saved account connects without asking. A host you reach through the account's SSH tunnel never asks. If the dialog shows up when you didn't just add or open a Docker account, choose **Cancel**.
 
 ![Docker Add-account form with the single Docker Host field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/docker/add-account.png)
 
-## Notable flows
+## Work with containers
 
-- **Container lifecycle actions** inline in the list.
-- **Log view** on container detail pages.
+- Start, stop, restart or remove a container straight from the list.
+- Open a container to see its logs.
 
-## Tips & limits
+## Tips and limits
 
-- Plaintext TCP (2375) is insecure. Use TLS (2376) with client certs in anything that resembles production.
-- Compose and image builds are out of scope; keep using your CLI for those.
+- Plaintext TCP (2375) is insecure. Use TLS (2376) with client certs for anything close to production.
+- Compose and image builds aren't covered here. Keep using your CLI for those.

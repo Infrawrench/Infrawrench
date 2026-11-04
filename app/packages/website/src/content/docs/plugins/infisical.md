@@ -4,7 +4,7 @@ description: Manage Infisical projects, environments, folders, secrets, secret s
 sidebar_order: 60
 ---
 
-Infisical is an open-source secrets, certificate and key management platform. Infrawrench connects to Infisical Cloud (US or EU) or to your own self-hosted or dedicated instance with a machine identity.
+Infisical is an open-source platform for managing secrets, certificates and keys. Connect Infisical Cloud (US or EU), or your own self-hosted or dedicated instance, with a machine identity.
 
 ## What you can manage
 
@@ -15,37 +15,37 @@ Infisical is an open-source secrets, certificate and key management platform. In
 - Secret syncs (watch status, edit the source and auto-sync, sync now, import from the destination, remove synced secrets, delete)
 - Legacy native integrations (status, sync now, delete)
 - Machine identities (create with an organization role, edit, delete protection, Universal Auth, client secrets, project access)
-- Dynamic secrets (edit TTLs, mint leases, see and revoke active leases)
+- Dynamic secrets (edit TTLs, create leases, see and revoke active leases)
 - Certificate authorities and certificates in certificate management projects (issue, renew, revoke, download the certificate or the full bundle)
 
-## Credentials
+## Connect an account
 
 Infrawrench signs in as a **machine identity** with Universal Auth:
 
-1. In Infisical, go to **Organization Settings → Access Control → Identities** and choose **Create identity**. The **Admin** organization role lets Infrawrench list every identity and read audit logs; **Member** is enough for project-level work.
-2. Open the identity, add **Universal Auth**, copy the **Client ID**, then choose **Create Client Secret** and copy the secret (Infisical shows it once).
-3. Add the identity to each project you want to manage (**Project Settings → Access Control → Machine Identities**). A project the identity is not a member of is invisible to it.
-4. In Infrawrench, enter the **Instance URL** (`https://app.infisical.com` for US Cloud, `https://eu.infisical.com` for EU Cloud, or your own URL), the client ID and the client secret. A self-hosted instance with a private CA can take its certificate under **Advanced options**.
+1. In Infisical, go to **Organization Settings > Access Control > Identities** and choose **Create identity**. The **Admin** organization role lets Infrawrench list every identity and read audit logs. **Member** is enough for project-level work.
+2. Open the identity, add **Universal Auth** and copy the **Client ID**. Then choose **Create Client Secret** and copy the secret (Infisical only shows it once).
+3. Add the identity to each project you want to manage (**Project Settings > Access Control > Machine Identities**). The identity can't see projects it isn't a member of.
+4. In Infrawrench, enter the **Instance URL** (`https://app.infisical.com` for US Cloud, `https://eu.infisical.com` for EU Cloud, or your own URL), the client ID and the client secret. If your self-hosted instance uses a private CA, add its certificate under **Advanced options**.
 
 <insert [Infisical add-account form showing the Instance URL, Client ID and Client Secret fields] here>
 
-## Notable flows
+## What you can do
 
-- **Secrets without leaking values**: secrets sync with their keys, folders, comments and versions only. The **Value** output fetches the current value when you reveal it or when another resource references it. **Edit** sets a new value (leave it blank to keep the current one) or renames the key. Environments that require approval open a change request instead, and Infrawrench says so.
-- **Pickers instead of ids**: creating a secret or folder offers every project, environment and folder path the identity can see in one list; machine identities pick from the organization's roles; certificates pick a certificate profile.
-- **Secret syncs**: a failed sync shows its last error. **Sync now** queues a sync, **Import from destination** asks whether Infisical's or the destination's value wins on a conflict, and **Remove synced secrets** deletes what the sync wrote at the destination.
-- **Machine identities**: **Enable Universal Auth**, **Get credentials** mints a new client secret (shown once, as an env file), **Revoke client secret**, **Token settings** (TTLs and trusted IPs), **Clear lockouts**, and **Add to project** / **Remove from project** with a project role.
-- **Dynamic secrets**: **Get credentials** mints a lease with the default TTL; the detail page lists active leases and **Revoke lease** deletes one at the provider.
-- **Certificates**: issue from a profile, **Renew**, **Revoke** with a reason, and download the PEM chain or (when Infisical holds the key) the full bundle. Certificates and CAs feed the Expiry radar.
-- **Audit logs and metrics**: projects, environments, secrets and machine identities have a Logs tab backed by Infisical's audit log. A project's Metrics tab charts secret reads, secret changes, identity logins and failed logins.
-- **Terraform export** for projects, environments, folders, secrets (values as variables) and machine identities with the official `Infisical/infisical` provider.
+- **Work with secrets without exposing values**: Infrawrench only keeps secret keys, folders, comments and versions. The **Value** output fetches the current value when you reveal it or when another resource uses it. **Edit** sets a new value (leave it blank to keep the current one) or renames the key. In environments that require approval, your edit opens a change request instead, and Infrawrench tells you.
+- **Pick instead of typing IDs**: creating a secret or folder offers every project, environment and folder path the identity can see in one list. Machine identities pick from the organization's roles, and certificates pick a certificate profile.
+- **Secret syncs**: a failed sync shows its last error. **Sync now** queues a sync. **Import from destination** asks whether Infisical's or the destination's value wins when they conflict. **Remove synced secrets** deletes what the sync wrote at the destination.
+- **Machine identities**: **Enable Universal Auth**, **Get credentials** to create a new client secret (shown once, as an env file), **Revoke client secret**, **Token settings** (TTLs and trusted IPs), **Clear lockouts**, and **Add to project** or **Remove from project** with a project role.
+- **Dynamic secrets**: **Get credentials** creates a lease with the default TTL. The detail page lists active leases, and **Revoke lease** deletes one at the provider.
+- **Certificates**: issue from a profile, **Renew**, **Revoke** with a reason, and download the PEM chain or (when Infisical holds the key) the full bundle. Certificates and CAs show up on the Expiry radar.
+- **Audit logs and metrics**: projects, environments, secrets and machine identities have a Logs tab from Infisical's audit log. A project's Metrics tab charts secret reads, secret changes, identity logins and failed logins.
+- **Terraform export** for projects, environments, folders, secrets (values as variables) and machine identities, using the official `Infisical/infisical` provider.
 
 <insert [Infisical secret sync detail view showing a failed sync status, its last error message, and the Sync now and Import from destination actions] here>
 
-## Tips & limits
+## Tips and limits
 
-- Creating secret syncs is left to Infisical: each of the 50+ destinations has its own configuration and app connection. Existing syncs can be edited, run and deleted here.
-- Dynamic secrets are discovered in the root and in up to 40 folders per environment. Creating one needs provider-specific inputs, so it is done in Infisical.
-- Audit logs and the Metrics tab need an Infisical plan that includes audit logs, and an identity whose organization role can read them. The Metrics tab reads at most 5,000 events per window.
-- Only shared secrets are listed; personal overrides belong to individual users.
-- Infisical's status page does not distinguish US from EU incidents, so a status incident is shown against every Infisical account.
+- Create new secret syncs in Infisical, since each of the 50+ destinations has its own setup and app connection. You can edit, run and delete existing syncs here.
+- Dynamic secrets are found in the root and in up to 40 folders per environment. Creating one needs provider-specific inputs, so do that in Infisical.
+- Audit logs and the Metrics tab need an Infisical plan that includes audit logs, and an identity whose organization role can read them. The Metrics tab reads at most 5,000 events per time range.
+- Only shared secrets are listed. Personal overrides belong to individual users.
+- Infisical's status page doesn't separate US and EU incidents, so a status incident shows against every Infisical account.
