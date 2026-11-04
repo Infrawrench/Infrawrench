@@ -1,172 +1,93 @@
 ---
 title: Commitment & unit-cost alerts
-description: Three alerts derived from facts no spend total contains — a commitment about to lapse, a commitment nobody is using, and cost per unit of a business metric going the wrong way.
+description: Get alerted when a reservation or savings plan is about to expire, when a commitment sits unused, and when cost per unit of a business metric goes up.
 ---
 
-Budgets, anomaly detection and change alerts all answer the same shape of question: **is this
-spend total different from that spend total?** Three things they therefore cannot see:
+Budgets, anomaly detection and change alerts all watch your spend totals. Some problems don't show up there:
 
-- A reservation ends on Tuesday. Nothing has moved yet, and by the time it does the money is
-  already spent at on-demand rates.
-- A savings plan is 30% used. Nothing has moved at all — the waste has been there since the day
-  it was bought.
-- Spend doubled because volume tripled. Everything moved, and the business got **better**.
+- A reservation ends on Tuesday. Nothing has changed yet, and by the time it does you're already paying on-demand rates.
+- A savings plan is only 30% used. Nothing changes at all, because the waste started the day it was bought.
+- Spend doubled because volume tripled. Everything moved, and the business actually got **better**.
 
-These three alerts read the commitment calendar and the volume the spend bought, so they catch
-exactly those cases. They arrive on the same routing as everything else, but they are read on a
-different clock: nobody acts on them within the hour, and all three are written to still make
-sense when somebody opens the notification three days later.
+These three alerts catch those cases by looking at your commitments and at the volume your spend bought. They use the same routing as your other alerts, and they're written to still make sense if you open them a few days later.
 
-## Which alert fires when
+## Which alert to use
 
 | Alert                                             | Watches                                        | Fires when                                                       | Configuration                   | Cadence                                 |
 | ------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------- | ------------------------------- | --------------------------------------- |
 | **[Budgets](./cloud-costs.md)**                   | An absolute monthly total you chose            | Spend crosses a threshold of that total                          | You set the total               | Once per threshold, monthly             |
 | **[Anomaly detection](./cost-anomaly-alerts.md)** | A learned trailing baseline                    | A day's spend is a statistical outlier, or a source appears anew | None                            | Per anomalous day                       |
 | **[Change alerts](./cost-change-alerts.md)**      | A scope you chose, versus its prior period     | The move clears your percent and/or amount threshold             | You set the scope and threshold | Per cadence period                      |
-| **Commitment expiry** (this page)                 | A commitment's term end date                   | The term end reaches a horizon — 60, 30 or 7 days out by default | Defaults work                   | Once per horizon per term               |
+| **Commitment expiry** (this page)                 | A commitment's term end date                   | The term end reaches a horizon: 60, 30 or 7 days out by default  | Defaults work                   | Once per horizon per term               |
 | **Idle commitments** (this page)                  | Utilization of a commitment you already bought | Utilization stays under the threshold across a whole window      | Defaults work                   | Once per commitment per month           |
 | **Unit-cost regressions** (this page)             | Spend ÷ a business metric                      | Cost per unit rises past the threshold versus the prior window   | Defaults work                   | Once per metric, then a 14-day cooldown |
 
-The line worth internalising: the first three are all about **money**, and the last three are
-about **what the money bought**. Spend rising while cost-per-customer falls fires a change alert
-and does not fire a unit-cost regression — and the second one is right.
+The first three are about **money**. The last three are about **what the money bought**. If spend rises while cost per customer falls, you get a change alert but no unit-cost regression, which is the right outcome.
 
 ## Commitment expiry
 
-An expiring reservation, savings plan or committed-use discount is the most avoidable surprise
-on a cloud bill. The usage it was covering reverts to on-demand pricing the hour the term ends,
-which is a step change nobody sees coming — because until it happens there is no movement in
-any spend total to notice.
+When a reservation, savings plan or committed-use discount ends, the usage it covered goes back to on-demand pricing straight away. Nothing in your spend totals warns you beforehand, so this alert does.
 
-**Horizons.** By default you are warned at **60, 30 and 7 days**. Each fires once per commitment
-per term. The three exist because they are three different decisions: 60 days is procurement
-lead time, 30 days is the last point where re-sizing is a considered choice rather than a
-scramble, and 7 days is "this is happening — renew, or budget for on-demand."
+**When you're warned.** By default at **60, 30 and 7 days** before the term ends. Each warning fires once per commitment per term. Roughly: 60 days gives procurement time, 30 days leaves room to resize calmly, and 7 days means renew now or budget for on-demand.
 
-A commitment fires at the **smallest horizon it has reached**, never at all of them at once. An
-account connected 30 days before a term ends gets one alert, not two.
+If a commitment has already passed several horizons (for example, you connected the account 30 days before it ends), you get one alert for the nearest horizon, not several.
 
-**What it costs.** Every warning states the commitment's committed rate as a monthly figure, and
-— where it can be derived — how much usage the commitment is currently covering, also monthly.
-The second number is stated as a **lower bound** ("at least $1,180/month reverts to on-demand"),
-and deliberately so: no provider's cost export carries the on-demand list price on a
-commitment-covered line, so the exact post-expiry figure is not knowable. What _is_ certain is
-the direction — on-demand is never cheaper than the committed rate — so the amortized value of
-what the commitment delivers is a floor on what the same usage will cost without it.
+**What it costs.** Each warning shows the commitment's rate as a monthly figure and, where possible, how much usage it currently covers per month. That second number is a **lower bound** ("at least $1,180/month reverts to on-demand"), because providers don't report the on-demand price for covered usage. On-demand is never cheaper than the committed rate, so the real cost will be at least this much.
 
-A [committed-use discount](./commitments.md) that buys vCPUs rather than dollars states its
-units instead, and no money. It still warns: a CUD expiring is just as real.
+A [committed-use discount](./commitments.md) that buys vCPUs rather than dollars shows its units instead of money. It still warns you.
 
-**Already expired.** A commitment that lapsed **without any horizon warning having fired** —
-because the account was connected after the fact, or collection started late — raises one alert
-at a zero-day horizon. This is on by default, and it is the only way anyone ever hears about
-that case: every horizon is already in the past, so nothing else can speak. It is bounded to
-terms that ended within the last 90 days, so connecting an account with years of dead
-reservations produces one pass of recent news rather than an archive. You can turn it off.
+**Already expired.** If a commitment ended without any warning firing (because you connected the account late, or data collection started late), you get one alert at a zero-day horizon. This only covers terms that ended in the last 90 days, so connecting an old account doesn't flood you. It's on by default, and you can turn it off.
 
-**Renewals do not warn the same way.** Two signals say a commitment is not really lapsing:
+**Renewals.** Two things tell Infrawrench a commitment isn't really lapsing:
 
-- **A successor is already in the inventory** — another commitment on the same account, same
-  kind, region, scope and description, starting when this one ends. That is what a queued AWS
-  reservation purchase looks like. The incumbent is skipped entirely: nothing lapses, and
-  nothing renews at a surprising price.
-- **The provider's own auto-renew flag.** A commitment known to renew fires **once**, at the
-  shortest horizon only, at `info` severity, and the message says it will renew at the
-  then-current rate rather than that it will lapse — because "we meant to cancel that" is a real
-  conversation and a false "this will revert to on-demand" is not.
+- **A replacement is already in your inventory.** Another commitment on the same account, of the same kind, region, scope and description, starts when this one ends (for example a queued AWS reservation purchase). No alert fires for the old one.
+- **The provider's auto-renew flag.** A commitment known to renew fires **once**, at the shortest horizon only, at `info` severity. The message says it will renew at the current rate rather than lapse, in case you meant to cancel it.
 
-  Note the current limit: Infrawrench's collected commitment inventory does not yet carry a
-  renewal flag from any provider, so today this path is reached only through successor
-  detection. The moment a collector reports Azure's `renew` or GCP's `autoRenew`, these
-  commitments start taking the softer path automatically — nothing about your configuration
-  changes.
+  Today no provider's commitment data includes a renewal flag yet, so only the replacement check applies. When Azure's `renew` or GCP's `autoRenew` becomes available, these alerts switch to the softer message automatically, with no change to your settings.
 
 ## Idle commitments
 
-Utilization has been shown on the [commitments](./commitments.md) section since it shipped.
-This is the alert that tells you about it.
+The [commitments](./commitments.md) section shows utilization. This alert tells you when it's too low.
 
-**A window, not a day.** Utilization is aggregated across the **whole window** — 30 trailing
-days by default — rather than sampled per day. That is what makes a weekend not a finding: a
-weekday-only workload sits around 71% across a full month, comfortably above the 70% default,
-and never fires. Counting bad days instead would flag it every Monday.
+**Measured over a window.** Utilization is averaged over the **whole window**, 30 days by default, not judged day by day. A weekday-only workload sits around 71% over a month, above the 70% default, so it doesn't fire every weekend.
 
-**A null utilization never alerts.** This is the sharpest edge in the feature and it is worth
-knowing about, because the "0%" it prevents is exactly the number that gets a healthy purchase
-cancelled. Utilization is reported as **unknown** — not as zero — in four situations, and every
-one of them is skipped rather than judged:
+**Unknown utilization never alerts.** Utilization shows as **unknown**, not zero, in these cases, and they're skipped so a healthy commitment never looks idle:
 
-- **Unit-denominated commitments.** A GCP CUD commits vCPUs. Cost rows cannot say how many of
-  the committed vCPUs ran, so there is no percentage to compare.
-- **Accounts whose provider reports no commitment attribution.** Their rows read as plain
-  uncovered usage, so delivered spend would read $0 for a plan that is working perfectly.
-- **Windows with no collected cost data**, and windows the commitment's term does not overlap.
-- Any window where the obligation works out to zero.
+- **Unit-based commitments.** A GCP CUD commits vCPUs, and cost data can't say how many of them ran.
+- **Accounts where the provider doesn't report commitment coverage.** Without it, a working plan would look unused.
+- **Windows with no cost data**, and windows the commitment's term doesn't overlap.
+- Any window where the commitment's cost works out to zero.
 
-Alongside that, the window has to be **mostly real data** before anything is judged at all: at
-least 14 of the 30 days must carry cost rows by default. A collection outage reads as an
-outage, never as an idle commitment.
+The window also needs **mostly real data**: by default at least 14 of the 30 days must have cost data. A gap in data collection is never reported as an idle commitment.
 
-**Money, not a percentage.** Every finding carries the wasted amount — committed obligation
-minus what was delivered — and the floor that decides whether to speak at all is denominated in
-money, not in percent. A 4% commitment wasting $3 a month is true and worthless; the default
-floor is $50. The alert names the commitment, the percentage, the wasted amount, and what to do
-about it (move matching workloads onto its scope, resize at renewal, or sell it on the
-provider's marketplace).
+**Measured in money.** Each alert shows the wasted amount (what the commitment cost minus what it delivered), and alerts only fire above a money threshold, $50 by default. The alert names the commitment, its utilization, the wasted amount and what you can do: move matching workloads onto it, resize at renewal, or sell it on the provider's marketplace.
 
-Because idleness is a standing condition rather than an event, it is restated **once a calendar
-month** per commitment rather than once a day.
+Each idle commitment is reported **once per calendar month**.
 
 ## Unit-cost regressions
 
-The other five alerts on this page cannot distinguish "we are spending more" from "we are
-spending more per customer". This one can, and it is the one a business actually manages
-against.
+The other alerts can't tell "we're spending more" apart from "we're spending more per customer". This one can.
 
-It divides a [business metric's](./unit-costs.md) cost scope by the metric's reported values and
-compares two adjacent windows. By default: **cost per unit up more than 20%**, comparing the
-last **14 complete days** against the 14 before them.
+It divides a [business metric's](./unit-costs.md) cost by the metric's values and compares two back-to-back windows. By default it fires when **cost per unit rises more than 20%**, comparing the last **14 complete days** with the 14 before.
 
-**Gaps are not zeros, and they are not regressions.** A day with no reported metric value is a
-gap. It contributes to **neither** side of the ratio — its spend does not enter the numerator
-either. This is not a nicety: fold in the spend of a day whose volume was never reported and the
-numerator grows while the denominator does not, so three missed nights of metric ingest would
-read as a 27% unit-cost regression and page somebody about a pipeline outage wearing a cost
-regression's clothes.
+**Missing days are skipped.** A day with no reported metric value is left out of both the cost and the volume. Otherwise a few missed metric uploads would look like a cost regression. A window that's mostly missing days produces no comparison and no alert.
 
-The same rule at window scale: a window that is mostly gaps has no unit cost at all. It does not
-read low, it does not read high — it produces no comparison, and no alert.
+**Enough history.** By default a metric needs **28 days of history, with at least 10 reported days in each 14-day window**. A metric that's only updated twice a month won't fire.
 
-**Minimum history.** A metric needs, at the defaults, **28 days of history with at least 10
-reported days in each of the two 14-day windows**. Two weeks a side covers two whole weekly
-cycles, so a weekday-shaped unit cost compares like with like; 10 of 14 means each window is
-more measurement than gap. A metric somebody updates twice a month has no unit cost to regress
-and will never fire — which is correct, because the alert would be an artefact of when the two
-updates happened to land.
+Two more checks:
 
-Two more guards:
+- The current window's spend must be above a floor, $100 by default.
+- A rise from a previous unit cost of exactly **zero** isn't reported. It usually means the earlier spend hadn't arrived yet.
 
-- The current window's spend must clear a floor ($100 by default). A scope spending less than
-  that in a fortnight cannot move a unit cost readably.
-- A rise from a prior unit cost of exactly **zero** is declined rather than reported as an
-  infinite percentage. It almost always means the prior window's spend had not landed yet.
+Each currency is judged separately, just like the [unit-cost chart](./unit-costs.md).
 
-Currencies are judged separately and never merged, the same rule the
-[unit-cost chart](./unit-costs.md) follows.
-
-Because a regression is a level shift rather than a spike — the elevated fortnight stays
-elevated until it rolls out of both windows — a metric stays quiet for **14 days** after
-notifying. Every firing is still stored and listed, whether or not it notified.
+After notifying, a metric stays quiet for **14 days**, since a raised unit cost stays raised until it rolls out of both windows. Every firing is still listed, whether it notified or not.
 
 ## Unit-cost and margin thresholds
 
-A regression asks "did this move?". A **threshold** asks "is this over the line?": cost per
-1,000 requests above $0.40, or gross margin below 30%, optionally **per label value**, so each
-customer is judged on their own margin.
+A regression asks "did this go up?". A **threshold** asks "is this over the line?", for example cost per 1,000 requests above $0.40, or gross margin below 30%. You can apply it **per label value**, so each customer is judged on their own margin.
 
-Thresholds are set on the metric itself: **Costs → Unit costs → Edit → Alert thresholds**. Each
-one names:
+Set thresholds on the metric: **Costs > Unit costs > Edit > Alert thresholds**. Each one has:
 
 | Field           | What it is                                                                                                      |
 | --------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -179,66 +100,42 @@ one names:
 
 <insert [Business metric editor's Alert thresholds section with two rows: "Margin below 30% over 7 days per customer" and "Cost per 1K request above 0.40 USD over 14 days"] here>
 
-Each threshold is evaluated once a day, after cost collection, by the same calculation the
-[unit-cost chart](./unit-costs.md) draws: the window's **summed** spend over its **summed** metric,
-never the worst single day. The gap rules carry over: a window with fewer than half its days
-reported is not judged at all, and the "Other" fold of a label split never fires, because it is
-a different set of values every day.
+Thresholds are checked once a day, after cost data comes in, using the same numbers as the [unit-cost chart](./unit-costs.md): the window's total spend over its total metric, not the worst single day. A window with fewer than half its days reported isn't judged. The "Other" group in a label split never fires.
 
-A breach fires once per window end and then stays quiet for **7 days** for that threshold, label
-value and currency. Editing a threshold makes it a new one, so a limit you just moved can fire
-immediately. Firings appear in the same list as everything else on this page, with the observed
-value beside the limit.
+A breach fires once and then stays quiet for **7 days** for that threshold, label value and currency. Editing a threshold counts as a new one, so it can fire straight away. Firings appear in the same list as the other alerts on this page, with the observed value next to the limit.
 
-## Managing these alerts
+## Manage these alerts
 
-All three live in the **Commitment & unit-cost alerts** section of the Costs panel's **Alerts** tab, after the
-anomaly and change-alert sections, on both web and desktop. The list shows what fired, when,
-what it was about, and the money involved. "Tune alerts" opens the thresholds for all three.
+All three are in the **Commitment & unit-cost alerts** section of the Costs panel's **Alerts** tab, on web and desktop. The list shows what fired, when, what it was about and the money involved. Click **Tune alerts** to change the thresholds for all three.
 
-![Costs panel Commitment & unit-cost alerts section showing a mixed list of firings — one commitment expiry with its on-demand exposure, one idle commitment with its wasted amount, one unit-cost regression with its before → after figures](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-and-unit-cost-alerts/mixed-firings.png)
+![Costs panel Commitment & unit-cost alerts section showing a mixed list of firings: one commitment expiry with its on-demand exposure, one idle commitment with its wasted amount, one unit-cost regression with its before and after figures](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-and-unit-cost-alerts/mixed-firings.png)
 
 ![The Tune alerts panel expanded, showing all three groups: expiry horizons (60, 30, 7) with the already-expired checkbox, the idle thresholds (70%, 30-day window, 14 measured days, $50 waste floor), and the unit-cost thresholds (20%, 14-day windows, 10 reported days, $100 spend floor)](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-and-unit-cost-alerts/tune-alerts.png)
 
-The defaults are chosen to work with no setup: an organization that never opens this panel gets
-all three detectors at the values described above.
+You don't need to set anything up. The defaults described above apply from the start.
 
-Reading requires the `costs:read` permission; retuning requires `costs:write` — the same split
-[anomaly tuning](./cost-anomaly-alerts.md) uses, and for the same reason: this changes what the
-organization's whole cost feed alerts on rather than editing one cost object.
+Viewing needs the `costs:read` permission. Changing thresholds needs `costs:write`, the same as [anomaly tuning](./cost-anomaly-alerts.md), because it changes alerting for the whole organization.
 
 ## Notifications
 
-The three arrive through [alert routing](./alert-routing.md) as three trigger kinds —
-**Commitment expiry**, **Idle commitments** and **Unit-cost alerts** (regressions and thresholds) — so routing rules,
-quiet hours and escalation apply exactly as they do to budgets and anomalies. Nothing is sent
-to a channel directly.
+These alerts go through [alert routing](./alert-routing.md) as three trigger kinds: **Commitment expiry**, **Idle commitments** and **Unit-cost alerts** (regressions and thresholds). Routing rules, quiet hours and escalation work just like they do for budgets and anomalies.
 
-The settings panel also has one **Email recipients** list for all three, emailed every time any
-of them fires, in addition to the routing rules. See [email alerts](./email-alerts.md).
+The settings panel also has one **Email recipients** list for all three. Everyone on it gets an email each time any of them fires, on top of your routing rules. See [email alerts](./email-alerts.md).
 
-Rules can match on the money at stake, and each trigger carries the number a person would mean:
+Routing rules can match on the money involved, and each trigger carries the most useful amount:
 
-- Commitment expiry carries the **monthly on-demand exposure**, so "commitment expiries over
-  $5,000 → #finance" means the size of the problem, not the size of the invoice ending.
+- Commitment expiry carries the **monthly on-demand exposure**, so a rule like "commitment expiries over $5,000 → #finance" matches on the size of the problem.
 - Idle commitments carry the **wasted amount**.
-- Unit-cost regressions and thresholds carry the **window's spend** — the size of the scope that
-  regressed. (Not the unit cost itself, which is routinely sub-cent and would make every such
-  rule match nothing.)
+- Unit-cost regressions and thresholds carry the **window's spend**, not the unit cost itself (which is often less than a cent).
 
-Idle commitments default to `info` severity rather than `warning`: nothing is breaking, it is
-money already spent, and an organization that sleeps through `info` should keep sleeping through
-it. Expiry and unit-cost regressions are `warning`.
+Idle commitments use `info` severity, since nothing is breaking. Expiry and unit-cost regressions use `warning`.
 
-Push notifications deep-link to the **Alerts** tab of the Costs screen in the [mobile app](./mobile-app.md), where the
-firings are listed read-only — thresholds are managed from web or desktop.
+Push notifications open the **Alerts** tab of the Costs screen in the [mobile app](./mobile-app.md), where you can view firings. Thresholds are managed on web or desktop.
 
 ## API
 
-- `GET /api/org/:orgId/costs/efficiency-alerts` — the three detectors' firings in one feed,
-  newest first, optionally filtered by `kind`. Requires `costs:read`.
-- `GET /api/org/:orgId/costs/efficiency-alert-settings` — the thresholds. Requires `costs:read`.
-- `PUT /api/org/:orgId/costs/efficiency-alert-settings` — retune them. Requires `costs:write`.
-  A whole-object PUT, not a patch.
+- `GET /api/org/:orgId/costs/efficiency-alerts`: firings from all three alerts in one feed, newest first, optionally filtered by `kind`. Requires `costs:read`.
+- `GET /api/org/:orgId/costs/efficiency-alert-settings`: the thresholds. Requires `costs:read`.
+- `PUT /api/org/:orgId/costs/efficiency-alert-settings`: change them. Requires `costs:write`. This replaces the whole settings object rather than patching it.
 
 See the [API reference](../team-and-billing/openapi.md).

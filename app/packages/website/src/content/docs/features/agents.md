@@ -1,71 +1,122 @@
 ---
 title: Agents
-description: Provision coding VMs from VM-capable cloud accounts and reconcile their branches locally.
+description: Start Codex or Claude Code on a cloud VM from any VM-capable account, then bring the agent's branch back to your local repository.
 sidebar_order: 24
 ---
 
-Agents create coding VM records from accounts whose provider plugins declare VM support. Open **Agents** from the sidebar, use the configuration menu in the header to choose a VM-capable account and save defaults for the VM shape and tool, then create a named session from a repository — picked from your connected GitHub repos on the cloud, or given as a Git URL or local path.
+Agents gives a coding agent its own cloud VM. You pick an account that can create VMs, choose a repository, and Infrawrench sets up the machine with your coding tool and a fresh branch.
+
+To start:
+
+1. Open **Agents** from the sidebar.
+2. Use the configuration menu in the header to choose a VM-capable account and save your defaults for the VM and the tool.
+3. Create a named session from a repository. On the cloud you pick from your connected GitHub repos. You can also give a Git URL or, on desktop, a local path.
 
 ## Local and organization sessions
 
-On the desktop app, Agents follows the org switcher, the same way [Workflows](./workflows.md) and [Deploy](./infrafile.md) do:
+On the desktop app, Agents follows the org switcher, the same way [Workflows](./workflows.md) and [Deploy](./infrafile.md) do.
 
-- **Local-only mode** — sessions are stored on this machine, VMs are provisioned and bootstrapped from here, and the account list is the accounts you added to the desktop app. This is the mode that can use a **local folder** as the session's repository.
-- **With an organization selected** — you get the organization's sessions, the same ones the web app shows. They are provisioned from the **organization's** accounts, and the cloud runs the provisioning and VM bootstrap, so a session keeps setting itself up whether or not your laptop is awake. The GitHub repository picker is available here; local folders are not, because the cloud pipeline has no way to reach a folder on your machine.
+- **Local-only mode.** Sessions are stored on this machine and VMs are set up from here. You see the accounts you added to the desktop app. This is the only mode where you can use a **local folder** as the repository.
+- **With an organization selected.** You get the organization's sessions, the same ones the web app shows. They use the organization's accounts, and the cloud sets up the VM, so a session keeps going even if your laptop sleeps. The GitHub repository picker is available here. Local folders are not, since the cloud can't reach your machine.
 
-The two sets are separate and nothing is copied between them. If an account only exists in the organization — a GCP project added on the web, say — select that organization to use it as an agent target; it will not appear in local-only mode.
+The two sets are separate and nothing is copied between them. If an account only exists in the organization (say a GCP project added on the web), select that organization to use it. It won't appear in local-only mode.
 
 ![Agents panel showing the header configuration menu, repo input, and a setting-up agent session with its VM id](https://agent-assets.infrawrench.com/docs-screenshots/features/agents/agents-panel-setting-up.png)
 
-## Defaults
+## Set your defaults
 
-Infrawrench lists accounts that can create VMs through provider plugin capabilities. The header configuration menu stores VM settings such as size, image, region, and selected coding tool. Those controls come from the provider plugin's create form metadata, so the Agents defaults match the normal create flow for the provider.
+The header configuration menu lists every account that can create VMs. It saves the VM size, image, region and coding tool. These are the same options you see when you create a VM for that provider normally.
 
-Agents can target either Codex or Claude Code. The selected tool is stored on the session so setup installs and launches the right coding environment on the VM. A second control, **Interface**, chooses how you talk to that tool: **Terminal (SSH)** attaches its CLI in a terminal tab, and **T3 Code** installs the [T3 Code](./t3-code.md) server to drive it instead — there the session's button becomes **Authorize server**, and you use the machine from T3 Code's own app afterwards. A third option, **Nibblets**, installs a [Nibblets server](./nibblets.md), a host for long-running agents, which can start linked to your organization; it has no tool choice, because Nibblets signs in its own agents. The two are independent — T3 Code is a control surface, not an agent, so it still installs and signs in to the tool you picked. Local-only desktop sessions copy the selected tool's local credential and settings files into the VM (organization sessions are bootstrapped by the cloud, which has no access to your machine's config). Codex sessions copy selected files from `~/.codex`, such as `auth.json`, `config.toml`, and skills. Claude Code sessions copy selected settings and plugins from `~/.claude` plus `~/.claude.json` when those paths exist. Local sessions, logs, caches, temp files, downloads, and package stores are skipped.
+### Coding tool and interface
 
-**Services** lists accounts that can install something on a server over SSH, the same ones the resource page's **Install service…** offers (today, [Tailscale](./tailscale.md)), in a searchable list laid out like the **Region** picker. Select one or more and every new session installs it on its VM once setup finishes: a Tailscale account enrolls the VM into your tailnet, and the session row shows its tailnet address. A failed install marks the session failed; **Retry setup** runs it again, and an install that already happened is a no-op. Deleting the session undoes it, so a Tailscale device is removed from the tailnet. With a Tailscale account attached, a [T3 Code](./t3-code.md#reaching-the-server-over-tailscale-instead) session can also be reached over the tailnet instead of T3 Connect.
+Choose **Codex** or **Claude Code**. Then choose an **Interface**, which is how you talk to the tool:
 
-With **Interface** set to **T3 Code**, the menu also holds your organization's **T3 Code policy**: T3 Code's managed policy, installed on every T3 Code server so its settings, permission modes and providers are configured centrally. See [Managing T3 Code with a policy](./t3-code.md#managing-t3-code-with-a-policy).
+- **Terminal (SSH)** opens the tool's CLI in a terminal tab.
+- **T3 Code** installs the [T3 Code](./t3-code.md) server to drive the tool. The session's button becomes **Authorize server**, and afterwards you use the machine from T3 Code's own app. T3 Code is a control surface, not an agent, so it still installs and signs in to the tool you picked.
+- **Nibblets** installs a [Nibblets server](./nibblets.md), a host for long-running agents, which can start linked to your organization. There's no tool choice here, because Nibblets signs in its own agents.
 
-Local-only desktop sessions also copy your `~/.gitconfig` so commits from the VM carry your identity. Settings that only work on your own machine are stripped on the way: GPG signing (the keys aren't there, and `commit.gpgsign=true` would fail every commit), credential helpers like `osxkeychain`, and **`url.*.insteadOf` rewrites that point at SSH**. That last one matters if you rewrite `https://github.com/` to SSH locally — the VM has no key registered with GitHub, so the rewrite would turn every HTTPS clone into a failing SSH one, including clones of public repositories. Rewrites to a non-SSH target (an internal HTTPS mirror) are kept.
+With **Interface** set to **T3 Code**, the menu also holds your organization's **T3 Code policy**. It's installed on every T3 Code server so settings, permission modes and providers are managed in one place. See [Managing T3 Code with a policy](./t3-code.md#managing-t3-code-with-a-policy).
 
-Agent VMs use a dedicated Infrawrench-managed SSH key named `infrawrench-agent`. Organization sessions create or reuse that key inside the organization, whichever surface you drive them from — so a desktop terminal opened against an org session connects with the org's key, whose private half stays server-side, rather than anything in your local key store. Local-only desktop sessions create or reuse the key in the local app key store. The key is injected into the provider's VM create field declared by the plugin, so providers such as DigitalOcean attach it during VM creation instead of falling back to password access.
+### What gets copied to the VM
 
-## Choosing a repository
+Local-only desktop sessions copy your coding tool's sign-in and settings onto the VM. Organization sessions don't, because the cloud has no access to your machine.
 
-On the cloud, the session form shows a repository picker fed by the same [GitHub App integration](./workflows.md#connecting-github) that powers workflow git triggers. Once GitHub is connected, pick any repository the installation can access — private repos are marked in the list — or choose **Custom Git URL…** to type a clone URL for a repository hosted anywhere else. **+ repos** (or **Connect GitHub** when nothing is connected yet) opens the GitHub App install flow to add repositories.
+- **Codex:** selected files from `~/.codex`, such as `auth.json`, `config.toml` and skills.
+- **Claude Code:** selected settings and plugins from `~/.claude`, plus `~/.claude.json` when those paths exist.
+
+Local sessions, logs, caches, temp files, downloads and package stores are skipped.
+
+Local-only sessions also copy your `~/.gitconfig` so commits from the VM carry your identity. A few settings that only work on your own machine are removed on the way:
+
+- GPG signing, since your keys aren't on the VM.
+- Credential helpers like `osxkeychain`.
+- `url.*.insteadOf` rewrites that point at SSH. The VM has no SSH key registered with GitHub, so these would break every HTTPS clone, even of public repos. Rewrites to a non-SSH target (an internal HTTPS mirror) are kept.
+
+### Services
+
+**Services** lists accounts that can install something on a server over SSH, the same ones the resource page's **Install service…** offers (today, [Tailscale](./tailscale.md)). Select one or more and every new session installs them once setup finishes.
+
+- A Tailscale account adds the VM to your tailnet, and the session row shows its tailnet address.
+- A failed install marks the session failed. **Retry setup** runs it again, and an install that already happened is skipped.
+- Deleting the session undoes it, so the Tailscale device is removed from your tailnet.
+- With Tailscale attached, a [T3 Code](./t3-code.md#reaching-the-server-over-tailscale-instead) session can be reached over the tailnet instead of T3 Connect.
+
+### SSH key
+
+Agent VMs use a dedicated Infrawrench-managed SSH key named `infrawrench-agent`. Organization sessions use the organization's copy of that key, and its private half stays on the server, never in your local key store. Local-only sessions keep the key in the desktop app's key store. Providers such as DigitalOcean attach the key when the VM is created, so the VM doesn't fall back to password access.
+
+## Choose a repository
+
+On the cloud, the session form shows a repository picker from your [GitHub App integration](./workflows.md#connecting-github), the same one workflow git triggers use.
+
+- Pick any repository the installation can access. Private repos are marked in the list.
+- Choose **Custom Git URL…** to type a clone URL for a repo hosted anywhere else.
+- Click **+ repos** (or **Connect GitHub** if nothing is connected yet) to add repositories.
 
 ![Agents session form on the web app with the GitHub repository picker open, showing a private repo entry, the Custom Git URL option, and the + repos button](https://agent-assets.infrawrench.com/docs-screenshots/features/agents/github-repo-picker.png)
 
-Private GitHub repositories picked this way clone cleanly on the VM: setup mints a short-lived GitHub App installation token for the clone and resets the workspace's `origin` remote to the plain repository URL afterwards, so no credential persists on the VM. To push the agent branch from the VM you still authenticate as usual (the setup token is not left behind).
+Private GitHub repos picked this way clone on the VM with a short-lived token, and no credential is left on the VM afterwards. To push the agent branch from the VM, you sign in to Git as usual.
 
-The desktop app shows the same picker when an organization is selected — it reads that organization's GitHub App installations. In local-only mode there is no organization to read them from, so the form keeps the free-text **Git URL** input and the **Local folder** picker.
+The desktop app shows the same picker when an organization is selected. In local-only mode the form has a free-text **Git URL** field and a **Local folder** picker instead.
 
-## Sessions
+## Work with a session
 
-Creating a session records the repo, session name, workspace folder name, generated branch name, selected account, and tool, then asks the selected provider plugin to create the VM with the saved defaults. The session name is the label shown in the Agents list; the workspace folder name comes from the repo basename, so `/Users/alex/infrawrench` opens as `~/infrawrench` even if the session is named differently. When the provider accepts the request, Infrawrench stores the created resource id on the session and shows it in the agent row.
+When you create a session, Infrawrench saves the repo, session name, a generated branch name, the account and the tool, then asks the provider to create the VM. The session name is the label in the Agents list. The workspace folder is named after the repo, so `/Users/alex/infrawrench` opens as `~/infrawrench` whatever you called the session. Once the provider accepts, the VM's id shows in the session row.
 
-Desktop local-folder sessions are inspected before provider provisioning starts. The selected folder must exist and be a Git work tree, otherwise session creation fails before a VM is created. Infrawrench reads the folder's `origin` remote when one is present and uses that clone URL for the VM's initial workspace pull. It detects Node, PHP, Ruby, and Go from project files such as `package.json`, `.nvmrc`, `composer.json`, `.php-version`, `Gemfile`, `.ruby-version`, `go.mod`, and `.tool-versions`. Exact project versions are used directly; when a runtime is detected but the project only provides a range or no version, Infrawrench resolves the current release from the runtime's public release feed before creating the VM. It also detects package managers from `packageManager`, lockfiles, and language manifests, including `pnpm`, `yarn`, `bun`, Composer, Bundler, npm, and Go. The setup log records the workspace folder, planned runtimes, package managers, initial Git pull plan, and whether the selected tool's local config was found.
+For a local folder, the folder must exist and be a Git work tree, or the session fails before any VM is created. Infrawrench uses the folder's `origin` remote, if it has one, for the first pull on the VM. It also detects the runtimes and package managers you use:
 
-The session list refreshes automatically while the page is open, so setup state moves to ready without a manual reload once the VM is running and the bootstrap finishes. The bootstrap uses the `infrawrench-agent` key to connect over SSH, waits until the VM accepts SSH commands, installs the [detachproc](https://github.com/Infrawrench/detachproc) session holder, installs the planned runtimes through `mise`, installs detected package managers, installs the selected coding tool, prepares `~/<workspace name>`, pulls from the Git remote when possible, and checks out the generated branch when the repo can be cloned. For desktop local-folder sessions, **Open** refreshes the VM workspace before launching by uploading one compressed archive and extracting it on the VM. The archive uses Git's ignored-file rules (`git ls-files --cached --others --exclude-standard`) for worktree files and includes normal `.git` metadata so the VM workspace remains a Git repository.
+- **Runtimes:** Node, PHP, Ruby and Go, from files such as `package.json`, `.nvmrc`, `composer.json`, `.php-version`, `Gemfile`, `.ruby-version`, `go.mod` and `.tool-versions`. An exact version is used as is. If you only give a range or no version, the current release is installed.
+- **Package managers:** `pnpm`, `yarn`, `bun`, Composer, Bundler, npm and Go, from `packageManager`, lockfiles and manifests.
 
-**Open** starts an SSH workspace tab for the agent VM, automatically selects the `infrawrench-agent` SSH key, and attaches to one named `detachproc` session for that agent. If the session does not exist, Infrawrench starts `codex --yolo` or `claude --dangerously-skip-permissions` inside `~/<workspace name>` first; if it already exists, Open resumes it. Opening the same agent again closes other SSH tabs for that VM before attaching, and attaching steals the session from any other connected client.
+The session list refreshes on its own while the page is open, so you can watch setup move to ready. Setup installs the runtimes, package managers and your coding tool, prepares `~/<workspace name>`, pulls your code and checks out the new branch. The setup log shows what was planned and whether your tool's local config was found.
 
-The setup policy is conservative: sessions stay in a setup state until the VM bootstrap flow can finish clearly. Provider errors leave a failed session row with the error in the log so you can see what the create API rejected.
+### Open a session
 
-## Reconciliation
+**Open** starts an SSH tab to the VM using the `infrawrench-agent` key and attaches to the agent's session. The first time, it starts `codex --yolo` or `claude --dangerously-skip-permissions` inside `~/<workspace name>`. After that, **Open** resumes the same session. Opening it again closes other SSH tabs for that VM, and attaching takes the session over from any other connected client.
 
-Use **Reconcile** to bring the agent branch back to the local repository as an `infrawrench/agent-*` branch. Infrawrench does not apply the diff to the current working tree automatically; review, merge, cherry-pick, or discard it with normal Git tools.
+For local-folder sessions, **Open** first refreshes the VM's workspace from your folder. Files ignored by Git are left out, and the `.git` metadata is included so the VM workspace stays a Git repo.
 
-This applies to local-only desktop sessions, which have a checkout on your machine to fetch into. An organization session clones from a Git URL on the VM and there is no local checkout on the server, so **Reconcile** there tells you to push the branch from the VM to your Git remote instead — open the agent terminal and push from inside the workspace.
+### If setup fails
 
-## Deleting an agent
+A session stays in setup until the VM is fully ready. If the provider rejects the request, the session is marked failed and the log shows the provider's error.
 
-Use **Delete** on a session row to remove the agent. After a confirmation, Infrawrench destroys the agent's VM at the provider (stopping its billing), removes the session, and closes any open SSH tabs for that VM. Any work on the VM that hasn't been reconciled is lost, so reconcile first if you want to keep the agent's branch. If the provider refuses to delete the VM, the session is kept and the error is shown so nothing is silently orphaned. Deleting a Nibblets server also revokes its link to the organization and every agent it made.
+## Bring the work back
 
-## Repository configuration (`.infrawrench/`)
+Use **Reconcile** to fetch the agent's branch into your local repository as an `infrawrench/agent-*` branch. Your current working tree isn't changed. Review, merge, cherry-pick or discard the branch with normal Git tools.
 
-A repository can optionally shape its agent sessions with two files:
+This works for local-only desktop sessions, which have a checkout on your machine. Organization sessions have no local checkout, so **Reconcile** tells you to push the branch from the VM instead. Open the agent terminal and push from inside the workspace.
+
+## Delete an agent
+
+Use **Delete** on a session row. After you confirm, Infrawrench destroys the VM at the provider (which stops its billing), removes the session and closes any SSH tabs for that VM.
+
+- Anything on the VM you haven't reconciled is lost, so reconcile first if you want the branch.
+- If the provider refuses to delete the VM, the session is kept and the error is shown, so nothing is left running unseen.
+- Deleting a Nibblets server also revokes its link to the organization and every agent it made.
+
+## Configure sessions from your repository (`.infrawrench/`)
+
+A repository can shape its agent sessions with two optional files.
 
 ### `.infrawrench/agent.json`
 
@@ -84,11 +135,11 @@ A repository can optionally shape its agent sessions with two files:
 }
 ```
 
-- **`env`** — static environment variables delivered to the VM. They are written to `~/.infrawrench-agent/agent.env` and sourced before the coding tool starts, so the agent and everything it runs sees them.
-- **`resources`** — resources Infrawrench creates once per session from your existing accounts (for example a database branch). Each entry is matched to an account by `pluginId` (set `account` to an account display name when you have several). The created resource's outputs and fields can be templated into env vars with `{{outputs.<key>}}` and `{{fields.<key>}}`. Created resources are destroyed again when you delete the agent.
+- **`env`**: environment variables for the VM. They're written to `~/.infrawrench-agent/agent.env` and loaded before the coding tool starts, so the agent and everything it runs can see them.
+- **`resources`**: resources Infrawrench creates once per session from your existing accounts, such as a database branch. Each entry is matched to an account by `pluginId`. If you have several, set `account` to the account's display name. Use `{{outputs.<key>}}` and `{{fields.<key>}}` to put the new resource's outputs and fields into env vars. These resources are destroyed when you delete the agent.
 
-Session resources and env from `agent.json` are currently read for desktop local-folder sessions; git-URL sessions get the setup script only.
+Today, `agent.json` resources and env are read for desktop local-folder sessions only. Git URL sessions get the setup script only.
 
 ### `.infrawrench/agent-setup.sh`
 
-An optional bash script that runs on the VM after the runtimes, package managers, and coding tool are installed and the workspace is in place — but before you connect. It runs inside the workspace with the session env sourced, so it is the right place for `pnpm install`, database migrations, or seeding. A non-zero exit fails the session setup (with Retry available), so keep it idempotent.
+An optional bash script that runs on the VM after the runtimes, package managers and coding tool are installed and the workspace is ready, but before you connect. It runs inside the workspace with the session env loaded, so it's the place for `pnpm install`, database migrations or seeding. A non-zero exit fails setup (you can retry), so make it safe to run more than once.

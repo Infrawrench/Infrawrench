@@ -4,9 +4,20 @@ description: Map the evidence Infrawrench already collects to SOC 2 and ISO 2700
 sidebar_order: 13
 ---
 
-Most of what an auditor asks for during a SOC 2 or ISO 27001 audit is something Infrawrench already records: who holds access in your clouds, who approved a time-boxed role, what changed and when, which resources are exposed, which vulnerabilities are running, whether backups exist and restore, which sessions were recorded, how incidents were handled, how your services score against your own readiness bar, and what happened to every credential a scanner found committed to code. Compliance maps that evidence onto framework controls, tells you which controls have evidence and which have gaps, and packages it into an **evidence pack** you can hand over.
+Compliance helps you get through a SOC 2 or ISO 27001 audit with evidence you already have. Most of what an auditor asks for, Infrawrench already records:
 
-Open it from the **Compliance** tile in the sidebar. It is a cloud feature: the evidence lives in your organization's data.
+- who holds access in your clouds, and who approved a time-boxed role
+- what changed and when
+- which resources are exposed, and which vulnerabilities are running
+- whether backups exist and restore
+- which sessions were recorded
+- how incidents were handled
+- how your services score against your own readiness bar
+- what happened to every credential a scanner found committed to code
+
+Compliance maps that evidence onto framework controls, shows which controls have evidence and which have gaps, and packages it into an **evidence pack** you can hand over.
+
+Open it from the **Compliance** tile in the sidebar. It's a cloud feature, since the evidence lives in your organization's data.
 
 <insert [The Compliance tab with SOC 2 selected: count chips (evidence, gaps, not applicable, unowned), the controls table grouped by family with one control expanded to show its evidence sources] here>
 
@@ -17,11 +28,16 @@ Open it from the **Compliance** tile in the sidebar. It is a cloud feature: the 
 | SOC 2         | Trust Services Criteria (2017, revised points of focus 2022) | 16               |
 | ISO/IEC 27001 | 2022, Annex A                                                | 22               |
 
-Each framework lists only the controls Infrawrench can evidence: for SOC 2, criteria in the monitoring (CC4), access (CC6), system operations (CC7), change management (CC8), risk mitigation (CC9) and availability (A1) families; for ISO 27001, Annex A organizational (5.x) and technological (8.x) controls. Control environment, people, physical security and management-system requirements need evidence from outside the product. Control titles in Infrawrench are short paraphrases; read the id against your own copy of the standard for the authoritative wording.
+Each framework lists only the controls Infrawrench can provide evidence for:
+
+- **SOC 2:** criteria in the monitoring (CC4), access (CC6), system operations (CC7), change management (CC8), risk mitigation (CC9) and availability (A1) families.
+- **ISO 27001:** Annex A organizational (5.x) and technological (8.x) controls.
+
+Control environment, people, physical security and management-system requirements need evidence from outside the product. Control titles in Infrawrench are short paraphrases. Check the id against your own copy of the standard for the official wording.
 
 ## Where the evidence comes from
 
-Every control is mapped to one or more **evidence sources**. Each source reads data Infrawrench already holds; nothing calls a provider while the screen loads.
+Every control is mapped to one or more **evidence sources**, each built from data Infrawrench already holds.
 
 | Source                    | What it shows                                                                                                       | Kind     |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -39,57 +55,57 @@ Every control is mapped to one or more **evidence sources**. Each source reads d
 | Service scorecards        | Every service graded against your scorecards: score, level reached, and each failing check with its reason          | Snapshot |
 | Leaked credentials        | Credentials found committed to code, when each was rotated or dismissed and why, time to rotate, and what is open   | Period   |
 
-**Snapshot** sources describe your organization as it stands when the status is generated; the period does not filter them, and the evidence pack says so. **Period** sources are filtered to the dates you choose.
+**Snapshot** sources show your organization as it stands when the status is generated. The period you pick doesn't filter them, and the evidence pack says so. **Period** sources are filtered to the dates you choose.
 
-### Vulnerability management in detail
+### Vulnerability management
 
-The vulnerability source answers the three questions auditors ask of a vulnerability programme:
+The vulnerability source answers the three questions auditors ask about a vulnerability programme:
 
-- **What is open, and is it running?** Open findings per severity, split by whether the affected artifact runs on a synced resource, plus how many running resources carry a critical or high finding.
-- **Is anything overdue?** Each open finding's age since the scanner first saw it, against fix targets of 15 days (critical), 30 (high), 90 (medium) and 180 (low). These are common remediation targets rather than a framework requirement, and they are printed beside the figures.
-- **How long do fixes take?** Infrawrench records when a finding leaves your scanner's results, so the pack shows the findings fixed during the period and the median days to fix per severity.
+- **What's open, and is it running?** Open findings per severity, split by whether the affected artifact runs on a synced resource, plus how many running resources have a critical or high finding.
+- **Is anything overdue?** Each open finding's age since the scanner first saw it, against fix targets of 15 days (critical), 30 (high), 90 (medium) and 180 (low). These are common remediation targets, not a framework requirement, and they're printed next to the figures.
+- **How long do fixes take?** Infrawrench notes when a finding drops out of your scanner's results, so the pack shows findings fixed during the period and the median days to fix per severity.
 
-A running critical or high finding past its target, a running finding on the CISA Known Exploited Vulnerabilities list, or a scanner whose last read failed counts as a gap. Findings on images nothing runs are reported as figures, not gaps. See [Vulnerabilities](./vulnerabilities.md).
+These count as gaps: a running critical or high finding past its target, a running finding on the CISA Known Exploited Vulnerabilities list, or a scanner whose last read failed. Findings on images nothing runs are reported as figures, not gaps. See [Vulnerabilities](./vulnerabilities.md).
 
-### Service scorecards in detail
+### Service scorecards
 
-The scorecard source shows that operational readiness is evaluated continuously against a bar you wrote down. For every enabled scorecard and every service it applies to, the pack lists the service's score, the level it reaches, the checks it passes, and each failing check with the reason the check gave (for example "No runbook linked"). A check that could not be evaluated counts as failing, the same rule the score uses. It is a snapshot: the results as they stand when the pack is generated. The source also reports the [org grade](./services.md#org-grade) from its stored daily readings inside the period: the latest, the lowest, and how many readings there were.
+The scorecard source shows that you check operational readiness continuously against a bar you wrote down. For every enabled scorecard and every service it applies to, the pack lists the service's score, the level it reaches, the checks it passes, and each failing check with its reason (for example "No runbook linked"). A check that couldn't be evaluated counts as failing, the same as in the score. It's a snapshot of results when the pack is generated. The source also reports the [org grade](./services.md#org-grade) from its daily readings inside the period: the latest, the lowest, and how many readings there were.
 
-A service below the lowest level of a scorecard that applies to it is a gap, because you chose which tiers each scorecard covers. Results more than 48 hours old are a gap too, since scorecards are evaluated hourly and an old result no longer describes the service. A single failing check on a service that still reaches a level is reported as a figure, not a gap. It supports SOC 2 CC4.1 and CC7.2, and ISO 27001 5.37 (documented operating procedures, through the runbook check) and 8.16. See [Services and scorecards](./services.md).
+A service below the lowest level of a scorecard that applies to it is a gap, because you chose which tiers each scorecard covers. Results more than 48 hours old are also a gap, since scorecards run hourly and an old result no longer describes the service. A single failing check on a service that still reaches a level is a figure, not a gap. This source supports SOC 2 CC4.1 and CC7.2, and ISO 27001 5.37 (documented operating procedures, through the runbook check) and 8.16. See [Services and scorecards](./services.md).
 
-### Leaked credentials in detail
+### Leaked credentials
 
-The leaked-credential source answers what an auditor asks of secret handling:
+The leaked-credential source answers what an auditor asks about secret handling:
 
-- **Is anyone looking?** The connected secret scanners, and whether each one's last read worked.
-- **What leaked, and what happened to it?** Every leak detected during the period, plus every leak still open when the pack is generated: where it was found, what it matched, and whether it was rotated (by whom, how, and how many hours after detection), dismissed (with the reason and comment), or resolved on the scanner.
-- **Is anything open too long?** Critical leaks still open more than 24 hours after Infrawrench first saw them. Like the vulnerability fix targets, 24 hours is a common target rather than a framework requirement, and it is printed beside the figures.
+- **Is anyone looking?** Your connected secret scanners, and whether each one's last read worked.
+- **What leaked, and what happened to it?** Every leak found during the period, plus every leak still open when the pack is generated. For each: where it was found, what it matched, and whether it was rotated (by whom, how, and how many hours after it was found), dismissed (with the reason and comment), or resolved on the scanner.
+- **Is anything open too long?** Critical leaks still open more than 24 hours after Infrawrench first saw them. Like the vulnerability targets, 24 hours is a common target, not a framework requirement, and it's printed next to the figures.
 
-An overdue critical leak, or a scanner whose last read failed, counts as a gap. A leak the scanner reports as inactive and that matches nothing Infrawrench holds is reported as a figure. The pack never contains a secret value or any part of one, not even the masked hint shown on screen. It supports SOC 2 CC6.1, CC7.3 and CC7.4, and ISO 27001 5.17, 5.25, 5.26 and 8.12. See [Leaked credentials](./leaked-credentials.md).
+An overdue critical leak, or a scanner whose last read failed, counts as a gap. A leak the scanner reports as inactive and that matches nothing in Infrawrench is reported as a figure. The pack never contains a secret value or any part of one, not even the masked hint you see on screen. This source supports SOC 2 CC6.1, CC7.3 and CC7.4, and ISO 27001 5.17, 5.25, 5.26 and 8.12. See [Leaked credentials](./leaked-credentials.md).
 
-## Control status
+## Read a control's status
 
 Every control has one of three statuses:
 
-- **Evidence present**: at least one of its sources has evidence and none shows a gap.
-- **Gaps**: a source shows a problem (for example, critical posture findings are open, or a protected database has never been restore-tested), or none of its sources produced any evidence. "We could not look" is a gap, never a pass. Expanding the control lists every reason.
-- **Not applicable**: you marked it so, with a written justification. A justification is required, because it is the first thing an auditor reads on a statement of applicability.
+- **Evidence present**: at least one source has evidence and none shows a gap.
+- **Gaps**: a source shows a problem (for example, critical posture findings are open, or a protected database has never been restore-tested), or none of its sources produced any evidence. "We couldn't look" is a gap, never a pass. Expand the control to see every reason.
+- **Not applicable**: you marked it so, with a written justification. The justification is required, since it's the first thing an auditor reads on a statement of applicability.
 
-A source can also be **unavailable** for you: if you lack the permission that reads it (for example `session-recordings:read`), the source says which permission it needs rather than hiding the whole screen.
+A source can also be **unavailable** to you. If you lack the permission it needs (for example `session-recordings:read`), the source tells you which permission, and the rest of the screen still works.
 
-## Owners, applicability and notes
+## Set owners, applicability and notes
 
 Expand a control to set:
 
 - **Applicable**: switch it off and write the justification.
-- **Owner**: a member of your organization, or a free-text label such as a team or alias. If an owner later leaves, the control shows **Former member** so the gap is visible rather than silently unowned.
+- **Owner**: a member of your organization, or a free-text label such as a team or alias. If an owner leaves, the control shows **Former member** so you can see it needs a new owner.
 - **Notes**: anything the auditor should read next to the control.
 
 **Reset** returns a control to applicable and unowned. Changing these needs `org:settings:write`, and every change is recorded in the [audit log](../team-and-billing/audit-log.md).
 
-## Evidence packs
+## Download an evidence pack
 
-**Download evidence pack** builds a ZIP for the chosen framework and period:
+**Download evidence pack** builds a ZIP for the framework and period you chose:
 
 | File                             | Contents                                                                    |
 | -------------------------------- | --------------------------------------------------------------------------- |
@@ -100,24 +116,34 @@ Expand a control to set:
 | `manifest.json`                  | Organization, framework, period, who generated it, and every file's SHA-256 |
 | `SHA256SUMS`                     | The manifest's own hash, then every file's, in `sha256sum -c` format        |
 
-To check a pack has not been altered, unzip it and run `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c SHA256SUMS` on macOS). CSV cells that start with `=`, `+`, `-` or `@` are prefixed with a tab so a spreadsheet shows them as text. Period sources carry at most 10,000 rows each; the source's figures say when there were more.
+To check a pack hasn't been changed, unzip it and run `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c SHA256SUMS` on macOS).
 
-Downloading a pack needs `audit:read` and is recorded in the audit log.
+A few things to know:
 
-### Scheduled packs
+- CSV cells that start with `=`, `+`, `-` or `@` get a leading tab so spreadsheets show them as text.
+- Period sources include at most 10,000 rows each. The source's figures say when there were more.
+- Downloading a pack needs `audit:read` and is recorded in the audit log.
+
+### Send packs on a schedule
 
 Under **Pack schedules**, add a schedule to send a pack automatically:
 
 - **Monthly** sends the previous calendar month's pack on the day you choose.
 - **Quarterly** sends the previous quarter's pack in January, April, July and October.
 
-Email recipients get the ZIP attached. Slack channels get a summary with the ZIP uploaded in the thread (this needs the `files:write` scope on your Slack app; without it the summary still arrives). Microsoft Teams gets the summary and a link, because Teams webhooks cannot carry files. **Send now** builds and sends the pack the next delivery would cover. Scheduled packs are built with full access to every source; creating one needs `org:settings:write`.
+How each destination receives it:
+
+- **Email** recipients get the ZIP attached.
+- **Slack** channels get a summary with the ZIP uploaded in the thread. This needs the `files:write` scope on your Slack app. Without it, the summary still arrives.
+- **Microsoft Teams** gets the summary and a link, because Teams webhooks can't carry files.
+
+**Send now** builds and sends the pack the next delivery would cover. Scheduled packs include every source, whoever set them up. Creating a schedule needs `org:settings:write`.
 
 <insert [The Pack schedules section with a quarterly schedule to two email recipients, showing its next send time and last delivery status] here>
 
 ## Mobile
 
-The mobile app shows each framework's control status read-only: counts, controls with their owners, and the evidence behind each. Editing controls, downloading packs and scheduling them stay on the web and desktop apps.
+The mobile app shows each framework's control status read-only: counts, controls with their owners, and the evidence behind each. Editing controls, downloading packs and scheduling them happen on the web and desktop apps.
 
 ## CLI
 
@@ -128,11 +154,11 @@ infrawrench compliance export --framework soc2 --from 2026-07-01 --to 2026-09-30
 infrawrench compliance frameworks --json
 ```
 
-Every command takes `--json`. `export` writes the ZIP to `--out` (or the server's file name in the current directory).
+Every command takes `--json`. `export` writes the ZIP to `--out`, or to the server's file name in the current directory.
 
 ## Terraform
 
-Control decisions and pack schedules can be managed as code with the [Terraform provider](./terraform-provider.md):
+You can manage control decisions and pack schedules as code with the [Terraform provider](./terraform-provider.md):
 
 ```hcl
 resource "infrawrench_compliance_control" "cc6_6" {

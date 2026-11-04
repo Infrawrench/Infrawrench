@@ -1,97 +1,93 @@
 ---
 title: Account settings
-description: Manage your name, password, two-factor authentication, and active sessions from Settings → General.
+description: Change your name, email and password, set up two-factor authentication, manage active sessions, or delete your account from Settings > General.
 ---
 
-**Settings → General** is your personal account, not the organization's. Everything on this page follows you across every organization you belong to — changing your name or turning on two-factor here applies everywhere you sign in.
+**Settings > General** is for your personal account, not your organization. Changes here follow you into every organization you belong to. Change your name or turn on two-factor here and it applies everywhere you sign in.
 
-Your identity is managed by WorkOS, the same service that handles sign-in. infrawrench never stores your password.
+Your sign-in is handled by WorkOS. Infrawrench never stores your password.
 
 ![Settings → General showing the Profile, Password, Two-factor authentication, and Active sessions cards](https://agent-assets.infrawrench.com/docs-screenshots/features/account-settings/general-cards.png)
 
-## Confirming it's you
+## Confirm it's you
 
-Changing your email, generating a password link, adding or removing two-factor, and signing out every other device all need a **recent sign-in** — not just a valid session. If you last signed in more than ten minutes ago, infrawrench sends you back through sign-in first and returns you to the page you were on. Nothing you had typed is submitted until you're back.
+Some actions need a **recent sign-in**, not just a valid session: changing your email, getting a password link, adding or removing two-factor, and signing out your other devices. If you last signed in more than ten minutes ago, you're sent through sign-in first and then brought back to the same page. Nothing you typed is submitted until you're back.
 
-This is deliberately stricter than the rest of the app. A session cookie lasts a long time by design, and each of these actions can hand over the account permanently — so a laptop left open, or a session someone else got hold of, shouldn't be enough on its own.
+Sessions last a long time, and each of these actions could hand over your account for good, so a laptop left open shouldn't be enough. Everything else in settings works with any valid session.
 
-Everything else in settings works from any valid session.
+## Update your profile
 
-## Profile
+Edit your **first name** and **last name** and click **Save changes**. Your name appears in [team lists](../team-and-billing/organizations-and-invites.md), the [audit log](../team-and-billing/audit-log.md), and anywhere a resource records who changed it.
 
-Edit your **first name** and **last name** and press **Save changes**. The name appears next to you in [team lists](../team-and-billing/organizations-and-invites.md), the [audit log](../team-and-billing/audit-log.md), and anywhere a resource records who changed it.
+If your email shows as **Unverified**, click **Resend verification email** for a new link.
 
-If your email shows as **Unverified**, use **Resend verification email** to get a fresh link.
+If you signed in with Google, Microsoft, GitHub, Apple or Salesforce, it shows under **Connected accounts**, and your starting email is the one that provider gave us.
 
-If you signed in with Google, Microsoft, GitHub, Apple, or Salesforce, those show under **Connected accounts**, and the address you started with is whatever that provider gave us.
+### Change your email
 
-### Changing your email
+Your email is what you sign in with, so changing it takes two steps.
 
-Your email is the identifier you sign in with, so changing it moves your account — it's confirmed in two steps.
+1. Click **Change email** next to your address.
+2. Enter the new address and click **Send confirmation code**.
+3. Get the code from the **new** mailbox and enter it.
 
-1. **Change email** next to your address.
-2. Enter the new address and press **Send confirmation code**.
-3. Read the code from the **new** mailbox and enter it.
+Nothing changes until you enter that code. If you close the dialog, mistype the address or never get the code, your account stays as it was, so you can't lock yourself out with an address you can't read. The code expires after a few minutes. Start again for a new one.
 
-Nothing moves until that code comes back. Close the dialog, mistype the address, or never receive the code, and your account stays exactly where it is — so there's no way to strand yourself on an address you can't read. The code expires after a few minutes; start again for a fresh one.
+If the new address already belongs to another Infrawrench account, the first step fails and tells you.
 
-If the new address already belongs to another infrawrench account, the first step fails and tells you so.
+> **If you sign in with Google or SSO**, changing your address here doesn't change it with that provider. You'll keep signing in through the provider as before. This only changes the address Infrawrench has for you. Make sure you can still get in before relying on it.
 
-> **If you sign in with Google or SSO**, changing your address here does not change it at the provider. You'll still sign in through that provider as before — this only changes the address infrawrench knows you by. Make sure you can still get in before you rely on it.
+## Change your password
 
-## Password
+**Change password** opens a one-time link to a password page where you set a new one.
 
-**Change password** opens a one-time link to the hosted password page, where you can set a new one.
+You can also use this to _add_ a password to an account that has only ever signed in with Google or SSO. That gives you a fallback if the identity provider is down. The link works once and expires, and you can get a new one any time.
 
-This is also how you _add_ a password to an account that has only ever signed in through Google or SSO — useful if you want a fallback that doesn't depend on the identity provider being reachable. The link is single-use and expires; generate a new one any time.
+## Set up two-factor authentication
 
-## Two-factor authentication
+Add a code from an authenticator app (TOTP) as a second step when you sign in.
 
-Add a time-based one-time password (TOTP) from an authenticator app as a second step at sign-in.
-
-1. **Settings → General → Add authenticator app**.
-2. Scan the QR code with your authenticator app, or copy the setup key and enter it manually.
-3. Type the six-digit code the app shows and press **Turn on two-factor**.
+1. Go to **Settings > General > Add authenticator app**.
+2. Scan the QR code with your authenticator app, or copy the setup key and enter it by hand.
+3. Type the six-digit code the app shows and click **Turn on two-factor**.
 
 ![Add authenticator app dialog showing the QR code, manual setup key, and six-digit code field](https://agent-assets.infrawrench.com/docs-screenshots/features/account-settings/add-authenticator-app.png)
 
-The factor is only active once you've entered a valid code — closing the dialog before that discards it. You can enrol more than one app (for example a phone and a desktop client) so losing one device doesn't lock you out.
+Two-factor only turns on once you enter a valid code. If you close the dialog before that, it's discarded. You can add more than one app (say, a phone and a desktop client) so losing one device doesn't lock you out.
 
-To remove one, press **Remove** next to it. Removing your last factor turns two-factor off for your account.
+To remove an app, click **Remove** next to it. Removing your last one turns two-factor off.
 
-> Whether two-factor is _required_ at sign-in — for you or for everyone in your organization — is a policy set in the WorkOS dashboard by whoever administers your authentication. Enrolling here makes the factor available; it doesn't by itself force a challenge.
+> Whether two-factor is _required_ at sign-in, for you or for your whole organization, is a policy set in the WorkOS dashboard by whoever manages your authentication. Adding an app here makes two-factor available, but doesn't force it on its own.
 
-## Active sessions
+## Manage active sessions
 
-Every place you're currently signed in: the web app, the [desktop app](../core-concepts/desktop-vs-web.md), the [CLI](./cli.md), and [mobile](./mobile-app.md). Each row shows the browser or app, the IP address, the sign-in method, and when the session started. The one you're using right now is marked **This device**.
+This lists everywhere you're signed in: the web app, the [desktop app](../core-concepts/desktop-vs-web.md), the [CLI](./cli.md) and [mobile](./mobile-app.md). Each row shows the browser or app, IP address, sign-in method and when the session started. The one you're using now is marked **This device**.
 
-- **Sign out** on a single row ends that one session.
-- **Sign out other sessions** ends every session except the one you're using — the fastest response to a lost laptop or phone.
+- **Sign out** on a row ends that session.
+- **Sign out other sessions** ends every session except this one. It's the fastest thing to do if you lose a laptop or phone.
 
-Signing out a session invalidates it immediately; that device has to sign in again. To end your _current_ session, use the normal sign-out in the app menu.
+A signed-out session stops working immediately and that device has to sign in again. To end your _current_ session, use the normal sign-out in the app menu.
 
-## Deleting your account
+## Delete your account
 
-At the bottom of **Settings → General** is **Delete account**. It permanently removes your account, your [SSH keys](../team-and-billing/ssh-keys.md), your [API keys](../team-and-billing/api-keys.md), your push devices, your chat history, and your membership of every organization. It cannot be undone, and it needs a recent sign-in like the other sensitive actions.
+**Delete account** is at the bottom of **Settings > General**. It permanently removes your account, your [SSH keys](../team-and-billing/ssh-keys.md), your [API keys](../team-and-billing/api-keys.md), your push devices, your chat history and your membership of every organization. It can't be undone, and it needs a recent sign-in.
 
-What happens to your organizations depends on who else is in them, and the page tells you before you confirm:
+What happens to your organizations depends on who else is in them. The page tells you before you confirm:
 
-- **You're the only member** — the organization is deleted with your account, along with every account, resource, dashboard and workflow in it. An active subscription is cancelled at the same time.
-- **Other people are in it, and another owner exists** — you simply leave. The organization and everything in it carries on.
-- **Other people are in it and you're the only owner** — the **Delete account** button is disabled and the organizations are named. Promote someone else to owner in [**Settings → Team**](../team-and-billing/roles-and-permissions.md) first. Nothing is deleted in the meantime.
+- **You're the only member:** the organization is deleted with your account, along with every account, resource, dashboard and workflow in it. Any active subscription is cancelled.
+- **Others are in it and there's another owner:** you leave. The organization carries on.
+- **Others are in it and you're the only owner:** the **Delete account** button is disabled and those organizations are listed. Make someone else an owner in [**Settings > Team**](../team-and-billing/roles-and-permissions.md) first. Nothing is deleted until then, and there's no override.
 
-That last case is the only thing standing between one person leaving and a team losing its organization, so there's no override for it.
+Clicking the button doesn't delete anything yet. It opens a dialog where you type **your email address** exactly, and only then does the dialog's own **Delete account** button become clickable.
 
-The button on the card does not delete anything — it opens a confirmation dialog that asks you to type **your email address**, exactly, before its own **Delete account** button becomes clickable. So the warning is on the card and the typed confirmation is in the dialog that follows it.
-
-Your entries in an organization's [audit log](../team-and-billing/audit-log.md) stay, since they're that organization's record rather than yours — they just stop showing a name. The deletion itself is recorded in every organization you were a member of.
+Your entries in an organization's [audit log](../team-and-billing/audit-log.md) stay, because they belong to that organization, but they no longer show your name. The deletion is recorded in every organization you were in.
 
 ![Settings → General Delete account card showing the "you are the only member of this organization, so it will be deleted too" warning above the Delete account button](https://agent-assets.infrawrench.com/docs-screenshots/features/account-settings/delete-account-card.png)
 
 ## On mobile
 
-The mobile app mirrors all of this under **Settings → (your email)**: profile, password reset, two-factor enrolment, session management, and account deletion, against the same account. Deleting there signs you straight out and returns you to the sign-in screen.
+The mobile app has all of this under **Settings > (your email)**: profile, password reset, two-factor, sessions and account deletion. Deleting your account there signs you out and takes you back to the sign-in screen.
 
 ## API
 
-These same operations are available over HTTP under `/api/profile` — see the [OpenAPI reference](../team-and-billing/openapi.md). They're user-scoped, so they authenticate with a session cookie or a WorkOS access token rather than an organization [API key](../team-and-billing/api-keys.md).
+The same actions are available under `/api/profile`. See the [OpenAPI reference](../team-and-billing/openapi.md). They act on your user, so they authenticate with a session cookie or a WorkOS access token, not an organization [API key](../team-and-billing/api-keys.md).

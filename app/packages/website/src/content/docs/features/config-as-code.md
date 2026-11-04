@@ -3,7 +3,7 @@ title: Config as code
 description: Export your organization's dashboards, workflows, budgets, graphs, alert rules and policies as one JSON document, keep it in git, and apply it back.
 ---
 
-Everything you configure in Infrawrench that isn't a provider account or a live resource can be exported as a single JSON document, committed to git, reviewed like any other change, and applied back — to the same organization for disaster recovery, or to a different one to seed a staging environment, a demo, or a new client's workspace.
+You can export everything you've set up in Infrawrench (apart from provider accounts and live resources) as one JSON document. Commit it to git, review changes like any other code, and apply it back. Apply it to the same organization to recover from a mistake, or to a different one to set up a staging environment, a demo or a new client's workspace.
 
 ![The Config as Code settings page, with the export section's checkboxes and the import panel showing a plan](https://agent-assets.infrawrench.com/docs-screenshots/features/config-as-code/export-and-plan.png)
 
@@ -15,42 +15,42 @@ Everything you configure in Infrawrench that isn't a provider account or a live 
 | `customGraphs`  | Each [custom graph](./custom-graphs.md)'s name, description and source                                                                    |
 | `workflows`     | Each [workflow](./workflows.md)'s source, trigger, declared metrics, enabled                                                              |
 | `dashboards`    | Every [dashboard](./dashboard.md), its name, its cards in grid order, and the roles defaulting to it                                      |
-| `metricAlerts`  | [Metric alert rules](./metric-alerts.md) — selector, condition, cooldown                                                                  |
-| `probes`        | [Synthetic probes](./synthetic-probes.md) — URL, interval, failure threshold                                                              |
+| `metricAlerts`  | [Metric alert rules](./metric-alerts.md): selector, condition, cooldown                                                                   |
+| `probes`        | [Synthetic probes](./synthetic-probes.md): URL, interval, failure threshold                                                               |
 | `slos`          | [SLOs](./slos.md): source (probe key or resource), target, window, alerting                                                               |
 | `costCentres`   | Cost centres and their [allocation rules](./tag-policy-and-showback.md)                                                                   |
 | `tagPolicy`     | The org's required tags and whether they're enforced at create time                                                                       |
 | `alertSettings` | Cost anomaly tuning, drift/expiry/posture/extended-support alerting, the idle resource rules (`idleFindings`), the weekly digest schedule |
 | `savingsViews`  | [Saved views](./savings-findings.md#saved-views) over the savings findings list, accounts by name                                         |
 
-## What's deliberately not
+## What's not in it
 
-- **Accounts and credentials.** An export must never be a way to walk off with an organization's provider keys. Connect accounts in the target organization first.
-- **Resources.** They belong to the provider, not to Infrawrench. A dashboard's resource pins are carried by provider, type, external id and account _name_ — if the target organization has synced the same resource, the pin lands; if not, that one card is skipped and reported.
-- **Workflow webhook signing secrets.** Write-only by design: the API never returns one, so no document can leak or set one. After importing a git-triggered workflow, set its secret again.
-- **History and throttle state.** Firing history, run logs, cooldown claims, change freezes. Restoring a cooldown claim from a config file would re-open a quiet period and page people twice.
+- **Accounts and credentials.** An export can never be used to take an organization's provider keys. Connect accounts in the target organization first.
+- **Resources.** These belong to your provider. A dashboard card pinned to a resource is saved by provider, type, external id and account _name_. If the target organization has synced the same resource, the card works. If not, that card is skipped and reported.
+- **Workflow webhook signing secrets.** These are never returned, so a document can't leak or set one. After importing a git-triggered workflow, set its secret again.
+- **History and alert state.** Firing history, run logs, cooldowns and change freezes aren't included, so a restore won't page people twice.
 
 ### Role default dashboards
 
-A dashboard's `defaultForRoles` lists the roles whose members [land on it](./dashboard.md#default-dashboards), by role name (case does not matter). Roles themselves are not in the document, so the names have to exist in the target organization; one that doesn't, or a role that can't view dashboards or can't see this one, is skipped and reported. Leaving the field out leaves role defaults as they are, and `[]` clears every role currently defaulting to that dashboard. A role can be named by one dashboard only.
+A dashboard's `defaultForRoles` lists the roles whose members [land on it](./dashboard.md#default-dashboards), by role name (not case sensitive). Roles aren't in the document, so those names must exist in the target organization. A role that doesn't exist, can't view dashboards or can't see this dashboard is skipped and reported. Leave the field out to keep role defaults as they are, or set `[]` to clear every role defaulting to that dashboard. Each role can only be named by one dashboard.
 
 ```json
 { "key": "spend-overview", "name": "Spend overview", "defaultForRoles": ["Finance"], "cards": [] }
 ```
 
-## Keys, not ids
+## How items are matched
 
-Every entity in the document is addressed by a **key** — a slug derived from its name, like `monthly-cloud-spend` — never by a database id. That's what lets one document apply to any organization, and it's what an import matches on:
+Every item in the document has a **key**, a slug made from its name like `monthly-cloud-spend`. Keys are what let one document apply to any organization, and an import matches on them:
 
 - A key the target doesn't have is **created**.
-- A key it has is **updated** — including when the name changed. Renaming an entity while keeping its key is a rename, not a delete-and-recreate.
-- A key the document doesn't mention is left alone, unless you ask for replace mode.
+- A key it already has is **updated**, even if the name changed. Renaming an item but keeping its key is a rename, not a delete and recreate.
+- A key the document doesn't mention is left alone, unless you use replace mode.
 
-Cross-references work the same way. A budget card on a dashboard names the budget's key, and so does a [KPI card](./dashboard.md#kpi-cards) over a budget; a workflow with a budget trigger names the budget's key. Both are resolved against the document (and the target organization) at import time.
+References between items use keys too. A budget card or [KPI card](./dashboard.md#kpi-cards) on a dashboard names the budget's key, and so does a workflow with a budget trigger.
 
-## Export
+## Export your config
 
-**In the app:** **Settings → Config as Code → Download infrawrench.json**. Tick the sections you want.
+**In the app:** go to **Settings > Config as Code > Download infrawrench.json** and tick the sections you want.
 
 **From the [CLI](./cli.md):**
 
@@ -60,26 +60,26 @@ infrawrench config export --sections budgets,workflows --out spend.json
 infrawrench config export | jq .            # no --out: straight to stdout
 ```
 
-Ordering is stable and the same organization exports byte-identically until something actually changes — so `git diff` on the committed file is a real diff of your configuration, not churn.
+Exports are stable. The same organization exports exactly the same file until something actually changes, so `git diff` shows real configuration changes, not noise.
 
-## Import
+## Import a document
 
-Importing is always two steps: **plan**, then **apply**. The plan validates the document, resolves its references against the target organization, and lists exactly what would be created, updated and deleted, without writing anything.
+Importing is always two steps: **plan**, then **apply**. The plan checks the document, matches it against the target organization and lists exactly what would be created, updated and deleted, without changing anything.
 
 ```bash
-infrawrench config plan  -f infrawrench.json      # dry run — safe on any org
+infrawrench config plan  -f infrawrench.json      # dry run, safe on any org
 infrawrench config apply -f infrawrench.json      # shows the plan, then asks
 ```
 
-In the app, **Settings → Config as Code → Import** does the same: paste or choose a file, hit **Preview changes**, and the apply button only appears once you've seen the list.
+In the app, go to **Settings > Config as Code > Import**. Paste or choose a file and click **Preview changes**. The apply button only appears after you've seen the list.
 
-The whole document is applied in one database transaction. If any part fails, nothing changes — an organization is never left halfway between two configurations.
+The whole document applies at once. If any part fails, nothing changes, so your organization is never left half updated.
 
-### Merge vs replace
+### Merge or replace
 
-By default an import **merges**: it creates and updates what the document names and leaves everything else alone. Safe to run against a live organization.
+By default an import **merges**. It creates and updates what the document names and leaves everything else alone, so it's safe on a live organization.
 
-`--prune` (the **Delete anything the document doesn't name** checkbox) switches to **replace**: entities the document doesn't name are deleted too — but only within the sections the document actually carries. A document with only a `budgets` section can never touch your workflows, whichever mode you use. The default dashboard is never deleted.
+`--prune` (the **Delete anything the document doesn't name** checkbox) switches to **replace**. Items the document doesn't name are deleted too, but only in the sections the document includes. A document with only a `budgets` section can never touch your workflows, in either mode. The default dashboard is never deleted.
 
 ```bash
 # Make staging an exact copy of production's dashboards and budgets
@@ -87,42 +87,45 @@ infrawrench config export --sections dashboards,budgets --out prod.json --org pr
 infrawrench config apply -f prod.json --prune --org staging
 ```
 
-### In CI
+### Run it in CI
 
-`config plan` writes nothing and only needs read access, so it's the natural pull-request check:
+`config plan` changes nothing and only needs read access, so it works well as a pull request check:
 
 ```yaml
 - run: infrawrench config plan -f infrawrench.json
 ```
 
-`config apply` refuses to run without confirmation on a non-interactive terminal. Pass `-y` once the plan has been reviewed:
+`config apply` won't run without confirmation in a non-interactive terminal. Once the plan has been reviewed, pass `-y`:
 
 ```yaml
 - run: infrawrench config apply -f infrawrench.json -y
 ```
 
-## Things a document can't do, and what it says instead
+## When something can't be applied
 
-A restore is never held hostage by one dangling reference. Anything the target organization can't satisfy is reported under **Not applied** (or in the plan's `unresolved` list) and skipped, while the rest of the document still applies:
+One broken reference won't block the rest of your import. Anything the target organization can't support is listed under **Not applied** (or in the plan's `unresolved` list) and skipped, and everything else still applies:
 
-- A resource pin for a resource nobody has synced yet — sync the account and apply again.
-- An account name the target organization hasn't connected (on a resource pin, an allocation rule, or the drift alert scope).
-- A workflow whose budget trigger names a budget the document doesn't define — the workflow is imported with a manual trigger rather than one that would silently never fire.
+- A card pinned to a resource nobody has synced yet. Sync the account and apply again.
+- An account name the target organization hasn't connected (on a resource pin, an allocation rule or the drift alert scope).
+- A workflow whose budget trigger names a budget the document doesn't define. The workflow is imported with a manual trigger instead.
 
-Two things are refused outright rather than reported, because guessing would be worse than failing: a drift alert scope that resolves to no accounts at all (an empty scope means _every_ account, so dropping unknown names would widen alerting), and a probe or widget whose settings the normal editor would also have rejected.
+Two things fail the import instead of being skipped:
 
-## Or manage objects one at a time, with Terraform
+- A drift alert scope that matches no accounts at all. An empty scope means _every_ account, so dropping unknown names would widen your alerts.
+- A probe or widget with settings the normal editor would also reject.
 
-A document moves a whole organization at once, which is what makes it right for cloning, seeding a staging org, or a restore. It is the wrong shape for "this one budget lives in the platform team's git repo and changes go through review": the document addresses entities by name rather than by id, applies in one transaction, and in `--prune` mode deletes anything it doesn't name.
+## Manage single objects with Terraform
 
-For that, use the [Terraform provider](./terraform-provider.md) instead. It manages individual Infrawrench objects — budgets, cost centres, allocation rules, tag policy, saved filters, reports, cost alerts, scenario models, billing rules and exports — as Terraform resources, with per-object plans, drift detection and `terraform import`. It also reaches objects this document has no section for.
+A document moves a whole organization at once. That's ideal for cloning, setting up staging or restoring. It's not a good fit when one budget lives in the platform team's repo and changes go through review, because the document applies everything together and `--prune` deletes anything it doesn't name.
 
-The two coexist: seed an organization with a document, then adopt the pieces you want under continuous review into Terraform.
+For that, use the [Terraform provider](./terraform-provider.md). It manages individual Infrawrench objects (budgets, cost centres, allocation rules, tag policy, saved filters, reports, cost alerts, scenario models, billing rules and exports) as Terraform resources, with per-object plans, drift detection and `terraform import`. It also covers objects this document doesn't.
+
+You can use both: set up an organization with a document, then move the pieces you want under ongoing review into Terraform.
 
 ## Permissions
 
-Exporting needs `config:read`; importing needs `config:write`. Owners and admins have both.
+Exporting needs `config:read`. Importing needs `config:write`. Owners and admins have both.
 
-Both also require the per-section permission for every section involved — so `config:write` can't be used to reach past a role that deliberately withholds `workflows:write`. Export refuses rather than quietly omitting a section you can't read: a partial document looks complete, and applying it with `--prune` would delete everything the exporter wasn't allowed to see.
+You also need the permission for each section involved, so `config:write` can't get around a role that doesn't have `workflows:write`. If you can't read a section, the export fails instead of leaving it out. A partial document would look complete, and applying it with `--prune` would delete what you couldn't see.
 
 Every export and apply is recorded in the [audit log](../team-and-billing/audit-log.md).
