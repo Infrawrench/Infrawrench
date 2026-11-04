@@ -1,26 +1,26 @@
 ---
 title: Custom graphs
-description: Script-defined dashboard charts — query costs, metrics, or any API from a sandboxed script that declares its own chart, controls, and refresh policy.
+description: Build your own dashboard charts with a short script that queries costs, metrics or any API, and declares its own chart, controls and refresh interval.
 sidebar_order: 7
 ---
 
-Cost graphs and budgets cover collected spend, but sometimes the chart you want doesn't exist yet: spend per customer, error rate against a price line, a number your own API reports. **Custom graphs** are small TypeScript scripts that run in a server-side sandbox, gather whatever data they need, and describe the chart to draw — including the select menus, checkboxes, and buttons shown on the card, and how often it should refresh.
+Cost graphs and budgets cover the spend Infrawrench collects. Sometimes the chart you want doesn't exist yet: spend per customer, error rate against a price line, or a number your own API reports. **Custom graphs** let you build it. You write a small TypeScript script that gathers the data and describes the chart, including any select menus, checkboxes and buttons on the card, and how often it refreshes.
 
-Custom graphs are available on the **paid plan** and are cloud-only (the script runs against your organization's cloud data).
+Custom graphs are on the **paid plan** and are cloud only.
 
 ## What a graph script can do
 
-The script runs against a global `graph` object:
+Your script gets a global `graph` object:
 
-- `graph.costs.query({ days, groupBy, filters, binning, topN })` — your organization's collected spend, the same data behind cost graphs, returned chart-ready.
-- `graph.carbon.estimate({ windowDays })`: the organization's [estimated carbon](./carbon.md), grouped by provider, region and account, with what could not be estimated.
-- `graph.resources.list(filter)` — list resources (for building your own pickers).
-- `graph.metrics(resourceId, { hours })` — provider metric series (CPU, bandwidth, …) for one resource.
-- `fetch(url, init)` — external HTTP APIs, through the same egress proxy workflows use (public addresses only).
-- `graph.data.get/set/delete/list` — a private key/value store persisted between runs, for caches and baselines.
-- `graph.controls.select/checkbox/text/number/button` — declare the card's controls and read their current values synchronously.
-- `infra.accounts.<plugin>` — **read-only access to your connected accounts**, the same tree [workflows](./workflows.md) get: list and fetch resources, resolve outputs, read logs, describe, read manifests, run SQL queries, read KV keys, fetch metrics — and run **SSH commands** with `resource.ssh(cmd)`. Nothing that provisions or mutates: `create`, `update`, `delete`, `applyManifest`, `importYaml`, and `publish` are not available in graphs (and don't appear in the editor's typings).
-- `graph.render({ title, chart, refreshSeconds, notice })` — say what to draw: `line`, `area`, `stacked_bar`, `multi_bar`, `pie`, `stat`, or `table`.
+- `graph.costs.query({ days, groupBy, filters, binning, topN })`: your organization's collected spend, the same data behind cost graphs, ready to chart.
+- `graph.carbon.estimate({ windowDays })`: your organization's [estimated carbon](./carbon.md), grouped by provider, region and account, plus what couldn't be estimated.
+- `graph.resources.list(filter)`: list resources, for example to build your own pickers.
+- `graph.metrics(resourceId, { hours })`: provider metric series (CPU, bandwidth and so on) for one resource.
+- `fetch(url, init)`: call external HTTP APIs (public addresses only).
+- `graph.data.get/set/delete/list`: a private key/value store that persists between runs, for caches and baselines.
+- `graph.controls.select/checkbox/text/number/button`: declare the card's controls and read their current values.
+- `infra.accounts.<plugin>`: **read-only access to your connected accounts**, the same as [workflows](./workflows.md) get. You can list and fetch resources, resolve outputs, read logs, describe, read manifests, run SQL queries, read KV keys, fetch metrics, and run **SSH commands** with `resource.ssh(cmd)`. Nothing that creates or changes things is available: `create`, `update`, `delete`, `applyManifest`, `importYaml` and `publish` don't work in graphs.
+- `graph.render({ title, chart, refreshSeconds, notice })`: say what to draw. Chart types are `line`, `area`, `stacked_bar`, `multi_bar`, `pie`, `stat` and `table`.
 
 A minimal graph:
 
@@ -46,30 +46,52 @@ graph.render({
 });
 ```
 
-Changing a control, pressing a declared button, or the `refreshSeconds` timer elapsing re-runs the script with the current control values; `graph.event.button` tells the script which button was pressed, so a button can reset a baseline or clear a cached value in `graph.data`.
+The script runs again when you change a control, press a button you declared, or the `refreshSeconds` timer runs out. `graph.event.button` tells the script which button was pressed, so a button can, for example, reset a baseline or clear a cached value in `graph.data`.
 
-## Creating one
+## Create a graph
 
-On a dashboard, choose **+ → Custom graph**, then either pick an existing graph or name a new one — a new graph opens in the script editor, seeded with a working example. The editor type-checks against the `graph` API and previews the saved script live, controls included.
+1. On a dashboard, choose **+ > Custom graph**.
+2. Pick an existing graph, or name a new one.
+3. A new graph opens in the script editor with a working example. The editor checks your code against the `graph` API and shows a live preview of the saved script, controls included.
 
 ![Dashboard with a custom graph card showing a chart, a Range select, and a checkbox, with the "+" add menu open showing the Custom graph entry](https://agent-assets.infrawrench.com/docs-screenshots/features/custom-graphs/dashboard-card-add-menu.png)
 
 ![The custom graph script editor: Monaco on the left with graph API autocomplete, live preview pane on the right showing the rendered chart and its controls](https://agent-assets.infrawrench.com/docs-screenshots/features/custom-graphs/script-editor-preview.png)
 
-The same graph can sit on any number of dashboards; removing a card leaves the graph itself alone, and deleting a graph removes every card showing it. The picker doubles as the management surface — hover a row to edit a graph's script or delete it outright, including graphs that currently sit on no dashboard at all.
+You can put the same graph on as many dashboards as you like. Removing a card leaves the graph alone. Deleting a graph removes every card that shows it.
 
-## Creating one with AI
+The picker is also where you manage graphs. Hover a row to edit its script or delete it, including graphs that aren't on any dashboard.
 
-Custom graphs are designed to be written by an AI over [MCP](../team-and-billing/openapi.md) or the in-app chat. The model calls `get_custom_graph_typings` for the full `graph` API, writes the script with `write_custom_graph` (the source is type-checked before saving; errors are returned as diagnostics instead of being persisted), and verifies it with `render_custom_graph`. In the in-app chat, a `write_custom_graph` call that sets the source waits for your approval first, because the script can run SSH commands whenever the graph renders. Ask for "a graph of our egress spend against the bandwidth metrics of the CDN droplets, with a toggle for daily/weekly" and pin the result.
+## Create a graph with AI
 
-## Who infrastructure access runs as
+You can ask an AI to write a graph for you over [MCP](../team-and-billing/openapi.md) or in the in-app chat. It uses these tools:
 
-A graph renders for anyone who can see the dashboard, so `infra.*` cannot run with the viewer's permissions — it runs with the **author's**: whoever last saved the script. Reads need the author to hold `resources:read` (`storage:read` for buckets); SSH, SQL, and KV need `resources:execute`. The check uses the author's _current_ role on every render, so a demoted or removed author's graphs stop reaching infrastructure immediately. Editing someone else's script makes you its author — you can't borrow a more privileged author's access by appending to their graph.
+- `get_custom_graph_typings` to get the full `graph` API.
+- `write_custom_graph` to save the script. The code is checked before saving, and any errors come back instead of being saved.
+- `render_custom_graph` to check the result.
 
-## Sandbox and limits
+In the in-app chat, a `write_custom_graph` call that sets the script waits for your approval first, because the script can run SSH commands whenever the graph renders.
 
-Graph scripts run in the same QuickJS isolate as [workflows](./workflows.md), with a tighter budget: 30 seconds of execution, 64 MiB of memory, and per-run caps on cost queries, metric lookups, fetches, and data-store operations. The script is read-only over your organization — it cannot create, modify, or delete resources, `fetch` can only reach public addresses, and SSH is capped at 10 commands of 30 seconds each per render. The data store holds up to 200 keys of 64 KiB each, private to the graph.
+Try asking for "a graph of our egress spend against the bandwidth metrics of the CDN droplets, with a toggle for daily/weekly", then pin the result.
 
-## Where they render
+## Whose access a graph uses
 
-Web, desktop (cloud mode), and the [mobile app](./mobile-app.md) all render custom graph cards, controls included — on the phone, selects become chip rows. Editing the script needs a code editor, so authoring lives on web and desktop; the phone adds existing graphs to dashboards and interacts with their controls.
+Anyone who can see the dashboard can see the graph, so `infra.*` runs with the **author's** permissions, not the viewer's. The author is whoever last saved the script.
+
+- Reads need the author to have `resources:read` (`storage:read` for buckets).
+- SSH, SQL and KV need `resources:execute`.
+
+The author's current role is checked every time the graph renders. If the author is demoted or removed, their graphs stop reaching your infrastructure straight away. If you edit someone else's script, you become its author, so you can't borrow a more privileged person's access.
+
+## Limits
+
+- 30 seconds of run time and 64 MiB of memory per run.
+- Per-run limits on cost queries, metric lookups, fetches and data store operations.
+- Read-only: a script can't create, change or delete resources.
+- `fetch` can only reach public addresses.
+- SSH is limited to 10 commands of 30 seconds each per render.
+- The data store holds up to 200 keys of 64 KiB each, private to the graph.
+
+## Where graphs show
+
+Custom graph cards, controls included, show on web, desktop (cloud mode) and the [mobile app](./mobile-app.md). On a phone, selects become rows of chips. You write and edit scripts on web and desktop. On the phone you can add existing graphs to dashboards and use their controls.

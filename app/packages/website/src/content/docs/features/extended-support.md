@@ -4,41 +4,41 @@ description: Find clusters and databases billed at extended-support or end-of-li
 sidebar_order: 15
 ---
 
-Managed Kubernetes and managed databases are priced on the assumption that you keep upgrading. When a version leaves its provider's standard support window, one of two things happens: the provider starts billing a surcharge for as long as you stay on it (Amazon EKS charges an extra $0.50 per cluster-hour, RDS Extended Support bills per vCPU-hour and doubles in year three), or it schedules an upgrade for you. Both are knowable from the version a resource runs, and both tend to be noticed only when the invoice or the maintenance window arrives.
-
-Each finding here also appears in the [savings findings](./savings-findings.md) list at the top of the Savings tab, where it gets a status (Ready for review, In progress, Completed, Archived), a detected date, and a place in saved views.
+Managed Kubernetes and managed databases are priced on the assumption that you keep upgrading. When a version leaves its provider's standard support window, one of two things happens. Either the provider starts charging a surcharge for as long as you stay on it (Amazon EKS charges an extra $0.50 per cluster-hour, and RDS Extended Support bills per vCPU-hour and doubles in year three), or it schedules an upgrade for you. Most teams only notice when the invoice or the maintenance window arrives. This page helps you catch it first.
 
 Infrawrench checks the version of every synced cluster and database against its provider's published support calendar and lists:
 
 - resources **paying an extended-support surcharge** now, with the monthly amount an upgrade removes
 - resources **past the end of support**, which the provider can upgrade at any time
-- resources **out of standard support with no surcharge**, because the provider offers no paid extension or the resource is not enrolled in one, so a forced upgrade is pending
+- resources **out of standard support with no surcharge** (the provider offers no paid extension, or the resource isn't enrolled in one), so a forced upgrade is coming
 - resources whose standard support **ends soon**, with what the surcharge will cost once it starts
+
+Each finding also appears in the [savings findings](./savings-findings.md) list at the top of the Savings tab, where it gets a status (Ready for review, In progress, Completed, Archived), a detected date and a place in saved views.
 
 ## Where to find it
 
-Open **Costs** in the sidebar, go to the **Savings** tab, and find **Extended support**. A line at the top totals what you pay now and what is about to start. Each row shows the resource, its current and target version, where it stands on the calendar (when standard support ended or ends, and when the provider upgrades it), the monthly surcharge, and a link to the provider's upgrade guide.
+Open **Costs** in the sidebar, go to the **Savings** tab and find **Extended support**. A line at the top totals what you pay now and what's about to start. Each row shows the resource, its current and target version, where it stands on the calendar (when standard support ended or ends, and when the provider upgrades it), the monthly surcharge, and a link to the provider's upgrade guide.
 
 <insert [Costs page Savings tab showing the Extended support section: the "Paying now / Starting soon" totals line, an EKS cluster row "Amazon EKS 1.32 → 1.35" marked "Paying extended support" with $365/mo billed, an RDS for MySQL 5.7 row in year 3, and an upcoming row] here>
 
-The same list is on the mobile app's Costs tab (under **Savings**), in the `infrawrench extended-support` CLI subcommand, and as the `list_extended_support` [MCP tool](./mcp.md). On desktop it works in both modes: signed in it shows your organization, in local-only mode it checks the resources in your local workspace (at list price, since billing is not read locally).
+The same list is on the mobile app's Costs tab (under **Savings**), in the `infrawrench extended-support` CLI subcommand, and as the `list_extended_support` [MCP tool](./mcp.md). On desktop it works in both modes. Signed in, it shows your organization. In local-only mode, it checks the resources in your local workspace, at list price only.
 
 ## Where the monthly figure comes from
 
 Each figure says which of these it is:
 
-- **billed**: what the provider actually charged over the last 30 days, scaled to a month. AWS is read from Cost Explorer's extended-support usage types (for example `AmazonEKS-Hours:extendedSupport` and `ExtendedSupport:Yr3:MySQL5.7`). The credential needs `ce:GetCostAndUsage` and `ce:GetDimensionValues`. The policy the AWS credential check generates includes both; a policy written before this feature may need `ce:GetDimensionValues` added, and until then the rows show list price with a note saying so.
-- **share of billed**: billing names the region and engine but not the resource, so when several of your resources match the same billed line it is split between them by their list-price weight.
-- **list price**: computed from the provider's published rate for the resource's size. List prices are for one reference region (hover the figure to see which); other regions are often higher, which is why a billed figure always wins when one exists.
-- **not priced / no surcharge**: the provider prices the surcharge relative to something Infrawrench cannot see (ElastiCache bills a percentage of each node's on-demand price), the size is unknown (Aurora Serverless v2), or there is simply no charge.
+- **billed**: what the provider actually charged over the last 30 days, scaled to a month. For AWS this comes from Cost Explorer's extended-support usage types (for example `AmazonEKS-Hours:extendedSupport` and `ExtendedSupport:Yr3:MySQL5.7`). The credential needs `ce:GetCostAndUsage` and `ce:GetDimensionValues`. The policy the AWS credential check generates includes both. If your policy is older, you may need to add `ce:GetDimensionValues`; until then, rows show list price with a note saying so.
+- **share of billed**: billing names the region and engine but not the resource. When several of your resources match the same billed line, it's split between them in proportion to their list prices.
+- **list price**: the provider's published rate for the resource's size. List prices are for one reference region (hover the figure to see which). Other regions are often higher, so a billed figure is always used when there is one.
+- **not priced / no surcharge**: the provider prices the surcharge relative to something Infrawrench can't see (ElastiCache bills a percentage of each node's on-demand price), the size is unknown (Aurora Serverless v2), or there's no charge.
 
-Billed lines that match no synced resource are listed under the table rather than dropped: usually a resource in an account you have not connected yet.
+Billed lines that match no synced resource are listed under the table. This is usually a resource in an account you haven't connected yet.
 
-Monthly figures assume 730 hours. A row whose rate is scheduled to rise (RDS year three, the final year of OpenSearch extended support) shows the next tier and its date.
+Monthly figures assume 730 hours. A row whose rate is going to rise (RDS year three, the final year of OpenSearch extended support) shows the next tier and its date.
 
-## Which providers are covered
+## Supported providers
 
-The calendars are declared by each provider plugin, from the provider's own documentation:
+Support calendars come from each provider's own documentation:
 
 | Provider      | Resources                                                         | What happens past standard support                                                                                                                |
 | ------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,21 +54,21 @@ The calendars are declared by each provider plugin, from the provider's own docu
 | MongoDB Atlas | Clusters                                                          | No surcharge: Atlas upgrades the cluster after end of life                                                                                        |
 | Elastic Cloud | Hosted deployments on 7.17 and 8.19                               | No surcharge and no forced upgrade, but no fixes after end of support                                                                             |
 
-Providers change these dates and prices a few times a year; the calendars are refreshed with each release. A version a calendar does not list is never flagged.
+Providers change these dates and prices a few times a year, and the calendars are updated with each Infrawrench release. A version that isn't in a calendar is never flagged.
 
 ## Upcoming surcharges on the expiry radar
 
-The next date for each matching resource (the day the surcharge starts, or the day the provider upgrades it) also appears on the [expiry radar](./expiry-radar.md) as an **Extended support** deadline, so it rides the same countdown and the same daily expiry alert as certificates and tokens. How far ahead the Costs section lists upcoming surcharges is its own setting (90 days by default), in **Settings → Notifications → Extended support**.
+The next date for each matching resource (the day the surcharge starts, or the day the provider upgrades it) also appears on the [expiry radar](./expiry-radar.md) as an **Extended support** deadline, with the same countdown and daily expiry alert as certificates and tokens. To change how far ahead the Costs section lists upcoming surcharges (90 days by default), go to **Settings > Notifications > Extended support**.
 
 ## The weekly alert
 
-Once a week, the cloud poller sends one message naming every resource that is paying a surcharge or is past the end of support, with the monthly total an upgrade would remove. It goes out through [alert routing](./alert-routing.md) under the **Extended support** trigger, to Slack, Microsoft Teams or mobile push like every other alert. Turn it off in **Settings → Notifications → Alerts & digest → Extended support**, or manage the setting with the `infrawrench_extended_support_settings` [Terraform resource](./terraform-provider.md) or [config as code](./config-as-code.md) (`alertSettings.extendedSupport`).
+Once a week, Infrawrench sends one message naming every resource that is paying a surcharge or is past the end of support, with the monthly total an upgrade would remove. It goes out through [alert routing](./alert-routing.md) under the **Extended support** trigger, to Slack, Microsoft Teams or mobile push like every other alert. Turn it off in **Settings > Notifications > Alerts & digest > Extended support**, or manage the setting with the `infrawrench_extended_support_settings` [Terraform resource](./terraform-provider.md) or [config as code](./config-as-code.md) (`alertSettings.extendedSupport`).
 
 <insert [Settings → Notifications showing the Extended support card with the weekly alert toggle and the "List upcoming surcharges (days ahead)" input set to 90] here>
 
-## Filing the upgrade
+## File the upgrade
 
-Every row has the same **File in Jira** / **File in Linear** button as the other findings ([Jira](./jira.md), [Linear](./linear.md)). The issue is prefilled with the resource, versions, dates, the monthly surcharge and the upgrade guide, and the row then links to the filed issue instead of offering a duplicate.
+Every row has the same **File in Jira** / **File in Linear** button as the other findings ([Jira](./jira.md), [Linear](./linear.md)). The issue is filled in with the resource, versions, dates, monthly surcharge and upgrade guide. Afterwards the row links to the filed issue, so you don't file it twice.
 
 ## The CLI
 

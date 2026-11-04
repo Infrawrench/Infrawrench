@@ -4,43 +4,43 @@ description: Email budget, anomaly, cost change, commitment and any other alert 
 sidebar_order: 18
 ---
 
-Infrawrench Cloud can email its alerts. Email sits beside [Slack](./slack-alerts.md), [Microsoft Teams](./teams-alerts.md), [mobile push](./mobile-push-notifications.md) and Twilio SMS as a delivery channel, and reaches people who live in their inbox: a finance team watching a budget, an engineering manager who wants to hear about commitment renewals, or a `finance@` alias with no Infrawrench login.
+Infrawrench Cloud can send its alerts by email, alongside [Slack](./slack-alerts.md), [Microsoft Teams](./teams-alerts.md), [mobile push](./mobile-push-notifications.md) and Twilio SMS. Use it to reach people who live in their inbox: a finance team watching a budget, an engineering manager who wants to hear about commitment renewals, or a `finance@` alias with no Infrawrench login.
 
-> **Cloud only.** Alerts are sent by the cloud's background poller as costs are collected and evaluated. The desktop app edits the same cloud configuration when signed in to your organization.
+> **Cloud only.** Alerts are sent from Infrawrench Cloud. When you're signed in to your organization, the desktop app edits the same settings.
 
-## Two ways to address an email
+## Choose who gets emailed
 
-**On the alert itself.** Budgets, [cost change alerts](./cost-change-alerts.md), [cost anomaly detection](./cost-anomaly-alerts.md) and the [commitment and unit-cost alert settings](./commitment-and-unit-cost-alerts.md) each have an **Email recipients** field. Whoever is listed there is emailed every time that alert fires, **in addition to** whatever your routing rules do. These recipients are not subject to the rules: a rule that swallows budget alerts does not silence the budget's own recipient list, and quiet hours do not hold it. The person who put an address on a budget asked for exactly that budget's alerts at that address.
+**On the alert itself.** Budgets, [cost change alerts](./cost-change-alerts.md), [cost anomaly detection](./cost-anomaly-alerts.md) and the [commitment and unit-cost alert settings](./commitment-and-unit-cost-alerts.md) each have an **Email recipients** field. Everyone listed there is emailed every time that alert fires, **in addition to** whatever your routing rules do. Routing rules and quiet hours don't apply to these recipients, so a rule that mutes budget alerts doesn't silence the budget's own recipient list.
 
 <insert [The budget editor with the Email recipients field filled in: two members picked from the member list and one extra address (finance@acme.com) as chips, under the alert thresholds] here>
 
-**Through alert routing.** Every [alert routing rule](./alert-routing.md) can send to email, for any trigger: sync failures, probes, metric alerts, incidents, the lot. Under a rule's **Send to** checkboxes, pick members or add addresses. Email destinations follow the rule like any other destination: quiet hours hold them, and they can be an escalation target. Email has no acknowledge button, so a rule routed only to email always escalates, the same as Teams and push.
+**Through alert routing.** Every [alert routing rule](./alert-routing.md) can send to email, for any trigger: sync failures, probes, metric alerts, incidents and everything else. Under a rule's **Send to** checkboxes, pick members or add addresses. Email destinations follow the rule like any other destination: quiet hours hold them, and they can be an escalation target. Email has no acknowledge button, so a rule that only sends to email always escalates, the same as Teams and push.
 
-When both name the same person, they get one copy.
+If both name the same person, they get one copy.
 
 ## Members and extra addresses
 
-- **Members** are picked from your organization's member list. Infrawrench stores the member, not the address, and reads their current sign-in address at send time: someone who changes their email keeps receiving alerts, and someone who leaves the organization stops the moment their membership ends. A former member shows as such in the editor, and saving a routing rule that still names one asks you to remove them.
-- **Extra addresses** are for anyone without a login. They are checked against your organization's external-address policy (below) when you save and again every time an email is sent.
+- **Members** are picked from your organization's member list. Emails go to their current sign-in address, so someone who changes their email keeps getting alerts, and someone who leaves the organization stops getting them as soon as their membership ends. Former members are marked in the editor, and if you save a routing rule that still names one, you're asked to remove them.
+- **Extra addresses** are for anyone without a login. They're checked against your organization's external-address policy (below) when you save and again every time an email is sent.
 
 Typing a member's own address adds the member rather than the address.
 
-## Who extra addresses can be
+## Control which extra addresses are allowed
 
-By default an extra address must be on a domain one of your members signs in with. If your members sign in as `@acme.com`, `finance@acme.com` is fine and `someone@gmail.com` is refused. This matters because anyone who can edit a budget or cost alert can add recipients, and alert emails carry spend figures; without the check, that permission would be a way to send your costs to any inbox.
+By default, an extra address must be on a domain one of your members signs in with. If your members sign in as `@acme.com`, then `finance@acme.com` is allowed and `someone@gmail.com` is refused. Alert emails include spend figures, so this stops anyone who can edit a budget from sending your costs to any inbox.
 
-An admin can change this under **Settings → Notifications → Channels → Email**:
+An admin can change this under **Settings > Notifications > Channels > Email**:
 
-- **Only our own domains** (the default), optionally with extra **allowed domains**, such as a finance agency you work with. Subdomains are not included automatically: allowing `acme.com` does not allow `mail.acme.com`.
+- **Only our own domains** (the default), optionally with extra **allowed domains**, such as a finance agency you work with. Subdomains aren't included automatically: allowing `acme.com` doesn't allow `mail.acme.com`.
 - **Any address.**
 
-Tightening the policy never edits a recipient list. An address that no longer qualifies just stops receiving, and starts again if the policy is loosened.
+Tightening the policy never edits a recipient list. An address that no longer qualifies just stops getting emails, and starts again if you loosen the policy.
 
 <insert [Settings → Notifications with the Email connection selected: the "Only our own domains" option chosen, one allowed domain chip, and the Unsubscribed list with one address and its Resume email button] here>
 
 ## What the email looks like
 
-Each alert is one email per recipient (never one email with everyone on it), with a plain-text part and an HTML part:
+Each recipient gets their own email (never one email with everyone on it), in plain text and HTML:
 
 - a subject such as `[Acme] Warning: Budget "Production" at 80%`, with the severity first so filters can sort on it
 - the alert's title and full text, with a coloured severity badge
@@ -49,15 +49,15 @@ Each alert is one email per recipient (never one email with everyone on it), wit
 
 <insert [An example budget alert email in a mail client: the Warning badge, the title, the alert text, the View in Infrawrench button and the footer with Manage alert email and Unsubscribe links] here>
 
-## Unsubscribing
+## Unsubscribe
 
-Every email has an unsubscribe link, and mailbox providers that support one-click unsubscribe (Gmail, Outlook, Apple Mail) show their own Unsubscribe button. Unsubscribing stops **all** alert email from that organization to that address, whichever budget, alert or rule names it. It does not affect other organizations or the [weekly digest](./weekly-digest.md), which has its own recipient list.
+Every email has an unsubscribe link, and mail apps that support one-click unsubscribe (Gmail, Outlook, Apple Mail) show their own Unsubscribe button. Unsubscribing stops **all** alert email from that organization to that address, whichever budget, alert or rule names it. It doesn't affect other organizations or the [weekly digest](./weekly-digest.md), which has its own recipient list.
 
-Unsubscribed addresses are listed under **Settings → Notifications → Channels → Email**, where an admin can resume delivery. Only do that for someone who asked for it.
+Unsubscribed addresses are listed under **Settings > Notifications > Channels > Email**, where an admin can resume delivery. Only do that for someone who asked for it.
 
 ## Requirements
 
-Email needs a mail provider configured on the deployment. Infrawrench Cloud has one. A self-hosted deployment uses the same Mailgun settings as the weekly digest (`MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `EMAIL_FROM`, and optionally `MAILGUN_API_BASE` for EU accounts) and `APP_URL` for the links. Without them, recipient lists can still be saved, the editors say that nothing is sent yet, and every other channel keeps working.
+Infrawrench Cloud sends email out of the box. If you self-host, email uses the same Mailgun settings as the weekly digest (`MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `EMAIL_FROM`, and optionally `MAILGUN_API_BASE` for EU accounts) and `APP_URL` for the links. Without them, you can still save recipient lists, the editors tell you nothing is being sent yet, and every other channel keeps working.
 
 ## Permissions
 
@@ -71,7 +71,7 @@ Email needs a mail provider configured on the deployment. Infrawrench Cloud has 
 
 ## Mobile
 
-The mobile app's budget editor has the same Email recipients field (tap members, type extra addresses). Cost change alerts on mobile show how many people each one emails. The routing rules editor and the external-address policy are web and desktop only, like the rest of alert routing.
+The mobile app's budget editor has the same Email recipients field (tap members, type extra addresses). On mobile, cost change alerts show how many people each one emails. The routing rules editor and the external-address policy are web and desktop only.
 
 ## From the CLI, MCP and Terraform
 

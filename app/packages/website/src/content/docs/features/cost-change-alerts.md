@@ -1,126 +1,75 @@
 ---
 title: Cost change alerts
-description: Configured alerts that fire when spend on a chosen scope moves more than a chosen percent or amount versus the prior period, on a daily, weekly, or monthly cadence.
+description: Get alerted when spend on a scope you choose moves more than a set percent or amount compared with the previous period, checked daily, weekly or monthly.
 ---
 
-A change alert answers one question no other cost alert family does: **"tell me when spend on
-this scope moves more than X% (or $Y) versus the prior period."** You pick the scope, the
-cadence, the direction, and the threshold; Infrawrench compares each period to the one before
-it and alerts when the movement clears the bar.
+A change alert tells you when **spend on a scope moves more than X% (or $Y) compared with the previous period**. You pick the scope, how often it checks, the direction and the threshold. Infrawrench compares each period with the one before and alerts you when the change clears the bar.
 
-## Six alert kinds, six different questions
+## Which cost alert to use
 
-Infrawrench has six ways to be told about spend, and they are deliberately not the same
-feature. The first three compare **money against money**; the last three read facts no spend
-total contains — a calendar, an obligation, a volume.
+Infrawrench has six kinds of cost alert, and each answers a different question. The first three compare money with money. The last three look at things a spend total doesn't show: a date, an obligation, a volume.
 
-- **[Budgets](./cloud-costs.md)** watch an **absolute monthly total you chose** — "alert me
-  when Production AWS passes $10,000 this month." The number is fixed; the alert is about
-  crossing it.
-- **[Anomaly detection](./cost-anomaly-alerts.md)** watches for **statistical outliers against
-  a learned baseline**, with no configuration at all — "something spiked far outside its own
-  history." You don't tell it what normal is; it learns.
-- **Change alerts** (this page) watch a **configured relative change on a scope you chose** —
-  "the api-gateway service moved more than 25% and more than $100 week over week." You state
-  what movement matters; nothing is learned and nothing is absolute.
-- **[Commitment expiry](./commitment-and-unit-cost-alerts.md)** watches a **term end date**. A
-  reservation lapsing is a step change with no movement to notice until after it has happened.
-- **[Idle commitments](./commitment-and-unit-cost-alerts.md)** watch **utilization of what you
-  already bought**. Nothing moves at all — the waste has been there since the purchase.
-- **[Unit-cost regressions](./commitment-and-unit-cost-alerts.md)** watch **spend ÷ a business
-  metric**. The only one that stays quiet when spend doubles because volume tripled, and fires
-  when spend is flat because volume halved.
+- **[Budgets](./cloud-costs.md)** watch a **fixed monthly total you set**: "alert me when Production AWS passes $10,000 this month."
+- **[Anomaly detection](./cost-anomaly-alerts.md)** flags **spikes far outside a scope's own history**, with no setup. You don't tell it what normal is; it learns.
+- **Change alerts** (this page) watch for **a relative change you define, on a scope you choose**: "the api-gateway service moved more than 25% and more than $100 week over week."
+- **[Commitment expiry](./commitment-and-unit-cost-alerts.md)** watches a **term end date**. A lapsing reservation shows no change in spend until after it has happened.
+- **[Idle commitments](./commitment-and-unit-cost-alerts.md)** watch **how much of what you already bought you're using**. Nothing moves; the waste has been there since the purchase.
+- **[Unit-cost regressions](./commitment-and-unit-cost-alerts.md)** watch **spend divided by a business metric**. It stays quiet when spend doubles because volume tripled, and fires when spend is flat because volume halved.
 
-A 15% creep across a whole account will never be a statistical outlier and may sit comfortably
-under a budget for months — a change alert is the tool that catches it deliberately. And a
-change alert firing on a scope whose cost-per-customer went _down_ is the case the last three
-exist to keep in proportion; the
-[comparison table](./commitment-and-unit-cost-alerts.md) lines all six up side by side.
+A steady 15% creep across an account will never look like an anomaly and may stay under a budget for months. A change alert is how you catch it. The [comparison table](./commitment-and-unit-cost-alerts.md) puts all six side by side.
 
-## Windows: what is compared to what
+## What gets compared
 
-All windows are made of **complete UTC days** — the current, still-accruing day never counts,
-because a partial day always reads as a drop. The comparisons are like-for-like on purpose:
+Periods are made of **complete UTC days**. Today, which is still adding up, never counts, since a partial day always looks like a drop.
 
-- **Daily** — one complete day vs **the same weekday one week earlier**. Yesterday's Tuesday is
-  compared to last Tuesday, never to Monday, so ordinary weekday/weekend seasonality doesn't
-  read as a change.
-- **Weekly** — the **last 7 complete days** vs the **7 complete days before them**.
-- **Monthly** — **month-to-date** (the current month's complete days) vs **the same number of
-  days at the start of the prior month**, clamped to that month's length (30 days of March
-  compare against all 28 of February). It is never month-to-date vs the _full_ prior month —
-  that comparison reads "down 70%" on the 9th of every month and means nothing.
+- **Daily:** one complete day against **the same weekday a week earlier**. Last Tuesday is compared with the Tuesday before, never with Monday, so normal weekday and weekend patterns don't look like changes.
+- **Weekly:** the **last 7 complete days** against the **7 complete days before them**.
+- **Monthly:** **month-to-date** (this month's complete days) against **the same number of days at the start of last month**, capped at that month's length (30 days of March compare with all 28 of February). It never compares month-to-date with the _whole_ of last month, which would show "down 70%" on the 9th of every month.
 
-Provider billing data is restated for a few days after the fact, so windows are re-evaluated
-as late data lands. Each cadence period — a day, a calendar week, a month — fires **at most
-once** per watched group and currency, however many times it is re-examined.
+Providers often revise billing data for a few days afterwards, so periods are checked again as late data arrives. Each period (a day, a calendar week, a month) alerts **at most once** per watched group and currency.
 
-## Thresholds: percent, amount, or both
+## Set a threshold
 
-An alert carries a percent threshold, an absolute amount threshold, or both:
+An alert has a percent threshold, an amount threshold, or both:
 
-- **Percent** — the movement must be at least this percent of the prior window's spend.
-- **Amount** — the movement must be at least this many dollars (in the compared currency).
-- **Both set** — the movement must clear **both** bars before the alert fires. This is the
-  recommended shape: percent alone pages someone about a 50% jump on $2 of spend, and amount
-  alone pages about a 0.4% wobble on a very large bill.
+- **Percent:** the change must be at least this percent of the previous period's spend.
+- **Amount:** the change must be at least this much money (in the compared currency).
+- **Both:** the change must clear **both** before the alert fires. We recommend this. Percent alone alerts you about a 50% jump on $2 of spend, and amount alone alerts you about a 0.4% wobble on a very large bill.
 
-Direction is part of the alert: increases only, decreases only, or either way.
+You also choose the direction: increases only, decreases only, or either way.
 
-## Scope and per-group watching
+## Choose a scope
 
-The scope is the same filter vocabulary budgets and cost graphs use — provider, account,
-service, region, resource, tag, charge type, commitment. An empty scope is all spend.
+The scope uses the same filters as budgets and cost graphs: provider, account, service, region, resource, tag, charge type and commitment. An empty scope means all spend.
 
-An alert can watch the scope's **one total**, or watch **each group of a dimension
-separately** — "each service", "each account", "each value of the team tag." A grouped alert
-compares every group against its own prior window, and each offending group fires its own
-event, so one alert covers "any service that moves" without naming the services up front.
+An alert can watch the scope's **total**, or watch **each group separately**, for example "each service", "each account" or "each value of the team tag". Each group is compared with its own previous period and fires its own alert, so one alert covers "any service that moves" without you naming the services.
 
-Two group situations are handled explicitly rather than left to arithmetic:
+Two cases work a little differently:
 
-- **New spend** — a group present now with no spend at all in the prior window. The percent
-  change is infinite, so no percentage is shown (events say `new`), any percent threshold
-  counts as cleared, and the amount threshold still applies — which is exactly why a grouped
-  percent-only alert benefits from an amount floor.
-- **Vanished spend** — a group with prior spend and none now. That is a −100% decrease of its
-  whole prior amount, visible to alerts that watch decreases.
+- **New spend:** a group with spend now and none in the previous period. No percentage is shown (alerts say `new`), any percent threshold counts as met, and the amount threshold still applies. This is why a per-group percent alert works best with an amount threshold too.
+- **Vanished spend:** a group with spend before and none now. That counts as a 100% decrease, so alerts that watch decreases will catch it.
 
 ## Currencies
 
-Comparison is per currency — amounts in different currencies are never summed or compared
-against each other. If your organization has a
-[display currency and stated exchange rates](./cloud-costs.md), spend is converted into it
-first, so a mixed-currency scope compares one number. A currency the organization holds no
-rate for is compared **in its own currency** — it is never dropped from evaluation.
+Each currency is compared separately. Amounts in different currencies are never added together. If your organization has a [display currency and exchange rates](./cloud-costs.md) set, spend is converted first, so a mixed-currency scope compares one number. A currency with no exchange rate set is compared **in its own currency**, never left out.
 
-## Managing alerts
+## Manage alerts
 
-Change alerts live on the **Alerts** tab of the **Costs panel**, after the anomalies section, on both web and
-desktop. The list shows each alert's cadence, threshold, scope, and when it last fired;
-recent firings are listed underneath with the previous → current amounts and the change.
+Change alerts are on the **Alerts** tab of the **Costs panel**, after the anomalies section, on web and desktop. The list shows each alert's period, threshold, scope and when it last fired. Recent alerts are listed underneath, with the previous and current amounts and the change.
 
 ![Costs panel change-alerts section showing two configured alerts (one weekly per-service alert, one monthly total alert) and a recent-firings table with previous → current amounts and percent deltas](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-change-alerts/alerts-and-firings.png)
 
-Creating or editing an alert opens a modal with the cadence, direction, thresholds, group-by
-picker, and the same filter rows the budget editor uses.
+Creating or editing an alert opens a dialog with the period, direction, thresholds, a "watch" picker for grouping, and the same filter rows as the budget editor.
 
 ![Change alert editor modal with a weekly cadence selected, both thresholds filled in (25% and $100), "Each service separately" chosen in the Watch picker, and one provider filter row](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-change-alerts/alert-editor.png)
 
-Reads require the `costs:read` permission; creating, editing, and deleting require
-`costs:write`. Mutations are recorded in the [audit log](../team-and-billing/audit-log.md).
+Viewing alerts needs the `costs:read` permission. Creating, editing and deleting them needs `costs:write`. Changes are recorded in the [audit log](../team-and-billing/audit-log.md).
 
 ## Notifications
 
-Fired events flow through [alert routing](./alert-routing.md) as their own trigger kind,
-**Cost changes** — routing rules, quiet hours, and escalation apply to them exactly as they do
-to budgets and anomalies, and a rule can match on the size of the movement ("cost changes over
-$500 → #incidents"). Push notifications deep-link to the **Alerts** tab of the Costs screen in the
-[mobile app](./mobile-app.md), where the alerts and their recent firings are listed read-only.
+Change alerts go through [alert routing](./alert-routing.md) as their own trigger, **Cost changes**. Routing rules, quiet hours and escalation work just as they do for budgets and anomalies, and a rule can match on the size of the change (for example, cost changes over $500 go to #incidents). Push notifications open the **Alerts** tab of the Costs screen in the [mobile app](./mobile-app.md), where you can view alerts and their recent firings.
 
-An alert can also email people directly: the editor's **Email recipients** field takes members
-and approved extra addresses, emailed every time the alert fires on top of the routing rules. See
-[email alerts](./email-alerts.md).
+An alert can also email people directly. The editor's **Email recipients** field takes members and approved extra addresses, who are emailed every time the alert fires, on top of your routing rules. See [email alerts](./email-alerts.md).
 
 ## CLI and API
 
@@ -132,7 +81,4 @@ infrawrench costs --alerts --json     # the same, as JSON
 infrawrench costs --alerts --limit 50 # more firings
 ```
 
-The HTTP API exposes the same surface under `/api/org/:orgId/cost-alerts` (CRUD plus
-`/cost-alerts/events`), and the MCP/chat tools `list_cost_alerts`,
-`list_cost_alert_events`, `create_cost_alert`, and `delete_cost_alert` manage them from an
-agent. See the [API reference](../team-and-billing/openapi.md).
+The HTTP API has the same features under `/api/org/:orgId/cost-alerts` (create, read, update, delete, plus `/cost-alerts/events`). From an AI agent, use the MCP and chat tools `list_cost_alerts`, `list_cost_alert_events`, `create_cost_alert` and `delete_cost_alert`. See the [API reference](../team-and-billing/openapi.md).

@@ -1,34 +1,36 @@
 ---
 title: Docker controls
-description: Start, stop, and restart containers on a local or remote Docker host.
+description: Start, stop and restart containers on a local or remote Docker host.
 sidebar_order: 7
 ---
 
-The Docker plugin lists containers on any Docker host you point it at — local Unix socket (desktop only) or a remote TCP endpoint.
+The Docker plugin lets you see and control containers on any Docker host you point it at: the local Unix socket (desktop only) or a remote TCP endpoint.
 
 ![Docker container list in the sidebar with the open container's Start / Stop / Restart buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/docker-controls/container-actions.png)
 
-## What you see
+## Connect to a host
 
-For each container: name, image, status, ports, networks, and volumes. Click one to open its detail page with logs and inspect data.
+- **Desktop**: uses the local Unix socket by default. To use a remote TCP endpoint instead, change it in the account form.
+- **Web**: remote TCP only. Make sure the endpoint is reachable and secured. TLS with client certificates is recommended; plain port 2375 is not.
 
-## Actions
+## See your containers
 
-The container list has no per-row buttons — open a container first. Its detail page carries a **Container Actions** panel with three buttons:
+For each container you see its name, image, status, ports, networks and volumes. Click one to open its detail page with logs and inspect data.
+
+## Start, stop or restart a container
+
+The list has no buttons on each row, so open the container first. Its detail page has a **Container Actions** panel with three buttons:
 
 - **Start**
 - **Stop**
 - **Restart**
 
-All three fire immediately against the host, report `Start succeeded` (or the error) underneath, and are disabled while one is in flight. Status in the list updates on the next refresh tick.
+Each one runs right away and shows the result underneath (for example `Start succeeded`, or the error). The buttons are disabled while an action is running. The status in the list updates on its next refresh.
 
-Removing a container is the ordinary resource delete rather than an action here, and it is always forced — a running container will not stop you.
+## Remove a container
 
-## Connecting to a host
+Use the normal resource delete. It always force-removes, so it works even if the container is running.
 
-- **Desktop** — the default is the local Unix socket. Change to a remote TCP endpoint in the account form.
-- **Web** — only remote TCP. Make sure the endpoint is reachable and secured (TLS + client certs recommended; plaintext 2375 is not).
+## What this isn't for
 
-## Not a replacement for…
-
-This is a control surface, not a full Docker UI. For image builds, compose stacks, and buildx, keep using the CLI. Use infrawrench when you want to see container state across hosts at a glance.
+This is for controlling containers, not a full Docker UI. For image builds, compose stacks and buildx, keep using the Docker CLI. Use Infrawrench when you want to see container state across hosts at a glance.

@@ -1,26 +1,29 @@
 ---
 title: Interface language
-description: Switch the app's UI language per device — English, Spanish, French, German, Japanese or Chinese — from Settings → General.
+description: Switch the app's interface language on each device, to English, Spanish, French, German, Japanese or Chinese, from Settings > General.
 ---
 
-The web and desktop apps can display their interface in English, Spanish, French, German, Japanese or Chinese. English is the source language; the others are being rolled out surface by surface, so anything not yet translated simply appears in English rather than breaking.
+You can use the web and desktop apps in English, Spanish, French, German, Japanese or Chinese. Translations are still being added, so anything not translated yet shows in English.
 
-Translation covers provider content too: the resource type names, field labels and descriptions that each of the bundled provider plugins contributes are part of the same catalog, so a translated interface doesn't switch back to English the moment it shows your inventory. Names you chose yourself — resources, accounts, dashboards — are of course never translated.
+Resource type names, field labels and descriptions from the built-in providers are translated too, so your inventory doesn't switch back to English. Names you chose yourself, like resources, accounts and dashboards, are never translated.
 
-## Changing the language
+## Change the language
 
-Open **Settings → General** and pick a language in the **Language** card. The choice applies immediately — the app reloads with every visible string re-resolved in the new locale.
+1. Open **Settings > General**.
+2. Pick a language in the **Language** card.
 
-![Settings → General page with the Language card visible, the dropdown open showing the six languages with their native names (Deutsch, English, español, français, 中文, 日本語)](https://agent-assets.infrawrench.com/docs-screenshots/features/interface-language/language-picker.png)
+The app reloads in the new language straight away.
 
-A few things to know:
+![Settings > General page with the Language card visible, the dropdown open showing the six languages with their native names (Deutsch, English, español, français, 中文, 日本語)](https://agent-assets.infrawrench.com/docs-screenshots/features/interface-language/language-picker.png)
+
+Good to know:
 
 - The setting is **per device**, not per account. Your browser at work and the desktop app at home can use different languages.
-- If you have never picked a language, the app follows your browser or system language when it matches a supported one, and falls back to English otherwise.
-- Dates, times and numbers keep following your operating system's regional format settings, independent of the interface language.
+- If you've never picked a language, the app uses your browser or system language if it's supported, and English otherwise.
+- Dates, times and numbers follow your operating system's regional settings, whatever the interface language.
 
-The mobile app is not yet translated and currently displays English only.
+The mobile app isn't translated yet and shows English only.
 
 ## For self-hosters and contributors
 
-Translations are checked into the repository and built offline — no external service is contacted at runtime. Regenerating them after changing UI strings, and the optional live-translation development mode, are described in the repository's `KNOWLEDGE.md` (UI translations section).
+Translations ship with the app, so no outside translation service is contacted while it runs. How to regenerate them after changing UI strings is described in the repository's `KNOWLEDGE.md` (UI translations section).

@@ -1,214 +1,230 @@
 ---
 title: Cost reports
-description: Save a cost graph as a named, addressable report, run it by name, and show it on as many dashboards as you like.
+description: Save a cost graph as a named report, run it by name from the CLI or chat, and show it on as many dashboards as you like.
 sidebar_order: 3
 ---
 
-A cost graph on a dashboard is a card and nothing more: it belongs to that dashboard, it has no name anyone can say out loud, and rebuilding it somewhere else means re-picking the chart type, the binning, the grouping and every filter.
+A cost report is a cost graph you save with a name. It gets its own page, you can run it from the CLI or ask for it in chat, and any number of dashboards can show it. Edit the report once and every dashboard showing it updates.
 
-A **cost report** is the same graph as an object. It has a name, its own page, and an id — so it can be run from the CLI or from chat, and dashboards can point at it instead of copying it. Edit the report once and every dashboard showing it updates.
+A plain cost graph on a dashboard belongs to that dashboard only. To use it somewhere else you would have to rebuild the chart type, binning, grouping and filters by hand. A report saves you that.
 
 For a table of the resources themselves, with each one's cost beside its tags and metadata, see [resource reports](./resource-reports.md).
 
-> **Cloud only.** Reports are org rows over spend collected by Infrawrench Cloud's background pollers. On the desktop app the Reports tab appears when you are signed into a cloud org; local-only mode has no spend to report on.
+> **Cloud only.** Reports use the spend Infrawrench Cloud collects for your org. In the desktop app, the Reports tab appears when you are signed into a cloud org. Local-only mode has no spend to report on.
 
 ## Open the Reports page
 
-**Reports** in the sidebar, next to **Costs**. It lists every saved report in the org, what each one charts, and how many dashboards carry a card for it.
+Click **Reports** in the sidebar, next to **Costs**. You'll see every saved report in the org, what each one charts, and how many dashboards show it.
 
 ![Reports page listing three saved cost reports with their shapes and dashboard counts, one showing "On no dashboard"](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/reports-list.png)
 
 ## Create a report
 
 1. Open **Reports** and click **New report**.
-2. Give it a name and configure the graph — the same editor a dashboard [cost graph](./cloud-costs.md#add-a-cost-graph) uses, with the same chart types (including donut and table), measures (cost, usage quantity, count), binning (daily to quarterly), cumulative toggle, date ranges, group-by, filters, cost basis, comparison and forecast options. See [display options](./cloud-costs.md#display-options).
-3. **Save**. You land on the report's own page.
+2. Give it a name and set up the graph. This is the same editor a dashboard [cost graph](./cloud-costs.md#add-a-cost-graph) uses, with the same chart types (including donut and table), measures (cost, usage quantity, count), binning (daily to quarterly), cumulative toggle, date ranges, group-by, filters, cost basis, comparison and forecast options. See [display options](./cloud-costs.md#display-options).
+3. Click **Save**. You land on the report's own page.
 
 ![The cost graph editor opened from the Reports page, with a name field filled in as "Monthly spend by service"](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-editor-name.png)
 
-A report saved with a **relative** date range ("last 30 days") means a different window every day it runs, which is usually what you want. Pin it to fixed dates with an absolute range instead.
+A report with a **relative** date range ("last 30 days") covers a different window each day you run it, which is usually what you want. To pin it to fixed dates, use an absolute range.
 
-## The report page
+## Use the report page
 
-The report's page draws the chart full width, with the report's name, its description, and the dashboards it appears on. From here you can:
+The report page shows the chart full width, with the report's name, description and the dashboards it appears on. From here you can:
 
-- **Edit** — change the graph. Every dashboard showing this report changes with it.
-- **Rename** — the name is how people ask for it, in chat and on the command line.
-- **Duplicate** — copy the config under a new name, so a variant does not mean editing the shared original.
-- **Dashboards** — add or remove its cards, one per dashboard.
-- **Download FOCUS CSV** — the rows behind the chart as a [FOCUS 1.4](./cost-exports.md#focus) file, for a FinOps tool or a spreadsheet. See below.
-- **Export…**: a larger file written in the background, as CSV, NDJSON or FOCUS, with progress while it runs. See [Large exports in the background](#large-exports-in-the-background).
-- **Delete** — see below.
+- **Edit**: change the graph. Every dashboard showing this report changes with it.
+- **Rename**: the name is how people ask for it in chat and on the command line.
+- **Duplicate**: copy it under a new name, so you can try a variant without changing the shared original.
+- **Dashboards**: add or remove its card on each dashboard.
+- **Download FOCUS CSV**: the rows behind the chart as a [FOCUS 1.4](./cost-exports.md#focus) file, for a FinOps tool or a spreadsheet. See below.
+- **Export…**: a larger file built in the background, as CSV, NDJSON or FOCUS. See [Large exports in the background](#large-exports-in-the-background).
+- **Delete**: see [Cards vs the report itself](#cards-vs-the-report-itself).
 
 Below the chart, **Forecasts** compares the automatic forecast with the report's named forecasts (your plans: scenario models stacked in order, optionally driven by a business metric's planned values), each with a low, expected and high range. See [Cost forecasts](./cost-forecasts.md).
 
 ### Download as FOCUS
 
-**Download FOCUS CSV** writes the rows the report selects (its date range as of today, its filters and its saved filter) in the FinOps Open Cost and Usage Specification 1.4 layout: one row per account, service, region, resource, tag set, charge type and commitment per day, with billed and effective cost side by side. Grouping, binning and the cost basis do not apply; the file carries both bases and says which charge type each row is. It is the same mapping a [FOCUS scheduled export](./cost-exports.md#focus) writes, so a one-off download and a nightly feed agree.
+**Download FOCUS CSV** gives you the rows the report selects (its date range as of today, its filters and its saved filter) in the FinOps Open Cost and Usage Specification 1.4 layout. You get one row per account, service, region, resource, tag set, charge type and commitment per day, with billed and effective cost side by side.
 
-One download spans at most 366 days. For anything longer, or for a recurring feed, set up a scheduled export.
+Grouping, binning and cost basis don't apply here. The file carries both cost bases and labels each row's charge type. It matches what a [FOCUS scheduled export](./cost-exports.md#focus) writes, so a one-off download and a nightly feed agree.
+
+One download covers at most 366 days. For anything longer, or for a recurring feed, set up a scheduled export.
 
 <insert [A cost report's detail page with the "Download FOCUS CSV" link highlighted in the header row, beside Dashboards and Rename] here>
 
 ### Large exports in the background
 
-**Download FOCUS CSV** has to finish inside one download. For a long range, or a full year of per-resource FOCUS rows, use **Export…** instead: Infrawrench writes the file on its servers in the background and you collect it when it is ready.
+**Download FOCUS CSV** has to finish in a single download. For a long range, or a full year of per-resource FOCUS rows, use **Export…** instead. Infrawrench builds the file in the background and you collect it when it's ready.
 
-Pick a format and a range (it starts at the report's own range) and click **Start export**:
+Pick a format and a range (it starts at the report's own range), then click **Start export**:
 
 - **CSV** or **NDJSON, report columns**: one row per day, per value of the report's group-by (service, account, a tag…) and per currency, with `amount`, `usage_amount` and `usage_unit`, plus `exported_at` and `collection_watermark` (the newest day every account has reported; rows after it may still change). The report's filters and cost basis apply.
 - **FOCUS 1.4** or **1.3 CSV**: the same layout as the download above, every resource every day.
 
-**When the report draws a unit cost**, the CSV and NDJSON files gain six columns: `unit_cost_metric`, `unit_cost_mode`, `unit_cost_scope_cost`, `unit_cost_metric_value`, `unit_cost_value` and `unit_cost_gap`. They hold each **day's** unit cost across the whole report, so they repeat on every row of the same day; dividing one service's slice by the whole business metric would be a number nobody asked for. A day without a metric value has an empty `unit_cost_value` and the reason in `unit_cost_gap`, never a zero. See [Unit costs](./unit-costs.md#export-the-numbers).
+**If the report shows a unit cost**, the CSV and NDJSON files get six more columns: `unit_cost_metric`, `unit_cost_mode`, `unit_cost_scope_cost`, `unit_cost_metric_value`, `unit_cost_value` and `unit_cost_gap`. They hold each **day's** unit cost across the whole report, so the same values repeat on every row for that day. A day with no metric value has an empty `unit_cost_value` and the reason in `unit_cost_gap`, never a zero. See [Unit costs](./unit-costs.md#export-the-numbers).
 
-The dialog shows the export's progress, and you can close it: the report's header keeps a short status ("Export 45%") and says **Export ready** with a **Download** link when the file is done. **Your recent exports** in the dialog lists the last few with their status, so a file that finished while you were elsewhere is still one click away. Files are kept for 24 hours, then deleted; a running export can be cancelled from the same list.
+You can close the dialog while the export runs. The report header keeps a short status ("Export 45%") and shows **Export ready** with a **Download** link when the file is done. **Your recent exports** in the dialog lists your last few exports with their status, so a file that finished while you were elsewhere is still one click away. You can cancel a running export from the same list. Files are kept for 24 hours, then deleted.
 
-What the file contains is fixed when you start it: editing the report afterwards does not change an export already running. The rows are read with your own [cost visibility](../team-and-billing/cost-visibility.md), the same as your charts. Each export spans at most 731 days and 256 MB, and you can have three running at once.
+Good to know:
+
+- The file's contents are fixed when you start it. Editing the report afterwards doesn't change an export that's already running.
+- Rows follow your own [cost visibility](../team-and-billing/cost-visibility.md), the same as your charts.
+- Each export covers at most 731 days and 256 MB, and you can run three at once.
 
 <insert [The Export dialog on a cost report: the format picker set to CSV, report columns, the date range, and Your recent exports listing one export at 45% with a progress bar and one Ready with a Download link] here>
 
 ![A cost report's detail page showing the full-width chart, the report name, and a "On Production" dashboard link underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-detail.png)
 
-## Folders
+## Organize reports in folders
 
-Once the list grows past a screenful, group it. **New folder** on the Reports page creates one; every report and folder has a **Move** action that files it wherever you like, and each folder offers **New subfolder**, **Rename**, **Move**, and **Delete**. Folders nest up to **three levels** deep — enough for "team / area / month" without turning the list into an expedition.
+Once your list grows past a screenful, group it. Click **New folder** on the Reports page to make one. Every report and folder has a **Move** action, and each folder offers **New subfolder**, **Rename**, **Move** and **Delete**. Folders nest up to **three levels** deep, enough for "team / area / month".
 
 ![Reports page with reports grouped under a "Finance" folder and its "Monthly" subfolder, with the Move menu open on one report showing the folder targets](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/reports-folders-move.png)
 
-Folders organize the list and change nothing else. A report keeps its id, its URL, its dashboard cards, and its name-based matching in the [CLI](#from-the-command-line) and chat no matter where it is filed. Two things follow from that:
+Folders only organize the list. A report keeps its URL, its dashboard cards and its name in the [CLI](#from-the-command-line) and chat wherever you file it. So:
 
-- **Deleting a folder never deletes a report.** The folder's reports move to the top of the list and its subfolders become top-level folders — the confirmation says exactly that before anything happens.
-- **Moving is always safe.** The server refuses a move that could not mean anything: a folder cannot be placed inside itself or one of its own subfolders, and nothing can nest past the three-level limit. The move menu greys those targets out. Filing a report or folder into a folder, whether by moving it or creating it there, also needs you to be able to edit that folder, since its sharing extends to whatever is filed in it.
+- **Deleting a folder never deletes a report.** Its reports move to the top of the list and its subfolders become top-level folders. The confirmation tells you this before anything happens.
+- **Some moves aren't allowed.** You can't put a folder inside itself or one of its own subfolders, or nest anything past three levels. The move menu greys those options out.
+- **You need edit access to the destination folder** to file a report or folder into it, whether you move it there or create it there. A folder's sharing extends to whatever is in it.
 
 ### Moving and deleting many at once
 
-Every report and folder in the list has a checkbox. Tick several, **shift-click** to select everything between two rows, or use **Select contents** on a folder to pick up every report filed in it; the bar above the list then offers **Move to folder…** and **Delete…**. The keyboard works too while focus is in the list: **Ctrl+A** (⌘A on a Mac) selects everything, **M** opens the folder picker, **Delete** asks to delete the selection, and **Esc** clears it.
+Every report and folder in the list has a checkbox. Tick several, **shift-click** to select everything between two rows, or use **Select contents** on a folder to pick every report in it. The bar above the list then offers **Move to folder…** and **Delete…**.
 
-You can also drag: drag a selected row (or a folder heading) onto any folder heading in the list, or onto a folder in the **Folders** sidebar beside it, which also has **Top level**. Dragging a row that is not selected moves just that row. A folder that cannot take what you are dragging (it is inside one of the folders being moved, or the result would nest past three levels) shows a red outline and says why instead of accepting the drop.
+Keyboard shortcuts work while focus is in the list:
 
-A bulk move or delete is **all or nothing**. Every item is checked first: that it still exists, that your [sharing](./cost-reports.md) lets you edit it (or, to delete, that you own it), that you can edit the destination folder (a folder's sharing extends to whatever is filed in it), and that the folder tree that would result stays within three levels. If anything fails, nothing changes and the error names each item that blocked it. Moved folders keep their contents and become children of the destination. Deleting works like deleting one at a time: reports take their dashboard cards with them and their delivery schedules stop, and whatever a deleted folder still holds moves to the top level. The confirmation lists what goes and what moves, and each item gets its own [audit log](../team-and-billing/audit-log.md) entry.
+- **Ctrl+A** (⌘A on a Mac) selects everything.
+- **M** opens the folder picker.
+- **Delete** asks to delete the selection.
+- **Esc** clears it.
+
+You can also drag a selected row (or a folder heading) onto any folder heading in the list, or onto a folder in the **Folders** sidebar beside it, which also has **Top level**. Dragging a row that isn't selected moves just that row. A folder that can't take what you're dragging shows a red outline and says why.
+
+A bulk move or delete is **all or nothing**. Before anything changes, Infrawrench checks that every item still exists, that your [sharing](./cost-reports.md) lets you edit it (or, to delete, that you own it), that you can edit the destination folder, and that nothing ends up nested past three levels. If any check fails, nothing changes, and the error names each item that blocked it.
+
+Moved folders keep their contents. Deleting works the same as deleting one at a time: reports take their dashboard cards with them and their delivery schedules stop, and anything left in a deleted folder moves to the top level. The confirmation lists what goes and what moves, and each item gets its own [audit log](../team-and-billing/audit-log.md) entry.
 
 <insert [Reports page with three reports ticked, the selection bar showing "3 selected · Move to folder… · Delete…", and the Folders sidebar with one folder highlighted as a drop target during a drag] here>
 
-On the command line, `infrawrench reports` shows each report's folder path (`Finance / Monthly`) in its own column, and `--json` includes the folder list. The [mobile app](#on-your-phone) groups its read-only list the same way. In chat and MCP, `list_cost_reports` reports each item's `folderPath` and `move_cost_report` files a report by folder path, name, or id.
+On the command line, `infrawrench reports` shows each report's folder path (`Finance / Monthly`) in its own column, and `--json` includes the folder list. The [mobile app](#on-your-phone) groups its read-only list the same way. In chat and MCP, `list_cost_reports` returns each item's `folderPath` and `move_cost_report` files a report by folder path, name or id.
 
 ## Show a report on a dashboard
 
-A dashboard's **+** tile offers both kinds of cost chart:
+A dashboard's **+** tile offers two kinds of cost chart:
 
 | Menu entry       | What you get                                                                                   |
 | ---------------- | ---------------------------------------------------------------------------------------------- |
 | **Cost graph**   | A one-off card owned by this dashboard. No name, no report, nothing else sees it.              |
 | **Saved report** | A card pointing at a report. Editing the report updates this card and every other one with it. |
 
-Both exist on purpose: putting one chart on one dashboard should not require naming and filing a report first.
+Use a cost graph when you just want one chart on one dashboard.
 
-A report card has no **Edit** of its own — it opens the report's page instead, where the list of everywhere else it appears is visible. Changing a shared report from one of its cards, without seeing the other four, is exactly the mistake this avoids.
+A report card has no **Edit** button of its own. It opens the report's page instead, where you can see every other dashboard that uses it before you change anything.
 
 ![Dashboard "+" tile menu open showing Pin a resource, Cost graph, Saved report, New budget, Existing budget, and Custom graph entries](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/dash-add-menu.png)
 
 ## Cards vs the report itself
 
-The two directions are deliberately not symmetrical, the same way they are for [budgets](./cloud-costs.md#cards-vs-the-budget-itself):
+Removing a card and deleting a report do different things, the same as for [budgets](./cloud-costs.md#cards-vs-the-budget-itself):
 
 | You do this                             | What happens                                                                |
 | --------------------------------------- | --------------------------------------------------------------------------- |
 | Remove a report card from a dashboard   | The card goes. The report stays, and every other dashboard keeps its card.  |
 | Delete the report from the Reports page | The report goes, and every card pointing at it is removed at the same time. |
 
-A card whose report no longer exists could only ever render as an unavailable tile that no amount of dashboard editing explains — so deleting a report takes its cards with it. The confirmation names the dashboards that will lose a card before anything happens. Deleting a report also removes its [delivery schedules](#scheduled-delivery) — a schedule is meaningless without the report it delivers.
+Before you delete a report, the confirmation names the dashboards that will lose a card. Deleting a report also removes its [delivery schedules](#scheduled-delivery).
 
 ## Scheduled delivery
 
-The **Delivery** section on a report's page sends it on a schedule to **Slack channels**, **Microsoft Teams webhooks**, and **email addresses** — the digest model: each schedule owns its own destinations, chosen when it is created.
+The **Delivery** section on a report's page sends the report on a schedule to **Slack channels**, **Microsoft Teams webhooks** and **email addresses**. Each schedule has its own destinations, chosen when you create it.
 
-![A report's detail page with the Delivery section showing two schedules — one "Weekly · Monday 08:00 Europe/Berlin" delivering to a Slack channel with status "Delivered", one monthly schedule to two email addresses with a red "Failed" status and its error text underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-delivery.png)
+![A report's detail page with the Delivery section showing two schedules, one "Weekly · Monday 08:00 Europe/Berlin" delivering to a Slack channel with status "Delivered", one monthly schedule to two email addresses with a red "Failed" status and its error text underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-delivery.png)
 
 Each schedule has:
 
-- **A cadence** — daily, weekly (pick the weekday), or monthly (pick the day of month). A day the month doesn't have clamps to its last day, so "the 31st" means month end in April too.
-- **A local hour and time zone** — 08:00 in `Europe/Berlin` stays 08:00 through daylight-saving changes.
-- **Destinations** — any mix of the org's connected Slack channels, its Teams webhooks, and a list of email addresses (which can reach a finance alias with no Infrawrench login). A schedule can only point at Slack and Teams surfaces the org already connected.
+- **A cadence**: daily, weekly (pick the weekday) or monthly (pick the day of the month). If a month doesn't have that day, it sends on the last day, so "the 31st" means month end in April too.
+- **A local hour and time zone**: 08:00 in `Europe/Berlin` stays 08:00 through daylight-saving changes.
+- **Destinations**: any mix of the org's connected Slack channels, its Teams webhooks and a list of email addresses (which can include, say, a finance alias with no Infrawrench login). You can only pick Slack and Teams destinations the org has already connected.
 
-What arrives is a composed text summary: the report's total for its window (converted to your [display currency](./cloud-costs.md) where one is configured, with the conversion caveat spelled out), the change against the previous period, the top groups, and a link to the live report. The message itself carries no chart: it carries the numbers, and the link carries the picture. For the picture on paper, **Download PDF** on the report page renders the chart and its totals table as a PDF; to send charts on a schedule, put the report on a dashboard and [schedule the dashboard](./dashboard-pdf.md#schedule-a-dashboard), which attaches the whole dashboard as a PDF.
+What arrives is a text summary: the report's total for its window (converted to your [display currency](./cloud-costs.md) if you've set one, with a note about the conversion), the change from the previous period, the top groups, and a link to the live report. The message has no chart, just the numbers and the link.
 
-Two behaviours worth knowing:
+Want the chart on paper? **Download PDF** on the report page gives you the chart and its totals table as a PDF. To send charts on a schedule, put the report on a dashboard and [schedule the dashboard](./dashboard-pdf.md#schedule-a-dashboard), which attaches the whole dashboard as a PDF.
 
-- **An empty result still sends**, saying so. A quiet period and a broken schedule look identical from the receiving end, so the delivery says out loud that it ran and found nothing.
-- **Failures are visible where you configured them.** Each schedule shows its last attempt's status and error on the report page. A total failure retries with a short backoff (up to three attempts); a _partial_ delivery — Slack took it, Teams didn't — is never retried automatically, because a retry would post the report twice where it already landed. **Send now** is the recovery once the failing destination is fixed.
+Two things to know:
+
+- **An empty result still sends**, and says so, so you can tell a quiet period from a broken schedule.
+- **Failures show on the report page.** Each schedule shows its last attempt's status and any error. A delivery that fails everywhere retries up to three times. A _partial_ delivery (Slack got it, Teams didn't) is not retried automatically, so the report isn't posted twice where it already landed. Fix the failing destination, then click **Send now**.
 
 ![The "New delivery schedule" modal with a weekly cadence, hour and timezone fields, Slack channel checkboxes, a Teams webhook checkbox, and an email recipients box filled in](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-delivery-modal.png)
 
-Viewing a report's schedules needs `costs:read`; creating, editing, deleting, and **Send now** need `org:settings:write` — the same step up [cost exports](./cost-exports.md) take, because a schedule is standing authorisation to send org spend to addresses its creator picked. Every change and manual send lands in the [audit log](../team-and-billing/audit-log.md).
+Viewing a report's schedules needs `costs:read`. Creating, editing, deleting and **Send now** need `org:settings:write`, the same as [cost exports](./cost-exports.md), because a schedule sends org spend outside Infrawrench. Every change and manual send is recorded in the [audit log](../team-and-billing/audit-log.md).
 
-## Drilling into a report
+## Drill into a report
 
-Click a bar, a slice, a legend entry or a value in the table to narrow the report to it and break it down one level further (provider, then service, then region, then resource). Breadcrumbs under the title step back up. The report itself never changes; **Save as new report** keeps the drilled view as a report of its own, in the same folder. See [Chart axes, comparison & drill-down](./cost-chart-axes.md#drill-down).
+Click a bar, a slice, a legend entry or a value in the table to narrow the report to it and break it down one level further (provider, then service, then region, then resource). Use the breadcrumbs under the title to step back up. The saved report doesn't change. To keep a drilled view, click **Save as new report**, which saves it in the same folder. See [Chart axes, comparison & drill-down](./cost-chart-axes.md#drill-down).
 
 ## Anomaly alerts for a report
 
-[Anomaly detection](./cost-anomaly-alerts.md) watches the whole organization, one provider and one service at a time, and routes what it finds through the org's alert rules. A team that owns a report scoped to its own accounts, tags or cost centre usually wants something narrower: to hear when **their** slice spikes, in **their** channel, at a bar they chose. The **Anomaly alert** section on a report's page does that.
+[Anomaly detection](./cost-anomaly-alerts.md) watches the whole organization, one provider and one service at a time, and sends what it finds through the org's alert rules. If your team owns a report scoped to its own accounts, tags or cost centre, you probably want something narrower: an alert when **your** slice spikes, in **your** channel, at a threshold you choose. The **Anomaly alert** section on a report's page does that.
 
 Click **Set up**, then choose:
 
-- **Sensitivity**: how many standard deviations above the report's own trailing 28-day average a day has to be. Lower is more sensitive; the organization-wide default is 3.
-- **Minimum rise per day**: how far above the average a day must be, however unusual it is, in the spend's own currency. It keeps a quiet report from paging over a few dollars.
+- **Sensitivity**: how many standard deviations above the report's own trailing 28-day average a day has to be. Lower is more sensitive. The organization-wide default is 3.
+- **Minimum rise per day**: how far above the average a day must be, in the spend's own currency, before you're alerted. This stops a small report from paging you over a few dollars.
 - **Send to**: the same destination picker as [alert routing](./alert-routing.md): Slack channels, Teams webhooks, mobile push, whoever is on call on a rotation, members by email or an extra address, GitHub issues, or a paging provider.
 
 <insert [A report's page with the Anomaly alert section in edit mode: sensitivity 2.5, minimum rise 50, and the destination picker with a Slack channel and an email address selected] here>
 
-What it watches is the report's **total**: its filters and saved filter, per currency, with grouping and display options ignored. Editing the report's filters moves the alert with it. It runs after each cost collection, re-judges the last three days as late data arrives, sends a day once, and then stays quiet about that report and currency for seven days, the same rules as organization-wide detection.
+The alert watches the report's **total**: its filters and saved filter, per currency, ignoring grouping and display options. If you edit the report's filters, the alert follows. It checks after each cost collection and rechecks the last three days as late data arrives. Once it sends about a day, it stays quiet about that report and currency for seven days, the same as organization-wide detection.
 
-It runs **beside** the organization's anomaly alerts, not instead of them. Alert routing rules don't redirect, swallow or hold these messages for quiet hours: whoever set up the alert chose where it goes. A push opens the report on the phone, and the section lists the latest findings (the day, the spend against its baseline, and whether it was sent).
+It runs **alongside** the organization's anomaly alerts, not instead of them. Alert routing rules don't redirect, block or hold these messages for quiet hours: they go where the person who set them up chose. A push opens the report on your phone. The section also lists the latest findings: the day, the spend against its baseline, and whether it was sent.
 
-Viewing a report's alert needs `costs:read` and access to the report; setting it up, changing it or deleting it needs `org:settings:write`, like delivery schedules, because it is standing permission to send this scope's spend somewhere. If a member restricted by [cost visibility](../team-and-billing/cost-visibility.md) sets one up, it only ever sees what they can see. Changes land in the audit log. `infrawrench reports anomalies [<report>]` lists alerts and their findings from a terminal, and the Terraform resource is `infrawrench_cost_report_anomaly_alert`.
+Viewing a report's alert needs `costs:read` and access to the report. Setting it up, changing it or deleting it needs `org:settings:write`, like delivery schedules. If a member limited by [cost visibility](../team-and-billing/cost-visibility.md) sets one up, it only sees what they can see. Changes are recorded in the audit log. `infrawrench reports anomalies [<report>]` lists alerts and their findings from a terminal, and the Terraform resource is `infrawrench_cost_report_anomaly_alert`.
 
 ## Annotations
 
-A step change in a spend chart explains itself for about a fortnight. After that nobody remembers whether it was a migration, a launch, or a price change — and the answer, if it exists anywhere, is in a Slack thread.
+A jump in a spend chart is easy to explain for a couple of weeks. After that, nobody remembers whether it was a migration, a launch or a price change.
 
-An **annotation** is a dated note drawn over the chart, so the explanation lives next to the number.
+An **annotation** is a dated note drawn on the chart, so the explanation sits next to the number.
 
-![A cost report chart with two numbered annotation markers on it — one a dashed vertical line labelled 1, one a shaded band labelled 2 — and the annotation chips reading "Jul 4 · Migrated the API fleet to Graviton" and "Jul 18 – Jul 22 · Datacentre migration" underneath the chart](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-annotations.png)
+![A cost report chart with two numbered annotation markers on it, one a dashed vertical line labelled 1, one a shaded band labelled 2, and the annotation chips reading "Jul 4 · Migrated the API fleet to Graviton" and "Jul 18 to Jul 22 · Datacentre migration" underneath the chart](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-annotations.png)
 
-### Writing one
+### Write an annotation
 
-Click any bar on the chart and write what happened, or use **Add annotation** in the **Annotations** list below it. Either way you get:
+Click any bar on the chart and write what happened, or click **Add annotation** in the **Annotations** list below it. You set:
 
-- **A date** — the day the thing happened.
-- **Spans several days**, optionally — a deploy is a moment, a migration is a week. A span shades the buckets it covers instead of marking one.
-- **The note itself** — up to 500 characters.
-- **Where it shows** — **every cost chart** (the default) or **only this report**.
+- **A date**: the day it happened.
+- **Spans several days** (optional): a deploy is a moment, a migration is a week. A span shades every bar it covers.
+- **The note**: up to 500 characters.
+- **Where it shows**: **every cost chart** (the default) or **only this report**.
 
-Org-wide is the default on purpose. "We changed instance types" is not a fact about one report, and filing it under one leaves every other chart showing the same step with no explanation. Scope a note to one report when it is genuinely about that report's slice of spend.
+Notes show on every cost chart by default, because something like "we changed instance types" affects more than one report. Limit a note to one report when it's really only about that report's spend.
 
-### How markers land on the chart
+### Where markers appear
 
-A note is dated to a day, but a chart bins by day, week, month or quarter. The marker lands on **whichever bucket holds that day** at the binning the chart is using — the same bucketing the spend itself went through, so a marker is never one bar away from the money it explains. Switch a chart from daily to monthly and a note dated the 14th moves onto that month's bar.
+A note is dated to a day, but a chart may group by day, week, month or quarter. The marker lands on **whichever bar contains that day**. Switch a chart from daily to monthly and a note dated the 14th moves onto that month's bar.
 
-Three consequences follow:
+- **Several notes on one bar become one marker.** Three things that happened in July are one numbered flag on a monthly chart. The list underneath shows all three.
+- **A note outside the chart's date range isn't drawn**, and doesn't stretch the axis.
+- **A span that starts before the chart's range** still shows, starting at the first bar.
 
-- **Several notes on one bucket become one marker.** Three things that happened in July are one flag on a monthly chart, numbered once; the list underneath shows all three. Markers never overprint each other.
-- **A note outside the chart's window is not drawn at all** — and never widens the axis to make room for itself.
-- **A span that starts before the window** still marks it, clamped to the first bar shown, because a migration that ended inside this window is information about this window.
+Annotations never change the numbers. Series, totals, forecast and axis are the same whether a chart has ten notes or none.
 
-Annotations never change the numbers. The series, the totals, the forecast and the axis are identical whether a chart carries ten notes or none — an annotation is an overlay on the picture, never a row in the data.
+### Read annotations without a mouse
 
-### Reading them without a mouse
+Every marker is also a button in the strip under the chart, showing its number, date and text. Tab to one and press Enter to expand every note on that bar, each with **Edit**. Nothing about annotations needs hover, so they work on a phone too.
 
-Every marker is also a button in the strip under the chart, showing its number, its date and its text. Tab to one and press Enter to expand every note on that bucket, with **Edit** on each. Nothing about annotations is hover-only, which is also what makes them work on a phone.
+### Notes created from an anomaly
 
-### Notes that came from an anomaly
+When you explain a detected [cost anomaly](./cost-anomaly-alerts.md#explaining-an-anomaly), Infrawrench adds an annotation for you: dated to the anomalous day, shown on every chart, with the explanation you wrote. These markers say **Explains a detected anomaly** next to their date, so you can check the note against the finding it closed.
 
-Some notes are not written from a chart at all. Explaining a detected [cost anomaly](./cost-anomaly-alerts.md#explaining-an-anomaly) creates one automatically: dated to the anomalous day, scoped org-wide, with the sentence somebody wrote about what the spike was. Those markers say **Explains a detected anomaly** next to their date, so a claim on a chart can be checked against the finding it closed rather than taken on trust.
+After that it's an ordinary annotation. You can reword it, limit it to one report, change its date or delete it. Deleting it removes only the marker: the anomaly stays explained. If you explain the anomaly again, the same note is updated rather than a second one added.
 
-From that moment it is an ordinary annotation — reword it, narrow it to one report, move its date, delete it. Deleting it removes the marker only: the anomaly stays explained and does not go back to being an open question. Re-explaining the anomaly rewords this note rather than adding a second one to the same bar.
+### Manage annotations
 
-### Managing them
+The **Annotations** list on a report's page shows every note the chart draws, both the report's own and the org-wide ones, each labelled. Go there to fix a date you can't see on the chart, reword a note, switch it between org-wide and this report, or delete it.
 
-The **Annotations** list on a report's page shows every note the report's chart draws — its own and the org-wide ones, each labelled with which it is. That is where you go to fix a date you can no longer see, reword a note, move one between org-wide and this report, or delete it.
-
-Reading annotations needs `costs:read`; writing them needs `costs:write`. Every create, update and delete lands in the [audit log](../team-and-billing/audit-log.md).
+Reading annotations needs `costs:read`. Writing them needs `costs:write`. Every create, update and delete is recorded in the [audit log](../team-and-billing/audit-log.md).
 
 ## From the command line
 
@@ -229,34 +245,42 @@ infrawrench export jobs                 # your recent background exports and the
 infrawrench reports anomalies "Platform"  # a report's anomaly alert and its latest findings
 ```
 
-`--measure cost|usage|count`, `--unit <usage unit>`, `--bin day|week|month|quarter|hour`, `--cumulative` and `--x-axis <dimension>|date` change how this one run is measured, binned and laid out without editing the report everybody else sees. Switching a run to usage or count drops the report's forecast, scenario and billing rules for that run, since they only apply to money. `--measure usage` without `--unit` lists the units your cost data has.
+`--measure cost|usage|count`, `--unit <usage unit>`, `--bin day|week|month|quarter|hour`, `--cumulative` and `--x-axis <dimension>|date` change how one run is measured, binned and laid out, without editing the saved report. Switching a run to usage or count drops the report's forecast, scenario and billing rules for that run, since they only apply to money. `--measure usage` without `--unit` lists the units in your cost data.
 
-`move` and `delete` take one item per argument (quote names with spaces); prefix a folder with `folder:`. Like the Reports page they are all or nothing, and `--json` prints what was moved or deleted.
+`move` and `delete` take one item per argument (quote names with spaces). Put `folder:` in front of a folder name. Like the Reports page, they're all or nothing, and `--json` prints what was moved or deleted.
 
-The `delivery` column shows each report's schedules and calls out failing ones; `reports send` is behind an explicit verb because it posts into channels and inboxes.
+The `delivery` column shows each report's schedules and flags failing ones. Sending needs the explicit `reports send` command, since it posts into channels and inboxes.
 
-The name is matched exactly first, then as a substring; an ambiguous query lists the candidates rather than picking one, because running the wrong cost report produces a wrong answer that looks right. An id works anywhere a name does. See [the CLI](./cli.md).
+Names are matched exactly first, then as a substring. If your query matches more than one report, the CLI lists the matches instead of guessing. You can use an id anywhere a name works. See [the CLI](./cli.md).
 
 ## From chat and MCP
 
-Reports are exposed to the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, and `delete_cost_report`, `bulk_move_cost_reports` and `bulk_delete_cost_reports`, so "run the monthly spend report" works without restating a filter set. `run_cost_report` takes only the report's id and returns the series along with the window a relative range resolved to; optional `measure`, `usageUnit`, `binning`, `cumulative` and `xAxis` parameters look at the same report another way for that one call, without saving anything. `move_cost_report` files a report in a [folder](#folders) by path, name, or id, or back at the top level with `null`.
+The [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) can use your reports through `list_cost_reports`, `get_cost_report`, `run_cost_report`, `create_cost_report`, `update_cost_report`, `move_cost_report`, `delete_cost_report`, `bulk_move_cost_reports` and `bulk_delete_cost_reports`. So "run the monthly spend report" works without restating any filters.
 
-Reads need `costs:read` and writes need `costs:write`; see [roles & permissions](../team-and-billing/roles-and-permissions.md). Every create, update and delete lands in the [audit log](../team-and-billing/audit-log.md).
+- `run_cost_report` takes the report's id and returns the series, along with the dates a relative range resolved to. Optional `measure`, `usageUnit`, `binning`, `cumulative` and `xAxis` parameters change the view for that one call without saving anything.
+- `move_cost_report` files a report in a [folder](#organize-reports-in-folders) by path, name or id, or back at the top level with `null`.
+
+Reads need `costs:read` and writes need `costs:write`. See [roles & permissions](../team-and-billing/roles-and-permissions.md). Every create, update and delete is recorded in the [audit log](../team-and-billing/audit-log.md).
 
 ## On your phone
 
-The [mobile app](./mobile-app.md) lists your saved reports, grouped under the same [folders](#folders) you keep on web and desktop, with each section titled by the folder's full path, and opens any one of them read-only: the chart, the description, the dashboards it feeds with a tap through to each, and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error. Report cards on a dashboard render there too, honouring the saved display options: a table report draws as rows, a donut as a ring with its total, a report with a dimension on its X axis as numbered bars with the values listed underneath, and a usage or count report prints quantities and counts rather than money.
+The [mobile app](./mobile-app.md) lists your saved reports, grouped under the same [folders](#organize-reports-in-folders) you use on web and desktop, with each section titled by the folder's full path. Open any report to see it read-only: the chart, the description, the dashboards that show it (tap through to each), and its [delivery schedules](#scheduled-delivery) with each one's last-send status and error.
 
-A report's [anomaly alert](#anomaly-alerts-for-a-report) shows there too, read-only, with its latest findings; a push about one opens the report. Creating or editing a delivery schedule or an anomaly alert stays on web and desktop, deliberately: a schedule names Slack channels, Teams webhooks and email addresses: org-egress decisions that belong next to the pickers that make them safe.
+Report cards on a dashboard show there too, using their saved display options: a table report shows as rows, a donut as a ring with its total, a report with a dimension on its X axis as numbered bars with the values listed underneath, and a usage or count report shows quantities and counts instead of money.
 
-Annotation markers are drawn on the phone's charts too, with the note text a tap away. Writing one stays on web and desktop with everything else: a note's scope choice can change what every chart in the org shows, and that is not a decision to make on a bus.
+A report's [anomaly alert](#anomaly-alerts-for-a-report) shows there too, read-only, with its latest findings. A push about one opens the report. Annotation markers appear on the phone's charts, with the note a tap away.
 
-Creating and editing a report stays on web and desktop, and so does managing folders (including moving or deleting several at once) — the phone reads the filing, it doesn't refile. Choosing choosing a chart type, a binning, a group-by and a filter set is a desktop job, and a half-editor on a phone is the fastest way to change a report that five dashboards depend on by accident.
+These stay on web and desktop:
 
-## When a report is worth making
+- Creating and editing reports.
+- Managing folders, including moving or deleting several at once.
+- Creating or editing delivery schedules and anomaly alerts.
+- Writing annotations.
 
-- More than one person asks for the same breakdown, so it needs a name.
-- The same chart belongs on two dashboards and you do not want to maintain both.
+## When to make a report
+
+- More than one person asks for the same breakdown.
+- The same chart belongs on two dashboards and you don't want to maintain both.
 - You want the numbers on the command line, or want to ask chat for them, without restating the filters.
 
-A chart you will look at once is still just a **Cost graph** on a dashboard, and that is fine.
+For a chart you'll only look at once, a **Cost graph** on a dashboard is fine.

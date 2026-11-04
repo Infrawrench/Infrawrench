@@ -1,51 +1,64 @@
 ---
 title: Credit burndown
-description: Prepaid balances with a measured burn rate and a runway — "$42 left, six days at your current spend" — for the providers that expose a credit balance.
+description: See prepaid balances with a measured burn rate and a runway, like "$42 left, six days at your current spend", for providers that expose a credit balance.
 sidebar_order: 13
 ---
 
-Most providers bill in arrears. They send an invoice, you argue with it, life goes on. A few — prepaid AI inference, trial grants, committed-spend balances — work the other way: there is a pot, and when the pot empties the API stops answering.
+Most providers bill you after the fact. A few work the other way: prepaid AI inference, trial grants and committed-spend balances. There's a pot of credit, and when it runs out the API stops answering.
 
-That makes an empty credit balance an **outage**, not a bill. And a balance on its own is not actionable: "you have $42" tells you nothing. "$42, six days left at your current burn" is a decision.
+So an empty balance means an **outage**, not a bill. Credit burndown shows each balance with how fast you're spending it and how long it will last: not just "$42 left", but "$42, six days left at your current spend".
 
 ![The Credit burndown section on the Costs panel showing three balances: one red at "4d", one amber at "3w", and one grey at "5mo", each with its remaining amount and burn per day](https://agent-assets.infrawrench.com/docs-screenshots/features/credit-burndown/three-balances.png)
 
-Find it in the **Credit burndown** section of the Costs panel's **Commitments & credits** tab. The savings sections are about spending less. This one is about not stopping.
+Open the Costs panel, go to the **Commitments & credits** tab and find the **Credit burndown** section.
 
-## Which providers
+## Supported providers
 
-Only providers that expose a balance appear here. Current sources are **DeepSeek**, **OpenRouter**, **Deepgram**, **xAI**, **ClickHouse Cloud**, **Snowflake** (contract capacity, rollover and free usage when the role can read organization usage), **Crusoe Cloud**, **Linode** (active promotions and account credit), **Oracle Cloud** (Universal Credits commitments), **Twilio** (account balance), **Elastic Cloud** (prepaid ECUs, one balance per order line with its expiry) and **Anyscale** (one balance per credit grant and prepaid commit, with its expiry).
+Only providers that expose a balance appear here:
 
-Each provider uses the balance name shown in its console, such as "Credits" on OpenRouter, "Balance" on DeepSeek and Deepgram, and "Account balance" on Twilio.
+- **DeepSeek**
+- **OpenRouter**
+- **Deepgram**
+- **xAI**
+- **ClickHouse Cloud**
+- **Snowflake** (contract capacity, rollover and free usage, when the role can read organization usage)
+- **Crusoe Cloud**
+- **Linode** (active promotions and account credit)
+- **Oracle Cloud** (Universal Credits commitments)
+- **Twilio** (account balance)
+- **Elastic Cloud** (prepaid ECUs, one balance per order line with its expiry)
+- **Anyscale** (one balance per credit grant and prepaid commit, with its expiry)
 
-Some balances need a stronger credential than the account otherwise does. OpenRouter's `/credits` endpoint wants a provisioning key; Deepgram's balances require an admin or owner role; Crusoe's credit balance requires an organization admin or billing role; Twilio's balance requires the auth token or a Main API key rather than a Standard one. Where needed, the section says so and links to the page where you can make one.
+Each balance uses the name from the provider's console, such as "Credits" on OpenRouter, "Balance" on DeepSeek and Deepgram, and "Account balance" on Twilio.
 
-## How the burn rate is measured
+### Credentials some providers need
 
-Infrawrench reads each balance about twice a day and keeps the series. The burn rate is derived from that series — not reported by the provider, most of whom have no such number.
+Some balances need a stronger credential than the rest of the account:
 
-The important detail is how top-ups are handled. A pot that went 500 → 300 → 900 → 700 over four readings has **burned 400 and been topped up by 600**. Subtracting the endpoints of that window gives −200: a negative burn and an infinite runway, which is the most dangerous possible wrong answer, delivered with confidence. So the burn is the sum of the _decreases_ between consecutive readings, and increases are counted as top-ups and shown separately. When a top-up happened inside the window, the row says so.
+- **OpenRouter:** a provisioning key.
+- **Deepgram:** an admin or owner role.
+- **Crusoe:** an organization admin or billing role.
+- **Twilio:** the auth token or a Main API key, not a Standard key.
 
-Below three days of readings there is no rate. Two readings a few hours apart across a quiet night extrapolate to a runway of years; two spanning a busy afternoon, to a runway of days. Neither is a rate, so the row reads **not enough history** rather than showing a number it cannot support.
+If a balance needs one of these, the section tells you and links to the page where you can create it.
 
-A pot nothing has been drawn from reads **no spend observed**, not "infinite". That is a real observation about an idle account and should read as one.
+## Reading a row
 
-## How the runway is bounded
+Infrawrench checks each balance about twice a day and works out the burn rate from those readings. Top-ups are counted separately, so adding credit never makes it look like you're spending less. If a top-up happened in the window, the row says so.
 
-Two things end a credit, and the earlier one wins:
+You may also see:
 
-- **The burn** — balance divided by spend per day.
-- **The credit's own expiry**, where the provider sets one. A trial grant that lapses in nine days does not have a 200-day runway however slowly it is being spent, and a report that said otherwise would be wrong in exactly the case where the warning matters most.
+- **Not enough history:** there are fewer than three days of readings, which is too little for a reliable rate.
+- **No spend observed:** nothing has been drawn from this balance.
+- **Limited by the credit's own expiry:** the credit expires before it would run out at your current spend. The runway is whichever comes first, running out or expiring.
 
-When the expiry is the binding constraint the row says **limited by the credit's own expiry**.
+Runways are rounded more as they get longer: days, then weeks, then months.
 
-Runways are shown coarsely as they grow — days, then weeks, then months. "213 days" implies a burn measured to a precision a 30-day window cannot support; "7 months" is the honest rendering of the same estimate.
+Rows are sorted by urgency, then by days remaining. Red means less than a week, amber means less than a month. The balance closest to running out is always at the top.
 
-Rows are sorted by urgency, then by days remaining: red inside a week, amber inside a month. The thing about to break is the first row — not the biggest balance, which is the sort a "credits" screen would naively pick and which buries exactly the account that needs attention.
+## Multiple balances
 
-## Multiple pots
-
-Providers that split credit by currency or by project get a row each, and nothing is ever summed across them. "$40 and ¥300" is not a number, and one project running dry while another has headroom is precisely the situation this exists to surface.
+If a provider splits credit by currency or by project, each one gets its own row. Balances are never added together, so you can see when one project is running dry while another still has room.
 
 ## From the CLI
 
@@ -54,12 +67,12 @@ infrawrench credits
 infrawrench credits --json
 ```
 
-Worth putting in a morning check. This is the number that turns into an outage rather than an invoice, and `--json` in whatever you already run is how you find out before your inference calls start returning 402.
+This is a good one for a morning check. Add `--json` to whatever monitoring you already run and you'll find out before your inference calls start returning 402.
 
 ## Permissions
 
-Reading the burndown needs `costs:read`. A prepaid balance is spend information, and the permission that already governs "what is this costing us" is the one that should govern "how much is left".
+You need `costs:read` to see the burndown.
 
 ## For plugin authors
 
-A plugin opts in by declaring `credits` on its manifest and implementing `fetchCreditBalance` on its client. It returns the pots; the host owns the schedule, the series, and every derived number. Throw `CreditAccessError` when the credential cannot see the balance, and the host will present it as a permission gap with your help link rather than as a failure.
+To show a balance from your plugin, declare `credits` on its manifest and implement `fetchCreditBalance` on its client to return the balances. Infrawrench handles the schedule and works out the burn rate and runway. If the credential can't see the balance, throw `CreditAccessError`, and users will see it as a permissions gap with your help link instead of an error.
