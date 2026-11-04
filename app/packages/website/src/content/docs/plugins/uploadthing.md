@@ -6,85 +6,41 @@ sidebar_order: 49
 
 ## What you can manage
 
-- The **app** — its ID, region, default ACL, and storage quota
-- **Files** — browse, upload, rename, change access, delete
+- The **app**: its ID, region, default ACL and storage quota
+- **Files**: browse, upload, rename, change access, delete
 
-An UploadThing API key is scoped to a single app, so one Infrawrench account is
-one UploadThing app. Add a second account for a second app.
+An UploadThing API key belongs to a single app, so one Infrawrench account is one UploadThing app. Add a second account for a second app.
 
-Because a second app is impossible rather than merely unusual, the account _is_
-the app: opening it lands you straight on the app page below, and the sidebar
-expands the account directly to its files. See
-[providers with a single root](../core-concepts/resources-and-accounts.md#providers-with-a-single-root).
+Opening the account takes you straight to the app page, and the sidebar expands the account directly to its files. See [providers with a single root](../core-concepts/resources-and-accounts.md#providers-with-a-single-root).
 
-## Credentials
+## Connect your app
 
-UploadThing dashboard → **API Keys**. Paste **either** value into the single
-field — Infrawrench works out which one you gave it:
+In the UploadThing dashboard, open **API Keys**. Paste **either** value into the single field, and Infrawrench works out which one it is:
 
-- the **V7 token** (`UPLOADTHING_TOKEN`), which is what the copy button hands
-  out — base64-encoded JSON holding the key, the app ID, and the region
+- the **V7 token** (`UPLOADTHING_TOKEN`), which is what the copy button gives you
 - a raw **`sk_live_…` secret key**, if your app still uses one
 
 ![UploadThing Add-account form showing the single API Key or Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/uploadthing/add-account.png)
 
-## Notable flows
+## Things you can do
 
-- **File browser** on the **Files** tab — upload from your machine, download
-  (single file, or a zip of a multi-file selection), and delete, backed by
-  UploadThing's own listing. This tab is the file listing; the Overview tab
-  deliberately does not repeat it.
-- **Upload from URL** — takes a public URL, downloads it, and pushes the bytes
-  to UploadThing. Optionally set a custom ID, whether browsers show the file
-  inline or download it as an attachment, and, where the app allows it, the
-  file's access level.
-- **Make public / Make private** on a file, when the app allows per-file ACL
-  overrides. These buttons are hidden when it does not, because the API rejects
-  the change rather than ignoring it — flip the app-wide default in the
-  UploadThing dashboard instead.
-- **Signed URL** is a resolvable output on every file. That is how a private
-  file is read: the public `https://<app-id>.ufs.sh/f/<key>` URL only works for
-  files whose ACL is `public-read`.
-- **Failed uploads** show up on the Potential savings page — an upload that
-  never completed cannot be served and is safe to delete. **Delete failed
-  uploads** on the app page clears all of them in one go.
-- **Storage quota** feeds the [Quota radar](../features/quota-radar.md): the
-  storage counted against the app's quota is tracked over time, with an alert
-  before uploads start failing.
-- **Upload activity** on the app's **Metrics** tab: uploads, bytes uploaded,
-  failed uploads, and the running total of stored bytes, over the last 30 days
-  by default. UploadThing has no usage history API, so these are built from the
-  file listing's upload times and sizes. Deleted files are no longer in that
-  listing, so the charts describe how the app's current contents arrived, not
-  a storage history.
+- **Browse files** on the **Files** tab: upload from your machine, download (one file, or a zip of several), and delete.
+- **Upload from URL**: give a public URL and Infrawrench downloads it and uploads it to UploadThing. You can set a custom ID, whether browsers show the file inline or download it as an attachment, and, if the app allows it, the file's access level.
+- **Make public / Make private** on a file, if the app allows per-file access overrides. If it doesn't, these buttons are hidden. Change the app-wide default in the UploadThing dashboard instead.
+- **Read private files** with the **Signed URL** output on every file. The public `https://<app-id>.ufs.sh/f/<key>` URL only works for files whose ACL is `public-read`.
+- **Clean up failed uploads**: uploads that never finished can't be served and are safe to delete. They show on the Potential savings page, and **Delete failed uploads** on the app page clears them all at once.
+- **Watch storage quota** on the [Quota radar](../features/quota-radar.md): storage counted against the app's quota is tracked over time, with an alert before uploads start failing.
+- **See upload activity** on the app's **Metrics** tab: uploads, bytes uploaded, failed uploads, and the running total of stored bytes, over the last 30 days by default. These are worked out from the files currently in the app, so deleted files don't appear. The charts show how the app's current contents arrived, not a full storage history.
 
 ![UploadThing app detail page showing the storage quota section, with the file listing on its own Files tab](https://agent-assets.infrawrench.com/docs-screenshots/plugins/uploadthing/app-detail-storage.png)
 
 ## Tips & limits
 
-- **Every file is listed** — there is no cap. A very large app therefore costs
-  a proportionally longer sync each poll cycle, since UploadThing pages its
-  listing 500 at a time and Infrawrench walks all of it.
-- On the free tier the storage quota is shared across every free app on the
-  account, so "storage used by this app" and "counted against quota" can differ.
-  The app page shows both when they do.
-- UploadThing stores files in a **flat namespace** — there are no folders.
-  Uploading a folder uploads its **contents**, keeping the folder's relative
-  path in each file's name (`photos/sub/a.png`).
-- **The file browser rebuilds the tree from those names.** A `/` is treated as
-  a separator, so an uploaded archive browses as folders rather than one screen
-  of long identical-looking rows. The folders are derived, not stored: deleting
-  one deletes every file beneath it, and an _empty_ folder cannot be created
-  because there would be nothing to derive it from.
-- **The page is titled with your account name**, because UploadThing's API
-  exposes no app name — `getAppInfo` returns the app ID, the default ACL, and
-  the override flag, and nothing else. Rename the account to rename the page;
-  the app ID is still on it, copyable.
-- **Content type** is only available on a file's own page. UploadThing's file
-  listing does not include it, so it is fetched separately when you open a file.
-- **Downloads go through a per-file grant.** UploadThing issues no read token
-  covering many files, so each download asks the API for a short-lived signed
-  URL first. That is what makes downloading a **private** file work — its plain
-  `ufs.sh` URL returns 403.
-- Files cannot be moved between apps, and a file's key is assigned at upload
-  and never changes. Renaming changes the display name only.
+- **Every file is listed**, with no cap, so a very large app takes longer to refresh.
+- On the free tier, the storage quota is shared across every free app on your account, so "storage used by this app" and "counted against quota" can differ. The app page shows both when they do.
+- UploadThing has **no real folders**. Uploading a folder uploads its **contents**, keeping the folder's relative path in each file's name (`photos/sub/a.png`).
+- **The file browser shows those names as folders**, splitting on `/`. Deleting a folder deletes every file under it, and you can't create an _empty_ folder.
+- **The page is titled with your account name**, since UploadThing doesn't share an app name. Rename the account to rename the page. The app ID is still shown, and you can copy it.
+- **Content type** only shows on a file's own page.
+- **Downloading a private file works**, even though its plain `ufs.sh` URL returns 403, because each download gets a short-lived signed URL first.
+- You can't move files between apps, and a file's key never changes. Renaming only changes the display name.

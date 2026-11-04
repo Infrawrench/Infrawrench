@@ -13,35 +13,33 @@ sidebar_order: 51
 - **Issues**: the 100 unresolved issues with the most events in the last 14 days, shown under their project. **Resolve**, **Archive until escalating**, **Archive forever** or **Reopen**, and chart the issue's events.
 - **Client keys (DSN)**: the DSN your SDKs send with, whether the key is enabled, and its rate limit. **Create** a key on a project, **Edit** its name and rate limit, **Enable** or **Disable** it, or delete it.
 - **Alerts**: triggers, filters, actions, connected monitors and when the alert last fired. **Enable** or **Disable**, **Edit** the name and action interval, or delete.
-- **Monitors** (Sentry's issue detectors: error, metric and issue stream monitors): type, aggregate, filter, thresholds, connected alerts and the latest issue. **Enable**, **Disable** or delete.
+- **Monitors** (Sentry's error, metric and issue stream monitors): type, aggregate, filter, thresholds, connected alerts and the latest issue. **Enable**, **Disable** or delete.
 - **Cron monitors**: schedule, margins and the status of each environment. **Pause** or **Resume**, **Mute** or **Unmute**, **Edit** the name, schedule (a crontab such as `0 * * * *`, or an interval such as `10 minute`), timezone, check-in margin and maximum runtime, or delete. The Metrics tab charts run durations and failed check-ins.
 - **Uptime monitors**: URL, method, interval, timeout and whether the URL is up. **Pause** or **Resume**, **Edit** the name, URL, interval and timeout, or delete. The Metrics tab charts successful and failed checks.
 
 ## Connect with Sentry
 
-On sentry.io, **Connect with Sentry** on the add-account form signs you in to Sentry instead of creating a token. On the consent screen you pick the organization to connect, and Sentry lists the permissions Infrawrench asks for: read and write on the organization's projects, teams, issues and events, and alerts, plus releases. Write access is only used for the actions you take (resolving an issue, editing an alert, creating a client key); you still only get what your Sentry role allows.
+On sentry.io, click **Connect with Sentry** on the add-account form to sign in instead of creating a token. On the consent screen, pick the organization to connect. Sentry lists the permissions Infrawrench asks for: read and write on the organization's projects, teams, issues and events, and alerts, plus releases. Write access is only used for actions you take (resolving an issue, editing an alert, creating a client key), and you never get more than your Sentry role allows.
 
-After you approve, the **Organization** and its **Region** (US or DE) are filled in for you, and the account is named after the organization. The pricing fields below still apply.
+Once you approve, the **Organization** and its **Region** (US or DE) are filled in, and the account is named after the organization. The pricing fields below still apply.
 
-The connection refreshes itself: Sentry's access tokens last 30 days and are renewed automatically. If you revoke Infrawrench under **User Settings**, **Authorized Applications** in Sentry, the account is marked **Reconnect required**, and **Reconnect** in its credentials signs you in again.
+The connection renews itself. If you revoke Infrawrench under **User Settings > Authorized Applications** in Sentry, the account shows **Reconnect required**. Click **Reconnect** in its credentials to sign in again.
 
-Connect with Sentry works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser). A self-hosted Sentry uses a token, as below.
+Connect with Sentry works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser). Self-hosted Sentry uses a token, as below.
 
 <insert [Sentry add-account form showing the Connect with Sentry button above the Region and Auth Token fields] here>
 
-## Credentials
+## Use a token instead
 
-To use a token instead:
-
-1. In Sentry, open **Settings**, then **Developer Settings**, and create a **New Internal Integration**. Give it **Read** on Organization, Project, Team, Issue & Event, Release and Alerts for a read-only connection, or **Read & Write** to use the actions above. Save it and copy its token (it starts with `sntryi_`). A personal token (**User Settings**, **Personal Tokens**, starting `sntryu_`) with the same scopes also works, limited to what your own role allows. Organization tokens (`sntrys_`) only cover CI uploads and are refused.
-2. In Infrawrench, pick the **Region** your organization stores its data in: **US** or **DE** on sentry.io (Organization Settings shows the data storage location), or **Self-hosted**, in which case also enter the **Self-hosted URL** you open Sentry at.
-3. Paste the token. The **Organization** picker then lists every organization the token can see in that region; pick one.
+1. In Sentry, open **Settings**, then **Developer Settings**, and create a **New Internal Integration**. Give it **Read** on Organization, Project, Team, Issue & Event, Release and Alerts for a read-only connection, or **Read & Write** to use the actions above. Save it and copy its token (it starts with `sntryi_`). A personal token (**User Settings**, **Personal Tokens**, starting `sntryu_`) with the same scopes also works, limited to what your own role allows. Organization tokens (`sntrys_`) only cover CI uploads and won't work.
+2. In Infrawrench, pick the **Region** your organization stores its data in: **US** or **DE** on sentry.io (Organization Settings shows the data storage location), or **Self-hosted**. For self-hosted, also enter the **Self-hosted URL** you open Sentry at.
+3. Paste the token. The **Organization** picker lists every organization the token can see in that region. Pick one.
 
 <insert [Sentry Add-account form with the region picker on US, the auth token filled in and the Organization picker open on the list of organizations] here>
 
-**Check credentials** probes one read per capability and lists the scopes any missing capability needs; the template generator writes the exact scope list for the capabilities you keep.
+**Check credentials** tests each capability and lists the scopes any missing one needs. The template generator writes the exact scope list for the capabilities you keep.
 
-The remaining fields are the prices used to estimate cost (see below). They start at Sentry's Team plan list prices, and you can change them at any time with **Edit credentials** on the account.
+The other fields are the prices used to estimate cost (see below). They start at Sentry's Team plan list prices, and you can change them any time with **Edit credentials** on the account.
 
 ## Cost graphs
 
@@ -61,17 +59,18 @@ Sentry accounts on sentry.io feed [cost graphs & budgets](../features/cloud-cost
 | Uptime monitors      | Active monitors, current month  | $1.00 per monitor a month | 1                   |
 | Plan                 | The plan's base fee, on the 1st | $26 a month               |                     |
 
-- **These amounts are estimates.** Sentry's API reports usage but not prices, budgets or invoices, so Infrawrench prices accepted volume beyond each category's included amount at the rates in the account's credentials. The defaults are the Team plan's pay-as-you-go list prices; on Business, errors are $0.0011125 and spans $0.000004, and the plan fee is $80. If you reserved volume, add it to the included amount and enter your reserved rate. On the free Developer plan, set the plan fee to 0 and errors included to 5,000.
+- **These amounts are estimates.** Sentry reports usage but not prices, budgets or invoices, so Infrawrench prices accepted volume beyond each category's included amount at the rates in the account's credentials.
+- The defaults are the Team plan's pay-as-you-go list prices. On Business, errors are $0.0011125 and spans $0.000004, and the plan fee is $80. If you reserved volume, add it to the included amount and enter your reserved rate. On the free Developer plan, set the plan fee to 0 and errors included to 5,000.
 - A category is free until the month's accepted volume passes its allowance, so the first days of a month usually cost nothing. A month's rows add up to what that month bills at your rates. Filtered, rate-limited and dropped events are never billed.
-- Cron and uptime monitors are priced from the monitors that are active (not paused) now, for the current month only, on the 1st of the month.
-- Usage history reaches back 90 days, the furthest Sentry's usage API goes.
-- A self-hosted Sentry has no bill, so it reports no cost. Its usage still shows on the organization's Metrics tab.
+- Cron and uptime monitors are priced on the 1st of the month from the monitors that are active (not paused) now, for the current month only.
+- Usage history goes back 90 days, as far as Sentry keeps it.
+- A self-hosted Sentry has no bill, so it shows no cost. Its usage still shows on the organization's Metrics tab.
 
 ## Tips & limits
 
-- The region must be the one your organization lives in: a token only sees organizations in the region you pick.
-- Issues are listed from the 100 busiest unresolved ones in the organization, so a quiet project may show none; its detail page still shows its own unresolved count and top issues.
-- Editing an alert sends the whole alert back to Sentry with only the name or interval changed. Build or change conditions and actions in Sentry.
-- Cron and uptime monitors are listed as their own types rather than among the generic monitors. Uptime monitors use an API Sentry still marks experimental.
-- Bastion egress for Sentry accounts allows only the sentry.io hosts (`sentry.io`, `us.sentry.io`, `de.sentry.io`), so a self-hosted Sentry has to be reachable without one.
+- Pick the region your organization lives in. A token only sees organizations in the region you pick.
+- Issues come from the 100 busiest unresolved ones in the organization, so a quiet project may show none. Its detail page still shows its own unresolved count and top issues.
+- Editing an alert only changes the name or interval. Build or change conditions and actions in Sentry.
+- Cron and uptime monitors are listed as their own types, not with the other monitors. Sentry still marks uptime monitors as experimental.
+- Bastion egress for Sentry accounts only allows the sentry.io hosts (`sentry.io`, `us.sentry.io`, `de.sentry.io`), so a self-hosted Sentry has to be reachable without one.
 - [Export to Terraform](../features/terraform-export.md) writes teams, projects and client keys as `sentry_team`, `sentry_project` and `sentry_key` resources for the `jianyuan/sentry` provider.
