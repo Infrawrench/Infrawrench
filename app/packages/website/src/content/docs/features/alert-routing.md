@@ -4,110 +4,116 @@ description: Route each alert to the right channel by condition, hold alerts dur
 sidebar_order: 14
 ---
 
-Every alert Infrawrench raises — a sync failure, a budget crossing, a cost anomaly, a probe going down — passes through your organization's **routing rules** on its way out. A rule says which alerts it is about, where they go, whether to hold them at night, and what to do if nobody responds.
+Routing rules decide where your alerts go. Every alert Infrawrench raises (a sync failure, a budget crossing, a cost anomaly, a probe going down) is checked against your organization's rules. A rule says which alerts it covers, where they go, whether to hold them at night, and what to do if nobody responds.
 
-> **Cloud-managed.** Rules live with your organization in the cloud, and the cloud's background poller applies them as alerts are raised. You can edit them from the web app or from the desktop app's Settings tab while signed in to your organization — the desktop app edits the same cloud configuration, it does not keep a local copy. There is no rules editor on mobile; the mobile app carries your personal push mutes instead.
+> **Where to edit rules.** Rules belong to your organization in the cloud. Edit them from the web app, or from the desktop app's Settings tab while signed in to your organization. Both edit the same rules. There's no rules editor on mobile. The mobile app has your personal push mutes instead.
 
-Routing is about people. To send the same events to your own systems as versioned JSON (a SIEM, an event bus, a ticketing tool), use [event subscriptions](./event-subscriptions.md) instead; they are independent of these rules.
+Routing is for people. To send the same events to your own systems as versioned JSON (a SIEM, an event bus, a ticketing tool), use [event subscriptions](./event-subscriptions.md) instead. They work independently of these rules.
 
-## The shape of a rule
+## How a rule works
 
 A rule has four parts:
 
 | Part            | What it says                                                                                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **When**        | Conditions the alert must satisfy. All of them must match — "or" is a second rule.                                                                                           |
+| **When**        | Conditions the alert must meet. All of them must match. For "or", write a second rule.                                                                                       |
 | **Send to**     | Slack channels, Teams channels, mobile push, on-call rotations, GitHub issues, [email](./email-alerts.md) and [paging providers](./on-call.md#paging-providers), in any mix. |
-| **Quiet hours** | Optional. A recurring local-time window during which matching alerts are held rather than sent.                                                                              |
+| **Quiet hours** | Optional. A recurring local-time window when matching alerts are held instead of sent.                                                                                       |
 | **Escalation**  | Optional. Extra destinations to notify if nobody acknowledges within N minutes.                                                                                              |
 
-Rules are a **list, evaluated top to bottom**, and the first one that matches decides where the alert goes. That ordering is what makes the common ask expressible:
+Rules are a **list, checked top to bottom**, and the first one that matches decides where the alert goes. That makes the common setup easy:
 
-1. **Big anomalies on prod** — trigger is `Anomalies`, amount at least `$500`, account is `prod` → `#incidents`
-2. **Everything else** → `#infra-noise`
+1. **Big anomalies on prod.** Trigger is `Anomalies`, amount at least `$500`, account is `prod`. Send to `#incidents`.
+2. **Everything else.** Send to `#infra-noise`.
 
-The first rule takes the expensive ones; whatever it does not take falls through to the second. Neither rule has to know about the other.
+The first rule takes the expensive ones, and everything else falls through to the second.
 
-A rule can also be a **tee** rather than a branch: untick _Stop here_ and evaluation continues past it, so an audit channel can copy every alert without shadowing the rules below it.
+A rule can also copy alerts without stopping them. Untick _Stop here_ and checking continues to the rules below. That's how an audit channel can get every alert without hiding anything from the other rules.
 
-![The Alert routing card on the Routing tab of Settings → Notifications, showing two rules, a narrow "anomalies over $500 on prod → #incidents" above a broad "everything → #infra-noise", with the first rule expanded to show its conditions](https://agent-assets.infrawrench.com/docs-screenshots/features/alert-routing/two-rules.png)
+![The Alert routing card on the Routing tab of Settings > Notifications, showing two rules, a narrow "anomalies over $500 on prod to #incidents" above a broad "everything to #infra-noise", with the first rule expanded to show its conditions](https://agent-assets.infrawrench.com/docs-screenshots/features/alert-routing/two-rules.png)
 
-The **GitHub issues** destination files the alert's finding as an issue in the repository your [GitHub issue settings](./github-issues.md) route it to, one issue per finding. Only alerts that carry a finding (savings findings, anomalies, idle commitments) are filed; for other triggers it is skipped. The **Savings findings** trigger, one alert per new orphaned or oversized resource, is left out of the default rule and muted on phones, so it only goes where a rule sends it.
+### GitHub issues
 
-The **Leaked credentials** trigger fires when a secret scanner finds a credential committed to code (see [Leaked credentials](./leaked-credentials.md)). It is **critical** by default, is part of the default rule, and is not muted on phones, so a new leak pages like any critical alert. A scan sends one alert covering everything new it found, and carries the matched account and the token's provider when there is exactly one, so **Account** and **Provider** conditions can route it to the team that owns the key.
+The **GitHub issues** destination files the alert's finding as an issue in the repository your [GitHub issue settings](./github-issues.md) send it to, one issue per finding. Only alerts with a finding (savings findings, anomalies, idle commitments) are filed. Other alerts skip this destination.
+
+### Savings findings and leaked credentials
+
+The **Savings findings** trigger sends one alert per new orphaned or oversized resource. It's left out of the default rule and muted on phones, so it only goes where you route it.
+
+The **Leaked credentials** trigger fires when a secret scanner finds a credential committed to code (see [Leaked credentials](./leaked-credentials.md)). It's **critical** by default, part of the default rule, and not muted on phones, so a new leak pages like any critical alert. Each scan sends one alert covering everything new it found. When there's exactly one match, the alert carries the account and the token's provider, so you can use **Account** and **Provider** conditions to route it to the team that owns the key.
 
 ### PagerDuty and incident.io
 
-With a [PagerDuty](../plugins/pagerduty.md) or [incident.io](../plugins/incident-io.md) account connected, the **Send to** list gains a picker for each: choose a PagerDuty service or an incident.io HTTP alert source by name, and matching alerts open an alert there. You never paste a routing key; Infrawrench looks it up through the account.
+Connect a [PagerDuty](../plugins/pagerduty.md) or [incident.io](../plugins/incident-io.md) account and **Send to** gets a picker for each. Choose a PagerDuty service or an incident.io HTTP alert source by name, and matching alerts open an alert there. You never paste a routing key.
 
-Each upstream alert is addressed by a stable key per condition, so the lifecycle follows it upstream:
+The alert stays in step with Infrawrench:
 
-- A probe that recovers, a metric alert that clears, a declared incident that is resolved, a sync failure that heals and a page that is cleared all **resolve** the upstream alert, whichever rule opened it and whatever the rules say now.
-- Mitigating a declared incident, or pressing **Acknowledge** on an escalating alert in Infrawrench, **acknowledges** it upstream (PagerDuty; an incident.io alert source only knows firing and resolved).
-- Acknowledging upstream, in PagerDuty or by responding to an incident.io escalation, settles the Infrawrench escalation for that alert, so nobody is escalated to about a page somebody already took. This needs inbound mirroring on for the account, see [On-call](./on-call.md#paging-providers).
-- A repeat of the same alert (the same probe, the same budget) re-triggers the open upstream alert rather than opening a second incident.
+- When a probe recovers, a metric alert clears, a declared incident is resolved, a sync failure heals or a page is cleared, the upstream alert is **resolved**. This happens whichever rule opened it and whatever your rules say now.
+- Mitigating a declared incident, or pressing **Acknowledge** on an escalating alert in Infrawrench, **acknowledges** it in PagerDuty. (An incident.io alert source only knows firing and resolved.)
+- Acknowledging in PagerDuty, or responding to an incident.io escalation, settles the Infrawrench escalation for that alert, so nobody gets escalated to about a page someone already took. This needs inbound mirroring turned on for the account. See [On-call](./on-call.md#paging-providers).
+- A repeat of the same alert (the same probe, the same budget) re-triggers the open upstream alert instead of opening a second incident.
 
-The same picker offers **whoever is on call** on a PagerDuty schedule or escalation policy, or an incident.io schedule or escalation path. It is resolved when the alert fires and matched to your members by email, then delivered like an [on-call rotation](./on-call.md): one push per person, never twice to somebody who is also on an Infrawrench rotation.
+The same picker also offers **whoever is on call** on a PagerDuty schedule or escalation policy, or an incident.io schedule or escalation path. Infrawrench looks up who is on call when the alert fires, matches them to your members by email, and delivers it like an [on-call rotation](./on-call.md): one push per person, never twice to someone who is also on an Infrawrench rotation.
 
-A send that fails (the provider is down, rate limited) is retried in the background with backoff; a refused one (a deleted service, a revoked key) is given up on and shown under **Settings → On-call → Paging providers**.
+If a send fails because the provider is down or rate limited, it's retried in the background. If it's refused (a deleted service, a revoked key), Infrawrench stops trying and shows it under **Settings > On-call > Paging providers**.
 
 <insert [The Send to section of an alert routing rule with a PagerDuty service and an incident.io on-call schedule added from the paging provider picker] here>
 
 ## Conditions
 
-| Condition         | Matches on                                                                                                                             |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Trigger**       | Which kind of alert it is — sync failures, budgets, anomalies, drift, pages, probes, declared incidents, leaked credentials, and so on |
-| **Severity**      | `info`, `warning` or `critical`, ordered, so "at least warning" is a floor rather than an equality                                     |
-| **Account**       | The account the alert is about                                                                                                         |
-| **Provider**      | The plugin — route AWS incidents to the team that runs on AWS                                                                          |
-| **Resource type** | The kind of thing, for alerts scoped to one                                                                                            |
-| **Amount**        | Money at stake, for budgets and cost anomalies                                                                                         |
-| **Name**          | The alert's natural key — an anomaly's service, a probe's name, a metric rule's name                                                   |
-| **Message text**  | A substring of the alert's title or body, for anything the fields above do not cover                                                   |
+| Condition         | Matches on                                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Trigger**       | What kind of alert it is: sync failures, budgets, anomalies, drift, pages, probes, declared incidents, leaked credentials, and so on |
+| **Severity**      | `info`, `warning` or `critical`, in that order, so "at least warning" is a floor, not an exact match                                 |
+| **Account**       | The account the alert is about                                                                                                       |
+| **Provider**      | The provider, for example to route AWS incidents to the team that runs on AWS                                                        |
+| **Resource type** | The kind of resource, for alerts about one                                                                                           |
+| **Amount**        | Money at stake, for budgets and cost anomalies                                                                                       |
+| **Name**          | The alert's name: an anomaly's service, a probe's name, a metric rule's name                                                         |
+| **Message text**  | Text in the alert's title or body, for anything the fields above don't cover                                                         |
 
-One rule worth knowing: **a condition about a fact the alert does not carry never matches**, in either direction. An account condition does not match an alert that is not about an account — not with `is one of`, and not with `is not one of` either. A provider status incident spans your whole organization, so it will not be caught by a rule that is plainly about one account. Rules that want the organization-wide alerts simply leave the account condition off.
+One thing to know: **a condition about something the alert doesn't have never matches**, either way. An account condition won't match an alert that isn't about an account, with `is one of` or with `is not one of`. A provider status incident covers your whole organization, so a rule about one account won't catch it. To catch organization-wide alerts, leave the account condition off.
 
-## Quiet hours
+## Hold alerts during quiet hours
 
-A rule can carry a recurring window — say 22:00 to 08:00 in `Europe/Berlin`, weekdays only — during which its alerts are **held rather than dropped**. A held alert is queued with its original text and delivered the moment the window closes, so nothing is lost; it just arrives at breakfast instead of at 3am.
+A rule can have a recurring window, say 22:00 to 08:00 in `Europe/Berlin` on weekdays, when its alerts are **held, not dropped**. A held alert keeps its original text and goes out as soon as the window ends. It arrives at breakfast instead of at 3am.
 
-Set **Send anyway when severity is at least** to let the urgent ones through. `Critical` is the usual choice: sleep through budget warnings, wake for a page.
+Set **Send anyway when severity is at least** to let urgent alerts through. `Critical` is the usual choice: sleep through budget warnings, wake up for a page.
 
-Some alerts ignore quiet hours entirely, because holding them would change what they mean:
+Some alerts ignore quiet hours, because holding them would change what they mean:
 
-- **Pages** raised by `infra.page(...)` — the whole purpose of the call is to interrupt.
-- **Approval requests** — a run is blocked on the answer and no decision counts as a denial, so holding one until morning would silently deny it.
-- **The weekly digest** — it already goes out at an hour you chose.
+- **Pages** raised by `infra.page(...)`. Their whole job is to interrupt.
+- **Approval requests.** A run is waiting on the answer, and no answer counts as a denial, so holding one until morning would quietly deny it.
+- **The weekly digest.** It already goes out at a time you chose.
 
-The **Recent held and escalating alerts** list at the bottom of the card shows what is currently queued and when it will send.
+The **Recent held and escalating alerts** list at the bottom of the card shows what's waiting and when it will send.
 
-## Escalation
+## Escalate unacknowledged alerts
 
-Give a rule an escalation policy and every alert it sends carries an **Acknowledge** button on its Slack message. If nobody presses it within the configured number of minutes, the alert goes out again — retitled _Unacknowledged: …_ — to the escalation destinations.
+Give a rule an escalation policy and every alert it sends has an **Acknowledge** button on its Slack message. If nobody presses it within the set number of minutes, the alert goes out again, retitled _Unacknowledged: …_, to the escalation destinations.
 
-Acknowledging is a race that exactly one person wins: two people pressing at the same moment produce one acknowledgement, and an alert that already escalated cannot be retroactively silenced.
+Only one person's acknowledgement counts, even if two people press at the same moment. An alert that has already escalated can't be silenced afterwards.
 
-Escalation goes **one hop**. There is no chain, so an unacknowledged alert cannot ping-pong between two channels forever.
+Escalation goes **one step**. There's no chain, so an alert can't bounce between two channels forever.
 
-Two limits worth knowing before you rely on it:
+Two limits to know before you rely on it:
 
-- **Acknowledgement is a Slack button** (or the alert's PagerDuty or incident.io incident, when the rule also sends there). An alert routed only to Teams or to mobile push has no way to be acknowledged, so it will always escalate. Route escalating alerts to at least one Slack channel or paging provider.
-- **An alert that reached nobody does not escalate.** There is nothing to escalate _from_, and a "nobody acknowledged" message about an alert nobody ever saw is noise.
+- **Acknowledging needs Slack** (or the alert's PagerDuty or incident.io incident, if the rule also sends there). An alert sent only to Teams or mobile push can't be acknowledged, so it always escalates. Send escalating alerts to at least one Slack channel or paging provider.
+- **An alert that reached nobody doesn't escalate.** There's nothing to escalate from.
 
-## Mobile push is still personal
+## Mobile push stays personal
 
-`Mobile push` as a destination means "the organization's phones" — but each member's own mute list still applies on top. A routing rule decides whether the organization is told; a member decides whether their phone rings. An admin cannot un-mute somebody else's notifications, which is why the per-member toggles stayed on [the push settings](./mobile-push-notifications.md) rather than moving into the rules table.
+`Mobile push` as a destination means "the organization's phones", but each member's own mute list still applies. A routing rule decides whether the organization is told. Each member decides whether their own phone rings. An admin can't unmute someone else's notifications, so those toggles live in [the push settings](./mobile-push-notifications.md), not in the rules.
 
-## If you have not written any rules
+## If you haven't written any rules
 
-An organization with no saved rules behaves as if it had one: **everything except resource drift, to every connected channel and to mobile push**. That is exactly what the per-channel checkboxes did with every box ticked, so connecting a Slack channel still works on day one without opening the rules editor.
+With no saved rules, your organization behaves as if it had one: **everything except resource drift, to every connected channel and to mobile push**. So connecting a Slack channel works on day one without opening the rules editor.
 
-Press **Start from the default and edit it** to turn that into a real rule you can modify. Adding a channel later is picked up automatically while you are still on the default; once you have saved rules, a new channel is a destination you have to name.
+Press **Start from the default and edit it** to turn that into a real rule you can change. While you're on the default, new channels are added automatically. Once you've saved rules, you need to add a new channel to a rule yourself.
 
 ## Permissions
 
-Editing routing rules needs the **Organization settings** permission (`org:settings:write`) — a rule decides who in your organization hears about an incident, which is an admin decision. Your own push mutes need no permission at all.
+Editing routing rules needs the **Organization settings** permission (`org:settings:write`), since a rule decides who hears about an incident. Your own push mutes need no permission.
 
 ## From the CLI
 
@@ -117,11 +123,11 @@ infrawrench routing queue        # alerts held for quiet hours or awaiting ackno
 infrawrench routing --json       # the same, as JSON
 ```
 
-`routing` is the fastest answer to "why did that page reach me" (or not): it prints each rule as a sentence, in the order the server evaluates them.
+`routing` is the quickest way to answer "why did that page reach me" (or why it didn't). It prints each rule as a sentence, in the order they're checked.
 
-## Empty rules and swallowed alerts
+## Empty rules
 
-Two shapes look like mistakes and are not:
+Two kinds of rule look like mistakes but aren't:
 
-- **A rule with no conditions** matches every alert. Useful as the last rule in the list.
-- **A rule with no destinations** swallows the alerts it matches, and — because it still counts as a match — stops the rules below it from seeing them. That is how you say "never tell anyone about these". The editor warns when a rule is in this state, since it is also what a half-finished rule looks like.
+- **A rule with no conditions** matches every alert. Handy as the last rule in the list.
+- **A rule with no destinations** swallows the alerts it matches. Because it still counts as a match, the rules below never see them. Use it to say "never tell anyone about these". The editor warns you about a rule like this, since a half-finished rule looks the same.

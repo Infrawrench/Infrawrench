@@ -1,42 +1,43 @@
 ---
 title: Change timeline
-description: A cross-provider drift feed — see every resource that appeared, changed, or disappeared between polls, org-wide or per resource, with optional batched drift alerts.
+description: See every cloud resource that appeared, changed or disappeared across all your providers, org-wide or per resource, revert changes, and get batched drift alerts.
 ---
 
-The change timeline is a drift feed for your whole inventory. Every time the cloud poller re-fetches an account, it compares what the provider returned against the last stored snapshot and records anything that differs:
+The change timeline shows you what changed in your cloud inventory. Each time Infrawrench syncs an account, it records anything that differs from the last sync:
 
-- **Appeared** — a resource exists upstream that Infrawrench hadn't seen (or that had previously disappeared).
-- **Changed** — a stored field, resolved output, or the display name differs from the previous sync, with a per-field before → after diff.
-- **Disappeared** — a resource Infrawrench knew about is no longer returned by the provider.
+- **Appeared**: a resource Infrawrench hadn't seen before (or one that had disappeared and came back).
+- **Changed**: a field, output or display name is different, with a before and after diff for each field.
+- **Disappeared**: a resource Infrawrench knew about is no longer returned by the provider.
 
-It works for every provider automatically: the diff runs on the generic resource record Infrawrench already stores, not on provider-specific shapes, so a new plugin gets a change feed the moment its resources sync.
+It works for every provider automatically, including newly added ones.
 
-> **Cloud only.** Change events are recorded by Infrawrench Cloud's background poller as it syncs your accounts. Manual per-resource refreshes record events too. The desktop app in local-only mode does not collect them, so the **Changes** tile only appears there once you're signed in to an organization.
+> **Cloud only.** Changes are recorded as Infrawrench Cloud syncs your accounts, and manual refreshes of a resource record them too. The desktop app in local-only mode doesn't collect them, so the **Changes** tile only appears once you're signed in to an organization.
 
-## The org-wide feed
+## See changes across your organization
 
-Click **Changes** in the sidebar (next to Costs) to open the feed for the whole organization, newest first. It is the same page on the web app and in the desktop app when signed in. Each row shows when the change was seen, what kind it was, the resource (click through to its detail page), its type, and the account it came from. Updates carry a one-line summary of the changed fields — expand **Show diff** to see the before → after values.
+Click **Changes** in the sidebar (next to Costs) to see the feed for your whole organization, newest first. It's the same on the web app and the signed-in desktop app.
+
+Each row shows when the change was seen, what kind it was, the resource (click it to open its detail page), its type and its account. Changed rows include a one-line summary of the fields that changed. Expand **Show diff** to see the before and after values.
 
 ![The org-level Changes feed page with a mix of Appeared/Changed/Disappeared rows, one row expanded to show a field diff](https://agent-assets.infrawrench.com/docs-screenshots/features/change-timeline/org-changes-feed.png)
 
-Filter the feed by change kind or by account; results are paginated.
+You can filter by change kind or account. Results are paginated.
 
-Rows also carry a **cost impact** — what the change did to that resource's per-day spend, measured
-from collected provider billing either side of it. See
-[Cost per change & cost per deploy](./cost-per-change.md) for how it is measured, when it says
-"unknown" rather than "$0", and why it is a correlation rather than a verdict.
+Rows also show a **cost impact**: how the change affected that resource's daily spend. See [Cost per change & cost per deploy](./cost-per-change.md) for how it's measured and when it shows "unknown" instead of "$0".
 
 ## On your phone
 
-The [mobile app](./mobile-app.md) has the same feed: open **Changes** at the top of the Resources tab. Filters are chips rather than dropdowns — change kind, account, and a time window (**Any time**, **24h**, **7d**, **30d**) — and **Load more** pages through the rest.
+The [mobile app](./mobile-app.md) has the same feed. Open **Changes** at the top of the Resources tab. Filter with chips for change kind, account and time window (**Any time**, **24h**, **7d**, **30d**), and tap **Load more** to see older changes.
 
-Tap any event to open it: the full per-field before → after list, the resource's id, a button through to the resource itself, and — on **Changed** events — the same [Revert](#reverting-a-change) flow the web app has, with the plan rendered in place rather than in a dialog. Tapping a [drift notification](./mobile-push-notifications.md) opens the [moment view](./moment.md) centred on the window that alert covered — the digest's changes merged with everything else that happened around them.
+Tap an event to see every field's before and after value, the resource's id and a button to open the resource. **Changed** events also have the same [Revert](#revert-a-change) option as the web app, with the plan shown on the page.
+
+Tapping a [drift notification](./mobile-push-notifications.md) opens the [moment view](./moment.md) for the time window that alert covered, with those changes shown alongside everything else that happened around them.
 
 <insert [Mobile Changes screen: the filter chip rows, a list of Appeared/Changed/Disappeared events, and one event expanded showing its before → after field values] here>
 
-## Per-resource changes
+## See changes for one resource
 
-Every resource detail page has a **Changes** tab showing that resource's own slice of the timeline — handy for answering "when did this instance's IP change?" or "when did this DNS record show up?". On mobile it is a **Changes** section on the resource's page rather than a tab; tapping a change there expands the same diff.
+Every resource detail page has a **Changes** tab with just that resource's history. It's handy for questions like "when did this instance's IP change?" or "when did this DNS record show up?". On mobile, it's a **Changes** section on the resource's page. Tap a change to see its diff.
 
 ![A resource detail page with the Changes tab active, showing an update event with a before → after field diff](https://agent-assets.infrawrench.com/docs-screenshots/features/change-timeline/resource-changes-tab.png)
 
@@ -53,113 +54,111 @@ infrawrench changes --resource <id>        # one resource, with full before → 
 infrawrench changes --limit 200 --json     # stable JSON for scripting
 ```
 
-Text mode prints one line per event — when it was seen, a `+`/`~`/`-` glyph for appeared / changed / disappeared, the resource, its type, its account, and a summary of the changed fields. Narrowing to a single resource with `--resource` also prints each update's per-field before → after values, which would be thousands of lines for a whole organization's feed. `--json` carries the full entries, including every diff, plus the `total` matching your filter.
+Each line shows when the event was seen, a `+`, `~` or `-` for appeared, changed or disappeared, the resource, its type, its account and a summary of the changed fields. Add `--resource` to also see each field's before and after values for one resource. `--json` includes every diff, plus the `total` matching your filter.
 
 <insert [Terminal showing `infrawrench changes` output: the event table with colored +/~/- glyphs, resource names, plugin/type column, account column, and a changed-fields summary] here>
 
-The command is cloud-only for the same reason the page is — local-only mode has no poller, so it says so and exits rather than printing an empty table.
+The command needs you to be signed in to the cloud. In local-only mode it tells you so and exits.
 
 ## What counts as a change
 
-The differ compares the top-level fields of the stored record: the display name, the non-secret fields the plugin's lister returns, and cached resolved outputs (shown with an `outputs.` prefix). Values are compared structurally, so reordered JSON keys are not a change.
+Infrawrench compares the resource's display name, its non-secret fields and its outputs (shown with an `outputs.` prefix). Reordered JSON keys don't count as a change.
 
-Two things deliberately do **not** produce events:
+Two things don't create events:
 
-- **Fields the lister stopped returning.** Synced state merges over stored state, so a user-supplied value the provider never echoes back (for example a root password set at create time) survives — and is not reported as removed on every cycle.
-- **Absences during provider errors.** If a resource type's list call fails, its resources are left untouched and nothing is reported as disappeared. Only a successful list that omits a known resource counts.
+- **Fields the provider stops returning.** A value you set that the provider never echoes back (for example a root password set at create time) is kept, and isn't reported as removed.
+- **Missing resources during provider errors.** If listing a resource type fails, nothing is reported as disappeared. Only a successful list that leaves out a known resource counts.
 
-## Reverting a change
+## Revert a change
 
-A **Revert** button sits on every row of the feed and on every event in a resource's **Changes** tab. It puts the changed fields back to what they were — the same edit you would have made by hand, made for you.
+Every row in the feed, and every event in a resource's **Changes** tab, has a **Revert** button. It puts the changed fields back to their previous values, the same edit you'd make by hand.
 
-Reverting is not a replay of history: it is a write against the resource **as it is now**. So the button opens a dry run first, and the dialog tells you, field by field, what would actually happen:
+A revert is applied to the resource **as it is now**, so you see a dry run first. The dialog tells you what will happen to each field:
 
-| Verdict              | What it means                                                                                                                                       |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Will revert**      | The field still holds the value this change set, and the previous value can be written back. These are the fields the revert touches                |
-| **No change needed** | The field is already back at its old value — someone (or something) beat you to it. Nothing is written                                              |
-| **Changed since**    | The field moved **again** after this event. Reverting would silently discard that newer value, so the field is left alone and both values are shown |
-| **Not writable**     | The field is outside what the provider lets Infrawrench edit, or its previous value isn't something an edit form can submit                         |
-| **Provider-derived** | An `outputs.` entry. Outputs are computed by the provider from other state — there is nothing to write                                              |
+| Verdict              | What it means                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Will revert**      | The field still holds the value this change set, and the previous value can be written back                         |
+| **No change needed** | The field is already back at its old value. Nothing is written                                                      |
+| **Changed since**    | The field changed **again** after this event. It's left alone so you don't lose the newer value, and both are shown |
+| **Not writable**     | The provider doesn't let Infrawrench edit this field, or its previous value can't be submitted through an edit form |
+| **Provider-derived** | An `outputs.` entry. The provider computes it, so there's nothing to write                                          |
 
-Whether a field can be written at all is decided by the plugin, not by Infrawrench: the revert can only set fields the resource's **Edit** form offers. A field the provider treats as read-only, an identity field it won't let you rename, and a secret all fall outside that set, and the dialog says so rather than attempting a provider call that doesn't exist.
+A revert can only set fields the resource's **Edit** form offers. Read-only fields, identity fields the provider won't let you rename, and secrets can't be reverted, and the dialog tells you so.
 
 ![The revert confirmation dialog for a changed resource, showing a mix of Will revert / Changed since / Not writable field verdicts above the Revert button](https://agent-assets.infrawrench.com/docs-screenshots/features/change-timeline/revert-dialog.png)
 
-### The one race it can't win
+### Reverting while others are editing
 
-The plan is rebuilt against a fresh read of the resource immediately before the write, so pressing **Revert** on a stale dialog is safe: anything that moved in the meantime comes back as **Changed since** and is left alone.
+Infrawrench checks the resource again right before writing, so pressing **Revert** on a dialog you opened a while ago is safe. Anything that changed in the meantime shows as **Changed since** and is left alone.
 
-What that check cannot do is hold the field still while the write happens. If someone edits the same field in the provider's own console — or a Terraform run does — in the fraction of a second between Infrawrench reading the field and writing it, their value is overwritten with no warning. Infrawrench can't prevent this, because setting a field goes through one generic update call that has no way to say "only if it still equals this"; providers that support conditional writes have no route to express one here.
-
-In practice the window is one API round-trip wide, and reverting a change nobody else is touching is not a risky operation. But it is a real window, and it is worth knowing about before you revert something during an incident that several people are working on at once.
+There is still a very short window (one API call) between that check and the write. If someone edits the same field in the provider's console, or a Terraform run does, in that moment, their value is overwritten without warning. Normally this isn't a concern, but keep it in mind if several people are changing things during an incident.
 
 ### What can't be reverted
 
-- **Appearances and disappearances.** Undoing a resource showing up means deleting it, and undoing one vanishing means recreating it. Neither is a field write, so neither is a revert — the button is present but disabled and says which action to take instead.
-- **Events with no field diff.** There is nothing to invert.
-- **Events already reverted.** Reverting is a one-shot: once an event has been reverted the row is labelled **reverted** and the button is disabled. If two people press Revert at the same moment, exactly one write happens and the other is told so.
+- **Appearances and disappearances.** Undoing these means deleting or recreating a resource, not editing a field. The button is disabled and tells you what to do instead.
+- **Events with no field diff.** There's nothing to undo.
+- **Events already reverted.** Each event can be reverted once. After that it's labelled **reverted** and the button is disabled. If two people press Revert at the same time, only one write happens and the other person is told.
 
-An event only counts as reverted once the provider has accepted the write. If a revert is interrupted part-way — a deploy, a restart, a dropped connection — the event is held for five minutes and then becomes revertible again, so an undo that never landed is never left looking like one that did.
+An event only counts as reverted once the provider accepts the write. If a revert is interrupted, the event becomes revertible again after five minutes.
 
-Very occasionally a provider is slow enough that a revert outlives that five-minute hold and someone else's retry picks the event up first. When that happens the slow request tells you so explicitly, listing the fields it did write, rather than quietly reporting success — both attempts are putting back the same recorded values, so the resource ends up correct either way, but the message is worth reading before you retry again.
+If a provider is very slow and someone else's retry picks up the event first, the slow request tells you so and lists the fields it wrote. Both put back the same values, so the resource ends up correct, but read the message before retrying again.
 
-If the revert reaches the provider but Infrawrench then fails to record it, you get an explicit error saying the resource **has** been put back and the timeline hasn't caught up. Retry it: the retry sees the fields are already back, records the revert without touching the provider again, and the event picks up its **reverted** label. That reconciliation only happens when Infrawrench actually issued a write for that event — it keeps a note before calling the provider — so a resource you put back by hand is never claimed as somebody's revert.
+If the revert reached the provider but the timeline didn't record it, you get an error saying the resource **has** been put back. Retry it: the retry sees the fields are already back, marks the event **reverted** and doesn't call the provider again.
 
-### Guardrails
+### Permissions and safeguards
 
-- Reverting needs the **Resources: write** permission — the same one editing a resource needs.
-- It is blocked by an active [change freeze](../team-and-billing/change-freeze.md), like any other provider mutation, and can be overridden by an admin the same way.
-- Every revert that reaches the provider is written to the [audit log](../team-and-billing/audit-log.md) as `resource.change_revert`, naming who did it, the change event, and the fields written — including the rare superseded case below, which is recorded as `outcome: superseded` so it doesn't read as a second, separate revert. A revert that wrote nothing writes no audit entry either. Attribution is best-effort rather than guaranteed: a cloud provider's API and Infrawrench's database can't be written to together as one transaction, so in the rare case the audit entry itself fails the API says so explicitly and the details go to the server log instead of being dropped quietly.
-- The revert shows up in the timeline itself. Nothing special-cases it: the next poll sees the resource differ from its stored snapshot and records the undo as an ordinary **Changed** event.
+- Reverting needs the **Resources: write** permission, the same as editing a resource.
+- An active [change freeze](../team-and-billing/change-freeze.md) blocks reverts like any other change, and an admin can override it the same way.
+- Every revert that reaches the provider is recorded in the [audit log](../team-and-billing/audit-log.md) as `resource.change_revert`, with who did it, the change event and the fields written. The rare case where a slow request was overtaken is recorded with `outcome: superseded`. A revert that wrote nothing has no audit entry. In the rare case the audit entry itself fails, the API tells you.
+- The revert shows up in the timeline as an ordinary **Changed** event after the next sync.
 
 ## Drift alerts
 
-The feed is a place you go and look. If you'd rather be told, turn the **Drift** trigger on for a [Slack channel](./slack-alerts.md), a [Microsoft Teams channel](./teams-alerts.md), or your [phone](./mobile-push-notifications.md).
+If you'd rather be told about changes than check the feed, turn on the **Drift** trigger for a [Slack channel](./slack-alerts.md), a [Microsoft Teams channel](./teams-alerts.md) or your [phone](./mobile-push-notifications.md).
 
-It is the only alert trigger that arrives **off**, and the only one that is batched rather than sent per event — both for the same reason. A budget crossing or a [cost anomaly](./cost-anomaly-alerts.md) is exceptional by construction; drift is continuous, and a single sync pass on a busy organization can record hundreds of changes. One message per change would be unreadable within a day and muted within two.
+Drift is the only alert trigger that starts **off**, and the only one that's batched instead of sent per event. A busy organization can see hundreds of changes in a single sync, so one message per change would quickly become noise.
 
-So drift alerting works like a digest:
+Drift alerts work like a digest:
 
-- **One message per organization per cooldown window.** Not one per change, not one per account, not one per sync pass. The default window is 60 minutes, so the worst case is 24 messages a day no matter how much moves.
-- **Each message covers everything since the last one.** A window with nothing worth saying isn't a window you miss out on — its changes roll into the next message.
-- **Each message is bounded.** It leads with the counts, then names the first dozen changes — appearances and disappearances first — and links to the feed for the rest. A window with more changes than it can read reports "500+" rather than pretending to an exact number.
+- **One message per organization per cooldown window.** The default window is 60 minutes, so you get at most 24 messages a day.
+- **Each message covers everything since the last one.** Nothing is lost if a window is skipped.
+- **Each message stays short.** It starts with counts, lists the first dozen changes (appearances and disappearances first) and links to the feed for the rest. Very large windows show "500+" instead of an exact count.
 
 ### Choosing what counts
 
-**Settings → Notifications → Alerts & digest → Resource drift alerts** configures this once for the whole organization. It needs the **Organization settings** permission, and it is separate from the per-channel toggles above: those decide _who_ hears, this decides _what_ and _how often_.
+Go to **Settings > Notifications > Alerts & digest > Resource drift alerts**. These settings apply to the whole organization and need the **Organization settings** permission. The per-channel toggles decide _who_ hears about drift. These settings decide _what_ and _how often_.
 
-| Setting                    | Default    | What it does                                                                                                                                      |
-| -------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Resources appearing**    | on         | Alert when a resource shows up that Infrawrench hadn't seen                                                                                       |
-| **Resources disappearing** | on         | Alert when a known resource stops being returned                                                                                                  |
-| **Field changes**          | **off**    | Alert on per-field updates. These are the bulk of the volume and are usually a provider restating a value, so they start silent                   |
-| **Cooldown**               | 60 minutes | The least time between drift messages. Floored at 5 minutes — below the poller's own cycle the message rate would just follow the sync rate again |
-| **Minimum changes**        | 1          | Skip windows smaller than this                                                                                                                    |
-| **Accounts to watch**      | all        | Leave every box unchecked to watch everything, or tick the accounts worth being woken up for                                                      |
+| Setting                    | Default    | What it does                                                                                                           |
+| -------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Resources appearing**    | on         | Alert when a resource shows up that Infrawrench hadn't seen                                                            |
+| **Resources disappearing** | on         | Alert when a known resource stops being returned                                                                       |
+| **Field changes**          | **off**    | Alert on field updates. These make up most of the volume and are often a provider restating a value, so they start off |
+| **Cooldown**               | 60 minutes | The minimum time between drift messages. Can't be set below 5 minutes                                                  |
+| **Minimum changes**        | 1          | Skip windows with fewer changes than this                                                                              |
+| **Accounts to watch**      | all        | Leave every box unchecked to watch everything, or tick only the accounts you care about                                |
 
 ![Settings → Notifications page showing the Resource drift alerts card: the three change-kind checkboxes with Field changes unchecked, the cooldown and minimum-changes fields, and the account checkboxes](https://agent-assets.infrawrench.com/docs-screenshots/features/change-timeline/drift-alerts-settings.png)
 
-Only the background poller raises drift alerts. A manual refresh from the UI still records events in the feed but never notifies — the same rule sync-failure incidents follow, and for the same reason: you are already looking at the result.
+Only automatic syncs send drift alerts. A manual refresh still records changes in the feed but doesn't notify anyone, since you're already looking at the result.
 
-Drift alerts do **not** send SMS. Twilio is reserved for things that should interrupt a human — sync incidents, budget crossings, pages, approval requests, and (opt-in) [cost anomalies](./cost-anomaly-alerts.md#paging-by-sms) — and a drift digest is a thing to read, not a thing to be woken by.
+Drift alerts aren't sent by SMS. SMS is kept for things that need to interrupt someone, such as sync incidents, budget crossings, pages, approval requests and (if you opt in) [cost anomalies](./cost-anomaly-alerts.md#paging-by-sms).
 
-On the [mobile app](./mobile-app.md), **Settings → Notifications** carries your personal **Resource drift** push toggle, so you can mute or unmute the feed from the phone it arrives on. The organization-wide filters in the table above are set on the web app: they decide what everyone in the org hears, and retuning a shared threshold is not a thing to do one-handed.
+In the [mobile app](./mobile-app.md), **Settings > Notifications** has your personal **Resource drift** push toggle, so you can mute or unmute it from your phone. The organization-wide settings in the table above are changed on the web app.
 
 ## How far back it goes
 
-Change events are kept for **90 days**, then deleted. The cloud poller trims the feed once an hour, so the oldest rows you can reach are always within about an hour of that window — scrolling (or asking the API for a `from` date) past 90 days returns nothing, even for a resource that has existed for years.
+Changes are kept for **90 days**, then deleted. Anything older than that (in the feed or through the API's `from` date) returns nothing, even for a resource that has existed for years. The window is the same for every organization and can't be changed.
 
-The window is the same for every organization and is not configurable. Nothing else depends on it: the [weekly digest](./weekly-digest.md) counts resource churn from the inventory itself, not from this feed, so a pruned change never changes a digest.
+The [weekly digest](./weekly-digest.md) counts resource churn from your inventory, not from this feed, so deleted history doesn't affect it.
 
-If you need a permanent record of a change, export it while it is still in the window — `GET /api/org/{orgId}/changes` takes `from`, `to`, and paging parameters and returns the same rows the UI shows.
+To keep a permanent record, export changes while they're still in the window. `GET /api/org/{orgId}/changes` takes `from`, `to` and paging parameters and returns the same rows the UI shows.
 
 ## Requirements
 
-- The feed needs the `resources:read` permission; reverting needs `resources:write`; the drift alert settings need `org:settings:write`.
-- Events accumulate from the first poll after your org picks up this feature; there is no retroactive history.
-- History is capped at the 90-day retention window described above.
+- Viewing the feed needs the `resources:read` permission. Reverting needs `resources:write`. Drift alert settings need `org:settings:write`.
+- Changes are recorded from the first sync after the feature is available to your organization. There's no earlier history.
+- History is limited to the 90-day window described above.
 
-The feed is also available over the [HTTP API](../team-and-billing/openapi.md): `GET /api/org/{orgId}/changes` for the paginated org feed and `GET /api/org/{orgId}/changes/resource` for a single resource. Reverting is the same path under two verbs — `GET /api/org/{orgId}/changes/{changeId}/revert` returns the plan without writing anything, and `POST` to the same path applies it.
+The feed is also available through the [HTTP API](../team-and-billing/openapi.md): `GET /api/org/{orgId}/changes` for the paginated organization feed and `GET /api/org/{orgId}/changes/resource` for a single resource. To revert, `GET /api/org/{orgId}/changes/{changeId}/revert` returns the plan without writing anything, and `POST` to the same path applies it.
 
-The same comparison, pointed at a different pair of snapshots, is what [environment diff](./environment-diff.md) runs: instead of one account against its own past, two accounts against each other.
+To compare two accounts with each other instead of one account with its past, use [environment diff](./environment-diff.md).

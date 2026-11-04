@@ -1,73 +1,73 @@
 ---
 title: Cost graphs & budgets
-description: Spend graphs, budgets, and overspend alerts for your connected accounts, right on the dashboard.
+description: Graph your cloud spend, set monthly budgets, and get overspend alerts for your connected accounts, right on the dashboard.
 sidebar_order: 2
 ---
 
-Cost graphs turn the billing data from your connected provider accounts into dashboard widgets: spend over time, broken down by provider, account, service, region, resource, or tag — plus monthly budgets that alert you before the bill does.
+Cost graphs show the billing data from your connected provider accounts as dashboard widgets. You can see spend over time, broken down by provider, account, service, region, resource or tag. Budgets alert you before the bill does.
 
-The **Costs** panel in the sidebar is where your budgets live. Dashboards show cards, but the panel is the list — see [The Costs panel](#the-costs-panel).
+Your budgets live in the **Costs** panel in the sidebar. Dashboards show cards, but the panel is the full list. See [The Costs panel](#the-costs-panel).
 
-A graph you want to keep, name, and reuse is a **cost report** — the same graph as an org object, with its own page and its own id, referenced by any number of dashboards. See [Cost reports](./cost-reports.md).
+Related pages:
 
-If what you want is not spend but **cost per unit of the thing your business does** — per customer, per request, per GB — declare a [business metric](./unit-costs.md) and any cost graph will divide by it. Same page covers margin.
+- To name a graph and reuse it on several dashboards, save it as a [cost report](./cost-reports.md).
+- To see **cost per unit** of what your business does (per customer, per request, per GB), declare a [business metric](./unit-costs.md). Any cost graph can divide by it. The same page covers margin.
+- To get the rows instead of a graph, for a warehouse or a finance system, set up a [scheduled cost export](./cost-exports.md): CSV or NDJSON, on a schedule, to an S3-compatible bucket or an HTTPS endpoint.
 
-If what you want is the rows rather than a graph — a recurring dump into a warehouse or a finance system — that is a **cost export**: CSV or NDJSON, on a schedule, to an S3-compatible bucket or an HTTPS endpoint, with the restatement handling that makes the numbers reconcile. See [Scheduled cost exports](./cost-exports.md).
+> **Cloud only.** Cost data is collected by Infrawrench Cloud. On the desktop app the widgets appear when you are signed into a cloud org. Local-only mode does not collect cost data.
 
-> **Cloud only.** Cost collection runs on Infrawrench Cloud's background pollers and time-series store. On the desktop app the widgets appear when you are signed into a cloud org; local-only mode does not collect cost data.
-
-> Costs are **billed history**. For what a resource you are about to create or resize _would_ cost, see [live cost estimates](./cost-estimates.md).
+> Costs are **billed history**. To see what a resource would cost before you create or resize it, see [live cost estimates](./cost-estimates.md).
 
 ## Add a cost graph
 
 1. Open a dashboard and click the **+** tile.
 2. Choose **Cost graph**.
-3. Pick a chart type, date range, and grouping, then **Save**.
+3. Pick a chart type, date range and grouping, then click **Save**.
 
-This card belongs to this dashboard and nothing else. To save the same configuration under a name and put it on several dashboards at once, make a [cost report](./cost-reports.md) instead and choose **Saved report** from the same menu.
+This card belongs to this dashboard only. To save the same setup under a name and show it on several dashboards, make a [cost report](./cost-reports.md) and choose **Saved report** from the same menu.
 
 ![Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / Saved report / New budget / Existing budget](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/dash-add-menu.png)
 
 ![Cost graph config modal with chart type, binning, date range, group-by, and a provider filter row](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-config-modal.png)
 
-Cost and budget cards drag around the grid like pinned resources, and share the same order — see [Arrange cards](./dashboard.md#arrange-cards).
+You can drag cost and budget cards around the grid like pinned resources. See [Arrange cards](./dashboard.md#arrange-cards).
 
 ### What you can configure
 
-| Option     | Choices                                                                                                                                                                                           |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Chart type | Stacked bar, bar, line, area, pie, donut, or a table — see [display options](#display-options)                                                                                                    |
-| Measure    | **Cost** (money), **Usage quantity** in one unit, or **Count** of distinct group values billed per bin                                                                                            |
-| Binning    | Daily, weekly, monthly, quarterly (hourly shows disabled — see below)                                                                                                                             |
-| Cumulative | Running totals from the start of the range, at any bin size                                                                                                                                       |
-| Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates                                                                                                        |
-| Group by   | Provider, account, service, region, resource, tag, charge type, or commitment                                                                                                                     |
-| X axis     | **Date** (the default), or a dimension's values: one bar per service, account, tag value... ranked by spend; see [chart axes](./cost-chart-axes.md)                                               |
-| Filters    | Any of the same dimensions, `is` / `is not`, multiple rules — as rows or as [text](#filters-as-text)                                                                                              |
-| Cost basis | **Cash** (what you were charged), **Amortized** (commitments spread over the term they buy) or **Blended** (amortized, with commitment discounts shared evenly across eligible usage) — see below |
-| Top groups | Show the top N groups (default 5); the rest fold into **Other**                                                                                                                                   |
-| Compare    | Overlay the previous period as a dashed line or as paired bars beside each bar, with a % change badge                                                                                             |
-| Forecast   | Project the recent trend forward as a dashed continuation                                                                                                                                         |
+| Option     | Choices                                                                                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Chart type | Stacked bar, bar, line, area, pie, donut, or a table. See [display options](#display-options)                                                                                                    |
+| Measure    | **Cost** (money), **Usage quantity** in one unit, or **Count** of distinct group values billed per bin                                                                                           |
+| Binning    | Daily, weekly, monthly, quarterly (hourly shows as disabled, see below)                                                                                                                          |
+| Cumulative | Running totals from the start of the range, at any bin size                                                                                                                                      |
+| Date range | Last 7/30/90 days, month/quarter/year to date, last month, last 12 months, or custom dates                                                                                                       |
+| Group by   | Provider, account, service, region, resource, tag, charge type, or commitment                                                                                                                    |
+| X axis     | **Date** (the default), or a dimension's values: one bar per service, account, tag value... ranked by spend. See [chart axes](./cost-chart-axes.md)                                              |
+| Filters    | Any of the same dimensions, `is` / `is not`, multiple rules, as rows or as [text](#filters-as-text)                                                                                              |
+| Cost basis | **Cash** (what you were charged), **Amortized** (commitments spread over the term they buy) or **Blended** (amortized, with commitment discounts shared evenly across eligible usage). See below |
+| Top groups | Show the top N groups (default 5). The rest fold into **Other**                                                                                                                                  |
+| Compare    | Overlay the previous period as a dashed line or as paired bars beside each bar, with a % change badge                                                                                            |
+| Forecast   | Project the recent trend forward as a dashed line                                                                                                                                                |
 
 ![A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-service-forecast.png)
 
-Currencies are never merged: if your accounts bill in more than one currency the graph shows one series per currency and says so under the title.
+Currencies are never merged unless you turn on [conversion](#currency). If your accounts bill in more than one currency, the graph shows one series per currency and says so under the title.
 
 ### Display options
 
-The same spend can answer different questions depending on how it is drawn. These options live in the graph editor on web, desktop and mobile, and are saved with the card or [report](./cost-reports.md):
+These options are in the graph editor on web, desktop and mobile. They are saved with the card or [report](./cost-reports.md).
 
-- **Measure** is what the Y axis sums.
-  - **Cost** is money, per currency. It is the default, and what every card drew before the option existed.
-  - **Usage quantity** sums the usage amounts providers report beside the money: instance hours, GB-months, requests. Hours and gigabytes cannot be added together, so a usage chart sums exactly one unit. Pick it from the **Usage unit** list, which shows the units your providers actually report, spelled the way they spell them. Only rows in that unit count. If no connected provider reports usage quantities, the editor says so.
-  - **Count** shows how many distinct values of the **Group by** dimension had nonzero cost in each bin: how many services were billed each day, how many accounts spent anything each week, how many resources ran up a bill each month. It needs a group-by, because that is what it counts. The headline total counts each value **once over the whole range**, so a service billed on all thirty days is one service, not thirty. Empty values (rows with no resource id, untagged rows) are not counted.
-- **Chart type**: **Stacked bar**, **Bar** (side by side), **Line** and **Area** draw a time axis. **Pie** and **Donut** draw each group's total for the period, and the donut carries the total in its hole. **Table** lists every bin as a row with a column per series, the bin's total and, with **Compare previous period** on, the previous period's figure. Count is a single series, so pie and donut are not offered for it.
-- **Binning**: daily, weekly (Monday start), monthly or quarterly (quarters start on 1 January, April, July and October, UTC). **Hourly** is listed but disabled with an explanation: every provider's cost rows are collected per day, so there is no hour to put a day's spend in. The option switches on by itself if an account ever reports hourly rows.
-- **Cumulative** turns per-bin values into running totals from the start of the range, at any bin size. Totals then read the last point instead of adding up the running sums. Count cannot be cumulative: adding up per-bin counts would count the same service once per bin.
-- **Compare previous period** overlays the same span shifted back one period, for every measure: as a dashed totals line, or on a bar chart as a muted bar paired beside each bar. Tables add previous, change and change % columns.
-- **X axis** can hold a dimension instead of dates: one bar per value, ranked by spend, segmented by the group-by or by date bin. Clicking a bar (or a slice, a legend entry, a table value) drills into it. Both are covered in [Chart axes, comparison & drill-down](./cost-chart-axes.md).
+- **Measure** is what the Y axis adds up.
+  - **Cost** is money, per currency. This is the default.
+  - **Usage quantity** adds up the usage amounts providers report next to the money: instance hours, GB-months, requests. You can't add hours to gigabytes, so a usage chart sums exactly one unit. Pick it from the **Usage unit** list, which shows the units your providers report, spelled their way. Only rows in that unit count. If no connected provider reports usage, the editor tells you.
+  - **Count** shows how many distinct values of the **Group by** dimension had a nonzero cost in each bin. For example, how many services were billed each day, or how many accounts spent anything each week. It needs a group-by, since that is what it counts. The headline total counts each value **once over the whole range**, so a service billed on all thirty days is one service. Empty values (rows with no resource id, untagged rows) are not counted.
+- **Chart type**: **Stacked bar**, **Bar** (side by side), **Line** and **Area** draw a time axis. **Pie** and **Donut** draw each group's total for the period, and the donut shows the total in its hole. **Table** lists every bin as a row with a column per series and the bin's total. With **Compare previous period** on, it adds the previous period's figure. Count is a single series, so pie and donut aren't offered for it.
+- **Binning**: daily, weekly (starting Monday), monthly or quarterly (quarters start on 1 January, April, July and October, UTC). **Hourly** is listed but disabled, because providers report cost per day. It turns on by itself if an account ever reports hourly rows.
+- **Cumulative** shows running totals from the start of the range, at any bin size. Totals then read the last point. Count can't be cumulative, since it would count the same service once per bin.
+- **Compare previous period** overlays the same span shifted back one period, for every measure. It shows as a dashed totals line, or on a bar chart as a muted bar beside each bar. Tables add previous, change and change % columns.
+- **X axis** can show a dimension instead of dates: one bar per value, ranked by spend, split by the group-by or by date bin. Click a bar (or a slice, a legend entry, a table value) to drill into it. See [Chart axes, comparison & drill-down](./cost-chart-axes.md).
 
-Forecasts, scenarios, billing rules and unit costs only mean anything for money, so they are switched off (and the server refuses them) for the usage and count measures. A usage or count card says under its title what it is measuring, so a number with no currency sign is never read as dollars.
+Forecasts, scenarios, billing rules and unit costs only apply to money, so they are switched off for the usage and count measures. A usage or count card says under its title what it measures, so a number with no currency sign is never mistaken for dollars.
 
 <insert [Cost graph editor with Measure set to Usage quantity, the Usage unit list open showing provider units such as Hrs and GB-Mo, Binning set to Quarterly with the disabled Hourly option and its explanation visible] here>
 
@@ -75,13 +75,13 @@ Forecasts, scenarios, billing rules and unit costs only mean anything for money,
 
 ### Annotations
 
-Every cost chart — this card included — draws the org's **annotations**: dated notes explaining what happened, marked on whichever bucket holds their day. Click a bar to write one, or read the ones already there from the numbered strip under the chart. A card on a dashboard belongs to no report, so it shows the org-wide notes; a [cost report](./cost-reports.md#annotations) also shows its own. Annotations are an overlay and never change a series, a total, or an axis.
+Every cost chart, this card included, shows your org's **annotations**: dated notes that explain what happened, marked on the bucket that holds their day. Click a bar to write one, or read existing ones from the numbered strip under the chart. A dashboard card shows the org-wide notes. A [cost report](./cost-reports.md#annotations) also shows its own. Annotations never change a series, a total or an axis.
 
 ## Filters as text
 
-Filter rows are the discoverable way to narrow a graph: every dimension is in the dropdown and every value comes from your own spend data. They are awkward everywhere else — in a script, in an API call, in a message to a colleague. So the same filter can also be written as one line of text, in the **cost query language**.
+Filter rows are the easy way to narrow a graph: every dimension is in the dropdown and every value comes from your own spend. But rows are awkward in a script, an API call or a message to a colleague. So you can also write the same filter as one line of text in the **cost query language**.
 
-The **Query** toggle above the filter rows switches between the two. They are two views of the same filter, not two filters: switching either way keeps exactly what you had, and whatever you save is the same structure a graph built from rows would have saved.
+The **Query** toggle above the filter rows switches between the two. They are two views of the same filter. Switching either way keeps exactly what you had.
 
 ![Cost graph config modal with the filter editor in Query mode, showing the text box containing provider = 'aws' AND tag['env'] != 'dev' and the Rows/Query toggle above it](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-query-mode.png)
 
@@ -98,15 +98,15 @@ value     := 'text'            for = and !=
 ```
 
 - Keywords (`AND`, `IN`, `NOT`, `CONTAINS`, `STARTS WITH`, `IS SET`) and dimension names are case-insensitive.
-- Values are quoted, with single or double quotes. A quote inside a value is escaped by doubling it (`'it''s'`) or with a backslash (`'it\'s'`); `\\`, `\n` and `\t` also work, and an escape that isn't one of those is an error rather than a silently dropped backslash.
-- The `tag` dimension takes its key in brackets, because a tag filter needs a key as well as a value: `tag['owner'] = 'platform'`.
+- Quote values with single or double quotes. To put a quote inside a value, double it (`'it''s'`) or use a backslash (`'it\'s'`). `\\`, `\n` and `\t` also work. Any other backslash escape is an error.
+- The `tag` dimension takes its key in brackets: `tag['owner'] = 'platform'`.
 - The `virtual_tag` dimension works the same way, with the key of one of your [virtual tags](./virtual-tags.md): `virtual_tag['team'] = 'payments'`.
-- Kubernetes node and volume labels have shorthands: `k8s_node_label['team'] = 'payments'` means `tag['k8s_node_label:team'] = 'payments'`, and `k8s_pvc_label['…']` the same for PersistentVolumeClaim labels. See [Kubernetes node and volume labels](./kubernetes-costs.md#node-and-volume-labels).
+- Kubernetes node and volume labels have shorthands: `k8s_node_label['team'] = 'payments'` means `tag['k8s_node_label:team'] = 'payments'`, and `k8s_pvc_label['…']` does the same for PersistentVolumeClaim labels. See [Kubernetes node and volume labels](./kubernetes-costs.md#node-and-volume-labels).
 - An empty query means no filter, the same as no rows.
 
-### Matching text instead of exact values
+### Match text instead of exact values
 
-`=` and `IN` match a value exactly, which is what you want when the value comes from the picker. Tag values are typed by people, though, and the same environment turns up as `Prod_Env`, `prod-env` and `PROD ENV`. Four operators match text more loosely, and one pair asks whether a tag is there at all:
+`=` and `IN` match a value exactly, which is right when the value comes from the picker. But people type tag values, and the same environment shows up as `Prod_Env`, `prod-env` and `PROD ENV`. Four operators match text more loosely, and one pair checks whether a tag is there at all:
 
 | Operator       | In the rows editor | Matches                                                                                                                                      |
 | -------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -117,45 +117,45 @@ value     := 'text'            for = and !=
 | `IS SET`       | is set             | the tag or virtual tag has a value: `tag['owner'] IS SET`                                                                                    |
 | `IS NOT SET`   | is not set         | the tag or virtual tag is missing or empty: `tag['owner'] IS NOT SET`                                                                        |
 
-- The four text operators take one value or a list, and a list matches when any value does (`NOT CONTAINS`: when none does): `tag['env'] ~= ('prod', 'production')`.
+- The four text operators take one value or a list. A list matches when any value does (for `NOT CONTAINS`, when none does): `tag['env'] ~= ('prod', 'production')`.
 - Letter case means the English letters A to Z. Accented letters and other scripts are compared as written.
-- `IS SET` and `IS NOT SET` take no value and work on `tag[…]` and `virtual_tag[…]` only. A tag that is present but empty counts as not set.
-- In the rows editor, a text operator swaps the value picker for a box you type into (press Enter after each value). Values seen in your spend are suggested as you type, and the row says how many of them the text matches.
-- An empty text value is refused, because it would match everything. So is a `~=` value made only of spaces, underscores and hyphens: use `IS NOT SET` for "has no value".
+- `IS SET` and `IS NOT SET` take no value and only work on `tag[…]` and `virtual_tag[…]`. A tag that is present but empty counts as not set.
+- In the rows editor, a text operator swaps the value picker for a box you type into (press Enter after each value). Values from your spend are suggested as you type, and the row tells you how many of them your text matches.
+- An empty text value is refused, because it would match everything. So is a `~=` value made only of spaces, underscores and hyphens. Use `IS NOT SET` for "has no value".
 
 <insert [Cost graph filter rows with one row set to tag env "is like" Prod_Env, showing the typed value chip and the "Matches 3 known values" hint underneath] here>
 
-### Worked examples
+### Examples
 
-| Query                                                | Reads as                                     |
-| ---------------------------------------------------- | -------------------------------------------- |
-| `provider = 'aws'`                                   | AWS only                                     |
-| `region != 'us-east-1'`                              | everything except us-east-1                  |
-| `service IN ('AmazonEC2', 'AmazonS3')`               | EC2 and S3                                   |
-| `charge_type NOT IN ('credit', 'refund')`            | gross spend — drop the things that offset it |
-| `tag['env'] = 'prod'`                                | resources tagged `env=prod`                  |
-| `provider = 'aws' AND tag['team'] IN ('core', 'ml')` | AWS spend owned by either of two teams       |
-| `commitment != '' AND charge_type = 'usage'`         | usage covered by a commitment                |
-| `tag['env'] ~= 'prod'`                               | `prod`, `Prod` and `PROD` alike              |
-| `service NOT CONTAINS 'support'`                     | everything but the support plans             |
-| `tag['owner'] IS NOT SET`                            | spend nobody has tagged with an owner        |
+| Query                                                | Reads as                                       |
+| ---------------------------------------------------- | ---------------------------------------------- |
+| `provider = 'aws'`                                   | AWS only                                       |
+| `region != 'us-east-1'`                              | everything except us-east-1                    |
+| `service IN ('AmazonEC2', 'AmazonS3')`               | EC2 and S3                                     |
+| `charge_type NOT IN ('credit', 'refund')`            | gross spend, without the things that offset it |
+| `tag['env'] = 'prod'`                                | resources tagged `env=prod`                    |
+| `provider = 'aws' AND tag['team'] IN ('core', 'ml')` | AWS spend owned by either of two teams         |
+| `commitment != '' AND charge_type = 'usage'`         | usage covered by a commitment                  |
+| `tag['env'] ~= 'prod'`                               | `prod`, `Prod` and `PROD` alike                |
+| `service NOT CONTAINS 'support'`                     | everything but the support plans               |
+| `tag['owner'] IS NOT SET`                            | spend nobody has tagged with an owner          |
 
 ### There is no OR
 
-Terms are joined by `AND`, and that is the whole story: a cost filter is a conjunction, and there is nowhere in a saved graph to record anything else. Writing `OR` is an error rather than something that quietly runs as an `AND` and hands you a number that is not the one you asked for.
+Terms are joined by `AND` only. Writing `OR` is an error, so you never get a number that answers a different question from the one you asked.
 
-Most uses of `OR` are really a list of values for one dimension, which `IN` covers:
+Most uses of `OR` are really a list of values for one dimension, and `IN` covers that:
 
 ```
 provider = 'aws' OR provider = 'gcp'      ✗ rejected
 provider IN ('aws', 'gcp')                ✓ the same question
 ```
 
-Genuinely unrelated alternatives ("AWS in Europe, or GCP anywhere") need two graphs. The same is true of anything else the filter cannot express: `LIKE` patterns, regular expressions, `>`, and grouped parentheses are all parse errors (the error points you at `~=`, `CONTAINS` and `STARTS WITH`), because a query language that quietly means something other than what it says is worse than one that refuses.
+Unrelated alternatives ("AWS in Europe, or GCP anywhere") need two graphs. `LIKE` patterns, regular expressions, `>` and grouped parentheses are also errors. The error message points you to `~=`, `CONTAINS` and `STARTS WITH` instead.
 
 ### When a query doesn't parse
 
-Errors say where. The character offset, what was expected there, and — for a misspelled dimension — the nearest real name and the full list:
+The error tells you where it went wrong and what was expected. For a misspelled dimension, it suggests the nearest real name and lists them all:
 
 ```
 $ infrawrench costs --where "provider = 'aws' AND regionn = 'us-east-1'"
@@ -165,7 +165,7 @@ provider, account, service, region, resource, tag, charge_type, commitment.
                        ^^^^^^^
 ```
 
-In the graph editor the same message appears under the text box as you type, and **Save** stays disabled until the query parses — the rows can only show the last query that worked, so a half-typed one is never silently saved or discarded.
+In the graph editor the same message appears under the text box as you type. **Save** stays disabled until the query parses, so a half-typed query is never saved by accident.
 
 ### From the CLI
 
@@ -173,100 +173,108 @@ In the graph editor the same message appears under the text box as you type, and
 infrawrench costs --where "provider = 'aws' AND tag['env'] != 'dev'" --last 30d --group-by service
 ```
 
-The filter is compiled before the request goes out, so a typo fails immediately, and `--json` echoes both the text you wrote and the structure it compiled to.
+A typo fails straight away, before anything is sent. `--json` shows both the text you wrote and the filter it turned into.
 
-### From the API and the model
+### From the API and the AI
 
-`POST /costs/query` accepts the same text as an optional `query` field, as an alternative to the structured `filters` array — see the [HTTP API](../team-and-billing/openapi.md). Sending both is an error rather than a precedence rule, and a query that doesn't parse comes back as a 400 carrying the offset. The `query_costs` [MCP tool](./mcp.md) takes it too, which is usually how the model writes a filter.
+`POST /costs/query` accepts the same text in an optional `query` field, instead of the structured `filters` array. See the [HTTP API](../team-and-billing/openapi.md). Sending both is an error. A query that doesn't parse returns a 400 with the position of the problem. The `query_costs` [MCP tool](./mcp.md) accepts it too.
 
 ## Saved filters
 
-The same filter — "prod only", "team platform's accounts" — tends to get rebuilt by hand in every graph, report and budget. A **saved filter** makes it a named object instead: build the rows once, give them a name, and apply the name everywhere.
+You probably rebuild the same filters ("prod only", "team platform's accounts") in lots of graphs, reports and budgets. A **saved filter** lets you build the rows once, name them, and apply the name everywhere.
 
-The important part is that applying a saved filter is a **reference, not a copy**. A graph, report or budget stores the filter's id, and the server looks the rows up every time the query runs. Edit "prod only" once — add the new production account — and every graph, report and budget using it changes on its next refresh. Nothing ever holds a stale copy.
+Applying a saved filter links to it rather than copying it. Edit "prod only" once (say, to add a new production account) and every graph, report and budget using it changes on its next refresh.
 
 ![The cost graph editor's Filters section with a "Prod only" saved-filter chip applied above the filter rows](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/saved-filter-chip.png)
 
-### Applying and creating one
+### Apply or create a saved filter
 
-Every filter editor — the cost graph editor, the report editor, and the budget scope — has an **Apply saved filter…** picker. The applied filter appears as a chip; inline rows underneath stay available and are combined with the saved filter by AND, so "the saved prod scope, further narrowed to this one service" is one chip plus one row.
+Every filter editor (the cost graph editor, the report editor and the budget scope) has an **Apply saved filter…** picker. The applied filter shows as a chip. You can still add rows underneath, and they are combined with the saved filter by AND. So "the saved prod scope, narrowed to this one service" is one chip plus one row.
 
-Going the other way, once you have built rows worth keeping, **Save these rows as a filter…** names them and swaps the rows for the chip.
+To go the other way, build rows worth keeping and click **Save these rows as a filter…**. Name it, and the rows become the chip.
 
-Saved filters are managed on the **Costs** panel, in the **Saved filters** section of the **Allocation** tab. That is where the objects they scope live. Each row shows the filter as query text; editing one warns you what it will re-scope by naming every graph, report and budget that references it.
+Manage saved filters on the **Costs** panel, in the **Saved filters** section of the **Allocation** tab. Each row shows the filter as query text. When you edit one, Infrawrench warns you by naming every graph, report and budget that uses it.
 
 ![The Costs panel's Saved filters section listing two filters with their query text, with the edit modal open showing the "Saving changes budget ..." referent warning](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/saved-filters-edit-modal.png)
 
-### Deleting one is refused while it is in use
+### You can't delete a filter that's in use
 
-Deleting a saved filter that a budget still references would silently widen that budget to _all spend_ — which could fire alerts that shouldn't fire, or worse, keep quiet ones that should. So deletion is refused while anything references the filter: the error names every referent (budgets, reports, dashboard graphs), and you detach them deliberately first. For the same reason, a reference that fails to resolve at query time — a race, corrupt data — makes the query **error rather than silently run unfiltered**.
+Deleting a saved filter that a budget uses would widen that budget to _all spend_, and its alerts would be wrong. So deletion is refused while anything uses the filter. The error names every budget, report and dashboard graph that uses it, so you can detach them first. If a saved filter can't be found when a query runs, the query fails instead of running unfiltered.
 
-### From the CLI, the API and the model
+### From the CLI, the API and the AI
 
 ```
 infrawrench costs --filter "prod only" --last 30d --group-by service
 infrawrench costs --filter "prod only" --where "provider = 'aws'"   # AND-composed
 ```
 
-`--filter` takes the saved filter's name or id and sends the _id_ — the rows are resolved on the server at query time, exactly as for a graph or budget, so the flag always means what the name means everywhere else. `--json` echoes the id, name, and the rows it resolved to.
+`--filter` takes the saved filter's name or id, and always uses its current rows. `--json` shows the id, name and the rows it used.
 
-On the API, `POST /costs/query` takes an optional `savedFilterId` alongside `filters` or `query` (it composes with them, unlike those two with each other), and `/saved-cost-filters` offers CRUD plus `GET /:id/referents`. The model reaches the same thing through the `list_saved_cost_filters` MCP tool and `query_costs`' `savedFilterId`.
+On the API, `POST /costs/query` takes an optional `savedFilterId` alongside `filters` or `query` (it combines with either). `/saved-cost-filters` lets you create, read, update and delete them, plus `GET /:id/referents` to see what uses one. In MCP, use the `list_saved_cost_filters` tool and the `savedFilterId` field of `query_costs`.
 
-On your phone, graph and budget sheets show an applied saved filter read-only, with the query text it currently resolves to; creating and editing saved filters stays on web and desktop.
+On your phone, graph and budget sheets show an applied saved filter read-only, with its current query text. Creating and editing saved filters is web and desktop only.
 
 ## Charge types, and cash vs amortized
 
-A bill is not all one thing. Alongside the usage you consumed, providers charge you for commitments you bought, refund you, credit you, and tax you — and if all of that lands in one number, a month where usage doubled can look flat because a credit absorbed it.
+A bill is not all one thing. Next to the usage you consumed, providers charge you for commitments you bought, refund you, credit you and tax you. If all of that lands in one number, a month where usage doubled can look flat because a credit absorbed it.
 
-Every cost row therefore carries a **charge type**:
+So every cost row has a **charge type**:
 
-| Charge type                  | What it is                                                                                                                                                      |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Usage**                    | Consumption billed on demand. The default, and most of any bill.                                                                                                |
-| **Commitment-covered usage** | Consumption a reservation, savings plan or committed-use discount covered. Still consumption — the commitment is in the rate, not in what kind of charge it is. |
-| **Commitment fee**           | Buying a commitment: a reservation's up-front payment, a savings plan, a committed-use contract.                                                                |
-| **Commitment discount**      | The negative line where a commitment covered usage that would otherwise be on-demand.                                                                           |
-| **Credit**                   | Promotional or negotiated credit applied against the bill.                                                                                                      |
-| **Tax**                      | VAT, sales tax and the like, billed separately from the service.                                                                                                |
-| **Refund**                   | Money returned for a past charge.                                                                                                                               |
-| **Adjustment**               | A billing correction that is none of the above.                                                                                                                 |
-| **Support**                  | A support plan, usually priced off the rest of the bill rather than off any one service.                                                                        |
-| **Other**                    | A category the provider distinguishes that doesn't map onto the ones above.                                                                                     |
+| Charge type                  | What it is                                                                                                                   |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **Usage**                    | Consumption billed on demand. The default, and most of any bill.                                                             |
+| **Commitment-covered usage** | Consumption a reservation, savings plan or committed-use discount covered. Still consumption, just at the commitment's rate. |
+| **Commitment fee**           | Buying a commitment: a reservation's up-front payment, a savings plan, a committed-use contract.                             |
+| **Commitment discount**      | The negative line where a commitment covered usage that would otherwise be on-demand.                                        |
+| **Credit**                   | Promotional or negotiated credit applied against the bill.                                                                   |
+| **Tax**                      | VAT, sales tax and the like, billed separately from the service.                                                             |
+| **Refund**                   | Money returned for a past charge.                                                                                            |
+| **Adjustment**               | A billing correction that is none of the above.                                                                              |
+| **Support**                  | A support plan, usually priced off the rest of the bill rather than any one service.                                         |
+| **Other**                    | A category the provider uses that doesn't match the ones above.                                                              |
 
-Group by **Charge type** to see the split, or filter on it to answer a specific question — "consumption only, ignore the credits" is the one worth knowing, because it is the number that tells you whether spend is actually growing. Select **both** usage types for that: covered hours are consumption too, and leaving them out understates exactly the workloads you committed to.
+Group by **Charge type** to see the split, or filter on it to answer a specific question. The most useful one is "consumption only, ignore the credits", because it tells you whether spend is really growing. Select **both** usage types for that: covered hours are consumption too, and leaving them out understates the workloads you committed to.
 
-**Commitment-covered usage is worth nothing on a cash basis, everywhere.** AWS prices reservation-covered hours at an unblended rate of zero and Azure prices them at an effective price of zero, because the money left your account when you bought the commitment. Pair that charge type with the **amortized** basis below to see what those hours are actually worth — it is also the basis the [Commitments](./commitments.md) coverage figure is computed on, for exactly this reason.
+**Commitment-covered usage shows as zero on a cash basis.** AWS and Azure price covered hours at zero, because you paid when you bought the commitment. To see what those hours are really worth, use the **amortized** basis below. [Commitments](./commitments.md) coverage is calculated on the same basis.
 
-Not every provider distinguishes these. Where a provider doesn't, or where the data predates this, its rows are **Usage** — which is what they were always assumed to be.
+Not every provider reports charge types. Where a provider doesn't, or for older data, rows are **Usage**.
 
 ### Cash, amortized and blended
 
-**Cost basis** decides which number the graph sums. Hover the select (or read the line under it) for a one-sentence reminder of what the selected basis means.
+**Cost basis** decides which number the graph adds up. Hover the select (or read the line under it) for a short reminder of what each one means.
 
-- **Cash** is what the provider charged, on the day it charged it. This is your bank statement, and it is what every graph showed before this existed.
-- **Amortized** spreads a commitment's up-front fee across the term it actually buys. A one-year reservation paid up front is one enormous charge on the purchase day and 1/365th of it on each of the 365 days it covers.
+- **Cash** is what the provider charged, on the day it charged it. This is your bank statement.
+- **Amortized** spreads a commitment's up-front fee across the term it buys. A one-year reservation paid up front is one huge charge on the purchase day on a cash basis, and 1/365th of it on each of the 365 days on an amortized basis.
 
-If you hold reservations, savings plans, or committed-use discounts, amortized is the honest number. On a cash basis the month you sign a three-year commitment looks like a catastrophe, and every month after it looks suspiciously cheap — neither reflects what your infrastructure cost to run in that month, and a budget on a cash basis will breach on the purchase and then sit quiet for three years. Amortized answers "what did July cost us"; cash answers "what left the bank in July". Both are real questions; they just aren't the same one.
+If you hold reservations, savings plans or committed-use discounts, amortized is the honest number. On a cash basis the month you sign a three-year commitment looks terrible and every month after looks oddly cheap. A cash budget will breach on the purchase and then stay quiet for three years. Amortized answers "what did July cost us?". Cash answers "what left the bank in July?". Both are real questions, just different ones.
 
-Providers that don't report an amortized amount fall back to their cash amount rather than dropping out — so an amortized graph over a mixed estate is still the whole estate, with the commitments spread and everything else unchanged. The option only appears when at least one connected account's provider reports amortized cost; otherwise the two views would draw the identical graph.
+Providers that don't report an amortized amount use their cash amount instead, so an amortized graph still covers everything. The option only appears when at least one connected account's provider reports amortized cost.
 
-Budgets take the same setting, and it's the same reasoning: a budget tracking amortized spend keeps alerting sensibly through the term of a commitment.
+Budgets have the same setting. A budget on amortized spend keeps alerting sensibly through a commitment's term.
 
 #### Blended
 
-**Blended** starts from amortized and then spreads each commitment's _discount_ evenly across all the usage it was eligible to cover. Providers apply a shared commitment wherever they like: AWS lands a Savings Plan on the hours with the deepest discount first and a regional reservation on whichever matching hours ran first, and a GCP committed-use discount goes to the projects that happened to be consuming when it had headroom. On the amortized basis, two teams running identical workloads in the same account or billing scope can therefore pay very different effective rates, purely by accident of scheduling.
+**Blended** starts from amortized, then spreads each commitment's _discount_ evenly across all the usage it could have covered. Providers apply shared commitments unevenly. AWS puts a Savings Plan on the hours with the deepest discount first, and a regional reservation on whichever matching hours ran first. A GCP committed-use discount goes to whichever projects were running when it had room. So on an amortized basis, two teams with identical workloads in the same account can pay very different rates, just by chance.
 
-On the blended basis every eligible hour in the commitment's scope carries the same effective rate. For each day, Infrawrench takes the usage a set of commitments could have covered (what it was billed at, and what it would have cost on demand), works out one effective rate for the whole pool, and re-prices each row at that rate in proportion to its on-demand cost. Covered rows get more expensive, uncovered rows get cheaper, and **every day's total is exactly the amortized total**: only the split between teams, accounts, regions and resources moves. That makes it the fair basis for [showback](./tag-policy-and-showback.md), team budgets and [invoices](./managed-accounts.md) when commitments are bought centrally.
+On the blended basis every eligible hour in a commitment's scope gets the same effective rate. Covered rows get more expensive and uncovered rows get cheaper, but **every day's total stays exactly the amortized total**. Only the split between teams, accounts, regions and resources changes. That makes it the fair basis for [showback](./tag-policy-and-showback.md), team budgets and [invoices](./managed-accounts.md) when commitments are bought centrally.
 
-| Provider  | Pool                                                                                                                      | On-demand equivalent of covered usage                                                                                                                                     |
-| --------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **AWS**   | One per day and service: Compute Savings Plans span regions, and Cost Explorer cannot break usage down by instance family | Savings Plan covered usage reports its on-demand cost directly; reservation-covered hours use Cost Explorer's reservation utilization ("on-demand cost of RI hours used") |
-| **Azure** | One per day and service within the subscription                                                                           | Covered usage per meter, priced at the subscription's own on-demand rate for that meter, or the public retail price when it never ran on demand                           |
-| **GCP**   | Resource-based committed-use discounts: one per day and region. Spend-based: one per day                                  | Each line's cost before credits, for every SKU that received that kind of committed-use credit that day                                                                   |
+How each provider's discount is shared:
 
-Rows outside any pool (fees, tax, credits, other services) keep their amortized amount, and so does any pool a provider couldn't price fully, so blended never guesses. Like the amortized option, **Blended** only appears when at least one connected account's provider reports it.
+| Provider  | Shared across                                                                      | On-demand equivalent of covered usage                                                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AWS**   | Each day and service, since Compute Savings Plans span regions                     | Savings Plan covered usage reports its on-demand cost directly. Reservation-covered hours use Cost Explorer's reservation utilization ("on-demand cost of RI hours used") |
+| **Azure** | Each day and service within the subscription                                       | Covered usage per meter, at the subscription's own on-demand rate for that meter, or the public retail price if it never ran on demand                                    |
+| **GCP**   | Resource-based committed-use discounts: each day and region. Spend-based: each day | Each line's cost before credits, for every SKU that received that kind of committed-use credit that day                                                                   |
 
-From the terminal the same two questions are `infrawrench costs --basis amortized` and `infrawrench costs --charge-type usage` (repeat the flag for more than one kind); `--group-by charge_type` prints the split, and `--basis blended` prints the blended view. The text output names the basis next to the total, so a number copied out of it says what it is.
+Rows outside these groups (fees, tax, credits, other services) keep their amortized amount. So does any group a provider couldn't price fully, so blended never guesses. Like amortized, **Blended** only appears when at least one connected account's provider supports it.
+
+From the terminal:
+
+- `infrawrench costs --basis amortized` or `--basis blended` picks the basis.
+- `infrawrench costs --charge-type usage` filters by charge type (repeat the flag for more than one).
+- `--group-by charge_type` prints the split.
+
+The text output names the basis next to the total, so a copied number says what it is.
 
 ![Cost graph config modal showing the Cost basis select set to Amortized, next to the Group by select set to Charge type](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/config-amortized-charge-type.png)
 
@@ -274,65 +282,65 @@ From the terminal the same two questions are `infrawrench costs --basis amortize
 
 ### When the number is an estimate
 
-Some providers publish no billing API at all. For those, Infrawrench prices your inventory against the provider's published rate card instead — so you still get a spend graph, but it is a calculation rather than an invoice, and any graph whose scope includes such an account says so above the chart.
+Some providers have no billing API. For those, Infrawrench prices your inventory against the provider's published rates. You still get a spend graph, but it's a calculation rather than an invoice, and any graph that includes such an account says so above the chart.
 
-Expect an estimate to read low, in three specific ways:
+Expect an estimate to read low, for three reasons:
 
-- **Anything deleted mid-period is missing.** Inventory is what exists now. A machine that ran for three weeks and was destroyed on the 22nd isn't there to price, and neither are the three weeks it cost you.
-- **Every rate is list.** Negotiated pricing, volume tiers, committed-use and sustained-use discounts are all invisible to a rate card.
-- **Non-resource lines never appear.** Credits, tax, refunds and one-off charges have no resource to hang off.
+- **Anything deleted mid-period is missing.** A machine that ran for three weeks and was destroyed on the 22nd isn't there to price.
+- **Every rate is list price.** Negotiated pricing, volume tiers, committed-use and sustained-use discounts aren't included.
+- **Non-resource lines never appear.** Credits, tax, refunds and one-off charges are missing.
 
-Check the plugin's page under [Plugins](../plugins/aws.md) to see whether its costs are collected or estimated before you reconcile a number against a bill.
+Before you reconcile a number against a bill, check the provider's page under [Plugins](../plugins/aws.md) to see whether its costs are collected or estimated.
 
-`infrawrench costs` prints the same note above the chart and lists these accounts as `estimatedAccounts` under `--json`. Over `GET /costs/status` it is the `estimated` flag on each account, alongside `chargeTypes` and `amortization`.
+`infrawrench costs` prints the same note above the chart and lists these accounts as `estimatedAccounts` under `--json`. In `GET /costs/status` it is the `estimated` flag on each account, next to `chargeTypes` and `amortization`.
 
 ![Dashboard showing the neutral "Spend for Hetzner is estimated" banner above a cost widget, with the explanation about list rates and deleted resources](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/hetzner-estimated-banner.png)
 
 ## Currency
 
-Spend is stored in the currency each provider bills in, and **currencies are never merged by default**. A graph whose scope covers a EUR-billing account and a USD-billing one draws one series per currency and says so under the title, and the total reads `€4,100 + $9,300`. That is the honest answer, and it stays the default — but it means an org billing in two currencies cannot answer "what do we spend", which is a real gap.
+Spend is shown in the currency each provider bills in, and **currencies are never merged by default**. If a graph covers a EUR account and a USD account, it draws one series per currency and the total reads `€4,100 + $9,300`. That means an org billing in two currencies can't see one "what do we spend" figure.
 
-**Settings → Currency** closes it, as an explicit opt-in. Set a display currency, then either state the exchange rates yourself, turn on **automatic exchange rates** (the European Central Bank's daily reference rates), or both, and every cost surface folds the currencies it has a rate for into that one.
+To fix that, go to **Settings > Currency**. Set a display currency, then state exchange rates yourself, turn on **automatic exchange rates** (the European Central Bank's daily reference rates), or both. Every cost view then converts the currencies it has a rate for.
 
 ![Settings → Currency page with a display currency of USD set and three exchange rate rows (EUR, GBP, SEK) with different effective dates](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/currency-settings.png)
 
-### It is off until you turn it on
+### It's off until you turn it on
 
-An org with no display currency configured behaves exactly as it did before this feature existed — same series, same per-currency totals, same digest lines. Nothing starts merging currencies on its own, and clearing the display currency turns conversion off everywhere without deleting the rates you have stated, so you can switch it back on later without re-typing anything.
+With no display currency set, nothing is converted. Clearing the display currency turns conversion off everywhere but keeps the rates you stated, so you can switch it back on later without retyping them.
 
 ### Where the rates come from
 
-There are two sources, and you choose which to use.
+You choose between two sources.
 
-**Rates you state.** A finance team often reconciles a converted total against the rate their accounting system booked the period at, a decision somebody made and recorded, not today's mid-market quote. So you can state the rates. Each one is a from-currency, a to-currency, a rate, an **effective date** and, optionally, an **end date**:
+**Rates you state.** Finance teams often need a converted total to match the rate their accounting system used for the period, not today's market rate. So you can state your own. Each rate has a from-currency, a to-currency, a rate, an **effective date** and, optionally, an **end date**.
 
-- A day's spend converts at the stated rate whose effective date is the latest one on or before that day. Restating a rate for this month therefore does not rewrite periods you have already closed.
-- An end date makes the rate a bounded override. After it, automatic rates take over again if they are on; otherwise those days are unconverted. An older stated rate never comes back past an end date.
-- A range spanning a rate change is converted per day and reported as a blend: the caveat under the figure names every rate that was applied.
-- Stated rates are used in **one hop**. Infrawrench never inverts a stated rate (a USD→EUR rate is not treated as evidence about EUR→USD) and never chains two through a third currency.
-- One rate per currency pair per effective date. Re-adding the same pair and date replaces the stored rate, which is what correcting a typo should mean. **Edit** on a row opens it in the form.
-- Rates are stored as exact decimals, so the digits you type are the digits stored and echoed back.
+- Each day's spend uses the stated rate with the latest effective date on or before that day. So restating a rate for this month doesn't rewrite months you already closed.
+- An end date makes the rate a temporary override. After it, automatic rates take over if they're on. Otherwise those days are unconverted. An older stated rate never comes back after an end date.
+- A date range that spans a rate change is converted day by day. The note under the figure names every rate used.
+- Stated rates are used directly. A USD to EUR rate is never flipped to give EUR to USD, and two rates are never chained through a third currency.
+- There is one rate per currency pair per effective date. Adding the same pair and date again replaces the rate, which is how you fix a typo. **Edit** on a row opens it in the form.
+- Rates are stored exactly as you type them.
 
-**Automatic exchange rates.** Turn them on and Infrawrench fills every day that no stated rate covers with the [European Central Bank's euro foreign exchange reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html). They are free and public, published around 16:00 CET on every TARGET working day for about thirty currencies, with history back to January 1999. Infrawrench fetches them once a day and stores them once for everyone, so turning them on gives you the full history immediately.
+**Automatic exchange rates.** Turn these on and Infrawrench fills every day without a stated rate using the [European Central Bank's euro foreign exchange reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html). They are free and public, published around 16:00 CET on every TARGET working day for about thirty currencies, with history back to January 1999. Turning them on gives you the full history straight away.
 
-- **Weekends and holidays** have no publication, so those days use the last published rate. The converted figure shows the publication date that was actually used.
-- **Pairs without the euro** (GBP to USD, say) are crossed through EUR from the same day's publication: USD per EUR divided by GBP per EUR.
-- **Currencies the ECB does not publish** are manual-only. They convert when you state a rate and are shown unconverted otherwise. The Currency page lists the currencies the feed covers.
-- **Daily or end-of-month.** Choose whether each day converts at its own rate, or every day in a month converts at the rate on the month's last day, which matches how most month-end closes book foreign-currency costs. The current month uses the latest rate until it ends. The choice only affects automatic rates.
+- **Weekends and holidays** have no rate, so those days use the last published rate. The converted figure shows the publication date used.
+- **Pairs without the euro** (GBP to USD, say) are calculated through EUR from the same day's rates.
+- **Currencies the ECB doesn't publish** only convert when you state a rate. Otherwise they are shown unconverted. The Currency page lists the currencies the ECB covers.
+- **Daily or end-of-month.** Choose whether each day converts at its own rate, or every day in a month converts at the month's last-day rate (which matches how most month-end closes book foreign costs). The current month uses the latest rate until it ends. This choice only affects automatic rates.
 
-**A rate you state always wins.** For any day a stated rate covers, that rate is used, whatever the feed says. That lets you leave automatic rates on and pin the months your books closed at a different number.
+**A rate you state always wins.** For any day it covers, your stated rate is used. So you can leave automatic rates on and pin the months your books closed at a different rate.
 
-The Currency page also shows the feed's latest publication and, if the last daily fetch failed, the error. A failed fetch never removes rates already stored; conversion keeps using them, and every converted figure names the date of the rate it used, so a stale rate is visible.
+The Currency page also shows the latest ECB publication and, if the last daily fetch failed, the error. A failed fetch never removes stored rates. Every converted figure names the date of the rate it used, so a stale rate is easy to spot.
 
 <insert [Settings → Currency page with automatic exchange rates turned on, the end-of-month basis selected, the latest ECB publication date and covered currencies listed, and a stated EUR to USD rate with an end date in the table below] here>
 
-Stating or removing a rate needs the **org settings** permission and is recorded in the [audit log](../team-and-billing/audit-log.md). Reading the table only needs `costs:read`: anyone who can see a converted total needs to be able to see what produced it.
+Adding or removing a rate needs the **org settings** permission and is recorded in the [audit log](../team-and-billing/audit-log.md). Viewing the rates only needs `costs:read`, so anyone who can see a converted total can see how it was calculated.
 
-### Uploading many rates from a CSV
+### Upload rates from a CSV
 
-If your finance system already produces a rate table (a month-end close per currency, say), upload it instead of typing each row. Under the rate table on the Currency page, **Download template** gives you a file with the right header and one example of each row shape, and **Upload CSV…** reads yours.
+If your finance system already produces a rate table (a month-end close per currency, say), upload it instead of typing each row. Under the rate table on the Currency page, click **Download template** for a file with the right header and an example of each row type. Then click **Upload CSV…** to upload yours.
 
-The file needs a header row. Columns are matched by name, ignoring case, spaces and underscores, so `From Currency` and `from_currency` both work, and columns it doesn't recognise are ignored:
+The file needs a header row. Columns are matched by name, ignoring case, spaces and underscores, so `From Currency` and `from_currency` both work. Columns it doesn't recognise are ignored.
 
 | Column           | Meaning                                                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------ |
@@ -345,117 +353,152 @@ The file needs a header row. Columns are matched by name, ignoring case, spaces 
 
 Each row needs either `effective_from` or `billing_period`, not both. Comma, semicolon and tab separated files all work, up to 2,000 rows.
 
-Nothing is written when you pick the file. Infrawrench first shows every row with what it would do: **New** (no rate for that pair and start date yet), **Replaces** (one exists with a different rate or end date, shown next to it), **Unchanged**, or **Error** with the reason and the line number. Two rows for the same pair and start date in one file are an error on the second. Then **Import** writes the new and replaced rows in one go, and every other rate you already have is left alone, so re-uploading a corrected file is safe.
+Nothing is saved when you pick the file. First you see a preview of every row and what it will do:
 
-If any row has an error, the upload writes nothing unless you tick **Skip the rows with errors**. A half-applied file is never something you chose by accident.
+- **New**: no rate for that pair and start date yet.
+- **Replaces**: a rate exists with a different value or end date (shown next to it).
+- **Unchanged**.
+- **Error**, with the reason and the line number. Two rows for the same pair and start date in one file make the second one an error.
 
-**Uploaded rates rank exactly like rates you type.** They are stated rates, so they win over automatic exchange rates for every day they cover. A `billing_period` row (or one with an `effective_to`) covers only its own days: the day after, conversion goes back to the next stated rate, or to the automatic rate if that is on. That is usually what a month-end close means, and it stops a stale close rate from carrying forward for months.
+Click **Import** to save the new and replaced rows together. Your other rates are left alone, so re-uploading a corrected file is safe.
+
+If any row has an error, nothing is saved unless you tick **Skip the rows with errors**.
+
+**Uploaded rates work exactly like rates you type.** They win over automatic rates for every day they cover. A `billing_period` row (or one with an `effective_to`) only covers its own days. After that, conversion goes back to the next stated rate, or the automatic rate if that's on. That's usually what a month-end close means, and it stops an old close rate carrying forward for months.
 
 <insert [Settings → Currency page with an uploaded CSV previewed under the rate table: a summary line reading 12 new, 2 replace a stored rate, 0 unchanged, 1 with errors, the per-row table with one Error row naming its line, and the Skip the rows with errors checkbox next to the Import button] here>
 
-From a terminal, `infrawrench currency template > rates.csv` writes the template, and `infrawrench currency import rates.csv` prints the same preview and asks before writing (`-y` to skip the question, `--skip-invalid` to import the valid rows of a file with errors). Over the API it is `POST /api/org/{orgId}/currency/rates/import` with `{"csv": "...", "dryRun": true}` for the preview, then the same body without `dryRun`. An applied upload needs the org settings permission and is recorded in the audit log as one `exchange_rate.import` entry with the counts and the currency pairs it touched.
+From a terminal:
 
-### Converted numbers always say they are converted
+- `infrawrench currency template > rates.csv` writes the template.
+- `infrawrench currency import rates.csv` shows the same preview and asks before saving. Use `-y` to skip the question and `--skip-invalid` to import only the valid rows.
 
-A total that quietly mixes currencies is worse than two totals, so every surface that shows a converted figure labels it: the graph card's footnote, a notice above the Costs panel, the weekly digest, scheduled report deliveries, dashboard PDFs, the mobile cost cards, and `infrawrench costs` in both text and `--json` output. The label names the currencies that were folded in and, for each, **where the rate came from and its date**: your stated rates with their effective dates, or the ECB reference rates with the range of publication dates used. Hovering a bar or point on a cost graph names the rate behind that bucket, its source and its date. Invoice CSVs carry `rate_source` and `rate_effective_from` columns for every line.
+Over the API, send `POST /api/org/{orgId}/currency/rates/import` with `{"csv": "...", "dryRun": true}` for the preview, then the same body without `dryRun` to save. Saving an upload needs the org settings permission and is recorded in the audit log as one `exchange_rate.import` entry with the counts and currency pairs.
 
-Spend already in the display currency is never converted. It is passed through untouched rather than multiplied by a rate of 1.
+### Converted numbers are always labelled
+
+Every place that shows a converted figure labels it: the graph card's footnote, a notice above the Costs panel, the weekly digest, scheduled report deliveries, dashboard PDFs, the mobile cost cards, and `infrawrench costs` in both text and `--json` output. The label names the currencies that were converted and, for each, **where the rate came from and its date**: your stated rates with their effective dates, or the ECB rates with the range of publication dates. Hover a bar or point on a cost graph to see the rate for that bucket, its source and date. Invoice CSVs include `rate_source` and `rate_effective_from` columns for every line.
+
+Spend already in the display currency is left as it is.
 
 ### A currency with no rate is shown, not dropped
 
-This is the important one. If your data contains a currency you have not stated a rate for, Infrawrench does **not** quietly leave it out of the total — that would understate your spend, which is the worst thing this feature could do. Instead:
+If your data includes a currency with no rate, Infrawrench does **not** leave it out of the total, since that would understate your spend. Instead:
 
 - It keeps its own series and its own entry in the totals, in its own currency.
-- A notice names it explicitly: "Spend in SEK is not included in the USD figure."
+- A notice names it: "Spend in SEK is not included in the USD figure."
 
-The same applies to a currency that has a rate for only part of the range: if any day falls outside every stated rate and the feed cannot cover it either, that currency is left unconverted as a whole rather than half-converted, because a partly converted series reconciles against nothing. Add a stated rate covering those days, or turn on automatic rates, to include it.
+The same goes for a currency with a rate for only part of the range. If any day has no stated or automatic rate, that currency is left unconverted for the whole range rather than half-converted. Add a stated rate covering those days, or turn on automatic rates, to include it.
 
 <insert [Costs panel showing a converted USD total with the neutral "Amounts are converted to USD" notice listing EUR at 1.0850, and below it the amber "Spend in SEK is not included in the USD figure" notice] here>
 
-### Budgets
+### Budgets and currency
 
-A budget keeps its own currency — the display currency does not re-denominate a budget somebody set, and every threshold and alert stays in the budget's own currency.
+A budget keeps its own currency. The display currency doesn't change it, and every threshold and alert stays in the budget's currency.
 
-What changes is which spend counts. A budget has always counted only spend already in its own currency, silently ignoring the rest. When a budget's currency **is** your org's display currency, it now converts your other currencies' spend into it first, using your stated rates and automatic rates if they are on, so a USD budget in a mixed-currency org tracks the org's actual spend. A budget in any other currency, or an org with no display currency, behaves exactly as before.
+What changes is which spend counts:
 
-The gate is that equality because rates point _to_ the display currency in one hop — there are simply no rates pointing at a GBP budget in a USD-display org, so "convert into the budget's currency" would have nothing to use. A budget is a single number and cannot carry a second currency alongside it, so a currency with no rate really is excluded here — and the alert message says so, naming it.
+- If a budget's currency **is** your display currency, spend in other currencies is converted into it first, using your stated rates and automatic rates if they're on. So a USD budget in a mixed-currency org tracks all your spend.
+- A budget in any other currency, or in an org with no display currency, only counts spend already in its own currency.
+
+A currency with no rate is left out of the budget, and the alert message names it.
 
 ### Elsewhere
 
-- **Showback** converts per cost centre, on the rate in force on the last day of the period rather than per day: a chargeback is a statement about a closed period, and "August, at the August rate" is a sentence a finance team can reproduce.
-- **The weekly digest** follows the org's display currency and adds the same caveat line under the spend figure, instead of one line per currency.
-- **Invoices** for [managed accounts](./managed-accounts.md) convert at the rate in force on the period's last day under the same precedence, and freeze the rate and its source at approval.
-- **The CLI** takes `--currency USD` on `infrawrench costs`. The conversion caveat prints above the chart in text mode and rides along under `--json`, including the currencies that could not be converted. `infrawrench currency` prints the settings, the feed's state and your stated rates; `infrawrench currency rate EUR 2026-09-30` says which rate a day converts at and why; `infrawrench currency feed` lists the ECB rates for a day.
+- **Showback** converts each cost centre at the rate in force on the last day of the period, so "August, at the August rate" is something finance can reproduce.
+- **The weekly digest** uses the display currency and adds the same note under the spend figure.
+- **Invoices** for [managed accounts](./managed-accounts.md) convert at the rate in force on the period's last day, and lock the rate and its source when approved.
+- **The CLI**: `infrawrench costs --currency USD` converts. The conversion note prints above the chart in text mode and is included in `--json`, along with any currencies that couldn't be converted. `infrawrench currency` prints your settings, the ECB feed status and your stated rates. `infrawrench currency rate EUR 2026-09-30` tells you which rate a day uses and why. `infrawrench currency feed` lists the ECB rates for a day.
 - **MCP and the AI chat** have `get_currency_settings` and `lookup_exchange_rate`, and quote a converted figure's rate source and date.
 - **Terraform**: `infrawrench_currency_settings` takes `auto_rates` and `rate_basis`, and `infrawrench_exchange_rate` takes `effective_to`. See [Terraform provider](./terraform-provider.md).
-- **Mobile** shows converted totals with their caveat, including the rate source. The settings and rate editor are web and desktop only: stating a rate is a finance-governance act done once a period against a system that is not on a phone.
+- **Mobile** shows converted totals with their note, including the rate source. Currency settings and rates can only be edited on web and desktop.
 
 ## Budgets & alerts
 
-A budget is an amount tracked against a scope (all spend, or a filtered slice: one provider, one account, a tag) for each period it covers. By default that is monthly spend; a budget can also [count a usage quantity](#usage-budgets), run on a [custom period](#budget-periods), and [roll up child budgets](#budget-hierarchies). Create one from the **Costs** panel, or from a dashboard's **+** tile → **New budget**. A budget also picks a [cost basis](#cash-amortized-and-blended): leave it on cash to track what you are charged, or switch it to amortized so a commitment purchase doesn't blow the budget in the month you sign it.
+A budget is an amount tracked against a scope (all spend, or a slice: one provider, one account, a tag) for each period. By default it tracks monthly spend. A budget can also [track a usage quantity](#usage-budgets), use a [custom period](#budget-periods), and [roll up child budgets](#budget-hierarchies).
+
+Create one from the **Costs** panel, or from a dashboard's **+** tile > **New budget**. A budget also has a [cost basis](#cash-amortized-and-blended). Leave it on cash to track what you're charged, or switch to amortized so a commitment purchase doesn't blow the budget in the month you sign it.
 
 Each budget has one or more thresholds:
 
-- **Actual** thresholds fire when period-to-date spend (or usage) crosses a percentage of the period's amount.
-- **Forecast** thresholds fire when the projected period-end total crosses it: early warning while there is still time to react.
+- **Actual** thresholds fire when spend (or usage) so far this period crosses a percentage of the budget.
+- **Forecast** thresholds fire when the projected end-of-period total crosses it. This is your early warning while there's still time to react.
 
-Every threshold fires at most once per period (per calendar month for a monthly budget). Alerts show up as a badge on the budget card, as a [mobile push notification](./mobile-push-notifications.md) to org members who have the app installed and budget alerts enabled in their per-org notification preferences, in any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into budget alerts, and — if your org has Twilio configured on the **Settings → Notifications** page — as an SMS to your on-call recipients. A budget's **Email recipients** field emails members or approved addresses every time one of its thresholds fires; see [email alerts](./email-alerts.md).
+Each threshold fires at most once per period (per calendar month for a monthly budget). Alerts show up:
+
+- as a badge on the budget card
+- as a [mobile push notification](./mobile-push-notifications.md) to org members who have the app and budget alerts turned on in their notification preferences for the org
+- in any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel set up for budget alerts
+- as an SMS to your on-call recipients, if your org has Twilio set up on the **Settings > Notifications** page
+- by email to anyone in the budget's **Email recipients** field (members or approved addresses). See [email alerts](./email-alerts.md).
 
 ![Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/budget-card.png)
 
 ### Usage budgets
 
-Set a budget's **Measure** to **Usage quantity** to limit a quantity rather than money: tokens, GB, instance-hours, requests, credits, whatever your providers report on their cost rows. The unit is a picker over the units actually present in your cost data, matched exactly and never converted (`GB` and `GB-Mo` are different quantities). Thresholds and forecasts work the same way, in the unit; the card, the alert and the CLI all print the quantity with its unit.
+Set a budget's **Measure** to **Usage quantity** to limit a quantity instead of money: tokens, GB, instance-hours, requests, credits, whatever your providers report. Pick the unit from the units in your cost data. Units are matched exactly and never converted (`GB` and `GB-Mo` are different). Thresholds and forecasts work the same way, in that unit. The card, the alert and the CLI all show the quantity with its unit.
 
-Usage quantities come from providers that report them on cost rows (OpenRouter requests, Cloudflare consumed units, Hetzner, ElevenLabs and Cartesia credits, Speechmatics hours, among others) and from [cost rows you push](./server-push.md) with `usageAmount` and `usageUnit`. A usage budget takes no scenario model and no billing rules, since both adjust money.
+Usage quantities come from providers that report them (OpenRouter requests, Cloudflare consumed units, Hetzner, ElevenLabs and Cartesia credits, Speechmatics hours, among others) and from [cost rows you push](./server-push.md) with `usageAmount` and `usageUnit`. Usage budgets don't support scenario models or billing rules, since both adjust money.
 
 <insert [The budget editor with Measure set to Usage quantity, the usage unit picker open listing tokens, Requests and GB, and an amount per period filled in] here>
 
 ### Budget periods
 
-The **Period** control picks which days a budget counts:
+The **Period** control sets which days a budget counts:
 
 - **Calendar month** (the default): the 1st to the last day of each month, UTC.
-- **Custom cadence**: every N days, weeks, months, quarters or years from a start date, for example a fortnight starting on a sprint's first Monday. Each period starts where the last one ended; days before the start date are not measured.
-- **Explicit periods**: a list of date ranges, each with its own amount, for a launch quarter or a fiscal calendar that doesn't line up with months. Days outside every period are not measured, and the card says when the next period starts.
+- **Custom cadence**: every N days, weeks, months, quarters or years from a start date. For example, a fortnight starting on a sprint's first Monday. Each period starts where the last one ended. Days before the start date aren't counted.
+- **Explicit periods**: a list of date ranges, each with its own amount. Use this for a launch quarter or a fiscal calendar that doesn't line up with months. Days outside every period aren't counted, and the card says when the next period starts.
 
 The forecast projects to the end of the current period, whatever its length.
 
 ### Budget hierarchies
 
-Pick a **Parent budget** to nest a budget under another. A parent's actual and forecast are the **sum of its children's**, each measured over the parent's own period, so a yearly parent over monthly team budgets still adds up a year. Its own scope is set aside while it has children. Parent and children must count the same thing (one currency, or one usage unit), and hierarchies go at most four levels deep. Deleting a budget moves its children up to its own parent.
+Pick a **Parent budget** to nest a budget under another. A parent's actual and forecast are the **sum of its children's**, each measured over the parent's own period. So a yearly parent over monthly team budgets still adds up a full year. While a parent has children, its own scope is ignored.
 
-The Costs panel shows budgets as an expandable tree, every level with its own actual and forecast against its own amount. A parent warns when its children outgrow it: when their own amounts for the same period add up to more than the parent's, when together they have already passed it, or when together they are forecast to. Parent thresholds alert on the rolled-up figures like any other budget, and the alert says the figure is a sum of child budgets. A dashboard card for a parent lists its children, collapsed.
+- Parent and children must track the same thing (one currency, or one usage unit).
+- Hierarchies go up to four levels deep.
+- Deleting a budget moves its children up to its own parent.
+
+The Costs panel shows budgets as an expandable tree, each level with its own actual and forecast against its own amount. A parent warns you when its children outgrow it: when their amounts for the same period add up to more than the parent's, when together they've already passed it, or when they're forecast to. Parent thresholds alert on the rolled-up figures like any other budget, and the alert says it's a sum of child budgets. A dashboard card for a parent lists its children, collapsed.
 
 <insert [The Costs panel budget tree with a parent budget expanded to show two child budgets, the parent showing the "Child budgets allocate ..." warning] here>
 
-### Explaining a budget alert
+### Explain a budget alert
 
-The person who reads a budget alert usually knows why it fired within minutes ("the Q3 load test, ends Friday"). Write that down where everyone will find it: each threshold that fired this month is listed on the budget card in the **Costs** panel, with **Explain** next to it. The note you write is:
+Whoever reads a budget alert usually knows why it fired within minutes ("the Q3 load test, ends Friday"). Write it down where everyone will see it. Each threshold that fired this month is listed on the budget card in the **Costs** panel, with **Explain** next to it. Your note is:
 
 - **Saved on the alert**, with your name and the time, and shown on the budget card on web, desktop and the [mobile app](./mobile-app.md).
-- **Drawn on every cost chart** as an org-wide [annotation](./cost-reports.md#annotations) on the day the alert fired, marked **Explains a budget alert**, so the step in the graph explains itself months later.
-- **Posted after the alert**: as a reply in the Slack thread of each message the alert was posted as, and as a follow-up card to the Teams webhooks it reached (Teams incoming webhooks cannot reply in a thread). The composer tells you how many it reached. Budget alerts are not sent by email, so there is no email follow-up. Alerts that fired before notes existed, or that [quiet hours](./alert-routing.md#quiet-hours) held and delivered later, have no recorded chat messages, so their notes stay on the budget and the charts only.
+- **Shown on every cost chart** as an org-wide [annotation](./cost-reports.md#annotations) on the day the alert fired, marked **Explains a budget alert**. So the jump in the graph still makes sense months later.
+- **Posted after the alert**: as a reply in the Slack thread of each alert message, and as a follow-up card to the Teams webhooks it reached (Teams webhooks can't reply in a thread). The composer tells you how many it reached. Budget alerts aren't sent by email, so there is no email follow-up. Alerts that fired before notes existed, or that [quiet hours](./alert-routing.md#quiet-hours) held and delivered later, only get the note on the budget and the charts.
 
-**Edit note** rewrites the note and rewords the same chart marker rather than adding a second one; deleting the marker from a chart leaves the note on the alert. A note explains an alert, it does not silence the budget: later thresholds fire as usual. Writing one needs `costs:write` (the permission any annotation needs) and lands in the [audit log](../team-and-billing/audit-log.md) as `budget_alert.note`.
+**Edit note** rewrites the note and updates the same chart marker. Deleting the marker from a chart keeps the note on the alert. A note doesn't silence the budget: later thresholds still fire. Writing a note needs `costs:write` and is recorded in the [audit log](../team-and-billing/audit-log.md) as `budget_alert.note`.
 
 <insert [Costs panel budget card with two fired thresholds this month, one showing a note with its author and date, the other with an Explain link; the Explain this alert dialog open beside it] here>
 
-From the terminal, `infrawrench budgets` lists every budget with how many of this month's alerts are still unexplained, `infrawrench budgets "Prod"` shows one budget's alert history with each note, and `infrawrench budgets annotate "Prod" --note "Q3 load test, ends Friday"` explains the latest firing (`--event <id>` picks another; `--json` on all three). In chat and MCP the tool is `annotate_budget_alert`; event ids come from `get_budget`.
+From the terminal:
 
-### Filing a budget alert as an issue
+- `infrawrench budgets` lists every budget with how many of this month's alerts are still unexplained.
+- `infrawrench budgets "Prod"` shows one budget's alert history with each note.
+- `infrawrench budgets annotate "Prod" --note "Q3 load test, ends Friday"` explains the latest alert. Use `--event <id>` to pick another.
 
-When an overspend needs somebody to act on it rather than explain it, file the firing as an issue. With [Jira](./jira.md), [Linear](./linear.md) or [GitHub issues](./github-issues.md) connected, each threshold that fired this month has **File an issue** (or **File in Jira**, **File in Linear**, **File in GitHub** when only one is connected) next to **Explain** on the budget card, on the Costs panel and on dashboards alike. The issue opens prefilled with what the tracker's reader needs and has no budget card beside them: the budget, the period, which threshold fired (actual or forecast) and when, spend so far against the limit, the forecast for the period, the budget's scope, whether billing rules apply, and any note already written on the firing. It goes through the same project, team and repository pickers as every other finding.
+All three take `--json`. In chat and MCP the tool is `annotate_budget_alert`, and event ids come from `get_budget`.
 
-Once filed, the firing shows the issue key and its [live status](./jira.md#live-status) instead of the offer, so whoever looks at the budget next sees that the overspend is being worked on, and by whom. The mobile app shows the same issue and status on the budget card. A [routing rule](./alert-routing.md) with the GitHub issues destination can also file budget alerts automatically, one issue per firing; private budgets are never filed that way, since their spend would land in a repository the whole team reads.
+### File a budget alert as an issue
+
+When an overspend needs someone to act on it, file it as an issue. With [Jira](./jira.md), [Linear](./linear.md) or [GitHub issues](./github-issues.md) connected, each threshold that fired this month has **File an issue** next to **Explain** on the budget card (or **File in Jira**, **File in Linear**, **File in GitHub** when only one is connected). This works on the Costs panel and on dashboards.
+
+The issue opens prefilled with everything the reader needs: the budget, the period, which threshold fired (actual or forecast) and when, spend so far against the limit, the forecast for the period, the budget's scope, whether billing rules apply, and any note already written. You pick the project, team or repository the same way as for any other finding.
+
+Once filed, the alert shows the issue key and its [live status](./jira.md#live-status), so the next person to look at the budget can see who's working on it. The mobile app shows the same issue and status on the budget card. A [routing rule](./alert-routing.md) with the GitHub issues destination can also file budget alerts automatically, one issue per alert. Private budgets are never filed automatically, since their spend would end up in a repository the whole team can read.
 
 <insert [Costs panel budget card with a fired "Actual 100% on Oct 14" threshold showing a filed Jira key OPS-418 with a blue "In Progress" status, next to the Explain link] here>
 
-Budgets alert on totals you chose. For spend you didn't see coming — a provider or service suddenly billing far above its own baseline, or one that had never billed at all — see [cost anomaly alerts](./cost-anomaly-alerts.md), which work with no configuration and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if the defaults are too loud or too quiet. Anomalies can text the same on-call recipients as a budget crossing, but unlike budgets they [do not until you ask them to](./cost-anomaly-alerts.md#paging-by-sms).
+Budgets alert on totals you choose. For spend you didn't see coming (a provider or service suddenly billing far above normal, or one that never billed before), see [cost anomaly alerts](./cost-anomaly-alerts.md). They work with no setup and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if they're too loud or too quiet. Anomalies can text the same on-call recipients as budgets, but [only once you turn that on](./cost-anomaly-alerts.md#paging-by-sms).
 
 ## The Costs panel
 
-**Costs** in the sidebar opens the Costs panel. It is split into tabs, and Infrawrench remembers the one you last used. The first tab, **Overview**, shows month-to-date spend for the whole org, broken down by provider, account, or service, and then every budget you have.
+Click **Costs** in the sidebar to open the Costs panel. It is split into tabs and remembers the one you used last. The first tab, **Overview**, shows this month's spend for the whole org, broken down by provider, account or service, followed by all your budgets.
 
 | Tab                       | What is on it                                                                                                                                                                                                                              |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -469,153 +512,153 @@ Budgets alert on totals you chose. For spend you didn't see coming — a provide
 
 The mobile app has the same tabs except Network. Its **Commitments** tab has no credit burndown.
 
-A budget belongs to the org, not to a dashboard. It keeps evaluating and keeps alerting whether or not anything is showing it, which is why the panel exists: it is the one place a budget is always reachable. Each row says which dashboards carry a card for it, or **On no dashboard** when none do.
+A budget belongs to the org, not to a dashboard. It keeps tracking and alerting whether or not any dashboard shows it, and the panel is the one place you can always find it. Each row says which dashboards show a card for it, or **On no dashboard** if none do.
 
 From a budget's row you can:
 
-- **Edit** it — amount, scope filters, and thresholds.
-- **Dashboards** — add or remove its cards, one per dashboard.
-- **Delete** it — the budget stops evaluating and stops alerting, and its cards are removed from every dashboard at the same time.
+- **Edit** it: amount, scope filters and thresholds.
+- **Dashboards**: add or remove its cards, one per dashboard.
+- **Delete** it: the budget stops tracking and alerting, and its cards are removed from every dashboard.
 
 ### Cards vs the budget itself
-
-The two directions are deliberately not symmetrical:
 
 | You do this                            | What happens                                                            |
 | -------------------------------------- | ----------------------------------------------------------------------- |
 | Remove a budget card from a dashboard  | The card goes. The budget stays, keeps tracking, keeps alerting.        |
 | Delete the budget from the Costs panel | The budget goes, alerts stop, and every card pointing at it is removed. |
 
-So removing a card is a display change, and deleting a budget is the real one.
+Removing a card only changes what you see. Deleting a budget is the real change.
 
 ### Show an existing budget on a dashboard
 
-A dashboard's **+** tile offers both halves:
+A dashboard's **+** tile has two options:
 
-- **New budget** creates a budget and puts a card for it on this dashboard.
-- **Existing budget** picks one you already have. Budgets already on this dashboard are not listed.
+- **New budget** creates a budget and adds a card for it to this dashboard.
+- **Existing budget** picks one you already have. Budgets already on this dashboard aren't listed.
 
-The same budget can appear on as many dashboards as you like — one budget, many views of it. [Cost reports](./cost-reports.md) work the same way for graphs.
+The same budget can appear on as many dashboards as you like. [Cost reports](./cost-reports.md) work the same way for graphs.
 
 ![Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/costs-panel-overview.png)
 
 ### Unit costs
 
-On the **Allocation** tab, **Unit costs** lists the org's business metrics, the denominators a cost graph can divide by, with how many days each one actually has values for. A metric nobody is reporting draws a chart made entirely of gaps, and this is the only place that failure is visible, so a metric with no values says so in amber. See [Unit costs & margin](./unit-costs.md).
+On the **Allocation** tab, **Unit costs** lists your org's business metrics (what a cost graph can divide by) and how many days each one has values for. A metric with no values would make a chart full of gaps, so it's flagged in amber here. See [Unit costs & margin](./unit-costs.md).
 
 ### Potential savings
 
-Below the budgets, **Potential savings** lists resources that look orphaned or idle — volumes attached to nothing, IPs assigned to nothing — with the trailing 30-day spend where the provider reports cost per resource. It reads the state your accounts last synced, so it costs no provider API calls. The section also appears in local-only desktop mode, scanning this machine's workspace without a cost column. See [Orphan & idle resource finder](./orphan-finder.md) for what each provider flags.
+**Potential savings** lists resources that look orphaned or idle, such as volumes attached to nothing or IPs assigned to nothing. Where the provider reports cost per resource, it shows the last 30 days of spend. It uses the state your accounts last synced, so it makes no provider API calls. It also appears in local-only desktop mode, scanning this machine's workspace, without a cost column. See [Orphan & idle resource finder](./orphan-finder.md) for what each provider flags.
 
 ### Oversized
 
-Under Potential savings, **Oversized** covers the other half of waste: machines doing real work on more hardware than they use. Infrawrench computes each machine's p95 CPU/memory over the last 14 days of stored metrics and, where it sits well under the size, recommends the provider's cheapest smaller size that still leaves headroom — with a live-priced monthly saving and a one-click apply. See [Right-sizing](./right-sizing.md).
+**Oversized** finds machines doing real work on more hardware than they use. Infrawrench looks at each machine's p95 CPU and memory over the last 14 days. Where usage sits well under the size, it recommends the provider's cheapest smaller size that still leaves headroom, with a live-priced monthly saving and one-click apply. See [Right-sizing](./right-sizing.md).
 
 ### Sleep schedules
 
-Below that, **Sleep schedules** manages the org's off-at/on-at windows: stop a staging VM at 19:00 and start it at 08:00, Mon–Fri, with the projected monthly saving computed from its trailing spend. Schedules are created from an eligible resource's Schedule tab; this section lists them all with the next transition, the last run's outcome, and pause/edit/delete. See [Sleep/wake schedules](./sleep-schedules.md).
+**Sleep schedules** manages your off and on windows. For example, stop a staging VM at 19:00 and start it at 08:00, Monday to Friday, with the projected monthly saving based on its recent spend. Create schedules from an eligible resource's Schedule tab. This section lists them all with the next change, the last run's result, and pause, edit and delete. See [Sleep/wake schedules](./sleep-schedules.md).
 
 ## On your phone
 
-Cost graphs and budgets render on the [mobile app](./mobile-app.md) too — the same query, the same series colors, the same thresholds and forecast marker, drawn natively. The **Costs** tab mirrors the panel: month-to-date spend and every budget in the org, so a budget push always has somewhere to land even when no dashboard shows that budget. Cost cards also appear on whichever dashboards carry them. Creating and editing works there too: **Edit** on a dashboard offers the same **Add a card** choices and the same graph and budget editors, rendered as chips rather than dropdowns. Only a cost graph's custom absolute date range stays on web and desktop.
+Cost graphs and budgets work in the [mobile app](./mobile-app.md) too, with the same data, series colors, thresholds and forecast marker. The **Costs** tab mirrors the panel: this month's spend and every budget in the org, so a budget push notification always has somewhere to open even if no dashboard shows that budget. Cost cards also appear on any dashboard that has them.
 
-## Ask the model instead
+You can create and edit on your phone too. **Edit** on a dashboard offers the same **Add a card** choices and the same graph and budget editors, using chips instead of dropdowns. Only a custom date range on a cost graph is web and desktop only.
 
-The same cost data is exposed through the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) as `query_costs`, `list_cost_dimension_values`, `get_cost_status`, and the budget tools — so "what did we spend on AWS last month, grouped by service?" works from Claude Desktop or the in-app chat without building a graph first. Cost and budget tools respect the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md).
+## Ask the AI instead
+
+The same cost data is available in the [MCP server](./mcp.md) and the [AI chat](./ai-chat.md) through `query_costs`, `list_cost_dimension_values`, `get_cost_status` and the budget tools. So you can ask "what did we spend on AWS last month, grouped by service?" from Claude Desktop or the in-app chat without building a graph first. Cost and budget tools respect the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md).
 
 ## Where the data comes from
 
-Each provider plugin that supports cost reporting fetches spend from that provider's own billing API, once a day per account (billing APIs are rate-limited, and some — AWS Cost Explorer — charge per request). When you first connect an account, Infrawrench backfills up to a year of history in the background; the graph shows "Backfilling…" until it completes. Recent days are re-fetched on every collection so provider restatements (late-arriving usage, credits) are absorbed.
+Each provider that supports cost reporting fetches spend from its own billing API, once a day per account. (Billing APIs are rate-limited, and some, like AWS Cost Explorer, charge per request.) When you first connect an account, Infrawrench fetches up to a year of history in the background. The graph shows "Backfilling…" until it's done. Recent days are fetched again each time, so late usage and credits from the provider are picked up.
 
-The backfill is only considered done once it has actually returned a row. A provider that is set up correctly but has nothing to report yet — a billing export switched on an hour ago — keeps its full history window until real data arrives, so the history is not skipped just because the first attempt was early.
+If a provider is set up correctly but has nothing to report yet (say, a billing export switched on an hour ago), Infrawrench keeps trying to fetch the full history until real data arrives.
 
-Some providers only publish monthly invoice totals rather than daily costs. Their spend appears on period boundaries, and daily-binned graphs will show it as month steps — the graph notes this when such a provider is in scope.
+Some providers only publish monthly invoice totals, not daily costs. Their spend shows on period boundaries, so daily graphs show it as monthly steps. The graph notes this when such a provider is included.
 
-### Spend from somewhere else
+### Add spend from somewhere else
 
-For anything with no provider plugin — a SaaS invoice, an internal chargeback, a colo bill — you can report the numbers yourself, and they land in the same store the collectors write to, so they show up in graphs, dimension filters, and budgets like any other spend. Two ways in:
+For anything without a provider plugin (a SaaS invoice, an internal chargeback, a colo bill), you can report the numbers yourself. They show up in graphs, filters and budgets like any other spend. There are two ways:
 
-- A [workflow](./workflows.md#reporting-your-own-cost-data) calling `infra.costs.write(...)`, when the numbers are reachable from Infrawrench. These report **Workflow** as their provider and, unless the workflow attributes them to one of your accounts, appear in the account dimension as "&lt;workflow name&gt; (workflow)".
-- A server of your own [pushing rows over the API](./server-push.md#cost-rows) to `POST /costs/rows`, when they aren't. These report **External** as their provider and appear as "&lt;source&gt; (external)".
+- A [workflow](./workflows.md#reporting-your-own-cost-data) calling `infra.costs.write(...)`, when Infrawrench can reach the numbers. These show **Workflow** as their provider. Unless the workflow assigns them to one of your accounts, they appear in the account dimension as "&lt;workflow name&gt; (workflow)".
+- Your own server [pushing rows over the API](./server-push.md#cost-rows) to `POST /costs/rows`, when it can't. These show **External** as their provider and appear as "&lt;source&gt; (external)".
 
-Either way, re-reporting a day restates it rather than adding to it, and neither can overwrite a row a provider collector wrote.
+Either way, reporting a day again replaces it rather than adding to it, and neither can overwrite data collected from a provider.
 
 ## When collection fails
 
-Collection runs unattended and retries with a growing backoff, so a provider that needs setup would otherwise just look like an account with no spend. Instead, the last failure is kept against the account and shown as a banner above the cost widgets on the dashboard — on web, desktop, and mobile alike:
+If cost collection keeps failing for an account (often because the provider needs some setup), you won't just see an empty graph. A banner appears above the cost widgets on the dashboard, on web, desktop and mobile:
 
 ![Dashboard with an amber "Cost collection is failing for Infrawrench GCP" banner above the cost widgets, showing the billing-export message and its link](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/gcp-failing-banner.png)
 
-Where the plugin can tell exactly what is missing, the banner carries a link straight to the provider page that fixes it — for example GCP's Cloud Billing export settings for the account's project. Fix the cause and the next collection backfills the days that were missed; the banner clears itself on the first success.
+When Infrawrench can tell what's missing, the banner links straight to the provider page that fixes it, for example GCP's Cloud Billing export settings for the account's project. Fix the cause and the next collection fills in the missed days. The banner clears itself after the first success.
 
-`infrawrench costs` prints the same warnings above the chart, and includes them as `collectionFailures` under `--json`. The `get_cost_status` MCP tool and `GET /costs/status` return the failure as `costPollError` with an optional `helpLink`.
+`infrawrench costs` prints the same warnings above the chart and includes them as `collectionFailures` under `--json`. The `get_cost_status` MCP tool and `GET /costs/status` return the failure as `costPollError` with an optional `helpLink`.
 
-## When there is nothing to collect yet
+## When there's no data yet
 
-Collection can also succeed and come back with nothing. This is normal for a freshly configured provider: GCP's Cloud Billing export to BigQuery, for instance, creates its table immediately but can take a day or two to write the first rows, and until then every collection legitimately returns no spend.
+Sometimes collection works but finds nothing. This is normal for a newly set up provider. For example, GCP's Cloud Billing export to BigQuery creates its table straight away but can take a day or two to write the first rows.
 
-Because nothing failed, there is no error to report — so the account gets its own, calmer banner instead of a blank graph with no explanation:
+In that case the account gets a calmer banner instead of a blank graph:
 
 ![Dashboard showing the neutral "No spend data yet for Infrawrench GCP" banner above an empty cost widget](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/gcp-empty-banner.png)
 
-It clears itself the moment the first row lands. If it persists for more than a couple of days, the export is usually configured but not actually delivering — check it at the provider rather than in Infrawrench.
+It clears as soon as the first data arrives. If it's still there after a couple of days, the export is usually set up but not delivering. Check it at the provider.
 
-`infrawrench costs` lists these accounts above the chart too, and includes them as `awaitingData` under `--json`. Over `GET /costs/status` the state is an account with no `costPollError` and a null `coverage`.
+`infrawrench costs` lists these accounts above the chart too, and includes them as `awaitingData` under `--json`. In `GET /costs/status`, the account has no `costPollError` and a null `coverage`.
 
-See each plugin's page under [Plugins](../plugins/aws.md) for what its cost integration needs (extra IAM permissions, token scopes) and any caveats such as list-price-only dollars.
+See each provider's page under [Plugins](../plugins/aws.md) for what its cost integration needs (extra IAM permissions, token scopes) and any caveats, such as list-price-only figures.
 
-Kubernetes clusters have no billing API of their own, so their per-namespace and per-workload numbers are derived from node prices rather than collected — see [Kubernetes cost allocation](./kubernetes-costs.md).
+Kubernetes clusters have no billing API, so their per-namespace and per-workload costs are calculated from node prices. See [Kubernetes cost allocation](./kubernetes-costs.md).
 
 ## Forecasts are trend estimates
 
-Forecasts are a least-squares fit over the trailing 30 days of daily totals, projected forward. They are a trend estimate, not a billing prediction — one-off purchases, reserved-instance charges, and tier changes will not be anticipated.
+Forecasts are a least-squares fit over the last 30 days of daily totals, projected forward. They show the trend, not a billing prediction. One-off purchases, reserved-instance charges and tier changes won't be anticipated.
 
-Every forecast draws a shaded **range** around its dashed line: the 80% prediction interval of the fit, wider when recent spend is noisy and further out in time. Budgets show the same range beside their projected figure. See [Cost forecasts](./cost-forecasts.md) for how it is calculated, and for named forecasts on a cost report.
+Every forecast shows a shaded **range** around its dashed line: the 80% prediction interval. It gets wider when recent spend is noisy and further into the future. Budgets show the same range next to their projected figure. See [Cost forecasts](./cost-forecasts.md) for how it's calculated, and for named forecasts on a cost report.
 
-The things a trend cannot see are exactly what a **scenario model** is for: known future cost, written down once and overlaid on the projection _beside_ the trend rather than instead of it. See [Scenario models](./scenario-models.md).
+For known future costs a trend can't see, use a **scenario model**. You write them down once, and they're shown beside the trend rather than replacing it. See [Scenario models](./scenario-models.md).
 
-The fit follows the graph's [cost basis](#cash-amortized-and-blended), which matters more than it sounds: fitting a trend through a cash series containing one enormous commitment purchase projects a month-end total that cannot happen. On an amortized basis that purchase is already spread, and the forecast is fit on the shape of your actual consumption.
+The forecast follows the graph's [cost basis](#cash-amortized-and-blended). This matters: a trend through a cash series with one huge commitment purchase projects a month-end total that can't happen. On an amortized basis that purchase is already spread out, so the forecast follows your real usage.
 
-## Tags you compute yourself
+## Tags you define yourself
 
-When provider tags are inconsistent or missing, a **virtual tag** gives spend the dimension you actually want to report on: merge `env`, `Environment` and `ENV` into one key, assign a value by any cost filter, or split a shared cost across teams by percentage or by a business metric. Group by **Virtual tag** in any graph or report, or filter on one in a budget, saved filter, change alert, allocation rule or export. See [Virtual tags](./virtual-tags.md).
+When provider tags are messy or missing, a **virtual tag** gives you the dimension you want to report on. Merge `env`, `Environment` and `ENV` into one key, assign values with any cost filter, or split a shared cost across teams by percentage or by a business metric. Group by **Virtual tag** in any graph or report, or filter on one in a budget, saved filter, change alert, allocation rule or export. See [Virtual tags](./virtual-tags.md).
 
 ## What you report internally
 
-Collected spend is what the provider charged. What an organization reports internally is often different — a platform team's markup to recover shared overhead, a discount negotiated outside the provider's pricing, a shared cluster charged back to the teams that use it.
+Collected spend is what the provider charged. What you report internally is often different: a platform team's markup to cover shared overhead, a discount negotiated outside the provider's pricing, or a shared cluster charged back to the teams that use it.
 
-**Billing rules** express that, and they are applied when a report is run rather than written into your cost data — so collected spend stays exactly what the provider reported and still reconciles against the invoice, while an adjusted figure is always shown beside the collected one and names the rules that moved it. See [Billing rules](./billing-rules.md).
+**Billing rules** handle this. They're applied when a report runs, not written into your cost data, so collected spend still matches the invoice. The adjusted figure is always shown next to the collected one and names the rules that changed it. See [Billing rules](./billing-rules.md).
 
-Budgets, anomaly detection, change alerts, the digest and cost exports all keep measuring collected spend; a budget can opt in per budget. That page states every one of those decisions.
+Budgets, anomaly detection, change alerts, the digest and cost exports all keep using collected spend. Each budget can opt in to billing rules. The billing rules page lists the details.
 
 ## What you bill somebody else
 
-If you run infrastructure on other people's behalf, the last step is a document. A **managed account** is a customer — contact details, a billing currency, and the cost centres whose spend is theirs — and an **invoice** is what you send them: line items derived from exactly the same allocation the showback report uses, the adjustments applied, and a total that freezes the moment you approve it so it cannot restate underneath a customer who already has it. See [Managed accounts & invoices](./managed-accounts.md).
+If you run infrastructure for other people, you can invoice them. A **managed account** is a customer: contact details, a billing currency, and the cost centres whose spend is theirs. An **invoice** is what you send them: line items from the same allocation the showback report uses, with adjustments applied, and a total that locks when you approve it. See [Managed accounts & invoices](./managed-accounts.md).
 
 ## Prepaid credit
 
-Cost graphs answer "what did we spend". For providers that work off a prepaid pot rather than an invoice, the more urgent question is "how long until it runs out", see [credit burndown](./credit-burndown.md), which sits on the Costs panel's **Commitments & credits** tab.
+For providers that work off a prepaid balance rather than an invoice, the more urgent question is "how long until it runs out?". See [credit burndown](./credit-burndown.md), on the Costs panel's **Commitments & credits** tab.
 
 ## Commitments
 
-The other question a spend graph can't answer is "are the reservations and savings plans we bought actually paying for themselves". See [Commitments](./commitments.md), the holdings, how much of the usage bill they cover, their utilization, and a planner that sizes what to buy next, also on the Costs panel's **Commitments & credits** tab.
+To see whether the reservations and savings plans you bought are paying for themselves, see [Commitments](./commitments.md). It shows your holdings, how much of your usage they cover, their utilization, and a planner that sizes what to buy next. It's also on the **Commitments & credits** tab.
 
-## What the savings actually saved
+## What your savings actually saved
 
-The finders on the Costs panel's **Savings** tab say what could be saved. **Realized savings**, the last section on the Costs panel's **Savings** tab, says what the actions you took did save: each resize, orphan cleanup, sleep schedule, commitment discount and logged saving, measured against the resource's own spend before the action and shown beside its projection, with shortfalls flagged. See [Realized savings](./realized-savings.md).
+The finders on the **Savings** tab show what you could save. **Realized savings**, the last section on that tab, shows what your actions did save: each resize, orphan cleanup, sleep schedule, commitment discount and logged saving, measured against the resource's own spend before the change and shown next to its projection, with shortfalls flagged. See [Realized savings](./realized-savings.md).
 
 ## Where the egress went
 
-A spend graph can say `AWSDataTransfer` cost $4,100. It cannot say which two services were talking, because every cost dimension describes one side of a transfer and a network charge is about a **pair**. See [Network costs](./network-costs.md), priced source→destination attribution read from your VPC flow logs, on the Costs panel's **Network** tab.
+A spend graph can tell you `AWSDataTransfer` cost $4,100. It can't tell you which two services were talking, because a network charge is about a **pair** of endpoints. See [Network costs](./network-costs.md) for priced source to destination breakdowns from your VPC flow logs, on the Costs panel's **Network** tab.
 
-Those figures are estimates and are kept deliberately apart from collected spend: adding a derived second opinion of data transfer to the numbers on this page would double-count the same bytes.
+Those figures are estimates and are kept separate from collected spend, so the same traffic isn't counted twice.
 
 ## Who spent it on AI
 
-A provider bill says what each model cost, not which team or feature sent the requests. See [AI spend by caller](./ai-attribution.md): request logs from Bedrock, a Cloudflare AI Gateway, a LiteLLM proxy or your own JSONL files split each billed AI line by caller, with the unexplained remainder labelled `(unattributed)` and billed totals unchanged. Caller dimensions show up here as the tag keys `caller:<dimension>`, and AI provider lines carry `ai:provider`, `ai:model` and `ai:token_type` tags you can group by today.
+A provider bill shows what each model cost, not which team or feature sent the requests. See [AI spend by caller](./ai-attribution.md). Request logs from Bedrock, a Cloudflare AI Gateway, a LiteLLM proxy or your own JSONL files split each billed AI line by caller. Anything that can't be matched is labelled `(unattributed)`, and billed totals don't change. Caller dimensions show up here as the tag keys `caller:<dimension>`, and AI provider lines carry `ai:provider`, `ai:model` and `ai:token_type` tags you can group by today.
 
-## Budgets and cost policy in Terraform
+## Manage budgets and cost settings in Terraform
 
-Everything on this page that is configuration rather than data — budgets, saved filters, cost centres and their allocation rules, [reports](./cost-reports.md), [change alerts](./cost-change-alerts.md), [scenario models](./scenario-models.md), [billing rules](./billing-rules.md) and [exports](./cost-exports.md) — can be managed from Terraform instead of the UI, one object at a time, with plans and `terraform import`. See the [Terraform provider](./terraform-provider.md).
+Everything on this page that is configuration rather than data can be managed from Terraform instead of the UI, one object at a time, with plans and `terraform import`. That includes budgets, saved filters, cost centres and their allocation rules, [reports](./cost-reports.md), [change alerts](./cost-change-alerts.md), [scenario models](./scenario-models.md), [billing rules](./billing-rules.md) and [exports](./cost-exports.md). See the [Terraform provider](./terraform-provider.md).
 
-It is a different feature from [Terraform export](./terraform-export.md), which writes your _cloud resources_ out as HCL, and from [config as code](./config-as-code.md), which moves a whole organization's configuration as one document.
+This is different from [Terraform export](./terraform-export.md), which writes your _cloud resources_ out as HCL, and from [config as code](./config-as-code.md), which moves a whole org's configuration as one document.

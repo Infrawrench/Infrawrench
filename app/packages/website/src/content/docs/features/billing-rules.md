@@ -1,84 +1,80 @@
 ---
 title: Billing rules
-description: Markups, discounts, fixed charges and reallocations applied to collected spend at report time — with the collected figure always shown beside the adjusted one.
+description: Apply markups, discounts, fixed charges and reallocations to your cloud spend in reports, with the collected figure always shown beside the adjusted one.
 sidebar_order: 10
 ---
 
-**Collected spend is what the provider charged you. What your organization reports internally is often something else.** A platform team adds a markup to recover shared overhead. A discount is negotiated outside the provider's own pricing. A credit is spread across teams. A shared Kubernetes cluster is charged back to the products that run on it.
+Collected spend is what your provider charged you. The number your organization reports internally is often different. A platform team adds a markup to cover shared overhead. A discount was negotiated outside the provider's pricing. A credit is split across teams. A shared Kubernetes cluster is charged back to the products that run on it.
 
-A billing rule is where you write that down, so the answer lives in Infrawrench instead of in a spreadsheet somebody exports to once a month.
+Billing rules let you record those adjustments in Infrawrench, so you don't need a spreadsheet on the side.
 
-## Raw and adjusted are two different numbers, and both stay visible
+## Collected and adjusted spend
 
-This is the distinction the whole feature is built around, and everything else follows from it.
+You always have two numbers, and both stay visible.
 
 |                     | What it is                                                                        | Where it comes from                     |
 | ------------------- | --------------------------------------------------------------------------------- | --------------------------------------- |
 | **Collected spend** | What the provider billed. Reconciles against the invoice, line for line.          | Collected daily from the billing API.   |
 | **Adjusted spend**  | What your organization charges itself. Markups, discounts, reallocations applied. | Computed from your rules, at read time. |
 
-Two rules make that split trustworthy:
+**Rules never change your cost data.** They are applied when a report runs. Collected spend always stays exactly what the provider reported, so it remains your audit trail. Editing, disabling or deleting a rule only changes what the next report shows. You never need to backfill anything.
 
-**Rules are applied when a report is run, never written into your cost data.** Infrawrench does not restate a single stored row. Collected spend stays exactly what the provider reported — it is the audit trail, and once it is overwritten there is no way back. Editing a rule, disabling it, or deleting it changes what the next report computes and changes nothing that was ever recorded. Backfilling is never necessary, because there is nothing to backfill.
+**Adjusted spend is always shown with collected spend.** Every adjusted figure comes with the collected total and the names of the rules that changed it. A chart showing adjusted spend has an **Adjusted** badge next to its total and a caption with the collected figure and each rule in force. That way any number can still be checked against a bill.
 
-**An adjusted figure is never shown without the collected one.** Every adjusted answer carries the collected total beside it and names the rules that moved it. A chart that shows adjusted spend wears an **Adjusted** badge next to its total and a caption underneath giving the collected figure and each rule in force. A report that silently showed marked-up spend would be a report nobody could reconcile against a bill, which is the failure this design exists to prevent.
+![A cost graph with an "Adjusted" badge beside the total and the amber caption underneath reading "Billing rules applied, collected spend $84,120. In force: Platform overhead (+15% on tag team=platform)."](https://agent-assets.infrawrench.com/docs-screenshots/features/billing-rules/adjusted-cost-graph.png)
 
-![A cost graph with an "Adjusted" badge beside the total and the amber caption underneath reading "Billing rules applied — collected spend $84,120. In force: Platform overhead (+15% on tag team=platform)."](https://agent-assets.infrawrench.com/docs-screenshots/features/billing-rules/adjusted-cost-graph.png)
+## How a rule works
 
-## What a rule is
+A rule **matches** spend and then **adjusts** it.
 
-A rule **matches** spend and **adjusts** it.
+You match spend with the same fields [allocation rules](./tag-policy-and-showback.md) use: tag key and value, account, provider and service. You can also match on **charge type**, so an overhead markup can apply to usage without also marking up credits, refunds and reservation purchases. Every field you set must match. A rule with no fields set matches all spend.
 
-Matching uses the same vocabulary [allocation rules](./tag-policy-and-showback.md) already use — tag key and value, account, provider, service — plus **charge type**, so a markup that recovers overhead can apply to usage without also marking up credits, refunds and reservation purchases. Every field you set must match; a rule with no fields set matches all spend.
-
-There are three kinds of adjustment that apply everywhere adjusted spend is shown, and two more that only price [managed-account invoices](./managed-accounts.md) (see [Rules that price customer invoices](#rules-that-price-customer-invoices)).
+Three kinds of adjustment apply everywhere adjusted spend is shown. Two more only price [managed-account invoices](./managed-accounts.md) (see [Rules that price customer invoices](#rules-that-price-customer-invoices)).
 
 ### Markup or discount
 
-A signed percentage. `+15` marks matched spend up by 15%; `-10` discounts it by 10%. This is the one for recovering shared overhead, for a negotiated rate the provider's own pricing does not reflect, and for an internal cost-of-capital loading.
+A signed percentage. `+15` marks matched spend up by 15%. `-10` discounts it by 10%. Use it to recover shared overhead, to reflect a negotiated rate, or to add an internal cost-of-capital loading.
 
 ### Fixed amount
 
-A flat amount per day or per month — "the platform team charges $5,000 a month". Nothing in your cost data produced it, so it is not multiplied by anything and cannot be reallocated by anything. Over a range shorter than a whole period it is **pro-rated**: a $3,000/month charge shown across ten days of a thirty-day September contributes $1,000. Showing it in full on a ten-day chart would reconcile against nothing, and showing it as zero would make it silently disappear.
+A flat amount per day or per month, such as "the platform team charges $5,000 a month". It isn't multiplied by anything and can't be reallocated. Over a range shorter than a full period it is **pro-rated**: a $3,000/month charge shown across ten days of a thirty-day September contributes $1,000.
 
 ### Reallocation
 
-Moves matched spend from where it landed onto a different **cost centre** or **account**. This is how shared infrastructure gets charged back: "everything on the shared EKS cluster is billed to the Data cost centre". A reallocation never changes how much money there is — only whose it is.
+Moves matched spend onto a different **cost centre** or **account**. Use it to charge back shared infrastructure, for example "everything on the shared EKS cluster is billed to the Data cost centre". A reallocation never changes the total. It only changes who the money belongs to.
 
-## Ordering: the three kinds compose differently
+## Rule order
 
-Several rules can match one cost row, so the order is defined and total: **ascending priority, then creation time, then id.** Within that one order the kinds behave differently, and the difference is deliberate.
+When several rules match the same spend, they run in order of **ascending priority, then creation time**. Each kind behaves a little differently:
 
-- **Every matching markup or discount applies.** Two 10% markups give **21%**, not 20%. Markups genuinely compose — an overhead recovery and a cost-of-capital loading are two separate charges — and collapsing them into one would quietly under-recover. Because multiplication commutes, priority never changes the arithmetic here; it only fixes the order the rules are listed in.
-- **Reallocation is first-match-wins.** The first reallocation rule whose match holds moves the row, and no later one fires. A row moves at most once, which is exactly what makes total spend conserved: **the total after reallocation always equals the total before.**
-- **Fixed amounts are not functions of any row.** They are pro-rated over the period and reported as their own figure.
+- **Every matching markup or discount applies, and they compound.** Two 10% markups give **21%**, not 20%. Order doesn't change the result.
+- **Only the first matching reallocation applies.** Spend moves at most once, so **the total after reallocation always equals the total before.**
+- **Fixed amounts stand on their own.** They are pro-rated over the period and reported as a separate figure.
 
-Markups and reallocations are order-independent with respect to each other, because one changes the amount and the other changes the label.
-
-To change the order, use the up and down arrows on a rule in **Settings → Billing Rules**. Reordering rewrites every rule's priority in one step and one audit entry, so there is never an intermediate order nobody chose.
+To change the order, use the up and down arrows on a rule in **Settings > Billing Rules**. The new order is saved in one step, with one audit entry.
 
 ## Rules that price customer invoices
 
-If you bill customers through [managed accounts](./managed-accounts.md), two more kinds exist. They apply **only when a customer's invoice is computed**: they never move the Costs panel, a budget, showback or anything else that describes your own organization, and the "adjusted" caption on a graph never names them. Each can be limited to particular customers; with none ticked it applies to every customer whose billing rules are on.
+If you bill customers through [managed accounts](./managed-accounts.md), you get two more kinds of rule. They apply **only when a customer's invoice is computed**. They never change the Costs panel, budgets, showback or anything else about your own organization, and the "adjusted" caption on a graph never lists them. You can limit each one to particular customers. With no customers ticked, it applies to every customer whose billing rules are on.
 
 ### Tiered rate
 
-A markup or discount by rate tiers on a customer's monthly spend, for example **+8% up to 10,000, +5% to 50,000, +3% above**. Thresholds are stated in one currency, and spend in other currencies is not tiered (the invoice says so).
+A markup or discount in tiers on a customer's monthly spend, for example **+8% up to 10,000, +5% to 50,000, +3% above**. Thresholds are set in one currency. Spend in other currencies isn't tiered, and the invoice says so.
 
-- **Marginal** (the default): each slice of the month's spend is charged at its own tier's rate, like income tax. At 60,000 that is 8% of the first 10,000, 5% of the next 40,000 and 3% of the last 10,000. Crossing a threshold never makes earlier spend dearer.
-- **Whole volume**: the whole month is charged at the rate of the tier the total falls in. Simpler to quote, with a cliff at every threshold. A tier's upper bound is exclusive, so exactly 10,000 is in the second tier.
+- **Marginal** (the default): each slice of the month's spend is charged at its own tier's rate, like income tax. At 60,000 that is 8% of the first 10,000, 5% of the next 40,000 and 3% of the last 10,000. Crossing a threshold never makes earlier spend more expensive.
+- **Whole volume**: the whole month is charged at the rate of the tier the total falls in. Easier to quote, but with a jump at every threshold. A tier's upper bound is exclusive, so exactly 10,000 falls in the second tier.
 
-Volume can be measured over the customer's **overall** matched spend or **per service**. The amount a tier produces is spread over the lines that made up the volume in proportion to their cost, so every invoice line still carries its share.
+You can measure volume over the customer's **overall** matched spend or **per service**. The amount a tier adds is spread across the lines that made up the volume, in proportion to their cost, so every invoice line carries its share.
 
 ### Custom expression
 
-A small, safe formula that gives a line's new cost:
+A short formula that sets a line's new cost:
 
 ```
 if service == "AmazonEC2" and tag.env == "prod" then cost * 1.1
 ```
 
-The expression is **not** SQL and not code. It is parsed and type-checked when you save it, against a closed list of fields and functions, and evaluated by a small interpreter; nothing you type is ever handed to a database or a script engine. A mistake is refused with the character it was found at, in the editor as you type and from the API as a 400.
+This is not SQL or code. It is checked when you save it, against a fixed list of fields and functions, and nothing you type is run by a database or script engine. If there's a mistake, the editor shows you where as you type, and the API returns a 400 pointing at the character.
 
 | Fields                                                                                | What they are                                                                                                          |
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -91,81 +87,83 @@ The expression is **not** SQL and not code. It is parsed and type-checked when y
 | `customer`                                                                            | The customer being invoiced                                                                                            |
 | `tag.env`, `tag["cost-centre"]`                                                       | A tag's value, or empty when the line does not carry it                                                                |
 
-Operators are `+ - * /`, `== != < <= > >=`, `and or not`, and `in ["a", "b"]`. Functions are `min`, `max`, `abs`, `round(x, places)`, `contains`, `starts_with`, `ends_with`, `lower` and `has_tag("key")`. `if … then … else …` chooses between values; at the top level the `else` may be left out, and lines the condition does not match keep their cost.
+Operators are `+ - * /`, `== != < <= > >=`, `and or not`, and `in ["a", "b"]`. Functions are `min`, `max`, `abs`, `round(x, places)`, `contains`, `starts_with`, `ends_with`, `lower` and `has_tag("key")`. Use `if … then … else …` to choose between values. At the top level you can leave out the `else`, and lines that don't match keep their cost.
 
-A line is one calendar month of one service in one account, region and charge type. If an expression cannot price a line (a division by zero, say), that line keeps its previous cost and the invoice and preview report how many lines failed and why; a line never silently becomes zero.
+A line is one calendar month of one service in one account, region and charge type. If an expression can't price a line (a division by zero, for example), that line keeps its previous cost, and the invoice and preview tell you how many lines failed and why. A line never silently becomes zero.
 
-The editor's **Insert** pickers add real service, provider, account and tag names, so you never have to know what a provider calls its services.
+The editor's **Insert** pickers add real service, provider, account and tag names, so you don't need to know what a provider calls its services.
 
 ### The order on an invoice
 
-Every invoice line goes through the same steps, in this order, and each step records what it changed:
+Every invoice line goes through these steps in order, and each step records what it changed:
 
 1. The customer's [re-rating to public pricing](./managed-accounts.md#re-rating-to-public-pricing), if on.
 2. The customer's [discount treatment](./managed-accounts.md#discounts-credits-and-commitment-benefits).
-3. Markups and discounts, tiered rules and expressions, **in rule order**. Markups still compound; an expression sees the running `cost` at its position; a tiered rule measures the running cost of the lines it matches.
+3. Markups and discounts, tiered rules and expressions, **in rule order**. Markups still compound. An expression sees the running `cost` at its position. A tiered rule measures the running cost of the lines it matches.
 
-Reallocation still decides which customer a line belongs to before any of that, and fixed amounts are still their own invoice lines.
+Reallocation decides which customer a line belongs to before any of this, and fixed amounts are still their own invoice lines.
 
 <insert [Settings → Billing Rules with the editor open on a Custom expression rule: the expression box, the green "The expression is valid" note, the Insert pickers, the customer checkboxes, and a preview underneath showing Without/With totals for last month] here>
 
-### Previewing a rule
+### Preview a rule
 
-**Preview** in the editor prices last month (or any month) twice, without the rule and with it, and shows both totals, every rule's effect in order, any expression failures and the lines that moved most. Pick a customer to preview against their invoice scope and settings, or leave it on the whole organisation. Nothing is saved.
+Click **Preview** in the editor to price last month (or any month) twice, without the rule and with it. You see both totals, each rule's effect in order, any expression failures and the lines that moved most. Pick a customer to preview against their invoice, or leave it on the whole organisation. Nothing is saved.
 
-Existing rules can be edited in place with **Edit**; the save is one audited change of the whole rule.
+To change an existing rule, click **Edit**. The whole rule is saved as one audited change.
 
-## Where the rules live
+## Manage your rules
 
-**Settings → Billing Rules.** Anyone with `costs:read` can see them — a rule is part of the explanation for a number, and hiding it from the people who read the number would make every adjusted figure unauditable. Changing them needs **`org:settings:write`**, not `costs:write`.
+Rules live in **Settings > Billing Rules**.
 
-That is deliberate. `costs:write` is the "name a report, define a cost centre, save a filter" permission: acts that add another view of your spend. A billing rule is not another view — a markup changes every internal figure your organization reports, including an opted-in budget's thresholds and the chargeback statements finance sends to other departments. It is the same class of act as [stating an exchange rate](./cloud-costs.md#currency) or [creating a cost export](./cost-exports.md), and it sits behind the same permission. Every create, edit and delete is [audit-logged](../team-and-billing/audit-log.md).
+- Anyone with `costs:read` can see them, so everyone reading an adjusted number can see why it was adjusted.
+- Creating, editing and deleting them needs **`org:settings:write`**, not `costs:write`. A billing rule changes every internal figure your organization reports, including opted-in budgets and chargeback statements, so it sits behind the same permission as [setting an exchange rate](./cloud-costs.md#currency) or [creating a cost export](./cost-exports.md).
+- Every create, edit and delete is [audit-logged](../team-and-billing/audit-log.md).
 
-![The Settings → Billing Rules page showing three rules — a +15% platform overhead markup, a disabled -8% discount, and a reallocation moving AmazonEKS spend to the Data cost centre — with the priority number and one-line summary on each row](https://agent-assets.infrawrench.com/docs-screenshots/features/billing-rules/settings-rules-list.png)
+![The Settings → Billing Rules page showing three rules: a +15% platform overhead markup, a disabled -8% discount, and a reallocation moving AmazonEKS spend to the Data cost centre, with the priority number and one-line summary on each row](https://agent-assets.infrawrench.com/docs-screenshots/features/billing-rules/settings-rules-list.png)
 
-Rules are kept when you switch them off rather than deleted. A markup paused for one quarter and switched back on for the next is the normal life of these objects, and deleting it would lose the wording finance agreed to.
+You can switch a rule off instead of deleting it. That way a markup paused for a quarter keeps the exact wording finance agreed to when you switch it back on.
 
-## Seeing adjusted numbers
+## See adjusted numbers
 
-Nothing shows adjusted spend unless it is asked to. The **Costs** panel grows an **Apply billing rules** checkbox above the month-to-date chart — and only for an organization that actually has a rule in force, since otherwise it would be a switch between two identical figures. Tick it and the chart redraws with the badge and the caption described above.
+Adjusted spend only shows when you ask for it. Once your organization has a rule in force, the **Costs** panel shows an **Apply billing rules** checkbox above the month-to-date chart. Tick it and the chart redraws with the badge and caption described above.
 
-The same applies to any cost graph on a dashboard or in a saved [cost report](./cost-reports.md): the graph editor's `adjusted` option makes that card draw adjusted spend, and the card labels itself. A card someone screenshots into a finance review carries both figures.
+Cost graphs on dashboards and in saved [cost reports](./cost-reports.md) work the same way. Turn on the graph editor's `adjusted` option and the card shows adjusted spend and labels itself, so a screenshot still carries both figures.
 
-## What this changes elsewhere, and what it deliberately doesn't
+## Where billing rules apply
 
-Every interaction below is a decision, not an omission. The rule behind all of them: **anything that pages a human measures collected spend unless it is explicitly opted in.**
+The general rule: **anything that alerts a person uses collected spend unless you opt in.**
 
-### Budgets — opt in per budget
+### Budgets: opt in per budget
 
-A budget measures **collected spend** by default, and does so for every budget that existed before billing rules and every budget nobody deliberately opts in. If a markup silently raised measured spend, adding one row in Settings would move every on-call rota in the organization at once, and every resulting page would be for money nobody actually spent.
+A budget measures **collected spend** by default. Adding a markup won't suddenly trigger budget alerts for money nobody actually spent.
 
-A budget can opt in (`useAdjustedSpend`), and then it measures the internal figure. Unlike a [scenario model](./scenario-models.md) — which only ever touches the forecast — opting in here affects **actual thresholds too**, and must: an opted-in budget is measuring the internal number, and month-to-date internal spend is as marked up as the forecast is. Judging one on collected spend and the other on adjusted spend would be a budget measuring two different things.
+You can opt a budget in (`useAdjustedSpend`) so it measures the internal figure. Unlike a [scenario model](./scenario-models.md), which only affects the forecast, this applies to **actual thresholds too**, so month-to-date and forecast are measured the same way.
 
-An alert fired by an opted-in budget says so in its body and names the collected figure, because that message is often the only place the number is ever read.
+An alert from an opted-in budget says so in its message and includes the collected figure.
 
-### Showback — opt in per request, and the one place fixed charges land
+### Showback: opt in per request
 
-[Showback](./tag-policy-and-showback.md) is where an adjustment is genuinely a chargeback, so it is the one report where a **fixed-amount** rule is fully attributed: the pro-rated amount is added to the cost centre the rule names, which is exactly the "platform team charges $5,000/month to Engineering" line. A fixed rule that names an account, or names nothing, lands in **Unallocated** rather than being invented onto a centre that never agreed to it.
+[Showback](./tag-policy-and-showback.md) is the one report where **fixed-amount** rules are fully attributed. The pro-rated amount is added to the cost centre the rule names, which gives you the "platform team charges $5,000/month to Engineering" line. A fixed rule that names an account, or names nothing, lands in **Unallocated**.
 
-Adjustments are still off by default here — a chargeback statement that silently showed marked-up numbers is one the receiving team could not reconcile.
+Adjustments are off by default here too, so a chargeback statement never shows marked-up numbers unless you ask.
 
-### Cost exports — always raw
+### Cost exports: always collected
 
-[Cost exports](./cost-exports.md) ship your collected rows and are never adjusted. An export is the audit artifact and usually the input to a warehouse that joins it against invoices; adjusting it would put a number in your data lake that does not exist on any bill. Reproduce the adjustment downstream from the rules if you need it there.
+[Cost exports](./cost-exports.md) contain your collected rows and are never adjusted, so they always match your invoices. If you need adjusted figures downstream, apply your rules there.
 
-### Unit costs, anomalies, change alerts, the weekly digest — always raw
+### Unit costs, anomalies, change alerts and the weekly digest: always collected
 
-[Unit costs](./unit-costs.md) divide collected spend by a business metric. A unit-economics number that jumped because somebody wrote a markup would be a metric measuring policy rather than efficiency.
+[Unit costs](./unit-costs.md) divide collected spend by a business metric, so a markup can't make your unit economics look worse.
 
-[Cost anomaly alerts](./cost-anomaly-alerts.md) and [cost change alerts](./cost-change-alerts.md) watch collected spend, always. Both page people, and neither should be able to fire because a rule changed. The [weekly digest](./cloud-costs.md) reports collected spend for the same reason.
+[Cost anomaly alerts](./cost-anomaly-alerts.md) and [cost change alerts](./cost-change-alerts.md) always watch collected spend, so changing a rule never triggers them. The [weekly digest](./cloud-costs.md) reports collected spend too.
 
-### Commitments — never adjusted
+### Commitments: never adjusted
 
-[Commitment coverage and utilization](./commitments.md) are ratios of provider-reported amortized amounts. A markup would multiply both sides of the ratio and change nothing; a reallocation would scramble which account a covered hour belonged to. Coverage is a fact about the provider's billing, not about your internal accounting, so billing rules do not reach it.
+[Commitment coverage and utilization](./commitments.md) are based on provider-reported amounts. Billing rules don't affect them.
 
-### One thing to know about totals
+### Totals on cost graphs
 
-On a cost graph, the **total stays the sum of the series drawn** — that identity is what every client relies on. Fixed-amount charges have no series behind them, so they are reported separately (`adjustment.fixedTotals`) and the caption says the internal figure is the total plus that amount. On a showback report they are attributed to a centre, as described above, so a centre's total already includes them.
+On a cost graph, the **total is always the sum of the series drawn**. Fixed-amount charges have no series, so they are reported separately (`adjustment.fixedTotals`), and the caption says the internal figure is the total plus that amount. On a showback report, fixed amounts are attributed to a centre as described above, so a centre's total already includes them.
 
 ## From the terminal
 
@@ -175,26 +173,26 @@ infrawrench billing-rules "Platform overhead"
 infrawrench billing-rules --json
 ```
 
-The list prints in evaluation order with a one-line summary of what each rule does to which spend, and the same two reminders the docs give: that nothing was written into collected spend, and that markups compound while reallocation fires once. It is read-only — writing a markup is a considered act with a form and an audit entry behind it.
+This lists your rules in the order they apply, with a one-line summary of what each does to which spend. It also reminds you that collected spend is never changed, and that markups compound while a reallocation applies once. The command is read-only. Create and edit rules in Settings.
 
 ```
 infrawrench billing-rules preview "Volume tiers" --customer northwind --month 2026-09
 infrawrench billing-rules preview "Prod EC2 surcharge" --json
 ```
 
-`preview` is a dry run of one saved rule against a month of real spend: totals without and with it, and the lines it moved.
+`preview` is a dry run of one saved rule against a month of real spend. It shows totals without and with the rule, and the lines it moved.
 
 See the [CLI reference](./cli.md).
 
-## From the model
+## From AI chat and MCP
 
-The [MCP server and AI chat](./mcp.md) expose `list_billing_rules` and `preview_billing_rule` (a dry run of a rule or a customer's pricing against a month of spend), and `query_costs` / `query_showback` both take `adjusted`. The tools are instructed to quote collected spend unless you ask for the internal figure, and to state both when they report an adjusted one.
+The [MCP server and AI chat](./mcp.md) offer `list_billing_rules` and `preview_billing_rule` (a dry run of a rule or a customer's pricing against a month of spend). `query_costs` and `query_showback` both take `adjusted`. The assistant quotes collected spend unless you ask for the internal figure, and gives both when it reports an adjusted one.
 
-`list_billing_rules` is the tool to reach for when a total does not match an invoice — the rules are the reason, and each row says what it does to which spend.
+If a total doesn't match an invoice, ask for `list_billing_rules`. Each rule says what it does to which spend.
 
 ## API
 
-- `GET /billing-rules` — the rules in evaluation order (`costs:read`)
+- `GET /billing-rules`: the rules in the order they apply (`costs:read`)
 - `POST /billing-rules`, `PUT /billing-rules/{id}`, `DELETE /billing-rules/{id}`, `POST /billing-rules/reorder` (`org:settings:write`)
 - `POST /billing-rules/preview` (`costs:read`, plus `invoices:read` when it names a customer)
 - `POST /costs/query` with `adjusted: true`, and `GET /costs/showback?adjusted=true`
