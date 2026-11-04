@@ -6,48 +6,50 @@ sidebar_order: 45
 
 ## What you can manage
 
-- **Account** — one per added account, always present. It shows the region and batch endpoint, a 30-day usage summary read from `GET /v2/usage`, and the language packs the batch engine currently offers — and it is where the [Speech tab](#the-speech-tab) lives. Jobs are purged after seven days and projects need a management token, so this is the only resource guaranteed to exist.
-- **Transcription jobs** — the batch jobs on this account's region, with status, audio file, duration, language pack and model. Each job's detail page carries a copyable transcript URL and a **Logs** tab with the transcriber's own log for that job. Delete a job to purge it early.
-- **Projects** — the isolation boundary for API keys, transcripts and usage. Create one with a name and description, rename it, or delete it. Only visible with a management token.
-- **API keys** — the keys issued inside a project. Create one by picking its project, the product it may call (batch, realtime or text to speech) and an optional client reference; the key value is shown **once**, on the create response. Delete a key to revoke it. Only visible with a management token.
+- **Account**: one per added account, always there. It shows the region and batch endpoint, a 30-day usage summary, and the language packs Speechmatics currently offers. This is where the [Speech tab](#transcribe-a-clip) lives.
+- **Transcription jobs**: the batch jobs in this account's region, with status, audio file, duration, language pack and model. Each job's detail page has a copyable transcript URL and a **Logs** tab with that job's log. Delete a job to remove it early.
+- **Projects**: each project keeps its own API keys, transcripts and usage. Create one with a name and description, rename it, or delete it. Only visible with a management token.
+- **API keys**: the keys issued inside a project. Create one by picking its project, the product it may use (batch, realtime or text to speech) and an optional client reference. The key value is shown **once**, when you create it. Delete a key to revoke it. Only visible with a management token.
 
-## Credentials
+## Connect your account
 
-Three fields, because Speechmatics splits its API across two hosts and three regions.
+There are three fields.
 
-**API Key** (required) — Speechmatics Portal → **Manage workspace › API keys**. This is the batch key: it lists and submits transcription jobs and drives the Speech tab. It cannot read the Management API.
+**API Key** (required): in the Speechmatics Portal, go to **Manage workspace > API keys**. This key lists and submits transcription jobs and runs the Speech tab. It can't manage projects or keys.
 
-**Region** (required, defaults to `eu1`) — `eu1`, `us1` or `au1`. Pick the region your API key was created in.
+**Region** (required, defaults to `eu1`): `eu1`, `us1` or `au1`. Pick the region your API key was created in.
 
-**Management Token** (optional) — Portal → **Manage workspace › Management tokens**. A **different credential on a different host**: the Management API is served from `https://mp.speechmatics.com/v1`, not the regional ASR endpoint. Without it the **Projects** and **API Keys** lists stay empty; transcription jobs, metrics and the Speech tab are entirely unaffected.
+**Management Token** (optional): in the Portal, go to **Manage workspace > Management tokens**. This is a separate credential. Without it, the **Projects** and **API Keys** lists stay empty. Transcription jobs, metrics and the Speech tab work either way.
 
-Each management token carries its own permissions, so grant the ones for what you want to do here: **View projects** and **View API keys** to list, **Manage projects** to create, rename and delete projects, and **Create API key** / **Delete API keys** for the key actions. A token without **View projects** still lists keys, just without the project each one belongs to.
+Each management token has its own permissions, so grant the ones you need: **View projects** and **View API keys** to list, **Manage projects** to create, rename and delete projects, and **Create API key** and **Delete API keys** for the key actions. A token without **View projects** still lists keys, just without the project each one belongs to.
 
 ![Speechmatics Add-account form showing the API key, the region picker with eu1/us1/au1, and the optional Management Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/speechmatics/add-account.png)
 
-## The Speech tab
+## Transcribe a clip
 
-Open the **Account** resource for a **Speech** tab. It is transcription only. See [Speech testing](../features/speech-testing.md) for the panel in general.
+Open the **Account** and go to the **Speech** tab. See [Speech testing](../features/speech-testing.md) for how the panel works in general.
 
-The same tab is offered on an individual job, where it doubles as "run this one again with different settings" — but jobs are purged after seven days, so the account is the copy that is always there.
+The same tab appears on each job, so you can run that job again with different settings. Jobs disappear after seven days, though, so the account's tab is the one that's always there.
 
-The happy path is a single request: the clip is submitted as a batch job with `?wait=60`, so the transcript comes back in the same response. Longer clips fall back to polling, capped at two minutes total.
+Short clips come back in one go. Longer ones are checked until they finish, for up to two minutes in total.
 
-Language packs and models are read live from `GET /v1/discovery/features` on your region — which is unauthenticated, so the pickers are populated even before the key is validated. The default model is **enhanced**.
+The language pack and model pickers list what Speechmatics offers in your region. The default model is **enhanced**.
 
-The **Synthesize** half calls Speechmatics' text-to-speech preview (`POST https://preview.tts.speechmatics.com/generate/{voice}`) and plays back a 16 kHz WAV. The four documented voices are offered: Sarah and Theo (UK English) and Megan and Jack (US English). The preview is free while it lasts, and it needs a key that is allowed to call text to speech; if the account's key is refused, create one from the **API Keys** list with **Product** set to **Text to speech**.
+### Preview text to speech
+
+The **Synthesize** half uses Speechmatics' text-to-speech preview and plays back a 16 kHz WAV. You can pick from four voices: Sarah and Theo (UK English) and Megan and Jack (US English). The preview is free while it lasts, and it needs a key that's allowed to use text to speech. If the account's key is refused, create one from the **API Keys** list with **Product** set to **Text to speech**.
 
 ![Speechmatics Speech tab on the Account resource, with the language-pack picker populated from discovery and a completed transcript](https://agent-assets.infrawrench.com/docs-screenshots/plugins/speechmatics/speech-tab-language-packs.png)
 
 ## Metrics
 
-The account and each job get a **Metrics** tab over the last 30 days charting **transcription hours** and **billable jobs**, read from `GET /v2/usage`. Hours are also split by mode (batch versus real-time) and by operating point (standard versus enhanced), the two axes the rate card prices on, whenever more than one side of a split shows up in the range. The endpoint is account-wide rather than per-job, so both tabs show the same series. The window is split into at most ten buckets, each fetched as its own `since`/`until` range, because the usage endpoint takes calendar dates rather than a granularity parameter.
+The account and each job have a **Metrics** tab over the last 30 days, charting **transcription hours** and **billable jobs**. When your usage includes both, hours are also split by mode (batch or real-time) and by operating point (standard or enhanced), which is how Speechmatics prices them. Usage is account-wide, so both tabs show the same charts.
 
 ## Cost
 
-Speechmatics accounts feed [cost graphs & budgets](../features/cloud-costs.md), broken down by **service** — the model and mode pair that Speechmatics prices against: **Batch Standard**, **Batch Enhanced**, **Batch Melia 1**, **Real-time Standard** and **Real-time Enhanced**.
+Speechmatics accounts feed [cost graphs & budgets](../features/cloud-costs.md), broken down by **service**, meaning the model and mode Speechmatics prices: **Batch Standard**, **Batch Enhanced**, **Batch Melia 1**, **Real-time Standard** and **Real-time Enhanced**.
 
-**The figures are list-price estimates, not billed amounts.** Speechmatics has no billing API. The only number available is metered audio duration from `GET /v2/usage`, so infrawrench multiplies hours by the published per-hour rate for each model:
+**These are list-price estimates, not billed amounts.** Speechmatics has no billing API, so Infrawrench multiplies your audio hours by the published per-hour rate for each model:
 
 | Service            | Rate       |
 | ------------------ | ---------- |
@@ -57,39 +59,38 @@ Speechmatics accounts feed [cost graphs & budgets](../features/cloud-costs.md), 
 | Real-time Standard | $0.45 / hr |
 | Real-time Enhanced | $0.80 / hr |
 
-Rates are the Pro-plan list prices from [speechmatics.com/pricing](https://www.speechmatics.com/pricing), verified August 2026.
+Rates are the Pro-plan list prices from [speechmatics.com/pricing](https://www.speechmatics.com/pricing), checked August 2026.
 
-### What the estimate misses
+### What the estimate leaves out
 
-- **Volume discounts are not modelled, so large accounts read high.** Speechmatics automatically discounts any billable usage above **500 hours per month for each type of speech-to-text** — currently 20% off the hours beyond that threshold, with further discounts negotiated from 24,000 hours a year. infrawrench prices every hour at the base rate, so once a line item crosses 500 hours in a calendar month the chart over-states what you will actually be invoiced, and over-states it more the bigger the account. Tiering it correctly would need the running monthly total per line item and your negotiated terms, neither of which the daily usage window exposes — a half-modelled tier would be confidently wrong rather than predictably high.
-- **The opt-in model-training discount (33% off) and sign-up credit are invisible here** for the same reason, and push the real bill the other way.
-- **Consumption with no public rate is omitted rather than guessed** — alignment jobs, and any model released after these rates were recorded. That under-reports rather than inventing a number.
-- **Enterprise contracts are custom-priced**, so the list rates above are simply not your rates.
+- **Volume discounts, so large accounts read high.** Speechmatics automatically discounts billable usage above **500 hours per month for each type of speech-to-text**, currently 20% off the hours beyond that, with more discount negotiated from 24,000 hours a year. Infrawrench prices every hour at the base rate, so once a line item passes 500 hours in a month, the chart shows more than you'll be invoiced.
+- **The opt-in model-training discount (33% off) and sign-up credit**, which push your real bill lower.
+- **Usage with no public rate**, such as alignment jobs and any model released after these rates were recorded. These are left out rather than guessed, so they under-report.
+- **Enterprise contracts**, which are custom-priced. The list rates above aren't your rates.
 
-Treat the graph as a shape-of-spend signal and the Speechmatics Portal as the invoice.
+Use the graph to see the shape of your spend, and the Speechmatics Portal for the invoice.
 
-### How collection works
+### Good to know
 
-- **The API key does this, not the management token.** `GET /v2/usage` lives on the regional ASR endpoint and is authenticated with the same batch API key that submits jobs. The Management API has no usage endpoint at all, so adding a management token neither helps nor is required.
-- **One request per day.** The usage endpoint takes a `since`/`until` window and aggregates the whole of it — there are no daily buckets and no granularity parameter. A day of cost data is therefore one HTTP call. infrawrench issues them strictly one at a time with a short gap, and backs off (honouring `Retry-After`) when the endpoint rate-limits.
-- **History is capped at 90 days**, rather than the usual year, because history costs requests here: a year of daily rows would be 365 sequential calls on the same key you use to submit real work. Ninety days covers three closed billing cycles.
-- **Today is never collected.** Speechmatics excludes the current UTC day from usage results, so the last two days are re-fetched on every pass and today's spend appears tomorrow.
-- **Temporary keys don't work.** A temporary key created with a `client_ref` is scoped to that client's jobs and is refused by the usage endpoint with `403 Forbidden`. If cost collection reports that, swap the account's **API Key** for a long-lived one from the Portal — **Manage workspace › API keys**.
-- Region is not a cost dimension: an account is bound to one regional endpoint by its credential, so it would be the same value on every row. Usage is account-wide and is not attributed back to individual jobs, so there is no per-job breakdown either.
+- **Costs use your API key**, not the management token. You don't need a management token for costs.
+- **History goes back 90 days.**
+- **Today's spend appears tomorrow**, since Speechmatics leaves out the current UTC day. The last two days can still change.
+- **Temporary keys don't work.** A temporary key created with a `client_ref` only covers that client's jobs and gets a `403 Forbidden` for usage. If costs report that, replace the account's **API Key** with a long-lived one from **Manage workspace > API keys** in the Portal.
+- There's no breakdown by region or by job, since an account covers one region and usage is account-wide.
 
 ![Cost graph for a Speechmatics account broken down by service, showing Batch Enhanced and Real-time Standard as separate series, with the estimated-cost notice visible](https://agent-assets.infrawrench.com/docs-screenshots/plugins/speechmatics/cost-graph.png)
 
 ## Tips & limits
 
-- **Jobs are region-scoped and not portable.** A job created against `eu1` is invisible from `us1` and `au1`, and every request about a job has to go to the same region it was created on. The account's region credential therefore decides which jobs this plugin can see at all — if a job is missing, check the region before checking the key.
+- **Jobs belong to one region.** A job created in `eu1` is invisible from `us1` and `au1`, so the account's region decides which jobs you see. If a job is missing, check the region before the key.
 - **`au1` is batch-only.**
-- **Audio, transcripts and job config are retained for 7 days.** After that the transcript endpoints return `404` and the job reports status `expired`. The Speech tab's subtitle says so, and so does the job list. The **Account** resource does not expire with them, which is why the Speech tab lives there.
-- **Deleting a running job needs force.** The plugin always sends `?force=true`, because without it a still-running job answers `423 Locked` instead of being removed — and by that point you have already confirmed the deletion.
-- **Uploads are capped at 1 GB** by Speechmatics, and at 25 MB in the Speech tab, because the clip travels base64-encoded inside a JSON request.
-- **The transcript format is a query parameter, not an `Accept` header.** Append `?format=txt`, `?format=srt` or `?format=json-v2` to the transcript URL. The detail page shows the URL and says this next to it.
-- **Melia-1 is multilingual only** — picking it forces the language to `multi`.
-- **A `rejected` job was accepted and then failed to process.** It is a distinct state from a failed submission, and `GET /v2/jobs/{id}/log` usually explains why.
-- **A new API key's value exists in exactly one place: the create response.** Speechmatics never returns it again, so copy it when it is shown. Listed keys show metadata only.
-- **Only a project's name can change after creation.** `PUT /projects/{id}` accepts nothing else, so the description is set once.
+- **Audio, transcripts and job settings are kept for 7 days.** After that, the transcript is gone and the job shows as `expired`. The Speech tab and the job list both say so. The **Account** doesn't expire, which is why the Speech tab lives there.
+- **Deleting a running job stops it and removes it.**
+- **Uploads are capped at 1 GB** by Speechmatics, and at 25 MB in the Speech tab.
+- **Pick the transcript format with a query parameter.** Add `?format=txt`, `?format=srt` or `?format=json-v2` to the transcript URL. The detail page shows the URL with a note about this.
+- **Melia-1 is multilingual only.** Picking it sets the language to `multi`.
+- **A `rejected` job was accepted and then failed to process.** That's different from a failed submission. The job's Logs tab usually explains why.
+- **A new API key is shown once**, when you create it. Copy it then. Listed keys only show their details.
+- **Only a project's name can change after you create it.** Set the description when you create the project.
 - **Deleting a project can be refused** with `403` while the workspace has outstanding payments.
-- **Job logs expire with the job.** After seven days the Logs tab says the log is gone rather than showing an error.
+- **Job logs expire with the job.** After seven days, the Logs tab says the log is gone instead of showing an error.

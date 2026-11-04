@@ -1,16 +1,16 @@
 ---
 title: PostgreSQL
-description: Add a Postgres account and get a live SQL editor with schema introspection.
+description: Add a Postgres account and get a live SQL editor with a schema browser.
 sidebar_order: 10
 ---
 
 ## What you can manage
 
-- Databases, schemas, tables (browse).
-- Run arbitrary SQL — see [SQL editor](../features/sql-editor.md).
-- Peer integration: managed Postgres from DigitalOcean and Neon can be linked via [output reference](../core-concepts/output-references.md).
+- Browse databases, schemas and tables.
+- Run any SQL in the [SQL editor](../features/sql-editor.md).
+- Link managed Postgres from DigitalOcean and Neon with an [output reference](../core-concepts/output-references.md).
 
-## Credentials
+## Connect a database
 
 Paste a full connection string:
 
@@ -18,19 +18,19 @@ Paste a full connection string:
 postgresql://user:password@host:5432/dbname
 ```
 
-There is one other field, **CA Certificate**, under **Advanced options** at the bottom of the form. It is optional, and only needed when the server presents a vendor-managed CA the system trust store doesn't know about.
+There's one more field, **CA Certificate**, under **Advanced options** at the bottom of the form. It's optional. You only need it if the server uses a vendor-managed CA your system doesn't already trust.
 
-For a managed database you already have in Infrawrench, don't add an account here. Open the database resource and use its **PostgreSQL** tab: the connection string and CA certificate flow through from the database's own outputs as an [output reference](../core-concepts/output-references.md). That covers RDS instances and clusters, Redshift, Cloud SQL, AlloyDB, Azure Database for PostgreSQL, DigitalOcean and Scaleway managed databases, OVH managed DBs, and Neon projects, branches and databases. There is no picker or toggle in this credential form.
+For a managed database you already have in Infrawrench, don't add an account here. Open the database and use its **PostgreSQL** tab instead. The connection string and CA certificate come straight from the database as an [output reference](../core-concepts/output-references.md). That covers RDS instances and clusters, Redshift, Cloud SQL, AlloyDB, Azure Database for PostgreSQL, DigitalOcean and Scaleway managed databases, OVH managed DBs, and Neon projects, branches and databases.
 
 ![Postgres Add-account form with the Connection String field and the optional CA Certificate field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/postgres/add-account.png)
 
-## Notable flows
+## Things you can do
 
-- **SQL editor** with a schema browser introspected from `information_schema`.
-- **SSH tunnel** support — if the database only listens on a bastion's loopback, use **Connect service via SSH** on that bastion instead of adding an account here; it creates the account for you. See [SSH tunnels](../features/ssh-tunnels.md).
+- **SQL editor** with a schema browser.
+- **SSH tunnel**: if the database only listens on a bastion's loopback, use **Connect service via SSH** on that bastion instead of adding an account here. It creates the account for you. See [SSH tunnels](../features/ssh-tunnels.md).
 
 ## Tips & limits
 
-- SSL mode defaults to `require` when the URL does not specify. Append `?sslmode=disable` if you know what you are doing.
-- Very large result sets are trimmed in the grid at 10k rows. Export to CSV or narrow your `LIMIT`.
-- In the cloud app, connection strings that point at certificate files (`sslrootcert`, `sslcert`, `sslkey`) are refused, because those paths would be read on the shared Infrawrench server rather than your machine. Paste the CA into the **CA Certificate** field instead. Client-certificate (mutual TLS) logins need the desktop app, where those paths are your own files.
+- SSL mode is `require` unless your URL says otherwise. Add `?sslmode=disable` only if you're sure.
+- The results grid stops at 10k rows. Export to CSV or tighten your `LIMIT`.
+- In the cloud app, connection strings that point at certificate files (`sslrootcert`, `sslcert`, `sslkey`) are refused, since those files would be looked for on the Infrawrench server, not your machine. Paste the CA into the **CA Certificate** field instead. Client-certificate (mutual TLS) logins need the desktop app.

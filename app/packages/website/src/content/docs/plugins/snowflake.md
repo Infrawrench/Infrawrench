@@ -8,17 +8,17 @@ sidebar_order: 19
 
 - **Warehouses**: suspend, resume, resize (X-Small to 6X-Large), change auto-suspend and auto-resume, multi-cluster limits, scaling policy and query acceleration, assign a resource monitor, create and drop. Warehouses can go on [sleep/wake schedules](../features/sleep-schedules.md).
 - **Databases and schemas**: storage and Fail-safe bytes, Time Travel retention and comment (editable), create (permanent or transient; standard or managed-access schemas) and drop.
-- **Resource monitors**: create one with a credit quota, reset interval and notify / suspend / suspend-immediately thresholds, edit any of them, assign it to a warehouse or make it the account monitor.
-- **Users**: how each signs in (password, key pair, MFA), last login, default role and warehouse (editable); disable and re-enable. Users show up in the [access review](../features/access-review.md).
-- **Roles**: how many users and roles hold each one; create, comment, drop.
+- **Resource monitors**: create one with a credit quota, reset interval and notify, suspend or suspend-immediately thresholds. Edit any of them, assign one to a warehouse, or make it the account monitor.
+- **Users**: how each signs in (password, key pair, MFA), last login, default role and warehouse (editable). Disable and re-enable. Users show up in the [access review](../features/access-review.md).
+- **Roles**: how many users and roles hold each one. Create, comment, drop.
 - **Tasks**: suspend, resume, run now, change the schedule.
-- **Pipes**: execution state and pending files, pause, resume, refresh.
-- **Dynamic tables**: target lag (editable), scheduling state, rows and size; suspend, resume, refresh now.
-- **SQL editor** on every resource, through Snowflake's SQL API (see [SQL editor](../features/sql-editor.md)).
+- **Pipes**: execution state and pending files. Pause, resume, refresh.
+- **Dynamic tables**: target lag (editable), scheduling state, rows and size. Suspend, resume, refresh now.
+- **SQL editor** on every resource (see [SQL editor](../features/sql-editor.md)).
 
-## Credentials
+## Connect your account
 
-You need four things; the form explains each.
+You need four things. The form explains each one.
 
 1. **Account**: your account identifier (`orgname-accountname`) or any URL for the account. The Snowsight address (`app.snowflake.com/<org>/<account>/…`) and the account URL (`<org>-<account>.snowflakecomputing.com`) both work, as do legacy account locators (`xy12345.us-east-2.aws`) and PrivateLink URLs.
 2. **User**: the Snowflake user to connect as. A dedicated service user is best.
@@ -36,28 +36,30 @@ CREATE USER INFRAWRENCH TYPE = SERVICE DEFAULT_ROLE = INFRAWRENCH
 GRANT ROLE INFRAWRENCH TO USER INFRAWRENCH;
 ```
 
-Generate the key pair with `openssl genrsa 2048 | openssl pkcs8 -topk8 -nocrypt -out rsa_key.p8` and `openssl rsa -in rsa_key.p8 -pubout`. Encrypted keys are not accepted; Infrawrench stores the key encrypted on its side.
+Generate the key pair with `openssl genrsa 2048 | openssl pkcs8 -topk8 -nocrypt -out rsa_key.p8` and `openssl rsa -in rsa_key.p8 -pubout`. Encrypted keys aren't accepted. Infrawrench stores the key encrypted on its side.
 
-**Programmatic access tokens** need the user to be covered by a network policy, unless an authentication policy sets `NETWORK_POLICY_EVALUATION = ENFORCED_NOT_REQUIRED`. Tokens expire (15 days by default, at most a year); update it under **Edit credentials**.
+**Programmatic access tokens** need the user to be covered by a network policy, unless an authentication policy sets `NETWORK_POLICY_EVALUATION = ENFORCED_NOT_REQUIRED`. Tokens expire (15 days by default, at most a year). Update yours under **Edit credentials**.
 
-To manage objects (resize warehouses, create monitors, disable users), grant the role the matching privileges: `MODIFY` and `OPERATE` on warehouses, ownership or `MANAGE GRANTS` for users and roles. Creating and assigning resource monitors needs `ACCOUNTADMIN`.
+To manage objects (resize warehouses, create monitors, disable users), grant the role the matching privileges: `MODIFY` and `OPERATE` on warehouses, and ownership or `MANAGE GRANTS` for users and roles. Creating and assigning resource monitors needs `ACCOUNTADMIN`.
 
 <insert [Snowflake add-account form with the account, user and key fields filled in, and the Role and Warehouse pickers open] here>
 
 ## Costs
 
-Snowflake spend comes from one of two sources, chosen per account each time costs are collected:
+What you see depends on what the role can read:
 
-- **Billed**, when the role can read `SNOWFLAKE.ORGANIZATION_USAGE` (ORGADMIN, or GLOBALORGADMIN in the organization account): the amounts on your bill in your contract currency from `USAGE_IN_CURRENCY_DAILY`, with rebates and support credits recorded as credits and adjustments as adjustments. This data is up to 72 hours behind and can change until the month closes. Reseller customers cannot read it.
-- **Estimated** otherwise: credits from `ACCOUNT_USAGE.METERING_DAILY_HISTORY` times the **Price per Credit** on the connection, storage bytes times the **Storage Price per TB-Month**, and data transfer times the **Data Transfer Price per TB** if you enter one. Cloud services are charged net of Snowflake's 10% daily adjustment. Edit the prices under **Edit credentials** to match your contract.
+- **Billed**, if the role can read `SNOWFLAKE.ORGANIZATION_USAGE` (ORGADMIN, or GLOBALORGADMIN in the organization account): the amounts on your bill in your contract currency, with rebates and support credits shown as credits and adjustments as adjustments. This data is up to 72 hours behind and can change until the month closes. Reseller customers can't read it.
+- **Estimated** otherwise: credits times the **Price per Credit** on the connection, storage times the **Storage Price per TB-Month**, and data transfer times the **Data Transfer Price per TB** if you enter one. Cloud services are charged after Snowflake's 10% daily adjustment. Edit the prices under **Edit credentials** to match your contract.
 
-Either way, spend is grouped by service: warehouse compute, cloud services, serverless features (tasks, Snowpipe, clustering, materialized views and the rest), storage, data transfer and AI services. Warehouse compute is split by warehouse, in proportion to each warehouse's credits that day, so it shows up per warehouse in [cost reports](../features/cost-reports.md). Every row carries a `costBasis` tag (`billed` or `estimated`) and a `serviceType` tag with Snowflake's own service type, so you can filter on either. Because the basis is only known per account, Snowflake accounts are labelled as estimated in the Costs panel.
+Either way, spend is grouped by service: warehouse compute, cloud services, serverless features (tasks, Snowpipe, clustering, materialized views and the rest), storage, data transfer and AI services. Warehouse compute is split by warehouse, in proportion to each one's credits that day, so it shows per warehouse in [cost reports](../features/cost-reports.md). Every row has a `costBasis` tag (`billed` or `estimated`) and a `serviceType` tag with Snowflake's own service type, so you can filter on either. Snowflake accounts are labelled as estimated in the Costs panel.
 
-The account page shows month-to-date spend by service and by warehouse, and the remaining **capacity balance** when the role can read organization usage. The balance also feeds [credit burndown](../features/credit-burndown.md).
+The account page shows month-to-date spend by service and by warehouse, plus your remaining **capacity balance** if the role can read organization usage. The balance also feeds [credit burndown](../features/credit-burndown.md).
 
-## Query cost attribution
+## See what queries cost
 
-The account page breaks the last 30 days of query credits down by **query tag**, **user**, **role** and **warehouse**, from `ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY` (roles joined from `QUERY_HISTORY`). Set `QUERY_TAG` in your sessions or connection strings to group cost by workload, team or dbt model. Attribution only covers query execution: idle warehouse time, queries of about 100 ms or less, cloud services and serverless features are not included, so it adds up to less than the warehouse bill. Infrawrench tags its own queries `infrawrench`.
+The account page breaks the last 30 days of query credits down by **query tag**, **user**, **role** and **warehouse**. Set `QUERY_TAG` in your sessions or connection strings to group cost by workload, team or dbt model.
+
+This only covers query execution. Idle warehouse time, queries of about 100 ms or less, cloud services and serverless features aren't included, so it adds up to less than the warehouse bill. Infrawrench's own queries are tagged `infrawrench`.
 
 <insert [Snowflake account detail page showing spend this month by service and the query cost attribution tables] here>
 
@@ -83,14 +85,14 @@ Size and auto-suspend recommendations come with a one-click fix.
 
 Resource monitors with a credit quota appear on the [quota radar](../features/quota-radar.md).
 
-## Cost exports into Snowflake
+## Export costs into Snowflake
 
-A Snowflake account can be the destination of a [scheduled cost export](../features/cost-exports.md#destination-snowflake-or-databricks-table): Infrawrench loads its cost rows into a table you pick (or creates it), replacing each exported period in one transaction. The export uses this account's credentials; the role needs USAGE on the warehouse, database and schema and CREATE TABLE on the schema, which the export dialog prints as GRANT statements.
+A Snowflake account can be the destination of a [scheduled cost export](../features/cost-exports.md#destination-snowflake-or-databricks-table). Infrawrench loads its cost rows into a table you pick (or creates it), replacing each exported period in one go. The export uses this account's credentials. The role needs USAGE on the warehouse, database and schema and CREATE TABLE on the schema. The export dialog prints these as GRANT statements.
 
 ## Tips & limits
 
-- **Listing never wakes a warehouse.** Resources are read with `SHOW` commands, which Snowflake answers without compute. Costs, metrics, recommendations and attribution do query `ACCOUNT_USAGE`, which needs the connection's warehouse; an X-Small with a 60 second auto-suspend is plenty. Those reads are cached for 30 minutes, so a pinned warehouse's chart does not keep the warehouse running.
-- `ACCOUNT_USAGE` views lag up to three hours (query attribution up to eight), so the newest data on charts is that old.
-- `SHOW USERS` needs ownership of the users or `MANAGE GRANTS`; without it the user list is empty.
-- A role sees only the warehouses, databases and monitors it has privileges on.
+- **Browsing never wakes a warehouse.** Costs, metrics, recommendations and query cost do need the connection's warehouse. An X-Small with a 60 second auto-suspend is plenty, and a pinned chart won't keep it running.
+- Snowflake's usage data lags up to three hours (query cost up to eight), so the newest data on charts is that old.
+- Listing users needs ownership of the users or `MANAGE GRANTS`. Without it, the user list is empty.
+- A role only sees the warehouses, databases and monitors it has privileges on.
 - The SQL editor runs one statement at a time.

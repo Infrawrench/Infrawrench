@@ -4,92 +4,98 @@ description: Browse the OpenRouter catalogue with per-provider pricing, uptime a
 sidebar_order: 36
 ---
 
+Use this plugin to compare who serves each model on OpenRouter, keep an eye on spend, and manage your keys, guardrails and workspaces.
+
 ## What you can manage
 
-- **Models** — the full catalogue across every modality, with per-million-token pricing, context length, tokenizer and knowledge cutoff.
-- **Model endpoints** — the thing that is genuinely unique to OpenRouter: each provider's own serving endpoint for a model, with its own price, uptime over 5 minutes / 30 minutes / 1 day, latency p50–p99 and throughput. This is how you tell whether "GPT-4 on OpenRouter" is the cheap slow one or the fast expensive one today.
-- **Providers** — every upstream OpenRouter routes to, with headquarters and datacenter regions for data-residency checks.
-- **API keys**: full CRUD, including per-key credit limits, reset interval (daily/weekly/monthly), expiry, whether BYOK usage counts against the limit, the workspace the key belongs to, and a Metrics tab of its requests, spend, tokens and latency.
-- **Guardrails**: spend limits and routing policy (allowed and blocked providers and models, data regions, zero data retention, training opt-ins), with the API keys they apply to. Full CRUD.
-- **Workspaces**: default models and provider sort, observability logging settings, daily, weekly, monthly and lifetime budgets, member count, and a Metrics tab. Full CRUD.
+- **Models**: the full catalogue across every modality, with price per million tokens, context length, tokenizer and knowledge cutoff.
+- **Model endpoints**: each provider's own endpoint for a model, with its price, uptime over 5 minutes, 30 minutes and 1 day, latency from p50 to p99, and throughput. This tells you which provider for a model is the cheap slow one and which is the fast expensive one today.
+- **Providers**: every upstream OpenRouter routes to, with headquarters and datacenter regions for data residency checks.
+- **API keys**: create, edit and delete, including per-key credit limits, reset interval (daily, weekly or monthly), expiry, whether BYOK usage counts against the limit, and the key's workspace. Each key has a Metrics tab with requests, spend, tokens and latency.
+- **Guardrails**: spend limits and routing policy (allowed and blocked providers and models, data regions, zero data retention, training opt-ins), with the API keys they apply to. Create, edit and delete.
+- **Workspaces**: default models and provider sort, observability logging settings, daily, weekly, monthly and lifetime budgets, member count, and a Metrics tab. Create, edit and delete.
 - **BYOK credentials**: your own keys for upstream providers, with fallback and BYOK-only routing. Create, edit and delete.
 
 ## Connect with OpenRouter
 
-**Connect with OpenRouter** on the add-account form signs you in to OpenRouter and creates an inference API key named **Infrawrench** for you, instead of copying one from the settings page. No refresh is involved: the key works until you delete it under [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys).
+Click **Connect with OpenRouter** on the add-account form. You sign in to OpenRouter and it creates an inference API key named **Infrawrench** for you, so you don't have to copy one. The key works until you delete it under [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys).
 
-OpenRouter has no narrower kind of key, so this one can make requests billed to your credits. Infrawrench only uses it when you act, for the **Speech** tab.
+OpenRouter has no narrower kind of key, so this one can make requests billed to your credits. Infrawrench only uses it when you act, in the **Speech** tab.
 
-It is an inference key, not a management key, and OpenRouter only creates management keys in its settings. On its own it shows the model catalogue, endpoints, providers and the Speech tab; API keys, guardrails, workspaces, BYOK credentials, credits and costs need a **Management Key** as well, which you can add to the account at any time.
+This is an inference key, not a management key, and OpenRouter only creates management keys in its own settings. On its own it shows the model catalogue, endpoints, providers and the Speech tab. For API keys, guardrails, workspaces, BYOK credentials, credits and costs, add a **Management Key** to the account. You can do that at any time.
 
 Connect with OpenRouter works in the web app, in the desktop app's cloud mode, and for accounts stored locally on the desktop (which sign in through your browser).
 
 <insert [OpenRouter add-account form showing the Connect with OpenRouter button above the Management Key and Inference API Key fields] here>
 
-## Credentials
+## Add keys by hand
 
-OpenRouter has **two kinds of key**, because neither one can do the other's job. Enter at least one.
+OpenRouter has **two kinds of key**, and neither can do the other's job. Enter at least one.
 
-**Management Key**: [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys). This is what OpenRouter used to call a _provisioning key_; the schema still carries both names. It is the only credential `/credits`, `/activity` and `/keys` accept: a plain inference key gets a `403` from all of them, which is very nearly the whole console surface. Without one, the account lists only the model catalogue, endpoints and providers.
+**Management Key**: get it from [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys). OpenRouter used to call this a _provisioning key_. You need it for credits, activity and API keys, which is almost everything in the console. Without it, you only see the model catalogue, endpoints and providers.
 
-**Inference API Key**: [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys), or the one **Connect with OpenRouter** creates. A normal `sk-or-v1-…` key. Management keys are explicitly rejected by the completion endpoints, so the **Speech tab** needs one of these. Without it every list still works and the Speech tab renders with an explanation instead of failing.
+**Inference API Key**: get it from [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys), or use the one **Connect with OpenRouter** creates. It's a normal `sk-or-v1-…` key. The **Speech tab** needs one, since management keys can't make requests to models. Without it, every list still works and the Speech tab explains what's missing.
 
 ![OpenRouter Add-account form showing the required Management Key field and the optional Inference API Key field, with the description explaining why both exist](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openrouter/add-account.png)
 
-## Comparing providers for a model
+## Compare providers for a model
 
-Open any model and scroll to **Provider endpoints**. Every provider serving that model is listed with its prompt and completion price per million tokens, context window, 1-day uptime, p50 and p99 latency, and p50 throughput — the whole routing decision on one line each.
+Open any model and scroll to **Provider endpoints**. Each provider serving that model gets one line with its prompt and completion price per million tokens, context window, 1-day uptime, p50 and p99 latency, and p50 throughput.
 
 ![OpenRouter model detail page with the Provider endpoints table showing several providers, their prices, uptime and latency percentiles side by side](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openrouter/provider-endpoints.png)
 
-The top-level **Model Endpoints** list is capped to the most popular models, because listing endpoints for the entire catalogue would be one API call per model. A model's own page always shows all of its endpoints regardless.
+The top-level **Model Endpoints** list only covers the most popular models. A model's own page always shows all of its endpoints.
 
-## The Speech tab
+## Test speech
 
-Models that produce **speech** or **transcription** get a **Speech** tab.
+Models that produce **speech** or **transcription** have a **Speech** tab.
 
-- **Synthesize** posts to `POST /audio/speech` and asks for MP3. The model picker is populated live from `GET /models?output_modalities=speech`, and the voice picker from each model's own `supported_voices` — so the voices for the model you are looking at come first, and every entry says which model it belongs to.
-- **Transcribe** posts to `POST /audio/transcriptions`. The endpoint takes either a multipart upload or a JSON body with base64 audio; the plugin uses the JSON form, because your clip already arrives base64-encoded from the browser and re-encoding it would be pure waste.
+- **Synthesize** returns MP3. The voice picker lists the voices each speech model supports, with the voices for the model you're looking at first. Every entry says which model it belongs to.
+- **Transcribe** turns a recorded or uploaded clip into text.
 
-Both halves share one model picker. If you leave it on a transcription model and press Synthesize, the plugin quietly falls back to a valid speech model rather than sending a request OpenRouter will reject.
+Both halves share one model picker. If you leave it on a transcription model and press Synthesize, the app switches to a speech model for you.
 
-## Guardrails, workspaces and BYOK
+## Set up guardrails, workspaces and BYOK
 
 All three need the management key.
 
-**Create a guardrail** with pickers for everything it references: allowed and blocked providers come from the live provider list, allowed and blocked models from the full model catalogue, and **Apply to API keys** from your keys. The plugin creates the guardrail and then assigns the picked keys in a second call. The detail page shows the budget, the routing policy, any built-in content filters (email, phone numbers, secrets and so on) and the assigned keys.
+### Create a guardrail
 
-Editing a guardrail changes its limit, reset interval, flags and policy lists. The lists are edited as comma-separated provider slugs or model ids, exactly as the detail page shows them; key assignments are made at creation or in the OpenRouter dashboard.
+Pick everything the guardrail references from lists: allowed and blocked providers, allowed and blocked models, and the API keys to **Apply to API keys**. The detail page shows the budget, the routing policy, any built-in content filters (email, phone numbers, secrets and so on) and the assigned keys.
+
+When you edit a guardrail you can change its limit, reset interval, flags and policy lists. Enter the lists as comma-separated provider slugs or model ids, the same way the detail page shows them. Assign keys when you create the guardrail, or in the OpenRouter dashboard.
 
 <insert [OpenRouter Create Guardrail form with the allowed providers multi-select open and two API keys ticked under Apply to API keys] here>
 
-**Workspaces** carry their own budgets, one per interval. Edit the **Daily**, **Weekly**, **Monthly** or **Lifetime Budget** field to set it; clear it (or set it to 0) to remove that budget. **BYOK Counts Toward Budgets** travels with the budget update, which is the only place OpenRouter accepts it for a workspace. Deleting the default workspace is refused; OpenRouter requires an explicit confirmation the plugin never sends.
+### Set workspace budgets
 
-**BYOK credentials** are created from a provider picker and the provider's own key, which OpenRouter stores encrypted and never returns: only its masked label is shown. You can toggle fallback to OpenRouter credits, BYOK-only routing and the allowed models later.
+Each workspace has its own budgets, one per interval. Fill in **Daily**, **Weekly**, **Monthly** or **Lifetime Budget** to set one. Clear it (or set it to 0) to remove it. Set **BYOK Counts Toward Budgets** in the same edit. You can't delete the default workspace from here.
 
-## Costs and metrics
+### Add BYOK credentials
 
-Spend comes from `GET /activity`, broken down by day, model and upstream provider, so the cost page attributes spend to the provider that actually served the request.
+Pick a provider and paste that provider's key. OpenRouter stores it encrypted and never shows it again, so you only see its masked label. You can later turn fallback to OpenRouter credits and BYOK-only routing on or off, and change the allowed models.
 
-Models, API keys and workspaces each get a **Metrics** tab, read from OpenRouter's Analytics API (`POST /analytics/query`, the same data as the Activity dashboard) and filtered to that model, key or workspace:
+## See costs and usage
+
+Spend is broken down by day, model and the provider that actually served the request.
+
+Models, API keys and workspaces each have a **Metrics** tab, with the same data as OpenRouter's Activity dashboard:
 
 - requests, spend and BYOK spend
 - prompt, completion and reasoning tokens
 - prompt cache hit rate
 - provider time to first token at p50 and p90, and throughput (completion tokens per second) at p50
 
-Buckets are per minute for ranges up to six hours, hourly up to a week, and daily beyond that. OpenRouter only computes the latency and throughput percentiles for ranges up to 31 days, so wider ranges chart the usage series alone. A model is matched on both its catalogue id and its canonical slug, because analytics records requests under the dated permaslug. If the Analytics API refuses the key, a model's tab falls back to the daily spend, requests and tokens from `GET /activity`.
+Buckets are per minute for ranges up to six hours, hourly up to a week, and daily beyond that. OpenRouter only gives latency and throughput for ranges up to 31 days, so wider ranges show usage only. If OpenRouter's analytics refuse your key, a model's tab shows daily spend, requests and tokens instead.
 
 <insert [OpenRouter API key Metrics tab showing requests, spend and time to first token over the last 30 days] here>
 
-Remaining account credit is read from `GET /credits` and shown on API key cards.
+Your remaining credit shows on API key cards.
 
 ## Tips & limits
 
-- **`/activity` only covers the last 30 completed UTC days.** There is no deeper history to backfill, so the cost chart starts 30 days ago and no earlier.
-- **Pagination is `offset` + `limit`, not a cursor.** The model list is fetched 1,000 at a time — OpenRouter's maximum.
-- **`GET /models` defaults to text-only.** Image, speech, transcription and embedding models only appear when you ask for every modality, which the plugin does. Dedicated audio models report `speech` and `transcription` as their output modality, not `audio` — `audio` is reserved for omni chat models.
-- **Prices arrive as decimal strings in USD per token.** The app normalizes everything to dollars per million tokens so models are comparable without mental arithmetic.
+- **Cost history covers the last 30 completed UTC days only.** OpenRouter has nothing older, so the cost chart starts 30 days back.
+- **Prices are shown in dollars per million tokens** so you can compare models directly.
 - **Uploads are capped at 25 MB.**
-- **The plaintext of a new API key is shown once.** `POST /keys` is the only response that ever contains it; OpenRouter cannot return it again.
-- **Mid-stream errors are not HTTP errors.** Once a streamed response emits its first token the `200` is already committed, so a failure arrives as an SSE event with `finish_reason: "error"` rather than a status code. Nothing in this plugin streams, but it is worth knowing if you are debugging your own OpenRouter integration alongside it.
+- **A new API key is shown once.** OpenRouter can't show it again.
+- **Mid-stream errors aren't HTTP errors.** If you're debugging your own OpenRouter integration: once a streamed response sends its first token, a failure arrives as an event with `finish_reason: "error"`, not as a status code.

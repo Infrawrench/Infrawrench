@@ -6,10 +6,10 @@ sidebar_order: 15
 
 ## What you can manage
 
-- Run commands via the [KV console](../features/kv-console.md).
+- Run commands in the [KV console](../features/kv-console.md).
 - Browse keys by prefix.
 
-## Credentials
+## Connect an instance
 
 Paste a Redis URL:
 
@@ -22,14 +22,14 @@ Or reference an output from a managed Redis resource (DigitalOcean, ElastiCache,
 
 ![Redis Add-account form with URL field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/redis/add-account.png)
 
-## Notable flows
+## Things you can do
 
-- **KV console** for arbitrary commands.
+- **KV console** for any command.
 - **SSH tunnel** for private instances.
-- **Metrics**: the Metrics tab charts one INFO reading per sample (ops/sec, connected and blocked clients, used memory, evictions, expirations, hit ratio, keys, and average command latency since restart). The chart fills in as Infrawrench samples the instance.
-- **Redis Cloud** databases open this plugin as their Redis tab, so the [Redis Cloud](./redis-cloud.md) plugin needs no connection string.
+- **Metrics**: the Metrics tab charts ops/sec, connected and blocked clients, used memory, evictions, expirations, hit ratio, keys, and average command latency since restart. The chart fills in as Infrawrench samples the instance.
+- **Redis Cloud** databases open this plugin as their Redis tab, so the [Redis Cloud](./redis-cloud.md) plugin doesn't need a connection string.
 
 ## Tips & limits
 
-- `rediss://` enables TLS. Use it for any cloud-managed Redis.
-- Streaming commands (`MONITOR`, `SUBSCRIBE`) hold the connection; stop them explicitly.
+- `rediss://` turns on TLS. Use it for any cloud-managed Redis.
+- Streaming commands (`MONITOR`, `SUBSCRIBE`) hold the connection open until you stop them.
