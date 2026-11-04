@@ -1,6 +1,6 @@
 ---
 title: Environment diff
-description: Compare two accounts of the same provider side by side: resource types in one and not the other, differences in counts, and the settings where matching resources disagree.
+description: "Compare two accounts of the same provider side by side: resource types in one and not the other, differences in counts, and the settings where matching resources disagree."
 sidebar_order: 12
 ---
 
