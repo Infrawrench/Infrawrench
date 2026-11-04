@@ -4,7 +4,7 @@ description: Manage CockroachDB Cloud clusters, databases, SQL users, IP allowli
 sidebar_order: 50
 ---
 
-Connect a CockroachDB Cloud organization to manage its clusters on every plan (Basic, Standard and Advanced) and to collect what it bills.
+Connect a CockroachDB Cloud organization to manage its clusters on every plan (Basic, Standard and Advanced) and see what it bills you.
 
 ## What you can manage
 
@@ -21,41 +21,48 @@ Connect a CockroachDB Cloud organization to manage its clusters on every plan (B
 
 <insert [CockroachDB Cloud cluster detail page showing plan, regions, the Nodes table and the Access, Backups and Operations tabs] here>
 
-## Credentials
+## Connect your organization
 
-Use a **service account API key**. In CockroachDB Cloud, open **Organization → Access Management → Service Accounts**, create a service account and give it the roles you need:
+Use a **service account API key**.
 
-- `CLUSTER_ADMIN` (or `CLUSTER_OPERATOR_WRITER`) at the organization scope to manage clusters, databases, SQL users, allowlists, backups and exports,
-- `BILLING_VIEWER` for cost data,
-- `ORG_ADMIN` to manage service accounts and API keys.
+1. In CockroachDB Cloud, open **Organization > Access Management > Service Accounts** and create a service account.
+2. Give it the roles you need:
+   - `CLUSTER_ADMIN` (or `CLUSTER_OPERATOR_WRITER`) at the organization scope to manage clusters, databases, SQL users, allowlists, backups and exports
+   - `BILLING_VIEWER` for cost data
+   - `ORG_ADMIN` to manage service accounts and API keys
+3. Create an API key for the account and copy its secret (it starts with `CCDB1_`).
 
-Then create an API key for the account and copy its secret (it starts with `CCDB1_`). The permission checklist shown when you add the account tests each capability.
+When you add the account, the permission checklist tests each capability.
 
 <insert [CockroachDB Cloud Add-account form with the API Key field filled in and the permission checklist below it] here>
 
-## SQL users and connections
+## Connect to a database as a SQL user
 
-CockroachDB Cloud never returns a SQL user's password. Users created from Infrawrench have their password stored encrypted, so their connection string resolves straight away; for an existing user, use **Set password** on the SQL tab or edit the user's password once. Advanced-cluster connection strings are adjusted to `sslmode=require`, because the Cloud API's version points at a certificate file on your own machine.
+CockroachDB Cloud never returns a SQL user's password. If you create the user from Infrawrench, its password is stored encrypted and the connection string works straight away. For an existing user, use **Set password** on the SQL tab, or edit the user's password once.
+
+Connection strings for Advanced clusters use `sslmode=require`, so you don't need a local certificate file.
 
 ## Costs
 
-Invoices are collected monthly, dated to the start of each billing period, with one row per cluster and line item (compute, storage, request units, data transfer…) carrying the quantity and unit. Credits and other adjustments appear as credit rows. The current month's draft invoice is refreshed as it changes. Amounts billed in CockroachDB Cloud credits rather than US dollars are not included, because the API does not state their value in money; the organization page shows the credit balance from the latest invoice.
+Invoices are collected monthly and dated to the start of each billing period. You get one row per cluster and line item (compute, storage, request units, data transfer…) with its quantity and unit. Credits and other adjustments show as credit rows. The current month's draft invoice updates as it changes.
+
+Amounts billed in CockroachDB Cloud credits rather than US dollars aren't included, because the API doesn't give their value in money. The organization page shows your credit balance from the latest invoice.
 
 ## Metrics and logs
 
-The Cloud API has no metrics or log query endpoints: it exports them. Set up a metric export (Datadog, CloudWatch or a Prometheus endpoint) or a log export from the cluster's Operations tab, and view them in that tool.
+CockroachDB Cloud exports metrics and logs rather than letting you query them. Set up a metric export (Datadog, CloudWatch or a Prometheus endpoint) or a log export from the cluster's Operations tab, and view them in that tool.
 
 ## Status
 
-Incidents from `status.cockroachlabs.cloud` are linked to your clusters by product (Basic/Standard, Advanced). The status page groups regions as US-1, EU-2 and so on, which do not name cloud regions, so incidents cannot be narrowed to a single cluster region.
+Incidents from `status.cockroachlabs.cloud` are linked to your clusters by product (Basic/Standard, Advanced). The status page groups regions as US-1, EU-2 and so on, which don't name cloud regions, so incidents can't be narrowed to a single cluster region.
 
 ## Terraform
 
 Clusters, databases, SQL users (with a write-only password variable), allowlist entries, folders and service accounts export to the official `cockroachdb/cockroach` provider with import ids.
 
-## Limits and quirks
+## Limits
 
-- Backup retention can be set once; later changes need a support ticket.
+- You can set backup retention once. Later changes need a support ticket.
 - Maintenance windows, blackout windows and CMEK apply to Advanced clusters only.
 - Advanced storage can grow but not shrink.
 - The API allows 10 requests a second per user.

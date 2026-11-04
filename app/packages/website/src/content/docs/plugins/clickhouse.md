@@ -4,62 +4,64 @@ description: Manage ClickHouse Cloud services, ClickPipes, backups, Managed Post
 sidebar_order: 19
 ---
 
+Connect ClickHouse Cloud to manage services, pipes and backups, and run SQL against any ClickHouse endpoint, Cloud or self-hosted.
+
 ## What you can manage
 
-- **Services**: create with a provider-filtered region picker and release channel, start / stop, and edit name, release channel, IP access list, autoscaling mode, replica count or replica band, memory per replica, and idle scaling
+- **Services**: create with a region picker filtered by provider and a release channel, start and stop, and edit name, release channel, IP access list, autoscaling mode, replica count or replica band, memory per replica, and idle scaling
 - **Backups** of each service (status, type, size, duration), counted as protection for the service on the backup coverage view
-- **ClickPipes**: list every pipe per service with its source kind and destination, start / stop, resync (database CDC pipes), rename, scale replicas or concurrency, and delete
-- **Managed Postgres** (beta in the Cloud API): create with provider, region, Postgres version, instance size and high-availability pickers; edit name, size and HA; restart; delete; time-series metrics
-- **API keys**: rename, enable / disable, delete, with roles, last use and expiry (keys show on the expiry radar and the access review)
+- **ClickPipes**: every pipe per service with its source kind and destination. Start and stop, resync (database CDC pipes), rename, scale replicas or concurrency, and delete
+- **Managed Postgres** (beta in the Cloud API): create with provider, region, Postgres version, instance size and high-availability pickers. Edit name, size and HA, restart, delete, and see time-series metrics
+- **API keys**: rename, enable and disable, delete, with roles, last use and expiry (keys show on the expiry radar and the access review)
 - **Members**: list with their roles, remove from the organization
-- HTTP interface SQL editor against any ClickHouse endpoint
+- A SQL editor for any ClickHouse HTTP endpoint
 
-## Credentials
+## Connect your account
 
-ClickHouse accounts hold two complementary credential sets in a single record — the Cloud API for service management plus a direct connection for SQL queries:
+A ClickHouse account has two sets of credentials: the Cloud API for managing services, and an optional direct connection for SQL.
 
-**Cloud API** (for create / start / stop on ClickHouse Cloud)
+**Cloud API** (to create, start and stop services on ClickHouse Cloud)
 
-- **Cloud API Key ID** and **Cloud API Key Secret** — generate at ClickHouse Cloud → API Keys.
-- **Organization ID** — your ClickHouse Cloud organization.
+- **Cloud API Key ID** and **Cloud API Key Secret**: generate them at ClickHouse Cloud > API Keys.
+- **Organization ID**: your ClickHouse Cloud organization.
 
-**SQL connection** (optional — for the SQL editor, works against Cloud or self-hosted)
+**SQL connection** (optional, for the SQL editor, works against Cloud or self-hosted)
 
-- **Service Hostname (for SQL)** — the HTTPS host of the ClickHouse service. Leave blank to skip SQL and use the account for service management only.
+- **Service Hostname (for SQL)**: the HTTPS host of the ClickHouse service. Leave it blank to skip SQL and use the account for service management only.
 - **SQL Username** and **SQL Password**.
 
 ![ClickHouse Add-account form showing the Cloud API and SQL connection field groups](https://agent-assets.infrawrench.com/docs-screenshots/plugins/clickhouse/add-account.png)
 
-## Notable flows
+### API key permissions
 
-- **SQL editor** — streaming results for large queries.
-- **Service creation** on ClickHouse Cloud with provider / region / replica options. The region list matches the regions the Cloud API accepts and narrows to the provider you pick.
-- **Service settings**: the Edit button sends name, release channel and IP access list changes to the service, and scaling changes to the replica scaling endpoint. Vertical autoscaling uses a fixed replica count; horizontal autoscaling uses the min / max replica band. Edit the IP access list as a comma-separated list; Infrawrench works out what to add and remove. A service whose list contains `0.0.0.0/0` is flagged on the security posture view.
-- **Backup schedule and upgrade window**: open a service to see its backup schedule, retention and maintenance window. The **Backup schedule** and **Upgrade window** buttons change them (custom backup schedules and upgrade windows depend on your ClickHouse Cloud plan); **Clear upgrade window** hands scheduling back to ClickHouse.
-- **Metrics**: the service Metrics tab reads the Cloud Prometheus endpoint (running queries, connections, memory, MergeTree size / rows / parts, replica delay, and cumulative query / insert counters). The endpoint reports current values only, so the chart fills in as Infrawrench samples it. Managed Postgres metrics come from its own time-series endpoint and cover the selected range.
-- **ClickPipes metrics**: a ClickPipe's Metrics tab picks its own `ClickPipes_*` counters out of the parent service's Prometheus scrape: fetched and sent events, fetched and sent bytes (raw and compressed), and errors. These are lifetime counters, so the slope of the line is the throughput.
-- **Logs**: a service's Logs tab lists its entries from the organization activity log over the last 30 days (starts, stops, idling and waking, scaling and setting changes, backups, upgrades), each with who did it and from where. A Managed Postgres service's Logs tab shows the Postgres server log for the last 24 hours, with a dropdown to narrow it to `ERROR`, `WARNING` or `FATAL` entries.
-- **Managed Postgres connection details**: ClickHouse Cloud returns the superuser password and connection string only when a service is created, so Infrawrench keeps them as the **Connection String** output for services created here. For other services, reset the password in the ClickHouse console.
-- **ClickPipes and API keys are created in the ClickHouse console**: a pipe needs source credentials and a column mapping, and a new key's secret is only shown once. Everything after creation can be done here.
-- **Secret export** is not yet supported for ClickHouse — pull connection strings manually.
+A Developer key is enough to list services and see costs. Editing services, managing ClickPipes, backup schedules and upgrade windows, Managed Postgres, API keys and members needs an Admin key (or a custom role with those permissions).
+
+## Common tasks
+
+- **Run SQL**: results stream in, so large queries start showing rows quickly.
+- **Create a service** on ClickHouse Cloud with provider, region and replica options. The region list narrows to the provider you pick.
+- **Change service settings** with **Edit**. Vertical autoscaling uses a fixed replica count. Horizontal autoscaling uses a min and max replica band. Enter the IP access list as a comma-separated list. A service whose list contains `0.0.0.0/0` is flagged on the security posture view.
+- **Set the backup schedule and upgrade window**: open a service to see its backup schedule, retention and maintenance window. Use **Backup schedule** and **Upgrade window** to change them (custom backup schedules and upgrade windows depend on your ClickHouse Cloud plan). **Clear upgrade window** hands scheduling back to ClickHouse.
+- **Metrics**: the service Metrics tab shows running queries, connections, memory, MergeTree size, rows and parts, replica delay, and cumulative query and insert counters. These are current values, so the chart fills in over time. Managed Postgres metrics cover the selected range.
+- **ClickPipes metrics**: a ClickPipe's Metrics tab shows fetched and sent events, fetched and sent bytes (raw and compressed), and errors. These are lifetime counters, so the slope of the line is the throughput.
+- **Logs**: a service's Logs tab lists its activity over the last 30 days (starts, stops, idling and waking, scaling and setting changes, backups, upgrades), each with who did it and from where. A Managed Postgres service's Logs tab shows the Postgres server log for the last 24 hours, with a dropdown to narrow it to `ERROR`, `WARNING` or `FATAL` entries.
+- **Managed Postgres connection details**: ClickHouse Cloud only returns the superuser password and connection string when a service is created. For services you create here, they are saved as the **Connection String** output. For other services, reset the password in the ClickHouse console.
+- **Create ClickPipes and API keys in the ClickHouse console.** A pipe needs source credentials and a column mapping, and a new key's secret is only shown once. You can do everything after creation here.
+- **Secret export** isn't supported for ClickHouse yet. Copy connection strings by hand.
 
 ## Tips & limits
 
-- Very large result sets stream into the grid; expect high memory use on the client for 10M+ row selects. Use `LIMIT` or export.
-- Cloud services scale to zero; a first query after idle can take 10–20 seconds to wake.
+- Very large result sets stream into the grid, and 10M+ row selects use a lot of memory on your machine. Use `LIMIT` or export.
+- Cloud services scale to zero. The first query after idle can take 10 to 20 seconds while the service wakes.
 
 ## Cost graphs
 
-ClickHouse Cloud organizations feed [cost graphs & budgets](../features/cloud-costs.md) via the organization `usageCost` API — daily costs per service with compute / storage / backup / data-transfer / ClickPipes breakdowns.
+ClickHouse Cloud organizations show up in [cost graphs & budgets](../features/cloud-costs.md) with daily costs per service, broken down into compute, storage, backup, data transfer and ClickPipes.
 
-- A read-only (Developer role) Cloud API key is sufficient.
-- Amounts are ClickHouse Credits at the 1 CHC = $1 **list price** — negotiated committed-spend discounts are not reflected.
+- A read-only (Developer role) Cloud API key is enough.
+- Amounts are ClickHouse Credits at the 1 CHC = $1 **list price**. Negotiated committed-spend discounts aren't included.
 
 ## Credits and quotas
 
-- **Credits**: active prepaid and trial credit balances feed the credit runway view, with the amount granted and the expiry date of each balance. Reading them needs billing view access on the API key.
-- **Quotas**: organization quotas that report usage (services, Managed Postgres services, API keys) feed the quota view. ClickHouse Cloud publishes only a handful of quotas, so the list is partial by design.
-
-## API key permissions
-
-Listing services and costs works with a Developer key. Editing services, managing ClickPipes, backup schedules and upgrade windows, Managed Postgres, API keys and members needs an Admin key (or a custom role with those permissions).
+- **Credits**: active prepaid and trial credit balances appear in the credit runway view, with the amount granted and the expiry date of each balance. This needs billing view access on the API key.
+- **Quotas**: organization quotas that report usage (services, Managed Postgres services, API keys) appear in the quota view. ClickHouse Cloud only publishes a few quotas, so the list is partial.
