@@ -8,7 +8,7 @@
  */
 
 export const AUTHOR = {
-  name: "Infrawrench LLC",
+  name: "Infrawrench Services, Inc.",
   email: "astrid@infrawrench.com",
   url: "https://infrawrench.com",
 } as const;
@@ -34,7 +34,7 @@ export const LICENSE = "MIT";
 /** First year of publication, held fixed so generation stays reproducible. */
 export const COPYRIGHT_YEAR = 2026;
 
-export const COPYRIGHT_HOLDER = "Infrawrench LLC";
+export const COPYRIGHT_HOLDER = "Infrawrench Services, Inc.";
 
 export const COPYRIGHT_NOTICE = `Copyright (c) ${COPYRIGHT_YEAR} ${COPYRIGHT_HOLDER}`;
 

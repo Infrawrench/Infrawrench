@@ -280,7 +280,7 @@ describe("typescript target", () => {
         version: "1.2.3",
         // Deliberately permissive, unlike the BUSL-1.1 repository it comes from.
         license: "MIT",
-        author: { name: "Infrawrench LLC", email: "astrid@infrawrench.com" },
+        author: { name: "Infrawrench Services, Inc.", email: "astrid@infrawrench.com" },
         contributors: [{ name: "Astrid Gealer", email: "astrid@infrawrench.com" }],
         repository: { type: "git", url: "git+https://github.com/Infrawrench/Infrawrench.git" },
       });
@@ -294,11 +294,11 @@ describe("typescript target", () => {
       expect(manifest.files).toContain("LICENSE");
       const license = await readFile(join(outDir, "LICENSE"), "utf8");
       expect(license).toContain("MIT License");
-      expect(license).toContain("Copyright (c) 2026 Infrawrench LLC");
+      expect(license).toContain("Copyright (c) 2026 Infrawrench Services, Inc.");
       expect(license).toContain("WITHOUT WARRANTY OF ANY KIND");
       // …and a `/*!` banner keeps the notice alive through minification.
       expect(runtime.startsWith("/*!")).toBe(true);
-      expect(runtime).toContain("MIT | Copyright (c) 2026 Infrawrench LLC");
+      expect(runtime).toContain("MIT | Copyright (c) 2026 Infrawrench Services, Inc.");
     } finally {
       await rm(outDir, { recursive: true, force: true });
     }
@@ -337,7 +337,7 @@ describe.each(SDK_TARGETS.map((target) => [target.id, target] as const))(
         // MIT is only a claim until the text travels with the package.
         const license = await readFile(join(outDir, "LICENSE"), "utf8");
         expect(license).toContain("MIT License");
-        expect(license).toContain("Copyright (c) 2026 Infrawrench LLC");
+        expect(license).toContain("Copyright (c) 2026 Infrawrench Services, Inc.");
 
         // The client class name is the one product-level promise shared by all
         // nine SDKs, and `admin.secrets` is the internal operation miniSpec
