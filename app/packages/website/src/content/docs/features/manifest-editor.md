@@ -4,32 +4,33 @@ description: Edit raw provider manifests (Kubernetes, Cloudflare) in a Monaco ed
 sidebar_order: 8
 ---
 
-For resources where the provider’s canonical shape is a document (Kubernetes manifests, Cloudflare zone/worker settings), infrawrench exposes the full document in a Monaco editor on the resource detail page.
+Some resources are best edited as a document: Kubernetes manifests, Cloudflare zone and worker settings. For those, the resource detail page gives you the full document in a Monaco editor so you can change it and apply it in place.
 
 ![Manifest editor showing a Kubernetes Deployment YAML with the Apply button](https://agent-assets.infrawrench.com/docs-screenshots/features/manifest-editor/k8s-deployment-yaml.png)
 
-## Where you get it
+## Where you can use it
 
-- **Kubernetes** — every resource type (Pod, Deployment, StatefulSet, Service, Ingress, ConfigMap, Secret, DaemonSet, Job, CronJob, Namespace, and more) has an editable manifest.
-- **Cloudflare** — zone settings and worker scripts.
-- **AWS / Azure** — read-only manifest view for other resource types. Use it to inspect, not to edit.
+- **Kubernetes:** every resource type (Pod, Deployment, StatefulSet, Service, Ingress, ConfigMap, Secret, DaemonSet, Job, CronJob, Namespace and more) has an editable manifest.
+- **Cloudflare:** zone settings and worker scripts.
+- **AWS and Azure:** a read-only manifest view for other resource types. Use it to inspect, not to edit.
 
-S3-compatible buckets (AWS S3, DigitalOcean Spaces, Scaleway Object Storage) have a dedicated **Bucket Policy** tab instead of a generic manifest editor — see [Bucket policy editor](./bucket-policy-editor.md).
+S3-compatible buckets (AWS S3, DigitalOcean Spaces, Scaleway Object Storage) have their own **Bucket Policy** tab instead. See [Bucket policy editor](./bucket-policy-editor.md).
 
-## Editor features
+## Edit a manifest
 
-- Syntax highlighting for JSON and YAML, word wrap, bracket-pair colouring.
-- Undo / redo, find / replace — it is Monaco, so the usual editor bindings work.
-- **Apply ⌘S** is the primary button, and it stays disabled until the buffer differs from what was loaded. While you have unsaved work the toolbar says **Unsaved changes**; after a successful apply it says **Applied** for a few seconds.
-- **Reload** re-fetches the live document, discarding your edits.
+1. Open the resource and go to its manifest.
+2. Make your changes. You get JSON and YAML highlighting, word wrap, bracket-pair colouring, undo and redo, and find and replace. The usual Monaco shortcuts work.
+3. Press **Apply ⌘S**. The button stays disabled until you've changed something. While you have unsaved work the toolbar says **Unsaved changes**, and after a successful apply it shows **Applied** for a few seconds.
 
-## Apply semantics
+To throw away your edits and load the live document again, click **Reload**.
 
-- **Kubernetes** — the manifest is applied via the API server. Conflicts surface as an error; resolve them with **Reload**.
-- **Cloudflare** — settings are pushed field-by-field. Partial failures are reported per field.
-- **Read-only providers** — the toolbar shows a **Read-only** chip and no Apply button; clone the manifest into your IaC tool instead.
+## What happens when you apply
+
+- **Kubernetes:** the manifest is applied to the cluster. If there's a conflict you'll see an error. Click **Reload** to pick up the latest version and try again.
+- **Cloudflare:** settings are saved one field at a time, and any field that fails is reported on its own.
+- **Read-only providers:** you'll see a **Read-only** chip and no Apply button. Copy the manifest into your IaC tool instead.
 
 ## Tips
 
-- Paste real YAML / JSON — infrawrench does not accept half-formed documents.
-- Use this for quick patches; for anything you want versioned, do it in git and let your CI apply it.
+- Paste complete, valid YAML or JSON. Half-formed documents are rejected.
+- Use the editor for quick patches. For anything you want versioned, change it in git and let your CI apply it.

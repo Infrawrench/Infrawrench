@@ -1,92 +1,55 @@
 ---
 title: Metric alerts
-description: Threshold rules over collected metrics — "CPU above 90% for 15 minutes" — that select resources by query and page you through push, Slack, and Microsoft Teams, with recovery notifications when the condition clears.
+description: Set threshold rules on collected metrics, like "CPU above 90% for 15 minutes", that cover resources by query and alert you through push, Slack and Microsoft Teams, with a notice when the condition clears.
 ---
 
-Infrawrench collects metrics for your resources and charts them on dashboards and detail
-views. Metric alerts turn those same metrics into pages: a rule like **"CPU % > 90 for 15
-minutes"** watches every resource it covers and — if you have notifications configured —
-fires as a push notification, a Slack message, or a Teams card the moment the condition has
-held for the whole window. When the metric drops back under the threshold, every firing you
-were notified about is followed by a matching **resolved** notification, so an alert channel
-tells you both halves of the story. (Firings suppressed by the rule's cooldown recover just
-as quietly as they fired — see below.)
+Metric alerts turn the metrics on your dashboards into notifications. Write a rule like **"CPU % > 90 for 15 minutes"** and it watches every resource it covers. Once the condition has held for the whole window, you get a push notification, a Slack message or a Teams card (whichever you've set up). When the metric drops back, every alert you were told about is followed by a **resolved** notification, so your alert channel shows both halves of the story. (Alerts held back by the rule's cooldown also recover quietly. See below.)
 
 <insert [The Metric alerts page showing a list of rules: one firing (warning triangle, "firing on 2 resources"), one healthy, one disabled, above the Recent firings table] here>
 
-Find it under **Alerts** in the sidebar, next to Costs, on both the web app and the desktop
-app. The `infrawrench` [CLI](./cli.md) lists the same rules and their firing history with
-`infrawrench alerts` and `infrawrench alerts events`.
+Find it under **Alerts** in the sidebar, next to Costs, in the web and desktop apps. The `infrawrench` [CLI](./cli.md) shows the same rules and their history with `infrawrench alerts` and `infrawrench alerts events`.
 
-## Rules select resources by query, not by id
+## Choose which resources a rule covers
 
-A rule never lists resource ids. Its scope is a query — any combination of:
+A rule doesn't list resources one by one. Instead you describe them with any combination of:
 
-- a **provider** (e.g. AWS, Hetzner, DigitalOcean),
-- a **resource type** within that provider (e.g. EC2 instance),
-- a **tag** (a key, optionally pinned to one value — e.g. `env=prod`).
+- a **provider** (for example AWS, Hetzner, DigitalOcean),
+- a **resource type** within that provider (for example EC2 instance),
+- a **tag** (a key, optionally with one value, for example `env=prod`).
 
-Every evaluation pass re-runs that query against your live inventory. A VM created tomorrow
-with the `env=prod` tag is covered by tonight's rule with no edit; a resource that is deleted
-or re-tagged out of scope stops being watched, and any open alert on it resolves. Tag keys
-match case-insensitively (providers disagree about casing), values exactly. An empty selector
-covers every resource in the organization.
+Coverage stays current. A VM created tomorrow with the `env=prod` tag is covered by tonight's rule without any edit. A resource that's deleted or re-tagged out of scope stops being watched, and any open alert on it resolves. Tag keys match regardless of case. Values must match exactly. Leave everything empty to cover every resource in the organization.
 
-Directly under those four controls — and above the Metric picker — the editor shows a live
-preview: "Matches 6 resources right now", with the first few named. It updates as you narrow
-the selector, so you see the blast radius before saving rather than after.
+Below those controls, the editor shows a live preview, such as "Matches 6 resources right now", with the first few named. It updates as you narrow things down, so you can see what you'll be alerting on before you save.
 
-## Picking a metric
+## Pick a metric
 
-The metric picker is fed from the series your resources actually reported over the last seven
-days, narrowed to the provider and type you selected — you pick "CPU %" or "Memory used"
-from a list (with its unit and how many resources report it), never type an internal metric
-name. If the list is empty, resources of that shape have not reported metrics yet.
+The metric list shows what your resources actually reported in the last seven days, filtered to the provider and type you chose. You pick "CPU %" or "Memory used" from the list, with its unit and how many resources report it. If the list is empty, resources like that haven't reported metrics yet.
 
 ![The rule editor modal with a provider and resource type selected, the "Matches 6 resources right now" preview closing the Resources block, and the Metric picker below it open showing series labels with units and resource counts](https://agent-assets.infrawrench.com/docs-screenshots/features/metric-alerts/rule-editor-metric-picker.png)
 
-## How evaluation works
+## When a rule fires
 
-- Rules are evaluated by the cloud poller roughly **once a minute** per enabled rule.
-- Each pass reads the trailing window (`for` minutes) of **per-minute averages** for the
-  rule's metric on every selected resource.
-- A rule fires on a resource only when **every sample in the window breaches the threshold**,
-  with enough samples spread across the window to make that claim — a single noisy reading, or
-  two minutes of data in a fifteen-minute window, does not open an alert.
-- One firing is one incident: while an alert is open for a (rule, resource) pair, further
-  breaching passes do not re-notify. The incident stays open until a pass observes the
-  condition clear (or the metric stops being reported entirely), which sends the resolved
-  notification.
-- The rule's **cooldown** bounds flapping: after a notified firing, new firings for the same
-  resource within the cooldown are recorded in the history but not delivered — and since they
-  were never announced, their recoveries are not delivered either.
+- Each enabled rule is checked about **once a minute**, using **per-minute averages** over the rule's window.
+- A rule fires on a resource only when **every reading in the window breaches the threshold**, and there are enough readings across the window to be sure. One noisy reading, or two minutes of data in a fifteen-minute window, won't trigger an alert.
+- You're notified once per alert. While an alert is open for a resource, you won't get repeat notifications. It stays open until the condition clears (or the metric stops reporting), and then you get the resolved notification.
+- The **cooldown** stops flapping. After you've been notified, new alerts for the same resource within the cooldown are recorded in the history but not sent, and neither are their recoveries.
 
-The window is between 5 minutes and 24 hours; the default is 15 minutes with a one-hour
-cooldown. All four comparators are available (`>`, `>=`, `<`, `<=`), so "healthy replicas
-below 2 for 10 minutes" is as expressible as "CPU above 90%".
+The window can be from 5 minutes to 24 hours. The default is 15 minutes, with a one-hour cooldown. You can use `>`, `>=`, `<` or `<=`, so "healthy replicas below 2 for 10 minutes" works as well as "CPU above 90%".
 
 ## Where alerts go
 
-Metric alerts are a standard alert trigger, delivered through the channels you have already
-configured — see [Slack alerts](./slack-alerts.md), [Teams alerts](./teams-alerts.md), and
-[mobile push](./mobile-push-notifications.md). Each Slack channel, Teams webhook, and mobile
-user opts in or out of the **Metric alerts** trigger independently, in the same place as the
-budget, anomaly, and drift toggles. New channels take metric alerts by default.
+Metric alerts use the channels you've already set up: [Slack alerts](./slack-alerts.md), [Teams alerts](./teams-alerts.md) and [mobile push](./mobile-push-notifications.md). Each Slack channel, Teams webhook and mobile user can turn the **Metric alerts** trigger on or off, in the same place as the budget, anomaly and drift toggles. New channels get metric alerts by default.
 
-Tapping a metric alert push notification on mobile opens the
-[moment view](./moment.md) around the firing, so you can see what else happened at the same
-time.
+Tap a metric alert push on mobile to open the [moment view](./moment.md) around the alert, so you can see what else happened at the same time.
 
 ## Permissions
 
-Viewing rules and firings needs the `metric-alerts:read` permission (members have it by
-default); creating, editing, enabling/disabling, and deleting rules needs
-`metric-alerts:write` (admins and owners). Both are available to
-[custom roles](../team-and-billing/roles-and-permissions.md) and
-[API key](../team-and-billing/api-keys.md)
-scopes.
+- Viewing rules and alerts needs `metric-alerts:read` (members have it by default).
+- Creating, editing, enabling, disabling and deleting rules needs `metric-alerts:write` (admins and owners).
 
-## From the CLI and the API
+Both work with [custom roles](../team-and-billing/roles-and-permissions.md) and [API key](../team-and-billing/api-keys.md) scopes.
+
+## Use the CLI and API
 
 ```
 $ infrawrench alerts
@@ -100,6 +63,4 @@ prod-org · 3 rules · 1 firing
 $ infrawrench alerts events --limit 20
 ```
 
-Both subcommands take `--json` for scripting. The HTTP API exposes the same surface under
-`/api/org/{orgId}/metric-alerts` — see the [OpenAPI reference](../team-and-billing/openapi.md)
-(`Metric alerts` tag) and the generated SDKs.
+Both commands take `--json` for scripts. The HTTP API offers the same under `/api/org/{orgId}/metric-alerts`. See the [OpenAPI reference](../team-and-billing/openapi.md) (`Metric alerts` tag) and the generated SDKs.

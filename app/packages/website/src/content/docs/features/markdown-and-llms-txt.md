@@ -4,9 +4,11 @@ description: Every page on infrawrench.com is available as markdown, for agents 
 sidebar_order: 13
 ---
 
-The website answers in markdown as well as HTML. This is for readers that aren't browsers — AI agents, scripts, terminal tools — and it needs no API key.
+You can read any page on infrawrench.com as markdown instead of HTML. This is handy for AI agents, scripts and terminal tools, and it needs no API key.
 
-## Three ways to get it
+## Get a page as markdown
+
+There are three ways.
 
 **Ask for it.** Send an `Accept` header that prefers markdown:
 
@@ -14,60 +16,62 @@ The website answers in markdown as well as HTML. This is for readers that aren't
 curl -H 'Accept: text/markdown' https://infrawrench.com/
 ```
 
-**Append `.md`.** Every page has a markdown twin at the same path:
+**Add `.md` to the path.** Every page has a markdown version at the same address:
 
 ```bash
 curl https://infrawrench.com/index.md
 curl https://infrawrench.com/docs/features/agent-auth.md
 ```
 
-**Start from the index.** `/llms.txt` lists every markdown URL on the site, grouped by section, with a one-line description each:
+**Start from the index.** `/llms.txt` lists every markdown URL on the site, grouped by section, with a one-line description for each:
 
 ```bash
 curl https://infrawrench.com/llms.txt
 ```
 
-`robots.txt` points at it too, so a crawler that starts where crawlers start will find it.
+`robots.txt` links to it as well, so crawlers can find it.
 
-## What counts as asking for markdown
+## How the Accept header is read
 
-Negotiation covers the home page and every documentation page — both render on demand, so both see your `Accept` header.
+The home page and every documentation page respond to your `Accept` header.
 
-Markdown wins when you weight it above HTML:
+You get markdown when you weight it above HTML:
 
 ```bash
 curl -H 'Accept: text/markdown;q=1.0, text/html;q=0.1' https://infrawrench.com/
 ```
 
-It also wins when you name it first and give no weights at all, which is how most HTTP clients express a preference:
+You also get markdown when you list it first with no weights, which is how most HTTP clients express a preference:
 
 ```bash
 curl -H 'Accept: text/markdown, text/html, */*' https://infrawrench.com/
 ```
 
-`q` decides first; where markdown and HTML carry the same weight, the one named first wins. `text/plain` and `text/x-markdown` both count as markdown.
+Weights (`q`) are checked first. If markdown and HTML have the same weight, whichever you list first wins. `text/plain` and `text/x-markdown` both count as markdown.
 
-A request with no preference gets HTML. That includes `Accept: */*`, which is what most browsers and plain `curl` send — asking for "anything" isn't asking for markdown, and treating it as such would serve plain text to the entire web. Browsers never name markdown at all, so they never negotiate into it.
+If you don't state a preference, you get HTML. That includes `Accept: */*`, which most browsers and plain `curl` send. Browsers never ask for markdown, so they always get HTML.
 
-Every page advertises its markdown twin two ways, for clients that would rather follow a link than set a header — a response header:
+## Find the markdown link from a page
+
+If you'd rather follow a link than set a header, every page points to its markdown version in a response header:
 
 ```
 Link: <https://infrawrench.com/index.md>; rel="alternate"; type="text/markdown"
 ```
 
-and a tag in the HTML head:
+and in the HTML head:
 
 ```html
 <link rel="alternate" type="text/markdown" href="/docs/features/agent-auth.md" />
 ```
 
-The negotiated responses carry `Vary: Accept`, so a shared cache keeps the two representations apart rather than serving whichever it saw first.
+Responses also include `Vary: Accept`, so shared caches keep the markdown and HTML versions separate.
 
 ## If you're an agent
 
-The markdown home page leads with how to register for a trial workspace without a human involved. See [agent authentication](./agent-auth.md) for the full story, or fetch [`app.infrawrench.com/auth.md`](https://app.infrawrench.com/auth.md) for instructions written for you rather than about you.
+The markdown home page starts with how to register for a trial workspace without a human. See [agent authentication](./agent-auth.md) for the details, or fetch [`app.infrawrench.com/auth.md`](https://app.infrawrench.com/auth.md) for instructions written for you.
 
 ## See also
 
-- [Agent authentication](./agent-auth.md) — registering, and the claim ceremony
-- [MCP server](./mcp.md) — the tool-calling endpoint
+- [Agent authentication](./agent-auth.md): registering, and claiming the workspace
+- [MCP server](./mcp.md): the tool-calling endpoint

@@ -1,101 +1,64 @@
 ---
 title: Runbooks
-description: The checklist somebody wrote at 03:00, kept where the steps are actually performed — with a record of who did what, which is the half a postmortem always misses.
+description: Keep your team's checklists where the work happens, run them step by step, and keep a record of who did what.
 sidebar_order: 11
 ---
 
-Every team has procedures that live in three places: a wiki page nobody
-updated, a Slack thread from the last incident, and one engineer's memory.
-**Runbooks** puts them in the tool where the steps are actually performed.
+Most teams keep their procedures in three places: a wiki page nobody updated, a Slack thread from the last incident, and one engineer's memory. **Runbooks** puts them in the tool where you actually do the steps, and records who did each one.
 
 Open it from the sidebar.
 
 <insert [The Runbooks workspace tab on the Runbooks view, showing three runbooks with their step counts and "run N times" lines, one expanded to show its ordered steps] here>
 
-## Writing one
+## Write a runbook
 
-A runbook is a name, a note about when to use it, and an ordered list of steps.
-Each step is one of three kinds:
+A runbook has a name, a note about when to use it, and an ordered list of steps. Each step is one of three kinds:
 
-- **Manual** — something a person does, ticked off when it is done.
-- **Workflow** — a button that starts one of your [workflows](./workflows.md).
-- **Link** — an `https://` URL, for the provider console or the dashboard.
+- **Manual:** something a person does and ticks off when it's done.
+- **Workflow:** a button that starts one of your [workflows](./workflows.md).
+- **Link:** an `https://` URL, for the provider console or a dashboard.
 
-Three kinds and not a scripting language, on purpose. A runbook is written by
-whoever is on call _for_ whoever is on call next, and the moment it needs a
-language it stops being written. Anything genuinely automated belongs in a
-workflow, which already has a sandbox, approvals, secrets and a run history.
+If a step needs real automation, put it in a workflow, which has its own sandbox, approvals, secrets and run history.
 
-Each step also takes a body in Markdown — the detail nobody remembers at 03:00.
+Each step can also have a Markdown body for the details nobody remembers at 03:00.
 
-You can say which **resource types** and which **tag** a runbook is about. That
-is used to answer "which runbook applies here", never to restrict who can open
-it: a runbook nobody can find is the failure this feature exists to fix.
+You can say which **resource types** and which **tag** a runbook is about. This helps people find the right runbook. It never restricts who can open it.
 
-## Running one
+## Run a runbook
 
-Press **Run**. Every step becomes a row you can mark done, skipped or failed,
-with a note — the output, or why you skipped it.
+Press **Run**. Every step becomes a row you can mark done, skipped or failed, with an optional note (the output, or why you skipped it).
 
 <insert [A runbook run in progress, showing the progress bar, the "Next:" line, and per-step Done / Skipped / Failed buttons with a note field] here>
 
-Three things about a run are worth knowing:
+A few things to know:
 
-**A run is a snapshot.** Starting one copies every step's title into the run, so
-if the runbook is rewritten next week, the record still says what you were
-actually asked to do at 03:14.
-
-**Two people can work the same run.** Each tick is a separate write, so
-whoever is doing steps 3 and 4 will not clobber whoever just finished step 2.
-
-**Closing a run does not settle its outstanding steps.** A run completed with
-three steps still pending is a true and useful record — it says the incident
-ended before the checklist did — and quietly marking them done would erase the
-one thing a postmortem wants to know.
-
-A closed run cannot be reopened. Start another one; a second attempt is a
-second run, and that is the honest description of it.
-
-Skipped steps count as settled but not as done, so the progress figure cannot
-be reached by skipping everything.
+- **A run keeps the steps as they were when you started.** If someone rewrites the runbook next week, the record still shows what you were asked to do.
+- **Several people can work the same run.** One person ticking step 2 won't overwrite someone else's step 3.
+- **Closing a run leaves unfinished steps as they are.** A run closed with steps still pending is an accurate record that the incident ended before the checklist did.
+- **A closed run can't be reopened.** Start a new run instead.
+- **Skipped steps count as settled, not done**, so you can't reach full progress by skipping everything.
 
 ## Permissions
 
-**Reading and performing** a runbook needs **Resources: read**. The person who
-can see the infrastructure is the person who will be woken up about it, and a
-checklist nobody on call can open is worse than no checklist.
+- **Reading and running** a runbook, including ticking steps, needs **Resources: read**. Anyone who can see the infrastructure can follow the checklist.
+- **Writing** a runbook needs **Organization settings: write**.
 
-**Writing** one needs **Organization settings: write**. A procedure is an
-org-wide statement about how something is done, and it is read by strangers
-under pressure.
+## Retire a runbook
 
-Ticking a step is not an act of configuration, so it takes the read permission
-too — requiring an admin to tick a box mid-incident is how a team stops using
-the checklist.
+Turn a runbook **off** instead of deleting it. Off hides it from the list of things to run and keeps every past run. Deleting removes that history too.
 
-## Retiring one
+## What a workflow step does
 
-Turn a runbook **off** rather than deleting it. Off hides it from the list of
-things to run and keeps every run performed against it. Deleting takes that
-history with it.
+A workflow step records **which workflow run** the responder started. Starting the workflow itself still goes through the normal workflow permissions, approvals and secrets.
 
-## What a workflow step does — and does not — do
+## Not available yet
 
-A workflow step records **which workflow run** the responder started. It does
-not run the workflow itself; that goes through the normal workflow routes with
-their own permission, approvals and secrets. Anything else would make a runbook
-a second way to execute code behind a weaker gate than the first.
+Runbooks don't appear as a tab on a resource's own page, and there's no step type that runs a command over SSH.
 
-## Not yet
+## Use the API
 
-Runbooks do not appear as a tab on a resource's own page, and there is no
-snippet step that runs a command over SSH. Both are natural next steps; the
-resource-type selector is already stored, so the "which runbooks apply here"
-lookup exists and only wants a surface.
+- `/api/org/{orgId}/runbooks` for the runbooks
+- `/api/org/{orgId}/runbooks/{id}/runs` to start a run
+- `/api/org/{orgId}/runbooks/runs/*` for runs and their steps
 
-## Over the API
-
-`/api/org/{orgId}/runbooks` for the documents,
-`/api/org/{orgId}/runbooks/{id}/runs` to start one, and
-`/api/org/{orgId}/runbooks/runs/*` for the runs and their steps. See the
-[OpenAPI reference](../team-and-billing/openapi.md).
+See the [OpenAPI reference](../team-and-billing/openapi.md).
