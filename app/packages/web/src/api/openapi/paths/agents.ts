@@ -14,6 +14,51 @@ const Surface = z.enum(["terminal", "t3-code", "nibblets"]);
 // default) or Tailscale Serve on the tailnet ("tailscale", which needs an
 // attached Tailscale service account).
 const T3Access = z.enum(["t3-connect", "tailscale"]);
+// T3 Code's managed policy document (upstream ManagedPolicyDocument,
+// docs/user/managed-policy.md), installed at /etc/t3code/policy.json on the
+// organization's T3 Code servers. Strict like T3 Code's own decoder: a key it
+// does not know is a server that refuses to start.
+const T3CodeRuntimeMode = z.enum(["approval-required", "auto-accept-edits", "auto", "full-access"]);
+const T3CodePolicyProviderInstance = strict({
+  locked: z.boolean(),
+  environment: z.array(strict({ name: z.string(), value: z.string() })).optional(),
+  binaryPath: z.string().optional(),
+  launchArgs: z.string().optional(),
+}).openapi("T3CodePolicyProviderInstance");
+const T3CodePolicy = strict({
+  schemaVersion: z.literal(1),
+  organization: z
+    .string()
+    .openapi({ description: 'Shown to users as "Managed by <organization>".' }),
+  supportUrl: z.string().optional(),
+  settings: z
+    .record(strict({ value: z.unknown(), locked: z.boolean() }))
+    .optional()
+    .openapi({
+      description:
+        "Keyed by the setting's dot path in T3 Code's settings.json. `locked: false` sets a default users can change; `locked: true` pins it.",
+    }),
+  limits: strict({
+    maxRuntimeMode: T3CodeRuntimeMode.optional(),
+    clients: z
+      .array(z.enum(["desktop", "local-browser", "remote"]))
+      .optional()
+      .openapi({ description: "Must include `remote`: agent VMs are only reachable remotely." }),
+    connect: z.boolean().optional(),
+    webhookTasks: z.boolean().optional(),
+    telemetry: z.boolean().optional(),
+    browserCookieImport: z.boolean().optional(),
+    providers: strict({
+      allowedDrivers: z.array(z.string()).optional(),
+      instances: z.record(T3CodePolicyProviderInstance).optional(),
+    }).optional(),
+    updates: strict({
+      mode: z.enum(["auto", "off"]),
+      feedUrl: z.string().optional(),
+      allowNightly: z.boolean().optional(),
+    }).optional(),
+  }).optional(),
+}).openapi("T3CodePolicy");
 const ServiceAccountIds = z
   .array(z.string())
   .describe(
@@ -51,7 +96,44 @@ const AgentSettings = strict({
   fields: z.record(z.string()),
   serviceAccountIds: ServiceAccountIds.optional(),
   t3Access: T3Access.optional(),
+  t3Policy: T3CodePolicy.nullable()
+    .optional()
+    .openapi({
+      description:
+        "The organization's T3 Code managed policy, installed on every T3 Code server (`/etc/t3code/policy.json`). " +
+        "On save: omit to keep the stored policy, `null` to remove it. A new T3 Code session is refused when the " +
+        "policy does not allow its tool or turns off the T3 Connect it is reached through.",
+    }),
 }).openapi("AgentSettings");
+
+const AgentT3PolicyApplyRequest = strict({
+  restart: z.boolean().openapi({
+    description:
+      "Restart T3 Code so the policy applies now (interrupts running agent turns), or leave it for the next restart.",
+  }),
+  sessionId: z
+    .string()
+    .optional()
+    .openapi({ description: "One server; omitted, every T3 Code server in the organization." }),
+}).openapi("AgentT3PolicyApplyRequest");
+
+const AgentT3PolicyApplyResult = strict({
+  servers: z.array(
+    strict({
+      sessionId: z.string(),
+      projectName: z.string(),
+      outcome: z
+        .enum(["applied", "installed", "unchanged", "skipped", "setting-up", "failed"])
+        .openapi({
+          description:
+            "`applied`: installed and T3 Code restarted onto it. `installed`: applies at the next restart. " +
+            "`unchanged`: already had it. `skipped`: the policy does not fit this server, which keeps its policy. " +
+            "`setting-up`: setup has not finished; the server starts on this policy. `failed`: see `message`.",
+        }),
+      message: z.string().optional(),
+    }),
+  ),
+}).openapi("AgentT3PolicyApplyResult");
 
 const AgentSession = strict({
   id: z.string(),
@@ -65,6 +147,21 @@ const AgentSession = strict({
   surface: Surface.optional(),
   serviceAccountIds: ServiceAccountIds.optional(),
   t3Access: T3Access.optional(),
+  t3Policy: T3CodePolicy.nullable()
+    .optional()
+    .openapi({
+      description:
+        "T3 Code sessions: the managed policy last installed on the server (from the organization's defaults at " +
+        "creation, refreshed when Authorize server runs or the policy is rolled out).",
+    }),
+  t3PolicyRestartPending: z
+    .boolean()
+    .optional()
+    .openapi({
+      description:
+        "T3 Code sessions: `t3Policy` is installed but T3 Code has not restarted since, so the server still " +
+        "enforces the policy it started with. Cleared by a restarting rollout or Authorize server.",
+    }),
   serviceInstalls: z.array(AgentServiceInstall).optional(),
   agentLinkId: z
     .string()
@@ -243,6 +340,35 @@ export function registerAgentPaths(ctx: BuildContext) {
         description: "The provider refused to delete the VM",
         content: { "application/json": { schema: strict({ error: z.string() }) } },
       },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/agents/t3-policy/apply",
+    tags: ["Agents"],
+    summary: "Roll the T3 Code policy out to existing servers",
+    description:
+      "Installs the organization's current T3 Code managed policy (or removes the one Infrawrench installed, when " +
+      "there is none) on existing T3 Code servers. T3 Code reads its policy only at startup: `restart: true` " +
+      "restarts it so the policy applies now, interrupting running agent turns, terminals and connected clients; " +
+      "`restart: false` installs the file and marks the session `t3PolicyRestartPending`. Servers that already " +
+      "have the policy, that the policy does not fit, or that are still setting up are not dialled. Requires " +
+      "`resources:execute`.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: AgentT3PolicyApplyRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "What happened on each T3 Code server",
+        content: { "application/json": { schema: AgentT3PolicyApplyResult } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
     },
   });
 

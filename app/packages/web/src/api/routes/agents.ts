@@ -47,7 +47,11 @@ import { upsertCreatedResource } from "@infrawrench/server-core/created-resource
 import {
   createT3CodeSetupPlan,
   resolveT3CodeAccess,
+  sameT3CodePolicy,
   t3CodeAccessOrDefault,
+  t3CodePolicyOrNull,
+  validateT3CodePolicy,
+  type T3CodePolicy,
 } from "@infrawrench/ui/agents/t3-code";
 import {
   publicServiceInstalls,
@@ -55,6 +59,7 @@ import {
   resolveAgentServiceAccounts,
 } from "../../services/agent-services";
 import {
+  applyT3CodePolicyToSessions,
   createAgentSetupPlanForRepo,
   ensureAgentVmSetupForSession,
   hasAgentSetupComplete,
@@ -163,8 +168,19 @@ app.get("/settings", async (c) => {
     fields: row.fieldsJson,
     serviceAccountIds: row.serviceAccountIds ?? [],
     t3Access: t3CodeAccessOrDefault(row.t3Access),
+    t3Policy: t3CodePolicyOrNull(row.t3Policy),
   });
 });
+
+/** The organization's stored T3 Code policy, or null. */
+async function orgT3Policy(organizationId: string): Promise<T3CodePolicy | null> {
+  const [row] = await db
+    .select({ t3Policy: agentSettings.t3Policy })
+    .from(agentSettings)
+    .where(eq(agentSettings.organizationId, organizationId))
+    .limit(1);
+  return t3CodePolicyOrNull(row?.t3Policy);
+}
 
 app.put("/settings", async (c) => {
   requirePermission(c, "accounts:write");
@@ -178,11 +194,34 @@ app.put("/settings", async (c) => {
     fields: Record<string, string>;
     serviceAccountIds?: string[];
     t3Access?: string;
+    t3Policy?: unknown;
   }>();
   const id = `${organizationId}:default`;
   const surface = agentSurfaceOrDefault(body.surface);
   const services = await resolveAgentServiceAccounts(organizationId, body.serviceAccountIds);
   const t3Access = resolveT3CodeAccess(body.t3Access, services.pluginIds);
+  // `t3Policy` is three-state: absent keeps the stored policy (so a client
+  // predating it cannot wipe it), null removes it, an object replaces it. The
+  // policy is checked on its own here; whether it fits a given Tool and
+  // access is checked when a server is created with it.
+  let t3Policy: T3CodePolicy | null | undefined;
+  if (body.t3Policy === null) {
+    t3Policy = null;
+  } else if (body.t3Policy !== undefined) {
+    const validation = validateT3CodePolicy(body.t3Policy);
+    if (!validation.ok || !validation.policy) {
+      const first = validation.issues.find((i) => i.level === "error");
+      return c.json(
+        {
+          error: `Invalid T3 Code policy: ${first?.message ?? "not a policy"}`,
+          issues: validation.issues,
+        },
+        400,
+      );
+    }
+    t3Policy = validation.policy;
+  }
+  const previousPolicy = t3Policy === undefined ? undefined : await orgT3Policy(organizationId);
   const values = {
     accountId: body.accountId,
     pluginId: body.pluginId,
@@ -192,13 +231,78 @@ app.put("/settings", async (c) => {
     fieldsJson: body.fields ?? {},
     serviceAccountIds: services.accountIds,
     t3Access,
+    ...(t3Policy !== undefined
+      ? { t3Policy: t3Policy as unknown as Record<string, unknown> | null }
+      : {}),
     updatedAt: new Date(),
   };
   await db
     .insert(agentSettings)
     .values({ id, organizationId, ...values })
     .onConflictDoUpdate({ target: agentSettings.id, set: values });
-  return c.json({ ...body, surface, serviceAccountIds: services.accountIds, t3Access });
+  if (t3Policy !== undefined && JSON.stringify(previousPolicy) !== JSON.stringify(t3Policy)) {
+    void logAudit({
+      organizationId,
+      ...(c.get("session")?.userId ? { userId: c.get("session").userId } : {}),
+      action: t3Policy ? "agent_t3_policy.update" : "agent_t3_policy.remove",
+      entityType: "agent_settings",
+      entityId: id,
+      metadata: t3Policy ? { organization: t3Policy.organization } : {},
+    });
+  }
+  const storedPolicy = t3Policy === undefined ? await orgT3Policy(organizationId) : t3Policy;
+  return c.json({
+    ...body,
+    surface,
+    serviceAccountIds: services.accountIds,
+    t3Access,
+    t3Policy: storedPolicy,
+  });
+});
+
+/**
+ * Roll the organization's current T3 Code policy out to existing T3 Code
+ * servers, or to one. T3 Code reads its policy only at startup and a restart
+ * interrupts running agent turns, so whether to restart now is the caller's
+ * choice (`restart`); without it the file is installed and the session is
+ * marked as owing a restart. `resources:execute` because it runs commands on
+ * the servers and may restart them, the same gate as Authorize server.
+ */
+app.post("/t3-policy/apply", async (c) => {
+  requirePermission(c, "resources:execute");
+  const organizationId = orgId(c);
+  const body = await c.req.json<{ restart?: unknown; sessionId?: unknown }>().catch(() => null);
+  if (!body || typeof body.restart !== "boolean") {
+    return c.json({ error: "`restart` (boolean) is required" }, 400);
+  }
+  if (body.sessionId !== undefined && typeof body.sessionId !== "string") {
+    return c.json({ error: "`sessionId` must be a string" }, 400);
+  }
+  const sessionId = body.sessionId as string | undefined;
+  if (sessionId && !(await loadSession(sessionId, organizationId))) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const policy = await orgT3Policy(organizationId);
+  const servers = await applyT3CodePolicyToSessions(organizationId, policy, {
+    restart: body.restart,
+    ...(sessionId ? { sessionId } : {}),
+  });
+  const touched = servers.filter((s) => s.outcome === "applied" || s.outcome === "installed");
+  if (touched.length > 0) {
+    void logAudit({
+      organizationId,
+      ...(c.get("session")?.userId ? { userId: c.get("session").userId } : {}),
+      action: "agent_t3_policy.apply",
+      entityType: "agent_settings",
+      entityId: `${organizationId}:default`,
+      metadata: {
+        restart: body.restart,
+        servers: touched.map((s) => s.sessionId),
+        ...(policy ? { organization: policy.organization } : { removed: true }),
+      },
+    });
+  }
+  return c.json({ servers });
 });
 
 /**
@@ -314,6 +418,24 @@ app.post("/sessions", async (c) => {
   if (isT3CodeSurface(surface) && t3CodeAccessOrDefault(body.settings.t3Access) !== t3Access) {
     return c.json({ error: "T3 Code over Tailscale needs a Tailscale account attached" }, 400);
   }
+  // The organization's managed policy, from the stored defaults rather than
+  // the request: it is the organization's, not the creator's, to choose. A
+  // policy that does not fit this server is refused before a VM exists,
+  // since T3 Code would refuse to start with it (or start unreachable).
+  const t3Policy = isT3CodeSurface(surface) ? await orgT3Policy(organizationId) : null;
+  if (t3Policy) {
+    const fit = validateT3CodePolicy(t3Policy, { tool, access: t3Access });
+    if (!fit.ok) {
+      const first = fit.issues.find((i) => i.level === "error");
+      return c.json(
+        {
+          error: `The organization's T3 Code policy does not fit this server: ${first?.message ?? "invalid policy"}`,
+          issues: fit.issues,
+        },
+        400,
+      );
+    }
+  }
   const id = randomUUID();
   const isT3Code = isT3CodeSurface(surface);
   const isNibblets = isNibbletsSurface(surface);
@@ -370,7 +492,7 @@ app.post("/sessions", async (c) => {
   const setupPlan = isNibblets
     ? createNibbletsSetupPlan(linkScopes !== null)
     : isT3Code
-      ? createT3CodeSetupPlan(tool, t3Access)
+      ? createT3CodeSetupPlan(tool, t3Access, t3Policy)
       : createAgentSetupPlanForRepo(repo, tool, workspaceName);
   const logs = [
     isNibblets
@@ -473,6 +595,7 @@ app.post("/sessions", async (c) => {
     surface,
     serviceAccountIds: services.accountIds,
     t3Access,
+    t3Policy: t3Policy as unknown as Record<string, unknown> | null,
     agentLinkId,
     // Kept non-empty for T3 Code servers too: nothing checks it out, but a
     // blank branch reads as data loss in the session row.
@@ -529,8 +652,10 @@ app.post("/sessions/:id/open", async (c) => {
     });
   }
   if (isT3CodeSurface(row.surface)) {
+    const access = t3CodeAccessOrDefault(row.t3Access);
+    const policy = await authorizeT3Policy(row, organizationId, tool, access);
     return c.json({
-      command: buildT3CodeConnectCommand({ tool, access: t3CodeAccessOrDefault(row.t3Access) }),
+      command: buildT3CodeConnectCommand({ tool, access, ...policy }),
       cwd: `~/${row.workspaceName}`,
       sshKeyId: agentKey.id,
       sshKeyName: agentKey.name,
@@ -635,6 +760,36 @@ app.post("/sessions/:id/reconcile", async (c) => {
   });
 });
 
+/**
+ * Which policy Authorize server installs: the organization's current one, so
+ * re-running it is how an edited policy reaches an existing server. One that
+ * no longer fits this server (it forbids the server's provider, or turns off
+ * the T3 Connect it is reached through) is not installed; the server keeps
+ * whatever it has, since applying it would leave it unable to start or
+ * unreachable. The session records what was handed out.
+ */
+async function authorizeT3Policy(
+  row: typeof agentSessions.$inferSelect,
+  organizationId: string,
+  tool: AgentTool,
+  access: ReturnType<typeof t3CodeAccessOrDefault>,
+): Promise<{ policy?: T3CodePolicy | null }> {
+  const current = await orgT3Policy(organizationId);
+  if (current && !validateT3CodePolicy(current, { tool, access }).ok) return {};
+  // The script restarts T3 Code after installing, so nothing is left pending.
+  if (!sameT3CodePolicy(current, t3CodePolicyOrNull(row.t3Policy)) || row.t3PolicyRestartPending) {
+    await db
+      .update(agentSessions)
+      .set({
+        t3Policy: current as unknown as Record<string, unknown> | null,
+        t3PolicyRestartPending: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentSessions.id, row.id));
+  }
+  return { policy: current };
+}
+
 async function loadSession(id: string, organizationId: string) {
   const [row] = await db
     .select()
@@ -657,6 +812,8 @@ function rowToSession(row: typeof agentSessions.$inferSelect) {
     surface: agentSurfaceOrDefault(row.surface),
     serviceAccountIds: row.serviceAccountIds ?? [],
     t3Access: t3CodeAccessOrDefault(row.t3Access),
+    t3Policy: t3CodePolicyOrNull(row.t3Policy),
+    t3PolicyRestartPending: row.t3PolicyRestartPending,
     agentLinkId: row.agentLinkId ?? null,
     serviceInstalls: publicServiceInstalls(row.serviceInstallsJson),
     branchName: row.branchName,

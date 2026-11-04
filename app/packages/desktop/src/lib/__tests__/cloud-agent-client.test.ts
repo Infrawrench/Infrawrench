@@ -62,6 +62,12 @@ describe("createCloudAgentClient", () => {
       sessionId: "s1",
     });
 
+    await client.applyT3Policy?.({ restart: false, sessionId: "s1" });
+    expect(invoke).toHaveBeenCalledWith("cloud_agents_apply_t3_policy", {
+      orgId: "org1",
+      request: { restart: false, sessionId: "s1" },
+    });
+
     await client.deleteSession("s1");
     expect(invoke).toHaveBeenCalledWith("cloud_agents_delete_session", {
       orgId: "org1",

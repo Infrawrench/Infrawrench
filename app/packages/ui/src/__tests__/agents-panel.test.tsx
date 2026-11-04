@@ -1,5 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+beforeAll(() => {
+  // jsdom doesn't implement <dialog> showModal/close: stub them, the way
+  // cost-anomalies-section.test.tsx does. The T3 Code policy editor is a Modal.
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+  }
+});
 import { AgentsPanel } from "../agents/AgentsPanel.js";
 import type { AgentClient, AgentSession, AgentSettings, AgentVmAccount } from "../agents/types.js";
 import { useUIStore } from "../store/ui.store.js";
@@ -1165,5 +1180,174 @@ describe("AgentsPanel", () => {
         expect.objectContaining({ serviceAccountIds: [], t3Access: "t3-connect" }),
       ),
     );
+  });
+
+  it("edits the organization's T3 Code policy and saves it with the defaults", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const client = makeClient(account, {
+      accountId: "acct-1",
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      tool: "claude-code",
+      surface: "t3-code",
+      fields: {},
+    });
+    render(<AgentsPanel client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Workspace \(DigitalOcean\)/ }));
+    expect(screen.getByText("None. Users configure T3 Code themselves.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add policy" }));
+
+    // Saving waits for an organization name.
+    const save = await screen.findByRole("button", { name: "Save policy" });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText("Example Corp"), {
+      target: { value: "Acme" },
+    });
+    fireEvent.change(screen.getByLabelText(/Broadest permission mode/), {
+      target: { value: "auto-accept-edits" },
+    });
+    // T3 Connect cannot be turned off while the servers are reached through it.
+    expect(screen.getByRole("checkbox", { name: /T3 Connect/ })).toBeDisabled();
+    // Narrowing providers to one the Tool is not blocks saving.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Allow every provider" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Claude/ }));
+    expect(save).toBeDisabled();
+    expect(screen.getByText(/does not allow the provider these servers run/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Claude/ }));
+    expect(save).toBeEnabled();
+
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(client.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          t3Policy: expect.objectContaining({
+            schemaVersion: 1,
+            organization: "Acme",
+            limits: expect.objectContaining({ maxRuntimeMode: "auto-accept-edits" }),
+          }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Save policy" })).not.toBeInTheDocument(),
+    );
+  });
+
+  describe("rolling a T3 Code policy out to existing servers", () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const policy = { schemaVersion: 1 as const, organization: "Acme" };
+    const settings: AgentSettings = {
+      accountId: "acct-1",
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      tool: "codex",
+      surface: "t3-code",
+      fields: {},
+      t3Policy: policy,
+    };
+    function server(overrides: Partial<AgentSession> = {}): AgentSession {
+      return {
+        id: "server-1",
+        repo: "",
+        projectName: "build-box",
+        workspaceName: "projects",
+        accountId: "acct-1",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        tool: "codex",
+        surface: "t3-code",
+        t3Policy: policy,
+        branchName: "",
+        status: "up",
+        vmResourceId: "vm-1",
+        logs: [],
+        ...overrides,
+      };
+    }
+
+    it("asks when existing servers apply a saved change, then rolls it out", async () => {
+      const applyT3Policy = vi.fn(async () => ({
+        servers: [{ sessionId: "server-1", projectName: "build-box", outcome: "applied" as const }],
+      }));
+      const client = makeClient(account, settings, {
+        listSessions: vi.fn(async () => [server()]),
+        applyT3Policy,
+      });
+      render(<AgentsPanel client={client} />);
+      fireEvent.click(await screen.findByRole("button", { name: /Workspace \(DigitalOcean\)/ }));
+      fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+
+      const save = await screen.findByRole("button", { name: "Save policy" });
+      expect(screen.getByText("Existing T3 Code servers (1) apply the change")).toBeInTheDocument();
+      expect(save).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Remove policy" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("radio", { name: /Now, restarting T3 Code/ }));
+      expect(save).toBeEnabled();
+
+      fireEvent.click(save);
+      await waitFor(() => expect(applyT3Policy).toHaveBeenCalledWith({ restart: true }));
+      expect(client.saveSettings).toHaveBeenCalled();
+      expect(await screen.findByText("Applied and restarted: build-box.")).toBeInTheDocument();
+    });
+
+    it("saves without asking when there are no servers to roll out to", async () => {
+      const applyT3Policy = vi.fn();
+      const client = makeClient(account, settings, { applyT3Policy });
+      render(<AgentsPanel client={client} />);
+      fireEvent.click(await screen.findByRole("button", { name: /Workspace \(DigitalOcean\)/ }));
+      fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+      const save = await screen.findByRole("button", { name: "Save policy" });
+      expect(screen.queryByText(/apply the change/)).not.toBeInTheDocument();
+      fireEvent.click(save);
+      await waitFor(() => expect(client.saveSettings).toHaveBeenCalled());
+      expect(applyT3Policy).not.toHaveBeenCalled();
+    });
+
+    it("offers the restart a server still owes, and an update to one that is out of date", async () => {
+      const applyT3Policy = vi.fn(async () => ({ servers: [] }));
+      const client = makeClient(account, settings, {
+        listSessions: vi.fn(async () => [
+          server({ t3PolicyRestartPending: true }),
+          server({ id: "server-2", projectName: "old-box", t3Policy: null }),
+          server({ id: "server-3", projectName: "fresh-box" }),
+        ]),
+        applyT3Policy,
+      });
+      render(<AgentsPanel client={client} />);
+      expect(
+        await screen.findByText("Policy installed. T3 Code applies it when it next restarts."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("This server does not have the current T3 Code policy."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("button", { name: /Restart T3 Code|Apply and restart/ }),
+      ).toHaveLength(2);
+
+      fireEvent.click(screen.getByRole("button", { name: "Restart T3 Code" }));
+      await waitFor(() =>
+        expect(applyT3Policy).toHaveBeenCalledWith({ restart: true, sessionId: "server-1" }),
+      );
+    });
   });
 });
