@@ -4,26 +4,28 @@ description: Query every AWS, Azure, Google Cloud, Alibaba Cloud and RunPod inst
 sidebar_order: 9
 ---
 
-The data behind [instances.infrawrench.com](https://instances.infrawrench.com) and its [chat](../features/instance-price-chat.md) is a ClickHouse database you can query directly in SQL. It holds every instance type's specs, and every price its provider has listed for it (on demand, committed terms and EC2 spot), in every region, with history, for:
+You can query the data behind [instances.infrawrench.com](https://instances.infrawrench.com) and its [chat](../features/instance-price-chat.md) directly in SQL. It holds every instance type's specs and every price its provider has listed for it (on demand, committed terms and EC2 spot), in every region, with history, for:
 
-- **AWS**, twelve services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift (`platform` is the service, e.g. `ec2`). Built from every published version of the AWS Price List.
-- **Azure Virtual Machines** (`platform = 'azure'`): pay-as-you-go, Spot and Low Priority prices, reservations (1 to 10 years) and savings plans, for every VM size in every Azure region, from the Azure Retail Prices API, with specs from Azure's pricing calculator. Changes are tracked from November 2026.
-- **Google Cloud Compute Engine** (`platform = 'gcp'`): Standard and Spot prices and 1- and 3-year committed use discounts for every machine type in every region, worked out from Google's per-vCPU, per-GiB and per-GPU rates, with specs and zones from the Compute Engine API. History starts in November 2026.
+- **AWS**, twelve services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift (`platform` is the service, for example `ec2`). Built from every published version of the AWS Price List.
+- **Azure Virtual Machines** (`platform = 'azure'`): pay-as-you-go, Spot and Low Priority prices, reservations (1 to 10 years) and savings plans, for every VM size in every Azure region. Changes are tracked from November 2026.
+- **Google Cloud Compute Engine** (`platform = 'gcp'`): Standard and Spot prices and 1- and 3-year committed use discounts for every machine type in every region. History starts in November 2026.
 - **RunPod** (`platform = 'runpod'`): GPU types, priced per GPU per hour, and CPU pods, in Secure Cloud and Community Cloud, with 3- and 6-month savings plans. History starts in November 2026.
 - **Alibaba Cloud ECS** (`platform = 'alibaba'`): pay-as-you-go, subscription (1 month to 5 years) and reserved instance prices in every region, from its international site, back to May 2018.
 
-Each is reloaded as its provider publishes. It also holds every incident AWS has posted on its public Health Dashboard since 2008 (`service_events`), for questions about outages and reliability.
+Data is refreshed as each provider publishes. It also holds every incident AWS has posted on its public Health Dashboard since 2008 (`service_events`), for questions about outages and reliability.
 
-Two endpoints, both in the [OpenAPI spec](./openapi.md) (tag **Instance pricing**) and so in every [client SDK](./client-sdks.md):
+## Endpoints and access
+
+There are two endpoints, both in the [OpenAPI spec](./openapi.md) (tag **Instance pricing**) and so in every [client SDK](./client-sdks.md):
 
 - `POST /api/v1/instance-pricing/query` runs one read-only statement.
 - `GET /api/v1/instance-pricing/schema` returns the tables below as JSON, with how fresh each platform's data is.
 
-They were served at `/api/v1/aws-pricing/query` and `/api/v1/aws-pricing/schema` before the database covered other clouds. Those paths still work, identically, and are marked deprecated in the spec; use the new ones in new code.
+The older paths `/api/v1/aws-pricing/query` and `/api/v1/aws-pricing/schema` still work the same way, but are marked deprecated. Use the new ones in new code.
 
-Any Infrawrench bearer credential works: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. No scope is needed, because the data is the providers' public price lists. If you would rather download whole services and work offline, the [bulk instances API](./bulk-instances-api.md) serves the same price lists as files.
+Any Infrawrench bearer credential works: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. No scope is needed, since the data is the providers' public price lists. If you'd rather download whole services and work offline, the [bulk instances API](./bulk-instances-api.md) serves the same price lists as files.
 
-The [MCP server](../features/mcp.md) and the in-app [AI chat](../features/ai-chat.md) expose the same two calls as tools, `get_instance_pricing_schema` and `query_instance_pricing`. Neither needs a permission. `query_instance_pricing` runs one read-only statement and takes the same `sql` and `maxRows`.
+The [MCP server](../features/mcp.md) and the in-app [AI chat](../features/ai-chat.md) offer the same two calls as tools, `get_instance_pricing_schema` and `query_instance_pricing`. Neither needs a permission. `query_instance_pricing` runs one read-only statement and takes the same `sql` and `maxRows`.
 
 ## Run a query
 
@@ -54,27 +56,27 @@ curl https://app.infrawrench.com/api/v1/instance-pricing/query \
 
 The request body is `{ "sql": "...", "maxRows": 1000 }`:
 
-- **`sql`**: one statement, `SELECT` or `WITH` (also `DESCRIBE`, `SHOW` and `EXPLAIN`). No `FORMAT` or `SETTINGS` clause and no second statement; a trailing semicolon is fine. It is ClickHouse SQL, so its functions (`argMin`, `quantile`, `toStartOfMonth`, `arrayJoin`...) and joins work.
-- **`maxRows`**: the most rows to return, 1 to 10,000; 1,000 if left out. When more rows match, `truncated` is `true`: aggregate or add a `LIMIT` rather than raising it.
+- **`sql`**: one statement, `SELECT` or `WITH` (also `DESCRIBE`, `SHOW` and `EXPLAIN`). No `FORMAT` or `SETTINGS` clause and no second statement. A trailing semicolon is fine. It's ClickHouse SQL, so its functions (`argMin`, `quantile`, `toStartOfMonth`, `arrayJoin`...) and joins work.
+- **`maxRows`**: the most rows to return, 1 to 10,000. Defaults to 1,000. When more rows match, `truncated` is `true`. Aggregate or add a `LIMIT` rather than raising it.
 
-Values come back in `columns` order. Numbers, including ClickHouse's 64-bit integers and decimals, are JSON numbers (values above 2^53 lose precision); `DateTime` values are `YYYY-MM-DD hh:mm:ss` in UTC; arrays and maps come back as JSON text.
+Values come back in `columns` order. Numbers, including 64-bit integers and decimals, are JSON numbers (values above 2^53 lose precision). `DateTime` values are `YYYY-MM-DD hh:mm:ss` in UTC. Arrays and maps come back as JSON text.
 
 | Status | Means                                                                                                                                |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `200`  | The result.                                                                                                                          |
 | `400`  | The query was refused: not read-only, more than one statement, or ClickHouse's own error (unknown column, syntax), with its message. |
 | `401`  | The credential is missing, unknown or revoked.                                                                                       |
-| `502`  | The database could not answer. Try again shortly; it happens briefly while new data is loading.                                      |
+| `502`  | The database could not answer. Try again shortly. It happens briefly while new data is loading.                                      |
 | `504`  | The query ran longer than 30 seconds.                                                                                                |
 
-## Writing fast, correct queries
+## Write fast, correct queries
 
-- **Filter `prices` on `platform` and `current`** (or a time range on `valid_from` / `valid_to`). It has millions of rows for EC2 alone, sorted by platform, instance type, region and pricing, so filters on those come back fastest.
-- **Fix the variant columns.** One instance type in one region has many prices: per operating system, tenancy, license and bundled software on EC2, per engine and deployment option on RDS, per operating system and network type on Alibaba (`variant['networkType']`), per operating system and priority on Azure (`variant['priority']`: Regular, Spot or Low Priority), per provisioning model on Google Cloud (`variant['provisioningModel']`: Standard or Spot), per cloud on RunPod (`variant['cloudType']`), and so on. Leave them open and you will average Windows into Linux. The notes below give the usual defaults.
+- **Filter `prices` on `platform` and `current`** (or a time range on `valid_from` / `valid_to`). It has millions of rows for EC2 alone. Filters on platform, instance type, region and pricing come back fastest.
+- **Pin the variant columns.** One instance type in one region has many prices: per operating system, tenancy, license and bundled software on EC2, per engine and deployment option on RDS, per operating system and network type on Alibaba (`variant['networkType']`), per operating system and priority on Azure (`variant['priority']`: Regular, Spot or Low Priority), per provisioning model on Google Cloud (`variant['provisioningModel']`: Standard or Spot), per cloud on RunPod (`variant['cloudType']`), and so on. Leave them open and you'll average Windows into Linux. The notes below give the usual defaults.
 - **Compare on `effective_hourly_usd`.** It folds a committed term's upfront payment into the hourly rate (an Alibaba subscription or Azure reservation is all upfront), so on-demand, reserved, subscription, savings plan, committed use and spot prices compare directly. A month is 730 hours.
-- **Use `instance_types` for specs.** `prices` repeats the common specs (architecture, vCPUs, memory, GPUs) on every row, so most questions need no join; join `instance_types` on `(platform, instance_type)` for anything else.
+- **Use `instance_types` for specs.** `prices` repeats the common specs (architecture, vCPUs, memory, GPUs) on every row, so most questions need no join. Join `instance_types` on `(platform, instance_type)` for anything else.
 
-A few more examples:
+More examples:
 
 ```sql
 -- The cheapest current-generation ARM type per family, Linux on demand in eu-west-1
@@ -312,6 +314,6 @@ Sorted by `provider, service, region, posted_at`.
 
 ## Freshness
 
-The database is reloaded each time a provider publishes new prices for a service (AWS a new price list, Alibaba a new price version, Azure, Google Cloud or RunPod a changed price), checked twice an hour. `sync_state` (and the `sources` list in `GET /api/v1/instance-pricing/schema`) says which price lists each service's data comes from and when it was loaded; `max(price_list_to)` is the newest. While a service is being reloaded, a query can briefly fail with a `502`; retry it.
+Prices are checked twice an hour and reloaded whenever a provider publishes new ones (AWS a new price list, Alibaba a new price version, Azure, Google Cloud or RunPod a changed price). `sync_state` (and the `sources` list in `GET /api/v1/instance-pricing/schema`) tells you which price lists each service's data comes from and when it was loaded. `max(price_list_to)` is the newest. While a service is reloading, a query can briefly fail with a `502`. Retry it.
 
-`service_events` is refreshed from the AWS Health Dashboard on the same schedule, so a new or updated incident appears within about half an hour. AWS's dashboard only shows the last twelve months; older years come from archived copies of it and stay in the table. There are none for 2010, and years before 2014 are thinner than AWS's real record.
+`service_events` is refreshed from the AWS Health Dashboard on the same schedule, so a new or updated incident appears within about half an hour. AWS's dashboard only shows the last twelve months. Older years come from archived copies and stay in the table. There are none for 2010, and years before 2014 are thinner than AWS's real record.

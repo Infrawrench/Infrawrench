@@ -1,39 +1,42 @@
 ---
 title: Audit log
-description: See who did what across your organization.
+description: See who changed what across your Infrawrench organization, and filter by type or API key.
 sidebar_order: 4
 ---
 
 > **Paid plan only.** Available on the web app and, when signed in to a cloud organization, in the desktop app's Settings tab.
 
-The audit log records every state-changing action in the organization — resource created, account added, SSH session opened, secret exported, member invited, role changed, API key issued. Read-only views (listing a sidebar, opening a dashboard) are not recorded.
+The audit log shows every change made in your organization: a resource created, an account added, an SSH session opened, a secret exported, a member invited, a role changed, an API key created. Just looking at things (opening a sidebar or a dashboard) isn't recorded.
 
 ![Audit log table with time, user, action and entity columns](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/audit-log/audit-log-table.png)
 
-## What is captured
+## What you see
 
 The table has four columns:
 
-- **Time** — wall-clock in your timezone.
-- **User** — who did it. When the call came in on an [API key](./api-keys.md) the cell names the key and its `iwk_` prefix alongside its owner, because a key acts as its owner and the owner alone cannot tell you whether a person or a token was at the other end. **System** for automated work.
-- **Action** — verb + object (e.g. “created Droplet”, “started SSH session”).
-- **Entity** — the type and id of the resource or account affected.
+- **Time:** in your timezone.
+- **User:** who did it. If it was done with an [API key](./api-keys.md), you see the key's name and `iwk_` prefix next to its owner, so you can tell a person from a token. Automated work shows as **System**.
+- **Action:** what happened, for example "created Droplet" or "started SSH session".
+- **Entity:** the type and id of the resource or account affected.
 
-Twenty-five entries to a page, newest first, with **Previous** / **Next** underneath and a count of everything matched.
+You get 25 entries per page, newest first, with **Previous** and **Next** buttons and a total count.
 
-## Filtering
+## Filter the log
 
-The page has two filters. **Filter by type** covers the entity type — account, resource, dashboard, api_key, member, subscription — or **All types**. Beside it, **Filter by API key** narrows the log to a single credential; clicking the key chip in an entry's User column does the same thing without leaving the page, and **All API keys** goes back. A key that has since been deleted still filters, because the chip carries its id even when there is no key row left to name it.
+There are two filters:
 
-The API is where the finer questions get asked. `GET /api/org/<orgId>/audit-logs` takes the same `apiKeyId`, plus `action`, `entityType`, `userId`, `from` and `to`. Everything one credential did is the first thing to pull when a token leaks, and `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
+- **Filter by type** narrows to one entity type: account, resource, dashboard, api_key, member or subscription. **All types** shows everything.
+- **Filter by API key** shows everything one key did. Clicking the key chip in the User column does the same. **All API keys** clears it. Deleted keys still work as a filter.
 
-## Retention
+For finer questions, use the API. `GET /api/org/<orgId>/audit-logs` takes `apiKeyId`, `action`, `entityType`, `userId`, `from` and `to`. When a token leaks, filter by `apiKeyId` first. `userId` alone can't answer that, because a person and all their keys share one user id.
 
-Audit entries are kept for 1 year on the paid plan. Longer retention is available on request.
+## How long entries are kept
 
-## What it does not capture
+Entries are kept for 1 year on the paid plan. Longer retention is available on request.
 
-- Credential values (they are never logged, only references).
-- The content of SQL queries, SSH sessions, or manifest edits — only that the session happened.
+## What isn't recorded
+
+- Credential values. Only references to them are logged.
+- What happened inside SQL queries, SSH sessions or manifest edits. The log shows that the session happened, not its content.
 
 If you need deeper logging for a regulated environment, talk to us.

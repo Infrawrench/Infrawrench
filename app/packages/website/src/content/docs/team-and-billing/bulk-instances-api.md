@@ -4,16 +4,16 @@ description: AWS instance specs and prices for twelve services, plus EC2 spot pr
 sidebar_order: 8
 ---
 
-Infrawrench keeps every AWS instance type's attributes and prices, with the full history of both, for twelve AWS services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It is built from every published version of the AWS Price List bulk API and refreshed as AWS publishes. EC2 spot prices, which are not in the price lists, are kept alongside (see [Spot prices](#spot-prices)), and so are four other clouds in the same format: Azure Virtual Machines, Google Cloud Compute Engine, Alibaba Cloud ECS and RunPod's GPU and CPU pods (see [Other clouds](#other-clouds)).
+Use this API to get instance specs and prices, with their full history, into your own code. It covers every AWS instance type in twelve services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift. It's built from every published version of the AWS Price List bulk API and refreshed as AWS publishes. EC2 spot prices are included too (see [Spot prices](#spot-prices)), and so are four other clouds in the same format: Azure Virtual Machines, Google Cloud Compute Engine, Alibaba Cloud ECS and RunPod's GPU and CPU pods (see [Other clouds](#other-clouds)).
 
-You can read it four ways:
+You can read the data four ways:
 
 - **[instances.infrawrench.com](https://instances.infrawrench.com/aws/ec2/m5.large)**, a page per instance type with charts, and a [chat](../features/instance-price-chat.md) that answers questions about the data with tables and charts. No key needed. Append `.md` to any page (or send `Accept: text/markdown`) for the same data as Markdown.
 - **The `@infrawrench/bulk-instances` SDKs**, which download a whole service's data and decode it for you. This page documents the TypeScript one.
 - **The HTTP API**, for one instance at a time, or the raw bundles.
 - **[SQL](./instance-pricing-api.md)**, for questions across instances, regions and time, answered without downloading anything.
 
-Both the SDKs and the HTTP API need an Infrawrench bearer credential: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. Any of them can read everything; no scope is required, because the data is the providers' public price lists.
+The SDKs and the HTTP API need an Infrawrench bearer credential: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. Any of them can read everything. No scope is needed, since the data is the providers' public price lists.
 
 ## Install
 
@@ -28,7 +28,7 @@ Both the SDKs and the HTTP API need an Infrawrench bearer credential: an [API ke
 | PHP        | `composer require infrawrench/bulk-instances`          |
 | Go         | `go get github.com/infrawrench/bulk-instances-sdks/go` |
 
-The SDKs are MIT-licensed and kept identical by a shared conformance suite: they decode the same data the same way, and share one on-disk cache format, so a bundle downloaded by one serves the others. The examples below are TypeScript (Node 20 or later).
+The SDKs are MIT-licensed and behave the same in every language. They share one on-disk cache format, so a bundle downloaded by one serves the others. The examples below are TypeScript (Node 20 or later).
 
 ## Quick start
 
@@ -58,7 +58,7 @@ m5.pricingHistory.reserved; // every reserved price change, oldest first
 
 `token` defaults to the `INFRAWRENCH_API_KEY` environment variable.
 
-## Loading data
+## Load data
 
 ### `downloadAwsPricingData(platform, options?)`
 
@@ -91,9 +91,9 @@ Loads one service's data and returns an `AWSPricingData`. `platform` is one of:
 | `cachePath`        | `~/.infrawrench/aws_pricing_data`           | Where the cache lives.                             |
 | `baseUrl`          | `https://instances-bundles.infrawrench.com` | Where the bundles are served from.                 |
 
-Each load asks the server which bundle is newest and downloads it (xz-compressed, about 20 MB for EC2) only if it is not already cached, then deletes that service's older bundles. If the server cannot be reached, the newest cached bundle is used instead; a rejected token is never papered over that way. Each service is cached under its own name, so loading one never evicts another. With `cachePricingData: false` the SDK always downloads and never touches the disk.
+Each load downloads the newest bundle (xz-compressed, about 20 MB for EC2) only if you don't already have it cached, then deletes that service's older bundles. If the server can't be reached, the newest cached bundle is used instead. A rejected token always throws. Each service is cached separately, so loading one never removes another. With `cachePricingData: false` the SDK always downloads and never writes to disk.
 
-Loading parses the whole bundle, but instances are decoded lazily: `get` only wraps the raw rows, and each of `attributes`, `attributesHistory`, `pricing` and `pricingHistory` decodes on first access and keeps the result. Returned objects are shared between calls, so treat them as read-only.
+Returned objects are shared between calls, so treat them as read-only.
 
 ### `fetchAwsInstance(platform, instanceType, options?)`
 
@@ -106,11 +106,14 @@ const m5 = await fetchAwsInstance("ec2", "m5.large");
 m5?.pricing.onDemand.length;
 ```
 
-It takes `token` and `baseUrl` (default `https://app.infrawrench.com`). The API picks up each new bundle within about half an hour of it being published, so it can briefly trail `downloadAwsPricingData`.
+It takes `token` and `baseUrl` (default `https://app.infrawrench.com`). It picks up each new bundle within about half an hour, so it can briefly lag behind `downloadAwsPricingData`.
 
 ### Errors
 
-Failures throw `AWSPricingDataError`, with `status` set to the HTTP status when there was a response. A `401` means the credential was not accepted (unknown, revoked or expired). A `503` is retried a couple of times, honouring `Retry-After`, before it is thrown; it means the service could not check the credential, not that the credential is bad.
+Failures throw `AWSPricingDataError`, with `status` set to the HTTP status when there was a response.
+
+- `401`: the credential wasn't accepted (unknown, revoked or expired).
+- `503`: the service couldn't check the credential. It doesn't mean the credential is bad. The SDK retries a couple of times, honouring `Retry-After`, before it throws.
 
 ## `AWSPricingData`
 
@@ -128,7 +131,7 @@ One service's data, keyed by instance type.
 
 ## `AWSInstance`
 
-One instance type. Each getter decodes on first access.
+One instance type.
 
 | Member                 | What it is                                                                                                  |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -180,7 +183,7 @@ rds
 
 ### Spot prices
 
-`spot` holds EC2's spot prices, by instance type, for Linux and Windows. AWS publishes no price list for them, so they come from the feed behind AWS's [Spot pricing page](https://aws.amazon.com/ec2/spot/pricing/), with the history before November 2026 filled in from EC2's spot price history:
+`spot` holds EC2's spot prices, by instance type, for Linux and Windows. They come from AWS's [Spot pricing page](https://aws.amazon.com/ec2/spot/pricing/), with history before November 2026 filled in from EC2's spot price history:
 
 - Each price is the lowest across the region's availability zones, as AWS's page shows it. Spot prices are in `pricing.onDemand` and `pricingHistory.onDemand`; there are no reserved prices.
 - `variantKeys` is `["operatingSystem"]`, so `operatingSystem` is `Linux` or `Windows` and the other EC2 fields are `""`. A spot price compares with the EC2 on-demand price that has the same operating system, `Shared` tenancy, `No License required`, no pre-installed software and capacity status `Used`.
@@ -200,7 +203,7 @@ spot
 
 ### Other clouds
 
-Four more platforms come in the same format, from the same bucket, with their own download functions and types (`AzurePricingData`, `GCPPricingData`, `RunpodPricingData`, `AlibabaPricingData` and their instances, which have the same members as `AWSPricingData` and `AWSInstance`):
+Four more platforms come in the same format, with their own download functions and types (`AzurePricingData`, `GCPPricingData`, `RunpodPricingData`, `AlibabaPricingData` and their instances, which have the same members as `AWSPricingData` and `AWSInstance`):
 
 | Platform  | Download function            | What                                                                                           | History from  |
 | --------- | ---------------------------- | ---------------------------------------------------------------------------------------------- | ------------- |
@@ -242,7 +245,7 @@ curl -H "Authorization: Bearer $INFRAWRENCH_API_KEY" \
   https://app.infrawrench.com/api/v1/aws-bulk-pricing/ec2/m5.large
 ```
 
-`404` means no such service or instance; `503` means the data store could not be reached, so retry. The instance responses are in the compact bundle encoding, not plain JSON objects: `fetchAwsInstance` is the easy way to read them. This endpoint is not part of the [OpenAPI spec](./openapi.md); the bulk-instances SDKs are its clients.
+`404` means no such service or instance. `503` means the data couldn't be reached, so retry. The instance responses are in the compact bundle encoding, not plain JSON objects: `fetchAwsInstance` is the easy way to read them. This endpoint is not part of the [OpenAPI spec](./openapi.md); the bulk-instances SDKs are its clients.
 
 ### Whole bundles: `instances-bundles.infrawrench.com`
 
@@ -251,7 +254,7 @@ curl -H "Authorization: Bearer $INFRAWRENCH_API_KEY" \
 | `GET /latest` (EC2), `GET /<platform>-latest`                                         | The newest bundle's timestamp, as text. |
 | `GET /bundle-<timestamp>.json.xz` (EC2), `GET /<platform>-bundle-<timestamp>.json.xz` | The bundle, xz-compressed.              |
 
-Bundles are served from Cloudflare's edge cache, with `ETag` revalidation and range requests. A new EC2 bundle can appear every few minutes as AWS publishes; the other services are checked every 15 minutes, RunPod every 30 minutes, Azure and Google Cloud every hour, and spot prices and Alibaba Cloud every 6 hours.
+Bundles support `ETag` revalidation and range requests. A new EC2 bundle can appear every few minutes as AWS publishes; the other services are checked every 15 minutes, RunPod every 30 minutes, Azure and Google Cloud every hour, and spot prices and Alibaba Cloud every 6 hours.
 
 ### The bundle encoding
 

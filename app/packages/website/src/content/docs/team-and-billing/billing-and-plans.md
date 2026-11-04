@@ -1,10 +1,10 @@
 ---
 title: Billing and plans
-description: What is free, what is paid, and how to upgrade.
+description: What's free and what's paid in Infrawrench, how seats and prepaid capacity work, and how to upgrade or cancel.
 sidebar_order: 3
 ---
 
-> The desktop app in local-only mode is free and has no account. Billing is managed on the web app or, when signed in to a cloud organization, from the desktop app's Settings tab (checkout opens in your browser).
+> The desktop app in local-only mode is free and needs no account. You manage billing on the web app or, when signed in to a cloud organization, from the desktop app's Settings tab (checkout opens in your browser).
 
 ## Plans
 
@@ -21,21 +21,29 @@ sidebar_order: 3
 | API keys           | No                     | Yes                    |
 | AI chat            | $5 usage / mo included | Metered, pay-as-you-go |
 | Price              | $0                     | $20 / seat / mo        |
-| Prepaid capacity   | —                      | $200 / seat / 2 years  |
+| Prepaid capacity   | Not available          | $200 / seat / 2 years  |
 
-The user and account limits are enforced: on the free plan, inviting a teammate or connecting a fourth account is refused with a prompt to upgrade.
+On the free plan, inviting a teammate or connecting a fourth account is refused with a prompt to upgrade.
 
-There are two ways to hold a paid seat, and you can mix them: rent seats by the month at $20 each, or buy them outright as [capacity slots](#prepaid-capacity-slots) at $200 for two years. Either one puts the organization on the paid plan.
+You can hold a paid seat two ways, and mix them: rent seats monthly at $20 each, or buy them outright as [prepaid capacity slots](#prepaid-capacity-slots) at $200 for two years. Either one puts your organization on the paid plan.
 
-Free orgs (no payment method on file) can use the [AI chat](../features/ai-chat.md) up to **$5 of metered usage per month**; after that the agent refuses new turns until the next month or until you upgrade. The same allowance covers `infra.ai()` in [workflows](../features/workflows.md) — it is one org-wide AI budget, not one per feature. Paid orgs are billed for that usage through Stripe with no built-in limit; there is no self-serve cap control, so ask us if you want one set.
+### AI usage
+
+Free organizations (no payment method on file) can use [AI chat](../features/ai-chat.md) up to **$5 of usage per month**. After that, the assistant stops taking new requests until next month or until you upgrade. The same allowance covers `infra.ai()` in [workflows](../features/workflows.md): it's one AI budget for the whole org, not one per feature.
+
+Paid organizations are billed for AI usage with no built-in limit. There's no self-serve cap, so ask us if you want one set.
 
 ## Upgrade
 
-**Settings → Billing → Upgrade to Pro - $20/seat/month**. That takes you to Stripe Checkout, which is where the card goes in and where the seat count is set — the quantity starts at 1 and you adjust it there, not on the Billing page. You are on the paid plan as soon as Stripe confirms.
+1. Go to **Settings > Billing**.
+2. Click **Upgrade to Pro** ($20/seat/month). This opens Stripe Checkout.
+3. Enter your card and set the number of seats. It starts at 1, and you change it in checkout, not on the Billing page.
 
-The Billing page itself is a current-plan card (with a status pill and, on a paid plan, the seat breakdown), that upgrade button, a **Manage subscription** button into the Stripe portal, and the **Prepaid capacity** card below. On the free plan it also lists what Pro includes. There are no side-by-side plan cards here — those belong to onboarding.
+You're on the paid plan as soon as the payment is confirmed.
 
-You are also offered the choice right after creating an organization — the onboarding flow shows the Free and Pro plans side by side. Picking **Continue with Free** costs nothing and you can upgrade later from Settings; picking **Upgrade to Pro** takes you straight to checkout.
+The Billing page shows your current plan (with a status badge and, on a paid plan, your seats), the upgrade button, a **Manage subscription** button that opens the Stripe portal, and the **Prepaid capacity** card. On the free plan it also lists what Pro includes.
+
+You also get the choice right after creating an organization, where Free and Pro are shown side by side. **Continue with Free** costs nothing and you can upgrade later from Settings. **Upgrade to Pro** takes you straight to checkout.
 
 ![Onboarding plan-choice step showing the Free and Pro cards side by side after creating an organization](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/billing-and-plans/onboarding-plan-choice.png)
 
@@ -43,52 +51,61 @@ You are also offered the choice right after creating an organization — the onb
 
 ## Seats
 
-A seat is one user in your organization, and a pending invitation reserves one. If you invite a fourth teammate while on 3 seats, you will be prompted to confirm adding a seat before the invite is sent; the new seat is billed pro-rata from that day. Adding a seat this way needs billing permission as well as invite permission.
+A seat is one user in your organization. A pending invitation also takes a seat.
 
-Removing a member (or a member deleting their own account) frees their seat automatically: your monthly seat count drops by one, and the next invoice bills the lower count — no mid-cycle credit, since the seat was already paid through the period. Seats you bought beyond your current member count are kept, and the count never drops below one; you can always adjust it manually from the Stripe portal under **Settings → Billing**.
+**Adding seats.** If you invite a fourth teammate while you have 3 seats, you're asked to confirm adding a seat before the invite goes out. The new seat is billed pro-rata from that day. You need billing permission as well as invite permission to do this.
 
-Prepaid capacity slots count toward the same total. Your capacity is your monthly seats plus your active slot seats, and the invite prompt is measured against the sum — so an organization with 2 monthly seats and 3 slots can hold 5 people. Slots are also counted first when a member leaves: if slots already cover everyone left in the organization, the monthly count shrinks rather than billing you twice for the same people.
+**Removing seats.** When a member is removed (or deletes their own account), their seat is freed and your monthly seat count drops by one. The next invoice bills the lower count. There's no mid-cycle credit, since that seat was already paid for the period. Extra seats you bought beyond your member count are kept, and the count never drops below one. You can always change it yourself in the Stripe portal from **Settings > Billing**.
+
+**Seats and slots together.** Your capacity is your monthly seats plus your active prepaid slots. An organization with 2 monthly seats and 3 slots can hold 5 people. When someone leaves and your slots already cover everyone remaining, your monthly seat count goes down so you aren't paying twice for the same people.
 
 ## Prepaid capacity slots
 
-A **capacity slot** is one seat bought outright instead of rented: **$200 once, and that seat is yours for two years**. Nothing renews, nothing to cancel, and no monthly invoice for that seat.
+A **capacity slot** is a seat you buy outright instead of renting: **$200 once, and that seat is yours for two years**. Nothing renews, there's nothing to cancel, and there's no monthly invoice for it.
 
-Buy them under **Settings → Billing → Prepaid capacity**. Pick how many slots you want, pay once, and the seats appear as soon as Stripe confirms the payment. You get a Stripe invoice for the purchase like any other charge.
+To buy slots:
 
-Worth knowing:
+1. Go to **Settings > Billing > Prepaid capacity**.
+2. Choose how many slots you want.
+3. Pay once.
 
-- **A slot is a paid plan on its own.** An organization holding a slot has every paid feature — audit log, custom graphs, API keys, deploys — with no monthly subscription at all.
-- **Slots add to monthly seats, they don't replace them.** Mixing is fine, and often the point: buy slots for the people who are definitely staying two years, rent monthly seats for the rest.
-- **Each purchase has its own term.** Buying three slots today means three seats expiring together in two years; buying one more next month gives that one its own end date. The billing page lists every purchase with its expiry.
-- **When a term ends, that capacity simply stops counting.** Nothing is deleted and nobody is removed, but you are then over capacity: invites are refused until you buy again or prune. If slots were your only paid seats, the organization drops back to the free tier and keeps read-only access over the free limits, exactly like a cancelled subscription.
-- **When you are full on slots alone**, the invite prompt cannot offer "add a seat for $20/month" — there is no subscription to grow. It sends you to Billing to buy another slot (or to start a monthly subscription) instead.
-- **Refunds take the seats back.** A refunded purchase stops granting capacity immediately, and stays in the purchase history.
+The seats appear as soon as the payment is confirmed, and you get an invoice like any other charge.
+
+Good to know:
+
+- **A slot is a paid plan on its own.** An organization with a slot gets every paid feature (audit log, custom graphs, API keys, deploys) with no monthly subscription.
+- **Slots add to monthly seats.** Mixing is fine: buy slots for people who'll definitely be around for two years, and rent monthly seats for everyone else.
+- **Each purchase has its own term.** Three slots bought today expire together in two years. One more bought next month gets its own end date. The Billing page lists every purchase with its expiry.
+- **When a term ends, that capacity stops counting.** Nothing is deleted and nobody is removed, but you're over capacity, so invites are refused until you buy more or remove people. If slots were your only paid seats, the organization drops back to the free plan and keeps read-only access to anything over the free limits, just like a cancelled subscription.
+- **If you're full on slots alone**, the invite prompt can't offer to add a $20/month seat, because there's no subscription to grow. It sends you to Billing to buy another slot or start a monthly subscription.
+- **Refunds take the seats back.** A refunded purchase stops counting immediately and stays in your purchase history.
 
 ![Billing page Prepaid capacity card showing the slot quantity selector, the buy button, and a purchase history list with one active slot and its expiry date](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/billing-and-plans/prepaid-capacity-card.png)
 
-Self-hosted deployments only see this option when `STRIPE_CAPACITY_SLOT_PRICE_ID` is configured; without it the card is hidden and only the monthly plan is offered.
+**Self-hosting:** the Prepaid capacity card only appears when `STRIPE_CAPACITY_SLOT_PRICE_ID` is set. Without it, only the monthly plan is offered.
 
-## Invoices
+## Invoices and tax
 
-**Settings → Billing → Invoices**. Download any invoice as PDF. Tax info can be set in **Settings → Billing → Tax**.
+Go to **Settings > Billing > Invoices** to download any invoice as a PDF. Set your tax details in **Settings > Billing > Tax**.
 
 ## Cancel
 
-**Settings → Billing → Cancel plan**. You drop back to the free tier at the end of the current period. If you are over the free limits (more than 1 user or 3 accounts), you keep access in read-only until you prune.
+Go to **Settings > Billing > Cancel plan**. You move to the free plan at the end of the current billing period. If you're over the free limits (more than 1 user or 3 accounts), you keep read-only access until you trim down.
 
-Cancelling the monthly subscription does not touch [prepaid capacity slots](#prepaid-capacity-slots) — they are already paid for through their term, so you stay on the paid plan with that many seats until the last one expires.
+Cancelling the monthly subscription doesn't affect [prepaid capacity slots](#prepaid-capacity-slots). They're paid through their term, so you stay on the paid plan with that many seats until the last one expires.
 
 ## Trial
 
-There is no separate time-limited trial: the free plan does not expire, so you can evaluate for as long as you like and upgrade when you are ready. Starting checkout without completing payment does not change your plan — you stay on the free tier until Stripe confirms the subscription. If a trial period is applied to your Stripe subscription itself (for example a promotional offer), the plan shows as a trial and works like the paid plan until the trial ends.
+There's no time-limited trial. The free plan doesn't expire, so you can try Infrawrench for as long as you like and upgrade when you're ready. Starting checkout without finishing payment doesn't change your plan.
+
+If your subscription includes a trial period (for example a promotional offer), the plan shows as a trial and works like the paid plan until the trial ends.
 
 ## Hosted build time
 
-Deploys from the web app (and deploy-on-push) build on Infrawrench-hosted
-workers. When your deployment has build metering configured, that worker time is
-billed per second through a Stripe meter alongside the seat price — each deploy
-run records exactly how many seconds it used, and the run history shows it.
+Deploys from the web app (including deploy-on-push) build on Infrawrench-hosted machines. If your deployment has build metering set up, that build time is billed per second alongside your seats. Each deploy run records how many seconds it used, and you can see it in the run history.
 
-Plan-only previews build nothing and are never metered. Builds on your own
-machine (`infrawrench deploy` locally) or on a `buildOn` host you provide are
-yours already and never billed. Complimentary organizations are never billed.
+These are never billed:
+
+- Plan-only previews, which don't build anything.
+- Builds on your own machine (`infrawrench deploy` locally) or on a `buildOn` host you provide.
+- Complimentary organizations.

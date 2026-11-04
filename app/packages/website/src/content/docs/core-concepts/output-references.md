@@ -1,61 +1,64 @@
 ---
 title: Output references
-description: Wire one resource's output into another resource's input instead of copy-pasting.
+description: Wire one resource's output into another resource's input instead of copy-pasting credentials.
 sidebar_order: 2
 ---
 
-Many resources depend on credentials from other resources. A Postgres client needs a connection string. A Kubernetes plugin needs a kubeconfig. You could copy those values by hand every time they change — or you can reference them.
+Lots of resources need credentials from other resources. A Postgres client needs a connection string. A Kubernetes plugin needs a kubeconfig. Instead of copying those values by hand every time they change, you can reference them.
 
-## The idea
+## Literal or reference
 
-A field that holds a credential (API token, connection string, kubeconfig, password) can be filled in two ways:
+A credential field (API token, connection string, kubeconfig, password) can hold either:
 
-- **Literal** — you paste the actual value.
-- **Output reference** — the field points at another resource’s output field.
+- **A literal**: you paste the actual value.
+- **An output reference**: the field points at another resource's output.
 
-Output references re-resolve automatically. If the upstream resource’s value changes (say, a managed database rotates its password), the dependent resource picks up the new value the next time it connects.
+References stay current. If the upstream value changes (say a managed database rotates its password), the dependent resource picks up the new value the next time it connects.
 
-## Where the references come from
+## Where references come from
 
-Credential forms are plain fields — there is no link icon on **Connection string** or **Kubeconfig** that opens a picker. References are wired from the resource that _produces_ the value, or from a field that already holds one:
+Credential forms are plain fields. There's no picker button on **Connection string** or **Kubeconfig**. You set up a reference from the resource that produces the value, or from a field that already holds one:
 
-- **From the upstream resource's own page.** A managed database or cluster carries a tab for the plugin that consumes it — a DigitalOcean Postgres database gets a **PostgreSQL** tab, a DOKS or EKS cluster gets a **Kubernetes** tab — and opening that tab passes the connection string, CA certificate or kubeconfig straight through as a reference. Nothing is typed and no second account is created. That is what a credential field's help text means when it says you can "link this to a DigitalOcean Managed Database after adding".
-- **From a picker the plugin declares.** DNS record content is the one create form with a reference control today: a **Value source** select offering **Pick a resource** or **Use custom value** — see [DNS records](#dns-records) below.
-- **From a field that already holds a secret or a reference.** Those render with a **Reroll** link that opens a dialog for pointing them somewhere else — see [Secret rerolls](./secret-rerolls.md).
+- **From the upstream resource's page.** A managed database or cluster has a tab for the plugin that uses it. A DigitalOcean Postgres database gets a **PostgreSQL** tab, and a DOKS or EKS cluster gets a **Kubernetes** tab. Open that tab and the connection string, CA certificate or kubeconfig is passed through as a reference. You type nothing and no second account is created. That's what a field's help text means when it says you can "link this to a DigitalOcean Managed Database after adding".
+- **From a picker on the form.** DNS record content is the one create form with this today: a **Value source** select offering **Pick a resource** or **Use custom value**. See [DNS records](#dns-records) below.
+- **From a field that already holds a secret or reference.** These show a **Reroll** link that lets you point them somewhere else. See [Secret rerolls](./secret-rerolls.md).
 
-## Example
+## Example: open a managed Postgres database in the SQL editor
 
-You have a DigitalOcean managed Postgres database and you want the [SQL editor](../features/sql-editor.md) pointed at it.
+You have a DigitalOcean managed Postgres database and want the [SQL editor](../features/sql-editor.md) connected to it.
 
 1. Open the managed database resource.
 2. Switch to its **PostgreSQL** tab.
-3. That's it — the connection string and CA certificate flow through from the database's outputs.
 
-The Postgres side now follows whatever DigitalOcean returns.
+That's it. The connection string and CA certificate come straight from the database, and the Postgres side follows whatever DigitalOcean returns.
 
 <insert [A DigitalOcean managed Postgres database detail page with the PostgreSQL peer tab open and the SQL editor connected through it] here>
 
-## Which plugins expose outputs
+## Resources that expose outputs
 
-Any resource that produces a credential-ish value. Common ones:
+Any resource that produces a credential-like value. Common ones:
 
-- DigitalOcean managed databases — `connectionString`, `privateConnectionString`
-- Neon branches — `connectionString`
-- EKS / AKS / GKE clusters — `kubeconfig`
-- PlanetScale branches — `connectionString`
-- Turso databases — `url`, `authToken`
+- DigitalOcean managed databases: `connectionString`, `privateConnectionString`
+- Neon branches: `connectionString`
+- EKS / AKS / GKE clusters: `kubeconfig`
+- PlanetScale branches: `connectionString`
+- Turso databases: `url`, `authToken`
 
 ## DNS records
 
-DNS record content uses the same machinery. When you create an **A**, **AAAA**, or **CNAME** record, a **Value source** select appears above the value, offering **Pick a resource** (the default) or **Use custom value**. Leave it on **Pick a resource** and the value field becomes a picker that searches across your accounts for IP- or hostname-producing resources; picking one stores a live reference, so the record tracks the source's address and is re-applied at the provider when it changes. Other record types (MX, TXT, SRV, NS) have no such select — their value is plain text. See [DNS records](../features/dns-records.md).
+When you create an **A**, **AAAA** or **CNAME** record, a **Value source** select appears above the value, with **Pick a resource** (the default) or **Use custom value**.
+
+Leave it on **Pick a resource** and the value field becomes a search across your accounts for resources that have an IP or hostname. Pick one and the record follows that resource's address, updating at the provider when it changes.
+
+Other record types (MX, TXT, SRV, NS) don't have this select. Their value is plain text. See [DNS records](../features/dns-records.md).
 
 ## When to use a literal instead
 
-- The upstream resource is not managed by infrawrench.
-- You want to pin a specific credential regardless of upstream changes.
+- The upstream resource isn't managed by infrawrench.
+- You want to pin a specific credential no matter what happens upstream.
 
-See [Secret rerolls](./secret-rerolls.md) for changing a reference after you set it.
+To change a reference after you've set it, see [Secret rerolls](./secret-rerolls.md).
 
-## Seeing the wiring
+## See all the wiring
 
-Every reference is also a dependency edge, and the [dependency graph](../features/dependency-graph.md) draws them all at once — including the blast radius of any resource other things depend on.
+Every reference is also a dependency. The [dependency graph](../features/dependency-graph.md) shows them all at once, including what would be affected if a resource other things depend on went away.
