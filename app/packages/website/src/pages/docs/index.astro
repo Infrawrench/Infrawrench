@@ -1,6 +1,5 @@
 ---
 import DocsLayout from "../../layouts/DocsLayout.astro";
-import DocsWipNotice from "../../components/DocsWipNotice.astro";
 import { getDocsNav } from "../../lib/docs-nav";
 
 // On demand so middleware can negotiate; see src/middleware.ts.
@@ -15,8 +14,6 @@ const sections = await getDocsNav();
   description="Guides to Infrawrench's hosted MCP server, AI chat and CLI, plus cloud accounts, SSH, Kubernetes, SQL, storage, costs and dashboards."
 >
   <article class="docs-article">
-    <DocsWipNotice />
-
     <header class="docs-article-header">
       <h1 class="docs-article-title">Documentation</h1>
       <p class="docs-article-lede">
