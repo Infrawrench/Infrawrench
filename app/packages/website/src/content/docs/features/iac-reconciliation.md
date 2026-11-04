@@ -1,87 +1,91 @@
 ---
 title: IaC reconciliation
-description: Upload the Terraform state you already have and Infrawrench classifies every synced resource as managed, drifted, or unmanaged — then writes the import blocks to adopt the unmanaged ones.
+description: Upload the Terraform state you already have and Infrawrench sorts every synced resource into managed, drifted or unmanaged, then writes the import blocks to adopt the unmanaged ones.
 ---
 
-Terraform tells you what it manages. It cannot tell you what it _doesn't_ — the security group somebody widened at 2 a.m., the RDS instance created "just for a test" eighteen months ago, the load balancer that nobody remembers asking for. Those are the resources that break a `terraform apply`, survive an environment teardown, and appear on the bill forever.
+Terraform tells you what it manages. It can't tell you what it _doesn't_: the security group someone widened at 2 a.m., the RDS instance created "just for a test" eighteen months ago, the load balancer nobody remembers asking for. Those are the resources that break a `terraform apply`, survive an environment teardown and stay on the bill forever.
 
-**IaC reconciliation** answers the question directly. Upload the Terraform state your organization already has, and every resource Infrawrench has synced is put in one of three buckets:
+**IaC reconciliation** finds them. Upload the Terraform state you already have, and every resource Infrawrench has synced goes into one of three groups:
 
 | Status        | Meaning                                                                     |
 | ------------- | --------------------------------------------------------------------------- |
 | **Managed**   | Matched an entry in your state, and the live fields agree with it           |
 | **Drifted**   | Matched an entry in your state, but the live fields have moved away from it |
-| **Unmanaged** | In your inventory, absent from your state — somebody made it by hand        |
+| **Unmanaged** | In your inventory but not in your state: someone made it by hand            |
 
-A fourth category sits beside them: resources that are **in state but not in inventory**. Terraform believes they exist; Infrawrench has never seen them.
+There's a fourth list too: resources that are **in state but not in inventory**. Terraform thinks they exist, but Infrawrench has never seen them.
 
 ![The Infrastructure as Code page with the four summary tiles across the top and the resource table below, showing a mix of managed, drifted and unmanaged rows](https://agent-assets.infrawrench.com/docs-screenshots/features/iac-reconciliation/iac-overview.png)
 
 ## Four things called "Terraform"
 
-Infrawrench has four features that mention Terraform, and it is worth being precise about which is which:
+Four Infrawrench features mention Terraform. Here's which is which:
 
-| Feature                                       | Direction               | Unit                          |
-| --------------------------------------------- | ----------------------- | ----------------------------- |
-| **IaC reconciliation** (this page)            | Terraform state → in    | Your cloud resources          |
-| [Eject to Terraform](./terraform-export.md)   | HCL → out               | Your cloud resources          |
-| [Config as code](./config-as-code.md)         | JSON → both ways        | Your Infrawrench organization |
-| [Terraform provider](./terraform-provider.md) | Terraform → Infrawrench | Your Infrawrench organization |
+| Feature                                       | Direction                | Unit                          |
+| --------------------------------------------- | ------------------------ | ----------------------------- |
+| **IaC reconciliation** (this page)            | Terraform state, in      | Your cloud resources          |
+| [Eject to Terraform](./terraform-export.md)   | HCL, out                 | Your cloud resources          |
+| [Config as code](./config-as-code.md)         | JSON, both ways          | Your Infrawrench organization |
+| [Terraform provider](./terraform-provider.md) | Terraform to Infrawrench | Your Infrawrench organization |
 
-This one is the only feature that reads state _in_. Eject-to-Terraform writes HCL describing your cloud resources; config as code moves your whole Infrawrench organization as one JSON document; the Terraform provider lets Terraform manage Infrawrench's own configuration. They do not overlap.
+This is the only one that reads your state. Eject to Terraform writes HCL describing your cloud resources. Config as code moves your whole Infrawrench organization as one JSON document. The Terraform provider lets Terraform manage Infrawrench's own settings.
 
-## Uploading a state document
+## Upload your state
 
-Open **IaC** in the sidebar and choose **Upload state**. Two document shapes are accepted:
+Open **IaC** in the sidebar and choose **Upload state**. You can upload either:
 
-- **`terraform show -json`** output — run it in your workspace and upload the result. This is the recommended form; it is the format HashiCorp documents as stable.
-- **A raw `.tfstate`** — state file format version 4 (Terraform 0.12 and later).
+- **`terraform show -json` output** (recommended). Run it in your workspace and upload the result. It's the format HashiCorp documents as stable.
+- **A raw `.tfstate` file**, state format version 4 (Terraform 0.12 and later).
 
 ```bash
 terraform show -json > state.json
 ```
 
-Give the upload a **label** ("prod / us-east-1") and, optionally, a **scope**: an account, or the whole organization. Scoping to an account means only that account's resources are classified against it, which is what you want when each Terraform workspace covers one account.
+Give the upload a **label** ("prod / us-east-1") and, optionally, a **scope**: one account, or the whole organization. Scope it to an account when each Terraform workspace covers one account, so only that account's resources are compared against it.
 
-The format version is **checked, not assumed**. A state file at version 3 or a `terraform show` document at a format version this parser does not read is refused with an explanation, rather than half-read — a partially-read state would report genuinely managed resources as ClickOps, which is exactly the wrong answer.
+Unsupported versions are refused with an explanation instead of being half-read. That includes a version 3 state file, or a `terraform show` document in a format version Infrawrench can't read. A half-read state would wrongly flag managed resources as made by hand.
 
-Re-upload after each apply. Infrawrench keeps the twenty most recent documents per organization and prunes superseded ones after 90 days; the newest for each scope is always kept, so a workspace nobody has re-applied in months does not quietly lose its answer.
+Upload again after each apply. Infrawrench keeps the twenty most recent uploads per organization and removes superseded ones after 90 days. The newest upload for each scope is always kept, so a workspace nobody has applied in months still has its answer.
 
 ## What happens to secrets in your state
 
-A Terraform state file is one of the most secret-dense artefacts an organization has. Three things are true of every upload:
+Terraform state is full of secrets. For every upload:
 
-1. **The document itself is never stored.** It is parsed once, on upload, and discarded. Only the parsed projection is written to the database.
-2. **Attributes the state marks sensitive are dropped before anything is written.** Both formats carry that marking — `sensitive_attributes` in a `.tfstate`, `sensitive_values` in `terraform show -json` — and both are honoured. If a nested value inside an attribute is sensitive, the _whole_ top-level attribute is redacted; half-redacted structures invite mistakes.
-3. **Redacted attributes are never compared.** A field whose value was dropped cannot produce a drift row, so nothing about a secret's value leaks through the diff. The page reports how many attributes were redacted so you can see the redaction happened.
+1. **The file itself is never stored.** It's read once, on upload, and thrown away. Only the details needed for comparison are kept.
+2. **Attributes your state marks as sensitive are dropped before anything is saved.** Both formats mark them (`sensitive_attributes` in a `.tfstate`, `sensitive_values` in `terraform show -json`), and both are respected. If anything nested inside an attribute is sensitive, the _whole_ attribute is removed.
+3. **Removed attributes are never compared**, so a secret's value can't leak through a drift result. The page shows how many attributes were removed, so you can see it happened.
 
-Documents nesting more than 64 levels deep inside a single attribute are rejected outright — real Terraform state does not nest anywhere near that far, so crossing it means the file is not what it claims to be. Attribute values are also truncated at 4 000 characters, and structures larger than that are dropped whole — a value that big cannot be a useful diff, and the bound keeps an untrusted upload from becoming a storage problem. Clamped values are excluded from drift comparison exactly like sensitive ones: a value Infrawrench did not store faithfully must never be compared, or its own storage limit would show up as drift. Uploads are limited to 8 MiB and 250 attributes per resource.
+Limits on uploads:
+
+- Up to 8 MiB per file and 250 attributes per resource.
+- Files nested more than 64 levels deep inside a single attribute are rejected. Real Terraform state never gets close.
+- Attribute values over 4 000 characters are cut off, and larger structures are dropped. These, like sensitive values, are left out of drift comparison.
 
 ## How resources are matched
 
-A Terraform address like `aws_instance.web` has to be tied to a resource Infrawrench synced. That mapping is **derived from the plugin's own export mappers**, not from a second hand-written table: each plugin already declares how its resources become Terraform blocks for [eject to Terraform](./terraform-export.md), and reconciliation reads that same declaration backwards. A plugin that gains export support gains reconciliation with it, and the two directions cannot fall out of step.
+Each Terraform address, like `aws_instance.web`, is matched to a resource Infrawrench synced. It uses the same mapping as [Eject to Terraform](./terraform-export.md), so any resource type that supports eject also supports reconciliation.
 
-Matching runs on identity, in order:
+Infrawrench tries these in order:
 
-1. the **import ID** the plugin's mapper produces for the live resource;
-2. the resource's **external ID** (the provider's own ID);
-3. failing both, the `id`/`arn`/`self_link` in the state entry — but **only** when it resolves to exactly one state entry. An ambiguous identifier is a coincidence, and reporting a coincidence as "managed" is worse than reporting a managed resource as unmanaged.
+1. the resource's **import ID**
+2. the resource's **external ID** (the provider's own ID)
+3. the `id`, `arn` or `self_link` in the state entry, but **only** when it points to exactly one state entry. Infrawrench would rather call a managed resource unmanaged than guess.
 
-Every row says how it was matched, so you can argue with it.
+Every row shows how it was matched, so you can check it.
 
-Where a plugin resource type's Terraform type cannot be derived at all, the page says so under **Coverage gaps** rather than guessing. That only affects the "in state only" list — a resource Infrawrench actually holds still matches, because there the real mapper runs against the real resource.
+If a resource type can't be mapped to a Terraform type, the page lists it under **Coverage gaps** instead of guessing. This only affects the "in state only" list; resources Infrawrench actually has still match.
 
-## Drift
+## Review drift
 
-A drifted resource shows the fields where your state and the live resource disagree, rendered exactly the way the [change timeline](./change-timeline.md) renders drift — same comparison, same before → after layout. The left value is what Terraform state carries; the right is what is actually running.
+A drifted resource shows each field where your state and the live resource disagree, in the same before and after layout as the [change timeline](./change-timeline.md). The left value is what Terraform state says; the right is what's actually running.
 
-Only the attributes the plugin's export mapper knows about are compared. Everything else in a state entry is provider bookkeeping Infrawrench has no opinion about, and comparing it would produce noise, not drift.
+Only the fields that eject to Terraform knows about are compared. The rest of a state entry is provider bookkeeping, and comparing it would just add noise.
 
-A resource that matched but that no plugin can express as a Terraform block is reported as managed with a note — its drift is **unknown**, not absent. Infrawrench will not tell you a resource is clean when it has no way to check.
+If a resource matched but can't be expressed as a Terraform block, it shows as managed with a note: its drift is **unknown**, not absent. Infrawrench won't call a resource clean when it can't check.
 
-## Adopting unmanaged resources
+## Adopt unmanaged resources
 
-This is the point of the feature. Select unmanaged resources — or **Select all** — and choose **Generate import blocks**. You get one document containing Terraform 1.5+ `import` blocks followed by the matching `resource` stanzas:
+This is what the feature is for. Select unmanaged resources (or **Select all**) and choose **Generate import blocks**. You get one file with Terraform 1.5+ `import` blocks followed by the matching `resource` blocks:
 
 ```hcl
 import {
@@ -99,22 +103,22 @@ resource "aws_instance" "web" {
 }
 ```
 
-Put it in your configuration and run `terraform plan`. The `import` blocks adopt the live resources on the next apply — no `terraform import` commands to run by hand, and the whole set comes under management in one reviewed change.
+Add it to your configuration and run `terraform plan`. The `import` blocks adopt the live resources on the next apply, with no `terraform import` commands to run by hand, and the whole set comes under management in one reviewed change.
 
-The HCL is generated by the same mappers and serializer that back [eject to Terraform](./terraform-export.md), plus the adoption blocks. Secrets are referenced as `var.*` input variables and are never inlined.
+The HCL matches what [Eject to Terraform](./terraform-export.md) produces, plus the import blocks. Secrets are referenced as `var.*` input variables and never written inline.
 
-**Every resource in the document is imported, not created.** A `resource` block with no matching `import` block is a _create_ — running it would fail with already-exists, or build a second copy of something you already have. So if a provider gives no import ID for a resource, that resource is left out of the document **entirely** rather than declared without an import, and is listed with the reason instead. The same goes for resources no plugin can express. Nothing is dropped silently, and nothing in the document is unsafe to plan.
+**Every resource in the file is imported, never created.** A `resource` block without an `import` block would try to create a second copy, or fail because it already exists. So if a provider gives no import ID for a resource, or the resource can't be expressed in Terraform, it's left out of the file and listed with the reason instead. Nothing is dropped silently, and everything in the file is safe to plan.
 
 ![The Adopt into Terraform modal showing generated import blocks above the resource stanzas, with the Close, Copy HCL and "Download imports.tf" buttons in the footer](https://agent-assets.infrawrench.com/docs-screenshots/features/iac-reconciliation/adopt-into-terraform-modal.png)
 
-## Who made this, and when
+## See who made it, and when
 
-For every unmanaged resource the page shows two extra columns:
+Unmanaged resources get two extra columns:
 
-- **Owner** — from [resource ownership](../core-concepts/resource-ownership.md), if anybody recorded one.
-- **First seen** — the date the [change timeline](./change-timeline.md) first recorded the resource appearing.
+- **Owner**: from [resource ownership](../core-concepts/resource-ownership.md), if anyone recorded one.
+- **First seen**: when the [change timeline](./change-timeline.md) first saw the resource appear.
 
-Together those turn "you have 34 unmanaged resources" into a list you can act on: a name to ask, and a date to ask about.
+Together they turn "you have 34 unmanaged resources" into a list you can act on: a name to ask, and a date to ask about.
 
 ## Permissions
 
@@ -123,16 +127,16 @@ Together those turn "you have 34 unmanaged resources" into a list you can act on
 | `iac:read`  | View the classification, drift, and generate import blocks |
 | `iac:write` | Upload and delete state documents                          |
 
-Members get `iac:read` by default, for the same reason they can read the change timeline: "is this thing managed?" is a question you have to answer before you touch anything. Uploading a state document is an organization declaring what its estate looks like, so it stays with admins and owners.
+Members get `iac:read` by default, because "is this managed?" is something you need to know before you touch anything. Uploading state stays with admins and owners.
 
-## Where it runs
+## Where it's available
 
-Cloud only, on web, desktop and the [CLI-less](./cli.md) surfaces alike — the inventory being classified is the organization's synced resources, which local-only desktop mode does not have. The desktop panel says so rather than fetching.
+Cloud organizations only, on the web and desktop apps. It works on your organization's synced resources, which local-only desktop mode doesn't have, so the desktop panel tells you that instead.
 
 ## Related
 
-- [Eject to Terraform](./terraform-export.md) — generate HCL for resources you already have
-- [Change timeline](./change-timeline.md) — the drift feed this page's field diffs come from
-- [Resource ownership](../core-concepts/resource-ownership.md) — who owns what
-- [Config as code](./config-as-code.md) — your Infrawrench organization as one JSON document
-- [Terraform provider](./terraform-provider.md) — manage Infrawrench with Terraform
+- [Eject to Terraform](./terraform-export.md): generate HCL for resources you already have
+- [Change timeline](./change-timeline.md): where the drift details come from
+- [Resource ownership](../core-concepts/resource-ownership.md): who owns what
+- [Config as code](./config-as-code.md): your Infrawrench organization as one JSON document
+- [Terraform provider](./terraform-provider.md): manage Infrawrench with Terraform

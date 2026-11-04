@@ -1,44 +1,46 @@
 ---
 title: Environment diff
-description: Two accounts of the same provider compared side by side — resource types present in one and not the other, count deltas, and the settings on which corresponding resources disagree.
+description: "Compare two accounts of the same provider side by side: resource types in one and not the other, differences in counts, and the settings where matching resources disagree."
 sidebar_order: 12
 ---
 
-Staging works. Production doesn't. Somewhere between the two there is a database on a smaller plan, a queue nobody created, a flag that was flipped in one place and not the other — and finding it means opening two browser tabs of the same provider console and comparing them by eye.
+Staging works. Production doesn't. Somewhere between them is a database on a smaller plan, a queue nobody created, or a flag flipped in one place and not the other. Finding it usually means opening the same provider console in two tabs and comparing by eye.
 
-Environment diff does that comparison for you. Point it at two accounts of the same provider and it answers three questions at once:
+Environment diff does that comparison for you. Point it at two accounts of the same provider and it shows:
 
-- **What exists in one and not the other.** Resource types present in staging and missing from production, and vice versa.
-- **How the counts differ.** Three droplets here, five there, per resource type.
-- **Where corresponding resources disagree.** The instance class, the engine version, the replica count, the feature flag — field by field, with both values side by side.
+- **What exists in one and not the other.** Resource types in staging that are missing from production, and the other way round.
+- **How the counts differ.** Three droplets here, five there, for each resource type.
+- **Where matching resources disagree.** The instance class, engine version, replica count or a feature flag, field by field, with both values side by side.
 
-Like the [orphan finder](./orphan-finder.md), the [expiry radar](./expiry-radar.md) and [posture checks](./posture-checks.md), it costs nothing to have on. The comparison runs over state your accounts already sync — no extra provider API calls, nothing against your rate limits — and reads the same stored records the [change timeline](./change-timeline.md) diffs against their own past. It is the same comparison, pointed at a different pair of snapshots, which is why it needs no knowledge of any particular provider and covers every plugin automatically.
+Like the [orphan finder](./orphan-finder.md), the [expiry radar](./expiry-radar.md) and [posture checks](./posture-checks.md), it costs nothing to leave on. It uses data your accounts already sync, so it makes no extra provider API calls and doesn't count against your rate limits. It works with every provider.
 
-## How resources are paired
+## How resources are matched
 
-Two accounts don't share resource ids, so the diff pairs resources by **resource type plus name, with environment words removed**. `api-staging` lines up with `api-prod`; `acme-blue-worker` lines up with `acme-green-worker`.
+Resources in two accounts have different ids, so the diff matches them by **resource type plus name, ignoring environment words**. `api-staging` lines up with `api-prod`, and `acme-blue-worker` lines up with `acme-green-worker`.
 
-The words it strips are a fixed vocabulary — `prod`, `production`, `prd`, `live`, `stg`, `stage`, `staging`, `dev`, `test`, `qa`, `uat`, `sandbox`, `preview`, `preprod`, `demo`, `canary`, `beta`, `alpha`, `local` — plus **every word in the two account names**. That last part is what makes it work without configuration: if your accounts are called "Acme Blue" and "Acme Green", `acme`, `blue` and `green` are stripped too, and you never have to teach it a naming convention.
+The words it ignores are `prod`, `production`, `prd`, `live`, `stg`, `stage`, `staging`, `dev`, `test`, `qa`, `uat`, `sandbox`, `preview`, `preprod`, `demo`, `canary`, `beta`, `alpha` and `local`, plus **every word in the two account names**. So if your accounts are called "Acme Blue" and "Acme Green", `acme`, `blue` and `green` are ignored too, and you don't have to set up a naming convention.
 
-Where several resources of one type normalize to the same name, they pair up to the overlap in a stable order and the leftovers are reported as present on one side only.
+If several resources of one type end up with the same name, they're paired up as far as they go, and any left over are shown as present on one side only.
 
-## What it hides, and why
+## What it hides
 
-Every resource in production has a different id, a different IP address and a different creation time from its staging twin. Listing those would bury the one field that actually diverged, so by default the diff filters out:
+Every production resource has a different id, IP address and creation time from its staging twin. Listing those would bury the field that actually differs, so by default the diff hides:
 
-- fields whose name ends in an identifier, link or network-address word — `vpcId`, `arn`, `endpoint`, `publicIpAddress`, `selfLink`, `fqdn`
-- values that are timestamps on both sides — `createdAt`, `launchTime`
+- fields that hold an identifier, link or network address, such as `vpcId`, `arn`, `endpoint`, `publicIpAddress`, `selfLink` and `fqdn`
+- values that are timestamps on both sides, such as `createdAt` and `launchTime`
 - values that are each side's own provider id
 
-Everything else is shown. An instance class, an engine version, a replica count, a boolean flag — the filter never guesses that a configuration difference is "probably fine". The count of what it hid is always displayed, and **Show ids, addresses & timestamps** (or `--all` on the command line) turns the filter off entirely.
+Everything else is shown: instance class, engine version, replica count, boolean flags. It never decides a configuration difference is "probably fine". The number of hidden fields is always shown, and **Show ids, addresses & timestamps** (or `--all` on the command line) turns the filter off.
 
-## Using it
+## Compare two accounts
 
-Open **Env diff** in the sidebar, pick a baseline account and a comparison account, and read the result. The second dropdown only offers accounts of the same provider as the first — a Droplet has no counterpart in an AWS account, so comparing across providers would produce nothing but noise.
+1. Open **Env diff** in the sidebar.
+2. Pick a baseline account.
+3. Pick a comparison account. Only accounts from the same provider are offered.
 
 ![The Env diff screen with a staging and a production account selected, showing the inventory table with a count delta and one resource type flagged as missing, and a field divergence below it](https://agent-assets.infrawrench.com/docs-screenshots/features/environment-diff/staging-vs-production.png)
 
-The pair you chose is recorded in the URL, so a comparison can be bookmarked or pasted into a chat. Resource names link through to the resource, which is usually the next thing you want.
+The two accounts you picked are saved in the URL, so you can bookmark a comparison or paste it into a chat. Resource names link to the resource itself.
 
 ## From the command line
 
@@ -55,14 +57,14 @@ infrawrench diff staging prod
 infrawrench diff staging prod --type managed_database --all --json
 ```
 
-`--local` compares two accounts in the desktop app's own workspace instead of an organization's. Because a local workspace keeps no synced copy of your infrastructure, that mode enumerates both accounts through the provider live — slower, and it needs the accounts' credentials, but it works signed out. A resource type whose listing fails is excluded from the comparison and reported, rather than being counted as missing: "we couldn't ask" and "prod doesn't have one" are opposite answers.
+`--local` compares two accounts in the desktop app's own workspace instead of an organization's. This mode lists both accounts live from the provider, so it's slower and needs the accounts' credentials, but it works signed out. If listing a resource type fails, that type is left out and reported, not counted as missing.
 
 ## From an agent
 
-The [MCP server](./mcp.md) exposes the comparison as `diff_environments`, taking the two accounts by id or by exact name. It is the tool to reach for when someone asks an agent why one environment behaves differently from another — the agent gets the type deltas and field divergences in one call instead of listing both accounts and comparing them itself.
+The [MCP server](./mcp.md) offers the comparison as `diff_environments`, which takes the two accounts by id or exact name. Use it when you ask an agent why one environment behaves differently from another. The agent gets the type differences and field differences in one call.
 
 ## Permissions and freshness
 
-Reading a diff needs `resources:read` — the same permission as the account pages it reads. Nothing is written, and no provider is contacted.
+Viewing a diff needs `resources:read`, the same permission as the account pages. Nothing is changed and no provider is contacted.
 
-Results are as fresh as the last sync. If you have just changed something, sync the account first (or wait for the poller) and re-run the comparison.
+Results are as fresh as the last sync. If you've just changed something, sync the account first (or wait for the next sync) and run the comparison again.

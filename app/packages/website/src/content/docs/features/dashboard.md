@@ -1,33 +1,33 @@
 ---
 title: Dashboard
-description: Pin the resources you actually use to a draggable grid.
+description: Pin the resources, cost graphs, budgets, KPIs and notes you actually use to a draggable grid.
 sidebar_order: 1
 ---
 
-The dashboard is the first thing you see after sign-in. It is a grid of pinned resource cards that you choose and arrange yourself. If you do not pin anything it stays empty — that is fine.
+The dashboard is the first thing you see after you sign in. It's a grid of cards that you choose and arrange yourself. If you don't pin anything, it stays empty, and that's fine.
 
 ## Pin a resource
 
-Pinning is done from the dashboard, not from the resource. There are three ways in:
+You pin from the dashboard, not from the resource. There are three ways:
 
-- **The add tile.** An empty dashboard shows a large dashed tile reading _"Click to add to this dashboard"_; once it has cards, the same tile shrinks to a **+** labelled **Add**. Either one opens a menu — choose **Pin a resource** and search for what you want.
-- **Spotlight.** The same menu entry opens the Spotlight picker in pin mode: type a few letters and press Enter to pin the highlighted resource.
-- **Drag.** Drag a resource out of the sidebar (or off an account's detail page) and drop it on the dashboard grid, or onto a dashboard's entry in the sidebar. Workflows can be dragged the same way.
+- **The add tile.** An empty dashboard shows a large dashed tile that says _"Click to add to this dashboard"_. Once it has cards, the tile shrinks to a **+** labelled **Add**. Either one opens a menu: choose **Pin a resource** and search for what you want.
+- **Spotlight.** The same menu entry opens the Spotlight picker. Type a few letters and press Enter to pin the highlighted resource.
+- **Drag.** Drag a resource out of the sidebar (or off an account's detail page) and drop it on the dashboard grid, or onto a dashboard's entry in the sidebar. You can drag workflows the same way.
 
-The **desktop app** additionally puts a 📌 **Pin to dashboard** button on each resource pill on an account's detail page, revealed on hover. There is no pin button on a resource's own detail page on either platform.
+In the **desktop app**, each resource pill on an account's detail page also gets a 📌 **Pin to dashboard** button when you hover over it. There's no pin button on a resource's own detail page on either platform.
 
 <insert [The dashboard "+" tile menu open on Pin a resource, with the Spotlight picker searching for a resource] here>
 
 ## Arrange cards
 
-- **Drag** a card to move it. Other cards reflow.
-- **Resize** a cost, budget, KPI, text, custom graph, canvas or savings card with the handle in its bottom-right corner (it appears on hover). Drag it and the card snaps to whole columns and rows as you go; let go and the size is saved. From the keyboard, Tab to the handle and use the arrow keys: Right and Left add and remove a column, Down and Up a row, and each step is saved and read out by screen readers. Resource and workflow cards stay one column wide.
-- **Duplicate** a card with the copy button beside the resize handle. The copy lands right after the original with the same settings and size, titled "Copy of …". Copying a budget or saved report card gives you a second view of the same budget or report, not a new one.
-- **Unpin** with the **X** icon in the card's top-right corner — it appears on hover, and its tooltip reads "Remove from dashboard".
+- **Move** a card by dragging it. Other cards move out of the way.
+- **Resize** a cost, budget, KPI, text, custom graph, canvas or savings card with the handle in its bottom-right corner (it shows on hover). The card snaps to whole columns and rows as you drag, and the size is saved when you let go. From the keyboard, Tab to the handle and use the arrow keys: Right and Left add and remove a column, Down and Up a row. Each step is saved and read out by screen readers. Resource and workflow cards stay one column wide.
+- **Duplicate** a card with the copy button next to the resize handle. The copy appears right after the original with the same settings and size, titled "Copy of …". Copying a budget or saved report card gives you a second view of the same budget or report, not a new one.
+- **Unpin** a card with the **X** in its top-right corner. It shows on hover, and its tooltip reads "Remove from dashboard".
 
-Every kind of card is draggable and they all share one order, so a cost graph or budget can sit between two resource cards rather than being stuck at the end of the grid. New cards are added at the end. The order and the sizes are per dashboard and shared with everyone in the org.
+All cards can be dragged and share one order, so a cost graph or budget can sit between two resource cards instead of being stuck at the end. New cards go at the end. The order and sizes belong to each dashboard and are shared with everyone in the org.
 
-The grid fits as many columns as the window allows, at least 220 pixels each, so a wider window shows more cards per row. A card wider than the columns on screen fills the row instead. A row height is a minimum: a card always grows to fit its content, so making a chart taller gives the chart more room and never cuts anything off.
+The grid fits as many columns as the window allows, each at least 220 pixels wide, so a wider window shows more cards per row. A card wider than the columns on screen fills the row instead. Cards always grow to fit their content, so making a chart taller gives it more room and never cuts anything off.
 
 <insert [Dashboard with a KPI card being resized from its corner handle, the dashed outline snapping to two columns, and the copy button beside the handle] here>
 
@@ -35,33 +35,44 @@ The grid fits as many columns as the window allows, at least 220 pixels each, so
 
 ## What cards show
 
-Each card shows the same summary the sidebar uses — name, status badge, and one or two key facts (region, size, replica count, etc.). Cards auto-refresh every 30 seconds along with the sidebar.
+Each resource card shows the same summary as the sidebar: name, status badge, and one or two key facts (region, size, replica count and so on). Cards refresh every 30 seconds, along with the sidebar.
 
 ## Historical metrics
 
-Pinned resources accumulate metric history. The dashboard sparkline on each card shows the most recent values; a resource's **Metrics** tab draws one chart per reported series, captioned with the window it covers — that window comes from the plugin, and there is no range selector to change it.
+Pinned resources build up metric history. The sparkline on each card shows the most recent values. A resource's **Metrics** tab draws one chart per series, each labelled with the time window it covers. The window is set per resource type, and there's no range selector to change it.
 
-Behind the scenes, the poller writes a datapoint every 15 seconds to a time-series store. Raw points are kept for 7 days, 1-minute rollups for 30 days, and 1-hour rollups for a year.
+History is recorded every 15 seconds. Raw points are kept for 7 days, 1-minute summaries for 30 days, and 1-hour summaries for a year.
 
-Only **pinned** resources accumulate history. Unpin a resource and its history stops being collected (existing points age out via the retention windows above).
+Only **pinned** resources build up history. Unpin a resource and its history stops being collected (existing points expire on the schedule above).
 
-Unpinned resources still get a chart: when a resource has no accumulated history, the Metrics tab fetches the series live from the provider on demand. The tab itself only appears for resource types whose plugin reports metrics; where a resource has none yet, it says "No metric data yet."
+Unpinned resources still get a chart: when there's no saved history, the Metrics tab fetches the data live from the provider. The tab only appears for resource types that report metrics, and if a resource has none yet it says "No metric data yet."
 
 <insert [Resource Metrics tab showing CPU and memory series, each chart captioned with its "Last N min" window and no range selector anywhere on the tab] here>
 
 ## Cost graphs and budgets
 
-The **+** tile on a dashboard is a menu: pin a resource, add a **Cost graph**, place a **Saved report**, create a **New budget**, place an **Existing budget** you already have, add a **Custom graph**, a **Realized savings** card, a **KPI** or a **Text** card (all cloud orgs only). Cost widgets chart the actual spend of your connected accounts and track monthly budgets with alerts: see [Cost graphs & budgets](./cloud-costs.md). Custom graphs are script-defined charts with their own controls: see [Custom graphs](./custom-graphs.md). A realized savings card shows what your optimization actions actually saved against their projection: see [Realized savings](./realized-savings.md). They drag into place alongside resource cards like anything else on the grid; cost graphs, custom graphs and realized savings cards start two columns wide and budgets one, and any of them can be resized. A cost graph can measure money, usage quantity or a count of billed services, accounts or resources, bin by day up to quarter, accumulate, and draw as bars, lines, areas, a pie, a donut or a table: see [display options](./cloud-costs.md#display-options).
+The **+** tile on a dashboard is a menu. Besides pinning a resource, you can add (cloud orgs only):
 
-Budget cards are views onto a budget, not the budget itself: removing one leaves the budget tracking and alerting, and the [**Costs** panel](./cloud-costs.md#the-costs-panel) lists every budget whether or not a dashboard shows it. **Saved report** cards work the same way — they point at a [cost report](./cost-reports.md) by id, so editing the report updates every dashboard showing it, and a **Cost graph** stays the one-off card owned by this dashboard alone. A [canvas](./ai-canvas.md) is pinned from its own page (**Dashboards** in its header) and renders as a two-column card with an **Open** link back to it.
+- a **Cost graph**
+- a **Saved report**
+- a **New budget**, or an **Existing budget** you already have
+- a **Custom graph**
+- a **Realized savings** card
+- a **KPI** or a **Text** card
+
+Cost widgets chart the actual spend of your connected accounts and track monthly budgets with alerts: see [Cost graphs & budgets](./cloud-costs.md). Custom graphs are script-defined charts with their own controls: see [Custom graphs](./custom-graphs.md). A realized savings card shows what your optimization actions actually saved compared with what was projected: see [Realized savings](./realized-savings.md).
+
+You drag these into place alongside resource cards like anything else. Cost graphs, custom graphs and realized savings cards start two columns wide and budgets one, and you can resize any of them. A cost graph can measure money, usage quantity or a count of billed services, accounts or resources, group by day up to quarter, show a running total, and draw as bars, lines, areas, a pie, a donut or a table: see [display options](./cloud-costs.md#display-options).
+
+A budget card is a view of a budget, not the budget itself. Removing the card leaves the budget tracking and alerting, and the [**Costs** panel](./cloud-costs.md#the-costs-panel) lists every budget whether or not a dashboard shows it. **Saved report** cards work the same way: they point at a [cost report](./cost-reports.md), so editing the report updates every dashboard that shows it. A **Cost graph** is a one-off card that belongs to this dashboard alone. To pin a [canvas](./ai-canvas.md), use **Dashboards** in the canvas's own header. It shows as a two-column card with an **Open** link back to it.
 
 ![Dashboard "+" tile menu open showing Pin a resource, Cost graph, Saved report, New budget, Existing budget, and Custom graph entries](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/dash-add-menu.png)
 
 ## KPI cards
 
-A **KPI** card is one big number with the change against the previous period underneath it, as an amount and a percentage. The change is green when it moved the good way and red when it moved the bad way: spend going up is bad news, savings going up is good. The card picks a sensible direction from what it measures, and **A rise is** in its editor lets you overrule it (a business metric such as active users is good news when it rises).
+A **KPI** card shows one big number, with the change since the previous period underneath as an amount and a percentage. The change is green when it moved the good way and red when it moved the bad way: spend going up is bad news, savings going up is good. The card picks a sensible direction from what it measures, and **A rise is** in its editor lets you change it (for a business metric such as active users, a rise is good news).
 
-Every source is picked from what your organization already has; nothing asks for an id:
+You pick every source from what your organization already has, so you never need to type an id:
 
 | Source               | What it can show                                                                                                                                                                                                                          | Window                                                                                                                                                      |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -70,54 +81,71 @@ Every source is picked from what your organization already has; nothing asks for
 | **Commitments**      | Coverage and utilization of your reservations, savings plans and committed-use discounts, or the savings they realized.                                                                                                                   | Coverage and utilization use the commitments view's trailing 30 days and compare with the 30 days before. Savings use the last 30 days or a range you pick. |
 | **Realized savings** | What your optimization actions saved, of every kind or one kind (right-sizing, orphan cleanup, sleep schedules…).                                                                                                                         | The last 30 days, or a range you pick.                                                                                                                      |
 
-A report KPI keeps everything that defines the report: its filters, saved filter, cost basis and whether billing rules apply. The number is measured with your own access, so someone whose [cost visibility](../team-and-billing/cost-visibility.md) is scoped sees their slice, exactly as on the report itself. Coverage is shown as its lower bound (all usage), with the upper bound (commitment-eligible usage) in a note when they differ, the same range the [commitments view](./cloud-costs.md#commitments) explains. There is no effective savings rate: nothing records what covered usage would have cost on demand, and an estimate of it would be read as a buying signal.
+A report KPI keeps everything that defines the report: its filters, saved filter, cost basis and whether billing rules apply. The number uses your own access, so someone whose [cost visibility](../team-and-billing/cost-visibility.md) is limited sees their slice, just as on the report itself.
 
-The editor previews the card as you build it.
+Coverage is shown as its lower bound (all usage), with the upper bound (commitment-eligible usage) in a note when they differ. The [commitments view](./cloud-costs.md#commitments) explains that range. There's no effective savings rate, because nothing records what covered usage would have cost on demand.
+
+The editor shows a preview of the card as you build it.
 
 <insert [KPI card editor with Saved report selected, the Measure dropdown on Spend, Daily average chosen, and the live preview card showing a figure with a red "+12.4%" badge] here>
 
 ## Text cards
 
-A **Text** card holds notes in markdown: headings, **bold**, lists, links, quotes and `code`. Use them to label a section of the dashboard, explain what a chart is for, or link to a runbook. The editor has **Write** and **Preview** tabs. Raw HTML is not rendered, links open in a new window, and an image shows as a link to its address rather than loading, so a text card can never fetch anything by itself. A card holds up to 20,000 characters and grows to fit what it says.
+A **Text** card holds notes in markdown: headings, **bold**, lists, links, quotes and `code`. Use one to label a section of the dashboard, explain what a chart is for, or link to a runbook. The editor has **Write** and **Preview** tabs.
+
+Raw HTML isn't rendered, links open in a new window, and images show as a link to their address instead of loading, so a text card never fetches anything by itself. A card holds up to 20,000 characters and grows to fit its text.
 
 <insert [Dashboard with a two-column text card titled "Read me first" with a heading, a bullet list and a runbook link, beside two KPI cards] here>
 
 ## Export and schedule
 
-**Download PDF** in a dashboard's header renders every card as a PDF (a KPI as its figure and change, a text card as its paragraphs with link addresses spelled out), and **Schedule delivery** sends it daily, weekly or monthly to Slack, Microsoft Teams or email with the PDF attached. See [PDF export and scheduled dashboards](./dashboard-pdf.md).
+**Download PDF** in a dashboard's header turns every card into a PDF (a KPI as its figure and change, a text card as its paragraphs with link addresses written out). **Schedule delivery** sends it daily, weekly or monthly to Slack, Microsoft Teams or email with the PDF attached. See [PDF export and scheduled dashboards](./dashboard-pdf.md).
 
 ## Multiple dashboards
 
-You can create additional dashboards from **Dashboards → New**. Useful for splitting by environment (prod, staging) or by responsibility (mine vs team).
+Create more dashboards from **Dashboards > New**. They're useful for splitting by environment (prod, staging) or by responsibility (mine vs team).
 
 ## Default dashboards
 
-The dashboard you land on when you open the app (the web home page, a new tab on desktop, the top of the Dashboards tab on mobile) is picked in three layers, most specific first:
+The dashboard you land on when you open the app (the web home page, a new tab on desktop, the top of the Dashboards tab on mobile) is chosen in three layers, most specific first:
 
-1. **Your own default.** Open any dashboard, choose **Default → Set as my default**, and you land there from then on, in this organization. **Default → Clear my default** hands the choice back to the layers below.
-2. **Your role's default.** An admin can give each role, built-in or custom, a default dashboard under **Settings → Roles**. Everyone holding that role lands there unless they picked their own.
-3. **The organization default.** The dashboard created as **Home** when the organization was set up. It is the final fallback and can't be deleted.
+1. **Your own default.** Open any dashboard and choose **Default > Set as my default**. You'll land there from then on, in this organization. **Default > Clear my default** goes back to the layers below.
+2. **Your role's default.** An admin can give each role, built-in or custom, a default dashboard under **Settings > Roles**. Everyone with that role lands there unless they picked their own.
+3. **The organization default.** The **Home** dashboard created when the organization was set up. It's the final fallback and can't be deleted.
 
-The **Default** menu says which layer put you on the dashboard you're looking at, so it's never a mystery why the app opened where it did. A star on the button marks the dashboard you land on.
+The **Default** menu tells you which layer put you on the dashboard you're looking at, so you always know why the app opened where it did. A star on the button marks the dashboard you land on.
 
 <insert [A dashboard header with the Default menu open, showing "You land here when you open the app: it is the default for your role, Finance." above the Set as my default entry] here>
 
-A role default has to be a dashboard the role can open: the role needs `dashboards:read`, and the dashboard has to be [shared](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) with the role or with the whole organization. Settings refuses anything else and says why. If a dashboard's sharing is narrowed later, nobody is sent somewhere they can't see: members skip that layer and land on the next one, and the **Default** menu tells you your own pick was skipped. Deleting a dashboard clears it as anyone's default.
+A role default has to be a dashboard the role can open: the role needs `dashboards:read`, and the dashboard has to be [shared](../team-and-billing/cost-visibility.md#sharing-reports-and-dashboards) with the role or with the whole organization. Settings won't accept anything else and tells you why. If a dashboard's sharing is narrowed later, nobody is sent somewhere they can't see: they skip that layer and land on the next one, and the **Default** menu tells you if your own pick was skipped. Deleting a dashboard removes it as anyone's default.
 
 <insert [Settings → Roles with the Finance role's card showing a Default dashboard picker set to "Spend overview", and the Member card set to "Organization default (Home)"] here>
 
-Role defaults also travel in [config as code](./config-as-code.md) (a dashboard's `defaultForRoles`) and in Terraform as [`infrawrench_role_default_dashboard`](./terraform-provider.md). The CLI's `infrawrench dashboards` marks the one you land on and says why (`--json` includes the full resolution).
+You can also set role defaults in [config as code](./config-as-code.md) (a dashboard's `defaultForRoles`) and in Terraform with [`infrawrench_role_default_dashboard`](./terraform-provider.md). In the CLI, `infrawrench dashboards` marks the one you land on and says why (`--json` includes the full details).
 
-A member holds one role today. If membership ever carries several, the choice stays deterministic: a custom role's default beats a built-in role's, then Owner beats Admin beats Member, then role names in alphabetical order.
+Each member has one role today. If members could ever hold several, the choice stays predictable: a custom role's default beats a built-in role's, then Owner beats Admin beats Member, then role names in alphabetical order.
 
 ## On mobile
 
-The [mobile app](./mobile-app.md) builds and edits dashboards too: **New dashboard** on the Dashboards tab, then **Edit** on a dashboard to add cards, reorder them, configure a cost graph or budget, and rename or delete the dashboard. **Set as my default** and **Clear my default** sit next to **Edit**, and the Dashboards tab lists the one you land on first. Cards move with **Move up** / **Move down** instead of being dragged, **Duplicate** copies a card, KPI and text cards are shown but edited on web or desktop, the cost graph sheet offers the same measure, unit, binning and cumulative options, and a cost graph's custom absolute date range stays on web and desktop; everything else is the same options over the same API, so a dashboard built on a phone opens unchanged here. See [building a dashboard on the phone](./mobile-app.md#building-a-dashboard-on-the-phone).
+The [mobile app](./mobile-app.md) builds and edits dashboards too:
+
+1. Tap **New dashboard** on the Dashboards tab.
+2. Tap **Edit** on a dashboard to add cards, reorder them, set up a cost graph or budget, and rename or delete the dashboard.
+
+**Set as my default** and **Clear my default** sit next to **Edit**, and the Dashboards tab lists the one you land on first.
+
+A few things differ on the phone:
+
+- Cards move with **Move up** and **Move down** instead of dragging. **Duplicate** copies a card.
+- KPI and text cards are shown, but you edit them on web or desktop.
+- The cost graph sheet has the same measure, unit, grouping and running total options, but a custom fixed date range is set on web and desktop.
+
+Everything else works the same, so a dashboard built on a phone opens unchanged on web and desktop. See [building a dashboard on the phone](./mobile-app.md#building-a-dashboard-on-the-phone).
 
 ## When the dashboard is worth using
 
-- You manage five or more accounts and do not want to hunt through the sidebar.
-- You run the same smoke-check daily (is the prod DB healthy? is the worker pod running?).
+- You manage five or more accounts and don't want to hunt through the sidebar.
+- You run the same check every day (is the prod DB healthy? is the worker pod running?).
 - You want a wall-display view during an incident.
 
-If you only have a handful of resources, the sidebar is usually fast enough — don’t feel you have to pin everything.
+If you only have a handful of resources, the sidebar is usually fast enough. You don't have to pin everything.

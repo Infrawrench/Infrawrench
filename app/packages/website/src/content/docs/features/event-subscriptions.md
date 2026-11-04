@@ -4,25 +4,25 @@ description: Send Infrawrench's own events as versioned JSON to a signed HTTPS w
 sidebar_order: 15
 ---
 
-[Alert routing](./alert-routing.md) decides which **people** hear about something. Event subscriptions decide which **systems** get a copy: every cost anomaly, budget threshold, critical posture finding, leaked credential found or rotated, drift window, declared incident, just-in-time access change, SLO burn, metric alert and failing sync, as JSON with a versioned schema, delivered to your own receiver.
+Event subscriptions send a copy of Infrawrench's events to your own systems. [Alert routing](./alert-routing.md) decides which **people** hear about something; event subscriptions decide which **systems** get it. You can receive every cost anomaly, budget threshold, critical posture finding, leaked credential found or rotated, drift window, declared incident, just-in-time access change, SLO burn, metric alert and failing sync, as JSON with a versioned schema.
 
-Use them to feed a SIEM, open tickets in a tool Infrawrench does not integrate with, trigger automation on an event bus, or keep an audit trail outside Infrawrench.
+Use them to feed a SIEM, open tickets in a tool Infrawrench doesn't integrate with, trigger automation on an event bus, or keep an audit trail outside Infrawrench.
 
-> **Cloud only.** Events are raised by the cloud's background poller and API, and delivered by the poller. You manage subscriptions from the web app, from the desktop app's Settings tab while signed in to your organization, from [Terraform](./terraform-provider.md) (`infrawrench_event_subscription`), or read them from the [CLI](./cli.md) and the mobile app.
+> **Cloud only.** Event subscriptions work with a cloud organization. You manage them from the web app, from the desktop app's Settings tab while signed in to your organization, or from [Terraform](./terraform-provider.md) (`infrawrench_event_subscription`). You can view them from the [CLI](./cli.md) and the mobile app.
 
-## Adding a subscription
+## Add a subscription
 
-Open **Settings → Notifications → Event subscriptions** and choose **Add subscription**. You need the `org:settings:write` permission.
+Open **Settings > Notifications > Event subscriptions** and choose **Add subscription**. You need the `org:settings:write` permission.
 
 <insert [Settings > Notifications > Event subscriptions tab with two subscriptions listed: one webhook (On, secret hint shown) and one EventBridge destination, with the Add subscription button above] here>
 
 1. **Name** it.
 2. Pick a **destination**:
-   - **HTTPS webhook**: paste an `https://` URL. Hosts in private or internal address space are refused, and redirects are never followed.
-   - **Event bus or topic in a connected account**: pick an AWS EventBridge rule or a GCP Pub/Sub topic from the accounts you have already connected. Nothing to type: the list comes from your synced inventory, so a topic created a minute ago appears after the next sync.
+   - **HTTPS webhook**: paste an `https://` URL. Hosts on private or internal addresses aren't allowed, and redirects are never followed.
+   - **Event bus or topic in a connected account**: pick an AWS EventBridge rule or a GCP Pub/Sub topic from the accounts you have already connected. There's nothing to type. A topic you just created shows up after the account's next sync.
 3. Choose the **events**: every event (including types added later), or specific ones.
-4. Optionally narrow it with a **minimum severity**, **accounts** and **environments**.
-5. Save. For a webhook, the **signing secret is shown once**. Copy it into your receiver now.
+4. Optionally, narrow it with a **minimum severity**, **accounts** and **environments**.
+5. Save. For a webhook, the **signing secret is shown only once**. Copy it into your receiver now.
 
 <insert [The one-time signing secret panel after creating a webhook subscription, with the Copy button and the "How to verify a request" section expanded] here>
 
@@ -35,11 +35,11 @@ Open **Settings → Notifications → Event subscriptions** and choose **Add sub
 | Accounts         | Events about one of the ticked accounts.                                                                               |
 | Environments     | Events whose resource carries one of the values in an `env`, `environment` or `stage` tag or label (case-insensitive). |
 
-An empty filter does not filter. A filter that is set **never matches an event that lacks the fact**: a subscription limited to the production account does not receive a drift window spanning three accounts, or a declared incident, which names no single account.
+An empty filter lets everything through. A filter that is set **never matches an event that doesn't have that detail**. For example, a subscription limited to the production account doesn't receive a drift window covering three accounts, or a declared incident, which names no single account.
 
-Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`, `savings.finding.status_changed`) carry spend, so subscribing to them, or to every event, also needs the `costs:read` permission. Budgets visible only to their owner never emit events.
+Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`, `savings.finding.status_changed`) carry spend, so subscribing to them (or to every event) also needs the `costs:read` permission. Budgets visible only to their owner never emit events.
 
-`cost.anomaly.detected` names what drove the anomaly: `driverResourceId` (the provider's id for the [driving resource](./cost-anomaly-alerts.md#what-drove-it-the-driving-resource)), `driverResourceName`, `driverDelta` and `driverShare`, all null when no resource carried a fifth of the rise, and `contributors`, one line per account, region, usage unit, charge type, tag value or resource that rose, largest first. When one account carried at least 80% of the rise, the event's `accountId` is that account.
+`cost.anomaly.detected` names what drove the anomaly: `driverResourceId` (the provider's id for the [driving resource](./cost-anomaly-alerts.md#what-drove-it-the-driving-resource)), `driverResourceName`, `driverDelta` and `driverShare`, all null when no single resource made up a fifth of the rise, and `contributors`, one line per account, region, usage unit, charge type, tag value or resource that rose, largest first. When one account made up at least 80% of the rise, the event's `accountId` is that account.
 
 ## The event catalog
 
@@ -70,17 +70,17 @@ Cost events (`cost.anomaly.detected`, `budget.threshold.crossed`, `savings.findi
 | `savings.finding.status_changed` | A [savings finding](./savings-findings.md) changes status, by hand or automatically | info                                                                  |
 | `issue.status_changed`           | An issue filed from a finding moves to another status in Jira, Linear or GitHub     | info                                                                  |
 
-Posture findings ride the daily posture scan, so they need posture alerts turned on under **Notifications → Alerts & digest**; sync failures follow the paging threshold set under **SMS & voice**.
+Posture findings come from the daily posture scan, so they need posture alerts turned on under **Notifications > Alerts & digest**. Sync failures follow the paging threshold set under **SMS & voice**.
 
-Leak events come from the 30-minute secret scan and are raised whether or not any routing rule took the alert. Both carry the leak id, the token type and its owning plugin, and what it matched (`matchKind`, `matchedAccountId`, `matchedResourceId`); `secret.leaked` adds the scanner, the match confidence, the repository, file and finding URL, the scanner's validity check and whether it was also found in public, and `secret.rotated` adds how it was rotated (`reissued`, `replaced`, `detected` or `manual`), who did it, and whether the finding was closed on the scanner. Neither ever includes the secret or its masked hint.
+Leak events come from the secret scan that runs every 30 minutes, and are sent whether or not any routing rule picked up the alert. Both carry the leak id, the token type and its owning plugin, and what it matched (`matchKind`, `matchedAccountId`, `matchedResourceId`); `secret.leaked` adds the scanner, the match confidence, the repository, file and finding URL, the scanner's validity check and whether it was also found in public, and `secret.rotated` adds how it was rotated (`reissued`, `replaced`, `detected` or `manual`), who did it, and whether the finding was closed on the scanner. Neither ever includes the secret or its masked hint.
 
-Vulnerability events ride the hourly vulnerability alert scan, so they follow its settings on the Vulnerabilities screen (minimum severity, running only, alerts on) and are raised whether or not any routing rule took the alert. Each names the advisory, the finding's severity, whether it is known exploited (with CISA's due date), whether a fix and an exploit are available, the package and versions, the artifact, and how many synced resources run it (with up to 50 of their ids). One scan sends at most 100, known exploited and most severe first; the rest are on the Vulnerabilities screen.
+Vulnerability events come from the hourly vulnerability alert scan, so they follow its settings on the Vulnerabilities screen (minimum severity, running only, alerts on). They're sent whether or not any routing rule picked up the alert. Each names the advisory, the finding's severity, whether it is known exploited (with CISA's due date), whether a fix and an exploit are available, the package and versions, the artifact, and how many synced resources run it (with up to 50 of their ids). One scan sends at most 100, known exploited and most severe first; the rest are on the Vulnerabilities screen.
 
-`service.changed` carries `action` (`created`, `updated` or `deleted`), the service's id, slug, name, tier and owning team, and `changedFields`: the edited fields, or `members` when resources were added or removed. `scorecard.level_changed` carries the scorecard, the service, `direction` (`up` or `down`), the level before and after (null for no level), the score and the failing checks. A service's first evaluation on a scorecard is never sent, and a manual **Evaluate now** that moves a level sends one like the hourly evaluation does.
+`service.changed` carries `action` (`created`, `updated` or `deleted`), the service's id, slug, name, tier and owning team, and `changedFields`: the edited fields, or `members` when resources were added or removed. `scorecard.level_changed` carries the scorecard, the service, `direction` (`up` or `down`), the level before and after (null for no level), the score and the failing checks. A service's first evaluation on a scorecard is never sent. A manual **Evaluate now** that changes a level sends an event, just like the hourly evaluation.
 
 `dora.band_changed` is checked a few times a day for organizations with deploys: the 30 complete days ending at midnight UTC are compared with the 30 ending a day earlier, using your [DORA settings](./dora-metrics.md) for what counts as production. Each metric that moved band sends one event per day with the band before and after, `direction` (`improved` or `worsened`), both values and the window. A metric with nothing to measure on either side (no restores in the window, say) is not a change.
 
-`issue.status_changed` follows the [live status](./jira.md#live-status) of issues filed to Jira, Linear and [GitHub](./github-issues.md#live-status): `tracker`, the issue's handle (`OPS-412`, `ENG-123`, `acme/infra#12`) and URL, the finding it was filed from (`sourceKind`, `sourceId`), the status and tracker-neutral category (`todo`, `in_progress`, `done`, `canceled`) before and after, and the assignee. The first status Infrawrench learns for an issue is a baseline and sends nothing, and a change is sent once however many times the tracker repeats it.
+`issue.status_changed` follows the [live status](./jira.md#live-status) of issues filed to Jira, Linear and [GitHub](./github-issues.md#live-status): `tracker`, the issue's handle (`OPS-412`, `ENG-123`, `acme/infra#12`) and URL, the finding it was filed from (`sourceKind`, `sourceId`), the status and tracker-neutral category (`todo`, `in_progress`, `done`, `canceled`) before and after, and the assignee. The first status Infrawrench sees for an issue is a starting point and sends nothing. Each change is sent once, however many times the tracker repeats it.
 
 The full schema of every event's `data` is in the [API reference](../team-and-billing/openapi.md) under **Webhooks**, and the live catalog with JSON Schemas is at `GET /api/org/{orgId}/event-subscriptions/catalog`.
 
@@ -117,9 +117,9 @@ Every destination receives the same JSON object:
 }
 ```
 
-- **`id` is stable** across retries and redeliveries. Delivery is at-least-once, so dedupe on it.
+- **`id` stays the same** across retries and redeliveries. An event can arrive more than once, so dedupe on it.
 - **`version`** is the schema version of `data` for that `type`. New fields can appear in the same version; a removed, renamed or retyped field means a new version number.
-- Ordering is not guaranteed between events.
+- Events may arrive out of order.
 
 ## Verifying webhook signatures
 
@@ -132,7 +132,11 @@ Each webhook request is a `POST` with these headers:
 | `Infrawrench-Event-Type`  | The envelope's `type`                                                  |
 | `Infrawrench-Delivery-Id` | This delivery attempt's log id                                         |
 
-Each `v1` value is HMAC-SHA256 of the string `<t>.<raw request body>`, keyed with your signing secret. Verify against the **raw** body before parsing it, reject timestamps more than five minutes old, and accept the request if **any** `v1` matches:
+Each `v1` value is HMAC-SHA256 of the string `<t>.<raw request body>`, keyed with your signing secret. To verify a request:
+
+1. Use the **raw** body, before you parse it.
+2. Reject timestamps more than five minutes old.
+3. Accept the request if **any** `v1` matches.
 
 ```js
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -166,28 +170,28 @@ def verify_infrawrench(raw_body: bytes, header: str, secret: str) -> bool:
 
 ### Rerolling the secret
 
-**Reroll secret** shows a new secret once. The previous one keeps signing for 24 hours, so for that day every request carries two `v1` values and a receiver holding either secret accepts it. Update your receiver, and the old secret stops on its own. In Terraform, change `secret_version`.
+**Reroll secret** shows a new secret once. The old one keeps signing for 24 hours, so for that day every request carries two `v1` values and a receiver with either secret accepts it. Update your receiver within that time, and the old secret stops on its own. In Terraform, change `secret_version`.
 
 ## EventBridge and Pub/Sub
 
-Publish destinations are not signed: delivery goes through the connected account's own credentials, and the cloud provider authenticates it.
+These destinations aren't signed. Events are published with the connected account's own credentials, and the cloud provider authenticates them.
 
 - **AWS EventBridge**: each event is a `PutEvents` entry on the picked rule's event bus with `Source` `infrawrench`, `DetailType` the event type (for example `incident.declared`) and the envelope as `Detail`. Match it with an event pattern such as `{"source": ["infrawrench"], "detail-type": ["incident.declared"]}`. The account needs `events:PutEvents` on that bus.
 - **GCP Pub/Sub**: each event is one message whose data is the envelope, with attributes `eventType`, `eventVersion`, `eventId` and `source`, so subscriptions can filter on `attributes.eventType`. The account needs `pubsub.topics.publish` on the topic.
 
 ## Delivery, retries and the log
 
-Events are queued the moment they happen and sent by the background poller, usually within a minute. A webhook must answer **2xx within 10 seconds**; anything else (including a redirect) is a failure. Failures retry after 1 minute, 5 minutes, 15 minutes, 1 hour, 3 hours, 6 hours and 12 hours, eight attempts over about a day and a half, then the delivery is marked failed.
+Events are usually delivered within a minute of happening. A webhook must answer with a **2xx within 10 seconds**. Anything else, including a redirect, counts as a failure. Failed deliveries are retried after 1 minute, 5 minutes, 15 minutes, 1 hour, 3 hours, 6 hours and 12 hours. After eight attempts over about a day and a half, the delivery is marked failed.
 
-**Deliveries** on each subscription shows the last 30 days: state, attempts, the receiver's status code and the first kilobyte of its reply, and the envelope as sent. **Redeliver** queues a fresh copy of any delivery with the same event `id`.
+**Deliveries** on each subscription shows the last 30 days: state, attempts, the receiver's status code, the first kilobyte of its reply, and the envelope as sent. **Redeliver** sends a fresh copy of any delivery with the same event `id`.
 
 <insert [The Deliveries panel of a webhook subscription showing one Delivered row, one Retrying row with its next attempt time, and one expanded Failed row with its attempts and the JSON envelope] here>
 
-**Send test event** sends an `infrawrench.test` event right away and shows what the receiver answered. Tests are tried once, are never retried, and do not count toward health. They work on a subscription that is turned off, so you can check a fix before turning it back on.
+**Send test event** sends an `infrawrench.test` event right away and shows what your receiver answered. Tests are tried once, never retried, and don't count toward the subscription's health. They work on a subscription that's turned off, so you can check a fix before turning it back on.
 
 ### Automatic turn-off
 
-When a subscription's deliveries have failed **for three days without a single success, across at least 20 attempts**, Infrawrench turns it off and emails the organization's owners and admins. Its queued deliveries are skipped, and events raised while it is off are not queued for it. Turn it back on from the same page (or let Terraform's next apply do it); that clears its failure history.
+If a subscription's deliveries fail **for three days without a single success, across at least 20 attempts**, Infrawrench turns it off and emails the organization's owners and admins. Pending deliveries are skipped, and events that happen while it's off aren't sent to it. Turn it back on from the same page (or let Terraform's next apply do it), which clears its failure history.
 
 ## Permissions and audit
 

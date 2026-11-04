@@ -4,13 +4,13 @@ description: Upload spend Infrawrench has no integration for, as a CSV or a FinO
 sidebar_order: 5
 ---
 
-Some spend never arrives through an API: a colo bill, a SaaS invoice, a support contract, another tool's export. A **custom cost source** is a named home for it. You upload files into the source, and from then on it appears as its own provider in [cost graphs](./cloud-costs.md), [cost reports](./cost-reports.md), filters, budgets, allocation rules and [exports](./cost-exports.md), next to AWS or GCP.
+Some spend never comes through an API: a colo bill, a SaaS invoice, a support contract, another tool's export. A **custom cost source** gives it a home. Upload files into the source, and it shows up as its own provider in [cost graphs](./cloud-costs.md), [cost reports](./cost-reports.md), filters, budgets, allocation rules and [exports](./cost-exports.md), next to AWS or GCP.
 
-> **Cloud only.** Sources live in the cloud cost store. The desktop app manages them while signed into a cloud org; the mobile app shows their spend in reports but does not upload.
+> **Cloud only.** The desktop app can manage sources while you're signed into a cloud org. The mobile app shows their spend in reports but can't upload.
 
 ## Create a source
 
-Open **Settings → Custom Cost Sources** and add one. A source has:
+Open **Settings > Custom Cost Sources** and add one. A source has:
 
 | Field            | What it does                                                                                          |
 | ---------------- | ----------------------------------------------------------------------------------------------------- |
@@ -18,21 +18,25 @@ Open **Settings → Custom Cost Sources** and add one. A source has:
 | Default currency | Optional. Used for files that have no currency column.                                                |
 | Description      | Optional note for whoever uploads next month's file.                                                  |
 
-Every field can be edited later from the same page. Sources can also be managed as code with the [Terraform provider](./terraform-provider.md) (`infrawrench_custom_cost_source`).
+You can edit every field later from the same page. You can also manage sources as code with the [Terraform provider](./terraform-provider.md) (`infrawrench_custom_cost_source`).
 
 <insert [Settings → Custom Cost Sources with two sources listed, one expanded to show its upload history table] here>
 
 ## Upload a file
 
-Choose **Upload & history** on a source, then **Upload a file**. The file is read in your browser (or the desktop app): it is parsed, checked and previewed before anything is sent, and only the resulting daily rows leave your machine.
+1. Choose **Upload & history** on a source.
+2. Choose **Upload a file**.
+3. Check the preview, then upload.
 
-Two kinds of file are accepted:
+The file is read and checked in your browser (or the desktop app) before anything is sent, and only the resulting daily rows leave your machine.
+
+You can upload two kinds of file:
 
 ### Generic CSV
 
-Any export with a header row. Comma, semicolon, tab and pipe delimiters are recognised, as are quoted fields and a UTF-8 byte-order mark.
+Any export with a header row. Comma, semicolon, tab and pipe delimiters all work, as do quoted fields and a UTF-8 byte-order mark.
 
-You map the file's columns to fields with pickers. Infrawrench pre-fills them from the header names (`Date`, `Usage Date`, `Cost`, `Amount`, `Service`, `Region`, `Account`, `Project` and the usual billing-export names), so the common case is checking the guesses and continuing.
+Map the file's columns to fields with the pickers. Infrawrench fills them in from the header names (`Date`, `Usage Date`, `Cost`, `Amount`, `Service`, `Region`, `Account`, `Project` and the usual billing-export names), so usually you just check them and continue.
 
 | Field                     | Required | Notes                                                                                             |
 | ------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
@@ -44,13 +48,13 @@ You map the file's columns to fields with pickers. Infrawrench pre-fills them fr
 | Usage quantity, unit      | No       | Kept alongside the money for unit views.                                                          |
 | Tags                      | No       | A JSON object or `key=value; key2=value2` pairs.                                                  |
 
-Any column you don't map can be kept as a tag with a tick, named after its header: handy for a `Team` or `Cost centre` column.
+Tick any column you don't map to keep it as a tag named after its header. This is handy for a `Team` or `Cost centre` column.
 
-When every date in the file could be read either month-first or day-first (`03/04/2026`), the preview asks you to pick the order rather than guessing.
+If every date in the file could be read either month-first or day-first (`03/04/2026`), the preview asks you to pick the order.
 
 ### FOCUS
 
-A file following the [FinOps Open Cost and Usage Specification](https://focus.finops.org/) (versions 1.0 to 1.4) is recognised by its column names and needs no mapping:
+A file following the [FinOps Open Cost and Usage Specification](https://focus.finops.org/) (versions 1.0 to 1.4) is recognised automatically and needs no mapping:
 
 | FOCUS column                              | Becomes                                                                               |
 | ----------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -70,26 +74,33 @@ Rows carrying no money on either basis and no quantity are skipped.
 
 ### Preview and validation
 
-Before uploading you see how many lines were read, how many daily rows they aggregate to, the date range and the total per currency, the first rows exactly as they will be stored, and every line that could not be read with its line number and reason. Unreadable lines are skipped, never guessed at.
+Before you upload, the preview shows:
+
+- how many lines were read and how many daily rows they add up to
+- the date range and the total per currency
+- the first rows exactly as they'll be stored
+- every line that couldn't be read, with its line number and the reason
+
+Unreadable lines are skipped, never guessed at.
 
 <insert [The upload panel with a CSV loaded: column mapping pickers, the preview table, and one skipped line listed with its reason] here>
 
 ## Overlapping uploads: append or replace
 
-Each upload covers a date range. If a new file's range overlaps an earlier upload of the same source, you must choose what happens to the spend already there:
+Each upload covers a date range. If a new file overlaps an earlier upload to the same source, you choose what happens to the spend already there:
 
 - **Replace** removes everything the source holds in the new file's date range (from any earlier upload), then adds the new file. Use it for a corrected re-export of the same period.
 - **Append** keeps the earlier spend and adds the new file to it. Use it when the files cover different charges for the same days.
 
-There is no default, because guessing wrong either doubles a month or deletes one. A replace takes effect only once the whole new file is in, so an upload interrupted halfway never removes the spend it was replacing.
+There's no default, since the wrong choice either doubles a month or deletes one. A replace only takes effect once the whole new file is in, so an interrupted upload never removes the spend it was replacing.
 
 ## Upload history
 
-Each source keeps its uploads: the file name, who uploaded it and when (and whether from the web, desktop or CLI), the date range, the number of daily rows and the total. An upload that a later replace superseded entirely shows as **Replaced**; one superseded partly shows what it still holds.
+Each source lists its uploads: the file name, who uploaded it and when (and whether from web, desktop or CLI), the date range, the number of daily rows and the total. An upload fully replaced by a later one shows as **Replaced**. One partly replaced shows what it still holds.
 
 **Delete** on an upload removes exactly the rows it wrote, from every report. Deleting a whole source removes all of its spend and its history.
 
-An upload interrupted before it finished shows as **Incomplete**; its rows are already visible, so delete it and upload again.
+An upload interrupted before it finished shows as **Incomplete**. Its rows are already visible, so delete it and upload again.
 
 ## From the CLI and API
 
@@ -99,7 +110,15 @@ infrawrench costs push --source "Partner cloud" --format focus --file focus.csv 
 infrawrench costs sources "Colo invoices"
 ```
 
-See the [CLI reference](./cli.md#pushing-back-up) for the mapping flags. The HTTP API is `/api/org/{orgId}/custom-cost-sources` (create, edit, delete sources) and a three-step upload: `POST …/{id}/uploads` declares the range and mode, `POST …/uploads/{uploadId}/rows` sends up to 5,000 daily rows at a time, and `POST …/uploads/{uploadId}/complete` finishes it. Reading needs `costs:read`; everything else needs `costs:write`, the same permission as [pushing cost rows](./server-push.md#cost-rows).
+See the [CLI reference](./cli.md#pushing-back-up) for the mapping flags.
+
+In the HTTP API, use `/api/org/{orgId}/custom-cost-sources` to create, edit and delete sources. Uploading takes three steps:
+
+1. `POST …/{id}/uploads` declares the range and mode.
+2. `POST …/uploads/{uploadId}/rows` sends up to 5,000 daily rows at a time.
+3. `POST …/uploads/{uploadId}/complete` finishes it.
+
+Reading needs `costs:read`. Everything else needs `costs:write`, the same permission as [pushing cost rows](./server-push.md#cost-rows).
 
 ## Limits
 
