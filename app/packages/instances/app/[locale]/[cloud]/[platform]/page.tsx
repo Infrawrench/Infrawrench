@@ -5,7 +5,8 @@ import { PlatformView } from "@/components/PlatformView";
 import { LOCALES, isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 import { loadListing } from "@/lib/load";
-import { fullLabel, platformAt, platformPath } from "@/lib/platforms";
+import { breadcrumbJsonLd } from "@/lib/jsonld";
+import { CLOUDS, fullLabel, platformAt, platformPath } from "@/lib/platforms";
 
 /** The sync Action refreshes the data twice an hour. */
 export const revalidate = 1800;
@@ -30,7 +31,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { locale, listing } = await load(params);
   const tr = await getTranslator(locale);
   const platform = fullLabel(listing.platform);
-  const title = tr(msg("{platform} instance types - Infrawrench Instances"), { platform });
+  const title = tr(msg("{platform} instance types: specs and prices by region"), { platform });
   const description =
     listing.cloud === "runpod"
       ? tr(
@@ -68,7 +69,16 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 
 export default async function Page({ params }: { params: Params }) {
-  const { listing } = await load(params);
+  const { locale, listing } = await load(params);
+  const jsonLd = breadcrumbJsonLd(locale, [
+    { name: CLOUDS[listing.cloud].label, path: `/${listing.cloud}` },
+    { name: listing.label, path: platformPath(listing.platform) },
+  ]);
   // Keyed so moving between services starts with an empty filter.
-  return <PlatformView key={listing.platform} listing={listing} />;
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
+      <PlatformView key={listing.platform} listing={listing} />
+    </>
+  );
 }

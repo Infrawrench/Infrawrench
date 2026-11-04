@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { InstanceView } from "@/components/InstanceView";
-import { msg } from "gt-react";
-import { describe } from "@/lib/describe";
+import { describe, instanceTitle } from "@/lib/describe";
 import { LOCALES, isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 import { loadInstance } from "@/lib/load";
-import { instancePath, platformAt } from "@/lib/platforms";
+import { breadcrumbJsonLd } from "@/lib/jsonld";
+import { CLOUDS, cloudOf, instancePath, platformAt, platformPath } from "@/lib/platforms";
 
 /** The sync Action refreshes the data twice an hour. */
 export const revalidate = 1800;
@@ -38,7 +38,7 @@ async function load(params: Params) {
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { model, locale, tr } = await load(params);
-  const title = tr(msg("{name} pricing and specs - Infrawrench Instances"), { name: model.name });
+  const title = instanceTitle(model, tr, locale);
   const description = describe(model, tr, locale);
   const path = instancePath(model.platform, model.name);
   const url = localePath(locale, path);
@@ -72,11 +72,20 @@ export default async function Page({ params }: { params: Params }) {
   const { model, locale, tr } = await load(params);
   // Keyed: a client-side navigation to another instance mounts a fresh view
   // rather than carrying over the last one's region, variant and loaded data.
+  const cloud = cloudOf(model.platform);
+  const jsonLd = breadcrumbJsonLd(locale, [
+    { name: CLOUDS[cloud].label, path: `/${cloud}` },
+    { name: model.platformLabel, path: platformPath(model.platform) },
+    { name: model.name, path: instancePath(model.platform, model.name) },
+  ]);
   return (
-    <InstanceView
-      key={`${model.platform}/${model.name}`}
-      model={model}
-      description={describe(model, tr, locale)}
-    />
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
+      <InstanceView
+        key={`${model.platform}/${model.name}`}
+        model={model}
+        description={describe(model, tr, locale)}
+      />
+    </>
   );
 }
