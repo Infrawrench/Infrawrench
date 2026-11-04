@@ -1,25 +1,25 @@
 ---
 title: API keys
-description: Issue tokens for programmatic access to your infrawrench organization.
+description: Create API keys so scripts, CI jobs and tools can work with your Infrawrench organization.
 sidebar_order: 5
 ---
 
 > **Paid plan only.** Available on the web app and, when signed in to a cloud organization, in the desktop app's Settings tab.
 
-API keys let scripts and CI jobs list resources, create them, and read outputs programmatically. They act on behalf of the user who issued them, subject to that user’s role.
+API keys let your scripts and CI jobs list resources, create them and read their outputs. A key acts on behalf of the person who created it, and can never do more than that person's role allows.
 
-## Issue a key
+## Create a key
 
-1. **Settings → API keys → New key**.
-2. Give it a name (e.g. `ci-deploy`).
-3. Tick the [scopes](#scopes) it needs — the filter box matches the permission string, so `costs:` finds the two cost scopes.
+1. Go to **Settings > API keys > New key**.
+2. Give it a name, for example `ci-deploy`.
+3. Tick the [scopes](#choose-scopes) it needs. The filter box matches the permission string, so typing `costs:` finds the two cost scopes.
 4. Click **Create**.
 
-The token is shown once. Copy it now; you cannot see it again.
+The token is shown once. Copy it now, because you can't see it again.
 
 ![API key create dialog with copy-once warning](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/api-keys/create-copy-once.png)
 
-## Using a key
+## Use a key
 
 Send it as a bearer token:
 
@@ -32,71 +32,76 @@ curl https://app.infrawrench.com/api/org/$ORG_ID/accounts \
   -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
 ```
 
-A key works against every endpoint under `/api/org/<orgId>/` — accounts, resources, costs, dashboards, workflows, deployments, schedules, the audit log, org config — subject to the scope rules below and to the five exceptions in [what a key cannot reach](#what-a-key-cannot-reach). See the [API reference](./openapi.md) for the full list.
+A key works against every endpoint under `/api/org/<orgId>/`: accounts, resources, costs, dashboards, workflows, deployments, schedules, the audit log and org config. Its scopes decide which of those it can actually call, and a few actions are [off limits to any key](#what-a-key-cannot-do). See the [API reference](./openapi.md) for the full list.
 
-## Keys are pinned to one organization
+## One key, one organization
 
-A key belongs to the organization it was created in. Presenting it against a different `<orgId>` is a `403`, not an empty result — there is no such thing as a cross-org key. If you automate against several organizations, mint a key in each.
+A key belongs to the organization you created it in. Using it against a different `<orgId>` returns `403`. If you automate across several organizations, create a key in each one.
 
-## What a key cannot reach
+## What a key cannot do
 
-Some endpoints are acts a person performs, where "held the permission" is not the whole control. They answer `403` to any key, including one scoped `*` held by an Owner:
+Some actions have to be done by a person. They return `403` to any key, even one scoped `*` and owned by an Owner:
 
-- **Minting and revoking API keys.** A key that could mint keys could mint a longer-lived one, and revoking the first would not end the access. Listing keys is closed too.
+- **Creating, revoking and listing API keys.**
 - **Billing.** Plan changes, payment methods and the customer portal.
-- **Push devices and notification preferences.** These describe someone's phone.
-- **Changing team membership** — invites, role assignment, custom roles, removals. Reading the team is allowed.
+- **Push devices and notification preferences.**
+- **Changing team membership:** invites, role assignment, custom roles and removals. Reading the team is allowed.
 - **Requesting, approving, denying or revoking [break-glass access](./break-glass-access.md).** Reading the queue is allowed.
 - **Requesting, approving, denying, extending, cancelling or revoking [just-in-time access](../features/just-in-time-access.md).** Reading requests and managing policies are allowed.
-- **Sharing or joining a [shared console](../features/shared-consoles.md)**, over HTTP or the WebSocket. Listing the sessions currently shared is allowed.
+- **Sharing or joining a [shared console](../features/shared-consoles.md)**, over HTTP or WebSocket. Listing currently shared sessions is allowed.
 
-Your own account settings (password, two-factor, email address, active sessions), creating and deleting organizations, and the platform-admin surface are not org-scoped and have never accepted a key. They require a browser sign-in — and the account-security ones require a _recent_ one.
+Your own account settings (password, two-factor, email address, active sessions), creating and deleting organizations, and platform admin pages never accept a key either. They need you to sign in through a browser, and the account security ones need a recent sign-in.
 
-## Revoke
+## Revoke a key
 
-**Settings → API keys → (key) → Revoke**. The key stops working immediately. In-flight requests finish; new requests get 401.
+Go to **Settings > API keys**, pick the key and click **Revoke**. It stops working straight away. Requests already in progress finish; new ones get `401`.
 
-## Rotate
+## Rotate a key
 
-There is no built-in rotate. Issue a new key, update your scripts, then revoke the old one.
+There is no rotate button. Create a new key, update your scripts, then revoke the old one.
 
-## Scopes
+## Choose scopes
 
-API keys carry an explicit list of **permission strings** (scopes). The same vocabulary used for [roles](./roles-and-permissions.md) is used for API keys, so `resources:read` on a key gates the same endpoints as `resources:read` on a role.
+Each key carries a list of **permission strings** (scopes). They are the same permissions used by [roles](./roles-and-permissions.md), so `resources:read` on a key allows the same endpoints as `resources:read` on a role.
 
-When you create a key you pick its scopes. The dialog lists every permission the server recognises, grouped into infrastructure, cost and billing, dashboards and alerting, automation and deployment, access and credentials, integrations, and organization settings; the filter box matches the permission string as well as the label, so pasting `costs:` from a doc page narrows the list to the two cost scopes. Pick the narrowest set that gets the job done — a CI deploy key might only need `accounts:read` + `resources:read`, a [Terraform provider](../features/terraform-provider.md) key managing cost allocation needs `costs:read` + `costs:write`, and a sync agent for the desktop app needs `resources:read` + `resources:write`.
+The create dialog groups every permission into infrastructure, cost and billing, dashboards and alerting, automation and deployment, access and credentials, integrations, and organization settings. The filter box matches both the permission string and its label.
 
-Nine permissions are deliberately missing from the picker: `apikeys:read`, `apikeys:write`, `billing:read`, `billing:write`, `team:invite`, `team:role:write`, `team:remove`, `access:request` and `access:approve`. Each of them gates only routes in [what a key cannot reach](#what-a-key-cannot-reach), so a key carrying one would be answered `403` regardless — offering the checkbox would look like the difference between working and not working when it isn't. Everything else in the catalog is selectable.
+Pick the smallest set that does the job. For example:
 
-A sync-scoped key cannot read provider credentials. The sync endpoints report only whether an account has credentials stored; fetching one is a separate, audit-logged call that requires `secrets:read`.
+- A CI deploy key might only need `accounts:read` and `resources:read`.
+- A [Terraform provider](../features/terraform-provider.md) key managing cost allocation needs `costs:read` and `costs:write`.
+- A sync agent for the desktop app needs `resources:read` and `resources:write`.
 
-Wildcard scopes are honored: `resources:*:read`, `resources:postgres:*`, or just `*` for full access. The exact catalogue is documented in the [API reference](./openapi.md) under each operation's `x-required-permission` extension. The OpenAPI spec also exposes a `Permission` enum listing every recognised string.
+Nine permissions don't appear in the picker, because they only cover actions a key [can't do anyway](#what-a-key-cannot-do): `apikeys:read`, `apikeys:write`, `billing:read`, `billing:write`, `team:invite`, `team:role:write`, `team:remove`, `access:request` and `access:approve`.
 
-The `chat:read` and `chat:write` scopes gate the [AI chat](../features/ai-chat.md) API: list/inspect conversations vs. send messages and approve destructive tool calls. Calls authed by a `chat:write` key still meter tokens to the org and respect the org-level monthly spend cap.
+A key with sync scopes can't read provider credentials. It can only see whether an account has credentials stored. Fetching a credential needs `secrets:read` and is recorded in the audit log.
 
-The `costs:write` and `pages:write` scopes gate the [push endpoints](../features/server-push.md): reporting your own cost rows, and raising an on-call page from a server. Neither is in a system role, so a key carrying one must be held by an Admin or Owner, or by a member whose custom role grants it — the intersection rule below still applies.
+Wildcards work: `resources:*:read`, `resources:postgres:*`, or `*` for full access. The [API reference](./openapi.md) lists the permission each operation needs under its `x-required-permission` extension, and the `Permission` enum lists every valid string.
 
-`chat:write` lets a key hold a conversation — it does not widen what that conversation can do. Every tool the assistant runs is checked against the key's own scopes, so a chat-only key can talk about your infrastructure but cannot read a secret or delete a resource unless you also granted `secrets:read` or `resources:delete`.
+### Scopes for specific features
 
-Older keys created with the deprecated `sync:read` / `sync:write` scopes are renamed automatically the next time they authenticate; the picker no longer offers them, because a key minted with them stores a scope that silently becomes `resources:read` / `resources:write` on first use. Tick those two directly instead. The workflow permission split was handled differently, once: [workflows](../features/workflows.md) were gated on `dashboards:read` / `dashboards:write` until they got their own `workflows:read`, `workflows:write` and `workflows:approve` scopes, so every key that was still active at that upgrade had the matching workflow scopes added to it there and then — they are listed on the key like any other scope, and nothing is added at authentication time. Revoked keys were left alone. Every key created since carries exactly the scopes you chose, so grant the workflow scopes a key actually needs — `workflows:read` to list and inspect, `workflows:write` to edit and run, `workflows:approve` to decide an approval step. Use `workflows:*` only for a key that should hold the whole family.
+- **AI chat.** `chat:read` lets a key list and inspect [AI chat](../features/ai-chat.md) conversations. `chat:write` lets it send messages and approve destructive tool calls. Usage from a `chat:write` key still counts toward your org's tokens and monthly spend cap. A chat key doesn't widen what the assistant can do: every tool it runs is checked against the key's own scopes, so a chat-only key can talk about your infrastructure but can't read a secret or delete a resource unless you also granted `secrets:read` or `resources:delete`.
+- **Push endpoints.** `costs:write` lets a key report your own cost rows and `pages:write` lets it raise an on-call page from a server, through the [push endpoints](../features/server-push.md). Neither is in a built-in role, so the key's owner must be an Admin or Owner, or have a custom role that grants it.
+- **Workflows.** Grant what the key needs: `workflows:read` to list and inspect [workflows](../features/workflows.md), `workflows:write` to edit and run them, `workflows:approve` to decide an approval step. Use `workflows:*` only for a key that should have all three. Keys that were active before workflows got their own scopes had the matching workflow scopes added, and you'll see them listed on the key.
+- **Older sync scopes.** `sync:read` and `sync:write` are no longer offered and become `resources:read` and `resources:write` automatically. Pick those two directly instead.
 
 ## Keys are bounded by their owner
 
-A key's effective permissions are its scopes **intersected with** the current role of the user who created it, evaluated on every request. Two consequences worth planning around:
+A key's effective permissions are its scopes **combined with** the current role of the person who created it, checked on every request. Plan around two things:
 
-- Demoting a teammate immediately narrows every key they issued. A key scoped `*` held by someone moved from Admin to Member can now only do what a Member can.
-- Removing someone from the organization revokes the keys they created there. Any key whose owner is no longer a member stops authenticating, even if it was never explicitly revoked.
+- Demoting a teammate immediately narrows every key they created. A `*` key owned by someone moved from Admin to Member can now only do what a Member can.
+- Removing someone from the organization revokes the keys they created there.
 
-For automation that must survive staff changes, create the key under an account that stays in the org — not a personal one belonging to someone who may leave.
+For automation that has to survive staff changes, create the key under an account that will stay in the org, not a personal account belonging to someone who might leave.
 
-## Audit
+## See what a key did
 
-Every state-changing call is attributed to the key in the [audit log](./audit-log.md), not just to the person who issued it — the entry shows the key's name and prefix as a chip in the actor column, with the owner underneath. That is the difference between "Alice deleted the database" and "the `ci-deploy` key Alice issued deleted the database", which is the question you actually need answered when a token leaks.
+Every change made with a key is credited to that key in the [audit log](./audit-log.md). The actor column shows the key's name and prefix as a chip, with the owner underneath. So you see "the `ci-deploy` key Alice created deleted the database", not just "Alice deleted the database". That's what you need to know when a token leaks.
 
-Click that chip, or pick the key from the audit log's key dropdown, to see everything one credential did; over the API it is `?apiKeyId=<id>` on `GET /api/org/<orgId>/audit-logs`. Filtering by user is not a substitute: a person and every key they ever minted share one user id.
+Click the chip, or pick the key from the audit log's key dropdown, to see everything that key did. Over the API, add `?apiKeyId=<id>` to `GET /api/org/<orgId>/audit-logs`. Filtering by user isn't enough here, because a person and all their keys share one user id.
 
 <insert [Audit log filtered to one API key, showing the key name and prefix in the actor column next to the owner's name] here>
 
-## Finding keys nobody uses
+## Find keys nobody uses
 
-Keys outlive the integrations that needed them. The [credential hygiene report](./credential-hygiene.md) lists the ones that have never authenticated, the ones that have gone quiet, the ones holding the `*` scope, and the ones carrying write scopes they never exercise — derived from `last_used_at` and the audit log, with nothing to enable.
+The [credential hygiene report](./credential-hygiene.md) lists keys that have never been used, keys that have gone quiet, keys with the `*` scope, and keys holding write scopes they never use. There's nothing to turn on.

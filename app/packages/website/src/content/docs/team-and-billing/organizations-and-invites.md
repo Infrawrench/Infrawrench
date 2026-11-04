@@ -1,46 +1,52 @@
 ---
 title: Organizations and invites
-description: Share a workspace with teammates.
+description: Share an Infrawrench organization with teammates, manage invites, and remove or leave members.
 sidebar_order: 1
 ---
 
-> The desktop app in local-only mode is single-user by design. Signed in to a cloud organization, the desktop app manages the same team from its Settings tab.
+> The desktop app in local-only mode is single-user. When signed in to a cloud organization, the desktop app manages the same team from its Settings tab.
 
-An **organization** is a shared workspace. Accounts, resources, dashboards, SSH keys, API keys, and audit logs all live under exactly one organization. You can belong to many organizations and switch between them from the workspace picker in the top-left.
+An **organization** is a shared workspace. Accounts, resources, dashboards, SSH keys, API keys and audit logs each belong to one organization. You can be in several organizations and switch between them from the workspace picker in the top left.
 
 ![Workspace switcher dropdown with two organizations listed](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/organizations-and-invites/workspace-switcher.png)
 
 ## Invite a teammate
 
-1. Go to **Settings → Team**.
+1. Go to **Settings > Team**.
 2. Click **Invite member**.
-3. Enter an email address, pick a role (see [Roles and permissions](./roles-and-permissions.md)).
-4. Send.
+3. Enter their email address and pick a role (see [Roles and permissions](./roles-and-permissions.md)).
+4. Click **Send**.
 
-The invitee gets an email with a link. They sign up (or sign in), and the org appears in their workspace picker.
+They get an email with a link. Once they sign up or sign in, the organization shows up in their workspace picker.
 
-Inviting teammates requires the paid plan — the [free plan](./billing-and-plans.md) is a single user, and the invite form will prompt you to upgrade.
+Inviting teammates needs the paid plan. The [free plan](./billing-and-plans.md) is for a single user, and the invite form will prompt you to upgrade.
 
-You can only invite someone into a role you could assign an existing member: the role's permissions must be a subset of your own, and only an owner can invite another owner. If the role picker refuses a choice, ask an owner to send that invite.
+You can only invite someone into a role whose permissions you already have yourself, and only an owner can invite another owner. If the role picker won't let you choose a role, ask an owner to send that invite.
 
-On the paid plan, every member and pending invite occupies a [seat](./billing-and-plans.md) — counting both your monthly seats and any [prepaid capacity slots](./billing-and-plans.md#prepaid-capacity-slots). If all seats are taken, you'll be asked to confirm adding one (billed pro-rata) before the invite is sent — this needs billing permission, so a member who can invite but can't manage billing will be asked to get a billing admin to add the seat first.
+### Seats
 
-If your capacity is entirely prepaid slots there is no monthly seat to add, so the prompt instead points you at **Settings → Billing** to buy another slot.
+On the paid plan, every member and pending invite takes a [seat](./billing-and-plans.md). That includes both monthly seats and any [prepaid capacity slots](./billing-and-plans.md#prepaid-capacity-slots).
+
+If all your seats are taken, you're asked to confirm adding one (billed pro-rata) before the invite is sent. This needs billing permission, so if you can invite but can't manage billing, ask a billing admin to add the seat first.
+
+If all your capacity is prepaid slots, there's no monthly seat to add. The prompt sends you to **Settings > Billing** to buy another slot instead.
 
 <insert [Invite form showing the "All seats are in use. Add a seat for $20/month and send the invitation?" confirmation prompt] here>
 
 ## Pending invitations
 
-Pending invites are listed under **Pending invitations** in **Settings → Team**, with the invitee's email, the role they were offered, and when the invite expires. The only action is **Revoke**, and it is shown only to members who can invite — there is no resend, so an invite that has lapsed is revoked and sent again. Invites expire after 7 days.
+Pending invites are listed under **Pending invitations** in **Settings > Team**, with the email, the role offered and when the invite expires. Invites expire after 7 days.
 
-## Removing a member
+The only action is **Revoke**, and only members who can invite see it. There's no resend button, so to re-send a lapsed invite, revoke it and send a new one.
 
-Owners can remove members from **Settings → Team**. Resources and accounts they created stay with the organization.
+## Remove a member
 
-## Leaving an org
+Owners can remove members from **Settings > Team**. Any resources and accounts the member created stay with the organization.
 
-From the workspace picker, switch to the org, then **Settings → Leave organization**. You cannot leave if you are the last owner — promote someone else first.
+## Leave an organization
 
-## Renaming
+Switch to the organization from the workspace picker, then go to **Settings > Leave organization**. If you're the last owner, you can't leave until you make someone else an owner.
 
-Owners can rename the organization in **Settings → Organization**. URLs do not change; the name is for display only.
+## Rename an organization
+
+Owners can rename the organization in **Settings > Organization**. URLs don't change, since the name is only for display.

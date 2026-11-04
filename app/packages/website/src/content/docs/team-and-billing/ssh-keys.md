@@ -1,65 +1,63 @@
 ---
 title: SSH keys
-description: Save private keys once and reuse them across every SSH session.
+description: Save SSH keys once in Infrawrench and reuse them across terminals, SFTP, tunnels and new VMs.
 sidebar_order: 6
 ---
 
-**Settings → SSH Keys** holds named SSH keys shared across the organization, so the [SSH terminal](../features/ssh-terminal.md), [file browser SFTP](../features/file-browsers.md), and [SSH tunnels](../features/ssh-tunnels.md) can use them without a key picker every time.
+**Settings > SSH Keys** holds named SSH keys shared across your organization. The [SSH terminal](../features/ssh-terminal.md), [file browser SFTP](../features/file-browsers.md) and [SSH tunnels](../features/ssh-tunnels.md) can then use them without you picking a key every time.
 
 ![SSH keys page with a list of named keys and the Import Key and Generate Key buttons](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/ssh-keys/ssh-keys-list.png)
 
-The page has two buttons — **Generate Key** and **Import Key** — and which one you want depends on who holds the private half. The table lists each key's name, type, fingerprint, source (**Generated** or **Imported**), owner and date added, with **Copy public key** and **Delete** on each row.
+The page has two buttons, **Generate Key** and **Import Key**. Which one you want depends on who should hold the private key. The table shows each key's name, type, fingerprint, source (**Generated** or **Imported**), owner and date added, with **Copy public key** and **Delete** on each row.
 
 ## Generate a key
 
-1. **Settings → SSH Keys → Generate Key**.
-2. Give it a name (`production-bastion`, say).
+1. Go to **Settings > SSH Keys > Generate Key**.
+2. Give it a name, for example `production-bastion`.
 3. Click **Generate key**.
 
-Infrawrench mints an Ed25519 keypair and shows both halves once, under **Public Key** and **Private Key**, with a **Copy private key to clipboard** button. That dialog cannot be reopened — copy the private key now if you want it outside Infrawrench, or just close it and let Infrawrench hold the key on your behalf.
+Infrawrench creates an Ed25519 key pair and shows both halves once, under **Public Key** and **Private Key**, with a **Copy private key to clipboard** button. You can't reopen that dialog. Copy the private key now if you want it outside Infrawrench, or just close the dialog and let Infrawrench keep it for you.
 
 ## Import a key
 
-1. **Settings → SSH Keys → Import Key**.
+1. Go to **Settings > SSH Keys > Import Key**.
 2. Give it a name.
-3. Paste the **public** key — the contents of `~/.ssh/id_ed25519.pub`, not the private half.
+3. Paste the **public** key, for example the contents of `~/.ssh/id_ed25519.pub`. Not the private key.
 4. Click **Import key**.
 
-There is no field for a private key and none for a passphrase. Importing records the public half so Infrawrench can install it on new machines and identify it in pickers; the private key stays wherever you already keep it.
+There's no field for a private key or a passphrase. Infrawrench saves the public key so it can install it on new machines and show it in pickers. Your private key stays wherever you already keep it.
 
-## What each kind can do
+## What each kind of key can do
 
-That difference decides where a key works:
+- A **generated** key is stored encrypted in Infrawrench's cloud, so the cloud can connect for you. Web terminals, SFTP, tunnels and agent-driven SSH all work. The desktop app can also use it for [Linux applications](../features/linux-apps.md) without the private key ever reaching your machine: the cloud signs the login for you while the connection runs directly from your machine to the host. Each signature is recorded in the [audit log](./audit-log.md) as `ssh.agent.sign`.
+- An **imported** key has no private key in the cloud, so the cloud can't log in with it. Choosing one for a web SSH session or tunnel fails with _"SSH key has no private key data"_. Import is still the right choice when you connect from the desktop app (where the private key is on your own disk), or when you only need the public key installed on a new VM.
 
-- A **generated** key is stored encrypted server-side, so the cloud can use it to open connections for you — web terminals, SFTP, tunnels, and agent-driven SSH all work. The desktop app can also use one for [Linux applications](../features/linux-apps.md) without the private half ever reaching your machine: the cloud acts as an SSH agent and signs the authentication handshake, while the connection itself runs directly from your machine to the host. Each signature is an audited operation (`ssh.agent.sign` in the [audit log](./audit-log.md)).
-- An **imported** key has no private half on the server, so the cloud cannot authenticate — or sign — with it. Picking one for a web SSH session or tunnel fails with _"SSH key has no private key data"_. It is still the right thing to import when you connect from the desktop app, where the private key is on your own disk, or when you only need the public half installed on a new VM.
+Either way, the public key is visible to everyone in the organization.
 
-Either way the public half is shared with everyone in the organization.
+## Use a key
 
-## Using a key
+Whenever a host asks for a key, the picker lists your saved keys first. In the desktop app it also lists keys on disk (`~/.ssh/`), keys from the [1Password SSH agent](../features/ssh-terminal.md#picking-a-key) when it's running, and on Windows, keys loaded in Pageant.
 
-Any time a host asks for a key, the picker lists saved keys first. In desktop mode, it also lists keys found on disk (`~/.ssh/`), keys exposed by the [1Password SSH agent](../features/ssh-terminal.md#picking-a-key) when it is running, and — on Windows — keys loaded in Pageant.
+## Delete a key
 
-## Removing a key
+Go to **Settings > SSH Keys**, pick the key and click **Delete**. Hosts that used this key will ask for a new one on the next connection. You can delete your own keys. Deleting someone else's needs the same permission as managing roles.
 
-**Settings → SSH Keys → (key) → Delete**. Any hosts that were pinned to this key will prompt for a new key on next connection. You can delete your own keys; deleting somebody else's needs the same permission as managing roles.
+## Manage keys from MCP and AI chat
 
-## Managing keys from MCP and chat
+The [MCP server](../features/mcp.md) and [AI chat](../features/ai-chat.md) can manage keys with `list_ssh_keys`, `create_ssh_key`, `import_ssh_key` and `delete_ssh_key`. They follow the same `ssh-keys:read` and `ssh-keys:write` [role permissions](./roles-and-permissions.md) as this page, and deleting another member's key needs `team:role:write`.
 
-The [MCP server](../features/mcp.md) and the [AI chat](../features/ai-chat.md) can manage keys too, via `list_ssh_keys`, `create_ssh_key`, `import_ssh_key`, and `delete_ssh_key`. They enforce the same `ssh-keys:read` / `ssh-keys:write` [role permissions](./roles-and-permissions.md) as this page, and deleting another member's key requires `team:role:write`. Two safety properties to know:
+- A key generated through a tool **never shows you its private key**. It's stored encrypted and you use it by id with `ssh_exec` and tunnels. If you need the private key outside Infrawrench, generate the key in Settings instead.
+- In chat, `delete_ssh_key` always waits for you to click Approve.
 
-- A key generated through a tool **never returns its private key** — it is stored encrypted and usable by id with `ssh_exec` and tunnels. If you need to download the private key for use outside Infrawrench, generate the key here in Settings instead.
-- In chat, `delete_ssh_key` is a destructive action, so it always waits for your Approve click.
+You can also use saved keys when creating VMs. The create tools (`digitalocean_create_droplet`, `hetzner_create_server`, EC2, GCE and Scaleway instances, and the general `create_resource`) accept an `sshKeyId` and install the key's **public** half on the new machine. So "create a droplet I can SSH into with my deploy key" works in one go.
 
-Stored keys also plug into resource creation: the VM create tools (`digitalocean_create_droplet`, `hetzner_create_server`, EC2/GCE/Scaleway instances, and the generic `create_resource`) accept an `sshKeyId`, and the key's **public** half is installed on the new machine — so "create a droplet I can SSH into with my deploy key" works end to end.
+Key changes made through tools appear in the [audit log](./audit-log.md) as `ssh-key.create`, `ssh-key.import` and `ssh-key.delete`.
 
-All tool-driven key changes appear in the [audit log](./audit-log.md) (`ssh-key.create` / `ssh-key.import` / `ssh-key.delete`).
+## Avoid these
 
-## Don’t do this
+- Don't add keys you use to sign git commits. Use a separate key for server access.
+- Don't share one key between several people. Give each person their own, so the [audit log](./audit-log.md) shows who did what.
 
-- Do not paste keys you use to sign git commits — use a dedicated key for server access.
-- Do not share a single key among many users; each human should have their own, so the [audit log](./audit-log.md) is meaningful.
+## Find unused keys
 
-## Finding keys nothing uses
-
-The [credential hygiene report](./credential-hygiene.md) lists org SSH keys with no recorded use over a window you choose — terminal sessions, [fan-out](../features/ssh-fanout.md) runs, agent forwarding and the `ssh_exec` tool all count as use. Keys whose private half is stored server-side are ranked higher, because those are live credentials sitting in a database. Deleting one here removes Infrawrench's copy; the line in the host's `authorized_keys` is still yours to remove.
+The [credential hygiene report](./credential-hygiene.md) lists organization SSH keys with no use over a period you choose. Terminal sessions, [fan-out](../features/ssh-fanout.md) runs, agent forwarding and the `ssh_exec` tool all count as use. Keys whose private half is stored in Infrawrench are ranked higher, since those are live credentials. Deleting a key there removes Infrawrench's copy, but you still need to remove it from the host's `authorized_keys` yourself.

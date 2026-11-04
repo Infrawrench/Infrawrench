@@ -1,36 +1,36 @@
 ---
 title: Resources and accounts
-description: How infrawrench organizes what you connect and what you manage.
+description: How infrawrench organizes the provider accounts you connect and the resources you manage, from the sidebar to account and detail pages.
 sidebar_order: 1
 ---
 
-Two concepts do most of the work.
+Two ideas cover most of infrawrench: accounts and resources.
 
 ## Account
 
-An **account** is one set of credentials for one provider. Examples:
+An **account** is one set of credentials for one provider. For example:
 
 - A DigitalOcean API token for your personal projects.
-- An AWS access key pair for your employer’s staging account.
+- An AWS access key pair for your employer's staging account.
 - A kubeconfig for a cluster a teammate shared with you.
 
-Many providers also let you create an account by signing in to the provider instead of pasting a token; that account is still an ordinary set of credentials, refreshed for you. See [Connect with OAuth](../features/connect-with-oauth.md).
+Many providers also let you add an account by signing in to the provider instead of pasting a token. It's still an ordinary account, with the credentials refreshed for you. See [Connect with OAuth](../features/connect-with-oauth.md).
 
-You can have many accounts per provider (for example, two DigitalOcean accounts: personal and work). Each account lives under the same plugin but is isolated — its resources only show up grouped under that account.
+You can have as many accounts per provider as you like (say, a personal and a work DigitalOcean account). Each one is kept separate, and its resources show up under that account only.
 
-### Rotating an account's credentials
+### Update an account's credentials
 
-When you regenerate a token upstream (rotation schedule, scope upgrade, leaked secret), open the account detail page and click **Update credentials**. The form prefills non-sensitive fields and leaves sensitive ones blank with a "leave blank to keep current value" placeholder so you only have to retype the bits you're changing. Synced resources, pins, dashboards, and SSH-tunnel bindings stay intact.
+When you regenerate a token at the provider (a rotation schedule, a scope change, a leaked secret), open the account page and click **Update credentials**. Non-sensitive fields are filled in for you. Sensitive ones are blank with a "leave blank to keep current value" placeholder, so you only retype what's changing. Your synced resources, pins, dashboards and SSH tunnel bindings stay as they are.
 
-For an account added with **Connect with &lt;Provider&gt;**, the same form shows **Reconnect** and **Use a token instead** in place of the token input. See [Connect with OAuth](../features/connect-with-oauth.md#switching-between-a-connection-and-a-token).
+For an account added with **Connect with &lt;Provider&gt;**, the form shows **Reconnect** and **Use a token instead** in place of the token field. See [Connect with OAuth](../features/connect-with-oauth.md#switching-between-a-connection-and-a-token).
 
 ![Account detail page header showing the Rename / Update credentials / Remove buttons](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/resources-and-accounts/account-header-actions.png)
 
 ## Resource
 
-A **resource** is anything the plugin can list or create: a Droplet, an EC2 instance, a DNS record, a Postgres database, a Kubernetes pod. Every resource belongs to exactly one account.
+A **resource** is anything a plugin can list or create: a Droplet, an EC2 instance, a DNS record, a Postgres database, a Kubernetes pod. Every resource belongs to exactly one account.
 
-## How the sidebar is organized
+## The sidebar
 
 ```
 Providers
@@ -51,43 +51,43 @@ Providers
 
 ![Sidebar showing two DigitalOcean accounts and one AWS account expanded](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/resources-and-accounts/sidebar-accounts-expanded.png)
 
-The sidebar auto-refreshes every 30 seconds. You can manually refresh an account or resource group from its context menu.
+The sidebar refreshes every 30 seconds. To refresh an account or resource group now, use its right-click menu.
 
-Healthy things carry no marker. When an account or resource needs attention (its resources failed to load, a refresh failed, or the provider reports it as errored or degraded), a warning triangle appears next to its name; hover it to see why. The same triangle marks problems across the app: a down probe, a firing alert rule, an offline bastion, a failed environment.
+Healthy things have no marker. When an account or resource needs attention (its resources failed to load, a refresh failed, or the provider reports it as errored or degraded), a warning triangle appears next to its name. Hover it to see why. The same triangle marks problems across the app: a down probe, a firing alert rule, an offline bastion, a failed environment.
 
-The sidebar is deliberately shallow — it lists top-level resources so you can reach the common ones quickly. Nested resources like DNS records and database users are reached through their parent, or through the account page below.
+The sidebar only lists top-level resources, so the common ones are quick to reach. Nested resources like DNS records and database users are under their parent, or on the account page.
 
 ## Account pages
 
-Click an account name to open its account page — the full inventory of everything Infrawrench knows about that account.
+Click an account name to open its account page, the full list of everything Infrawrench knows about that account.
 
-Every resource type the plugin exposes gets its own tab, including nested types like DNS Records and DB Users that the sidebar leaves out. A tab shows its resource count in parentheses; types with nothing in them are still listed if you can create one, so the create button stays reachable. Selecting a tab triggers a fresh provider-side sync for just that type, so a slow-to-list group loads on demand rather than holding up the page.
+Each resource type gets its own tab, including nested types like DNS Records and DB Users that the sidebar leaves out. Tabs show their resource count in parentheses. Empty types are still listed if you can create one, so the create button is always there. Opening a tab fetches fresh data for that type from the provider.
 
-The search box narrows that same set of tabs. It matches a type's name as well as individual resource names, hosts, regions, and engines — so typing `d` keeps every tab whose name or contents match, and typing a droplet's name jumps you to it. Searching only ever removes tabs; it never reveals ones that were hidden.
+The search box narrows the tabs. It matches type names and also resource names, hosts, regions and engines. Type `d` and you keep every tab whose name or contents match. Type a Droplet's name and you jump to it. Search only hides tabs, it never shows hidden ones.
 
-The [mobile app](../features/mobile-app.md) shows the same sections and the same search, stacked as scrollable cards instead of tabs.
+The [mobile app](../features/mobile-app.md) has the same sections and search, shown as scrollable cards instead of tabs.
 
-![A DigitalOcean account page with a search query typed, narrowing the tab bar to the matching sections — with the search box empty, the same bar lists every resource type](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/resources-and-accounts/account-page-search-narrowed.png)
+![A DigitalOcean account page with a search query typed, narrowing the tab bar to the matching sections. With the search box empty, the same bar lists every resource type](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/resources-and-accounts/account-page-search-narrowed.png)
 
 ### Providers with a single root
 
-A few providers scope a credential so tightly that an account can only ever hold one top-level resource. [UploadThing](../plugins/uploadthing.md) is the clearest case: an API key belongs to one app, and there is no way to reach a second one with it.
+With a few providers, a credential can only ever reach one top-level resource. [UploadThing](../plugins/uploadthing.md) is the clearest case: an API key belongs to one app.
 
-For those, the account page _is_ that resource. Opening the account lands you straight on its detail page rather than on an inventory whose only content is a section holding one item, and the sidebar expands the account directly to what lives inside it — for UploadThing, your files. Nothing else changes: it is still a normal resource with its own outputs and its own URL.
+For those, opening the account takes you straight to that resource's detail page, and the sidebar expands the account directly to what's inside it (for UploadThing, your files). It's still a normal resource with its own outputs and its own URL.
 
-This only applies where a second instance is impossible, not merely unusual. A provider where you happen to have one project today still gets the normal inventory, because tomorrow you might have two.
+This only applies when a second resource is impossible. If you just happen to have one project today, you still get the normal account page.
 
 ## Resource detail pages
 
 Click any resource to open its detail page. Every detail page has:
 
-- **Status** — provider-reported state (running, stopped, error).
-- **Outputs** — values this resource produces that other resources can reference (see [Output references](./output-references.md)).
-- **Actions** — plugin-specific controls (SSH, SQL editor, start / stop, manifest edit, etc.).
-- **Raw data** — the full API response, collapsed.
+- **Status:** the state the provider reports (running, stopped, error).
+- **Outputs:** values this resource produces that other resources can reference (see [Output references](./output-references.md)).
+- **Actions:** plugin-specific controls (SSH, SQL editor, start / stop, manifest edit and so on).
+- **Raw data:** the full API response, collapsed.
 
 ## Next
 
-- [Output references](./output-references.md) — wire resources together.
-- [Secret rerolls](./secret-rerolls.md) — reassign a reference when upstream changes.
-- [Desktop, web, and mobile](./desktop-vs-web.md) — what differs between the surfaces.
+- [Output references](./output-references.md): wire resources together.
+- [Secret rerolls](./secret-rerolls.md): point a reference somewhere else when things change.
+- [Desktop, web, and mobile](./desktop-vs-web.md): what differs between the apps.
