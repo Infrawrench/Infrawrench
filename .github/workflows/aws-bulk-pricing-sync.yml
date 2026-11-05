@@ -76,3 +76,14 @@ jobs:
           # the same value is the instances Worker's NOTIFY_SECRET.
           INSTANCES_NOTIFY_URL: https://instances.infrawrench.com/api/internal/notify
           INSTANCES_NOTIFY_SECRET: ${{ secrets.INSTANCES_NOTIFY_SECRET }}
+          # Notable changes (new types, retirements, big price moves, new
+          # regions) are written to the job summary; set the repository
+          # variable SOCIAL_POST to 1 to post them as well, to whichever of
+          # Bluesky and X has its secrets set (src/aws-bulk-pricing/social.ts).
+          SOCIAL_POST: ${{ vars.SOCIAL_POST }}
+          BLUESKY_IDENTIFIER: ${{ secrets.BLUESKY_IDENTIFIER }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
