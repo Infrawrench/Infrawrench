@@ -47,6 +47,7 @@ When an answer is a list, you get an interactive table. When a graph works bette
 - **SQL** shows the query behind it.
 - **CSV** downloads the rows as currently filtered and sorted.
 - **Copy link** copies a permanent link to the table or chart. The link opens it full window and runs the query again, so it always shows current prices. Ask a follow-up in the box under it to start a new conversation that begins with that table.
+  Posted on X, the link shows the table or chart as an interactive card inside the post on the web, and opens it in a popup on mobile. X decides whether to show the card, so a post may show only its image.
 - **Email if this changes** subscribes an email address to the table (see below).
 
 <insert [A chat answer showing an interactive table of ARM EC2 instances, with the footer actions (SQL, CSV, Email if this changes, Copy link) visible] here>

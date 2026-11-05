@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { InstanceView } from "@/components/InstanceView";
 import { describe, instanceTitle } from "@/lib/describe";
+import { instanceHasPlayerCard, playerCardTags } from "@/lib/embed";
 import { LOCALES, isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 import { loadInstance } from "@/lib/load";
@@ -42,6 +43,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const description = describe(model, tr, locale);
   const path = instancePath(model.platform, model.name);
   const url = localePath(locale, path);
+  const player = instanceHasPlayerCard(path);
   // The image itself comes from opengraph-image.tsx beside this file.
   return {
     title,
@@ -64,7 +66,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       type: "website",
       locale,
     },
-    twitter: { card: "summary_large_image", title, description },
+    twitter: { card: player ? "player" : "summary_large_image", title, description },
+    ...(player ? { other: playerCardTags(locale, path) } : {}),
   };
 }
 

@@ -48,11 +48,20 @@ export function ViewCard({
   data,
   watch = false,
   fill = false,
+  embed = false,
+  headerEnd,
 }: {
   data: ViewData;
   watch?: boolean;
   /** Grows to its parent's height at most (the shared page), the table scrolling inside it. */
   fill?: boolean;
+  /**
+   * In an X Player Card: no footer, whose download, form and clipboard actions
+   * the sandbox blocks, and instance links open a new tab.
+   */
+  embed?: boolean;
+  /** Shown at the right of the title. */
+  headerEnd?: React.ReactNode;
 }) {
   const gt = useGT();
   const locale = useLocale();
@@ -95,6 +104,7 @@ export function ViewCard({
             {gt("First {count} rows", { count: result.rows.length })}
           </span>
         )}
+        {headerEnd}
       </header>
       {view.kind === "table" ? (
         <DataTable
@@ -104,6 +114,7 @@ export function ViewCard({
           platform={viewPlatform(view.sql)}
           visibleRef={visible}
           fill={fill}
+          newTabLinks={embed}
         />
       ) : (
         <div className={fill ? "min-h-0 flex-1 overflow-auto overscroll-contain" : undefined}>
@@ -120,39 +131,45 @@ export function ViewCard({
           {view.sql}
         </pre>
       )}
-      <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:justify-between border-t border-line bg-surface-2 px-2 py-1.5">
-        <span className="hidden items-center gap-1.5 px-1 text-xs text-ink-3 sm:flex">
-          {view.kind === "table" ? (
-            <>
-              <TableIcon className="h-3.5 w-3.5" />
-              {gt("Interactive table")}
-            </>
-          ) : (
-            <>
-              <BarChartIcon className="h-3.5 w-3.5" />
-              {view.chart === "line" ? gt("Line chart") : gt("Bar chart")}
-            </>
-          )}
-        </span>
-        <div className="flex flex-wrap items-center gap-0.5">
-          <FooterButton onClick={() => setShowSql((s) => !s)} pressed={showSql}>
-            <CodeIcon className="h-3.5 w-3.5" />
-            {gt("SQL")}
-          </FooterButton>
-          <FooterButton onClick={download}>
-            <DownloadIcon className="h-3.5 w-3.5" />
-            {gt("CSV")}
-          </FooterButton>
-          <FooterButton onClick={() => setAlerting((a) => !a)} pressed={alerting}>
-            <BellIcon className="h-3.5 w-3.5" />
-            {gt("Email if this changes")}
-          </FooterButton>
-          <FooterButton onClick={copyLink}>
-            {copied ? <CheckIcon className="h-3.5 w-3.5" /> : <LinkIcon className="h-3.5 w-3.5" />}
-            {copied ? gt("Copied") : gt("Copy link")}
-          </FooterButton>
-        </div>
-      </footer>
+      {!embed && (
+        <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:justify-between border-t border-line bg-surface-2 px-2 py-1.5">
+          <span className="hidden items-center gap-1.5 px-1 text-xs text-ink-3 sm:flex">
+            {view.kind === "table" ? (
+              <>
+                <TableIcon className="h-3.5 w-3.5" />
+                {gt("Interactive table")}
+              </>
+            ) : (
+              <>
+                <BarChartIcon className="h-3.5 w-3.5" />
+                {view.chart === "line" ? gt("Line chart") : gt("Bar chart")}
+              </>
+            )}
+          </span>
+          <div className="flex flex-wrap items-center gap-0.5">
+            <FooterButton onClick={() => setShowSql((s) => !s)} pressed={showSql}>
+              <CodeIcon className="h-3.5 w-3.5" />
+              {gt("SQL")}
+            </FooterButton>
+            <FooterButton onClick={download}>
+              <DownloadIcon className="h-3.5 w-3.5" />
+              {gt("CSV")}
+            </FooterButton>
+            <FooterButton onClick={() => setAlerting((a) => !a)} pressed={alerting}>
+              <BellIcon className="h-3.5 w-3.5" />
+              {gt("Email if this changes")}
+            </FooterButton>
+            <FooterButton onClick={copyLink}>
+              {copied ? (
+                <CheckIcon className="h-3.5 w-3.5" />
+              ) : (
+                <LinkIcon className="h-3.5 w-3.5" />
+              )}
+              {copied ? gt("Copied") : gt("Copy link")}
+            </FooterButton>
+          </div>
+        </footer>
+      )}
       {alerting && <AlertForm viewId={view.id} onClose={() => setAlerting(false)} />}
     </section>
   );

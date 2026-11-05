@@ -107,7 +107,7 @@ export function AlertManager({ id }: { id: string }) {
                   type="button"
                   disabled={working}
                   onClick={() => void act("confirm")}
-                  className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-60"
+                  className="rounded-md bg-accent-fill px-4 py-2 text-sm font-medium text-white hover:bg-accent-fill-hover disabled:opacity-60"
                 >
                   {gt("Confirm alert")}
                 </button>

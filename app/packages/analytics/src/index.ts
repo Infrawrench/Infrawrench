@@ -43,6 +43,16 @@ export interface AnalyticsOptions {
    * For paths that carry a secret, such as share and invite tokens.
    */
   redactUrl?: (url: string) => string;
+  /**
+   * For a surface that can show no consent prompt (the X Player Card embeds on
+   * the instances site, inside someone else's page). PostHog stores nothing on
+   * the device, records no session and identifies nobody: every visitor gets
+   * what a Decline gets, counted by PostHog's server-side hash, so there is
+   * nothing to ask about. `captureAnalytics` works without an answer here.
+   */
+  cookieless?: boolean;
+  /** Sent with every event from this page. */
+  properties?: Properties;
 }
 
 /**
@@ -55,6 +65,7 @@ const DEFAULT_HOST = "https://hedgehogs.infrawrench.com";
 const UI_HOST = "https://us.posthog.com";
 
 let enabled = false;
+let cookielessOnly = false;
 let promptVisible = false;
 const promptListeners = new Set<() => void>();
 const revnuBinders = new Set<() => void>();
@@ -138,14 +149,16 @@ async function settleConsent(): Promise<void> {
 export function initAnalytics(options: AnalyticsOptions): void {
   if (enabled || !options.key || typeof window === "undefined") return;
   enabled = true;
-  const { redactUrl, sensitive = false } = options;
+  const { redactUrl, sensitive = false, cookieless = false, properties } = options;
+  cookielessOnly = cookieless;
 
   posthog.init(options.key, {
     api_host: options.host || DEFAULT_HOST,
     ui_host: UI_HOST,
     defaults: "2026-08-30",
     person_profiles: "identified_only",
-    cookieless_mode: "on_reject",
+    cookieless_mode: cookieless ? "always" : "on_reject",
+    disable_session_recording: cookieless,
     opt_out_capturing_persistence_type: "cookie",
     cross_subdomain_cookie: true,
     // Do Not Track and Global Privacy Control read as a refusal.
@@ -170,12 +183,17 @@ export function initAnalytics(options: AnalyticsOptions): void {
       : {}),
   });
 
-  void settleConsent();
+  if (properties) posthog.register(properties);
+  // Nothing to settle: the prompt never shows and no consent answer is read.
+  if (!cookieless) void settleConsent();
 }
 
-/** Records a product event only after analytics consent has been granted. */
+/**
+ * Records a product event: after analytics consent has been granted, or at any
+ * time on a `cookieless` surface, where the event carries no stored identity.
+ */
 export function captureAnalytics(event: string, properties: Properties = {}): void {
-  if (!consentGranted()) return;
+  if (!enabled || (!cookielessOnly && !consentGranted())) return;
   posthog.capture(event, properties);
 }
 

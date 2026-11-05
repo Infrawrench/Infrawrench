@@ -372,9 +372,9 @@ const subprocessors = [
             </li>
           </ul>
           <p>
-            <strong>Your choice.</strong> If you are in the EEA, the UK or Switzerland, we ask before
-            PostHog stores anything on your device or records anything, and nothing is recorded until
-            you answer. Elsewhere it is on by default. Either way you can change your answer at any
+            <strong>Your choice.</strong> Except in the embedded cards described below, if you are in
+            the EEA, the UK or Switzerland, we ask before PostHog stores anything on your device or
+            records anything, and nothing is recorded until you answer. Elsewhere it is on by default. Either way you can change your answer at any
             time from "Cookie preferences" in the footer of this website and of
             instances.infrawrench.com, or in the web app's Settings; your answer is remembered across
             all three. If you decline, or your browser sends a Do Not Track or Global Privacy Control
@@ -382,6 +382,18 @@ const subprocessors = [
             links activity to your account; it still counts the page view, using a privacy-preserving
             hash that PostHog's servers compute from your IP address and browser instead of an
             identifier stored on your device, so we can see overall traffic.
+          </p>
+          <p>
+            <strong>Cards embedded in X posts.</strong> A post on X can show a page from
+            <code>instances.infrawrench.com</code> as an interactive card, served from an address
+            starting <code>/embed/</code>. These cards show no prompt, because for every visitor,
+            wherever they are and whatever they answered elsewhere, they work the way a Decline does:
+            PostHog stores nothing on your device, never records your session and never links
+            activity to your account. It counts the page view and your clicks in the card, including
+            which call to action you clicked, the page that referred you and whether the card was
+            inside a post, using the same privacy-preserving hash. The card itself stores nothing on
+            your device either. A link in the card opens our full site, where the choice above
+            applies.
           </p>
           <p>
             We use PostHog only for product and diagnostic purposes. We do not use it for

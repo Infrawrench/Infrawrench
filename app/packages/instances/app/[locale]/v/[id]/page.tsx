@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { SharedView } from "@/components/chat/Chat";
 import { loadView, viewData } from "@/lib/chat/views";
-import { isLocale } from "@/lib/i18n/locales";
+import { playerCardTags } from "@/lib/embed";
+import { isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 
 /**
@@ -32,15 +33,29 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const data = await load(id);
   if (!data) notFound();
   const tr = await getTranslator(locale);
-  return {
-    title: tr(msg("{title} - Infrawrench Instances"), { title: data.view.title }),
-    description: tr(
-      msg(
-        "A table of cloud instance prices, from the providers' price lists, shared from Infrawrench Instances.",
-      ),
+  const path = `/v/${id}`;
+  const title = data.view.title;
+  const description = tr(
+    msg(
+      "A table of cloud instance prices, from the providers' price lists, shared from Infrawrench Instances.",
     ),
+  );
+  // The image itself comes from opengraph-image.tsx beside this file.
+  return {
+    title: tr(msg("{title} - Infrawrench Instances"), { title }),
+    description,
     // Made by visitors, so kept out of search results.
     robots: { index: false, follow: true },
+    openGraph: {
+      title,
+      description,
+      url: localePath(locale, path),
+      siteName: "Infrawrench Instances",
+      type: "website",
+      locale,
+    },
+    twitter: { card: "player", title, description },
+    other: playerCardTags(locale, path),
   };
 }
 

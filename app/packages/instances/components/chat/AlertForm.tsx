@@ -75,7 +75,7 @@ export function AlertForm({ viewId, onClose }: { viewId: string; onClose: () => 
         <button
           type="submit"
           disabled={state === "sending"}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-60"
+          className="rounded-md bg-accent-fill px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-fill-hover disabled:opacity-60"
         >
           {state === "sending" ? gt("Sending…") : gt("Subscribe")}
         </button>

@@ -150,7 +150,7 @@ function Suggestions({ onPick }: { onPick: (text: string) => void }) {
             onClick={() => onPick(text)}
             className="group flex h-full w-full items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left text-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-3 transition-colors group-hover:bg-accent group-hover:text-white">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-3 transition-colors group-hover:bg-accent-fill group-hover:text-white">
               <Icon className="h-4 w-4" />
             </span>
             <span className="pt-1.5 text-ink-2 group-hover:text-ink">{text}</span>
@@ -242,7 +242,7 @@ function Composer({
           type="submit"
           disabled={!text.trim()}
           aria-label={gt("Send")}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-white transition-opacity hover:bg-accent-hover disabled:opacity-40"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-fill text-white transition-opacity hover:bg-accent-fill-hover disabled:opacity-40"
         >
           <ArrowUpIcon className="h-4 w-4" />
         </button>

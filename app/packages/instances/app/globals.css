@@ -12,6 +12,8 @@
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-fill-hover: var(--accent-fill-hover);
   --color-warn-bg: var(--warn-bg);
   --color-warn-line: var(--warn-line);
 }
@@ -27,6 +29,10 @@
   --grid: #ececea;
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
+  /* Filled buttons, under white text. `--accent` is for text and links: it is
+     too light to fill behind white in dark mode. */
+  --accent-fill: #1d4ed8;
+  --accent-fill-hover: #1e40af;
   --warn-bg: #fff7e6;
   --warn-line: #f5c46b;
   --series-1: #2a78d6;
@@ -53,6 +59,8 @@
     --grid: #1f1f22;
     --accent: #60a5fa;
     --accent-hover: #93c5fd;
+    --accent-fill: #1d4ed8;
+    --accent-fill-hover: #2563eb;
     --warn-bg: #2a2110;
     --warn-line: #7a5a1c;
     --series-1: #3987e5;
@@ -168,7 +176,7 @@ a.nav-logo:hover .nav-logo-sub {
 .nav-cta {
   display: inline-flex;
   align-items: center;
-  background: #3b82f6;
+  background: #1d4ed8;
   color: #fff;
   padding: 8px 16px;
   border-radius: 7px;

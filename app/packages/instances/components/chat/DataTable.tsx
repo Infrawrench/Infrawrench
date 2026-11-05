@@ -39,6 +39,7 @@ export function DataTable({
   platform = "ec2",
   visibleRef,
   fill = false,
+  newTabLinks = false,
 }: {
   columns: DisplayColumn[];
   rows: Cell[][];
@@ -49,6 +50,8 @@ export function DataTable({
   visibleRef?: React.RefObject<{ columns: DisplayColumn[]; rows: Cell[][] } | null>;
   /** Takes the height its parent gives it (the shared page) instead of a fixed maximum. */
   fill?: boolean;
+  /** Instance links open a new tab (the embed, which must not navigate inside the frame). */
+  newTabLinks?: boolean;
 }) {
   const gt = useGT();
   const locale = useLocale();
@@ -143,6 +146,7 @@ export function DataTable({
         <Link
           prefetch={false}
           href={localePath(locale, instancePath(rowPlatform, value))}
+          {...(newTabLinks ? { target: "_blank", rel: "noopener" } : {})}
           className="font-medium text-accent hover:underline"
         >
           {value}
