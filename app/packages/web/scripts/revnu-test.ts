@@ -7,7 +7,7 @@
  * Reads REVNU_EVENT_KEY from the server environment (web/.env.local or web/.env
  * via the env loader). Prints the status and response body only.
  */
-import { buildPaymentSucceededEvent } from "../src/services/revnu";
+import { buildPaymentSucceededEvent } from "@infrawrench/server-core/billing/revnu";
 
 const key = process.env["REVNU_EVENT_KEY"];
 if (!key) {
@@ -21,8 +21,6 @@ const event = buildPaymentSucceededEvent({
   amountMinor: 100,
   currency: "usd",
   purchaseKind: "subscription",
-  googleAdUserData: "unknown",
-  googleAdPersonalization: "unknown",
 });
 if (!event) {
   console.error("Could not build the test event");

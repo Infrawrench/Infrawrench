@@ -21,10 +21,6 @@ function event(overrides: Partial<PaymentSucceededInput> = {}) {
   };
   if (overrides.anonymousId !== undefined) input.anonymousId = overrides.anonymousId;
   if (overrides.consentState !== undefined) input.consentState = overrides.consentState;
-  if (overrides.googleAdUserData !== undefined) input.googleAdUserData = overrides.googleAdUserData;
-  if (overrides.googleAdPersonalization !== undefined) {
-    input.googleAdPersonalization = overrides.googleAdPersonalization;
-  }
   if (overrides.email !== undefined) input.email = overrides.email;
   if (overrides.phone !== undefined) input.phone = overrides.phone;
   return buildPaymentSucceededEvent(input);
@@ -40,6 +36,16 @@ describe("stripeMinorToMajor", () => {
   it("leaves Stripe zero-decimal currencies in major units", () => {
     expect(stripeMinorToMajor(500, "jpy")).toEqual({ amount: 500, currency: "JPY" });
     expect(stripeMinorToMajor(500, "krw")).toEqual({ amount: 500, currency: "KRW" });
+  });
+
+  it("divides Stripe three-decimal currencies by 1000", () => {
+    for (const currency of ["bhd", "jod", "kwd", "omr", "tnd"]) {
+      expect(stripeMinorToMajor(5120, currency)).toEqual({
+        amount: 5.12,
+        currency: currency.toUpperCase(),
+      });
+    }
+    expect(stripeMinorToMajor(50, "kwd")).toEqual({ amount: 0.05, currency: "KWD" });
   });
 
   it("treats UGX and ISK as two-decimal, the way Stripe settles them", () => {
@@ -81,8 +87,6 @@ describe("buildPaymentSucceededEvent", () => {
       occurred_at: WHEN,
       amount: 49.5,
       currency: "USD",
-      google_ad_user_data: "unknown",
-      google_ad_personalization: "unknown",
       properties: { purchase_kind: "subscription" },
     });
     expect(first).not.toHaveProperty("anonymous_id");
@@ -97,16 +101,6 @@ describe("buildPaymentSucceededEvent", () => {
     expect(event({ consentState: "granted" })?.consent_state).toBe("granted");
     expect(event({ consentState: null })).not.toHaveProperty("consent_state");
     expect(event({ consentState: "yes" })).not.toHaveProperty("consent_state");
-  });
-
-  it("sends a saved Google choice and unknown when the checkout recorded none", () => {
-    expect(event({ googleAdUserData: "denied", googleAdPersonalization: "granted" })).toMatchObject(
-      { google_ad_user_data: "denied", google_ad_personalization: "granted" },
-    );
-    expect(event({ googleAdUserData: null, googleAdPersonalization: null })).toMatchObject({
-      google_ad_user_data: "unknown",
-      google_ad_personalization: "unknown",
-    });
   });
 
   it("omits a missing or invalid anonymous id", () => {
@@ -146,24 +140,13 @@ describe("buildPaymentSucceededEvent", () => {
 
 describe("parseMeasurement", () => {
   it("keeps a valid handoff and drops everything else", () => {
-    expect(
-      parseMeasurement({
-        anonymousId: ANON,
-        consentState: "denied",
-        googleAdUserData: "unknown",
-        googleAdPersonalization: "granted",
-      }),
-    ).toEqual({
+    expect(parseMeasurement({ anonymousId: ANON, consentState: "denied" })).toEqual({
       anonymousId: ANON,
       consentState: "denied",
-      googleAdUserData: "unknown",
-      googleAdPersonalization: "granted",
     });
     expect(parseMeasurement({ anonymousId: "ra_short", consentState: "nope" })).toEqual({
       anonymousId: null,
       consentState: null,
-      googleAdUserData: null,
-      googleAdPersonalization: null,
     });
     expect(parseMeasurement(undefined).anonymousId).toBeNull();
   });
@@ -192,7 +175,8 @@ describe("postRevnuEvent", () => {
     [200, "accepted"],
     [202, "accepted"],
     [400, "rejected"],
-    [401, "rejected"],
+    [401, "retry"],
+    [409, "rejected"],
     [429, "retry"],
     [500, "retry"],
     [503, "retry"],

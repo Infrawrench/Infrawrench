@@ -48,7 +48,6 @@ export { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 export { ExtendedSupportAlertsSection } from "./ExtendedSupportAlertsSection.js";
 export { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 export { BillingSection } from "./BillingSection.js";
-export { readRevnuMeasurement, type RevnuMeasurement } from "./revnu-measurement.js";
 export { AuditLogSection } from "./AuditLogSection.js";
 export { SettingsSectionBody } from "./SettingsSectionBody.js";
 export { EventSubscriptionsSection } from "./event-subscriptions/EventSubscriptionsSection.js";

@@ -95,7 +95,7 @@ These operations are **closed to API keys** and return `403` with an explanatory
 | Operations                                          | Why                                                                                                   |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | All of `/api/org/{orgId}/api-keys`                  | A key that could create keys could create a longer-lived one, so revoking it wouldn't end the access. |
-| All of `/api/org/{orgId}/billing`                   | Subscription and payment changes. Every response is a Stripe URL meant for a browser.                 |
+| All of `/api/org/{orgId}/billing`                   | Subscription and payment changes, and the purchase measurement a checkout carries. For browsers only. |
 | All of `/api/org/{orgId}/push`                      | Device registration and notification preferences describe a person's phone.                           |
 | `POST`/`PUT`/`PATCH`/`DELETE` on `/team`            | Invites, role changes and member removal. `GET` still works, so automation can list members.          |
 | `POST`/`PUT`/`PATCH`/`DELETE` on `/access-requests` | Break-glass access needs a human in the loop. `GET` still works, so a monitor can watch the queue.    |

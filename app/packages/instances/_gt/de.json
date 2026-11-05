@@ -194,19 +194,6 @@
   "be5f702b60f5a13b": "Cookie-Einstellungen",
   "63505f517af0f8f2": "Ablehnen",
   "edb4ece52df96685": "Akzeptieren",
-  "1e27e97203271999": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Dürfen wir Cookies verwenden, um zu verstehen, wie diese Website genutzt wird? Dadurch werden die Analyse und die Sitzungsaufzeichnungen von PostHog aktiviert, wobei Formulareingaben maskiert werden.",
-      " ",
-      {
-        "t": "a",
-        "i": 2,
-        "c": "Datenschutzerklärung"
-      }
-    ]
-  },
   "53b66d6ad32be4b3": "Fragen Sie alles zu AWS-Instance-Preisen - Infrawrench Instances",
   "3b3f07726c6458b5": "Fragen Sie in natürlicher Sprache nach AWS-Instance-Typen, Spezifikationen und Preisen in allen Regionen, samt Verlauf, und erhalten Sie Antworten als Tabellen und Diagramme, die Sie teilen können.",
   "1b5d636752ce21c0": "E-Mail-Benachrichtigung - Infrawrench Instances",
@@ -454,5 +441,18 @@
   "59d9b2c9b059d3d6": "Virtuelle Maschinen nach Größe",
   "233ea47270d6ab7b": "Virtuelle Maschinen nach Maschinentyp",
   "b83cf030adf08004": "Infrawrench holen",
-  "0e17a0043c6a62bb": "Kubernetes-Anleitungen"
+  "0e17a0043c6a62bb": "Kubernetes-Anleitungen",
+  "7d883b74f3e32c06": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Dürfen wir Cookies und ähnliche Technologien verwenden, um zu verstehen, wie diese Website genutzt wird, und um unser Marketing zu messen? Dadurch werden die Analyse, Sitzungsaufzeichnungen mit maskierten Formulareingaben sowie die Messung von Käufen aktiviert, die mit Werbeplattformen geteilt werden kann.",
+      " ",
+      {
+        "t": "a",
+        "i": 2,
+        "c": "Datenschutzerklärung"
+      }
+    ]
+  }
 }

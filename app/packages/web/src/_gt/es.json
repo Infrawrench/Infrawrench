@@ -22808,19 +22808,6 @@
   "be5f702b60f5a13b": "Preferencias de cookies",
   "63505f517af0f8f2": "Rechazar",
   "edb4ece52df96685": "Aceptar",
-  "8896db06e6a970ba": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "¿Podemos usar cookies para entender cómo se usa Infrawrench? Esto activa los análisis de producto y las repeticiones de sesión de PostHog, con el texto y los campos de entrada de la pantalla enmascarados.",
-      " ",
-      {
-        "t": "a",
-        "i": 2,
-        "c": "Política de privacidad"
-      }
-    ]
-  },
   "259a9df60653b6f2": {
     "t": "p",
     "i": 1,
@@ -22985,6 +22972,19 @@
         "v": "v"
       },
       ". El servidor la aplica a todas las apps que se conectan."
+    ]
+  },
+  "338da418e561a977": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "¿Podemos usar cookies y tecnologías similares para entender cómo se usa Infrawrench y medir nuestro marketing? Esto activa los análisis de producto, las repeticiones de sesión con el texto y los campos de entrada de la pantalla enmascarados, y la medición de compras, que puede compartirse con plataformas publicitarias.",
+      " ",
+      {
+        "t": "a",
+        "i": 2,
+        "c": "Política de privacidad"
+      }
     ]
   }
 }

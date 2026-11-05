@@ -60,10 +60,8 @@ const RevnuCheckoutMeasurement = strict({
   }),
   consentState: z.enum(["granted", "denied", "pending"]).optional().openapi({
     description:
-      "Analytics consent for this checkout. Omitted when the visitor has no saved answer. Never copied into Stripe.",
+      "Analytics consent for this checkout. A purchase with no saved answer is reported as unanswered, and one that was declined is not reported. Never copied into Stripe.",
   }),
-  googleAdUserData: z.enum(["granted", "denied", "unknown"]).optional(),
-  googleAdPersonalization: z.enum(["granted", "denied", "unknown"]).optional(),
 }).openapi("RevnuCheckoutMeasurement");
 
 const SubscriptionCheckoutRequest = strict({
@@ -166,7 +164,7 @@ export function registerBillingPaths(ctx: BuildContext) {
     tags: ["Billing"],
     summary: "Update consent on unpaid checkouts for this visitor",
     description:
-      "Rewrites the saved analytics and Google consent on Checkout Sessions that have not yet been reported. A paid session is left as it was sent.",
+      "Rewrites the saved analytics consent on this user's Checkout Sessions that are not yet paid. A withdrawal reaches all of them; any other answer reaches the matching visitor's sessions and any still pending with no visitor id. A paid session is left as it was queued.",
     request: {
       params: OrgIdParam,
       body: {

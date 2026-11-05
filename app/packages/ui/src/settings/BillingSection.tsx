@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useGT } from "gt-react";
 import type { BillingStatus, CapacitySlot } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
-import { readRevnuMeasurement } from "./revnu-measurement.js";
 
 /**
  * Largest quantity one purchase accepts. Mirrors `MAX_SLOTS_PER_PURCHASE` in
@@ -30,7 +29,7 @@ function slotLabel(slot: CapacitySlot, gt: ReturnType<typeof useGT>): string {
 
 export function BillingSection() {
   const gt = useGT();
-  const { orgId, api, openExternal } = useSettingsHost();
+  const { orgId, api, openExternal, readCheckoutMeasurement } = useSettingsHost();
   const [status, setStatus] = useState<BillingStatus | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +44,7 @@ export function BillingSection() {
     setLoading(true);
     setError(null);
     try {
-      const measurement = readRevnuMeasurement();
+      const measurement = readCheckoutMeasurement?.();
       const { url } = await api.post<{ url: string }>(
         `/api/org/${orgId}/billing/checkout`,
         measurement ? { measurement } : undefined,
@@ -75,7 +74,7 @@ export function BillingSection() {
     setLoading(true);
     setError(null);
     try {
-      const measurement = readRevnuMeasurement();
+      const measurement = readCheckoutMeasurement?.();
       const { url } = await api.post<{ url: string }>(
         `/api/org/${orgId}/billing/capacity/checkout`,
         { quantity: slotQuantity, ...(measurement ? { measurement } : {}) },

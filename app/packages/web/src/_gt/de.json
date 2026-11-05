@@ -22806,19 +22806,6 @@
   "be5f702b60f5a13b": "Cookie-Einstellungen",
   "63505f517af0f8f2": "Ablehnen",
   "edb4ece52df96685": "Akzeptieren",
-  "8896db06e6a970ba": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Dürfen wir Cookies verwenden, um zu verstehen, wie Infrawrench genutzt wird? Dadurch werden die Produktanalyse und die Sitzungsaufzeichnungen von PostHog aktiviert, wobei Text und Eingaben auf dem Bildschirm maskiert werden.",
-      " ",
-      {
-        "t": "a",
-        "i": 2,
-        "c": "Datenschutzerklärung"
-      }
-    ]
-  },
   "259a9df60653b6f2": {
     "t": "p",
     "i": 1,
@@ -22983,6 +22970,19 @@
         "v": "v"
       },
       ". Der Server setzt sie für jede App durch, die sich verbindet."
+    ]
+  },
+  "338da418e561a977": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Dürfen wir Cookies und ähnliche Technologien verwenden, um zu verstehen, wie Infrawrench genutzt wird, und um unser Marketing zu messen? Dadurch werden die Produktanalyse, Sitzungsaufzeichnungen mit maskiertem Text und maskierten Eingaben auf dem Bildschirm sowie die Messung von Käufen aktiviert, die mit Werbeplattformen geteilt werden kann.",
+      " ",
+      {
+        "t": "a",
+        "i": 2,
+        "c": "Datenschutzerklärung"
+      }
     ]
   }
 }

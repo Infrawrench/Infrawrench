@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.90.0",
+    "version": "1.91.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -59884,23 +59884,7 @@
               "denied",
               "pending"
             ],
-            "description": "Analytics consent for this checkout. Omitted when the visitor has no saved answer. Never copied into Stripe."
-          },
-          "googleAdUserData": {
-            "type": "string",
-            "enum": [
-              "granted",
-              "denied",
-              "unknown"
-            ]
-          },
-          "googleAdPersonalization": {
-            "type": "string",
-            "enum": [
-              "granted",
-              "denied",
-              "unknown"
-            ]
+            "description": "Analytics consent for this checkout. A purchase with no saved answer is reported as unanswered, and one that was declined is not reported. Never copied into Stripe."
           }
         },
         "additionalProperties": false
@@ -115724,7 +115708,7 @@
           "Billing"
         ],
         "summary": "Update consent on unpaid checkouts for this visitor",
-        "description": "Rewrites the saved analytics and Google consent on Checkout Sessions that have not yet been reported. A paid session is left as it was sent.\n\n_Requires permission: `billing:write`._",
+        "description": "Rewrites the saved analytics consent on this user's Checkout Sessions that are not yet paid. A withdrawal reaches all of them; any other answer reaches the matching visitor's sessions and any still pending with no visitor id. A paid session is left as it was queued.\n\n_Requires permission: `billing:write`._",
         "parameters": [
           {
             "schema": {

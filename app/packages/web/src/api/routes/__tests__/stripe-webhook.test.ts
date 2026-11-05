@@ -19,7 +19,7 @@ vi.mock("@/services/stripe", () => ({
 }));
 
 vi.mock("@/services/revnu-checkout", () => ({
-  reportPaidCheckout: (...args: unknown[]) => mockReport(...args),
+  queuePaidCheckout: (...args: unknown[]) => mockReport(...args),
 }));
 
 vi.mock("@/db/client", () => ({
@@ -159,14 +159,28 @@ describe("Stripe webhook", () => {
     expect(mockReport).not.toHaveBeenCalled();
   });
 
-  it("asks Stripe to retry when reporting fails, after the billing write", async () => {
+  it("does not report a capacity purchase that granted nothing", async () => {
+    mockListLineItems.mockResolvedValue({ data: [] });
+    mockConstruct.mockReturnValue(
+      event("checkout.session.completed", {
+        id: "cs_slot",
+        payment_status: "paid",
+        mode: "payment",
+        metadata: { organizationId: "org-1", kind: "capacity_slot" },
+      }),
+    );
+    const res = await post("t=1,v1=ok");
+    expect(res.status).toBe(200);
+    expect(mockReport).not.toHaveBeenCalled();
+  });
+
+  it("queues only after the billing write", async () => {
     mockReport.mockImplementation(() => {
       order.push("revnu");
-      throw new Error("revnu unavailable");
     });
     mockConstruct.mockReturnValue(event("checkout.session.completed", paidSubscription));
     const res = await post("t=1,v1=ok");
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
     expect(order).toEqual(["billing", "revnu"]);
   });
 });

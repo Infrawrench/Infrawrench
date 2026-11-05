@@ -16,7 +16,7 @@ import {
   getStripeBuildPriceId,
   getStripeCapacitySlotPriceId,
 } from "../../services/stripe";
-import { parseMeasurement } from "../../services/revnu";
+import { parseMeasurement } from "@infrawrench/server-core/billing/revnu";
 import { refreshUnreportedConsent, saveCheckoutHandoff } from "../../services/revnu-checkout";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
@@ -146,6 +146,7 @@ app.post("/checkout", async (c) => {
   if (checkoutSession.id) {
     await saveCheckoutHandoff({
       organizationId: orgId,
+      createdByUserId: c.get("session").userId,
       stripeCheckoutSessionId: checkoutSession.id,
       measurement,
     });
@@ -234,6 +235,7 @@ app.post("/capacity/checkout", async (c) => {
   if (checkoutSession.id) {
     await saveCheckoutHandoff({
       organizationId: orgId,
+      createdByUserId: c.get("session").userId,
       stripeCheckoutSessionId: checkoutSession.id,
       measurement,
     });
@@ -246,13 +248,17 @@ app.post("/capacity/checkout", async (c) => {
  * POST /api/billing/measurement-consent
  *
  * A visitor changed analytics consent after a checkout session was opened and
- * before it was paid. Update that checkout's saved choice. Reported purchases
- * are left as they were sent.
+ * before it was paid. Update that checkout's saved choice. Paid purchases are
+ * left as they were queued, because Revnu refuses a retry with a changed body.
  */
 app.post("/measurement-consent", async (c) => {
   requirePermission(c, "billing:write");
   const measurement = measurementFromBody(await c.req.json().catch(() => ({})));
-  const updated = await refreshUnreportedConsent(c.get("organizationId"), measurement);
+  const updated = await refreshUnreportedConsent(
+    c.get("organizationId"),
+    c.get("session").userId,
+    measurement,
+  );
   return c.json({ updated });
 });
 

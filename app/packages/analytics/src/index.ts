@@ -1,19 +1,18 @@
 import posthog, { type CaptureResult, type Properties } from "posthog-js";
 import { visitorNeedsConsent } from "./region";
 import {
-  REVNU_GOOGLE_CONSENT,
+  REVNU_TAG_ENDPOINT,
+  REVNU_TAG_SITE,
+  REVNU_TAG_SRC,
   revnuAnonymousId,
   revnuConsentForAnalytics,
+  revnuIdFromCookies,
   revnuParentCookie,
+  revnuTagAllowed,
   type RevnuConsent,
 } from "./revnu";
 
-export {
-  REVNU_GOOGLE_CONSENT,
-  revnuAnonymousId,
-  revnuConsentForAnalytics,
-  revnuParentCookie,
-} from "./revnu";
+export { revnuAnonymousId, revnuConsentForAnalytics, revnuParentCookie } from "./revnu";
 
 export { countryNeedsConsent, parseTraceCountry } from "./region";
 
@@ -246,8 +245,6 @@ export function resetAnalytics(): void {
 export interface RevnuConsentSnapshot {
   consentState: RevnuConsent;
   anonymousId: string | null;
-  googleAdUserData: "unknown";
-  googleAdPersonalization: "unknown";
 }
 
 function analyticsConsentState(): "granted" | "denied" | "pending" | "inactive" {
@@ -257,33 +254,127 @@ function analyticsConsentState(): "granted" | "denied" | "pending" | "inactive" 
   return "pending";
 }
 
-function readTagAnonymousId(): string | null {
-  const revnu = window.revnu;
-  if (!revnu) return null;
+function readStorage(storage: "localStorage" | "sessionStorage", key: string): string | null {
   try {
-    return (
-      revnuAnonymousId(revnu.getContext?.().anonymousId) ?? revnuAnonymousId(revnu.anonymousId)
-    );
+    return window[storage].getItem(key);
   } catch {
-    return revnuAnonymousId(revnu.anonymousId);
+    return null;
+  }
+}
+
+/** The visitor id from the tag, or what a tag on this browser stored earlier. */
+function readVisitorId(): string | null {
+  const revnu = window.revnu;
+  let fromTag: string | null = null;
+  try {
+    fromTag = revnuAnonymousId(revnu?.getContext?.().anonymousId);
+  } catch {
+    // Fall through to the property and to storage.
+  }
+  return (
+    fromTag ??
+    revnuAnonymousId(revnu?.anonymousId) ??
+    revnuIdFromCookies(document.cookie) ??
+    revnuAnonymousId(readStorage("localStorage", "revnu_aid"))
+  );
+}
+
+/**
+ * The tag purges itself on denial, but a decline made on another subdomain, or
+ * one this page never loaded the tag for, leaves its host-only state behind.
+ */
+function clearRevnuStorage(): void {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  for (const name of ["revnu_aid", "revnu_attr"]) {
+    document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax${secure}`;
+  }
+  try {
+    window.localStorage.removeItem("revnu_aid");
+    window.localStorage.removeItem("revnu_attr");
+    window.sessionStorage.removeItem("revnu_sid");
+  } catch {
+    // Blocked storage has nothing of ours in it either.
+  }
+}
+
+let revnuTagRequested = false;
+
+function loadRevnuTag(onLoad: () => void): void {
+  if (revnuTagRequested) return;
+  revnuTagRequested = true;
+  const script = document.createElement("script");
+  script.src = REVNU_TAG_SRC;
+  script.async = true;
+  script.setAttribute("data-site", REVNU_TAG_SITE);
+  script.setAttribute("data-endpoint", REVNU_TAG_ENDPOINT);
+  script.setAttribute("data-consent", "granted");
+  script.addEventListener("load", onLoad);
+  document.head.appendChild(script);
+}
+
+/** Runs `listener` after every client-side navigation that changes the path. */
+function watchPathname(listener: () => void): void {
+  let last = window.location.pathname;
+  const check = () => {
+    if (window.location.pathname === last) return;
+    last = window.location.pathname;
+    listener();
+  };
+  for (const name of ["pushState", "replaceState"] as const) {
+    const original = window.history[name];
+    window.history[name] = function (this: History, ...args: Parameters<History["pushState"]>) {
+      original.apply(this, args);
+      check();
+    };
+  }
+  window.addEventListener("popstate", check);
+}
+
+function referrerPathname(): string | null {
+  try {
+    const referrer = new URL(document.referrer);
+    return referrer.origin === window.location.origin ? referrer.pathname : null;
+  } catch {
+    return null;
   }
 }
 
 /**
- * Mirror the analytics answer onto the Revnu tag. With no PostHog key the
- * consent manager never runs, so the tag is granted instead of left pending.
- * Call this only from the website and the web app. The instances site does not.
+ * Follow the analytics answer with the Revnu tag. The tag is only added to the
+ * page once consent is granted, so before that nothing contacts revnu.com, and
+ * a slow revnu.com can never hold up the page. Without a PostHog key nobody has
+ * been asked, so the tag stays out. Call this only from the website and the web
+ * app, and after `initAnalytics`. The instances site does not.
+ *
+ * `holdPath` names paths the tag must never see: it sends the current path, and
+ * its own redaction only knows a few labels. Client-side navigation onto one
+ * suspends a running tag. The watcher is installed before the tag loads, so its
+ * history hooks run first and the tag is already suspended when its own run.
+ * The tag also reports `document.referrer`, so a page reached from a held path
+ * stays without it until the next full load.
  */
 export function bindRevnuToAnalyticsConsent(options?: {
+  holdPath?: (pathname: string) => boolean;
   onChange?: (snapshot: RevnuConsentSnapshot) => void;
 }): () => void {
   if (typeof window === "undefined") return () => {};
+  const holdPath = options?.holdPath;
+  const referrer = holdPath ? referrerPathname() : null;
+  const cameFromHeld = referrer !== null && holdPath !== undefined && holdPath(referrer);
   const apply = () => {
     const consentState = revnuConsentForAnalytics(analyticsConsentState());
-    const beforeDenial = readTagAnonymousId();
-    window.revnu?.consent?.(consentState);
-    window.revnu?.googleConsent?.(REVNU_GOOGLE_CONSENT);
-    const anonymousId = consentState === "denied" ? beforeDenial : readTagAnonymousId();
+    const beforeDenial = readVisitorId();
+    const held = cameFromHeld || (holdPath?.(window.location.pathname) ?? false);
+    if (consentState === "granted" && !held) {
+      if (window.revnu) window.revnu.consent?.("granted");
+      else if (revnuTagAllowed(window.location.hostname, window.location.protocol)) {
+        loadRevnuTag(apply);
+      }
+    } else {
+      window.revnu?.consent?.(consentState === "denied" ? "denied" : "pending");
+    }
+    if (consentState === "denied") clearRevnuStorage();
+    const anonymousId = consentState === "denied" ? beforeDenial : readVisitorId();
     const cookie = revnuParentCookie(
       consentState,
       anonymousId,
@@ -291,23 +382,29 @@ export function bindRevnuToAnalyticsConsent(options?: {
       window.location.protocol,
     );
     if (cookie) document.cookie = cookie;
-    options?.onChange?.({
-      consentState,
-      anonymousId,
-      googleAdUserData: "unknown",
-      googleAdPersonalization: "unknown",
-    });
+    options?.onChange?.({ consentState, anonymousId });
   };
   revnuBinders.add(apply);
+  if (holdPath || options?.onChange) {
+    watchPathname(() => {
+      if (revnuBinders.has(apply)) apply();
+    });
+  }
   apply();
   return () => {
     revnuBinders.delete(apply);
   };
 }
 
-/** Status pages do not run analytics. Keep the tag pending so it records nothing. */
-export function holdRevnuWithoutAnalytics(): void {
-  if (typeof window === "undefined") return;
-  window.revnu?.consent?.("pending");
-  window.revnu?.googleConsent?.(REVNU_GOOGLE_CONSENT);
+/**
+ * What to attach to a Stripe checkout. Consent comes from the analytics answer
+ * rather than the tag, which is absent until a grant and may be blocked even
+ * then. The visitor id is only sent after a grant.
+ */
+export function readRevnuMeasurement():
+  { consentState: RevnuConsent; anonymousId?: string } | undefined {
+  if (typeof window === "undefined") return undefined;
+  const consentState = revnuConsentForAnalytics(analyticsConsentState());
+  const anonymousId = consentState === "granted" ? readVisitorId() : null;
+  return anonymousId ? { consentState, anonymousId } : { consentState };
 }

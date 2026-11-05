@@ -1,9 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type Stripe from "stripe";
 
 type Row = Record<string, unknown>;
 
 let selected: Row[] = [];
+let selectError: Error | null = null;
+let insertError: Error | null = null;
 const inserts: Row[] = [];
 const updates: Row[] = [];
 
@@ -11,21 +13,23 @@ vi.mock("@/db/client", () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: () => Promise.resolve(selected),
+        where: () => (selectError ? Promise.reject(selectError) : Promise.resolve(selected)),
       }),
     }),
     insert: () => ({
       values: (value: Row) => {
+        if (insertError) return Promise.reject(insertError);
         inserts.push(value);
-        return Promise.resolve();
+        return Object.assign(Promise.resolve(), {
+          onConflictDoNothing: () => Promise.resolve(),
+        });
       },
     }),
     update: () => ({
       set: (value: Row) => ({
         where: () => {
           updates.push(value);
-          const promise = Promise.resolve([{ id: "handoff-1" }]);
-          return Object.assign(promise, {
+          return Object.assign(Promise.resolve([{ id: "handoff-1" }]), {
             returning: () => Promise.resolve([{ id: "handoff-1" }]),
           });
         },
@@ -36,7 +40,7 @@ vi.mock("@/db/client", () => ({
 
 vi.mock("uuid", () => ({ v4: () => "handoff-uuid" }));
 
-const { reportPaidCheckout, refreshUnreportedConsent, RevnuTemporaryError } =
+const { queuePaidCheckout, refreshUnreportedConsent, saveCheckoutHandoff } =
   await import("../revnu-checkout");
 
 const ANON = `ra_${"ab".repeat(16)}`;
@@ -55,177 +59,180 @@ function session(overrides: Partial<Stripe.Checkout.Session> = {}): Stripe.Check
   } as Stripe.Checkout.Session;
 }
 
-function bodies(): Array<Record<string, unknown>> {
-  return vi
-    .mocked(fetch)
-    .mock.calls.map((call) => JSON.parse(String(call[1]?.body)) as Record<string, unknown>);
+function reset() {
+  selected = [];
+  selectError = null;
+  insertError = null;
+  inserts.length = 0;
+  updates.length = 0;
 }
 
-describe("reportPaidCheckout", () => {
+describe("queuePaidCheckout", () => {
   const original = process.env["REVNU_EVENT_KEY"];
 
+  beforeEach(() => {
+    reset();
+    process.env["REVNU_EVENT_KEY"] = "test-key";
+  });
+
   afterEach(() => {
-    selected = [];
-    inserts.length = 0;
-    updates.length = 0;
     vi.unstubAllGlobals();
     if (original === undefined) delete process.env["REVNU_EVENT_KEY"];
     else process.env["REVNU_EVENT_KEY"] = original;
   });
 
-  it("posts the saved denial once and skips a redelivery", async () => {
-    process.env["REVNU_EVENT_KEY"] = "test-key";
-    selected = [
-      {
-        id: "row-1",
-        anonymousId: ANON,
-        consentState: "denied",
-        googleAdUserData: "denied",
-        googleAdPersonalization: "unknown",
-        reportedAt: null,
-      },
-    ];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
+  it("freezes the event onto the row and calls nobody", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    selected = [{ id: "row-1", anonymousId: ANON, consentState: "granted", paidAt: null }];
 
-    await reportPaidCheckout(session(), WHEN);
-    selected[0]!["reportedAt"] = new Date();
-    await reportPaidCheckout(session(), WHEN);
+    await queuePaidCheckout(session(), WHEN);
 
-    expect(bodies()).toEqual([
-      expect.objectContaining({
-        event_id: "cs_test_1",
-        event_name: "payment_succeeded",
-        anonymous_id: ANON,
-        consent_state: "denied",
-        google_ad_user_data: "denied",
-        google_ad_personalization: "unknown",
-        amount: 20,
-        currency: "USD",
-        email: "buyer@example.com",
-        properties: { purchase_kind: "subscription" },
-      }),
-    ]);
-    expect(bodies()[0]).not.toHaveProperty("test");
-    expect(updates.some((update) => "reportedAt" in update)).toBe(true);
-  });
-
-  it("accepts 202 and still marks the checkout reported", async () => {
-    process.env["REVNU_EVENT_KEY"] = "test-key";
-    selected = [{ id: "row-1", consentState: null, reportedAt: null }];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 202 })));
-    await reportPaidCheckout(session(), WHEN);
-    expect(bodies()[0]).not.toHaveProperty("consent_state");
-    expect(bodies()[0]).not.toHaveProperty("anonymous_id");
-    expect(bodies()[0]).toMatchObject({
-      google_ad_user_data: "unknown",
-      google_ad_personalization: "unknown",
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(updates[0]?.["paidAt"]).toBeInstanceOf(Date);
+    expect(updates[0]?.["nextReportAt"]).toBeInstanceOf(Date);
+    expect(updates[0]?.["reportPayload"]).toMatchObject({
+      event_id: "cs_test_1",
+      event_name: "payment_succeeded",
+      anonymous_id: ANON,
+      consent_state: "granted",
+      amount: 20,
+      currency: "USD",
+      email: "buyer@example.com",
+      properties: { purchase_kind: "subscription" },
     });
-    expect(updates.some((update) => update["reportedAt"] instanceof Date)).toBe(true);
+    expect(updates[0]?.["reportPayload"]).not.toHaveProperty("test");
   });
 
-  it("throws on 429 and 500 so the same event id can be retried", async () => {
-    process.env["REVNU_EVENT_KEY"] = "test-key";
-    selected = [{ id: "row-1", reportedAt: null }];
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(new Response("{}", { status: 429 }))
-      .mockResolvedValueOnce(new Response("{}", { status: 500 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(reportPaidCheckout(session(), WHEN)).rejects.toBeInstanceOf(RevnuTemporaryError);
-    await expect(reportPaidCheckout(session(), WHEN)).rejects.toBeInstanceOf(RevnuTemporaryError);
-    expect(bodies().map((body) => body["event_id"])).toEqual(["cs_test_1", "cs_test_1"]);
-    expect(updates.some((update) => "reportedAt" in update)).toBe(false);
-  });
-
-  it("does not retry a 400 or a 401", async () => {
-    process.env["REVNU_EVENT_KEY"] = "test-key";
-    selected = [{ id: "row-1", reportedAt: null }];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 400 })));
-    await reportPaidCheckout(session(), WHEN);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 401 })));
-    await reportPaidCheckout(session(), WHEN);
-    expect(updates.some((update) => "reportedAt" in update)).toBe(false);
-  });
-
-  it("leaves the webhook alone when the key is unset", async () => {
-    delete process.env["REVNU_EVENT_KEY"];
-    selected = [{ id: "row-1", reportedAt: null }];
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    await reportPaidCheckout(session(), WHEN);
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("does nothing on a redelivery, so the queued body never changes", async () => {
+    selected = [{ id: "row-1", consentState: "granted", paidAt: new Date() }];
+    await queuePaidCheckout(session(), WHEN);
     expect(updates).toEqual([]);
+    expect(inserts).toEqual([]);
   });
 
-  it("skips a malformed occurred_at without failing the purchase", async () => {
-    process.env["REVNU_EVENT_KEY"] = "test-key";
-    selected = [{ id: "row-1", reportedAt: null }];
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    await reportPaidCheckout(session(), "not-a-date");
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("does not report a buyer who declined, and closes the row", async () => {
+    selected = [{ id: "row-1", anonymousId: ANON, consentState: "denied", paidAt: null }];
+    await queuePaidCheckout(session(), WHEN);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.["paidAt"]).toBeInstanceOf(Date);
+    expect(updates[0]).toMatchObject({ anonymousId: null });
+    expect(updates[0]).not.toHaveProperty("reportPayload");
+    expect(updates[0]).not.toHaveProperty("nextReportAt");
+    expect(inserts).toEqual([]);
   });
 
-  it("does not report an unpaid session", async () => {
-    process.env["REVNU_EVENT_KEY"] = "test-key";
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    await reportPaidCheckout(session({ payment_status: "unpaid" }), WHEN);
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("reports a pending answer, without joining it to the visit", async () => {
+    selected = [{ id: "row-1", anonymousId: ANON, consentState: "pending", paidAt: null }];
+    await queuePaidCheckout(session(), WHEN);
+    const payload = updates[0]?.["reportPayload"] as Row;
+    expect(payload["consent_state"]).toBe("pending");
+    expect(payload).not.toHaveProperty("anonymous_id");
   });
 
-  it("reports from session metadata when no handoff row exists", async () => {
-    process.env["REVNU_EVENT_KEY"] = "test-key";
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
-    await reportPaidCheckout(
+  it("sends pending when nothing was recorded, as on a desktop checkout", async () => {
+    selected = [{ id: "row-1", anonymousId: null, consentState: null, paidAt: null }];
+    await queuePaidCheckout(session(), WHEN);
+    expect((updates[0]?.["reportPayload"] as Row)["consent_state"]).toBe("pending");
+  });
+
+  it("falls back to the session metadata when the handoff row was lost", async () => {
+    await queuePaidCheckout(
       session({
         metadata: { organizationId: "org-1", revnu_anonymous_id: ANON, kind: "capacity_slot" },
         mode: "payment",
       }),
       WHEN,
     );
-    expect(bodies()[0]).toMatchObject({
-      anonymous_id: ANON,
-      google_ad_user_data: "unknown",
-      properties: { purchase_kind: "capacity_slot" },
-    });
-    expect(bodies()[0]).not.toHaveProperty("consent_state");
     expect(inserts[0]).toMatchObject({
+      organizationId: "org-1",
       stripeCheckoutSessionId: "cs_test_1",
       anonymousId: ANON,
-      organizationId: "org-1",
+      consentState: "granted",
     });
-    expect(inserts[0]?.["reportedAt"]).toBeInstanceOf(Date);
+    expect(inserts[0]?.["reportPayload"]).toMatchObject({
+      anonymous_id: ANON,
+      consent_state: "granted",
+      properties: { purchase_kind: "capacity_slot" },
+    });
+  });
+
+  it("treats a lost row with no visitor id as unanswered", async () => {
+    await queuePaidCheckout(session(), WHEN);
+    expect(inserts[0]).toMatchObject({ consentState: "pending", anonymousId: null });
+  });
+
+  it("ignores other purchases on the same Stripe account", async () => {
+    await queuePaidCheckout(session({ mode: "payment", metadata: {} }), WHEN);
+    expect(inserts).toEqual([]);
+    expect(updates).toEqual([]);
+  });
+
+  it("does not queue an unpaid session", async () => {
+    await queuePaidCheckout(session({ payment_status: "unpaid" }), WHEN);
+    expect(inserts).toEqual([]);
+    expect(updates).toEqual([]);
+  });
+
+  it("does not queue anything when the key is unset", async () => {
+    delete process.env["REVNU_EVENT_KEY"];
+    selected = [{ id: "row-1", paidAt: null }];
+    await queuePaidCheckout(session(), WHEN);
+    expect(updates).toEqual([]);
+  });
+
+  it("skips a malformed occurred_at without failing the purchase", async () => {
+    selected = [{ id: "row-1", paidAt: null }];
+    await queuePaidCheckout(session(), "not-a-date");
+    expect(updates).toEqual([]);
+  });
+
+  it("never throws, because a redelivery would re-run the billing write", async () => {
+    selectError = new Error("db down");
+    await expect(queuePaidCheckout(session(), WHEN)).resolves.toBeUndefined();
+  });
+
+  it("does not log query parameters, which hold the buyer's email", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    selectError = new Error('Failed query, params: ["buyer@example.com"]');
+    await queuePaidCheckout(session(), WHEN);
+    expect(JSON.stringify(log.mock.calls)).not.toContain("buyer@example.com");
+    log.mockRestore();
+  });
+});
+
+describe("saveCheckoutHandoff", () => {
+  beforeEach(reset);
+
+  it("never throws, because the buyer already has a Stripe session", async () => {
+    insertError = new Error("db down");
+    await expect(
+      saveCheckoutHandoff({
+        organizationId: "org-1",
+        createdByUserId: "user-1",
+        stripeCheckoutSessionId: "cs_test_1",
+        measurement: { anonymousId: null, consentState: "pending" },
+      }),
+    ).resolves.toBeUndefined();
   });
 });
 
 describe("refreshUnreportedConsent", () => {
-  afterEach(() => {
-    updates.length = 0;
-  });
+  beforeEach(reset);
 
-  it("writes a withdrawal onto the unfinished checkout", async () => {
-    const updated = await refreshUnreportedConsent("org-1", {
-      anonymousId: ANON,
-      consentState: "denied",
-      googleAdUserData: "unknown",
-      googleAdPersonalization: "unknown",
-    });
-    expect(updated).toBe(1);
-    expect(updates[0]).toMatchObject({
-      consentState: "denied",
-      googleAdUserData: "unknown",
-      googleAdPersonalization: "unknown",
-    });
-  });
-
-  it("does not touch rows when the visitor id is missing", async () => {
-    const updated = await refreshUnreportedConsent("org-1", {
+  it("writes a withdrawal even with no visitor id", async () => {
+    const updated = await refreshUnreportedConsent("org-1", "user-1", {
       anonymousId: null,
       consentState: "denied",
-      googleAdUserData: null,
-      googleAdPersonalization: null,
+    });
+    expect(updated).toBe(1);
+    expect(updates[0]).toMatchObject({ consentState: "denied" });
+  });
+
+  it("does not touch rows without an answer", async () => {
+    const updated = await refreshUnreportedConsent("org-1", "user-1", {
+      anonymousId: ANON,
+      consentState: null,
     });
     expect(updated).toBe(0);
     expect(updates).toEqual([]);

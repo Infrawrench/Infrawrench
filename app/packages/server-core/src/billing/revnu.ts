@@ -2,7 +2,8 @@
  * Server-side Revnu purchase events.
  *
  * The browser tag is diagnostic. A purchase is reported only after the signed
- * Stripe webhook has confirmed `payment_status=paid`. This module never sends
+ * Stripe webhook has confirmed `payment_status=paid`; the webhook queues the
+ * event and `revnu-report-pass.ts` sends it. This module never sends
  * `test: true`; the `revnu:test` script is the only caller that does.
  */
 
@@ -27,18 +28,17 @@ const ZERO_DECIMAL = new Set([
   "XPF",
 ]);
 
+/** Stripe's three-decimal currencies: the API amount is in thousandths. */
+const THREE_DECIMAL = new Set(["BHD", "JOD", "KWD", "OMR", "TND"]);
+
 const ANONYMOUS_ID = /^ra_[0-9a-f]{32}$/;
 const CONSENT_STATES = new Set(["granted", "denied", "pending"]);
-const GOOGLE_CHOICES = new Set(["granted", "denied", "unknown"]);
 
 export type RevnuConsentState = "granted" | "denied" | "pending";
-export type RevnuGoogleChoice = "granted" | "denied" | "unknown";
 
 export interface ParsedMeasurement {
   anonymousId: string | null;
   consentState: RevnuConsentState | null;
-  googleAdUserData: RevnuGoogleChoice | null;
-  googleAdPersonalization: RevnuGoogleChoice | null;
 }
 
 export interface PaymentSucceededInput {
@@ -46,8 +46,6 @@ export interface PaymentSucceededInput {
   occurredAt: unknown;
   anonymousId?: string | null;
   consentState?: string | null;
-  googleAdUserData?: string | null;
-  googleAdPersonalization?: string | null;
   /** Stripe `amount_total`, in minor units. */
   amountMinor?: number | null;
   currency?: string | null;
@@ -62,8 +60,6 @@ export interface PaymentSucceededEvent {
   occurred_at: string;
   anonymous_id?: string;
   consent_state?: RevnuConsentState;
-  google_ad_user_data: RevnuGoogleChoice;
-  google_ad_personalization: RevnuGoogleChoice;
   amount?: number;
   currency?: string;
   email?: string;
@@ -74,19 +70,12 @@ export interface PaymentSucceededEvent {
 export type RevnuPostResult = "accepted" | "rejected" | "retry" | "unconfigured";
 
 export function parseMeasurement(raw: unknown): ParsedMeasurement {
-  const empty: ParsedMeasurement = {
-    anonymousId: null,
-    consentState: null,
-    googleAdUserData: null,
-    googleAdPersonalization: null,
-  };
+  const empty: ParsedMeasurement = { anonymousId: null, consentState: null };
   if (!raw || typeof raw !== "object") return empty;
   const value = raw as Record<string, unknown>;
   return {
     anonymousId: anonymousIdOrNull(value["anonymousId"]),
     consentState: consentOrNull(value["consentState"]),
-    googleAdUserData: googleOrNull(value["googleAdUserData"]),
-    googleAdPersonalization: googleOrNull(value["googleAdPersonalization"]),
   };
 }
 
@@ -94,9 +83,10 @@ export function parseMeasurement(raw: unknown): ParsedMeasurement {
  * Stripe minor units to major units.
  *
  * Two-decimal currencies, including USD, are divided by 100. Stripe's
- * zero-decimal list is already in major units. UGX is on some zero-decimal
- * lists but Stripe's currency docs say UGX and ISK amounts are still
- * two-decimal (an amount of 500 is 5), so both are divided by 100.
+ * zero-decimal list is already in major units, and its three-decimal list is
+ * divided by 1000. UGX is on some zero-decimal lists but Stripe's currency docs
+ * say UGX and ISK amounts are still two-decimal (an amount of 500 is 5), so both
+ * are divided by 100.
  */
 export function stripeMinorToMajor(
   amountMinor: number,
@@ -105,7 +95,7 @@ export function stripeMinorToMajor(
   if (!Number.isInteger(amountMinor) || amountMinor < 0) return null;
   const code = currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(code)) return null;
-  const decimals = ZERO_DECIMAL.has(code) ? 0 : 2;
+  const decimals = ZERO_DECIMAL.has(code) ? 0 : THREE_DECIMAL.has(code) ? 3 : 2;
   return { amount: minorToMajor(amountMinor, decimals), currency: code };
 }
 
@@ -136,8 +126,6 @@ export function buildPaymentSucceededEvent(
     event_id: input.eventId,
     event_name: "payment_succeeded",
     occurred_at: occurredAt,
-    google_ad_user_data: googleOrNull(input.googleAdUserData) ?? "unknown",
-    google_ad_personalization: googleOrNull(input.googleAdPersonalization) ?? "unknown",
   };
 
   const anonymousId = anonymousIdOrNull(input.anonymousId);
@@ -164,9 +152,11 @@ export function buildPaymentSucceededEvent(
 }
 
 /**
- * POST one confirmed event. 200 and 202 are acceptance. 429 and 5xx ask the
- * caller to retry with the same event id. Any other 4xx, including a wrong
- * key, is not retried. A missing key does not throw: billing must still finish.
+ * POST one confirmed event. 200 and 202 are acceptance, and a duplicate of an
+ * event already recorded answers 200. 429, 5xx and a timeout ask the caller to
+ * retry with the same event id and body. So does 401: a rotated key is fixed by
+ * a person within the retry window, and the purchase should survive that. Any
+ * other 4xx is final, including the 409 for an id sent with different values.
  */
 export async function postRevnuEvent(event: PaymentSucceededEvent): Promise<RevnuPostResult> {
   const key = process.env["REVNU_EVENT_KEY"];
@@ -193,23 +183,17 @@ export async function postRevnuEvent(event: PaymentSucceededEvent): Promise<Revn
 
   if (response.status === 200 || response.status === 202) return "accepted";
   console.error(`[revnu] measurement request returned ${response.status}`);
-  if (response.status === 429 || response.status >= 500) return "retry";
+  if (response.status === 401 || response.status === 429 || response.status >= 500) return "retry";
   return "rejected";
 }
 
-function anonymousIdOrNull(value: unknown): string | null {
+export function anonymousIdOrNull(value: unknown): string | null {
   return typeof value === "string" && ANONYMOUS_ID.test(value) ? value : null;
 }
 
 function consentOrNull(value: unknown): RevnuConsentState | null {
   return typeof value === "string" && CONSENT_STATES.has(value)
     ? (value as RevnuConsentState)
-    : null;
-}
-
-function googleOrNull(value: unknown): RevnuGoogleChoice | null {
-  return typeof value === "string" && GOOGLE_CHOICES.has(value)
-    ? (value as RevnuGoogleChoice)
     : null;
 }
 

@@ -6,7 +6,7 @@ import Footer from "../components/Footer.astro";
 // On demand so middleware can negotiate; see src/middleware.ts.
 export const prerender = false;
 
-const lastUpdated = "November 3, 2026";
+const lastUpdated = "November 5, 2026";
 const contactEmail = "astrid@infrawrench.com";
 
 const title = "Privacy Policy";
@@ -69,8 +69,8 @@ const subprocessors = [
   {
     name: "Revnu",
     purpose:
-      "Purchase measurement on this website and the web app. A confirmed purchase may be forwarded to advertising platforms when analytics was not declined",
-    data: "A random visitor id and, after analytics consent, the pages the tag sees. For a confirmed purchase: the amount, currency, time, whether it was a subscription or a capacity slot, and the checkout email and phone Stripe already collected",
+      "Purchase measurement for this website, the web app and purchases started in the desktop app. A confirmed purchase may be forwarded to advertising platforms when analytics was not declined",
+    data: "After analytics consent, a random visitor id and the pages the tag sees. For a confirmed purchase, unless you declined analytics: the amount, currency, time, your analytics choice, whether it was a subscription or a capacity slot, and the checkout email and phone Stripe already collected",
   },
   {
     name: "Anthropic / OpenAI",
@@ -393,28 +393,35 @@ const subprocessors = [
           </p>
           <h3 id="revnu">Purchase measurement (Revnu)</h3>
           <p>
-            This website and the web app at <code>app.infrawrench.com</code> load
+            This website and the web app at <code>app.infrawrench.com</code> use
             <a href="https://revnu.com">Revnu</a> to measure which visits lead to a paid subscription
-            or a prepaid capacity purchase. It does not run on
-            <code>instances.infrawrench.com</code>, the desktop app, the mobile app, or public status
-            pages. The same analytics choice that governs PostHog governs Revnu. Accept, or the
-            automatic opt-in outside the EEA, the UK and Switzerland, allows it. Decline stops it.
-            That banner is not a separate advertising consent. We do not ask a Google
-            ad-personalization question, so a purchase carries no Google ad choice of its own. A
-            declined analytics answer is the case where a confirmed purchase is held back from
-            advertising platforms.
+            or a prepaid capacity purchase. The same analytics choice that governs PostHog governs
+            Revnu's browser tag. Accept, or the automatic opt-in outside the EEA, the UK and
+            Switzerland, allows it. Until then the tag is not loaded and your browser makes no request
+            to Revnu, and Decline stops it and removes what it stored. It does not run on
+            <code>instances.infrawrench.com</code>, the desktop app, the mobile app, public status
+            pages, or links that carry a secret such as a share or invite link. We do not ask a
+            Google ad-personalization question, so a purchase carries no Google ad choice of its own.
           </p>
           <p>
             After you allow analytics, Revnu stores a random visitor id in first-party cookies named
             <code>revnu_aid</code> and <code>revnu_attr</code>, and in the browser's local storage, so
             a later purchase can be joined to that visit. On <code>infrawrench.com</code> that visitor
             id is also copied to a cookie the web app can read. We do not put it in the address bar,
-            and we do not send your consent choice to Stripe. When Stripe confirms the payment, our
-            server tells Revnu the time, the amount, the currency, whether the purchase was a
-            subscription or a capacity slot, and, when Stripe has them, the checkout email and phone.
-            Revnu hashes the email and phone before they are used to match the conversion. Card
-            numbers never reach us or Revnu. A later full refund does not remove that purchase from
-            this measurement.
+            and we do not send your consent choice to Stripe.
+          </p>
+          <p>
+            If you declined analytics, your purchase is not reported to Revnu at all. Otherwise, when
+            Stripe confirms the payment, our server tells Revnu the time, the amount, the currency,
+            whether the purchase was a subscription or a capacity slot, your analytics choice, and,
+            when Stripe has them, the checkout email and phone. That includes a purchase made before
+            you answered the analytics question, and one started somewhere that does not ask, such
+            as the desktop app. Those are marked as unanswered, are not joined to your visits, and
+            can be forwarded to advertising platforms.
+            We hold the email and phone with the queued report only until Revnu accepts it, or for at
+            most seven days. Revnu hashes the email and phone before they are used to match the
+            conversion. Card numbers never reach us or Revnu. A later full refund does not remove that
+            purchase from this measurement.
           </p>
 
           <h2 id="cookies">Cookies</h2>

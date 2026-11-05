@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { revnuConsentForAnalytics, revnuParentCookie } from "../revnu";
+import {
+  revnuConsentForAnalytics,
+  revnuIdFromCookies,
+  revnuParentCookie,
+  revnuTagAllowed,
+} from "../revnu";
 
 const ANON = `ra_${"ab".repeat(16)}`;
 
 describe("revnuConsentForAnalytics", () => {
-  it("maps a missing consent manager to granted and otherwise keeps the answer", () => {
-    expect(revnuConsentForAnalytics("inactive")).toBe("granted");
+  it("does not read a missing consent manager as a yes", () => {
+    expect(revnuConsentForAnalytics("inactive")).toBe("pending");
     expect(revnuConsentForAnalytics("granted")).toBe("granted");
     expect(revnuConsentForAnalytics("denied")).toBe("denied");
     expect(revnuConsentForAnalytics("pending")).toBe("pending");
@@ -34,5 +39,24 @@ describe("revnuParentCookie", () => {
     expect(revnuParentCookie("granted", ANON, "example.com", "https:")).toBeNull();
     expect(revnuParentCookie("granted", "not-an-id", "infrawrench.com", "https:")).toBeNull();
     expect(revnuParentCookie("denied", null, "localhost", "https:")).toBeNull();
+  });
+});
+
+describe("revnuTagAllowed", () => {
+  it("only allows our own https hosts", () => {
+    expect(revnuTagAllowed("infrawrench.com", "https:")).toBe(true);
+    expect(revnuTagAllowed("app.infrawrench.com", "https:")).toBe(true);
+    expect(revnuTagAllowed("localhost", "http:")).toBe(false);
+    expect(revnuTagAllowed("preview.example.com", "https:")).toBe(false);
+    expect(revnuTagAllowed("notinfrawrench.com", "https:")).toBe(false);
+  });
+});
+
+describe("revnuIdFromCookies", () => {
+  it("finds a valid visitor id and ignores everything else", () => {
+    expect(revnuIdFromCookies(`a=1; revnu_aid=${ANON}; b=2`)).toBe(ANON);
+    expect(revnuIdFromCookies("revnu_aid=not-an-id")).toBeNull();
+    expect(revnuIdFromCookies("revnu_aid=%E0%A4%A")).toBeNull();
+    expect(revnuIdFromCookies("")).toBeNull();
   });
 });

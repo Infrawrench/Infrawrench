@@ -270,12 +270,7 @@ describe("Billing routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          measurement: {
-            anonymousId,
-            consentState: "denied",
-            googleAdUserData: "unknown",
-            googleAdPersonalization: "unknown",
-          },
+          measurement: { anonymousId, consentState: "denied" },
         }),
       });
       expect(res.status).toBe(200);
@@ -287,10 +282,17 @@ describe("Billing routes", () => {
           stripeCheckoutSessionId: "cs_test_1",
           anonymousId,
           consentState: "denied",
-          googleAdUserData: "unknown",
-          googleAdPersonalization: "unknown",
         }),
       );
+    });
+
+    it("still returns the checkout url when the handoff row cannot be saved", async () => {
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
+      mockInsert.mockReturnValue({ values: vi.fn().mockRejectedValue(new Error("db down")) });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout" });
+      const res = await buildApp().request("/checkout", { method: "POST" });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ url: "https://stripe/checkout" });
     });
 
     it("drops a visitor id that is not an opaque Revnu id", async () => {
@@ -428,12 +430,7 @@ describe("Billing routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          measurement: {
-            anonymousId: `ra_${"ef".repeat(16)}`,
-            consentState: "denied",
-            googleAdUserData: "unknown",
-            googleAdPersonalization: "unknown",
-          },
+          measurement: { anonymousId: `ra_${"ef".repeat(16)}`, consentState: "denied" },
         }),
       });
       expect(res.status).toBe(200);
@@ -441,11 +438,11 @@ describe("Billing routes", () => {
       expect(mockUpdate).toHaveBeenCalled();
     });
 
-    it("does nothing without a usable visitor id", async () => {
+    it("does nothing without a consent answer", async () => {
       const res = await buildApp().request("/measurement-consent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ measurement: { anonymousId: "nope", consentState: "denied" } }),
+        body: JSON.stringify({ measurement: { anonymousId: `ra_${"ef".repeat(16)}` } }),
       });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ updated: 0 });

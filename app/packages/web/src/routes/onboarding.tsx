@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { msg, useGT, useMessages } from "gt-react";
-import { readRevnuMeasurement } from "@infrawrench/ui";
+import { readRevnuMeasurement } from "@infrawrench/analytics";
 import { apiPost } from "@/lib/api";
 
 export const Route = createFileRoute("/onboarding")({
