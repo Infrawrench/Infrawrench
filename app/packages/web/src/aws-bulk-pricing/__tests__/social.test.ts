@@ -157,7 +157,7 @@ describe("changesSince", () => {
           platform: "ec2",
           instance_type: "c5.large",
           pricing: "on_demand",
-          region: "us-east-1",
+          top_region: "us-east-1",
           old_usd: 0.085,
           new_usd: 0.075,
           regions: "4",
@@ -167,8 +167,19 @@ describe("changesSince", () => {
     const changes = await changesSince(ch, "ec2", "2026-11-05 00:00:00");
     expect(changes.map((c) => c.kind)).toEqual(["new", "retired", "region", "price"]);
     expect(changes[0]).toMatchObject({ vcpu: 2, memory: 8, gpus: null });
-    expect(changes[3]).toMatchObject({ spot: false, from: 0.085, to: 0.075, regions: 4 });
+    expect(changes[3]).toMatchObject({
+      spot: false,
+      region: "us-east-1",
+      from: 0.085,
+      to: 0.075,
+      regions: 4,
+    });
     expect(queries.every((q) => q.includes("toDateTime('2026-11-05 00:00:00', 'UTC')"))).toBe(true);
+    // An alias named after a column used in another aggregate makes ClickHouse
+    // expand it and reject the query (ILLEGAL_AGGREGATION).
+    const moves = queries.find((q) => q.includes("INNER JOIN"))!;
+    expect(moves).not.toMatch(/argMax\(region, abs\(change\)\) AS region\b/);
+    expect(moves).toContain("argMax(region, abs(change)) AS top_region");
   });
 
   it("checks only prices for spot, whose types are EC2's", async () => {

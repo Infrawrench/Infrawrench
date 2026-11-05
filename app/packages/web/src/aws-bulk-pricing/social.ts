@@ -177,13 +177,15 @@ export async function changesSince(
     platform: string;
     instance_type: string;
     pricing: string;
-    region: string;
+    top_region: string;
     old_usd: number;
     new_usd: number;
     regions: string;
   }>(
+    // The alias must not be `region`: ClickHouse would expand `uniqExact(region)`
+    // with it and reject the aggregate inside an aggregate.
     `SELECT platform, instance_type, pricing,
-       argMax(region, abs(change)) AS region, argMax(old, abs(change)) AS old_usd,
+       argMax(region, abs(change)) AS top_region, argMax(old, abs(change)) AS old_usd,
        argMax(new, abs(change)) AS new_usd, uniqExact(region) AS regions
      FROM (
        SELECT n.platform AS platform, n.instance_type AS instance_type, n.pricing AS pricing,
@@ -211,7 +213,7 @@ export async function changesSince(
       platform: r.platform,
       name: r.instance_type,
       spot: r.pricing === "spot",
-      region: r.region,
+      region: r.top_region,
       from: Number(r.old_usd),
       to: Number(r.new_usd),
       regions: Number(r.regions),
