@@ -11,7 +11,7 @@ const BUTTON =
   "px-3 py-1.5 rounded-lg border border-border bg-surface-overlay text-on-surface text-sm font-medium hover:bg-surface-sunken transition-colors";
 
 /**
- * The PostHog consent prompt, shown only to visitors in the EEA, UK and
+ * The analytics consent prompt, shown only to visitors in the EEA, UK and
  * Switzerland who have not answered yet (or who reopened it from Settings).
  * Accept and Decline are deliberately the same weight.
  */
@@ -27,8 +27,10 @@ export function AnalyticsConsent() {
     >
       <T>
         <p className="text-sm text-on-surface-secondary">
-          May we use cookies to understand how Infrawrench is used? This turns on PostHog product
-          analytics and session replays, with on-screen text and inputs masked.{" "}
+          May we use cookies and similar technologies to understand how Infrawrench is used and to
+          measure our marketing? This turns on product analytics, session replays with on-screen
+          text and inputs masked, and purchase measurement that can be shared with advertising
+          platforms.{" "}
           <a
             href="https://infrawrench.com/privacy#telemetry"
             target="_blank"

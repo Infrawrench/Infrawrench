@@ -47,6 +47,9 @@ describe("apiKeyRouteDenial", () => {
   it("closes billing and push entirely", () => {
     expect(apiKeyRouteDenial("GET", `${ORG}/billing`)).toMatch(/cannot change billing/);
     expect(apiKeyRouteDenial("POST", `${ORG}/billing/checkout`)).toMatch(/cannot change billing/);
+    expect(apiKeyRouteDenial("POST", `${ORG}/billing/measurement-consent`)).toMatch(
+      /cannot change billing/,
+    );
     expect(apiKeyRouteDenial("PUT", `${ORG}/push/preferences`)).toMatch(/cannot register devices/);
   });
 

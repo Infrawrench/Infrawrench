@@ -194,19 +194,6 @@
   "be5f702b60f5a13b": "Préférences de cookies",
   "63505f517af0f8f2": "Refuser",
   "edb4ece52df96685": "Accepter",
-  "1e27e97203271999": {
-    "t": "p",
-    "i": 1,
-    "c": [
-      "Pouvons-nous utiliser des cookies pour comprendre comment ce site est utilisé ? Cela active l'analyse et les replays de session de PostHog, avec les champs de formulaire masqués.",
-      " ",
-      {
-        "t": "a",
-        "i": 2,
-        "c": "Politique de confidentialité"
-      }
-    ]
-  },
   "53b66d6ad32be4b3": "Posez vos questions sur les prix des instances AWS - Infrawrench Instances",
   "3b3f07726c6458b5": "Posez vos questions en langage naturel sur les types d'instances AWS, leurs caractéristiques et leurs prix dans toutes les régions, avec leur historique, et obtenez des réponses sous forme de tableaux et de graphiques à partager.",
   "1b5d636752ce21c0": "Alerte par e-mail - Infrawrench Instances",
@@ -454,5 +441,18 @@
   "59d9b2c9b059d3d6": "Machines virtuelles par taille",
   "233ea47270d6ab7b": "Machines virtuelles par type de machine",
   "b83cf030adf08004": "Obtenir Infrawrench",
-  "0e17a0043c6a62bb": "Guides Kubernetes"
+  "0e17a0043c6a62bb": "Guides Kubernetes",
+  "7d883b74f3e32c06": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Pouvons-nous utiliser des cookies et des technologies similaires pour comprendre comment ce site est utilisé et pour mesurer notre marketing ? Cela active l'analyse, les replays de session avec les champs de formulaire masqués, ainsi que la mesure des achats, qui peut être partagée avec des plateformes publicitaires.",
+      " ",
+      {
+        "t": "a",
+        "i": 2,
+        "c": "Politique de confidentialité"
+      }
+    ]
+  }
 }

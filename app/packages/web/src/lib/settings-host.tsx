@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { readRevnuMeasurement } from "@infrawrench/analytics";
 import { SettingsHostProvider, type SettingsHostValue } from "@infrawrench/ui";
 import { apiGet, apiGetText, apiPost, apiPut, apiPatch, apiDelete } from "@/lib/api";
 import { usePermissions } from "@/auth/permissions-context";
@@ -27,6 +28,7 @@ export function WebSettingsHost({ orgId, children }: { orgId: string; children: 
         delete: apiDelete,
       },
       fetchText: apiGetText,
+      readCheckoutMeasurement: readRevnuMeasurement,
       has,
       hasAny,
       permissionsLoading: loading,

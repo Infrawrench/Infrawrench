@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { msg, useGT, useMessages } from "gt-react";
+import { readRevnuMeasurement } from "@infrawrench/analytics";
 import { apiPost } from "@/lib/api";
 
 export const Route = createFileRoute("/onboarding")({
@@ -68,7 +69,11 @@ function OnboardingPage() {
     setUpgrading(true);
     setError(null);
     try {
-      const { url } = await apiPost<{ url: string }>(`/api/org/${orgId}/billing/checkout`);
+      const measurement = readRevnuMeasurement();
+      const { url } = await apiPost<{ url: string }>(
+        `/api/org/${orgId}/billing/checkout`,
+        measurement ? { measurement } : undefined,
+      );
       window.location.href = url;
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to start checkout"));

@@ -29,7 +29,7 @@ function slotLabel(slot: CapacitySlot, gt: ReturnType<typeof useGT>): string {
 
 export function BillingSection() {
   const gt = useGT();
-  const { orgId, api, openExternal } = useSettingsHost();
+  const { orgId, api, openExternal, readCheckoutMeasurement } = useSettingsHost();
   const [status, setStatus] = useState<BillingStatus | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +44,11 @@ export function BillingSection() {
     setLoading(true);
     setError(null);
     try {
-      const { url } = await api.post<{ url: string }>(`/api/org/${orgId}/billing/checkout`);
+      const measurement = readCheckoutMeasurement?.();
+      const { url } = await api.post<{ url: string }>(
+        `/api/org/${orgId}/billing/checkout`,
+        measurement ? { measurement } : undefined,
+      );
       openExternal(url, { sameTab: true });
       setLoading(false);
     } catch (e) {
@@ -70,9 +74,10 @@ export function BillingSection() {
     setLoading(true);
     setError(null);
     try {
+      const measurement = readCheckoutMeasurement?.();
       const { url } = await api.post<{ url: string }>(
         `/api/org/${orgId}/billing/capacity/checkout`,
-        { quantity: slotQuantity },
+        { quantity: slotQuantity, ...(measurement ? { measurement } : {}) },
       );
       openExternal(url, { sameTab: true });
       setLoading(false);

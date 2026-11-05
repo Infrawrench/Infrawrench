@@ -53,11 +53,33 @@ const BillingStatus = strict({
 
 const RedirectUrl = strict({ url: z.string().url() }).openapi("StripeRedirectUrl");
 
+const RevnuCheckoutMeasurement = strict({
+  anonymousId: z.string().optional().openapi({
+    description:
+      "Opaque Revnu visitor id captured in the browser at checkout. Invalid values are ignored.",
+  }),
+  consentState: z.enum(["granted", "denied", "pending"]).optional().openapi({
+    description:
+      "Analytics consent for this checkout. A purchase with no saved answer is reported as unanswered, and one that was declined is not reported. Never copied into Stripe.",
+  }),
+}).openapi("RevnuCheckoutMeasurement");
+
+const SubscriptionCheckoutRequest = strict({
+  measurement: RevnuCheckoutMeasurement.optional(),
+}).openapi("SubscriptionCheckoutRequest");
+
 const CapacityCheckoutBody = strict({
   quantity: z.number().int().min(1).max(25).optional().openapi({
     description: "Slots to buy. Defaults to 1. The buyer can still adjust it in Checkout.",
   }),
+  measurement: RevnuCheckoutMeasurement.optional(),
 }).openapi("CapacityCheckoutRequest");
+
+const RevnuConsentRefresh = strict({
+  updated: z.number().int().nonnegative().openapi({
+    description: "Unpaid checkouts whose saved consent was updated.",
+  }),
+}).openapi("RevnuConsentRefresh");
 
 export function registerBillingPaths(ctx: BuildContext) {
   const { registry } = ctx;
@@ -82,7 +104,13 @@ export function registerBillingPaths(ctx: BuildContext) {
     tags: ["Billing"],
     summary: "Start a Stripe Checkout session",
     description: "Rejected with 400 for complimentary organizations; they are never billed.",
-    request: { params: OrgIdParam },
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: SubscriptionCheckoutRequest } },
+        required: false,
+      },
+    },
     responses: {
       200: {
         description: "Redirect URL",
@@ -127,6 +155,29 @@ export function registerBillingPaths(ctx: BuildContext) {
         content: { "application/json": { schema: RedirectUrl } },
       },
       404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/billing/measurement-consent",
+    tags: ["Billing"],
+    summary: "Update consent on unpaid checkouts for this visitor",
+    description:
+      "Rewrites the saved analytics consent on this user's Checkout Sessions that are not yet paid. A withdrawal reaches all of them; any other answer reaches the matching visitor's sessions and any still pending with no visitor id. A paid session is left as it was queued.",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: SubscriptionCheckoutRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "How many unpaid checkouts were updated",
+        content: { "application/json": { schema: RevnuConsentRefresh } },
+      },
+      403: ErrorResponses[403],
     },
   });
 }

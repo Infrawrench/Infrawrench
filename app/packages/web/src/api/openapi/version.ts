@@ -396,4 +396,7 @@
 // `POST /agents/t3-policy/apply` rolls the policy out to existing servers, now
 // or at their next restart, and `t3PolicyRestartPending` on AgentSession says
 // which servers still owe a restart. Additive.
-export const API_VERSION = "1.90.0";
+// 1.91.0: optional `measurement` on `POST /billing/checkout` and
+// `POST /billing/capacity/checkout`, plus `POST /billing/measurement-consent`
+// to update consent on an unpaid checkout. Additive.
+export const API_VERSION = "1.91.0";

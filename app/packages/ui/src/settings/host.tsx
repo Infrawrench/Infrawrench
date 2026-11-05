@@ -75,6 +75,18 @@ export interface SettingsHostValue {
    * section offers the `.cast` download instead of a dead player.
    */
   mountPlaybackTerminal?: MountPlaybackTerminal | undefined;
+  /**
+   * Purchase measurement to attach to a Stripe checkout. Web reads it from the
+   * analytics consent state. A surface with no consent prompt omits it, and the
+   * server reports that purchase as unanswered.
+   */
+  readCheckoutMeasurement?: (() => CheckoutMeasurement | undefined) | undefined;
+}
+
+/** What a browser host knows about the buyer when a checkout starts. */
+export interface CheckoutMeasurement {
+  anonymousId?: string;
+  consentState: "granted" | "denied" | "pending";
 }
 
 const SettingsHostContext = createContext<SettingsHostValue | null>(null);

@@ -350,6 +350,8 @@
     "./billing/capacity-slots": "./src/billing/capacity-slots.ts",
     "./billing/ai-pricing": "./src/billing/ai-pricing.ts",
     "./billing/ai-usage": "./src/billing/ai-usage.ts",
+    "./billing/revnu": "./src/billing/revnu.ts",
+    "./billing/revnu-report-pass": "./src/billing/revnu-report-pass.ts",
     "./leaked-secrets/store": "./src/leaked-secrets/store.ts",
     "./leaked-secrets/scan": "./src/leaked-secrets/scan.ts",
     "./leaked-secrets/actions": "./src/leaked-secrets/actions.ts",

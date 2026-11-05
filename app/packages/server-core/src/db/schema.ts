@@ -2818,6 +2818,56 @@ export const capacitySlots = pgTable(
   }),
 );
 
+/**
+ * One row per Stripe Checkout Session that might become a Revnu purchase, and
+ * the outbox for reporting it.
+ *
+ * Written when checkout starts. The signed webhook sets `paidAt` and freezes the
+ * event into `reportPayload`, because Revnu refuses an event id sent again with
+ * different values, so every retry must send the same body. The poller's
+ * `revnu-reports` pass sends it and then clears the payload, which holds the
+ * buyer's email and phone only for as long as the event is unsent. Consent stays
+ * here: it is not copied into Stripe metadata.
+ */
+export const revnuCheckoutHandoffs = pgTable(
+  "revnu_checkout_handoffs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    stripeCheckoutSessionId: text("stripe_checkout_session_id").notNull(),
+    /** Who started the checkout. Lets a consent change reach a row with no visitor id. */
+    createdByUserId: text("created_by_user_id"),
+    /** Opaque Revnu visitor id (`ra_` + 32 hex). Only present after analytics was allowed. */
+    anonymousId: text("anonymous_id"),
+    /** "granted" | "denied" | "pending". Null when the surface has no consent prompt. */
+    consentState: text("consent_state"),
+    /** Set once by the webhook. Consent changes stop applying to this row from here. */
+    paidAt: timestamp("paid_at"),
+    /** The event to send. Cleared when it is accepted or given up on. */
+    reportPayload: jsonb("report_payload").$type<Record<string, unknown>>(),
+    reportAttempts: integer("report_attempts").notNull().default(0),
+    /** When the pass may next claim this row; also its lease while a send is in flight. */
+    nextReportAt: timestamp("next_report_at"),
+    /** Set when Revnu accepts the purchase event. */
+    reportedAt: timestamp("reported_at"),
+    /** Set when Revnu refused the event outright or the retry window ran out. */
+    reportAbandonedAt: timestamp("report_abandoned_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionUnique: uniqueIndex("revnu_checkout_handoffs_session_unique").on(
+      t.stripeCheckoutSessionId,
+    ),
+    orgAnonIdx: index("revnu_checkout_handoffs_org_anon_idx").on(t.organizationId, t.anonymousId),
+    dueIdx: index("revnu_checkout_handoffs_due_idx")
+      .on(t.nextReportAt)
+      .where(sql`report_payload IS NOT NULL`),
+  }),
+);
+
 export const invitations = pgTable(
   "invitations",
   {

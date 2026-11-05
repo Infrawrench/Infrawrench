@@ -6,6 +6,7 @@ import {
 } from "@infrawrench/server-core/billing/capacity-slots";
 import { db } from "../../db/client";
 import { subscriptions } from "../../db/schema";
+import { queuePaidCheckout } from "../../services/revnu-checkout";
 import { getStripe, getStripeWebhookSecret } from "../../services/stripe";
 import type Stripe from "stripe";
 
@@ -28,18 +29,21 @@ function seatQuantity(sub: Stripe.Subscription): number {
  * (and the `completed` + `async_payment_succeeded` pair a delayed payment method
  * produces) grant once between them.
  */
-async function grantCapacitySlots(stripe: Stripe, session: Stripe.Checkout.Session): Promise<void> {
+async function grantCapacitySlots(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session,
+): Promise<boolean> {
   const organizationId = session.metadata?.["organizationId"];
   if (!organizationId) {
     console.error(`[stripe-webhook] capacity slot session ${session.id} carries no organizationId`);
-    return;
+    return false;
   }
 
   const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 100 });
   const quantity = lineItems.data.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
   if (quantity < 1) {
     console.error(`[stripe-webhook] capacity slot session ${session.id} settled with no seats`);
-    return;
+    return false;
   }
 
   const { granted, expiresAt } = await recordCapacitySlotPurchase({
@@ -61,6 +65,7 @@ async function grantCapacitySlots(stripe: Stripe, session: Stripe.Checkout.Sessi
       ? `[stripe-webhook] granted ${quantity} capacity seat(s) to org ${organizationId} until ${expiresAt.toISOString()}`
       : `[stripe-webhook] capacity slot session ${session.id} was already granted; ignoring redelivery`,
   );
+  return true;
 }
 
 /** Whether this Checkout Session is a settled capacity-slot purchase. */
@@ -97,11 +102,10 @@ app.post("/", async (c) => {
       case "checkout.session.async_payment_succeeded":
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
+        let purchased = session.payment_status === "paid";
         if (isPaidCapacitySlotSession(session)) {
-          await grantCapacitySlots(stripe, session);
-          break;
-        }
-        if (session.customer && session.subscription) {
+          purchased = await grantCapacitySlots(stripe, session);
+        } else if (session.customer && session.subscription) {
           const sub = await stripe.subscriptions.retrieve(session.subscription as string);
           await db
             .update(subscriptions)
@@ -115,6 +119,12 @@ app.post("/", async (c) => {
             })
             .where(eq(subscriptions.stripeCustomerId, session.customer as string));
         }
+        // A redirect to the success URL is not a purchase. Delayed methods
+        // report `completed` while unpaid and settle on `async_payment_succeeded`.
+        // Refunds stay counted, so `charge.refunded` does not report a reversal.
+        // This only queues the event and never throws: a redelivery would re-run
+        // the subscription write above, so Revnu must not be able to cause one.
+        if (purchased) await queuePaidCheckout(session, event.created);
         break;
       }
 

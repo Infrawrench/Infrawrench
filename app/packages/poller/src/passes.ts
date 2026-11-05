@@ -60,6 +60,10 @@ import {
 import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
 import { runBusinessMetricImportPass } from "@infrawrench/server-core/cost/metric-import-pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
+import {
+  pruneRevnuCheckoutHandoffs,
+  runRevnuReportPass,
+} from "@infrawrench/server-core/billing/revnu-report-pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import {
   pruneEventDeliveries,
@@ -275,6 +279,13 @@ async function runRetention(): Promise<void> {
   } catch (e) {
     console.error("[poller] credit snapshot retention tick failed:", e);
   }
+  // Checkouts nobody paid for. Stripe sessions and delayed payments are long
+  // settled by this age, and the row holds a visitor id for no further use.
+  try {
+    await pruneRevnuCheckoutHandoffs();
+  } catch (e) {
+    console.error("[poller] revnu checkout retention tick failed:", e);
+  }
   // DORA deploy events keep a little over a year: the Delivery page's longest
   // range is a year, and its previous-period delta needs the year before
   // that only for the first few weeks, which is not worth keeping forever.
@@ -485,6 +496,15 @@ export const PASSES: readonly Pass[] = [
     name: "digests",
     runtime: "edge",
     run: guarded("[poller] digest tick failed:", () => runWeeklyDigests()),
+  },
+
+  // Paid checkouts queued for Revnu by the Stripe webhook. Postgres and one
+  // fixed HTTPS endpoint, with a row lease, so it belongs on the edge.
+  {
+    kind: "periodic",
+    name: "revnu-reports",
+    runtime: "edge",
+    run: guarded("[revnu] report tick failed:", () => runRevnuReportPass()),
   },
 
   // Retention: idempotent prunes, at most hourly.

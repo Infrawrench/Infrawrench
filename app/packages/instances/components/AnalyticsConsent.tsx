@@ -13,7 +13,7 @@ const BUTTON =
   "rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-2";
 
 /**
- * The PostHog consent prompt, shown only to visitors in the EEA, UK and
+ * The analytics consent prompt, shown only to visitors in the EEA, UK and
  * Switzerland who have not answered yet (or who reopened it from the footer).
  * Accept and Decline are deliberately the same weight.
  */
@@ -29,8 +29,9 @@ export function AnalyticsConsent() {
     >
       <T>
         <p>
-          May we use cookies to understand how this site is used? This turns on PostHog analytics
-          and session replays, with form inputs masked.{" "}
+          May we use cookies and similar technologies to understand how this site is used and to
+          measure our marketing? This turns on analytics, session replays with form inputs masked,
+          and purchase measurement that can be shared with advertising platforms.{" "}
           <a className="text-ink underline" href="https://infrawrench.com/privacy#telemetry">
             Privacy policy
           </a>

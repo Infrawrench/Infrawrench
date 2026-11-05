@@ -3,10 +3,12 @@ import { buildTestApp } from "./test-utils";
 
 const mockSelect = vi.fn();
 const mockInsert = vi.fn();
+const mockUpdate = vi.fn();
 vi.mock("@/db/client", () => ({
   db: {
     select: (...a: unknown[]) => mockSelect(...a),
     insert: (...a: unknown[]) => mockInsert(...a),
+    update: (...a: unknown[]) => mockUpdate(...a),
   },
 }));
 
@@ -74,6 +76,12 @@ describe("Billing routes", () => {
     vi.clearAllMocks();
     mockActiveCapacitySeats.mockResolvedValue(0);
     mockListCapacitySlots.mockResolvedValue([]);
+    mockInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockUpdate.mockReturnValue({
+      set: () => ({
+        where: () => ({ returning: () => Promise.resolve([{ id: "handoff-1" }]) }),
+      }),
+    });
   });
 
   describe("GET /status", () => {
@@ -160,7 +168,7 @@ describe("Billing routes", () => {
       const values = vi.fn().mockResolvedValue(undefined);
       mockInsert.mockReturnValue({ values });
       mockCustomersCreate.mockResolvedValue({ id: "cus_new" });
-      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout" });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout" });
 
       const res = await buildApp().request("/checkout", { method: "POST" });
       expect(res.status).toBe(200);
@@ -176,7 +184,7 @@ describe("Billing routes", () => {
 
     it("reuses an existing customer id without creating a new one", async () => {
       selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
-      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout2" });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout2" });
       const res = await buildApp().request("/checkout", { method: "POST" });
       expect(res.status).toBe(200);
       expect(mockCustomersCreate).not.toHaveBeenCalled();
@@ -192,11 +200,24 @@ describe("Billing routes", () => {
       selectSequence(orgRow(false), [
         { stripeCustomerId: "cus_placeholder", status: "trialing", stripeSubscriptionId: null },
       ]);
-      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout-again" });
+      mockCheckoutCreate.mockResolvedValue({
+        id: "cs_test_1",
+        url: "https://stripe/checkout-again",
+      });
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
       const res = await buildApp().request("/checkout", { method: "POST" });
       expect(res.status).toBe(200);
       expect(mockCustomersCreate).not.toHaveBeenCalled();
-      expect(mockInsert).not.toHaveBeenCalled();
+      expect(values).not.toHaveBeenCalledWith(
+        expect.objectContaining({ stripeCustomerId: expect.anything() }),
+      );
+      expect(values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: "org-1",
+          stripeCheckoutSessionId: "cs_test_1",
+        }),
+      );
       expect(mockCheckoutCreate).toHaveBeenCalledWith(
         expect.objectContaining({ customer: "cus_placeholder" }),
       );
@@ -204,7 +225,7 @@ describe("Billing routes", () => {
 
     it("sends adjustable seat quantity plus the metered chat price", async () => {
       selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
-      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout3" });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout3" });
       await buildApp().request("/checkout", { method: "POST" });
       expect(mockCheckoutCreate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -223,7 +244,7 @@ describe("Billing routes", () => {
     it("omits the chat line item when STRIPE_CHAT_PRICE_ID is unset", async () => {
       mockChatPriceId.mockReturnValueOnce(null);
       selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
-      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout4" });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout4" });
       await buildApp().request("/checkout", { method: "POST" });
       const args = mockCheckoutCreate.mock.calls[0]?.[0] as {
         line_items: Array<{ price: string }>;
@@ -234,9 +255,56 @@ describe("Billing routes", () => {
 
     it("returns 500 when Stripe yields no checkout url", async () => {
       selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
-      mockCheckoutCreate.mockResolvedValue({ url: null });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: null });
       const res = await buildApp().request("/checkout", { method: "POST" });
       expect(res.status).toBe(500);
+    });
+
+    it("stores the visitor id on the session and consent only on the handoff", async () => {
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout" });
+      const anonymousId = `ra_${"ab".repeat(16)}`;
+      const res = await buildApp().request("/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          measurement: { anonymousId, consentState: "denied" },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const args = mockCheckoutCreate.mock.calls[0]?.[0] as { metadata: Record<string, string> };
+      expect(args.metadata).toEqual({ organizationId: "org-1", revnu_anonymous_id: anonymousId });
+      expect(args.metadata).not.toHaveProperty("consentState");
+      expect(values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stripeCheckoutSessionId: "cs_test_1",
+          anonymousId,
+          consentState: "denied",
+        }),
+      );
+    });
+
+    it("still returns the checkout url when the handoff row cannot be saved", async () => {
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
+      mockInsert.mockReturnValue({ values: vi.fn().mockRejectedValue(new Error("db down")) });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout" });
+      const res = await buildApp().request("/checkout", { method: "POST" });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ url: "https://stripe/checkout" });
+    });
+
+    it("drops a visitor id that is not an opaque Revnu id", async () => {
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout" });
+      await buildApp().request("/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ measurement: { anonymousId: "user@example.com" } }),
+      });
+      const args = mockCheckoutCreate.mock.calls[0]?.[0] as { metadata: Record<string, string> };
+      expect(args.metadata).toEqual({ organizationId: "org-1" });
     });
   });
 
@@ -266,7 +334,7 @@ describe("Billing routes", () => {
 
     it("opens a one-time payment session for one slot by default", async () => {
       selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
-      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/capacity" });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_capacity", url: "https://stripe/capacity" });
 
       const res = await post();
       expect(res.status).toBe(200);
@@ -293,7 +361,7 @@ describe("Billing routes", () => {
 
     it("passes a requested quantity through", async () => {
       selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
-      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/capacity" });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_capacity", url: "https://stripe/capacity" });
       await post({ quantity: 3 });
       const args = mockCheckoutCreate.mock.calls[0]?.[0] as {
         line_items: Array<{ quantity: number }>;
@@ -316,7 +384,7 @@ describe("Billing routes", () => {
       const values = vi.fn().mockResolvedValue(undefined);
       mockInsert.mockReturnValue({ values });
       mockCustomersCreate.mockResolvedValue({ id: "cus_new" });
-      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/capacity" });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_capacity", url: "https://stripe/capacity" });
 
       const res = await post();
       expect(res.status).toBe(200);
@@ -330,8 +398,66 @@ describe("Billing routes", () => {
 
     it("returns 500 when Stripe yields no checkout url", async () => {
       selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
-      mockCheckoutCreate.mockResolvedValue({ url: null });
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: null });
       expect((await post()).status).toBe(500);
+    });
+
+    it("keeps the visitor id off the payment intent", async () => {
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_capacity", url: "https://stripe/capacity" });
+      const anonymousId = `ra_${"cd".repeat(16)}`;
+      const res = await post({
+        quantity: 1,
+        measurement: { anonymousId, consentState: "granted" },
+      });
+      expect(res.status).toBe(200);
+      expect(mockCheckoutCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: {
+            organizationId: "org-1",
+            kind: "capacity_slot",
+            revnu_anonymous_id: anonymousId,
+          },
+          payment_intent_data: { metadata: { organizationId: "org-1", kind: "capacity_slot" } },
+        }),
+      );
+    });
+  });
+
+  describe("POST /measurement-consent", () => {
+    it("refreshes unpaid checkouts for this visitor", async () => {
+      const res = await buildApp().request("/measurement-consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          measurement: { anonymousId: `ra_${"ef".repeat(16)}`, consentState: "denied" },
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ updated: 1 });
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    it("does nothing without a consent answer", async () => {
+      const res = await buildApp().request("/measurement-consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ measurement: { anonymousId: `ra_${"ef".repeat(16)}` } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ updated: 0 });
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it("rejects a caller who cannot change billing", async () => {
+      const res = await buildTestApp(billingRoutes, []).request("/measurement-consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          measurement: { anonymousId: `ra_${"ef".repeat(16)}`, consentState: "granted" },
+        }),
+      });
+      expect(res.status).toBe(403);
     });
   });
 
