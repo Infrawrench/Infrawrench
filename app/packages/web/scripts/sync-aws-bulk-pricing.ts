@@ -18,16 +18,31 @@
  *   INSTANCES_NOTIFY_URL, INSTANCES_NOTIFY_SECRET         optional: told after a warehouse load,
  *                                                         so instances.infrawrench.com can email
  *                                                         subscribers whose results changed
+ *   SOCIAL_POST                                           1 to post notable changes (with a
+ *                                                         warehouse); otherwise they are only
+ *                                                         logged and written to the job summary
+ *   BLUESKY_IDENTIFIER, BLUESKY_APP_PASSWORD              optional: the Bluesky account to post as
+ *   X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN,              optional: the X app and the account's
+ *   X_ACCESS_TOKEN_SECRET                                 access token to post as
  *
  * R2 is read with the AWS CLI (preinstalled on GitHub runners), as the
  * instances-bundler publishes with it.
  */
 
 import { execFile, spawn } from "node:child_process";
+import { appendFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import { KvRest } from "../src/aws-bulk-pricing/kv-rest";
 import { syncServiceEvents } from "../src/aws-bulk-pricing/service-events";
+import {
+  changesSince,
+  cursors,
+  plan,
+  postBluesky,
+  postX,
+  type Change,
+} from "../src/aws-bulk-pricing/social";
 import { syncAwsBulkPricing, type BundleBucket } from "../src/aws-bulk-pricing/sync";
 import { ClickHouseHttp, ClickHouseWarehouse } from "../src/aws-bulk-pricing/warehouse";
 
@@ -130,12 +145,85 @@ async function notifyInstances(): Promise<void> {
   }
 }
 
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * Post what changed in the sources this run loaded (`src/aws-bulk-pricing/social.ts`).
+ * Never fails the sync: a missed post is not worth a red run.
+ */
+async function postChanges(
+  ch: ClickHouseHttp,
+  before: Map<string, string>,
+  sources: string[],
+): Promise<void> {
+  try {
+    const changes: Change[] = [];
+    for (const source of sources) {
+      const since = before.get(source);
+      if (!since) {
+        console.log(`social: ${source}: no earlier load to compare with, skipping`);
+        continue;
+      }
+      const found = await changesSince(ch, source, since);
+      console.log(`social: ${source}: ${found.length} change(s) since ${since}`);
+      changes.push(...found);
+    }
+    const posts = plan(changes);
+    if (posts.length === 0) return;
+    const live = process.env.SOCIAL_POST === "1";
+    for (const post of posts)
+      console.log(`social: ${live ? "posting" : "would post"}:\n${post.text}`);
+    const summary = process.env.GITHUB_STEP_SUMMARY;
+    if (summary) {
+      await appendFile(
+        summary,
+        `## Social posts (${live ? "posted" : "dry run"})\n\n${posts.map((p) => `> ${p.text.replace(/\n/g, "\n> ")}`).join("\n\n")}\n\n`,
+      );
+    }
+    if (!live) return;
+    const { BLUESKY_IDENTIFIER, BLUESKY_APP_PASSWORD } = process.env;
+    if (BLUESKY_IDENTIFIER && BLUESKY_APP_PASSWORD) {
+      await postBluesky(
+        { identifier: BLUESKY_IDENTIFIER, password: BLUESKY_APP_PASSWORD },
+        posts,
+      ).catch((error: unknown) => console.log(`social: ${errorText(error)}`));
+    }
+    const { X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET } = process.env;
+    if (X_API_KEY && X_API_SECRET && X_ACCESS_TOKEN && X_ACCESS_TOKEN_SECRET) {
+      await postX(
+        {
+          apiKey: X_API_KEY,
+          apiSecret: X_API_SECRET,
+          accessToken: X_ACCESS_TOKEN,
+          accessTokenSecret: X_ACCESS_TOKEN_SECRET,
+        },
+        posts,
+      ).catch((error: unknown) => console.log(`social: ${errorText(error)}`));
+    }
+  } catch (error) {
+    console.log(`social: failed: ${errorText(error)}`);
+  }
+}
+
 const store = warehouse();
+// Each source's newest price list before this run, so changes are only what the run brought.
+let before: Map<string, string> | null = null;
+if (store) {
+  try {
+    before = await cursors(store.ch);
+  } catch (error) {
+    console.log(`social: could not read sync state: ${errorText(error)}`);
+  }
+}
 let loaded = false;
 let failure: unknown = null;
 try {
   const results = await syncAwsBulkPricing(r2Bucket(), kv, console.log, store?.pricing);
   loaded = results.some((r) => r.warehouseRows !== undefined);
+  if (store && before) {
+    const sources = results.filter((r) => r.warehouseRows !== undefined).map((r) => r.platform);
+    if (sources.length > 0) await postChanges(store.ch, before, sources);
+  }
 } catch (error) {
   // Some platforms may have loaded before another failed.
   loaded = true;
