@@ -158,7 +158,7 @@ kubectl --context CONTEXT_NAME get pods -n NAMESPACE -o wide
 kubectl --context CONTEXT_NAME describe node NODE_NAME
 ```
 
-Every replacement should be Running and ready, and the node's MemoryPressure, DiskPressure and PIDPressure conditions should be False. If new pods now sit in [Pending](/blog/kubernetes-pod-pending), the cluster lost capacity and needs more nodes or smaller requests elsewhere.
+Every replacement should be Running and ready, and the node's MemoryPressure, DiskPressure and PIDPressure conditions should be False. If new pods now sit in [Pending](/blog/kubernetes-pod-pending), the cluster lost capacity and needs more nodes or smaller requests elsewhere. To size replacement nodes, the [instance comparison](https://instances.infrawrench.com/) lists CPU, memory and storage for each machine type across AWS, Azure and Google Cloud.
 
 ## Conclusion
 

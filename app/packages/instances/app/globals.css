@@ -135,26 +135,15 @@ body {
   letter-spacing: -0.04em;
 }
 
-.nav-badge {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid #222;
+.nav-logo-sub {
+  font-size: 17px;
+  font-weight: 500;
   color: #9ca3af;
-  border-radius: 100px;
-  padding: 3px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: -0.04em;
+  transition: color 0.15s;
 }
 
-a.nav-badge {
-  text-decoration: none;
-  transition:
-    border-color 0.15s,
-    color 0.15s;
-}
-
-a.nav-badge:hover {
-  border-color: #444;
+a.nav-logo:hover .nav-logo-sub {
   color: #e5e7eb;
 }
 
@@ -175,27 +164,23 @@ a.nav-badge:hover {
   color: #e5e7eb;
 }
 
-.btn-ghost {
+/* The nav's one call to action, a compact .btn-primary from the website. */
+.nav-cta {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: transparent;
-  color: #6b7280;
+  background: #3b82f6;
+  color: #fff;
   padding: 8px 16px;
   border-radius: 7px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   text-decoration: none;
-  border: 1px solid #1a1a1a;
   white-space: nowrap;
-  transition:
-    border-color 0.15s,
-    color 0.15s;
+  transition: background 0.15s;
 }
 
-.btn-ghost:hover {
-  border-color: #333;
-  color: #e5e7eb;
+.nav-cta:hover {
+  background: #2563eb;
 }
 
 @media (max-width: 640px) {
@@ -211,14 +196,14 @@ a.nav-badge:hover {
   }
 }
 
-/* A phone has room for the logo, the badge and the language picker; the
-   footer's Cloud link stands in for the button, so nothing pushes the nav
+/* A phone has room for the logo, the site name and the language picker; the
+   footer's Infrawrench link stands in for the button, so nothing pushes the nav
    (and with it the page) wider than the screen. */
 @media (max-width: 480px) {
   .nav-logo {
     gap: 8px;
   }
-  .nav-links .btn-ghost {
+  .nav-links .nav-cta {
     display: none;
   }
 }

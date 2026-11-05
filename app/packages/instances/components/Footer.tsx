@@ -11,6 +11,9 @@ import { AnalyticsConsent } from "./AnalyticsConsent";
 /** The bulk instances API: the SDKs and HTTP endpoints this site's data is also available through. */
 const API_DOCS = "https://infrawrench.com/docs/team-and-billing/bulk-instances-api";
 
+/** The Kubernetes troubleshooting guides on infrawrench.com's blog. */
+const GUIDES = "https://infrawrench.com/blog#guides";
+
 /** Chat pages, where the question box floats at the bottom instead of the footer. */
 function isChatPage(pathname: string): boolean {
   const { path } = splitLocale(pathname);
@@ -36,8 +39,8 @@ export function Footer() {
         className={`${chat ? "" : "sticky bottom-0 z-10"} border-t border-line bg-surface/90 backdrop-blur-md`}
       >
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-3 text-xs text-ink-3 sm:px-7">
-          {/* On a phone the chat pages need the height more; the nav's logo
-              links to infrawrench.com as well. */}
+          {/* On a phone the chat pages need the height more; the chat box
+              keeps the page usable without it. */}
           <a
             className={`font-semibold text-ink-2 hover:text-ink ${chat ? "hidden sm:inline" : ""}`}
             href="https://infrawrench.com"
@@ -53,6 +56,9 @@ export function Footer() {
             </a>
             <a className="hover:text-ink" href="https://infrawrench.com/docs">
               {gt("Docs")}
+            </a>
+            <a className="hover:text-ink" href={GUIDES}>
+              {gt("Kubernetes guides")}
             </a>
             <a className="hover:text-ink" href="https://infrawrench.com/privacy">
               {gt("Privacy")}
