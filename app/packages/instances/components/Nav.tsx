@@ -48,17 +48,13 @@ export function Nav() {
       </a>
       <nav className="nav-bar" aria-label={gt("Primary")}>
         <div className="nav-inner">
-          <div className="nav-logo">
-            <a className="nav-logo" href="https://infrawrench.com">
-              <img src="/icon.png" width={28} height={28} alt="" style={{ borderRadius: 6 }} />
-              {/* i18n-ignore: product name */}
-              <span className="nav-logo-text">Infrawrench</span>
-            </a>
-            {/* The site's own home: every service. */}
-            <Link className="nav-badge" href={localePath(locale, "/")}>
-              {gt("Instances")}
-            </Link>
-          </div>
+          {/* The site's own home: every service. Logo and name are one link to it. */}
+          <Link className="nav-logo" href={localePath(locale, "/")}>
+            <img src="/icon.png" width={28} height={28} alt="" style={{ borderRadius: 6 }} />
+            {/* i18n-ignore: product name */}
+            <span className="nav-logo-text">Infrawrench</span>
+            <span className="nav-logo-sub">{gt("Instances")}</span>
+          </Link>
           <div className="nav-links">
             <a className="nav-link" href="https://infrawrench.com/docs">
               {gt("Docs")}
@@ -69,9 +65,13 @@ export function Nav() {
             >
               {gt("Community")}
             </a>
-            <LanguagePicker />
-            <a className="btn-ghost" href="https://app.infrawrench.com">
+            <a className="nav-link" href="https://app.infrawrench.com">
               {gt("Open Cloud")}
+            </a>
+            <LanguagePicker />
+            {/* infrawrench.com opens its download dialog for #download. */}
+            <a className="nav-cta" href="https://infrawrench.com/#download">
+              {gt("Get Infrawrench")}
             </a>
           </div>
         </div>

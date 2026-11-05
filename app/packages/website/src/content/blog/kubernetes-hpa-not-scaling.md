@@ -138,7 +138,7 @@ Then watch it react:
 kubectl --context CONTEXT_NAME get hpa HPA_NAME -n NAMESPACE --watch
 ```
 
-TARGETS should show a real value, and under load REPLICAS should rise toward what the formula gives, within `maxReplicas`. In `kubectl describe hpa`, ScalingActive should be True with a reason showing a valid metric was found. If replicas rise but pods are killed for memory, see the [OOMKilled guide](/blog/kubernetes-oomkilled). If new pods never leave Pending, the cluster is out of room and needs more nodes, which is a job for node autoscaling rather than the HPA.
+TARGETS should show a real value, and under load REPLICAS should rise toward what the formula gives, within `maxReplicas`. In `kubectl describe hpa`, ScalingActive should be True with a reason showing a valid metric was found. If replicas rise but pods are killed for memory, see the [OOMKilled guide](/blog/kubernetes-oomkilled). If new pods never leave Pending, the cluster is out of room and needs more nodes, which is a job for node autoscaling rather than the HPA. The [instance comparison](https://instances.infrawrench.com/aws/ec2) helps pick the node type that autoscaler adds.
 
 Write down which condition was False and what fixed it. The next `<unknown>` target will take a minute to resolve.
 

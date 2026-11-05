@@ -80,7 +80,7 @@ kubectl --context CONTEXT_NAME describe node NODE_NAME
 
 Compare Allocatable with the Allocated resources section, which shows requests already committed on that node. If the pod's request is larger than Allocatable minus what is allocated on every node, it cannot fit. Check one thing first: a pod larger than any single node will never schedule. If every node has `cpu: 1` allocatable, a pod requesting `cpu: 1.1` stays Pending forever, no matter how empty the cluster is.
 
-The fixes, from the official troubleshooting guidance: lower the pod's requests to what it really needs, remove pods you no longer need to free capacity, or add nodes.
+The fixes, from the official troubleshooting guidance: lower the pod's requests to what it really needs, remove pods you no longer need to free capacity, or add nodes. When the pod is larger than any node, the answer is a bigger node type rather than more nodes: the [instance comparison](https://instances.infrawrench.com/aws/ec2) lists vCPUs, memory and price for every EC2 type, with Azure and Google Cloud machines on the same site.
 
 If the Pending pods are extra replicas a HorizontalPodAutoscaler just added, the autoscaler is working and the cluster is out of room. The [HPA not scaling guide](/blog/kubernetes-hpa-not-scaling) covers the autoscaler side, including how requests drive its decisions.
 

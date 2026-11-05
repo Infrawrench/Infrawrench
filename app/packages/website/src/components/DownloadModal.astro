@@ -157,6 +157,9 @@ import { Apple, Monitor, Copy, ChevronDown } from 'lucide-astro';
     });
   });
 
+  // Links from other sites (the instances nav) land here with the dialog open.
+  if (location.hash === "#download") openModal();
+
   closeBtn.addEventListener("click", closeModal);
 
   modal.addEventListener("click", (e) => {

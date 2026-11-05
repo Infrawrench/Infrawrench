@@ -95,7 +95,7 @@ So a container with a small request and no limit can be killed for memory that a
 kubectl --context CONTEXT_NAME get pod POD_NAME -n NAMESPACE -o jsonpath='{.status.qosClass}{"\n"}'
 ```
 
-The fix here is on the requests side: set memory requests that reflect real usage across the workloads on that node, so the scheduler stops packing more onto it than it can hold.
+The fix here is on the requests side: set memory requests that reflect real usage across the workloads on that node, so the scheduler stops packing more onto it than it can hold. If real usage across those workloads is more than the node can hold, the node itself is too small. [Compare instance memory and price](https://instances.infrawrench.com/aws/ec2) before moving the node group to a larger type.
 
 ## Step 4: Evictions are a different symptom
 
