@@ -153,7 +153,7 @@ export async function queryWarehouse(
     // warehouse refuses: its author (the chat's model) can narrow it.
     if (error instanceof DOMException && error.name === "TimeoutError") {
       throw new QueryError(
-        `The query took longer than ${timeoutMs / 1000} s. Filter on the columns of the table itself, without a JOIN, and narrow it by platform, region and pricing.`,
+        `The query took longer than ${timeoutMs / 1000} s. Filter on the columns of the table itself, with the largest table first in any JOIN, and narrow it by platform, region and pricing.`,
       );
     }
     throw error;
