@@ -52,7 +52,7 @@ Untick a capability and its permissions drop out of the template. The AWS templa
 
 ## Is it safe to run?
 
-- Checks are **read-only**. They make small read calls against the provider. One exception: on a Cloudflare account connected with OAuth, the cost check creates a temporary billing-read token, uses it and deletes it.
+- Checks are **read-only**. They make small read calls against the provider.
 - Some write scopes (for example on Grafana Cloud) can't be checked without making a change, so they may show as unverified.
 - On the web app, checks run on the server against the credentials you submitted or saved. Your credentials are never sent back to the browser. On desktop, checks run locally on your machine.
 - Results aren't stored.

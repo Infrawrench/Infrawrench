@@ -65,11 +65,12 @@ export function oauthClientRegistration(
  * The plugin's OAuth declaration when this server can run its flow: the
  * manifest declares a server client, and either the client needs no
  * configuration (`none`, `dynamic`) or both variables are set. Null
- * otherwise, which is what hides the Connect button.
+ * otherwise, which is what hides the Connect button. Also null when the plugin
+ * only keeps existing grants; refresh does not go through here.
  */
 export function serverOAuthDeclaration(manifest: PluginManifest): OAuthDeclaration | null {
   const declaration = manifest.oauth;
-  if (!declaration?.clients.server) return null;
+  if (!declaration?.clients.server || declaration.existingGrantsOnly) return null;
   if (oauthClientRegistration(declaration) !== "static") return declaration;
   return serverOAuthClient(manifest.id, isPublicServerClient(declaration)) ? declaration : null;
 }

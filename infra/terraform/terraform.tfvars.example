@@ -198,8 +198,9 @@ app_env = {
   # PROVIDER_OAUTH_BITBUCKET_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_BITBUCKET_CLIENT_SECRET = "..."
   # Cloudflare: an OAuth client under Cloudflare dashboard -> Manage account ->
-  # OAuth clients, promoted to public (DNS TXT check) so other accounts can
-  # connect.
+  # OAuth clients, promoted to public (DNS TXT check). No new connections start
+  # (new accounts paste a token); required only to keep refreshing accounts that
+  # already connected, which go to "reconnect required" without it.
   # PROVIDER_OAUTH_CLOUDFLARE_CLIENT_ID     = "..."
   # PROVIDER_OAUTH_CLOUDFLARE_CLIENT_SECRET = "..."
   # Cloudinary: an OAuth app in the Cloudinary Console (beta, max 10 apps).

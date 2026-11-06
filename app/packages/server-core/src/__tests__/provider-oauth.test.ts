@@ -15,6 +15,8 @@ import {
   OAuthReconnectRequiredError,
   acceptSubmittedCredentials,
   pluginOAuthSummary,
+  configuredClientCredentials,
+  serverOAuthDeclaration,
   redactOAuthGrantState,
   providerOAuthRedirectUri,
   resetOAuthRefreshStateForTests,
@@ -136,6 +138,18 @@ describe("configuration", () => {
       tokenField: "apiToken",
       clients: ["server"],
     });
+  });
+
+  it("hides a plugin that only keeps existing grants, and can still refresh it", () => {
+    process.env["PROVIDER_OAUTH_ACME_CLOUD_CLIENT_ID"] = "id";
+    process.env["PROVIDER_OAUTH_ACME_CLOUD_CLIENT_SECRET"] = "secret";
+    const retired = {
+      ...manifest,
+      oauth: { ...manifest.oauth!, existingGrantsOnly: true },
+    } as PluginManifest;
+    expect(pluginOAuthSummary(retired)).toBeUndefined();
+    expect(serverOAuthDeclaration(retired)).toBeNull();
+    expect(configuredClientCredentials(retired)).not.toBeNull();
   });
 
   it("hides desktop-only declarations", () => {
