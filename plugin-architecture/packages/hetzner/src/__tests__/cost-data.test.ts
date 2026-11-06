@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { createHetznerApis } from "../api.js";
 import { fetchHetznerCostData, type HetznerCostContext } from "../cost-data.js";
 import { parseDecimal, toNumber } from "../pricing.js";
 
@@ -85,18 +86,24 @@ type Inventory = Partial<Record<string, unknown[]>>;
 
 function makeContext(now: string, inventory: Inventory = {}) {
   const paths: string[] = [];
-  const ctx: HetznerCostContext = {
-    now: new Date(now),
-    async fetch<T>(path: string): Promise<T> {
-      paths.push(path);
-      if (path === "/pricing") return PRICING as T;
-      throw new Error(`unexpected fetch ${path}`);
+  // The real client over a fake host, so these tests also pin the requests it builds.
+  const { cloud } = createHetznerApis({
+    token: "test-token",
+    caCert: "test-ca",
+    http: {
+      async request({ url }) {
+        const { pathname, searchParams } = new URL(url);
+        const path = pathname.replace(/^\/v1/, "");
+        searchParams.delete("page");
+        searchParams.delete("per_page");
+        const key = searchParams.size > 0 ? `${path}?${searchParams}` : path;
+        paths.push(key);
+        const body = path === "/pricing" ? PRICING : { [path.slice(1)]: inventory[key] ?? [] };
+        return { status: 200, headers: {}, body: JSON.stringify(body) };
+      },
     },
-    async fetchAll<T>(path: string): Promise<T[]> {
-      paths.push(path);
-      return (inventory[path] ?? []) as T[];
-    },
-  };
+  });
+  const ctx: HetznerCostContext = { now: new Date(now), cloud };
   return { ctx, paths };
 }
 

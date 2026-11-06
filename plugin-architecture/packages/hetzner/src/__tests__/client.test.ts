@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import type { HttpHostServices, ResourceInstance } from "@infrawrench/plugin-base";
 import { HetznerClient } from "../client.js";
@@ -7,7 +8,7 @@ const ACCOUNT = "acct1";
 const resourceTypes = plugin.resourceTypes;
 
 function makeClient(creds: Record<string, string> = { apiToken: "tok" }) {
-  return new HetznerClient(creds, resourceTypes);
+  return hostClient(new HetznerClient(creds, resourceTypes));
 }
 
 function okJson(body: unknown, status = 200): Response {
@@ -49,7 +50,7 @@ function lastCall(): [url: string | URL | Request, init: RequestInit] {
 
 describe("constructor", () => {
   it("throws without apiToken", () => {
-    expect(() => new HetznerClient({}, resourceTypes)).toThrow(/missing apiToken/);
+    expect(() => hostClient(new HetznerClient({}, resourceTypes))).toThrow(/missing apiToken/);
   });
   it("constructs with token", () => {
     expect(makeClient()).toBeInstanceOf(HetznerClient);
@@ -1474,9 +1475,11 @@ describe("caCert routing via host http service", () => {
       headers: {},
       body: JSON.stringify({ servers: [] }),
     }));
-    const c = new HetznerClient({ apiToken: "tok", caCert: "PEM" }, resourceTypes, {
-      http: { request },
-    });
+    const c = hostClient(
+      new HetznerClient({ apiToken: "tok", caCert: "PEM" }, resourceTypes, {
+        http: { request },
+      }),
+    );
     await c.listResources("server", ACCOUNT);
     expect(request).toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();

@@ -1,5 +1,6 @@
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pluginManifestSchema } from "@infrawrench/plugin-base";
 import {
   fetchHetznerPriceCatalog,
   hetznerPriceCatalog,
@@ -116,12 +117,12 @@ describe("hetznerServerTypeToProduct", () => {
 
 describe("fetchHetznerPriceCatalog", () => {
   it("lists server types and prices them in the /pricing currency", async () => {
-    const fetchAll = vi.fn().mockResolvedValue([CX22]);
+    const getAll = vi.fn().mockResolvedValue([CX22]);
     const result = await fetchHetznerPriceCatalog(
-      { fetchAll: fetchAll as never, currency: async () => "EUR" },
+      { cloud: { getAll: getAll as never }, currency: async () => "EUR" },
       { serviceId: "cloud-servers" },
     );
-    expect(fetchAll).toHaveBeenCalledWith("/server_types", "server_types");
+    expect(getAll).toHaveBeenCalledWith("/server_types", "server_types");
     expect(result.products.map((p) => p.sku)).toEqual(["cx22"]);
   });
 });
@@ -145,13 +146,13 @@ describe("client wiring", () => {
         text: async () => JSON.stringify(body),
       } as unknown as Response;
     });
-    const client = new HetznerClient({ apiToken: "fake-token" }, plugin.resourceTypes);
+    const client = hostClient(new HetznerClient({ apiToken: "fake-token" }, plugin.resourceTypes));
     const result = await client.fetchPriceCatalog({ serviceId: "cloud-servers" });
     expect(result.products[0]!.prices[0]).toMatchObject({ currency: "EUR", amount: 3.79 });
   });
 
   it("declares a credentialed catalog the manifest schema accepts", () => {
     expect(plugin.manifest.priceCatalog).toBe(hetznerPriceCatalog);
-    expect(pluginManifestSchema.safeParse(plugin.manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, plugin.manifest).success).toBe(true);
   });
 });

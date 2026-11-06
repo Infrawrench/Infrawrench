@@ -36,6 +36,7 @@ import {
   type PriceCatalogRequest,
   type PriceCatalogResult,
 } from "@infrawrench/plugin-base";
+import type { CloudApi, CloudResponse } from "./api.js";
 import { BYTES_PER_TB, parseDecimal, toNumber } from "./pricing.js";
 
 export const HETZNER_PRICE_CATALOG_SERVICE = "cloud-servers";
@@ -60,40 +61,38 @@ export const hetznerPriceCatalog: PriceCatalogDeclaration = {
   ],
 };
 
-interface WirePrice {
-  net?: string;
-  gross?: string;
-}
+type ServerType = CloudResponse<"list_server_types">["server_types"][number];
+type ServerTypeLocation = ServerType["locations"][number];
+type ServerTypePrice = ServerType["prices"][number];
 
-interface WireDeprecation {
-  unavailable_after?: string;
-  announced?: string;
-}
-
-/** The subset of a `/v1/server_types` element this module decodes. */
-export interface HetznerServerTypeWire {
-  name: string;
-  description?: string;
-  cores: number;
-  memory: number;
-  disk: number;
-  cpu_type?: "shared" | "dedicated";
-  storage_type?: "local" | "network";
-  architecture?: "x86" | "arm";
-  category?: string;
-  deprecated?: boolean;
-  deprecation?: WireDeprecation | null;
-  locations?: Array<{ name: string; deprecation?: WireDeprecation | null; available?: boolean }>;
-  prices?: Array<{
-    location: string;
-    price_hourly?: WirePrice;
-    price_monthly?: WirePrice;
-    included_traffic?: number | null;
-  }>;
-}
+/**
+ * The fields of a `/v1/server_types` element this module decodes. Everything but
+ * the identity and specs is read defensively, so it stays optional here whatever
+ * the document says.
+ */
+export type HetznerServerTypeWire = Pick<ServerType, "name" | "cores" | "memory" | "disk"> &
+  Partial<
+    Pick<
+      ServerType,
+      "description" | "cpu_type" | "storage_type" | "architecture" | "category" | "deprecation"
+    >
+  > & {
+    /** Removed from the API on 2026-11-02 and from the document; older payloads carry it. */
+    deprecated?: boolean;
+    locations?: Array<
+      Pick<ServerTypeLocation, "name"> &
+        Partial<Pick<ServerTypeLocation, "deprecation" | "available">>
+    >;
+    prices?: Array<
+      Pick<ServerTypePrice, "location"> &
+        Partial<Pick<ServerTypePrice, "price_hourly" | "price_monthly">> & {
+          included_traffic?: number | null;
+        }
+    >;
+  };
 
 export interface HetznerPriceCatalogContext {
-  fetchAll<T>(path: string, rootKey: string): Promise<T[]>;
+  cloud: Pick<CloudApi, "getAll">;
   /** The project's price currency (from `/pricing`, via the rate-card cache). */
   currency(): Promise<string>;
 }
@@ -182,7 +181,7 @@ export async function fetchHetznerPriceCatalog(
 ): Promise<PriceCatalogResult> {
   if (request.serviceId !== HETZNER_PRICE_CATALOG_SERVICE) return { products: [] };
   const [serverTypes, currency] = await Promise.all([
-    ctx.fetchAll<HetznerServerTypeWire>("/server_types", "server_types"),
+    ctx.cloud.getAll("/server_types", "server_types"),
     ctx.currency(),
   ]);
   const products = serverTypes

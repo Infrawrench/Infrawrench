@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { HetznerClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -8,7 +9,7 @@ const CLOUD = "https://api.hetzner.cloud/v1";
 const HETZNER = "https://api.hetzner.com/v1";
 
 function makeClient() {
-  return new HetznerClient({ apiToken: "tok" }, plugin.resourceTypes);
+  return hostClient(new HetznerClient({ apiToken: "tok" }, plugin.resourceTypes));
 }
 
 function okJson(body: unknown, status = 200): Response {
