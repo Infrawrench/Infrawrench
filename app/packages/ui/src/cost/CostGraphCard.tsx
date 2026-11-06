@@ -21,6 +21,7 @@ import {
   FORECAST_COLOR,
   OTHER_SERIES_COLOR,
   SCENARIO_COLOR,
+  SERIES_COLORS,
   applyCostDrillPath,
   costComparisonDelta,
   costDrillChoices,
@@ -588,11 +589,16 @@ function SpendGraphCard({
    * The overlay lines below do *not* come through here. They use the named
    * `FORECAST_COLOR` / `SCENARIO_COLOR` from the shared palette, because a slot
    * in this rotation means "the fourth series", not "amber".
+   *
+   * The theme's neutral first slot is only for a lone series. Once there are
+   * several, colour is what tells them apart, and a white slice beside hued
+   * ones reads as "no data", so they take the full rotation mobile draws with.
    */
+  const seriesRotation = (state?.response.series.length ?? 0) > 1 ? SERIES_COLORS : chart.colors;
   const colorFor = (index: number, isOther: boolean): string =>
     isOther
       ? OTHER_SERIES_COLOR
-      : (chart.colors[index % chart.colors.length] ?? OTHER_SERIES_COLOR);
+      : (seriesRotation[index % seriesRotation.length] ?? OTHER_SERIES_COLOR);
 
   /** A change in the card's own unit, signed: "+US$12.00", "−US$3.40". */
   const signedAmount = (change: number): string =>
