@@ -401,4 +401,8 @@
 // to update consent on an unpaid checkout. Additive.
 // 1.92.0: `POST /api/v1/instance-pricing/query`, and only that path, also accepts
 // the key the web and desktop apps ship with. Additive.
-export const API_VERSION = "1.92.0";
+// 1.93.0: the pricing warehouse also covers Hetzner cloud servers and Server Auction
+// listings (`hetzner`, `hetznerauction`), OVHcloud Public Cloud and eco servers (`ovh`,
+// `ovheco`), Oracle Cloud compute (`oracle`) and IBM Cloud VPC (`ibm`); the instance
+// pricing descriptions say so. Additive.
+export const API_VERSION = "1.93.0";

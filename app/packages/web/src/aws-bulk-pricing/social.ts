@@ -26,6 +26,9 @@ export const SPOT_THRESHOLD = 0.5;
 /** Posts per run; the rest go in one summary post. */
 export const MAX_POSTS = 5;
 
+/** Sources whose changes are never posted. */
+const UNPOSTED_SOURCES: ReadonlySet<string> = new Set(["hetznerauction"]);
+
 /** Where each platform's pages live on the instances site, and what posts call it. */
 const PLATFORM_PAGES: Readonly<Record<string, { path: string; label: string }>> = {
   ec2: { path: "aws/ec2", label: "AWS EC2" },
@@ -44,6 +47,12 @@ const PLATFORM_PAGES: Readonly<Record<string, { path: string; label: string }>> 
   alibaba: { path: "alibaba/ecs", label: "Alibaba Cloud ECS" },
   azure: { path: "azure/vms", label: "Azure" },
   gcp: { path: "gcp/compute", label: "Google Cloud" },
+  hetzner: { path: "hetzner/cloud", label: "Hetzner Cloud" },
+  hetznerauction: { path: "hetzner/auction", label: "Hetzner Server Auction" },
+  ovh: { path: "ovh/cloud", label: "OVHcloud Public Cloud" },
+  ovheco: { path: "ovh/eco", label: "OVHcloud eco servers" },
+  oracle: { path: "oracle/compute", label: "Oracle Cloud Compute" },
+  ibm: { path: "ibm/vpc", label: "IBM Cloud VPC" },
 };
 
 const pageOf = (platform: string) =>
@@ -113,6 +122,8 @@ export async function changesSince(
   source: string,
   since: string,
 ): Promise<Change[]> {
+  // Auction listings come and go, and fall in price, all the time: none of that is news.
+  if (UNPOSTED_SOURCES.has(source)) return [];
   const src = quote(source);
   const after = `toDateTime(${quote(since)}, 'UTC')`;
   const changes: Change[] = [];

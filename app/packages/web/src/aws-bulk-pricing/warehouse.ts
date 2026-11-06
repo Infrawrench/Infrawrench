@@ -1,5 +1,5 @@
 /**
- * Loads the bulk pricing bundles (every AWS platform, RunPod, Alibaba Cloud
+ * Loads the bulk pricing bundles (every AWS platform, Hetzner, OVHcloud, Oracle Cloud, IBM Cloud, RunPod, Alibaba Cloud
  * ECS, Azure virtual machines and Google Cloud Compute Engine) into the
  * instance pricing warehouse
  * (ClickHouse; tables in `@infrawrench/server-core/aws-pricing-warehouse/schema`),
@@ -365,6 +365,15 @@ export function parseGcpMachineType(
   };
 }
 
+/** A Hetzner server type: its line, then two digits (`cx` and `23` from `cx23`). */
+const HETZNER_SERVER = /^([a-z]+)(\d+)$/;
+/** An OVHcloud eco server: year and range, number, maybe a letter (`24sys` and `01` from `24sys01`, `25sk` and `60` from `25sk60b`). */
+const OVH_ECO_SERVER = /^(\d{2}[a-z]+?)(\d+)[a-z]?(?:-.+)?$/;
+/** An Oracle shape: a flexible size as `<shape>-<ocpus>-<GB>`, or a fixed shape ending in its OCPUs (`VM.Standard2.4`). */
+const ORACLE_SHAPE = /^((?:VM|BM)\..+?)(?:-(\d+(?:\.\d+)?-\d+(?:\.\d+)?)|\.(\d+))$/;
+/** An IBM Cloud profile: family, then vCPUs, memory and any GPUs (`gx3` and `16x80x1l4` from `gx3-16x80x1l4`). */
+const IBM_PROFILE = /^([a-z0-9]+)-(\d+x\d+.*)$/;
+
 /**
  * `m7g` and `large` from `db.m7g.large` (and `ecs.g7.large`); the same rule as
  * instances' `lib/names.ts`. A RunPod CPU pod is its flavor and `<vcpu>-<gb>`
@@ -372,6 +381,7 @@ export function parseGcpMachineType(
  * Azure size is its series and vCPUs (`Dsv3` and `2` from `Standard_D2s_v3`),
  * a Google Cloud machine type its series and the rest (`n2` and `standard-2`
  * from `n2-standard-2`). `platform` picks the scheme for the other clouds.
+ * Hetzner, OVHcloud, Oracle and IBM have their own schemes, below.
  */
 export function familyAndSize(name: string, platform = ""): { family: string; size: string } {
   if (platform === "azure") {
@@ -383,6 +393,31 @@ export function familyAndSize(name: string, platform = ""): { family: string; si
     if (!gcp) return { family: "", size: "" };
     const size = [gcp.type, gcp.size, gcp.suffix].filter(Boolean).join("-");
     return { family: gcp.series, size };
+  }
+  if (platform === "hetzner") {
+    const server = HETZNER_SERVER.exec(name);
+    return server ? { family: server[1]!, size: server[2]! } : { family: "", size: "" };
+  }
+  // A listing is one server, with no family.
+  if (platform === "hetznerauction") return { family: "", size: "" };
+  if (platform === "ovh") {
+    // The size is after the last hyphen (`t1-le` and `45` from `t1-le-45`).
+    const i = name.lastIndexOf("-");
+    return i > 0
+      ? { family: name.slice(0, i), size: name.slice(i + 1) }
+      : { family: name, size: "" };
+  }
+  if (platform === "ovheco") {
+    const server = OVH_ECO_SERVER.exec(name);
+    return server ? { family: server[1]!, size: server[2]! } : { family: "", size: "" };
+  }
+  if (platform === "oracle") {
+    const shape = ORACLE_SHAPE.exec(name);
+    return shape ? { family: shape[1]!, size: shape[2] ?? shape[3]! } : { family: name, size: "" };
+  }
+  if (platform === "ibm") {
+    const profile = IBM_PROFILE.exec(name);
+    return profile ? { family: profile[1]!, size: profile[2]! } : { family: "", size: "" };
   }
   const pod = RUNPOD_CPU_POD.exec(name);
   if (pod) return { family: pod[1]!, size: pod[2]! };
@@ -414,7 +449,18 @@ export function networkGbps(value: string | undefined): number | null {
 }
 
 /** Platforms that are not AWS: their attributes use their provider's own keys. */
-const OTHER_CLOUDS = new Set(["runpod", "alibaba", "azure", "gcp"]);
+const OTHER_CLOUDS = new Set([
+  "runpod",
+  "alibaba",
+  "azure",
+  "gcp",
+  "hetzner",
+  "hetznerauction",
+  "ovh",
+  "ovheco",
+  "oracle",
+  "ibm",
+]);
 
 /**
  * `arm64` or `x86_64` from what the provider lists. Alibaba says it outright
@@ -440,6 +486,17 @@ export function architectureOf(
   }
   // Google lists `architecture` on every series since Arm arrived; the older ones are x86.
   if (platform === "gcp") return family ? "x86_64" : "";
+  // IBM's other architecture is s390x, which the column has no value for.
+  if (platform === "ibm") return attrs["vcpu_architecture"] === "amd64" ? "x86_64" : "";
+  // Only Oracle's A-series Standard shapes are Arm; `VM.GPU.A10.1`'s A10 is its GPU.
+  if (platform === "oracle") {
+    return /^[VB]M\.Standard\.A\d/.test(family) ? "arm64" : family ? "x86_64" : "";
+  }
+  // OVHcloud's flavors and eco servers are all x86.
+  if (platform === "ovh" || platform === "ovheco") return "x86_64";
+  if (platform === "hetznerauction") {
+    return /ampere/i.test(attrs["CPU.Name"] ?? "") ? "arm64" : "x86_64";
+  }
   const processor = `${attrs["physicalProcessor"] ?? ""} ${attrs["physicalCpu"] ?? ""} ${attrs["PhysicalProcessorModel"] ?? ""}`;
   if (OTHER_CLOUDS.has(platform)) {
     if (/ampere|yitian|\barm/i.test(processor)) return "arm64";
@@ -473,8 +530,39 @@ export function specsOf(name: string, attrs: Record<string, string>, platform = 
   if (isRunpodGpu(platform, attrs)) {
     return { family, size, architecture: "", vcpu: null, memory_gib: null, gpus: 1 };
   }
-  const gpus = number(attrs["gpu"] ?? attrs["GPUAmount"] ?? attrs["acceleratorCount"]);
+  const gpus = number(
+    attrs["gpu"] ??
+      attrs["GPUAmount"] ??
+      attrs["acceleratorCount"] ??
+      attrs["gpu.number"] ??
+      attrs["gpuCount"] ??
+      attrs["gpu_count"],
+  );
   const memoryMb = number(attrs["memoryMb"]);
+  // Oracle prices by OCPU: two vCPUs, or one on its A1 Arm shapes.
+  if (platform === "oracle") {
+    const ocpus = number(attrs["ocpus"]);
+    return {
+      family,
+      size,
+      architecture: architectureOf(attrs, family, platform),
+      vcpu: ocpus === null ? null : ocpus * (/^[VB]M\.Standard\.A1/.test(family) ? 1 : 2),
+      memory_gib: number(attrs["memoryInGb"]),
+      gpus: gpus === null || gpus === 0 ? null : gpus,
+    };
+  }
+  // An eco server's threads, per CPU. Its memory is the buyer's choice: it is in each price's `variant`.
+  if (platform === "ovheco") {
+    const threads = number(attrs["cpu.threads"]);
+    return {
+      family,
+      size,
+      architecture: architectureOf(attrs, family, platform),
+      vcpu: threads === null ? null : threads * (number(attrs["cpu.number"]) ?? 1),
+      memory_gib: null,
+      gpus: gpus === null || gpus === 0 ? null : gpus,
+    };
+  }
   return {
     family,
     size,
@@ -484,7 +572,9 @@ export function specsOf(name: string, attrs: Record<string, string>, platform = 
         attrs["vCpu"] ??
         attrs["CpuCoreCount"] ??
         attrs["cores"] ??
-        attrs["guestCpus"],
+        attrs["guestCpus"] ??
+        attrs["cpu.cores"] ??
+        attrs["cpu"],
     ),
     memory_gib:
       memoryMb !== null
@@ -494,7 +584,9 @@ export function specsOf(name: string, attrs: Record<string, string>, platform = 
               attrs["memoryGib"] ??
               attrs["MemorySize"] ??
               attrs["memoryInGb"] ??
-              attrs["ram"],
+              attrs["ram"] ??
+              attrs["memory.size"] ??
+              attrs["RAM.Size"],
           ),
     gpus: gpus === null || gpus === 0 ? null : gpus,
   };
@@ -621,6 +713,95 @@ function detailsOf(platform: string, name: string, attrs: Record<string, string>
       storage: ssds ? `${ssds} x Local SSD` : "",
       category: GCP_CATEGORIES[series] ?? "",
       current_generation: attrs["deprecated"] === undefined,
+    };
+  }
+  if (platform === "hetzner") {
+    return {
+      gpu_memory_gib: null,
+      gpu_model: "",
+      processor: usable(attrs["cpu"]),
+      clock_speed_ghz: null,
+      network_performance: "",
+      network_gbps: null,
+      storage: attrs["diskInGb"] ? `${attrs["diskInGb"]} GB ${attrs["diskType"] ?? ""}`.trim() : "",
+      category: usable(attrs["category"]),
+      current_generation: true,
+    };
+  }
+  if (platform === "hetznerauction") {
+    const mbit = number(attrs["Bandwidth"]);
+    return {
+      gpu_memory_gib: null,
+      gpu_model: "",
+      processor: usable(attrs["CPU.Name"]),
+      clock_speed_ghz: null,
+      network_performance: mbit === null ? "" : `${mbit / 1000} Gbit/s`,
+      network_gbps: mbit === null ? null : mbit / 1000,
+      storage: usable(attrs["Information"]),
+      category: "Server Auction",
+      current_generation: true,
+    };
+  }
+  if (platform === "ovh") {
+    const mbit = number(attrs["bandwidth.level"]);
+    const perGpu = number(attrs["gpu.memory.size"]);
+    const count = number(attrs["gpu.number"]);
+    return {
+      gpu_memory_gib: perGpu !== null && count ? perGpu * count : null,
+      gpu_model: usable(attrs["gpu.model"]),
+      processor: "",
+      clock_speed_ghz: number(attrs["cpu.frequency"]),
+      network_performance: mbit === null ? "" : `${mbit / 1000} Gbit/s`,
+      network_gbps: mbit === null ? null : mbit / 1000,
+      storage: usable(attrs["storage.disks"]),
+      category: usable(attrs["brick"]),
+      current_generation: true,
+    };
+  }
+  if (platform === "ovheco") {
+    return {
+      gpu_memory_gib: null,
+      gpu_model: "",
+      processor: [attrs["cpu.brand"], attrs["cpu.model"]].filter(Boolean).join(" "),
+      clock_speed_ghz: number(attrs["cpu.frequency"]),
+      network_performance: "",
+      network_gbps: null,
+      // The buyer's choice: it is in each price's `variant`.
+      storage: "",
+      category: usable(attrs["range"]),
+      current_generation: true,
+    };
+  }
+  if (platform === "oracle") {
+    const processor = /Processor: ([^.]+)/.exec(attrs["description"] ?? "")?.[1];
+    return {
+      gpu_memory_gib: number(attrs["gpuMemoryInGb"]),
+      gpu_model: "",
+      processor: usable(processor),
+      clock_speed_ghz: null,
+      network_performance: "",
+      network_gbps: null,
+      storage: usable(attrs["localDisk"]),
+      // The shape's second part: `Standard`, `DenseIO`, `GPU`, `Optimized3`.
+      category: name.split(".")[1] ?? "",
+      current_generation: true,
+    };
+  }
+  if (platform === "ibm") {
+    const mbit = number(attrs["bandwidth"]);
+    const perGpu = number(attrs["gpu_memory"]);
+    const count = number(attrs["gpu_count"]);
+    const mhz = number(attrs["freqency"]); // IBM's spelling
+    return {
+      gpu_memory_gib: perGpu !== null && count ? perGpu * count : null,
+      gpu_model: usable(attrs["gpu_model"]),
+      processor: usable(attrs["vcpu_manufacturer"]),
+      clock_speed_ghz: mhz === null ? null : mhz / 1000,
+      network_performance: mbit === null ? "" : `${mbit / 1000} Gbit/s`,
+      network_gbps: mbit === null ? null : mbit / 1000,
+      storage: usable(attrs["disks"]),
+      category: usable(attrs["family"]),
+      current_generation: attrs["status"] === undefined || attrs["status"] === "current",
     };
   }
   return {

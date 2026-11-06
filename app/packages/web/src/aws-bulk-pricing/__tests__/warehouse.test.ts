@@ -175,6 +175,95 @@ function reducedFrom(
 }
 
 describe("other clouds", () => {
+  it("reads specs under Hetzner's, OVHcloud's, Oracle's and IBM's keys", () => {
+    expect(
+      specsOf(
+        "cax11",
+        { cores: "2", memoryInGb: "4", architecture: "arm64", cpu: "Ampere" },
+        "hetzner",
+      ),
+    ).toMatchObject({ family: "cax", vcpu: 2, memory_gib: 4, architecture: "arm64" });
+    expect(
+      specsOf("3107671", { "CPU.Name": "Intel Core i7-7700", "RAM.Size": "64" }, "hetznerauction"),
+    ).toMatchObject({ vcpu: null, memory_gib: 64, architecture: "x86_64" });
+    expect(
+      specsOf("t1-45", { "cpu.cores": "8", "memory.size": "45", "gpu.number": "1" }, "ovh"),
+    ).toMatchObject({ vcpu: 8, memory_gib: 45, gpus: 1, architecture: "x86_64" });
+    // Memory is a choice in each price's variant.
+    expect(
+      specsOf("24sys01", { "cpu.threads": "12", "cpu.number": "1", range: "soyoustart" }, "ovheco"),
+    ).toMatchObject({ family: "24sys", vcpu: 12, memory_gib: null });
+    // An OCPU is two vCPUs, or one on A1; an A10 is a GPU, not an Arm CPU.
+    expect(
+      specsOf("VM.Standard.E5.Flex-2-16", { ocpus: "2", memoryInGb: "16" }, "oracle"),
+    ).toMatchObject({ vcpu: 4, memory_gib: 16, architecture: "x86_64" });
+    expect(
+      specsOf("VM.Standard.A1.Flex-4-24", { ocpus: "4", memoryInGb: "24" }, "oracle"),
+    ).toMatchObject({ vcpu: 4, architecture: "arm64" });
+    expect(
+      specsOf("VM.GPU.A10.1", { ocpus: "15", memoryInGb: "240", gpuCount: "1" }, "oracle"),
+    ).toMatchObject({ vcpu: 30, gpus: 1, architecture: "x86_64" });
+    expect(
+      specsOf(
+        "gx3-16x80x1l4",
+        { cpu: "16", ram: "80", gpu_count: "1", vcpu_architecture: "amd64" },
+        "ibm",
+      ),
+    ).toMatchObject({ family: "gx3", vcpu: 16, memory_gib: 80, gpus: 1, architecture: "x86_64" });
+  });
+
+  it("prices a monthly rental from its term, with no on-demand rows", () => {
+    const table = [
+      "gra",
+      "regionCode",
+      "ram-32g",
+      "1mo",
+      "Rental",
+      "All Upfront",
+      "OVHcloud Data Center",
+      "locationType",
+      "range",
+      "soyoustart",
+      "Gravelines",
+      "name",
+    ];
+    const rows = instanceRows(
+      {
+        compression_table: table,
+        platform: "ovheco",
+        offer: "OVHEco",
+        name: "24sys01",
+        variant_keys: ["memory"],
+        regions: [
+          [
+            0,
+            [
+              [1, 0],
+              [7, 6],
+              [11, 10],
+            ],
+          ],
+        ],
+        variants: [[2]],
+        reserved_terms: [[3, 4, 5]],
+        instance: [[[8, 9]], [], 0, [], [[1700000000, 0, 0, 0, 0, 73]], 1700000000, null],
+      },
+      "ovheco",
+    );
+    expect(rows.instanceType).toMatchObject({ family: "24sys", category: "soyoustart" });
+    const [rent] = rows.prices;
+    expect(rows.prices).toHaveLength(1);
+    expect(rent).toMatchObject({
+      pricing: "reserved",
+      lease: "1mo",
+      offering_class: "Rental",
+      hourly_usd: 0,
+      upfront_usd: 73,
+      effective_hourly_usd: 0.1,
+      current: true,
+    });
+  });
+
   it("reads a RunPod GPU type as one GPU, priced per GPU, in `global`", () => {
     const rows = instanceRows(
       reducedFrom(RUNPOD_BUNDLE, "runpod", "NVIDIA H100 80GB HBM3"),
@@ -407,6 +496,18 @@ describe("spec parsing", () => {
       size: "standard-4-lssd",
     });
     expect(familyAndSize("e2-micro", "gcp")).toEqual({ family: "e2", size: "micro" });
+    expect(familyAndSize("cx23", "hetzner")).toEqual({ family: "cx", size: "23" });
+    expect(familyAndSize("3107671", "hetznerauction")).toEqual({ family: "", size: "" });
+    expect(familyAndSize("t1-le-45", "ovh")).toEqual({ family: "t1-le", size: "45" });
+    expect(familyAndSize("25sk60b", "ovheco")).toEqual({ family: "25sk", size: "60" });
+    expect(familyAndSize("24skgame01-apac", "ovheco")).toEqual({ family: "24skgame", size: "01" });
+    expect(familyAndSize("vx3d-22x352-spl", "ibm")).toEqual({ family: "vx3d", size: "22x352-spl" });
+    expect(familyAndSize("VM.Standard.E5.Flex-2-16", "oracle")).toEqual({
+      family: "VM.Standard.E5.Flex",
+      size: "2-16",
+    });
+    expect(familyAndSize("BM.GPU.H100.8", "oracle")).toEqual({ family: "BM.GPU.H100", size: "8" });
+    expect(familyAndSize("gx3-16x80x1l4", "ibm")).toEqual({ family: "gx3", size: "16x80x1l4" });
   });
 
   it("tells ARM from x86", () => {

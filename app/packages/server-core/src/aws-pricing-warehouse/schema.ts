@@ -1,7 +1,7 @@
 /**
  * The instance pricing warehouse: the AWS bulk price lists (and EC2 spot
  * prices), RunPod's GPU and CPU pod prices, Alibaba Cloud ECS, Azure virtual
- * machine and Google Cloud Compute Engine prices as ClickHouse tables, for instances.infrawrench.com's chat and
+ * machine, Google Cloud Compute Engine, Hetzner, OVHcloud, Oracle Cloud and IBM Cloud prices as ClickHouse tables, for instances.infrawrench.com's chat and
  * `/api/v1/instance-pricing` to query. (The module keeps its `aws-` name from
  * before the other clouds.)
  *
@@ -110,37 +110,37 @@ const SOURCE = col(
 const PLATFORM = col(
   "platform",
   "LowCardinality(String)",
-  "Platform. AWS services: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift` (EC2 spot prices are `ec2`). Other clouds: `runpod` (RunPod GPU types and CPU pods), `alibaba` (Alibaba Cloud ECS), `azure` (Azure virtual machines) and `gcp` (Google Cloud Compute Engine).",
+  "Platform. AWS services: `ec2`, `rds`, `elasticache`, `opensearch`, `redshift`, `docdb`, `neptune`, `memorydb`, `dax`, `sagemaker`, `emr` or `gamelift` (EC2 spot prices are `ec2`). Other clouds: `runpod` (RunPod GPU types and CPU pods), `alibaba` (Alibaba Cloud ECS), `azure` (Azure virtual machines) and `gcp` (Google Cloud Compute Engine). Also `hetzner` (Hetzner cloud servers), `hetznerauction` (Hetzner Server Auction listings), `ovh` (OVHcloud Public Cloud flavors), `ovheco` (OVHcloud Kimsufi, So you Start, Rise and Advance servers), `oracle` (Oracle Cloud compute shapes) and `ibm` (IBM Cloud Virtual Server for VPC profiles).",
 );
 const INSTANCE_TYPE = col(
   "instance_type",
   "String",
-  "The instance type as the provider names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`; Alibaba `ecs.g7.large`; Azure VM sizes by ARM name such as `Standard_D2s_v3`; Google Cloud machine types such as `n2-standard-2`; RunPod GPU type ids such as `NVIDIA H100 80GB HBM3` and CPU pod ids such as `cpu3c-2-4` (flavor, vCPUs, GB of memory).",
+  "The instance type as the provider names it on that platform, e.g. `m7g.large`, `db.r6g.xlarge`, `cache.t4g.micro`, `r6g.large.search`, `ml.g5.xlarge`; Alibaba `ecs.g7.large`; Azure VM sizes by ARM name such as `Standard_D2s_v3`; Google Cloud machine types such as `n2-standard-2`; RunPod GPU type ids such as `NVIDIA H100 80GB HBM3` and CPU pod ids such as `cpu3c-2-4` (flavor, vCPUs, GB of memory). Hetzner server types such as `cx23`; a Hetzner Server Auction listing id such as `3107671`, which is one physical server; OVHcloud flavors such as `b3-8` and eco servers such as `24sys01`; Oracle shapes such as `BM.GPU.H100.8`, with flexible shapes priced at sizes named `<shape>-<ocpus>-<GB>` such as `VM.Standard.E5.Flex-2-16` (not names Oracle uses); IBM profiles such as `bx3d-2x10`.",
 );
 const FAMILY = col(
   "family",
   "LowCardinality(String)",
-  "Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`, `g7` for Alibaba's `ecs.g7.large`, the flavor `cpu3c` for a RunPod CPU pod `cpu3c-2-4`, the Azure series as Azure writes it (`Dsv3` for `Standard_D2s_v3`, `NCads_H100_v5`), the Google Cloud machine series (`n2` for `n2-standard-2`, `c4a`); `''` when the name does not parse (RunPod GPU types, a few Azure oddities).",
+  "Instance family without any platform prefix, e.g. `m7g` for `m7g.large` and `db.m7g.large`, `g7` for Alibaba's `ecs.g7.large`, the flavor `cpu3c` for a RunPod CPU pod `cpu3c-2-4`, the Azure series as Azure writes it (`Dsv3` for `Standard_D2s_v3`, `NCads_H100_v5`), the Google Cloud machine series (`n2` for `n2-standard-2`, `c4a`); `''` when the name does not parse (RunPod GPU types, a few Azure oddities). Hetzner `cx` from `cx23`; OVHcloud `b3` from `b3-8`, `24sys` from `24sys01`; Oracle `VM.Standard.E5.Flex`; IBM `bx3d` from `bx3d-2x10`.",
 );
 const SIZE = col(
   "size",
   "LowCardinality(String)",
-  "Size part of the name: `nano`, `micro`, `small`, `medium`, `large`, `xlarge`, `2xlarge`, ..., `metal`, `metal-48xl`; for a RunPod CPU pod, `<vcpus>-<memory GB>` (`2-4`); for Azure, the vCPUs in the name (`2`, or `64-16` for a constrained-vCPU size); for Google Cloud, the rest of the name after the series (`standard-2`, `highgpu-1g`, `standard-4-lssd`, `micro`); `''` for RunPod GPU types.",
+  "Size part of the name: `nano`, `micro`, `small`, `medium`, `large`, `xlarge`, `2xlarge`, ..., `metal`, `metal-48xl`; for a RunPod CPU pod, `<vcpus>-<memory GB>` (`2-4`); for Azure, the vCPUs in the name (`2`, or `64-16` for a constrained-vCPU size); for Google Cloud, the rest of the name after the series (`standard-2`, `highgpu-1g`, `standard-4-lssd`, `micro`); `''` for RunPod GPU types. Hetzner `23`; OVHcloud `8` from `b3-8`; Oracle `<ocpus>-<GB>` or the OCPUs of a fixed shape; IBM `2x10`.",
 );
 const ARCHITECTURE = col(
   "architecture",
   "LowCardinality(String)",
-  "CPU architecture: `arm64` (AWS Graviton, Apple silicon, Alibaba Yitian and Ampere, Azure Cobalt and Ampere, Google Axion and Ampere) or `x86_64` (Intel, AMD, Hygon); `''` when the provider gives nothing to tell (RunPod). Use this for ARM vs x86 questions.",
+  "CPU architecture: `arm64` (AWS Graviton, Apple silicon, Alibaba Yitian and Ampere, Azure Cobalt and Ampere, Google Axion and Ampere) or `x86_64` (Intel, AMD, Hygon); `''` when the provider gives nothing to tell (RunPod). Use this for ARM vs x86 questions. Hetzner Ampere and Oracle A-series Standard shapes are `arm64`.",
 );
 const VCPU = col(
   "vcpu",
   "Nullable(Float64)",
-  "vCPUs; NULL for RunPod GPU types and for the Azure sizes Azure's pricing calculator gives no specs for (mostly the newest and retired series).",
+  "vCPUs; NULL for RunPod GPU types and for the Azure sizes Azure's pricing calculator gives no specs for (mostly the newest and retired series). Oracle bills by OCPU and this is its vCPUs (two per OCPU, one on A1). For an OVHcloud eco server, its threads. NULL for Hetzner Server Auction listings.",
 );
 const MEMORY = col(
   "memory_gib",
   "Nullable(Float64)",
-  "Memory in GiB (RunPod reports GB); NULL for RunPod GPU types, whose memory is GPU memory (instance_types.gpu_memory_gib), and for Azure sizes without calculator specs.",
+  "Memory in GiB (RunPod reports GB); NULL for RunPod GPU types, whose memory is GPU memory (instance_types.gpu_memory_gib), and for Azure sizes without calculator specs. NULL for OVHcloud eco servers, whose memory is a choice in each price's variant['memory'].",
 );
 const GPUS = col(
   "gpus",
@@ -200,17 +200,17 @@ export const PRICES: Table = {
     col(
       "pricing",
       "LowCardinality(String)",
-      "`on_demand` (Alibaba and Azure: pay-as-you-go; Azure's Spot and Low Priority and Google Cloud's Spot prices are also `on_demand` rows, told apart by variant['priority'] and variant['provisioningModel']), `reserved` (any committed price: AWS reserved instances, Alibaba subscriptions and reserved instances, Azure reservations and savings plans, Google Cloud committed use discounts, RunPod savings plans; see lease, offering_class, purchase_option) or `spot` (EC2 spot only, Linux and Windows, from AWS's spot price feed).",
+      "OVHcloud eco servers have no `on_demand` rows: they are rented by the month, so a month's rent is a `reserved` row (lease `1mo`, offering_class `Rental`), and effective_hourly_usd is the rent over 730 hours. Hetzner's monthly cap is a term the same way (`1mo`, `Monthly Cap`), though Hetzner bills by the hour up to it. `on_demand` (Alibaba and Azure: pay-as-you-go; Azure's Spot and Low Priority and Google Cloud's Spot prices are also `on_demand` rows, told apart by variant['priority'] and variant['provisioningModel']), `reserved` (any committed price: AWS reserved instances, Alibaba subscriptions and reserved instances, Azure reservations and savings plans, Google Cloud committed use discounts, RunPod savings plans; see lease, offering_class, purchase_option) or `spot` (EC2 spot only, Linux and Windows, from AWS's spot price feed).",
     ),
     col(
       "lease",
       "LowCardinality(String)",
-      "Committed term length: `1yr` or `3yr` (AWS, Alibaba reserved instances, Azure savings plans, Google Cloud committed use), `1mo` or `1yr` to `5yr` (Alibaba subscriptions), `1yr`, `3yr`, `5yr` or `10yr` (Azure reservations), `3mo` or `6mo` (RunPod savings plans); `''` for on-demand and spot.",
+      "`1mo` for Hetzner's monthly cap and OVHcloud's monthly plans and rent, `1yr` or `2yr` for prepaying an OVHcloud eco server. Committed term length: `1yr` or `3yr` (AWS, Alibaba reserved instances, Azure savings plans, Google Cloud committed use), `1mo` or `1yr` to `5yr` (Alibaba subscriptions), `1yr`, `3yr`, `5yr` or `10yr` (Azure reservations), `3mo` or `6mo` (RunPod savings plans); `''` for on-demand and spot.",
     ),
     col(
       "offering_class",
       "LowCardinality(String)",
-      "What kind of commitment: AWS reserved instances `standard` or `convertible`; Alibaba `Subscription` or `Reserved Instance`; Azure `Reserved Instance` or `Savings Plan`; Google Cloud `Committed Use`; RunPod `Savings Plan`; `''` otherwise.",
+      "Hetzner `Monthly Cap`; OVHcloud `Monthly`, `Rental` or `Prepaid`; IBM `Reserved`. What kind of commitment: AWS reserved instances `standard` or `convertible`; Alibaba `Subscription` or `Reserved Instance`; Azure `Reserved Instance` or `Savings Plan`; Google Cloud `Committed Use`; RunPod `Savings Plan`; `''` otherwise.",
     ),
     col(
       "purchase_option",

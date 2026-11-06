@@ -123,6 +123,15 @@ describe("oauthSignature", () => {
 });
 
 describe("changesSince", () => {
+  it("never posts Server Auction listings, which come and go all the time", async () => {
+    const ch = {
+      rows: () => {
+        throw new Error("should not query");
+      },
+    } as unknown as ClickHouseHttp;
+    expect(await changesSince(ch, "hetznerauction", "2026-11-05 00:00:00")).toEqual([]);
+  });
+
   /** A warehouse that answers each query by what it selects from. */
   function fake(answers: Record<string, unknown[]>) {
     const queries: string[] = [];

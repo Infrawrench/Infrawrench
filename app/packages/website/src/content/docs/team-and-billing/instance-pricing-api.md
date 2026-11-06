@@ -1,6 +1,6 @@
 ---
 title: Instance pricing SQL API
-description: Query every AWS, Azure, Google Cloud, Alibaba Cloud and RunPod instance type's specs and every on-demand, committed and spot price, with history, in read-only SQL over the HTTP API.
+description: Query every AWS, Azure, Google Cloud, Alibaba Cloud, Oracle Cloud, IBM Cloud, Hetzner, OVHcloud and RunPod instance type's specs and every on-demand, committed and spot price, with history, in read-only SQL over the HTTP API.
 sidebar_order: 9
 ---
 
@@ -9,6 +9,10 @@ You can query the data behind [instances.infrawrench.com](https://instances.infr
 - **AWS**, twelve services: EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune, MemoryDB, DAX, SageMaker, EMR and GameLift (`platform` is the service, for example `ec2`). Built from every published version of the AWS Price List.
 - **Azure Virtual Machines** (`platform = 'azure'`): pay-as-you-go, Spot and Low Priority prices, reservations (1 to 10 years) and savings plans, for every VM size in every Azure region. Changes are tracked from November 2026.
 - **Google Cloud Compute Engine** (`platform = 'gcp'`): Standard and Spot prices and 1- and 3-year committed use discounts for every machine type in every region. History starts in November 2026.
+- **Hetzner** (`platform = 'hetzner'`, and `'hetznerauction'` for Server Auction listings): hourly prices and monthly caps per location, with and without a primary IPv4. History starts in November 2026.
+- **OVHcloud** (`platform = 'ovh'`, and `'ovheco'` for Kimsufi, So you Start, Rise and Advance servers): Public Cloud flavors by pricing zone. Eco servers have no `on_demand` rows, because they are only rented by the month: the rent is a `reserved` row with `lease = '1mo'` and `offering_class = 'Rental'`, and `effective_hourly_usd` is the rent over 730 hours. History starts in November 2026.
+- **Oracle Cloud Compute** (`platform = 'oracle'`): VM and bare metal shapes, the same price in every commercial region (`region = 'global'`). Flexible shapes are priced at a set of sizes. History starts in November 2026.
+- **IBM Cloud Virtual Servers for VPC** (`platform = 'ibm'`): on-demand, Spot, burstable and reserved prices per region. About 90 older profiles show IBM's rate for an hourly reservation, an approximation of their on-demand price. History starts in November 2026.
 - **RunPod** (`platform = 'runpod'`): GPU types, priced per GPU per hour, and CPU pods, in Secure Cloud and Community Cloud, with 3- and 6-month savings plans. History starts in November 2026.
 - **Alibaba Cloud ECS** (`platform = 'alibaba'`): pay-as-you-go, subscription (1 month to 5 years) and reserved instance prices in every region, from its international site, back to May 2018.
 

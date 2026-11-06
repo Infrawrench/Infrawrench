@@ -3,7 +3,7 @@
  *
  * The instances-bundler (github.com/Infrawrench/instances-bundler) publishes one
  * bundle per platform to the `instances-bundles` R2 bucket: every AWS platform,
- * plus RunPod, Alibaba Cloud ECS, Azure and Google Cloud in the same format. A scheduled
+ * plus RunPod, Alibaba Cloud ECS, Azure, Google Cloud, Hetzner, OVHcloud, Oracle Cloud and IBM Cloud in the same format. A scheduled
  * GitHub Action (`scripts/sync-aws-bulk-pricing.ts`) splits each new bundle into
  * one KV value per instance, and `/api/v1/aws-bulk-pricing` serves them.
  *
@@ -27,8 +27,12 @@
  * stays after `ec2`, because its warehouse load takes specs from EC2's.
  *
  * `runpod` (RunPod GPU types and CPU pods), `alibaba` (Alibaba Cloud ECS),
- * `azure` (Azure virtual machines) and `gcp` (Google Cloud Compute Engine
- * machine types) are other clouds, published by the bundler's `other-instances` tool in the
+ * `azure` (Azure virtual machines), `gcp` (Google Cloud Compute Engine machine
+ * types), `hetzner` (Hetzner cloud servers), `hetznerauction` (Hetzner Server
+ * Auction listings), `ovh` (OVHcloud Public Cloud flavors), `ovheco` (OVHcloud's
+ * Kimsufi, So you Start, Rise and Advance servers, which have no on-demand rows:
+ * they are rented by the month, so the rent is a term), `oracle` (Oracle Cloud
+ * compute shapes) and `ibm` (IBM Cloud Virtual Server for VPC profiles) are other clouds, published by the bundler's `other-instances` tool in the
  * same format and bucket, under the same `<platform>-` key prefix. Their
  * bundles always carry `offer` and `variant_keys`, plus a `source_version`
  * that nothing here reads.
@@ -51,6 +55,12 @@ export const PLATFORMS: Readonly<Record<string, string>> = {
   alibaba: "AlibabaECS",
   azure: "AzureVM",
   gcp: "GCPCompute",
+  hetzner: "HetznerCloud",
+  hetznerauction: "HetznerAuction",
+  ovh: "OVHPublicCloud",
+  ovheco: "OVHEco",
+  oracle: "OracleCompute",
+  ibm: "IBMVPC",
 };
 
 /** EC2 bundles predate `offer` and `variant_keys`, so they leave both out. */
