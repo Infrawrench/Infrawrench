@@ -17,18 +17,26 @@
  *
  * Endpoints (Cloudflare API reference, verified 2026-10):
  *   - `GET /accounts/{id}/tokens/permission_groups?name=&scope=`: needs
- *     Account API Tokens Read or Write; `is_selectable` is false for a group
- *     the caller's role cannot grant.
+ *     Account API Tokens Read or Write. `is_selectable` says whether "the
+ *     caller" could pick a group, but Cloudflare documents that "token creation
+ *     performs the authoritative permission check". It is only a hint, so it
+ *     never stops the mint; it only helps explain a refusal.
  *   - `POST /accounts/{id}/tokens`: needs Account API Tokens Write, and the
  *     member must be a Super Administrator or hold API token provisioning.
  *   - `DELETE /accounts/{id}/tokens/{token_id}`.
  */
-import { CloudflareApi } from "./clients/shared.js";
+import { CloudflareApi, formatCloudflareError } from "./clients/shared.js";
 
 /** Name of the temporary token, as it appears in the account's token list. */
 export const BILLING_TOKEN_NAME = "Infrawrench cost sync (temporary)";
 
 const BILLING_READ_GROUP = "Billing Read";
+/**
+ * Used when the listing leaves the group out. Cloudflare calls permission group
+ * IDs stable and group names cosmetic, and uses this ID in its account token
+ * template docs.
+ */
+const BILLING_READ_GROUP_ID = "7cf72faf220841aabcfdfab81c43c4f6";
 const ACCOUNT_SCOPE = "com.cloudflare.api.account";
 /** Long enough for a slow month chunk; short enough that a leaked or undeleted token is moot. */
 const TOKEN_LIFETIME_MS = 60 * 60 * 1000;
@@ -37,7 +45,8 @@ const TOKEN_LIFETIME_MS = 60 * 60 * 1000;
  * Why a billing token could not be minted:
  *   - `scope`: the grant lacks `account-api-tokens.write` (declined on consent,
  *     or connected before the scope was requested).
- *   - `role`: the connecting member's role has no billing access to delegate.
+ *   - `role`: Cloudflare refused a group it had flagged as not selectable, so
+ *     the connecting member likely has no billing access to delegate.
  *   - `provisioning`: the role cannot create account API tokens.
  */
 export type BillingTokenFailure = "scope" | "role" | "provisioning";
@@ -52,12 +61,21 @@ export class BillingTokenError extends Error {
   }
 }
 
-function isAuthStatus(err: unknown): boolean {
-  const status = (err as { status?: unknown }).status;
-  return status === 401 || status === 403;
+function hasStatus(err: unknown, status: number): boolean {
+  return (err as { status?: unknown }).status === status;
 }
 
-async function billingReadGroupId(api: CloudflareApi, accountId: string): Promise<string> {
+function isAuthStatus(err: unknown): boolean {
+  return hasStatus(err, 401) || hasStatus(err, 403);
+}
+
+interface BillingReadGroup {
+  id: string;
+  /** False when Cloudflare flagged the group as not selectable for this caller. */
+  selectable: boolean;
+}
+
+async function billingReadGroup(api: CloudflareApi, accountId: string): Promise<BillingReadGroup> {
   let groups: Array<{ id?: string; name?: string; is_selectable?: boolean }>;
   try {
     groups = await api.collect(
@@ -78,13 +96,7 @@ async function billingReadGroupId(api: CloudflareApi, accountId: string): Promis
   }
   const group = groups.find((g) => g.name === BILLING_READ_GROUP);
   // `is_selectable` is in the API response but not yet in the SDK's types.
-  if (!group?.id || group.is_selectable === false) {
-    throw new BillingTokenError(
-      "the Cloudflare member who connected this account has no billing access to delegate; reconnect as a Super Administrator, Administrator or Billing member",
-      "role",
-    );
-  }
-  return group.id;
+  return { id: group?.id ?? BILLING_READ_GROUP_ID, selectable: group?.is_selectable !== false };
 }
 
 /**
@@ -97,7 +109,7 @@ export async function withBillingToken<T>(
   accountId: string,
   fn: (billingApi: CloudflareApi) => Promise<T>,
 ): Promise<T> {
-  const groupId = await billingReadGroupId(api, accountId);
+  const group = await billingReadGroup(api, accountId);
   let created: { id?: string; value?: string };
   try {
     created = await api.cf.accounts.tokens.create({
@@ -106,7 +118,7 @@ export async function withBillingToken<T>(
       policies: [
         {
           effect: "allow",
-          permission_groups: [{ id: groupId }],
+          permission_groups: [{ id: group.id }],
           resources: { [`${ACCOUNT_SCOPE}.${accountId}`]: "*" },
         },
       ],
@@ -114,9 +126,18 @@ export async function withBillingToken<T>(
       expires_on: new Date(Date.now() + TOKEN_LIFETIME_MS).toISOString().replace(/\.\d{3}Z$/, "Z"),
     });
   } catch (err) {
+    const detail = formatCloudflareError(err);
+    // A 400 only counts as a refusal when the listing already warned about the
+    // group; otherwise it is a malformed request and should surface as one.
+    if (!group.selectable && (isAuthStatus(err) || hasStatus(err, 400))) {
+      throw new BillingTokenError(
+        `Cloudflare refused to create a Billing Read token for this connection, so the member who connected it likely has no billing access to delegate; reconnect as a Super Administrator or a member with billing access and API token provisioning, or paste an API token with Billing Read (Cloudflare said: ${detail})`,
+        "role",
+      );
+    }
     if (isAuthStatus(err)) {
       throw new BillingTokenError(
-        "the Cloudflare member who connected this account cannot create account API tokens; a Super Administrator can grant API token provisioning, or reconnect as one",
+        `the Cloudflare member who connected this account cannot create account API tokens; a Super Administrator can grant API token provisioning, or reconnect as one (Cloudflare said: ${detail})`,
         "provisioning",
       );
     }

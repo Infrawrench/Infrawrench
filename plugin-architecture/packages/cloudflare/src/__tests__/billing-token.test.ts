@@ -79,17 +79,47 @@ describe("withBillingToken", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("reports a role without billing when Billing Read is not selectable", async () => {
-    const { api } = tokenApi({
+  it("still mints when Billing Read is flagged as not selectable, since create decides", async () => {
+    const { api, create } = tokenApi({
       groups: [{ id: "grp-billing", name: "Billing Read", is_selectable: false }],
     });
+    await expect(withBillingToken(api, "acct-1", async () => "ok")).resolves.toBe("ok");
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the stable group id when the listing leaves Billing Read out", async () => {
+    const { api, create } = tokenApi({ groups: [] });
+    await expect(withBillingToken(api, "acct-1", async () => "ok")).resolves.toBe("ok");
+    const params = (create.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(params["policies"]).toMatchObject([
+      { permission_groups: [{ id: "7cf72faf220841aabcfdfab81c43c4f6" }] },
+    ]);
+  });
+
+  it.each([400, 403])(
+    "reports the role when create answers %i for a group flagged as not selectable",
+    async (code) => {
+      const { api } = tokenApi({
+        groups: [{ id: "grp-billing", name: "Billing Read", is_selectable: false }],
+        createError: status(code),
+      });
+      const err = await withBillingToken(api, "acct-1", async () => "ok").catch((e: unknown) => e);
+      expect((err as BillingTokenError).reason).toBe("role");
+      expect((err as Error).message).toContain("Cloudflare said:");
+      expect((err as Error).message).toContain("paste an API token");
+    },
+  );
+
+  it("does not disguise a 400 on a selectable group as a permission problem", async () => {
+    const { api } = tokenApi({ createError: status(400) });
     const err = await withBillingToken(api, "acct-1", async () => "ok").catch((e: unknown) => e);
-    expect((err as BillingTokenError).reason).toBe("role");
+    expect(err).not.toBeInstanceOf(BillingTokenError);
   });
 
   it("reports missing token provisioning when the create is forbidden", async () => {
     const { api } = tokenApi({ createError: status(403) });
     const err = await withBillingToken(api, "acct-1", async () => "ok").catch((e: unknown) => e);
     expect((err as BillingTokenError).reason).toBe("provisioning");
+    expect((err as Error).message).toContain("Cloudflare said:");
   });
 });
