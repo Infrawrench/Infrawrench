@@ -16,16 +16,7 @@ import {
 } from "@/lib/chat/types";
 import { localePath } from "@/lib/i18n/locales";
 import { CLOUDS, CLOUD_IDS } from "@/lib/platforms";
-import {
-  ArrowRightIcon,
-  ArrowUpIcon,
-  BarChartIcon,
-  BellIcon,
-  CpuIcon,
-  ServerIcon,
-  StopIcon,
-  TableIcon,
-} from "../icons";
+import { ArrowUpIcon, BarChartIcon, BellIcon, CpuIcon, StopIcon, TableIcon } from "../icons";
 import { Markdown } from "./Markdown";
 import { ViewCard } from "./ViewCard";
 
@@ -460,19 +451,20 @@ export function ChatHome() {
       <div className="mt-6">
         <Suggestions onPick={(text) => start(text)} />
       </div>
-      <div className="mt-10 flex flex-wrap justify-center gap-2">
-        {CLOUD_IDS.map((cloud) => (
-          <Link
-            key={cloud}
-            href={localePath(locale, `/${cloud}`)}
-            className="group inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm text-ink-2 transition-colors hover:border-accent hover:text-ink"
-          >
-            <ServerIcon className="h-4 w-4 text-ink-3 group-hover:text-accent" />
-            {gt("Browse {provider} instances", { provider: CLOUDS[cloud].label })}
-            <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5" />
-          </Link>
+      <p className="mt-10 text-center text-sm text-ink-3">
+        <strong className="font-semibold text-ink-2">{gt("Browse Instances:")}</strong>{" "}
+        {CLOUD_IDS.map((cloud, i) => (
+          <span key={cloud}>
+            {i > 0 && " | "}
+            <Link
+              className="whitespace-nowrap text-accent hover:text-accent-hover"
+              href={localePath(locale, `/${cloud}`)}
+            >
+              {CLOUDS[cloud].label}
+            </Link>
+          </span>
         ))}
-      </div>
+      </p>
     </main>
   );
 }
