@@ -115,14 +115,14 @@ function CyclingService() {
         <span
           key={`out-${previous}`}
           aria-hidden="true"
-          className="absolute top-0 left-0 animate-[service-out_0.6s_ease-in-out_forwards]"
+          className="absolute top-0 start-0 animate-[service-out_0.6s_ease-in-out_forwards]"
         >
           {SERVICES[previous]}
         </span>
       )}
       <span
         key={`in-${i}`}
-        className={`absolute top-0 left-0 ${previous !== null ? "animate-[service-in_0.6s_ease-in-out]" : ""}`}
+        className={`absolute top-0 start-0 ${previous !== null ? "animate-[service-in_0.6s_ease-in-out]" : ""}`}
       >
         {SERVICES[i]}
       </span>
@@ -148,7 +148,7 @@ function Suggestions({ onPick }: { onPick: (text: string) => void }) {
           <button
             type="button"
             onClick={() => onPick(text)}
-            className="group flex h-full w-full items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left text-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md focus-visible:outline-2 focus-visible:outline-accent"
+            className="group flex h-full w-full items-start gap-3 rounded-xl border border-line bg-surface p-4 text-start text-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-md focus-visible:outline-2 focus-visible:outline-accent"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-ink-3 transition-colors group-hover:bg-accent-fill group-hover:text-white">
               <Icon className="h-4 w-4" />
@@ -213,6 +213,8 @@ function Composer({
       <textarea
         ref={ref}
         rows={1}
+        // Follows what is typed, but "auto" on an empty box would mean left to right.
+        dir={text ? "auto" : undefined}
         value={text}
         // The landing page is a search box; focusing it is the expected start.
         autoFocus={autoFocus}
@@ -287,7 +289,7 @@ function ViewPlaceholder({ title }: { title: string }) {
     <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-sm">
       <header className="border-b border-line px-3 py-2.5 font-semibold">{title}</header>
       <div className="flex h-48 items-center justify-center text-sm text-ink-3">
-        <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-accent" />
+        <span className="me-2 h-2 w-2 animate-pulse rounded-full bg-accent" />
         {gt("Loading…")}
       </div>
     </section>
@@ -299,7 +301,10 @@ function Message({ message }: { message: UiMessage }) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <p className="max-w-[85%] rounded-2xl rounded-br-md border border-line bg-surface-2 px-4 py-2.5 whitespace-pre-wrap text-ink">
+        <p
+          dir="auto"
+          className="max-w-[85%] rounded-2xl rounded-ee-md border border-line bg-surface-2 px-4 py-2.5 whitespace-pre-wrap text-ink"
+        >
           {textOf(message)}
         </p>
       </div>
@@ -460,7 +465,7 @@ export function ChatHome() {
           >
             <ServerIcon className="h-4 w-4 text-ink-3 group-hover:text-accent" />
             {gt("Browse {provider} instances", { provider: CLOUDS[cloud].label })}
-            <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            <ArrowRightIcon className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5" />
           </Link>
         ))}
       </div>

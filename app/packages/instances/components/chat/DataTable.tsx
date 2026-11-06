@@ -186,7 +186,7 @@ export function DataTable({
             {gt("Columns")}
           </button>
           {picker && (
-            <div className="absolute right-0 z-30 mt-1 max-h-72 w-56 overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-lg">
+            <div className="absolute end-0 z-30 mt-1 max-h-72 w-56 overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-lg">
               {columns.map((c) => (
                 <label
                   key={c.index}
@@ -232,7 +232,7 @@ export function DataTable({
                           ? "descending"
                           : "none"
                     }
-                    className={`px-3 pt-2 pb-1 font-semibold whitespace-nowrap ${c.numeric ? "text-right" : "text-left"}`}
+                    className={`px-3 pt-2 pb-1 font-semibold whitespace-nowrap ${c.numeric ? "text-end" : "text-start"}`}
                   >
                     <button
                       type="button"
@@ -257,7 +257,7 @@ export function DataTable({
                     }}
                     placeholder={c.numeric ? gt("e.g. <0.1") : gt("Filter")}
                     aria-label={gt("Filter {column}", { column: c.label })}
-                    className={`w-full min-w-16 rounded border border-line bg-surface px-1.5 py-1 text-base font-normal outline-none sm:text-xs placeholder:text-ink-3 focus:border-accent ${c.numeric ? "text-right" : ""}`}
+                    className={`w-full min-w-16 rounded border border-line bg-surface px-1.5 py-1 text-base font-normal outline-none sm:text-xs placeholder:text-ink-3 focus:border-accent ${c.numeric ? "text-end" : ""}`}
                   />
                 </th>
               ))}
@@ -275,9 +275,9 @@ export function DataTable({
                 {shown.map((c) => (
                   <td
                     key={c.index}
-                    className={`px-3 py-1.5 whitespace-nowrap ${c.numeric ? "text-right tabular-nums" : ""}`}
+                    className={`px-3 py-1.5 whitespace-nowrap ${c.numeric ? "text-end tabular-nums" : ""}`}
                   >
-                    {render(c, row)}
+                    <bdi>{render(c, row)}</bdi>
                   </td>
                 ))}
               </tr>

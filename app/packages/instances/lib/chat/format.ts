@@ -1,3 +1,4 @@
+import { isolateCurrency } from "../format";
 import type { Cell, ColumnFormat, QueryResult, StoredView, ViewColumn } from "./types";
 
 /** A result column with how to show it. */
@@ -84,12 +85,15 @@ export interface Units {
 function usd(value: number, locale: string): string {
   const abs = Math.abs(value);
   const digits = abs === 0 ? 2 : abs < 0.01 ? 5 : abs < 1 ? 4 : abs < 1000 ? 2 : 0;
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: Math.min(2, digits),
-    maximumFractionDigits: digits,
-  }).format(value);
+  return isolateCurrency(
+    new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: Math.min(2, digits),
+      maximumFractionDigits: digits,
+    }).format(value),
+    locale,
+  );
 }
 
 export function formatCell(

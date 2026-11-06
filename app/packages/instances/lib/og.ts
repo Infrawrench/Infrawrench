@@ -3,16 +3,32 @@ import logo from "./og-logo.png?inline";
 
 export { logo };
 
-/** Inter has no CJK glyphs; these carry Japanese and Chinese, with Inter still drawing the Latin. */
-export const CJK_FAMILIES: Readonly<Record<string, string>> = {
+/** Inter is Latin only; these carry the other scripts, with Inter still drawing the Latin. */
+const SCRIPT_FAMILIES: Readonly<Record<string, string>> = {
   ja: "Noto Sans JP",
   zh: "Noto Sans SC",
+  he: "Noto Sans Hebrew",
+  // Not Noto: Satori misplaces the dots of the Noto Arabic faces ("في" draws as "فى").
+  ar: "Cairo",
+  hi: "Noto Sans Devanagari",
 };
+
+/**
+ * The card's root type styles in `locale`. Cairo's line box is far taller than
+ * Inter's, which would push the card's contents out of it.
+ */
+export function cardType(locale: string): { fontFamily: string; lineHeight?: number } {
+  const script = SCRIPT_FAMILIES[locale];
+  return {
+    fontFamily: script ? `Inter, "${script}"` : "Inter",
+    ...(locale === "ar" ? { lineHeight: 1.25 } : {}),
+  };
+}
 
 /**
  * Faces of one family from Google Fonts, which serves TTF (what Satori reads)
  * to non-browser clients. `text` subsets the font to the glyphs the card
- * uses, which keeps a CJK face to a few kilobytes. Cached at the edge.
+ * uses, which keeps a script's face to a few kilobytes. Cached at the edge.
  */
 async function loadFamily(family: string, text?: string) {
   const query = `family=${encodeURIComponent(family)}:wght@400;600;800${text ? `&text=${encodeURIComponent(text)}` : ""}`;
@@ -34,13 +50,13 @@ async function loadFamily(family: string, text?: string) {
   );
 }
 
-/** The card's fonts: `text` is every string it draws, for the CJK subset. */
+/** The card's fonts: `text` is every string it draws, for the script's subset. */
 export async function loadFonts(locale: string, text: string) {
   try {
-    const cjk = CJK_FAMILIES[locale];
+    const script = SCRIPT_FAMILIES[locale];
     const [latin, extra] = await Promise.all([
       loadFamily("Inter"),
-      cjk ? loadFamily(cjk, text) : Promise.resolve([]),
+      script ? loadFamily(script, text) : Promise.resolve([]),
     ]);
     return [...latin, ...extra];
   } catch {

@@ -1,5 +1,6 @@
 import { msg } from "gt-react";
 import type { ReservedTerm } from "./decode";
+import { localeDir } from "./i18n/locales";
 import type { Translate } from "./i18n/server";
 
 /** Labels are `msg()` sources: translate them with `useDataString()` or a server `Translate`. */
@@ -26,18 +27,30 @@ export interface Money {
 export const USD: Money = { code: "USD", rate: 1 };
 
 /**
+ * In a right-to-left language, bidi turns a lettered currency symbol inside out
+ * ("US$" reads "$US"); an isolate keeps it whole.
+ */
+export function isolateCurrency(amount: string, locale: string): string {
+  if (localeDir(locale) !== "rtl") return amount;
+  return amount.replace(/[A-Za-z]+\$/, (symbol) => `\u2066${symbol}\u2069`);
+}
+
+/**
  * A USD amount in `money`, written the way `locale` writes money, with more
  * decimals for small amounts so sub-cent hourly prices stay readable.
  */
 export function formatMoney(usd: number, money: Money = USD, locale = "en"): string {
   const value = usd * money.rate;
   const digits = value !== 0 && Math.abs(value) < 1 ? 4 : Math.abs(value) < 100 ? 3 : 2;
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: money.code,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: digits,
-  }).format(value);
+  return isolateCurrency(
+    new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: money.code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: digits,
+    }).format(value),
+    locale,
+  );
 }
 
 /** The price over `duration`, or `null` when there is none; callers say "N/A" in their language. */

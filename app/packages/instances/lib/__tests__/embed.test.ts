@@ -40,3 +40,26 @@ describe("the embeds' cookie jar", () => {
     expect(document.cookie).toBe("generaltranslation.locale=de; other=1");
   });
 });
+
+describe("the site's cookies in a frame", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function load(framed: boolean) {
+    const document = { cookie: "real=1" } as { cookie: string };
+    const self = {};
+    vi.stubGlobal("document", document);
+    vi.stubGlobal("window", { self, top: framed ? {} : self });
+    vi.resetModules();
+    await import("../frame-cookies");
+    document.cookie = "generaltranslation.locale=he;path=/";
+    return document.cookie;
+  }
+
+  it("stay in memory inside a frame, where a cross-site page cannot write them", async () => {
+    expect(await load(true)).toBe("generaltranslation.locale=he");
+  });
+
+  it("are left alone in a top-level page", async () => {
+    expect(await load(false)).toBe("generaltranslation.locale=he;path=/");
+  });
+});

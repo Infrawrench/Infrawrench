@@ -1,5 +1,7 @@
 "use client";
 
+// First: gt-react reads the locale cookie as soon as this module runs.
+import "@/lib/frame-cookies";
 import { GTProvider, initializeGT } from "gt-react";
 import gtConfig from "@/gt.config.json";
 import loadTranslations from "@/lib/i18n/load-translations";

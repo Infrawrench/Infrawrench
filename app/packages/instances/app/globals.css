@@ -84,6 +84,23 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* SQL and other code read left to right on a Hebrew or Arabic page. */
+code,
+pre {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+pre {
+  text-align: left;
+}
+
+/* Tracking pulls Arabic's joined letters and Devanagari's headstroke apart. */
+:lang(ar) :not(.nav-logo-text),
+:lang(hi) :not(.nav-logo-text) {
+  letter-spacing: normal !important;
+}
+
 /* A page that fits the window (the shared view at /v/<id>): the body is
    exactly the viewport, the page column hands its height to the main element,
    and only the table or chart inside it scrolls, so there is never a second
@@ -219,7 +236,7 @@ a.nav-logo:hover .nav-logo-sub {
 .skip-link {
   position: fixed;
   top: 8px;
-  left: 8px;
+  inset-inline-start: 8px;
   z-index: 100;
   padding: 10px 16px;
   border: 1px solid #2563eb;

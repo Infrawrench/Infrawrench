@@ -4,7 +4,7 @@ import { Footer } from "@/components/Footer";
 import { I18nProvider } from "@/components/I18nProvider";
 import { Nav } from "@/components/Nav";
 import loadTranslations from "@/lib/i18n/load-translations";
-import { DEFAULT_LOCALE, isLocale } from "@/lib/i18n/locales";
+import { DEFAULT_LOCALE, isLocale, localeDir } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 import "../globals.css";
 
@@ -37,7 +37,7 @@ export default async function RootLayout({
   const locale = await resolveLocale(params);
   const translations = { [locale]: await loadTranslations(locale) };
   return (
-    <html lang={locale}>
+    <html lang={locale} dir={localeDir(locale)}>
       <body className="flex min-h-screen flex-col">
         <I18nProvider locale={locale} translations={translations}>
           <Nav />

@@ -54,7 +54,7 @@ export function pagesSitemap(): string {
 }
 
 /**
- * One service's listing and every instance page under it. About 6 x 1,950
+ * One service's listing and every instance page under it. About 9 x 1,950
  * URLs for the largest (SageMaker), well inside the 50,000-URL limit.
  */
 export function platformSitemap(platform: string, instances: string[]): string {

@@ -2,8 +2,9 @@ import { msg } from "gt-react";
 import { ImageResponse } from "next/og";
 import { gpuCount, isGpuType, specs } from "@/lib/attributes";
 import { formatDate, formatMoney, leaseLabel } from "@/lib/format";
-import { isLocale } from "@/lib/i18n/locales";
-import { CJK_FAMILIES, loadFonts, logo } from "@/lib/og";
+import { isLocale, localeDir } from "@/lib/i18n/locales";
+import { cardType, loadFonts, logo } from "@/lib/og";
+import { cardText } from "@/lib/og-text";
 import { getTranslator, type Translate } from "@/lib/i18n/server";
 import { loadInstance } from "@/lib/load";
 import { latestAttributes, spotSystem, type InstanceModel } from "@/lib/model";
@@ -278,6 +279,12 @@ export default async function Image({
       chart?.years.map((y) => y.label).join(""),
   );
 
+  // Hebrew and Arabic mirror the card; the price chart itself runs left to right.
+  const rtl = localeDir(locale) === "rtl";
+  const row = rtl ? "row-reverse" : "row";
+  // Tracking pulls Arabic's joined letters and Devanagari's headstroke apart.
+  const tracking = (px: number) => (locale === "ar" || locale === "hi" ? 0 : px);
+
   return new ImageResponse(
     <div
       style={{
@@ -288,11 +295,18 @@ export default async function Image({
         padding: "48px 56px",
         background: C.bg,
         color: C.ink,
-        fontFamily: CJK_FAMILIES[locale] ? `Inter, "${CJK_FAMILIES[locale]}"` : "Inter",
+        ...cardType(locale),
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: row,
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: row, alignItems: "center", gap: 14 }}>
           <img src={logo} width={40} height={40} style={{ borderRadius: 9 }} />
           <div style={{ display: "flex", fontSize: 28, fontWeight: 800, letterSpacing: -1 }}>
             {/* i18n-ignore: product name */}
@@ -309,7 +323,7 @@ export default async function Image({
               padding: "4px 14px",
             }}
           >
-            {text.instances}
+            {cardText(locale, text.instances)}
           </div>
         </div>
         <div style={{ display: "flex", fontSize: 20, color: C.ink3 }}>
@@ -318,7 +332,7 @@ export default async function Image({
         </div>
       </div>
 
-      <div style={{ display: "flex", flex: 1, marginTop: 36, gap: 40 }}>
+      <div style={{ display: "flex", flexDirection: row, flex: 1, marginTop: 36, gap: 40 }}>
         <div style={{ display: "flex", flexDirection: "column", width: 520 }}>
           <div
             style={{
@@ -344,24 +358,37 @@ export default async function Image({
           </div>
           {family && (
             <div style={{ display: "flex", fontSize: 24, color: C.ink2, marginTop: 2 }}>
-              {family}
+              {cardText(locale, family)}
             </div>
           )}
-          <div style={{ display: "flex", flexWrap: "wrap", marginTop: 28, rowGap: 22 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: row,
+              flexWrap: "wrap",
+              marginTop: 28,
+              rowGap: 22,
+            }}
+          >
             {rows.map(([label, value]) => (
               <div
                 key={label}
-                style={{ display: "flex", flexDirection: "column", width: 260, paddingRight: 16 }}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  width: 260,
+                  [rtl ? "paddingLeft" : "paddingRight"]: 16,
+                }}
               >
                 <div
                   style={{
                     display: "flex",
                     fontSize: 16,
                     color: C.ink3,
-                    letterSpacing: 1,
+                    letterSpacing: tracking(1),
                   }}
                 >
-                  {label}
+                  {cardText(locale, label)}
                 </div>
                 <div
                   style={{
@@ -371,7 +398,7 @@ export default async function Image({
                     marginTop: 2,
                   }}
                 >
-                  {value.length > 28 ? `${value.slice(0, 27)}…` : value}
+                  {cardText(locale, value.length > 28 ? `${value.slice(0, 27)}…` : value)}
                 </div>
               </div>
             ))}
@@ -389,7 +416,7 @@ export default async function Image({
             padding: "26px 28px 20px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: row, alignItems: "baseline", gap: 10 }}>
             {/* The price never shrinks; a long "per hour" (fr, es) wraps beside it instead. */}
             <div
               style={{
@@ -397,24 +424,27 @@ export default async function Image({
                 flexShrink: 0,
                 fontSize: 52,
                 fontWeight: 800,
-                letterSpacing: -1.5,
+                letterSpacing: tracking(-1.5),
               }}
             >
-              {text.headline}
+              {cardText(locale, text.headline)}
             </div>
             {m.deletedAt === null && onDemand !== undefined && (
-              <div style={{ display: "flex", fontSize: 22, color: C.ink2 }}>{text.perHour}</div>
+              <div style={{ display: "flex", fontSize: 22, color: C.ink2 }}>
+                {cardText(locale, text.perHour)}
+              </div>
             )}
           </div>
           <div
             style={{ display: "flex", flexShrink: 0, fontSize: 18, color: C.ink3, marginTop: 2 }}
           >
-            {text.where}
+            {cardText(locale, text.where)}
           </div>
           {text.spot && (
             <div
               style={{
                 display: "flex",
+                flexDirection: row,
                 flexShrink: 0,
                 alignItems: "center",
                 gap: 14,
@@ -431,7 +461,7 @@ export default async function Image({
                   whiteSpace: "nowrap",
                 }}
               >
-                {text.spot}
+                {cardText(locale, text.spot)}
               </div>
               {spotTrend && (
                 <svg
@@ -452,13 +482,16 @@ export default async function Image({
             </div>
           )}
           {/* The spot row takes the room these margins would. */}
-          <div style={{ display: "flex", gap: 20, marginTop: text.spot ? 10 : 18 }}>
+          <div
+            style={{ display: "flex", flexDirection: row, gap: 20, marginTop: text.spot ? 10 : 18 }}
+          >
             {text.legend.map((s) => {
               return (
                 <div
                   key={s.id}
                   style={{
                     display: "flex",
+                    flexDirection: row,
                     alignItems: "center",
                     gap: 8,
                     fontSize: 16,
@@ -474,7 +507,7 @@ export default async function Image({
                       background: s.color,
                     }}
                   />
-                  {s.label}
+                  {cardText(locale, s.label)}
                 </div>
               );
             })}
@@ -615,18 +648,27 @@ export default async function Image({
                 fontSize: 20,
               }}
             >
-              {text.noHistory}
+              {cardText(locale, text.noHistory)}
             </div>
           )}
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 28, fontSize: 18, color: C.ink3, marginTop: 22 }}>
-        <div style={{ display: "flex" }}>{text.listedSince}</div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: row,
+          gap: 28,
+          fontSize: 18,
+          color: C.ink3,
+          marginTop: 22,
+        }}
+      >
+        <div style={{ display: "flex" }}>{cardText(locale, text.listedSince)}</div>
         {regionsOffering > 0 && text.offeredIn && (
-          <div style={{ display: "flex" }}>{text.offeredIn}</div>
+          <div style={{ display: "flex" }}>{cardText(locale, text.offeredIn)}</div>
         )}
-        <div style={{ display: "flex" }}>{text.fullHistory}</div>
+        <div style={{ display: "flex" }}>{cardText(locale, text.fullHistory)}</div>
       </div>
     </div>,
     { ...size, ...(fonts ? { fonts } : {}) },

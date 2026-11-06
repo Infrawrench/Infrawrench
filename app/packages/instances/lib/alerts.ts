@@ -9,7 +9,7 @@ import { emailButton, emailDocument, escapeHtml } from "@infrawrench/server-core
 import { bumpWarehouseVersion, loadView, randomId, runView, storeResult } from "./chat/views";
 import type { Cell, QueryResult, StoredView } from "./chat/types";
 import { getTranslator } from "./i18n/server";
-import { DEFAULT_LOCALE, isLocale, localePath } from "./i18n/locales";
+import { DEFAULT_LOCALE, isLocale, localeDir, localePath } from "./i18n/locales";
 import { ORIGIN } from "./sitemap";
 
 /**
@@ -92,6 +92,10 @@ export async function getAlert(id: string): Promise<Alert | null> {
   return env.INSTANCES_CHAT.get<Alert>(alertKey(id), { type: "json" });
 }
 
+/** The shared email shell, set right to left for a Hebrew or Arabic alert. */
+const localizedEmail = (locale: string, blocks: string[]) =>
+  emailDocument([`<div dir="${localeDir(locale)}">`, ...blocks, "</div>"]);
+
 const alertUrl = (alert: Alert) => `${ORIGIN}${localePath(alert.locale, `/alerts/${alert.id}`)}`;
 const viewUrl = (alert: Alert) => `${ORIGIN}${localePath(alert.locale, `/v/${alert.viewId}`)}`;
 
@@ -157,7 +161,7 @@ export async function subscribe(
           "",
           tr(msg("If it was not you, ignore this email; nothing will be sent.")),
         ].join("\n"),
-        html: emailDocument([
+        html: localizedEmail(locale, [
           `<p>${escapeHtml(tr(msg("Someone, hopefully you, asked to be emailed when this changes:")))}</p>`,
           `<p style="font-weight:600;">${title}</p>`,
           emailButton(alertUrl(alert), escapeHtml(tr(msg("Confirm alert")))),
@@ -264,7 +268,7 @@ async function changeEmail(
           ]
             .filter(Boolean)
             .join("\n"),
-          html: `<p style="margin:16px 0 4px;font-weight:600;">${escapeHtml(heading)}</p><ul style="margin:0;padding-left:20px;">${rows
+          html: `<p style="margin:16px 0 4px;font-weight:600;">${escapeHtml(heading)}</p><ul style="margin:0;${localeDir(alert.locale) === "rtl" ? "padding-right" : "padding-left"}:20px;">${rows
             .slice(0, LISTED_ROWS)
             .map((r) => `<li>${escapeHtml(rowText(next.columns, r))}</li>`)
             .join(
@@ -290,7 +294,7 @@ async function changeEmail(
     ]
       .filter((s) => s !== "")
       .join("\n\n"),
-    html: emailDocument([
+    html: localizedEmail(alert.locale, [
       `<p>${escapeHtml(lead)}</p>`,
       a.html,
       r.html,

@@ -115,7 +115,7 @@ export function Markdown({ text }: { text: string }) {
             <thead>
               <tr>
                 {head.map((h, j) => (
-                  <th key={j} className="border-b border-line px-2 py-1 text-left font-semibold">
+                  <th key={j} className="border-b border-line px-2 py-1 text-start font-semibold">
                     <Inline text={h} locale={locale} />
                   </th>
                 ))}
@@ -147,7 +147,7 @@ export function Markdown({ text }: { text: string }) {
         items.push(lines[i++]!.replace(pattern, ""));
       const Tag = ordered ? "ol" : "ul";
       blocks.push(
-        <Tag key={key()} className={`${ordered ? "list-decimal" : "list-disc"} space-y-1 pl-5`}>
+        <Tag key={key()} className={`${ordered ? "list-decimal" : "list-disc"} space-y-1 ps-5`}>
           {items.map((item, j) => (
             <li key={j}>
               <Inline text={item} locale={locale} />

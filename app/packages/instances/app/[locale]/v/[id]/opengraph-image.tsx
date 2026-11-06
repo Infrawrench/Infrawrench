@@ -2,9 +2,10 @@ import { msg } from "gt-react";
 import { ImageResponse } from "next/og";
 import { displayColumns, formatCell, type Units } from "@/lib/chat/format";
 import { loadView, viewData } from "@/lib/chat/views";
-import { isLocale } from "@/lib/i18n/locales";
+import { isLocale, localeDir } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
-import { CJK_FAMILIES, loadFonts, logo } from "@/lib/og";
+import { cardType, loadFonts, logo } from "@/lib/og";
+import { cardText } from "@/lib/og-text";
 
 /**
  * The share card, and the poster X shows before its player opens: the view's
@@ -64,6 +65,10 @@ export default async function Image({
     heading + instances + headers.join("") + rows.flat().join(""),
   );
 
+  // Hebrew and Arabic mirror the card: the header and the table's columns.
+  const rtl = localeDir(locale) === "rtl";
+  const row = rtl ? "row-reverse" : "row";
+
   return new ImageResponse(
     <div
       style={{
@@ -74,14 +79,23 @@ export default async function Image({
         padding: 48,
         backgroundColor: C.bg,
         color: C.ink,
-        fontFamily: CJK_FAMILIES[locale] ? `Inter, "${CJK_FAMILIES[locale]}"` : "Inter",
+        ...cardType(locale),
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 26, color: C.ink2 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: row,
+          alignItems: "center",
+          gap: 14,
+          fontSize: 26,
+          color: C.ink2,
+        }}
+      >
         <img src={logo} width={40} height={40} style={{ borderRadius: 8 }} />
         {/* i18n-ignore: product name */}
         <span style={{ fontWeight: 600, color: C.ink }}>Infrawrench</span>
-        <span>{instances}</span>
+        <span style={{ display: "flex" }}>{cardText(locale, instances)}</span>
       </div>
       <div
         style={{
@@ -90,10 +104,16 @@ export default async function Image({
           marginTop: 24,
           fontSize: 44,
           fontWeight: 800,
-          lineHeight: 1.15,
+          lineHeight: locale === "ar" ? 1.4 : 1.15,
         }}
       >
-        {heading.length > MAX_TITLE ? `${heading.slice(0, MAX_TITLE)}…` : heading}
+        {cardText(
+          locale,
+          heading.length > MAX_TITLE ? `${heading.slice(0, MAX_TITLE)}…` : heading,
+          {
+            wrap: true,
+          },
+        )}
       </div>
       <div
         style={{
@@ -115,6 +135,7 @@ export default async function Image({
             key={r}
             style={{
               display: "flex",
+              flexDirection: row,
               padding: "9px 20px",
               borderTop: r === 0 ? "none" : `1px solid ${C.line}`,
               color: r === 0 ? C.ink3 : C.ink,
@@ -127,13 +148,13 @@ export default async function Image({
                 style={{
                   display: "flex",
                   width: `${100 / columns.length}%`,
-                  paddingRight: 16,
+                  [rtl ? "paddingLeft" : "paddingRight"]: 16,
                   overflow: "hidden",
                   whiteSpace: "nowrap",
                   textOverflow: "ellipsis",
                 }}
               >
-                {cell}
+                {cardText(locale, cell)}
               </div>
             ))}
           </div>

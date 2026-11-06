@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { EmbedI18nProvider } from "@/components/embed/EmbedI18nProvider";
 import loadTranslations from "@/lib/i18n/load-translations";
-import { DEFAULT_LOCALE, isLocale } from "@/lib/i18n/locales";
+import { DEFAULT_LOCALE, isLocale, localeDir } from "@/lib/i18n/locales";
 import "../../globals.css";
 
 type Params = Promise<{ locale: string }>;
@@ -26,7 +26,7 @@ export default async function EmbedLayout({
   const locale = isLocale(requested) ? requested : DEFAULT_LOCALE;
   const translations = { [locale]: await loadTranslations(locale) };
   return (
-    <html lang={locale}>
+    <html lang={locale} dir={localeDir(locale)}>
       <body className="overflow-hidden">
         <EmbedI18nProvider locale={locale} translations={translations}>
           {children}

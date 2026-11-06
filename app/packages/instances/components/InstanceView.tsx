@@ -218,12 +218,12 @@ export function InstanceView({
               >
                 <thead>
                   <tr className="bg-surface-2">
-                    <th className="p-1.5 text-left">
+                    <th className="p-1.5 text-start">
                       <a href={`#${section.slug}`} className={linkClass}>
                         {tr(section.name)}
                       </a>
                     </th>
-                    <th className="border-l border-line p-1.5 text-left">{gt("Value")}</th>
+                    <th className="border-s border-line p-1.5 text-start">{gt("Value")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -235,7 +235,7 @@ export function InstanceView({
                           {tr(attributeLabel(key))}
                         </td>
                         <td className="w-1/2 border border-line px-3 py-1.5">
-                          <span className="break-words">{attrs[key]}</span>
+                          <bdi className="break-words">{attrs[key]}</bdi>
                           {steps.length > 1 && (
                             <HistoryBadge label={tr(attributeLabel(key))} steps={steps} />
                           )}
@@ -446,12 +446,12 @@ function ReservedTable({
       <div className="mt-2 overflow-x-auto">
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="bg-surface-2 text-left">
+            <tr className="bg-surface-2 text-start">
               <th className="p-1">{gt("Term")}</th>
-              <th className="p-1 text-right">{gt("Upfront")}</th>
-              <th className="p-1 text-right">{gt("Hourly")}</th>
-              <th className="p-1 text-right">{gt("Effective")}</th>
-              <th className="p-1 text-right">{gt("Saving")}</th>
+              <th className="p-1 text-end">{gt("Upfront")}</th>
+              <th className="p-1 text-end">{gt("Hourly")}</th>
+              <th className="p-1 text-end">{gt("Effective")}</th>
+              <th className="p-1 text-end">{gt("Saving")}</th>
             </tr>
           </thead>
           <tbody>
@@ -468,10 +468,10 @@ function ReservedTable({
                       option: termLabel(t, tr),
                     })}
                   </td>
-                  <td className="p-1 text-right tabular-nums">{price(last[2] ?? 0, "hourly")}</td>
-                  <td className="p-1 text-right tabular-nums">{price(last[1], "hourly")}</td>
-                  <td className="p-1 text-right tabular-nums">{price(eff)}</td>
-                  <td className="p-1 text-right tabular-nums">
+                  <td className="p-1 text-end tabular-nums">{price(last[2] ?? 0, "hourly")}</td>
+                  <td className="p-1 text-end tabular-nums">{price(last[1], "hourly")}</td>
+                  <td className="p-1 text-end tabular-nums">{price(eff)}</td>
+                  <td className="p-1 text-end tabular-nums">
                     {onDemand
                       ? new Intl.NumberFormat(locale, { style: "percent" }).format(
                           1 - eff / onDemand,
@@ -499,9 +499,9 @@ function FamilySizes({ m, suffix, locale }: { m: InstanceModel; suffix: string; 
       <table className="mt-2 w-full border-collapse text-sm">
         <thead>
           <tr>
-            <th className="pb-1 pl-2 text-left font-medium">{gt("Size")}</th>
-            <th className="pb-1 pl-2 text-left font-medium">{gt("vCPUs")}</th>
-            <th className="pb-1 pl-2 text-left font-medium">{gt("Memory")}</th>
+            <th className="pb-1 ps-2 text-start font-medium">{gt("Size")}</th>
+            <th className="pb-1 ps-2 text-start font-medium">{gt("vCPUs")}</th>
+            <th className="pb-1 ps-2 text-start font-medium">{gt("Memory")}</th>
           </tr>
         </thead>
         <tbody>
@@ -509,7 +509,7 @@ function FamilySizes({ m, suffix, locale }: { m: InstanceModel; suffix: string; 
             const self = f.name === m.name;
             return (
               <tr key={f.name} className={self ? "bg-ink text-surface" : "odd:bg-surface-2"}>
-                <td className="border border-line p-1 pl-2">
+                <td className="border border-line p-1 ps-2">
                   {self ? (
                     f.name
                   ) : (
@@ -521,8 +521,10 @@ function FamilySizes({ m, suffix, locale }: { m: InstanceModel; suffix: string; 
                     </Link>
                   )}
                 </td>
-                <td className="border border-line p-1 pl-2 tabular-nums">{f.vcpu ?? ""}</td>
-                <td className="border border-line p-1 pl-2 tabular-nums">{f.memory ?? ""}</td>
+                <td className="border border-line p-1 ps-2 tabular-nums">{f.vcpu ?? ""}</td>
+                <td className="border border-line p-1 ps-2 tabular-nums">
+                  <bdi>{f.memory ?? ""}</bdi>
+                </td>
               </tr>
             );
           })}

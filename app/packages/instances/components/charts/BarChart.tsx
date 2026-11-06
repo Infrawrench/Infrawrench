@@ -31,14 +31,18 @@ export function BarChart({
         const content = (
           <>
             <span
-              className={`w-28 shrink-0 truncate sm:w-44 text-left ${b.selected ? "font-semibold text-ink" : "text-ink-2"}`}
+              className={`w-28 shrink-0 truncate sm:w-44 text-start ${b.selected ? "font-semibold text-ink" : "text-ink-2"}`}
             >
-              {b.label}
-              {b.detail && <span className="ml-1 text-ink-3">{b.detail}</span>}
+              <bdi>{b.label}</bdi>
+              {b.detail && (
+                <span className="ms-1 text-ink-3">
+                  <bdi>{b.detail}</bdi>
+                </span>
+              )}
             </span>
             <span className="relative flex h-4 flex-1 items-center">
               <span
-                className="h-3 rounded-r-[4px] transition-[width]"
+                className="h-3 rounded-e-[4px] transition-[width]"
                 style={{
                   // Leaves room for the value label at full length.
                   width: `calc((100% - 5.5rem) * ${Math.max(0.005, b.value / max)})`,
@@ -46,7 +50,7 @@ export function BarChart({
                 }}
               />
               <span
-                className={`ml-1.5 shrink-0 tabular-nums ${b.selected ? "font-semibold text-ink" : "text-ink-2"}`}
+                className={`ms-1.5 shrink-0 tabular-nums ${b.selected ? "font-semibold text-ink" : "text-ink-2"}`}
               >
                 {format(b.value)}
               </span>

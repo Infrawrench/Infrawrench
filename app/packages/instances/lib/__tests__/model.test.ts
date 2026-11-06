@@ -451,15 +451,15 @@ describe("sitemaps", () => {
 
   it("gives each language its own URL with all the alternates", () => {
     const xml = platformSitemap("ec2", ["m5.large"]);
-    // The listing and the instance, in six languages each.
-    expect(xml.match(/<url>/g)).toHaveLength(12);
+    // The listing and the instance, in nine languages each.
+    expect(xml.match(/<url>/g)).toHaveLength(18);
     expect(xml).toContain("<loc>https://instances.infrawrench.com/fr/aws/ec2</loc>");
     expect(xml).toContain("<loc>https://instances.infrawrench.com/aws/ec2/m5.large</loc>");
     expect(xml).toContain("<loc>https://instances.infrawrench.com/ja/aws/ec2/m5.large</loc>");
     expect(xml).toContain(
       '<xhtml:link rel="alternate" hreflang="x-default" href="https://instances.infrawrench.com/aws/ec2/m5.large"/>',
     );
-    expect(xml.match(/hreflang="fr"/g)).toHaveLength(12);
+    expect(xml.match(/hreflang="fr"/g)).toHaveLength(18);
   });
 });
 

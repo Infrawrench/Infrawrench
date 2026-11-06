@@ -154,7 +154,9 @@ export function StepChart({ series, end, format, label, fromZero, height = 240 }
         </ul>
       )}
       <div ref={ref} className="relative">
+        {/* Time runs left to right in every language, Hebrew and Arabic charts included. */}
         <svg
+          direction="ltr"
           width={width}
           height={height}
           role="img"
@@ -295,9 +297,9 @@ export function StepChart({ series, end, format, label, fromZero, height = 240 }
             <caption className="sr-only">{label}</caption>
             <thead className="sticky top-0 bg-surface-2">
               <tr>
-                <th className="px-2 py-1 text-left font-medium">{gt("Date")}</th>
+                <th className="px-2 py-1 text-start font-medium">{gt("Date")}</th>
                 {plotted.map((s) => (
-                  <th key={s.id} className="px-2 py-1 text-right font-medium">
+                  <th key={s.id} className="px-2 py-1 text-end font-medium">
                     {s.label}
                   </th>
                 ))}
@@ -310,7 +312,7 @@ export function StepChart({ series, end, format, label, fromZero, height = 240 }
                   {plotted.map((s) => {
                     const v = valueAt(s.points, t);
                     return (
-                      <td key={s.id} className="px-2 py-1 text-right tabular-nums">
+                      <td key={s.id} className="px-2 py-1 text-end tabular-nums">
                         {v === undefined ? "" : v === null ? gt("Not offered") : format(v)}
                       </td>
                     );

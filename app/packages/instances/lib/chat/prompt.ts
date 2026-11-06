@@ -62,6 +62,9 @@ const LANGUAGES: Record<string, string> = {
   de: "German",
   ja: "Japanese",
   zh: "Simplified Chinese",
+  he: "Hebrew",
+  ar: "Arabic",
+  hi: "Hindi",
 };
 
 export function languageBlock(locale: string): string {

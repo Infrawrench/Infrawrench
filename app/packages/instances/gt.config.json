@@ -1,6 +1,6 @@
 {
   "defaultLocale": "en",
-  "locales": ["es", "fr", "de", "ja", "zh"],
+  "locales": ["es", "fr", "de", "ja", "zh", "he", "ar", "hi"],
   "src": [
     "app/**/*.{ts,tsx}",
     "components/**/*.{ts,tsx}",

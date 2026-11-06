@@ -88,7 +88,7 @@ export function instanceTitle(m: InstanceModel, tr: Translate, locale: string): 
     return tr(msg("{provider} {name} pricing and specs"), { provider, name: m.name });
   }
   // A short list, not a sentence: "and" would read oddly in a title.
-  const specList = parts.join(/^(ja|zh)\b/.test(locale) ? "、" : ", ");
+  const specList = parts.join(/^(ja|zh)\b/.test(locale) ? "、" : locale === "ar" ? "، " : ", ");
   return tr(msg("{provider} {name}: {specs}, price by region"), {
     provider,
     name: m.name,

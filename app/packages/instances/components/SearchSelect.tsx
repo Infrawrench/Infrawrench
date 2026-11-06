@@ -153,11 +153,15 @@ export function SearchSelect({
             openWith(e.key);
           }
         }}
-        className="flex w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-2 py-1 text-left text-sm text-ink hover:border-ink-3 focus-visible:outline-2 focus-visible:outline-accent"
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-2 py-1 text-start text-sm text-ink hover:border-ink-3 focus-visible:outline-2 focus-visible:outline-accent"
       >
         <span id={`${id}-value`} className="min-w-0 truncate">
-          {selected?.label ?? value}
-          {selected?.detail && <span className="ml-1 text-ink-3">{selected.detail}</span>}
+          <bdi>{selected?.label ?? value}</bdi>
+          {selected?.detail && (
+            <span className="ms-1 text-ink-3">
+              <bdi>{selected.detail}</bdi>
+            </span>
+          )}
         </span>
         <svg
           aria-hidden="true"
@@ -175,7 +179,7 @@ export function SearchSelect({
       </button>
 
       {open && (
-        <div className="absolute left-0 z-30 mt-1 w-full min-w-64 overflow-hidden rounded-md border border-line bg-surface shadow-lg">
+        <div className="absolute start-0 z-30 mt-1 w-full min-w-64 overflow-hidden rounded-md border border-line bg-surface shadow-lg">
           {showSearch && (
             <input
               ref={input}

@@ -1,8 +1,9 @@
 import gtConfig from "../../gt.config.json";
 
 /**
- * The site's languages: the desktop app's (`gt.config.json` there and here
- * list the same locales). English is the source and lives at the unprefixed
+ * The site's languages: the web and desktop apps' (their `gt.config.json` lists
+ * es, fr, de, ja and zh too), plus he, ar and hi, which only this site ships so
+ * far. English is the source and lives at the unprefixed
  * URLs (`/aws/ec2/m5.large`); every other language is a path prefix
  * (`/fr/aws/ec2/m5.large`), which `proxy.ts` maps onto the `[locale]` route.
  * A prefix rather than a cookie because pages are cached at the edge without
@@ -10,6 +11,13 @@ import gtConfig from "../../gt.config.json";
  */
 export const DEFAULT_LOCALE = gtConfig.defaultLocale;
 export const LOCALES: readonly string[] = [gtConfig.defaultLocale, ...gtConfig.locales];
+
+const RTL_LOCALES: readonly string[] = ["he", "ar"];
+
+/** The `dir` of a page in `locale`. */
+export function localeDir(locale: string): "rtl" | "ltr" {
+  return RTL_LOCALES.includes(locale) ? "rtl" : "ltr";
+}
 
 /** Remembers a visitor's explicit choice, so `proxy.ts` can send English URLs to their language. */
 export const LOCALE_COOKIE = "instances-locale";

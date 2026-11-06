@@ -25,7 +25,7 @@ export function AnalyticsConsent() {
   return (
     <section
       aria-label={gt("Cookie preferences")}
-      className="fixed bottom-16 left-4 right-4 z-40 rounded-lg border border-line bg-surface p-4 text-xs text-ink-2 shadow-lg sm:right-auto sm:max-w-sm"
+      className="fixed bottom-16 start-4 end-4 z-40 rounded-lg border border-line bg-surface p-4 text-xs text-ink-2 shadow-lg sm:end-auto sm:max-w-sm"
     >
       <T>
         <p>
