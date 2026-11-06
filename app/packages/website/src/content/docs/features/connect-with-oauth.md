@@ -84,7 +84,6 @@ The **Web** column covers the web app and the desktop app in cloud mode. **Deskt
 | ----------------------------------------- | --- | --------------- | -------------- |
 | [Bitbucket](../plugins/bitbucket.md)      | Yes | No              | Read and write |
 | [CircleCI](../plugins/circleci.md)        | No  | Yes             | Read and write |
-| [Cloudflare](../plugins/cloudflare.md)    | Yes | Yes             | Read and write |
 | [Cloudinary](../plugins/cloudinary.md)    | Yes | Yes             | Full           |
 | [Convex](../plugins/convex.md)            | Yes | No              | Full           |
 | [GitHub](../plugins/github.md)            | Yes | No              | Read and write |

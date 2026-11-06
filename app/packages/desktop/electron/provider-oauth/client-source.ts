@@ -30,7 +30,7 @@ export function localClientSource(
   doFetch: typeof fetch = (input, init) => fetch(input, init),
 ): LocalClientSource | null {
   const declaration = plugin.manifest.oauth;
-  if (!declaration?.clients.desktop) return null;
+  if (!declaration?.clients.desktop || declaration.existingGrantsOnly) return null;
   switch (declaration.clientRegistration ?? "static") {
     case "none":
       return { clientId: "" };

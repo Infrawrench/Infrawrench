@@ -9,6 +9,7 @@ import {
   ALL_TOKEN_SCOPES,
   cloudflarePreflight,
   buildCloudflarePolicyTemplate,
+  CREATE_TOKEN_URL,
 } from "./preflight.js";
 import { ZoneResourceType } from "./resources/zone.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
@@ -51,16 +52,6 @@ import { BasinSinkResourceType } from "./resources/basin-sink.js";
 import { BasinCatalogResourceType } from "./resources/basin-catalog.js";
 import { BasinTableResourceType } from "./resources/basin-table.js";
 import { AnalyticsEngineDatasetResourceType } from "./resources/analytics-engine-dataset.js";
-
-// Deep link to Cloudflare's "Create Token" page (user/profile tokens) with every
-// scope the plugin uses pre-selected (see ALL_TOKEN_SCOPES in preflight.ts).
-// `accountId=*` / `zoneId=all` apply the token to every account and zone.
-const CREATE_TOKEN_URL = `https://dash.cloudflare.com/profile/api-tokens?${new URLSearchParams({
-  permissionGroupKeys: JSON.stringify(ALL_TOKEN_SCOPES),
-  accountId: "*",
-  zoneId: "all",
-  name: "Infrawrench",
-}).toString()}`;
 
 const manifest: PluginManifest = {
   id: "cloudflare",
@@ -115,7 +106,7 @@ const manifest: PluginManifest = {
   aiRequestLogs: cloudflareAiRequestLogCapability,
   statusFeed,
   preflight: cloudflarePreflight,
-  // "Connect with Cloudflare". Pasted API tokens keep working; see oauth.ts.
+  // Retired: only refreshes accounts that already connected; see oauth.ts.
   oauth: cloudflareOAuth,
 };
 

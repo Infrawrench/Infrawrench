@@ -111,6 +111,13 @@ export interface OAuthDeclaration {
    * (Stripe: one hour). Without an expiry the host never refreshes.
    */
   defaultExpiresIn?: number;
+  /**
+   * The provider's OAuth is retired for this plugin: accounts already connected
+   * keep working and keep refreshing, but no new grant can start. Every host
+   * hides Connect and Reconnect and refuses to start the flow, and the client
+   * registration and its env variables must stay in place for the refreshes.
+   */
+  existingGrantsOnly?: boolean;
 }
 
 /** Host-owned grant state stored (JSON-encoded) under {@link OAUTH_CREDENTIAL_KEY}. */

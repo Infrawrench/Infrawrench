@@ -596,6 +596,16 @@ describe("local client availability", () => {
     expect(localClientSource(p, allEnv)).toEqual({ clientId: "build-client-id" });
   });
 
+  it("offers no client for a plugin that only keeps existing grants", () => {
+    const p = plugin("retired", {
+      ...base,
+      clients: { desktop: {} },
+      existingGrantsOnly: true,
+    });
+    expect(localClientPluginIds([p], allEnv)).toEqual([]);
+    expect(localClientSource(p, allEnv)).toBeNull();
+  });
+
   it("matches the real manifests: Netlify server-only, OpenRouter and CircleCI without env", async () => {
     const [netlify, openrouter, circleci, posthog] = await Promise.all([
       import("@infrawrench/plugin-netlify"),

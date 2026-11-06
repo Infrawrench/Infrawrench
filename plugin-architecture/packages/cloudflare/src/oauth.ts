@@ -1,5 +1,8 @@
 /**
- * "Connect with Cloudflare": the OAuth declaration and the identity hook.
+ * "Connect with Cloudflare": retired. New Cloudflare accounts paste an API token
+ * (the manifest's create-token link pre-selects every scope), because OAuth
+ * cannot read billing (see below). The declaration stays, marked
+ * `existingGrantsOnly`, so accounts that already connected keep refreshing.
  *
  * Cloudflare opened OAuth to third-party clients ("self-managed OAuth",
  * developers.cloudflare.com/fundamentals/oauth/, verified 2026-10):
@@ -24,10 +27,11 @@
  * (`TEMPLATE_SCOPES`): the plugin creates, edits and deletes resources, so
  * most areas need write. Billing has no OAuth scope at all (the third-party
  * catalog has none, and Cloudflare's own registration lists `billing:read` as
- * registered but not grantable), so cost collection uses
- * `account-api-tokens.write` to mint a short-lived Billing Read token per run
- * (see billing-token.ts). That scope is marked optional on both registered
- * clients, so a user can decline it and lose only cost graphs.
+ * registered but not grantable). Minting a Billing Read token through
+ * `account-api-tokens.write` does not get around that: tokens created over
+ * OAuth are limited to the scopes the grant holds, and Cloudflare refuses the
+ * mint (code 1001). So a connected account has no cost data until it switches
+ * to an API token.
  */
 import type {
   OAuthCompletionContext,
@@ -85,9 +89,6 @@ export const CLOUDFLARE_OAUTH_SCOPES: string[] = [
   // Metrics.
   "analytics.read",
   "account-analytics.read",
-  // Costs: mints the per-run Billing Read token (billing-token.ts). Optional
-  // on the consent screen.
-  "account-api-tokens.write",
   // Refresh tokens.
   "offline_access",
 ];
@@ -102,6 +103,7 @@ export const cloudflareOAuth: OAuthDeclaration = {
     desktop: { loopbackHost: "127.0.0.1" },
   },
   access: "read-write",
+  existingGrantsOnly: true,
   refresh: "rotating",
   docsUrl: "https://developers.cloudflare.com/fundamentals/oauth/",
 };
