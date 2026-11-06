@@ -195,7 +195,7 @@ export function CustomCostSourcesSection() {
 const inputClass =
   "px-2.5 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong disabled:opacity-60";
 const primaryButton =
-  "px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors";
+  "px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors";
 
 interface SourceInput {
   name: string;

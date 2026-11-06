@@ -103,7 +103,7 @@ export function TemplatePickerModal({
                   }
                   placeholder={field.placeholder ? gtData(field.placeholder) : field.placeholder}
                   aria-label={gtData(field.label)}
-                  className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-500"
+                  className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-accent-subtle"
                 />
               </div>
             ))}
@@ -111,14 +111,14 @@ export function TemplatePickerModal({
               <button
                 type="button"
                 onClick={() => onPendingChange(null)}
-                className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded"
+                className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded"
               >
                 {gt("Back")}
               </button>
               <button
                 type="button"
                 onClick={() => onApply(pending.template, pending.inputs)}
-                className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded"
+                className="px-3 py-1 text-xs font-medium bg-accent hover:bg-accent-hover text-on-accent rounded"
               >
                 {gt("Add statement")}
               </button>

@@ -18,6 +18,7 @@ export const LinodeInstanceResourceType = rt({
       description: "3 to 64 characters: letters, digits, dashes, underscores and periods",
     }),
     f("status", "Status", {
+      showcase: true,
       editable: false,
       required: false,
       kind: "enum",
@@ -42,10 +43,20 @@ export const LinodeInstanceResourceType = rt({
       description:
         "Linode plan, e.g. g6-standard-2. Changing it resizes the Linode: it is powered off, migrated to the new plan and booted again",
     }),
-    f("region", "Region", { kind: "enum", enumValues: REGION_IDS, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: REGION_IDS,
+      editable: false,
+    }),
     f("image", "Image", { required: false, editable: false }),
-    f("vcpus", "vCPUs", { kind: "number", required: false, editable: false }),
-    f("memoryMb", "Memory (MB)", { kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
+    f("memoryMb", "Memory (MB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("diskGb", "Disk (GB)", { kind: "number", required: false, editable: false }),
     f("backupsEnabled", "Backups", {
       kind: "boolean",
@@ -176,14 +187,15 @@ export const ImageResourceType = rt({
   fields: [
     f("label", "Label"),
     f("description", "Description", { required: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("type", "Type", {
+      showcase: true,
       required: false,
       editable: false,
       description:
         "manual images are captured on request; automatic ones are kept for 7 days after a Linode is deleted",
     }),
-    f("sizeMb", "Size (MB)", { kind: "number", required: false, editable: false }),
+    f("sizeMb", "Size (MB)", { showcase: true, kind: "number", required: false, editable: false }),
     f("totalSizeBytes", "Billed Size (bytes)", {
       kind: "number",
       required: false,
@@ -194,7 +206,7 @@ export const ImageResourceType = rt({
     f("cloudInit", "cloud-init", { kind: "boolean", required: false, editable: false }),
     f("expiry", "Expires", { required: false, editable: false }),
     f("tags", "Tags", { required: false }),
-    f("created", "Created", { required: false, editable: false }),
+    f("created", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("imageId", "Image ID")],
   iconKey: "image",

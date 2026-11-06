@@ -155,7 +155,7 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
             <button
               type="button"
               onClick={() => setEditorOpen(true)}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
             >
               {gt("Set lease…")}
             </button>
@@ -173,7 +173,7 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
               })}
             </span>
             {lease.autoDelete && (
-              <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-danger">
+              <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-xs font-medium text-danger">
                 {gt("auto-delete")}
               </span>
             )}

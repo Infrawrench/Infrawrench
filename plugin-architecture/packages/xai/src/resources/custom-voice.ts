@@ -25,10 +25,10 @@ export const CustomVoiceResourceType = rt({
     f("gender", "Gender", { required: false }),
     f("accent", "Accent", { required: false }),
     f("age", "Age", { required: false }),
-    f("language", "Language", { required: false }),
+    f("language", "Language", { showcase: true, required: false }),
     f("useCase", "Use Case", { required: false }),
     f("tone", "Tone", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [
     o("voiceId", "Voice ID", { description: "Pass as `voice_id` in POST /v1/tts" }),

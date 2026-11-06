@@ -3,6 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const AppEngineServiceResourceType = rt({
   name: "App Engine Service",
   id: "app-engine-service",
+  iconKey: "app",
   description: "A Google App Engine service",
   fields: [
     f("name", "Name"),

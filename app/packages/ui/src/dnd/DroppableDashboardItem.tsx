@@ -60,7 +60,7 @@ export function DroppableDashboardItem({
       <div
         className={`group flex items-center rounded-lg text-xs transition-colors ${
           isOver
-            ? "bg-accent-muted border border-blue-500 text-accent-on-muted"
+            ? "bg-accent-muted border border-accent text-accent-on-muted"
             : isActive
               ? "bg-surface-overlay text-on-surface"
               : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"

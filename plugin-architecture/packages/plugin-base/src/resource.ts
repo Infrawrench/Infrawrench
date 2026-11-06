@@ -43,6 +43,13 @@ export interface FieldDefinition {
    * true on update-capable resource types.
    */
   editable?: boolean;
+  /**
+   * Show this field on the resource's tile, labelled from `label`. A field named
+   * like a run-state (`status`, `state`, `provisioningState`) becomes the coloured
+   * status line. Tiles fit three other rows, taken in `fields` order, skipping
+   * empty values. Not allowed on `secret` or `password` fields.
+   */
+  showcase?: boolean;
 }
 
 export interface ResourceOutput {
@@ -907,7 +914,12 @@ export interface ResourceTypeDefinition {
   accountRoot?: boolean;
   /** Whether instances of this type can be pinned directly to a dashboard */
   dashboardPinnable: boolean;
-  /** Named icon key within the plugin's icon set, falls back to the plugin logo */
+  /**
+   * What this type of resource is, as a word from the shared vocabulary
+   * (`cpu`, `database`, `bucket`, ...) that `RESOURCE_ICON_KEYS` in
+   * `@infrawrench/ui` draws. A new word needs a drawing there; a test fails until
+   * it has one.
+   */
   iconKey?: string;
   /**
    * Peer plugin integrations: other plugins whose panes are shown as extra tabs

@@ -8,7 +8,7 @@ export const VPCResourceType = rt({
     f("vpcId", "VPC ID"),
     f("name", "Name", { required: false }),
     f("cidrBlock", "CIDR Block"),
-    f("state", "State"),
+    f("state", "State", { showcase: true }),
     f("isDefault", "Default VPC", { kind: "boolean", required: false }),
     f("tenancy", "Tenancy", { required: false }),
   ],

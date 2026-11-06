@@ -23,14 +23,14 @@ export const MistralModelResourceType = rt({
   fields: [
     f("modelId", "Model ID"),
     f("name", "Name", { required: false }),
-    f("type", "Type", { required: false }),
+    f("type", "Type", { showcase: true, required: false }),
     f("ownedBy", "Owned By", { required: false }),
     f("maxContextLength", "Max Context Length", { kind: "number", required: false }),
     f("capabilities", "Capabilities", { required: false }),
     f("aliases", "Aliases", { required: false }),
     f("archived", "Archived", { kind: "boolean", required: false }),
     f("job", "Fine-Tuning Job", { required: false }),
-    f("created", "Created", { required: false }),
+    f("created", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("modelId", "Model ID"), o("baseUrl", "API Base URL")],
   // Fine-tuned models carry the id of the job that produced them.

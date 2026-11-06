@@ -7,6 +7,7 @@ export const ACMCertificateResourceType = rt({
   fields: [
     f("domainName", "Domain Name"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "PENDING_VALIDATION",
@@ -19,6 +20,7 @@ export const ACMCertificateResourceType = rt({
       ],
     }),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["IMPORTED", "AMAZON_ISSUED", "PRIVATE"],

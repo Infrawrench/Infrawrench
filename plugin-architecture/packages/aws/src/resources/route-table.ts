@@ -11,8 +11,8 @@ export const RouteTableResourceType = rt({
     f("name", "Name", { required: false }),
     f("vpcId", "VPC ID"),
     f("main", "Main", { kind: "boolean", required: false }),
-    f("routeCount", "Routes", { kind: "number", required: false }),
-    f("associationCount", "Associations", { kind: "number", required: false }),
+    f("routeCount", "Routes", { showcase: true, kind: "number", required: false }),
+    f("associationCount", "Associations", { showcase: true, kind: "number", required: false }),
     f("natGatewayIds", "NAT Gateways", {
       required: false,
       description: "Comma-separated NAT gateway IDs this table routes through",

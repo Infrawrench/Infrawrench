@@ -309,7 +309,7 @@ export function ConnectResourceModal({
                     onClick={() => setMode("secret-export")}
                     className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                       mode === "secret-export"
-                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                        ? "border-accent bg-accent-muted text-accent-on-muted"
                         : "border-border-strong text-on-surface-muted hover:text-on-surface-secondary"
                     }`}
                   >
@@ -320,7 +320,7 @@ export function ConnectResourceModal({
                     onClick={() => setMode("env-deploy")}
                     className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                       mode === "env-deploy"
-                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                        ? "border-accent bg-accent-muted text-accent-on-muted"
                         : "border-border-strong text-on-surface-muted hover:text-on-surface-secondary"
                     }`}
                   >
@@ -341,7 +341,7 @@ export function ConnectResourceModal({
                         key={tpl.id}
                         className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
                           selectedTemplateId === tpl.id
-                            ? "border-blue-500 bg-accent-muted"
+                            ? "border-accent bg-accent-muted"
                             : "border-border-strong hover:border-border-strong"
                         }`}
                       >
@@ -351,7 +351,7 @@ export function ConnectResourceModal({
                           value={tpl.id}
                           checked={selectedTemplateId === tpl.id}
                           onChange={() => handleTemplateChange(tpl.id)}
-                          className="mt-0.5 accent-blue-500"
+                          className="mt-0.5 accent-accent"
                           aria-label={gtData(tpl.displayName)}
                         />
                         <div>
@@ -414,7 +414,7 @@ export function ConnectResourceModal({
                       <select
                         value={namespace}
                         onChange={(e) => setNamespace(e.target.value)}
-                        className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-blue-500"
+                        className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-accent-subtle"
                         aria-label={gt("Namespace")}
                       >
                         {namespaces.map((ns) => (
@@ -429,7 +429,7 @@ export function ConnectResourceModal({
                         value={namespace}
                         onChange={(e) => setNamespace(e.target.value)}
                         placeholder="default"
-                        className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-blue-500"
+                        className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-accent-subtle"
                         aria-label={gt("Namespace")}
                       />
                     )}
@@ -449,7 +449,7 @@ export function ConnectResourceModal({
                       value={secretName}
                       onChange={(e) => setSecretName(e.target.value)}
                       placeholder="my-secret"
-                      className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm font-mono text-on-surface outline-none focus:border-blue-500"
+                      className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm font-mono text-on-surface outline-none focus:border-accent-subtle"
                     />
                   </div>
                 </>
@@ -497,7 +497,7 @@ export function ConnectResourceModal({
                       value={sshUsername}
                       onChange={(e) => setSshUsername(e.target.value)}
                       placeholder="root"
-                      className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm font-mono text-on-surface outline-none focus:border-blue-500"
+                      className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm font-mono text-on-surface outline-none focus:border-accent-subtle"
                     />
                   </div>
 
@@ -513,7 +513,7 @@ export function ConnectResourceModal({
                       id="connect-resource-format"
                       value={format}
                       onChange={(e) => setFormat(e.target.value as "dotenv" | "profile")}
-                      className="rounded-lg border border-border-strong bg-surface-overlay px-3 py-1.5 text-sm text-on-surface outline-none focus:border-blue-500"
+                      className="rounded-lg border border-border-strong bg-surface-overlay px-3 py-1.5 text-sm text-on-surface outline-none focus:border-accent-subtle"
                     >
                       <option value="dotenv">{gt(".env (KEY=value)")}</option>
                       <option value="profile">{gt("Shell (export KEY=value)")}</option>
@@ -538,14 +538,14 @@ export function ConnectResourceModal({
                         onChange={(e) => setFilePath(e.target.value)}
                         // i18n-ignore: filesystem path example
                         placeholder="~/.env"
-                        className="flex-1 rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm font-mono text-on-surface outline-none focus:border-blue-500"
+                        className="flex-1 rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm font-mono text-on-surface outline-none focus:border-accent-subtle"
                       />
                       <label className="flex items-center gap-1.5 text-xs text-on-surface-tertiary cursor-pointer">
                         <input
                           type="checkbox"
                           checked={append}
                           onChange={(e) => setAppend(e.target.checked)}
-                          className="accent-blue-500"
+                          className="accent-accent"
                           aria-label={gt("Append")}
                         />
                         {gt("Append")}
@@ -582,7 +582,7 @@ export function ConnectResourceModal({
                 (mode === "secret-export" && (!secretName || !namespace)) ||
                 (mode === "env-deploy" && (!selectedKeyId || !filePath))
               }
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-surface-sunken disabled:text-on-surface-muted text-sm font-medium text-white transition-colors flex items-center gap-2"
+              className="px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover disabled:bg-surface-sunken disabled:text-on-surface-muted text-sm font-medium text-on-accent transition-colors flex items-center gap-2"
             >
               {submitting && (
                 <span className="animate-spin inline-block size-3.5 rounded-full border-2 border-border-strong border-t-white" />

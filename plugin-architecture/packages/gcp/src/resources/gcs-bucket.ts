@@ -3,11 +3,13 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const GcsBucketResourceType = rt({
   name: "Cloud Storage Bucket",
   id: "gcs-bucket",
+  iconKey: "bucket",
   description: "A Google Cloud Storage bucket",
   fields: [
     f("name", "Name"),
-    f("location", "Location", { required: false }),
+    f("location", "Location", { showcase: true, required: false }),
     f("storageClass", "Storage Class", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["STANDARD", "NEARLINE", "COLDLINE", "ARCHIVE"],

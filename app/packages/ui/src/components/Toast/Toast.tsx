@@ -24,8 +24,8 @@ const variantStyles = {
     iconChar: "!",
   },
   info: {
-    border: "border-blue-500/40",
-    bg: "bg-blue-500/10",
+    border: "border-accent/40",
+    bg: "bg-accent/10",
     icon: "text-info",
     iconChar: "i",
   },

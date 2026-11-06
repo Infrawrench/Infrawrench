@@ -92,7 +92,7 @@ export function StringListPicker({
             }}
             placeholder={placeholder}
             aria-label={placeholder ?? gt("Value")}
-            className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+            className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
           />
           <button
             type="button"

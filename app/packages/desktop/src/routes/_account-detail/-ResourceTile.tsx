@@ -1,16 +1,18 @@
-import type { ResourceInstance, AttachTarget } from "@infrawrench/plugin-base";
-import { ResourcePill as SharedResourcePill, type DraggableResource } from "@infrawrench/ui";
+import type { ResourceInstance, AttachTarget, ShowcaseField } from "@infrawrench/plugin-base";
+import { ResourceTile as SharedResourceTile, type DraggableResource } from "@infrawrench/ui";
 
 /**
- * The account-detail resource pill: `@infrawrench/ui`'s ResourcePill plus the
+ * The account-detail resource tile: `@infrawrench/ui`'s ResourceTile plus the
  * desktop-only concerns; building the DraggableResource from a raw
  * ResourceInstance, deriving the SSH host for the context menu, and enabling
  * secret-import drops. The rendering, drop logic, and keyboard behavior all
  * live in the shared component.
  */
-export function ResourcePill({
+export function ResourceTile({
   resource,
   typeId,
+  iconKey,
+  showcase,
   attachTargets,
   pinned,
   acceptsSecretImport,
@@ -23,6 +25,8 @@ export function ResourcePill({
 }: {
   resource: ResourceInstance;
   typeId: string;
+  iconKey?: string | undefined;
+  showcase?: ShowcaseField[] | undefined;
   attachTargets?: AttachTarget[] | undefined;
   pinned: boolean;
   acceptsSecretImport?: boolean;
@@ -36,10 +40,6 @@ export function ResourcePill({
     sshHost: string,
   ) => void;
 }) {
-  const subtitle = String(
-    resource.fields["host"] ?? resource.fields["region"] ?? resource.fields["engine"] ?? "",
-  );
-
   const draggableData: DraggableResource = {
     id: resource.id,
     pluginId: resource.pluginId,
@@ -48,6 +48,7 @@ export function ResourcePill({
     displayName: resource.displayName,
     fields: resource.fields,
     externalId: resource.externalId,
+    ...(iconKey ? { iconKey } : {}),
     ...(attachTargets && attachTargets.length > 0 ? { attachTargets } : {}),
   };
 
@@ -72,15 +73,15 @@ export function ResourcePill({
       : undefined;
 
   return (
-    <SharedResourcePill
+    <SharedResourceTile
       resource={draggableData}
-      subtitle={subtitle || undefined}
+      showcase={showcase}
       pinned={pinned}
       onOpen={onOpen}
       onPin={onPin}
       onContextMenu={contextMenu}
       // Secret-import drops require a *different* account; attach drops (which
-      // the shared pill derives from the active drag's attachTargets) require
+      // the shared tile derives from the active drag's attachTargets) require
       // the *same* account.
       droppable={!!acceptsSecretImport || !!sshHost}
       droppableId={`sidebar-resource:${resource.id}`}

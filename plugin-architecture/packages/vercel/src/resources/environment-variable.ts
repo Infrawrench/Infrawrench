@@ -14,6 +14,7 @@ export const VercelEnvironmentVariableResourceType = rt({
       description: "Replace the value. Leave blank to keep the current one.",
     }),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["encrypted", "sensitive", "plain"],
       required: false,
@@ -23,13 +24,13 @@ export const VercelEnvironmentVariableResourceType = rt({
       required: false,
       description: "Comma-separated: production, preview, development",
     }),
-    f("projectName", "Project", { required: false, editable: false }),
+    f("projectName", "Project", { showcase: true, required: false, editable: false }),
     f("gitBranch", "Git Branch", {
       required: false,
       description: "Limit a preview variable to one branch",
     }),
     f("comment", "Comment", { required: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
     f("updatedAt", "Updated At", { required: false, editable: false }),
   ],
   outputs: [o("envKey", "Variable Key"), o("envValue", "Variable Value", { sensitive: true })],

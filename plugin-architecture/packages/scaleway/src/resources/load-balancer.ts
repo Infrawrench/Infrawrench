@@ -8,12 +8,22 @@ export const LoadBalancerResourceType = rt({
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    f("zone", "Zone", { kind: "enum", enumValues: SCW_ZONES, editable: false }),
+    f("zone", "Zone", { showcase: true, kind: "enum", enumValues: SCW_ZONES, editable: false }),
     f("type", "Type", { description: "Offer, e.g. LB-S, LB-GP-M", editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("ipAddresses", "IP Addresses", { required: false, editable: false }),
-    f("frontendCount", "Frontends", { kind: "number", required: false, editable: false }),
-    f("backendCount", "Backends", { kind: "number", required: false, editable: false }),
+    f("frontendCount", "Frontends", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("backendCount", "Backends", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("privateNetworkCount", "Private Networks", {
       kind: "number",
       required: false,

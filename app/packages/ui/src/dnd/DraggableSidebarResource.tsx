@@ -86,7 +86,7 @@ export function DraggableSidebarResource({
         onClick={onClick}
         className={`flex items-center gap-2 px-3 py-1 text-xs rounded cursor-grab active:cursor-grabbing transition-colors w-full text-left ${
           showDropHint
-            ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-blue-500"
+            ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-accent"
             : isActive
               ? "bg-surface-overlay text-on-surface-secondary"
               : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"

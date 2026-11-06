@@ -19,7 +19,7 @@ import {
 import type { CostApi } from "./types.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 const linkButton = "text-xs text-on-surface-secondary hover:text-on-surface underline";
 

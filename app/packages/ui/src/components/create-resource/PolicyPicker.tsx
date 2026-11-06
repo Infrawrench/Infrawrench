@@ -201,11 +201,11 @@ function PolicyRow({
       <span
         aria-hidden="true"
         className={`mt-0.5 w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center ${
-          selected ? "border-blue-400 bg-blue-500" : "border-border-strong bg-surface-sunken"
+          selected ? "border-accent bg-accent" : "border-border-strong bg-surface-sunken"
         }`}
       >
         {selected && (
-          <svg viewBox="0 0 12 12" className="size-2.5 text-white" fill="none">
+          <svg viewBox="0 0 12 12" className="size-2.5 text-on-accent" fill="none">
             <path
               d="M2 6.5L5 9.5L10 3.5"
               stroke="currentColor"

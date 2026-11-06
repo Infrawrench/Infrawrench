@@ -6,7 +6,7 @@ export const SpectrumApplicationResourceType = rt({
   id: "spectrum-application",
   description: "A Cloudflare Spectrum application for TCP/UDP proxy",
   fields: [
-    f("protocol", "Protocol", { editable: false }),
+    f("protocol", "Protocol", { showcase: true, editable: false }),
     f("dns", "DNS Name", { required: false, editable: false }),
     f("originDirect", "Origin Direct", { required: false }),
     f("originDns", "Origin DNS", { required: false, editable: false }),
@@ -14,7 +14,7 @@ export const SpectrumApplicationResourceType = rt({
     f("ipFirewall", "IP Firewall", { kind: "boolean", required: false }),
     f("proxyProtocol", "Proxy Protocol", { required: false }),
     f("tls", "TLS", { required: false }),
-    f("createdOn", "Created", { required: false, editable: false }),
+    f("createdOn", "Created", { showcase: true, required: false, editable: false }),
     f("modifiedOn", "Modified", { required: false, editable: false }),
     f("zoneName", "Zone", { required: false, editable: false }),
   ],

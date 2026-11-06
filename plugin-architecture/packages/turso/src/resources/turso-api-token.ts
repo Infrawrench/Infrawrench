@@ -12,7 +12,7 @@ export const TursoApiTokenResourceType = rt({
     f("scopes", "Scopes", { required: false }),
     f("ownerUsername", "Owner", { required: false }),
     f("ownerEmail", "Owner Email", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [o("tokenName", "Token Name")],
   dependsOn: [
@@ -23,5 +23,5 @@ export const TursoApiTokenResourceType = rt({
   // tokens, their owner and their age. An unscoped platform token never
   // expires, which is worth asking about on its own.
   principalRole: { role: "key", createdKey: "createdAt" },
-  iconKey: "turso",
+  iconKey: "key",
 });

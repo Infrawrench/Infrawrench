@@ -7,7 +7,7 @@ export const SNSTopicResourceType = rt({
   fields: [
     f("topicName", "Topic Name"),
     f("topicArn", "ARN"),
-    f("subscriptionCount", "Subscriptions", { kind: "number", required: false }),
+    f("subscriptionCount", "Subscriptions", { showcase: true, kind: "number", required: false }),
     f("isFifo", "FIFO", { kind: "boolean", required: false }),
   ],
   outputs: [o("topicArn", "Topic ARN")],

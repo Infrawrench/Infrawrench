@@ -44,11 +44,12 @@ export const POSTURE_PROVIDERS = ["falcon", "intune", "jamfpro", "kandji", "koli
 
 export const deviceType = rt({
   id: "device",
+  iconKey: "server",
   name: "Device",
   description: "A device connected to your Tailscale network.",
   fields: [
     f("name", "DNS name", { editable: true }),
-    f("hostname", "Hostname", { editable: false }),
+    f("hostname", "Hostname", { showcase: true, editable: false }),
     f("os", "Operating system", { editable: false }),
     f("distro", "Distribution", { required: false, editable: false }),
     f("user", "Owner", { editable: false }),
@@ -72,7 +73,7 @@ export const deviceType = rt({
       editable: false,
     }),
     f("lastSeen", "Last seen", { editable: false }),
-    f("created", "Added", { required: false, editable: false }),
+    f("created", "Added", { showcase: true, required: false, editable: false }),
     f("expires", "Key expires", {
       editable: false,
       description: "Empty when key expiry is disabled for this device.",
@@ -122,23 +123,31 @@ export const userType = rt({
     f("loginName", "Login name", { editable: false }),
     f("displayName", "Name", { required: false, editable: false }),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       enumValues: USER_ROLES,
       description: "Only the tailnet owner can grant or take away the owner role.",
     }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
       enumValues: ["active", "idle", "suspended", "needs-approval", "over-billing-limit"],
     }),
     f("type", "Membership", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
       enumValues: ["member", "shared"],
     }),
-    f("deviceCount", "Devices", { kind: "number", required: false, editable: false }),
+    f("deviceCount", "Devices", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("currentlyConnected", "Connected", { kind: "boolean", required: false, editable: false }),
     f("lastSeen", "Last seen", { required: false, editable: false }),
     f("created", "Joined", { required: false, editable: false }),
@@ -163,7 +172,7 @@ export const userInviteType = rt({
   description: "An open invitation for someone to join the tailnet with a preassigned role.",
   fields: [
     f("email", "Email", { required: false, editable: false }),
-    f("role", "Role", { kind: "enum", editable: false, enumValues: INVITE_ROLES }),
+    f("role", "Role", { showcase: true, kind: "enum", editable: false, enumValues: INVITE_ROLES }),
     f("lastEmailSentAt", "Last emailed", { required: false, editable: false }),
   ],
   outputs: [
@@ -198,7 +207,7 @@ export const keyType = rt({
     f("issuer", "OIDC issuer", { required: false, editable: false }),
     f("subject", "OIDC subject", { required: false, editable: false }),
     f("userId", "Created by", { required: false, editable: false }),
-    f("created", "Created", { required: false, editable: false }),
+    f("created", "Created", { showcase: true, required: false, editable: false }),
     f("expires", "Expires", { required: false, editable: false }),
     f("revoked", "Revoked", { required: false, editable: false }),
     f("invalid", "Invalid", { kind: "boolean", required: false, editable: false }),
@@ -235,7 +244,7 @@ export const webhookType = rt({
       description: `Comma-separated event names: ${WEBHOOK_EVENTS.join(", ")}.`,
     }),
     f("creatorLoginName", "Created by", { required: false, editable: false }),
-    f("created", "Created", { required: false, editable: false }),
+    f("created", "Created", { showcase: true, required: false, editable: false }),
     f("lastModified", "Last modified", { required: false, editable: false }),
   ],
   outputs: [
@@ -293,7 +302,12 @@ export const postureIntegrationType = rt({
   description:
     "A device posture provider (CrowdStrike Falcon, Intune, Jamf Pro, Kandji, Kolide, SentinelOne) that feeds attributes into access rules.",
   fields: [
-    f("provider", "Provider", { kind: "enum", editable: false, enumValues: POSTURE_PROVIDERS }),
+    f("provider", "Provider", {
+      showcase: true,
+      kind: "enum",
+      editable: false,
+      enumValues: POSTURE_PROVIDERS,
+    }),
     f("cloudId", "Cloud", { required: false }),
     f("clientId", "Client ID", { required: false }),
     f("tenantId", "Tenant ID", { required: false }),
@@ -305,11 +319,17 @@ export const postureIntegrationType = rt({
     f("lastSync", "Last sync", { required: false, editable: false }),
     f("syncError", "Sync error", { required: false, editable: false }),
     f("providerHostCount", "Devices at provider", {
+      showcase: true,
       kind: "number",
       required: false,
       editable: false,
     }),
-    f("matchedCount", "Matched devices", { kind: "number", required: false, editable: false }),
+    f("matchedCount", "Matched devices", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("configUpdated", "Configuration updated", { required: false, editable: false }),
   ],
   pinnable: false,

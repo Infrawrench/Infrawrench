@@ -48,7 +48,7 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
         <button
           type="button"
           onClick={() => void fetchDescribe()}
-          className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
+          className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong hover:border-border-strong rounded-md transition-colors"
         >
           {gt("Retry")}
         </button>
@@ -71,14 +71,14 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
             onClick={() => {
               if (text) void navigator.clipboard.writeText(text);
             }}
-            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
+            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong hover:border-border-strong rounded-md transition-colors"
           >
             {gt("Copy")}
           </button>
           <button
             type="button"
             onClick={() => void fetchDescribe()}
-            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
+            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong hover:border-border-strong rounded-md transition-colors"
           >
             {gt("Reload")}
           </button>

@@ -14,7 +14,9 @@ You pin from the dashboard, not from the resource. There are three ways:
 - **Spotlight.** The same menu entry opens the Spotlight picker. Type a few letters and press Enter to pin the highlighted resource.
 - **Drag.** Drag a resource out of the sidebar (or off an account's detail page) and drop it on the dashboard grid, or onto a dashboard's entry in the sidebar. You can drag workflows the same way.
 
-In the **desktop app**, each resource pill on an account's detail page also gets a 📌 **Pin to dashboard** button when you hover over it. There's no pin button on a resource's own detail page on either platform.
+In the **desktop app**, each resource tile on an account's detail page also gets a pin icon, **Pin to dashboard**, when you hover over it. There's no pin button on a resource's own detail page on either platform.
+
+A pinned card shows the resource's status and key facts from its last sync, and any live values in its footer replace the matching fact.
 
 <insert [The dashboard "+" tile menu open on Pin a resource, with the Spotlight picker searching for a resource] here>
 

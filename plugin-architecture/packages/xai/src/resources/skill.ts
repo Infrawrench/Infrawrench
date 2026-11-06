@@ -22,7 +22,7 @@ export const SkillResourceType = rt({
     f("description", "Description", { required: false, editable: false }),
     f("defaultVersion", "Default Version", { required: false, editable: false }),
     f("latestVersion", "Latest Version", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("skillId", "Skill ID"), o("name", "Skill Name")],
   supportsDelete: true,

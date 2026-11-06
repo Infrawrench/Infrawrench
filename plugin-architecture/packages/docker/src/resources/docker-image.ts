@@ -6,7 +6,7 @@ export const DockerImageResourceType = rt({
   description: "A Docker image available to the local or remote Docker daemon.",
   fields: [
     f("tags", "Tags", { required: false }),
-    f("size", "Size", { required: false }),
+    f("size", "Size", { showcase: true, required: false }),
     f("containers", "Containers", { kind: "number", required: false }),
   ],
   outputs: [o("imageId", "Image ID")],

@@ -267,7 +267,7 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
                     onClick={() => setSection(s.id)}
                     className={`-mb-px border-b-2 px-3 py-2 text-sm ${
                       section === s.id
-                        ? "border-blue-500 text-on-surface"
+                        ? "border-accent text-on-surface"
                         : "border-transparent text-on-surface-faint hover:text-on-surface"
                     }`}
                   >

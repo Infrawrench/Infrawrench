@@ -24,8 +24,8 @@ export const SkillResourceType = rt({
       enumValues: ["custom", "anthropic", "anthropic_example", "plugin"],
     }),
     f("latestVersionId", "Latest Version", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("skillId", "Skill ID", {

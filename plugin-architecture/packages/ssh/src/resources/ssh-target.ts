@@ -3,9 +3,10 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const SshTargetResourceType = rt({
   name: "SSH Server",
   id: "ssh-target",
+  iconKey: "terminal",
   description: "A remote server accessible via SSH.",
   fields: [
-    f("host", "Host"),
+    f("host", "Host", { showcase: true }),
     f("port", "Port", { required: false }),
     f("username", "Username", { required: false }),
   ],

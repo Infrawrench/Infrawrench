@@ -23,5 +23,5 @@ export const KafkaTopicResourceType = rt({
   outputs: [o("name", "Topic Name"), o("partitionCount", "Partition Count")],
   supportsCreate: true,
   supportsDelete: true,
-  iconKey: "kafka",
+  iconKey: "topic",
 });

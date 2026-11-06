@@ -6,9 +6,9 @@ export const TurnstileWidgetResourceType = rt({
   description: "A Cloudflare Turnstile widget (CAPTCHA alternative) sitekey/secret pair",
   fields: [
     f("name", "Name"),
-    f("mode", "Mode", { required: false }),
+    f("mode", "Mode", { showcase: true, required: false }),
     f("domains", "Domains", { required: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("botFightMode", "Bot Fight Mode", { kind: "boolean", required: false }),
     f("clearanceLevel", "Clearance Level", { required: false, editable: false }),
     f("offlabel", "Hide Cloudflare Branding", { kind: "boolean", required: false }),

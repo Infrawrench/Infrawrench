@@ -23,7 +23,14 @@ const MAX_AXIS_WIDTH = 90;
 const AXIS_CHAR_WIDTH = 6;
 const AXIS_PADDING = 14;
 
-const COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#fb923c"];
+const COLORS = [
+  "var(--color-chart-primary)",
+  "#34d399",
+  "#fbbf24",
+  "#f87171",
+  "#a78bfa",
+  "#fb923c",
+];
 
 function formatTimestamp(ts: number): string {
   const d = new Date(ts);

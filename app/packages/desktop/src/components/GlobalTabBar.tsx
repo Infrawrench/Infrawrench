@@ -20,7 +20,7 @@ export function GlobalTabBar({ tabs, activeTabId, onActivate, onClose, onNew }: 
       onClose={onClose}
       onNew={onNew}
       rootRef={setNodeRef}
-      className={isOver ? "ring-1 ring-inset ring-blue-500/40" : ""}
+      className={isOver ? "ring-1 ring-inset ring-accent/40" : ""}
       showEmptyHint
       renderTabWrapper={(tab, children) => (
         <DraggableTabWrapper key={tab.id} tab={tab}>
@@ -53,7 +53,7 @@ function DraggableTabWrapper({ tab, children }: { tab: WorkspaceTab; children: R
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`${isOver ? "ring-1 ring-inset ring-blue-500/40" : ""} ${isDragging ? "opacity-40" : ""}`}
+      className={`${isOver ? "ring-1 ring-inset ring-accent/40" : ""} ${isDragging ? "opacity-40" : ""}`}
       style={{ cursor: isDragging ? "grabbing" : "grab" }}
     >
       {children}

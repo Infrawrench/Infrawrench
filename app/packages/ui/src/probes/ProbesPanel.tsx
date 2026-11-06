@@ -138,7 +138,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
             <button
               type="button"
               onClick={() => setEditing({ existing: null })}
-              className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+              className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover text-on-accent transition-colors"
             >
               {gt("New probe")}
             </button>

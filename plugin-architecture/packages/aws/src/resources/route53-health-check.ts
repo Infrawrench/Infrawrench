@@ -7,6 +7,7 @@ export const Route53HealthCheckResourceType = rt({
   fields: [
     f("healthCheckId", "Health Check ID"),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "HTTP",
@@ -20,9 +21,9 @@ export const Route53HealthCheckResourceType = rt({
       ],
     }),
     f("ipAddress", "IP Address", { required: false }),
-    f("port", "Port", { kind: "number", required: false }),
+    f("port", "Port", { showcase: true, kind: "number", required: false }),
     f("resourcePath", "Resource Path", { required: false }),
-    f("fqdn", "FQDN", { required: false }),
+    f("fqdn", "FQDN", { showcase: true, required: false }),
     f("requestInterval", "Request Interval (s)", { kind: "number", required: false }),
     f("failureThreshold", "Failure Threshold", { kind: "number", required: false }),
     f("disabled", "Disabled", { kind: "boolean", required: false }),

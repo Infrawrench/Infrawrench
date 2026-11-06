@@ -73,7 +73,7 @@ export function ServiceAccountPicker({
               }`}
             >
               <span
-                className={`size-2 rounded-full flex-shrink-0 ${on ? "bg-blue-400" : "bg-surface-sunken"}`}
+                className={`size-2 rounded-full flex-shrink-0 ${on ? "bg-accent" : "bg-surface-sunken"}`}
               />
               {a.logoSvg && (
                 <span

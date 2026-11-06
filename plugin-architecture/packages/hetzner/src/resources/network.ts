@@ -7,8 +7,13 @@ export const NetworkResourceType = rt({
   fields: [
     f("name", "Name"),
     f("ipRange", "IP Range", { editable: false }),
-    f("subnetCount", "Subnets", { kind: "number", required: false, editable: false }),
-    f("routeCount", "Routes", { kind: "number", required: false, editable: false }),
+    f("subnetCount", "Subnets", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("routeCount", "Routes", { showcase: true, kind: "number", required: false, editable: false }),
     f("serverCount", "Servers", { kind: "number", required: false, editable: false }),
     f("serverIds", "Server IDs", {
       required: false,

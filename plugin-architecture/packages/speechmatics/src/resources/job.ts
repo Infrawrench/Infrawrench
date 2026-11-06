@@ -18,15 +18,16 @@ export const JobResourceType = rt({
   fields: [
     f("jobId", "Job ID"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["running", "done", "rejected", "deleted", "expired"],
     }),
     f("dataName", "Audio File", { required: false }),
     f("durationSeconds", "Duration (s)", { kind: "number", required: false }),
-    f("language", "Language", { required: false }),
-    f("model", "Model", { required: false }),
+    f("language", "Language", { showcase: true, required: false }),
+    f("model", "Model", { showcase: true, required: false }),
     f("jobType", "Job Type", { required: false }),
-    f("region", "Region"),
+    f("region", "Region", { showcase: true }),
     f("createdAt", "Created", { required: false }),
   ],
   outputs: [

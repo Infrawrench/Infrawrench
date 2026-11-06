@@ -21,7 +21,7 @@ export const NetlifyEnvVarResourceType = rt({
       required: false,
       description: "Which deploy context the new value applies to",
     }),
-    f("updatedAt", "Updated At", { required: false, editable: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false, editable: false }),
     f("siteId", "Site", { required: false, editable: false }),
   ],
   outputs: [o("envKey", "Variable Key")],

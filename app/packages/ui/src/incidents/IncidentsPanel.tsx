@@ -278,7 +278,7 @@ export function IncidentsPanel({
                 <span
                   key={artifact.id}
                   title={artifact.error ?? artifact.label ?? undefined}
-                  className={`px-2 py-0.5 rounded-full text-[11px] ${
+                  className={`px-2 py-0.5 rounded-md text-[11px] ${
                     isIncidentArtifactFailure(artifact.status)
                       ? "bg-red-500/15 text-danger"
                       : artifact.status === "closed"
@@ -423,7 +423,7 @@ export function IncidentsPanel({
                 type="button"
                 onClick={() => void submitNote()}
                 disabled={busy || !noteDraft.trim()}
-                className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
+                className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent transition-colors"
               >
                 {gt("Add")}
               </button>
@@ -486,7 +486,7 @@ export function IncidentsPanel({
             onClick={() => setFilter(option.id)}
             className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
               filter === option.id
-                ? "bg-blue-600 text-white"
+                ? "bg-accent text-on-accent"
                 : "bg-surface-sunken text-on-surface-secondary hover:bg-surface"
             }`}
           >
@@ -531,7 +531,7 @@ export function IncidentsPanel({
                 <button
                   type="button"
                   onClick={() => open(incident.id)}
-                  className="w-full text-left rounded-xl border border-border bg-surface-raised px-4 py-3 hover:border-blue-500/50 transition-colors"
+                  className="w-full text-left rounded-xl border border-border bg-surface-raised px-4 py-3 hover:border-accent/50 transition-colors"
                 >
                   <div className="flex items-center gap-2">
                     <span

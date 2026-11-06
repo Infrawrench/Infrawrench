@@ -4,6 +4,7 @@ export const NodeResourceType = rt({
   name: "Node",
   pinnable: false,
   id: "k8s-node",
+  iconKey: "server",
   // A node only reports the region label, not whose cloud it is on; region
   // names do not collide across the hyperscalers, so "auto" finds the table.
   // A node whose machine is already listed as an instance is counted once:
@@ -18,10 +19,10 @@ export const NodeResourceType = rt({
     f("name", "Name"),
     f("ready", "Ready", { required: false }),
     f("unschedulable", "Cordoned", { required: false }),
-    f("instanceType", "Instance Type", { required: false }),
+    f("instanceType", "Instance Type", { showcase: true, required: false }),
     f("zone", "Zone", { required: false }),
-    f("region", "Region", { required: false }),
-    f("version", "Kubelet Version", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
+    f("version", "Kubelet Version", { showcase: true, required: false }),
     // Capacity is the whole machine (what the cloud bill is for); allocatable
     // is what the scheduler will hand out. Cost allocation needs both.
     f("capacityCpu", "Capacity CPU", { required: false }),

@@ -18,10 +18,11 @@ export const LiveSessionResourceType = rt({
     "A real-time Gladia transcription session, with its stream format, billed time and the transcript Gladia kept once the stream closed",
   fields: [
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["queued", "processing", "done", "error"],
     }),
-    f("model", "Model", { required: false }),
+    f("model", "Model", { showcase: true, required: false }),
     f("streamFormat", "Stream Format", {
       required: false,
       description: "Encoding, sample rate, bit depth and channel count the stream was opened with.",
@@ -31,7 +32,7 @@ export const LiveSessionResourceType = rt({
     f("transcriptionTime", "Processing Time (s)", { kind: "number", required: false }),
     f("languages", "Detected Languages", { required: false }),
     f("channels", "Channels", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("completedAt", "Completed", { required: false }),
     f("errorCode", "Error Code", { kind: "number", required: false }),
     f("requestId", "Request ID", { required: false }),

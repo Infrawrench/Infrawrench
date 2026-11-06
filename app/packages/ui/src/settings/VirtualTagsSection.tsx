@@ -239,7 +239,7 @@ function StatusBadge({ tag }: { tag: VirtualTag }) {
         ? "text-danger border-danger/40"
         : "text-on-surface-muted border-border";
   return (
-    <span className={`px-2 py-0.5 text-[11px] rounded-full border ${tone}`}>
+    <span className={`px-2 py-0.5 text-[11px] rounded-md border ${tone}`}>
       {gtData(VIRTUAL_TAG_PROCESSING_STATE_LABELS[tag.status.state])}
     </span>
   );

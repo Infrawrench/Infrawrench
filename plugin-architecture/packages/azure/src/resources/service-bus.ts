@@ -6,11 +6,11 @@ export const ServiceBusNamespaceResourceType = rt({
   description: "An Azure Service Bus messaging namespace",
   fields: [
     f("name", "Name"),
-    f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
-    f("sku", "SKU"),
+    f("resourceGroup", "Resource Group", { showcase: true }),
+    f("location", "Location", { showcase: true }),
+    f("sku", "SKU", { showcase: true }),
     f("provisioningState", "Provisioning State"),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("createdAt", "Created", { required: false }),
   ],
   outputs: [

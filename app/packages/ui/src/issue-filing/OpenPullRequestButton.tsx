@@ -219,7 +219,7 @@ function OpenPullRequestModal({
               type="button"
               onClick={() => void submit()}
               disabled={busy || permission !== null}
-              className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+              className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
             >
               {busy ? gt("Opening…") : gt("Open pull request")}
             </button>

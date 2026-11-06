@@ -39,7 +39,7 @@ function StatusBadge({ status }: { status: IacResourceStatus }) {
   const gtData = useDataString();
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[status]}`}
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[status]}`}
     >
       {gtData(IAC_STATUS_LABELS[status])}
     </span>
@@ -67,7 +67,7 @@ function SummaryTile({
     </>
   );
   const className = `rounded-xl border px-4 py-3 text-left ${
-    active ? "border-blue-500/60 bg-blue-500/5" : "border-border bg-surface-raised"
+    active ? "border-accent/60 bg-accent/5" : "border-border bg-surface-raised"
   }`;
   return onClick ? (
     <button type="button" onClick={onClick} className={`${className} hover:border-border-strong`}>
@@ -253,7 +253,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
           <button
             type="button"
             onClick={() => setShowUpload((v) => !v)}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shrink-0"
+            className="px-3 py-1.5 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover rounded-lg transition-colors shrink-0"
           >
             {showUpload ? gt("Cancel") : gt("Upload state")}
           </button>
@@ -328,7 +328,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
           <button
             type="submit"
             disabled={uploading || !document}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+            className="px-3 py-1.5 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg transition-colors"
           >
             {uploading ? gt("Parsing…") : gt("Upload")}
           </button>
@@ -467,7 +467,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                   <button
                     type="button"
                     onClick={() => setShowPlan(true)}
-                    className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
+                    className="px-3 py-1.5 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover rounded-lg transition-colors"
                   >
                     {gt("Generate import blocks ({count})", { count: selected.size })}
                   </button>

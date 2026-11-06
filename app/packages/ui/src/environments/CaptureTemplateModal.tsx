@@ -277,7 +277,7 @@ export function CaptureTemplateModal({
             type="button"
             onClick={() => void save()}
             disabled={busy || !draft || draft.members.length === 0 || name.trim() === ""}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {gt("Save template")}
           </button>

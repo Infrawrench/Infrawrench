@@ -36,6 +36,7 @@ export const RDSInstanceResourceType = rt({
     f("engineVersion", "Engine Version"),
     f("instanceClass", "Instance Class"),
     f("vcpus", "vCPUs", {
+      showcase: true,
       kind: "number",
       required: false,
       editable: false,
@@ -47,9 +48,9 @@ export const RDSInstanceResourceType = rt({
       description:
         "Whether RDS keeps this instance on paid Extended Support past the end of standard support, or upgrades it",
     }),
-    f("status", "Status"),
-    f("allocatedStorage", "Storage (GB)", { kind: "number", required: false }),
-    f("availabilityZone", "Availability Zone", { required: false }),
+    f("status", "Status", { showcase: true }),
+    f("allocatedStorage", "Storage (GB)", { showcase: true, kind: "number", required: false }),
+    f("availabilityZone", "Availability Zone", { showcase: true, required: false }),
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
     f("vpcId", "VPC ID", { required: false, description: "VPC of the instance's DB subnet group" }),
     f("subnetIds", "Subnets", {

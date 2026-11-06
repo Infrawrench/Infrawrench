@@ -209,7 +209,7 @@ export function CostAnnotationModal({
               type="button"
               disabled={busy || problem !== null}
               onClick={() => void run(() => onSave({ ...input, text: text.trim() }))}
-              className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50"
+              className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent transition-colors disabled:opacity-50"
             >
               {gt("Save")}
             </button>

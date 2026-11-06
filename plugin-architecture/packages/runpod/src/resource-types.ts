@@ -19,8 +19,13 @@ export const PodResourceType = rt({
   description: "A Runpod GPU or CPU pod",
   fields: [
     f("name", "Name"),
-    f("status", "Status", { kind: "enum", enumValues: [...POD_STATES], editable: false }),
-    f("region", "Data Center", { required: false, editable: false }),
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      enumValues: [...POD_STATES],
+      editable: false,
+    }),
+    f("region", "Data Center", { showcase: true, required: false, editable: false }),
     f("location", "Location", { required: false, editable: false }),
     f("cloudType", "Cloud", {
       required: false,
@@ -30,9 +35,9 @@ export const PodResourceType = rt({
     f("computeType", "Compute", { required: false, editable: false }),
     f("gpuType", "GPU", { required: false, editable: false }),
     f("gpuTypeId", "GPU Type ID", { required: false, editable: false }),
-    f("gpuCount", "GPUs", { kind: "number", required: false, editable: false }),
+    f("gpuCount", "GPUs", { showcase: true, kind: "number", required: false, editable: false }),
     f("cpuFlavorId", "CPU Flavor", { required: false, editable: false }),
-    f("vcpus", "vCPUs", { kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
     f("memoryGb", "Memory (GB)", { kind: "number", required: false, editable: false }),
     f("interruptible", "Spot (Interruptible)", {
       kind: "boolean",
@@ -166,7 +171,12 @@ export const ServerlessEndpointResourceType = rt({
       editable: false,
       description: "In order of preference",
     }),
-    f("gpuCount", "GPUs per Worker", { kind: "number", required: false, editable: false }),
+    f("gpuCount", "GPUs per Worker", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("workersMin", "Active Workers (min)", {
       kind: "number",
       required: false,
@@ -187,9 +197,9 @@ export const ServerlessEndpointResourceType = rt({
     f("executionTimeoutMs", "Execution Timeout (ms)", { kind: "number", required: false }),
     f("flashboot", "FlashBoot", { kind: "boolean", required: false }),
     f("dataCenters", "Data Centers", { required: false, editable: false }),
-    f("region", "Primary Data Center", { required: false, editable: false }),
+    f("region", "Primary Data Center", { showcase: true, required: false, editable: false }),
     f("networkVolumeId", "Network Volume", { required: false, editable: false }),
-    f("version", "Version", { kind: "number", required: false, editable: false }),
+    f("version", "Version", { showcase: true, kind: "number", required: false, editable: false }),
     f("jobsInQueue", "Jobs in Queue", { kind: "number", required: false, editable: false }),
     f("jobsInProgress", "Jobs in Progress", { kind: "number", required: false, editable: false }),
     f("jobsCompleted", "Jobs Completed", { kind: "number", required: false, editable: false }),
@@ -245,7 +255,7 @@ export const TemplateResourceType = rt({
     f("name", "Name"),
     f("imageName", "Container Image"),
     f("isServerless", "Serverless", { kind: "boolean", required: false, editable: false }),
-    f("category", "Category", { required: false, editable: false }),
+    f("category", "Category", { showcase: true, required: false, editable: false }),
     f("containerDiskGb", "Container Disk (GB)", { kind: "number", required: false }),
     f("volumeGb", "Volume (GB)", { kind: "number", required: false }),
     f("volumeMountPath", "Volume Mount Path", { required: false }),
@@ -291,10 +301,11 @@ export const NetworkVolumeResourceType = rt({
   fields: [
     f("name", "Name"),
     f("sizeGb", "Size (GB)", {
+      showcase: true,
       kind: "number",
       description: "Runpod can only grow a network volume, never shrink it",
     }),
-    f("region", "Data Center", { editable: false }),
+    f("region", "Data Center", { showcase: true, editable: false }),
     f("attachedTo", "Used By", {
       required: false,
       editable: false,

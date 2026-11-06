@@ -26,12 +26,16 @@ export const FileSearchStoreResourceType = rt({
     f("name", "Resource Name"),
     f("displayName", "Display Name", { required: false }),
     f("embeddingModel", "Embedding Model", { required: false }),
-    f("createTime", "Created", { required: false }),
+    f("createTime", "Created", { showcase: true, required: false }),
     f("updateTime", "Updated", { required: false }),
-    f("activeDocumentsCount", "Active Documents", { kind: "number", required: false }),
+    f("activeDocumentsCount", "Active Documents", {
+      showcase: true,
+      kind: "number",
+      required: false,
+    }),
     f("pendingDocumentsCount", "Pending Documents", { kind: "number", required: false }),
     f("failedDocumentsCount", "Failed Documents", { kind: "number", required: false }),
-    f("sizeBytes", "Size (bytes)", { required: false }),
+    f("sizeBytes", "Size (bytes)", { showcase: true, required: false }),
   ],
   outputs: [
     o("fileSearchStoreName", "Store Name", {

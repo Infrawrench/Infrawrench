@@ -7,9 +7,10 @@ export const SQLDatabaseResourceType = rt({
   fields: [
     f("name", "Name"),
     f("serverName", "Server"),
-    f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
+    f("resourceGroup", "Resource Group", { showcase: true }),
+    f("location", "Location", { showcase: true }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "Online",

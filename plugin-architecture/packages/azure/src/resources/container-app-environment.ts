@@ -7,9 +7,9 @@ export const ContainerAppEnvironmentResourceType = rt({
     "An Azure Container Apps environment: the shared network and logging boundary that container apps and jobs run in",
   fields: [
     f("name", "Name"),
-    f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
-    f("provisioningState", "Provisioning State"),
+    f("resourceGroup", "Resource Group", { showcase: true }),
+    f("location", "Location", { showcase: true }),
+    f("provisioningState", "Provisioning State", { showcase: true }),
     f("defaultDomain", "Default Domain", { required: false }),
     f("staticIp", "Static IP", { required: false }),
     f("workloadProfiles", "Workload Profiles", {

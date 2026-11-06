@@ -701,7 +701,7 @@ The registry is the static-import `PLUGINS` array in `app/packages/server-core/s
 - `__root.tsx` — layout: sidebar + main content area
 - `index.tsx` — redirect to default dashboard
 - `dashboard.$dashboardId.tsx` — renders `DashboardView`
-- `accounts.$accountId.tsx` — account detail: resource groups as pill lists, "+ Create" buttons
+- `accounts.$accountId.tsx` — account detail: resource groups as tile grids, a "Create" tile
 - `resource.$accountId.$resourceId.tsx` — resource detail: `DetailView` + SQL editor / KV console / Docker panel / storage browser / manifest editor / SSH terminal / delete bar
 
 ### Key components (`src/components/`)
@@ -2746,7 +2746,7 @@ VM create forms expose an optional "Extra … Disk/Volume" section (a `select` t
 
 ## Drag-to-attach (disk → VM)
 
-Resource types can declare `attachTargets` on their `ResourceTypeDefinition`. When the user drags a source pill whose type has `attachTargets` matching a target pill's `{pluginId, resourceTypeId}` **within the same account** (plus optional `matchField` equality, e.g. matching `zone`), the pill becomes a drop target with an "Attach" label. On drop, the host calls `PluginClient.attachResource(sourceTypeId, sourceResourceId, targetTypeId, targetResourceId, accountId)`.
+Resource types can declare `attachTargets` on their `ResourceTypeDefinition`. When the user drags a source tile whose type has `attachTargets` matching a target pill's `{pluginId, resourceTypeId}` **within the same account** (plus optional `matchField` equality, e.g. matching `zone`), the pill becomes a drop target with an "Attach" label. On drop, the host calls `PluginClient.attachResource(sourceTypeId, sourceResourceId, targetTypeId, targetResourceId, accountId)`.
 
 Plumbing:
 
@@ -6431,6 +6431,22 @@ Where the app is registered, and what is unusual. Callback and loopback URIs are
 ### Not yet: partner-gated providers
 
 Providers with OAuth that need a partner agreement, an app review or a conversation before a button can ship (Neon, Datadog, Upstash, Vultr, Aiven, Xata, Civo) are tracked in GitHub issue #268. Each should plug into the generic declaration above, not a bespoke flow.
+
+## Visual language
+
+The interface is deliberately hueless: grey surfaces with a darker sidebar, emphasis carried by value rather than colour. Hue is reserved for status (danger, warning, success) and for categorical chart series, where colour is the data. All of it lives in `ui/src/theme.css`.
+
+- **The accent is grey and flips.** Darkest step of the ramp in light mode, lightest in dark mode, so a primary button is the highest-contrast thing on a page. A solid `bg-accent` therefore takes `text-on-accent`, never `text-white`. `theme-contrast.test.ts` bans `blue`/`sky`/`indigo` utilities in `ui`, `web` and `desktop` (`web/src/mcp/` excepted; those views render inside third-party AI clients under their own theme).
+- **The sidebar is a custom property scope, not a token set.** `.surface-sidebar` redefines `--color-surface`, `--color-on-surface` and friends, and every Tailwind utility reads those through `var()`, so shared components come out dark inside it without knowing where they are. It holds in both colour schemes and the contrast test runs it like a third scheme. Anything portalled out of the sidebar (tooltips, modals) leaves the scope, which is what you want.
+- **Resources are tiles.** `dnd/TileFrame.tsx` is the one square; `ResourceTile`, `DraggableChildTile` and the peer pane's tile wrap it with their drag and drop behaviour. The button fills the frame, so the whole square drags and opens. Other pieces (pin, port forward) are siblings above it, never descendants of an interactive element. Plugin-declared children (`DashboardCardSchema`) render through `TileFrame` too but do not drag: they have no account id and many are pseudo-resources with nothing a drop could pin. Small status chips and filter toggles stay as chips, with `rounded-md`.
+- **The corner icon comes from the plugin.** `ResourceTypeDefinition.iconKey` is a word for what the type _is_ (`cpu`, `database`, `bucket`); `RESOURCE_ICON_KEYS` in `components/icons/ResourceTypeIcon.tsx` maps words to Lucide drawings, several words to one drawing. Plugins never ship artwork or a brand word here, and the host never hard-codes a provider. `resource-type-icon.test.tsx` walks the edge registry and fails on a type with no key or a key with no drawing. A new word means a line in that map and, if the drawing is new, its nodes copied from Lucide (`lucide-static`, same version as the header comment). It reaches web through `iconKey` on `ResourceTypeSummary`, `ChildTypeRef` and the pin detail route, so changing where it is read is an API change.
+- **What a tile shows comes from `showcase: true` on a field.** Each marked field in `ResourceTypeDefinition.fields` becomes a row labelled from the field, and one named like a run-state (`status`, `state`, `provisioningState`) becomes the coloured status line. `buildResourceShowcase` in `plugin-base/src/showcase.ts` prints values by what they hold: a size's unit comes from the key (`memoryMb`) or the label ("Allocated Storage (GiB)"), dates from the key, and a URL reduces to its host. Tiles, child tiles and dashboard cards all draw the result with `ShowcaseLines`. Tiles fit three rows, in `fields` order. It replaced a hard-coded `host ?? region ?? engine` that left most tiles empty.
+- **Only a declared field can be marked.** Listers routinely sync more than `fields` declares (a Droplet's `vcpus`, `memoryMb`). To show one, declare it with `required: false, editable: false` and read the lister first to confirm the key. The schema refuses the flag on `secret` and `password` kinds, and `resource-showcase.test.tsx` walks the registry for those and for sensitive outputs. Marked fields reach web as `showcase: [{ key, label }]` on `ResourceTypeSummary`, `ChildTypeRef` and the pin detail route; `resource-detail` ships child `fields` even without a child table, cut down by `pickShowcaseValues`.
+- **These are synced values, not live metrics.** Drawing a tile never costs a provider API call. The warehouse only stores stats and series for pinned resources (`sync-resources.ts`), and fetching them per tile would mean one paid metrics call per resource on every account page open. Dashboard cards pass theirs through `omitLiveShowcaseStats`, because the card's footer already shows fresher values under the same labels.
+- **Icon geometry.** The tile's icon is centred on the bottom right corner so `overflow-hidden` leaves exactly one quadrant, and fades further when rows run over it. Larger dashboard cards use the top right instead, because their footer of metric values occupies the bottom.
+- **Cards lift through one rule.** `.bg-surface-raised.border.rounded-{lg,xl,2xl}` gets `--shadow-card` from a zero-specificity `:where()` in `theme.css`, because those classes are written by hand in about 300 places. A `shadow-*` utility on any one of them still wins. Tiles use the smaller `shadow-tile` / `shadow-tile-hover`.
+- **Charts.** `useChartTheme().colors[0]` is the neutral `--color-chart-primary` rather than `SERIES_COLORS[0]`'s blue, so a one-series chart reads as part of the interface. It sits near the end of the ramp so it cannot be confused with the mid-grey `OTHER_SERIES_COLOR` when it leads a stacked chart. Mobile still starts on the blue; it is dark-only with its own token object and has not had this redesign.
+- **Links need an underline.** With no hue to separate a link from the text beside it, `text-accent` links carry `underline` permanently rather than on hover.
 
 ## UI translations (General Translation / gt-react)
 

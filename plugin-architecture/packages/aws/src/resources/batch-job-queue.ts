@@ -8,11 +8,12 @@ export const BatchJobQueueResourceType = rt({
     f("jobQueueName", "Queue Name"),
     f("state", "State", { kind: "enum", enumValues: ["ENABLED", "DISABLED"] }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["CREATING", "UPDATING", "DELETING", "DELETED", "VALID", "INVALID"],
     }),
-    f("priority", "Priority", { kind: "number", required: false }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false }),
     f("schedulingPolicyArn", "Scheduling Policy", { required: false }),
   ],
   outputs: [o("jobQueueArn", "Job Queue ARN")],

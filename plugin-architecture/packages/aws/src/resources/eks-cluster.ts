@@ -23,8 +23,9 @@ export const EKSClusterResourceType = rt({
     "until then.",
   fields: [
     f("name", "Name"),
-    f("version", "Kubernetes Version"),
+    f("version", "Kubernetes Version", { showcase: true }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["CREATING", "ACTIVE", "DELETING", "FAILED", "UPDATING", "PENDING"],
     }),
@@ -36,12 +37,13 @@ export const EKSClusterResourceType = rt({
     }),
     f("roleArn", "Role ARN", { required: false }),
     f("nodeGroupCount", "Node Groups", { kind: "number", required: false }),
-    f("nodeCount", "Node Count", { kind: "number", required: false }),
+    f("nodeCount", "Node Count", { showcase: true, kind: "number", required: false }),
     f("instanceTypes", "Instance Types", {
       required: false,
       description: "Instance types used across managed node groups",
     }),
     f("diskSizeGb", "Disk Size (GB)", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Disk size of the first node group",

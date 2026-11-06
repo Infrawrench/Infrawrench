@@ -5,13 +5,14 @@ export const IngressResourceType = rt({
   plural: "Ingresses",
   pinnable: false,
   id: "k8s-ingress",
+  iconKey: "route",
   description: "A Kubernetes Ingress for HTTP/HTTPS routing to services",
   fields: [
     f("name", "Name"),
-    f("namespace", "Namespace"),
+    f("namespace", "Namespace", { showcase: true }),
     f("ingressClassName", "Ingress Class", { required: false }),
     f("hosts", "Hosts", { required: false }),
-    f("address", "Address", { required: false }),
+    f("address", "Address", { showcase: true, required: false }),
     f("services", "Backend Services", {
       required: false,
       description: "namespace/name of every Service the rules route to",

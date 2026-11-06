@@ -18,14 +18,15 @@ export const VolumeResourceType = rt({
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    f("region", "Region", { editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("availabilityZone", "Availability Zone", { required: false, editable: false }),
     f("sizeGb", "Size (GB)", {
+      showcase: true,
       kind: "number",
       description: "Volume size. OVH can only grow a volume (upsize), never shrink it",
     }),
-    f("type", "Type", { kind: "enum", enumValues: TYPES, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("type", "Type", { showcase: true, kind: "enum", enumValues: TYPES, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("bootable", "Bootable", { kind: "boolean", required: false, editable: false }),
     f("attachedTo", "Attached Instance IDs", {
       required: false,

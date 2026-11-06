@@ -110,7 +110,7 @@ export function RolesSection() {
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg"
+            className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg"
           >
             {gt("New role")}
           </button>
@@ -134,7 +134,7 @@ export function RolesSection() {
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-semibold text-on-surface">{gtData(role.name)}</h2>
                     {role.isSystem && (
-                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface-overlay text-on-surface-tertiary">
+                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-surface-overlay text-on-surface-tertiary">
                         {gt("System")}
                       </span>
                     )}
@@ -446,7 +446,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
                 {wildcardEntries.map((p) => (
                   <span
                     key={p}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-overlay text-xs font-mono"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-overlay text-xs font-mono"
                   >
                     {p}
                     <button
@@ -477,7 +477,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg"
+              className="px-3 py-1.5 text-sm bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg"
             >
               {saving ? gt("Saving...") : gt("Save")}
             </button>

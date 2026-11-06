@@ -7,7 +7,12 @@ export const CertificateResourceType = rt({
     "A TLS certificate for Hetzner Load Balancers: uploaded, or managed (issued and renewed by Hetzner via Let's Encrypt)",
   fields: [
     f("name", "Name"),
-    f("type", "Type", { kind: "enum", enumValues: ["uploaded", "managed"], editable: false }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["uploaded", "managed"],
+      editable: false,
+    }),
     f("domainNames", "Domains", {
       required: false,
       description: "Comma-separated domain names the certificate covers",

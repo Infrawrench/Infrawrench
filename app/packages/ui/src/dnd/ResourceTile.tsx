@@ -1,20 +1,24 @@
 import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
+import { buildResourceShowcase, type ShowcaseField } from "@infrawrench/plugin-base";
 import { useGT } from "gt-react";
+import { PinIcon } from "../components/icons/ChromeIcons.js";
 import { useDataString } from "../i18n/data-strings.js";
+import { TileFrame, TILE_ACTION_CLASS } from "./TileFrame.js";
 import type { DraggableResource } from "./types.js";
 
-export interface ResourcePillProps {
+export interface ResourceTileProps {
   resource: DraggableResource;
   /** Override the draggable id (defaults to resource.id) */
   draggableId?: string | undefined;
-  subtitle?: string | undefined;
+  /** The fields the type marked `showcase: true`. */
+  showcase?: readonly ShowcaseField[] | undefined;
   pinned?: boolean | undefined;
   onOpen: () => void;
   onPin?: (() => void) | undefined;
   /**
-   * Right-click handler for the pill's main button (desktop's SSH / metrics
-   * context menu). Also reachable by keyboard: the ContextMenu key or
-   * Shift+F10 opens it anchored to the pill.
+   * Right-click handler for the tile (desktop's SSH / metrics context menu).
+   * Also reachable by keyboard: the ContextMenu key or Shift+F10 opens it
+   * anchored to the tile.
    */
   onContextMenu?:
     ((e: { preventDefault: () => void; clientX: number; clientY: number }) => void) | undefined;
@@ -26,10 +30,10 @@ export interface ResourcePillProps {
   isDropDisabled?: boolean | undefined;
 }
 
-export function ResourcePill({
+export function ResourceTile({
   resource,
   draggableId,
-  subtitle,
+  showcase,
   pinned,
   onOpen,
   onPin,
@@ -38,7 +42,7 @@ export function ResourcePill({
   droppable,
   droppableId,
   isDropDisabled,
-}: ResourcePillProps) {
+}: ResourceTileProps) {
   const gt = useGT();
   const gtData = useDataString();
   const {
@@ -89,84 +93,60 @@ export function ResourcePill({
 
   return (
     <div ref={setDropRef} className="inline-flex">
-      {/* The wrapper is non-interactive; the native button below carries the dnd
-          drag ref/listeners/attributes so the pin/open buttons stay siblings
-          rather than focusable descendants of an interactive element. */}
-      <div
-        className={`group flex items-center gap-1 pr-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
-          showDropHint
-            ? "border-blue-500 bg-accent-muted"
-            : "border-border-strong bg-surface-raised hover:border-border-strong"
-        } ${isDragging ? "opacity-40" : ""}`}
-      >
-        <button
-          ref={setDragRef}
-          {...listeners}
-          {...attributes}
-          type="button"
-          onClick={onOpen}
-          onKeyDown={(e) => {
+      <TileFrame
+        iconKey={resource.iconKey}
+        name={resource.displayName}
+        showcase={buildResourceShowcase(resource.fields, showcase)}
+        isDragging={isDragging}
+        dropHint={
+          showDropHint ? (
+            <span className="rounded bg-accent px-1.5 py-0.5 text-xs font-medium text-on-accent">
+              {dropHintLabel}
+            </span>
+          ) : undefined
+        }
+        actions={
+          onPin ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPin();
+              }}
+              title={pinned ? gt("Unpin") : gt("Pin to dashboard")}
+              aria-label={pinned ? gt("Unpin") : gt("Pin to dashboard")}
+              aria-pressed={!!pinned}
+              className={`${TILE_ACTION_CLASS} ${
+                pinned
+                  ? "text-on-surface"
+                  : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+              }`}
+            >
+              <PinIcon size={14} />
+            </button>
+          ) : undefined
+        }
+        buttonRef={setDragRef}
+        buttonProps={{
+          ...attributes,
+          ...listeners,
+          onClick: onOpen,
+          onKeyDown: (e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               onOpen();
               return;
             }
-            // Keyboard equivalent of right-click: open the context menu at the pill.
+            // Keyboard equivalent of right-click: open the context menu at the tile.
             if (onContextMenu && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
               e.preventDefault();
               const rect = e.currentTarget.getBoundingClientRect();
               onContextMenu({ preventDefault: () => {}, clientX: rect.left, clientY: rect.bottom });
             }
-          }}
-          onContextMenu={onContextMenu}
-          className="flex items-center gap-2 min-w-0 pl-3 py-1.5 text-left cursor-grab active:cursor-grabbing"
-        >
-          <span className="text-sm font-medium text-on-surface-secondary leading-none">
-            {resource.displayName}
-          </span>
-          {subtitle && (
-            <span className="text-xs text-on-surface-muted leading-none">{subtitle}</span>
-          )}
-        </button>
-
-        {showDropHint ? (
-          <span className="ml-1 text-xs text-accent">{dropHintLabel}</span>
-        ) : (
-          <>
-            {onPin && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPin();
-                }}
-                title={pinned ? gt("Unpin") : gt("Pin to dashboard")}
-                aria-label={pinned ? gt("Unpin") : gt("Pin to dashboard")}
-                className={`ml-1 p-1 rounded-full text-xs transition-all ${
-                  pinned
-                    ? "text-accent hover:text-accent-on-muted"
-                    : "text-on-surface-faint hover:text-on-surface-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                }`}
-              >
-                📌
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpen();
-              }}
-              title={gt("Open detail view")}
-              aria-label={gt("Open detail view")}
-              className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all text-xs"
-            >
-              →
-            </button>
-          </>
-        )}
-      </div>
+          },
+          ...(onContextMenu ? { onContextMenu } : {}),
+        }}
+      />
     </div>
   );
 }

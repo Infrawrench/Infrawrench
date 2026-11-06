@@ -17,7 +17,7 @@ interface SparklineChartProps {
 
 export function SparklineChart({
   points,
-  color = "#60a5fa",
+  color = "var(--color-chart-primary)",
   width = 80,
   height = 30,
   label,

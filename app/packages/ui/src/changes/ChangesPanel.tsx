@@ -276,7 +276,7 @@ export function ChangesPanel({
                   <ChangeKindBadge kind={entry.changeKind} />
                   {entry.origin === "schedule" && (
                     <span
-                      className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
+                      className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
                       title={gt("This transition was executed by a sleep/wake schedule.")}
                     >
                       {gt("via schedule")}
@@ -310,7 +310,7 @@ export function ChangesPanel({
                     </span>
                     {entry.revertedAt && (
                       <span
-                        className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
+                        className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
                         title={gt("Reverted on {date}.", {
                           date: new Date(entry.revertedAt).toLocaleString(),
                         })}

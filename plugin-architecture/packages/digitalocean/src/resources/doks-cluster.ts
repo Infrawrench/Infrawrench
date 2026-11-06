@@ -15,6 +15,7 @@ export const DOKSClusterResourceType = rt({
   fields: [
     f("name", "Name"),
     f("region", "Region", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "nyc1",
@@ -30,9 +31,9 @@ export const DOKSClusterResourceType = rt({
         "syd1",
       ],
     }),
-    f("version", "Kubernetes Version", { description: "e.g. 1.31.1-do.4" }),
+    f("version", "Kubernetes Version", { showcase: true, description: "e.g. 1.31.1-do.4" }),
     f("nodePoolSize", "Node Pool Size", { description: "Node size slug, e.g. s-2vcpu-4gb" }),
-    f("nodeCount", "Node Count", { kind: "number" }),
+    f("nodeCount", "Node Count", { showcase: true, kind: "number" }),
   ],
   outputs: [
     o("kubeconfig", "Kubeconfig", {

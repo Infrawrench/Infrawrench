@@ -40,7 +40,7 @@ function entryTone(entry: IncidentTimelineEntry): string {
   if (entry.kind === "artifact.failed" || entry.kind === "artifact.close_failed") {
     return "border-red-500/40 bg-red-500/5";
   }
-  if (entry.source === "note") return "border-blue-500/30 bg-blue-500/5";
+  if (entry.source === "note") return "border-accent/30 bg-accent/5";
   if (entry.source === "incident") return "border-border bg-surface-sunken";
   return "border-border";
 }
@@ -83,7 +83,7 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
           {degraded.map((feed) => (
             <span
               key={feed.feed}
-              className="px-2 py-0.5 rounded-full text-[11px] bg-surface-sunken text-on-surface-faint"
+              className="px-2 py-0.5 rounded-md text-[11px] bg-surface-sunken text-on-surface-faint"
               title={feed.error ?? undefined}
             >
               {feed.feed} {feed.status === "omitted" ? gt("not visible to you") : gt("unavailable")}

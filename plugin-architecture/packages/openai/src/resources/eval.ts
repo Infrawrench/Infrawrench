@@ -17,7 +17,7 @@ export const EvalResourceType = rt({
     f("name", "Name"),
     f("dataSourceType", "Data Source", { required: false }),
     f("testingCriteria", "Graders", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("evalId", "Eval ID"), o("name", "Name")],
   iconKey: "checklist",

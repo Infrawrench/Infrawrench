@@ -16,10 +16,10 @@ export const CachedContentResourceType = rt({
   fields: [
     f("name", "Resource Name"),
     f("displayName", "Display Name", { required: false }),
-    f("model", "Model", { required: false }),
-    f("totalTokenCount", "Cached Tokens", { kind: "number", required: false }),
+    f("model", "Model", { showcase: true, required: false }),
+    f("totalTokenCount", "Cached Tokens", { showcase: true, kind: "number", required: false }),
     f("ttl", "TTL", { required: false }),
-    f("expireTime", "Expires", { required: false }),
+    f("expireTime", "Expires", { showcase: true, required: false }),
     f("createTime", "Created", { required: false }),
     f("updateTime", "Updated", { required: false }),
   ],

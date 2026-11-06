@@ -6,10 +6,10 @@ export const ZoneResourceType = rt({
   description: "A Cloudflare DNS zone (domain)",
   fields: [
     f("name", "Domain"),
-    f("status", "Status"),
-    f("plan", "Plan", { required: false }),
+    f("status", "Status", { showcase: true }),
+    f("plan", "Plan", { showcase: true, required: false }),
     f("nameservers", "Nameservers", { required: false }),
-    f("type", "Zone Type", { required: false }),
+    f("type", "Zone Type", { showcase: true, required: false }),
     f("paused", "Paused", { kind: "boolean", required: false }),
   ],
   outputs: [

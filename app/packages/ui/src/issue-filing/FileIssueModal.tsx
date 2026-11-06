@@ -354,7 +354,7 @@ export function FileIssueModal({
                   }}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
                     tracker === t
-                      ? "border-blue-600 text-info bg-blue-600/10"
+                      ? "border-accent text-info bg-accent/10"
                       : "border-border text-on-surface-secondary hover:bg-surface-overlay"
                   }`}
                 >
@@ -545,7 +545,7 @@ export function FileIssueModal({
             type="button"
             onClick={() => void submit()}
             disabled={busy || !ready}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
           >
             {busy ? gt("Filing…") : gt("Create issue")}
           </button>

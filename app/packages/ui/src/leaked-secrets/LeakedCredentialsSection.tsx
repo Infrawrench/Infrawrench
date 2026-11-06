@@ -475,7 +475,7 @@ export function LeakedCredentialsSection({
                               type="button"
                               disabled={busy}
                               onClick={() => openPanel({ id: leak.id, kind: "rotate" })}
-                              className="px-2.5 py-1 rounded-lg bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+                              className="px-2.5 py-1 rounded-lg bg-accent text-on-accent hover:bg-accent/90 disabled:opacity-50"
                             >
                               {gt("Rotate")}
                             </button>
@@ -485,7 +485,7 @@ export function LeakedCredentialsSection({
                               type="button"
                               disabled={busy}
                               onClick={() => openPanel({ id: leak.id, kind: "replace" })}
-                              className="px-2.5 py-1 rounded-lg bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+                              className="px-2.5 py-1 rounded-lg bg-accent text-on-accent hover:bg-accent/90 disabled:opacity-50"
                             >
                               {gt("Replace value")}
                             </button>
@@ -654,7 +654,7 @@ export function LeakedCredentialsSection({
                                 );
                               }
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+                            className="px-2.5 py-1 rounded-lg bg-accent text-on-accent hover:bg-accent/90 disabled:opacity-50"
                           >
                             {busy
                               ? gt("Working…")

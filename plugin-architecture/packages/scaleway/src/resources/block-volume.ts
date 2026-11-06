@@ -7,10 +7,10 @@ export const BlockVolumeResourceType = rt({
   description: "A Scaleway Block Storage volume (sbs_volume)",
   fields: [
     f("name", "Name"),
-    f("zone", "Zone", { kind: "enum", enumValues: ZONES }),
-    f("sizeGb", "Size (GB)", { kind: "number" }),
+    f("zone", "Zone", { showcase: true, kind: "enum", enumValues: ZONES }),
+    f("sizeGb", "Size (GB)", { showcase: true, kind: "number" }),
     f("perfIops", "IOPS", { kind: "enum", required: false, enumValues: ["5000", "15000"] }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("attachedInstanceId", "Attached Instance ID", {
       required: false,
       description: "ID of the instance this volume is attached to, if any",

@@ -19,9 +19,9 @@ export const ContainerRegistryResourceType = rt({
       enumValues: ["starter", "basic", "professional"],
       required: false,
     }),
-    f("region", "Region", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
     f("storageUsageBytes", "Storage Used", { kind: "number", required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("endpoint", "Endpoint", {

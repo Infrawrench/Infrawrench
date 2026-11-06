@@ -22,7 +22,7 @@ export const OrganizationResourceType = rt({
       editable: false,
       description: "Verified and pending organization domains, comma-separated.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("organizationId", "Organization ID", {

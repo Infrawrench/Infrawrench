@@ -14,6 +14,7 @@ export const BatchResourceType = rt({
     "An asynchronous batch of API requests submitted as a JSONL file and billed at the discounted batch rate.",
   fields: [
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "validating",
@@ -28,7 +29,7 @@ export const BatchResourceType = rt({
       required: false,
     }),
     f("endpoint", "Endpoint"),
-    f("model", "Model", { required: false }),
+    f("model", "Model", { showcase: true, required: false }),
     f("inputFileId", "Input File", { required: false }),
     f("outputFileId", "Output File", { required: false }),
     f("errorFileId", "Error File", { required: false }),
@@ -36,9 +37,9 @@ export const BatchResourceType = rt({
     f("requestsTotal", "Requests", { kind: "number", required: false }),
     f("requestsCompleted", "Completed", { kind: "number", required: false }),
     f("requestsFailed", "Failed", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("completedAt", "Completed At", { required: false }),
-    f("expiresAt", "Expires", { required: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false }),
   ],
   outputs: [
     o("batchId", "Batch ID"),

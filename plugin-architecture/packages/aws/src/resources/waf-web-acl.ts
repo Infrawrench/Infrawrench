@@ -8,7 +8,7 @@ export const WAFWebACLResourceType = rt({
     f("name", "Name"),
     f("scope", "Scope", { kind: "enum", enumValues: ["REGIONAL", "CLOUDFRONT"] }),
     f("description", "Description", { required: false }),
-    f("ruleCount", "Rules", { kind: "number", required: false }),
+    f("ruleCount", "Rules", { showcase: true, kind: "number", required: false }),
     f("defaultAction", "Default Action", {
       kind: "enum",
       required: false,

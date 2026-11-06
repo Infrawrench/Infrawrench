@@ -21,10 +21,15 @@ export const FileResourceType = rt({
   fields: [
     f("fileId", "File ID", { editable: false }),
     f("filename", "Filename", { required: false, editable: false }),
-    f("bytes", "Size (bytes)", { kind: "number", required: false, editable: false }),
+    f("bytes", "Size (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("purpose", "Purpose", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("fileId", "File ID", {

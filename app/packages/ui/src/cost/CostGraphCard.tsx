@@ -165,7 +165,7 @@ function DrillSelect({
         const picked = values.find((v) => v.value === e.target.value);
         if (picked) onPick(picked);
       }}
-      className={`${className} rounded border border-border bg-surface-sunken px-1 py-0.5 text-[11px] text-on-surface-secondary focus:outline-none focus:border-blue-500`}
+      className={`${className} rounded border border-border bg-surface-sunken px-1 py-0.5 text-[11px] text-on-surface-secondary focus:outline-none focus:border-accent-subtle`}
     >
       <option value="">{gt("Drill into…")}</option>
       {values.map((v) => (
@@ -211,7 +211,7 @@ function DrillChoices({
           ref={i === 0 ? firstRef : undefined}
           type="button"
           onClick={() => onChoose(c.dimension)}
-          className="rounded-full border border-border px-2 py-0.5 text-on-surface-secondary hover:border-border-strong focus-visible:border-border-strong"
+          className="rounded-md border border-border px-2 py-0.5 text-on-surface-secondary hover:border-border-strong focus-visible:border-border-strong"
         >
           {c.label}
         </button>
@@ -1452,7 +1452,7 @@ function SpendGraphCard({
                           text: first.text,
                         })
                   }
-                  className="flex max-w-full items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] text-on-surface-secondary hover:border-border-strong hover:text-on-surface focus-visible:border-border-strong"
+                  className="flex max-w-full items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-[11px] text-on-surface-secondary hover:border-border-strong hover:text-on-surface focus-visible:border-border-strong"
                 >
                   <span
                     aria-hidden
@@ -1488,7 +1488,7 @@ function SpendGraphCard({
                     ),
                   })
                 }
-                className="rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-on-surface-faint hover:border-border-strong hover:text-on-surface-secondary"
+                className="rounded-md border border-dashed border-border px-2 py-0.5 text-[11px] text-on-surface-faint hover:border-border-strong hover:text-on-surface-secondary"
               >
                 {gt("+ Annotate")}
               </button>

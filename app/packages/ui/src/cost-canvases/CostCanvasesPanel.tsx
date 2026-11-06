@@ -176,7 +176,7 @@ function NewCanvasComposer({
         }}
         rows={3}
         placeholder={gt("e.g. Monthly AI spend by team for the last 6 months")}
-        className="bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+        className="bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent-subtle resize-none"
       />
       <div className="flex flex-wrap gap-2">
         {examples.map((ex) => (
@@ -184,7 +184,7 @@ function NewCanvasComposer({
             key={ex}
             type="button"
             onClick={() => setPrompt(ex)}
-            className="rounded-full border border-border px-2.5 py-1 text-[11px] text-on-surface-muted hover:text-on-surface hover:border-border-strong"
+            className="rounded-md border border-border px-2.5 py-1 text-[11px] text-on-surface-muted hover:text-on-surface hover:border-border-strong"
           >
             {ex}
           </button>
@@ -200,7 +200,7 @@ function NewCanvasComposer({
           type="button"
           disabled={busy || prompt.trim().length === 0}
           onClick={() => void create()}
-          className="px-4 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg"
+          className="px-4 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg"
         >
           {busy ? gt("Starting…") : gt("Build canvas")}
         </button>

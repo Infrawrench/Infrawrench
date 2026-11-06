@@ -6,7 +6,7 @@ export const EventBridgeRuleResourceType = rt({
   description: "An Amazon EventBridge event rule",
   fields: [
     f("name", "Name"),
-    f("state", "State", { kind: "enum", enumValues: ["ENABLED", "DISABLED"] }),
+    f("state", "State", { showcase: true, kind: "enum", enumValues: ["ENABLED", "DISABLED"] }),
     f("eventBusName", "Event Bus", { required: false }),
     f("scheduleExpression", "Schedule", { required: false }),
     f("description", "Description", { required: false }),

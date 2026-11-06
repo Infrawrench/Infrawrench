@@ -7,7 +7,7 @@ export const SecretsStoreSecretResourceType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("storeName", "Store", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("value", "Value", {
       kind: "password",
       required: false,
@@ -24,7 +24,7 @@ export const SecretsStoreSecretResourceType = rt({
       required: false,
     }),
     f("scopeWebsearch", "Usable by Web Search", { kind: "boolean", required: false }),
-    f("created", "Created", { required: false, editable: false }),
+    f("created", "Created", { showcase: true, required: false, editable: false }),
     f("modified", "Modified", { required: false, editable: false }),
   ],
   outputs: [o("secretName", "Secret Name"), o("storeId", "Store ID")],

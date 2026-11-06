@@ -13,7 +13,7 @@ const IMPACT_TONE: Record<string, string> = {
   critical: "bg-red-500/15 text-danger",
   major: "bg-amber-500/15 text-warning",
   minor: "bg-yellow-500/10 text-warning",
-  maintenance: "bg-blue-500/10 text-info",
+  maintenance: "bg-accent/10 text-info",
 };
 
 /**

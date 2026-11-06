@@ -75,7 +75,7 @@ export function ResourceChangesPanel({ orgId, resourceId }: ResourceChangesPanel
             </span>
             {entry.revertedAt && (
               <span
-                className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary"
+                className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary"
                 title={gt("Reverted on {when}.", {
                   when: new Date(entry.revertedAt).toLocaleString(),
                 })}

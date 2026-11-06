@@ -25,7 +25,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   DetailView,
-  DraggableChildPill,
+  DraggableChildTile,
   FirestoreDocumentBrowser,
   ResourceSchedulePanel,
   ResourceLeasePanel,
@@ -341,9 +341,11 @@ export function DetailViewContainer({
         }}
         {...(onChildDelete ? { onChildDelete } : {})}
         {...(onChildEdit ? { onChildEdit } : {})}
-        renderChildResource={(child: ChildResource) => (
-          <DraggableChildPill
+        renderChildResource={(child: ChildResource, group) => (
+          <DraggableChildTile
             child={child}
+            iconKey={group.iconKey}
+            showcase={group.showcase}
             onOpen={() => {
               void navigateToWorkspaceTarget(
                 navigate,

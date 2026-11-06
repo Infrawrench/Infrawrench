@@ -13,6 +13,7 @@ export const ProjectResourceType = rt({
     }),
     f("description", "Description", { required: false }),
     f("environment", "Environment", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["Development", "Staging", "Production"],

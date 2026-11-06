@@ -7,11 +7,11 @@ export const ModelResourceType = rt({
   fields: [
     f("displayName", "Display Name"),
     f("modelId", "Model ID"),
-    f("kind", "Kind", { required: false }),
-    f("state", "State", { required: false }),
+    f("kind", "Kind", { showcase: true, required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("description", "Description", { required: false }),
     f("contextLength", "Context Length", { kind: "number", required: false }),
-    f("parameterCount", "Parameters", { required: false }),
+    f("parameterCount", "Parameters", { showcase: true, required: false }),
     f("public", "Public", { kind: "boolean", required: false }),
     f("supportsServerless", "Serverless", { kind: "boolean", required: false }),
     f("supportsLora", "LoRA Add-ons", { kind: "boolean", required: false }),
@@ -20,7 +20,7 @@ export const ModelResourceType = rt({
     f("huggingFaceUrl", "Hugging Face", { required: false }),
     f("githubUrl", "GitHub", { required: false }),
     f("deprecationDate", "Deprecation Date", { required: false }),
-    f("createTime", "Created", { required: false }),
+    f("createTime", "Created", { showcase: true, required: false }),
   ],
   outputs: [
     o("modelName", "Model Resource Name", {

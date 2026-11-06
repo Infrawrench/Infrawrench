@@ -14,8 +14,17 @@ export const BackupResourceType = rt({
   fields: [
     f("backupId", "Backup ID"),
     f("serviceId", "Service ID"),
-    f("status", "Status", { kind: "enum", enumValues: ["done", "error", "in_progress"] }),
-    f("type", "Type", { kind: "enum", enumValues: ["full", "incremental"], required: false }),
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["done", "error", "in_progress"],
+    }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["full", "incremental"],
+      required: false,
+    }),
     f("startedAt", "Started", { required: false }),
     f("finishedAt", "Finished", { required: false }),
     f("sizeInBytes", "Size (bytes)", { kind: "number", required: false }),

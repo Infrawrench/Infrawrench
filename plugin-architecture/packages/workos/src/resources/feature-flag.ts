@@ -28,7 +28,7 @@ export const FeatureFlagResourceType = rt({
     }),
     f("tags", "Tags", { required: false, editable: false }),
     f("owner", "Owner", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("flagSlug", "Flag Slug")],
   supportsUpdate: true,

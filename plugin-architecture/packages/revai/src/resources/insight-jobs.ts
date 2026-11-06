@@ -13,7 +13,7 @@ const statusField = f("status", "Status", {
 });
 
 const commonFields = [
-  f("createdOn", "Created", { required: false }),
+  f("createdOn", "Created", { showcase: true, required: false }),
   f("completedOn", "Completed", { required: false }),
   f("metadata", "Metadata", { required: false }),
   f("failure", "Failure", { required: false }),
@@ -28,7 +28,7 @@ export const LanguageIdJobResourceType = rt({
   description:
     "A Rev AI job that identifies the most probable spoken language in a piece of media, from the last 30 days",
   fields: [
-    statusField,
+    { ...statusField, showcase: true },
     f("topLanguage", "Top Language", { required: false }),
     f("topConfidence", "Confidence", { kind: "number", required: false }),
     f("processedDurationSeconds", "Processed (s)", { kind: "number", required: false }),
@@ -53,9 +53,9 @@ export const SentimentJobResourceType = rt({
   description:
     "A Rev AI job that scores each statement of an English transcript as positive, negative or neutral, from the last 30 days. US deployment only.",
   fields: [
-    statusField,
-    f("language", "Language", { required: false }),
-    f("wordCount", "Words", { kind: "number", required: false }),
+    { ...statusField, showcase: true },
+    f("language", "Language", { showcase: true, required: false }),
+    f("wordCount", "Words", { showcase: true, kind: "number", required: false }),
     f("positive", "Positive Statements", { kind: "number", required: false }),
     f("negative", "Negative Statements", { kind: "number", required: false }),
     f("neutral", "Neutral Statements", { kind: "number", required: false }),
@@ -74,10 +74,10 @@ export const TopicJobResourceType = rt({
   description:
     "A Rev AI job that extracts the main topics of an English transcript, with a score and the statements behind each, from the last 30 days. US deployment only.",
   fields: [
-    statusField,
-    f("language", "Language", { required: false }),
-    f("wordCount", "Words", { kind: "number", required: false }),
-    f("topicCount", "Topics", { kind: "number", required: false }),
+    { ...statusField, showcase: true },
+    f("language", "Language", { showcase: true, required: false }),
+    f("wordCount", "Words", { showcase: true, kind: "number", required: false }),
+    f("topicCount", "Topics", { showcase: true, kind: "number", required: false }),
     f("topTopics", "Top Topics", { required: false }),
     ...commonFields,
   ],
@@ -94,8 +94,8 @@ export const AlignmentJobResourceType = rt({
   description:
     "A Rev AI job that aligns a known transcript to its media for precise word timings, from the last 30 days. US deployment only.",
   fields: [
-    statusField,
-    f("language", "Language", { required: false }),
+    { ...statusField, showcase: true },
+    f("language", "Language", { showcase: true, required: false }),
     f("processedDurationSeconds", "Processed (s)", { kind: "number", required: false }),
     f("mediaUrl", "Media URL", { required: false }),
     ...commonFields,

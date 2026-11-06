@@ -27,7 +27,7 @@ import {
   type AcceptedCredentials,
   type OAuthStatus,
 } from "@infrawrench/server-core/provider-oauth";
-import { stripOAuthGrantState } from "@infrawrench/plugin-base";
+import { showcaseFields, stripOAuthGrantState } from "@infrawrench/plugin-base";
 import type { Context } from "hono";
 import type { AuthSession } from "../auth-middleware";
 
@@ -751,6 +751,8 @@ app.get("/:id/detail", async (c) => {
       id: rt.id,
       displayName: rt.displayName,
       pluralDisplayName: rt.pluralDisplayName,
+      ...(rt.iconKey ? { iconKey: rt.iconKey } : {}),
+      showcase: showcaseFields(rt),
       parentTypeId: rt.parentTypeId,
       supportsCreate: rt.supportsCreate ?? false,
       // Both flags drive what the account page *opens to*, so the client can't

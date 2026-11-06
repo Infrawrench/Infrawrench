@@ -3,13 +3,14 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const StaticIpResourceType = rt({
   name: "Static IP",
   id: "static-ip",
+  iconKey: "ip",
   description: "A Google Cloud reserved static external IP address",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false }),
-    f("address", "Address", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
+    f("address", "Address", { showcase: true, required: false }),
     f("addressType", "Type", { required: false }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("networkTier", "Network Tier", { required: false }),
     f("ipVersion", "IP Version", { required: false }),
     f("attachedVmName", "Attached VM", {

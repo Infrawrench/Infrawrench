@@ -6,7 +6,11 @@ export const InferenceBatchResourceType = rt({
   description:
     "A DigitalOcean Batch Inference job: large asynchronous workloads against OpenAI or Anthropic APIs. Results return within 24 hours at lower cost.",
   fields: [
-    f("provider", "Provider", { kind: "enum", enumValues: ["openai", "anthropic"] }),
+    f("provider", "Provider", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["openai", "anthropic"],
+    }),
     f("endpoint", "Endpoint", {
       kind: "enum",
       required: false,
@@ -17,7 +21,7 @@ export const InferenceBatchResourceType = rt({
     f("inputFileId", "Input File"),
     f("outputFileId", "Output File", { required: false, editable: false }),
     f("errorFileId", "Error File", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("totalRequests", "Total Requests", { kind: "number", required: false, editable: false }),
     f("completedRequests", "Completed Requests", {
       kind: "number",

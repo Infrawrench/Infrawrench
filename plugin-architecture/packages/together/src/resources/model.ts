@@ -8,7 +8,7 @@ export const ModelResourceType = rt({
   fields: [
     f("name", "Name"),
     f("modelId", "Model ID"),
-    f("type", "Type", { required: false }),
+    f("type", "Type", { showcase: true, required: false }),
     f("organization", "Organization", { required: false }),
     f("contextLength", "Context Length", { kind: "number", required: false }),
     f("license", "License", { required: false }),
@@ -17,7 +17,7 @@ export const ModelResourceType = rt({
     f("outputPrice", "Output $/1M tokens", { kind: "number", required: false }),
     f("hourlyPrice", "Dedicated $/hour", { kind: "number", required: false }),
     f("finetunePrice", "Fine-tune price", { kind: "number", required: false }),
-    f("createdAt", "Added", { required: false }),
+    f("createdAt", "Added", { showcase: true, required: false }),
   ],
   outputs: [
     o("modelId", "Model ID", {

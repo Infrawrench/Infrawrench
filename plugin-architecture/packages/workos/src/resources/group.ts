@@ -14,7 +14,7 @@ export const GroupResourceType = rt({
     f("name", "Name"),
     f("description", "Description", { required: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("groupId", "Group ID")],
   principalRole: { role: "group", createdKey: "createdAt", parentKey: "organizationId" },

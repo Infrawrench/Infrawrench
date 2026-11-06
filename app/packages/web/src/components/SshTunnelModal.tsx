@@ -224,7 +224,7 @@ export function SshTunnelModal({
                     onClick={() => setService(key)}
                     className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
                       service === key
-                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                        ? "border-accent bg-accent-muted text-accent-on-muted"
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
                     }`}
                   >
@@ -277,7 +277,7 @@ export function SshTunnelModal({
               type="button"
               onClick={() => void onConfirm()}
               disabled={connecting || !selectedKeyId}
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors disabled:opacity-50"
             >
               {connecting ? gt("Connecting...") : gt("Connect")}
             </button>

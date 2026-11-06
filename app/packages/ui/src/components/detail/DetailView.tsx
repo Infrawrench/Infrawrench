@@ -64,7 +64,9 @@ import type {
   ProviderResource,
   RerollSelection,
 } from "./detail-types.js";
-import { ArrowIcon } from "../icons/ChromeIcons.js";
+import { inferIconKey } from "../icons/ResourceTypeIcon.js";
+import { DraggableChildTile } from "../../dnd/DraggableChildTile.js";
+import { TileFrame } from "../../dnd/TileFrame.js";
 
 export type { ChildResource, ChildResourceGroup, PeerPaneData, ProviderResource, RerollSelection };
 
@@ -811,9 +813,9 @@ export function DetailView({
               <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted mb-3">
                 {gt("Children")}
               </h3>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
                 {schema.children.map((child) => (
-                  <SchemaChildPill key={child.resourceId} child={child} />
+                  <SchemaChildTile key={child.resourceId} child={child} />
                 ))}
               </div>
             </div>
@@ -1231,15 +1233,16 @@ function AutoChildGroup({
           {gt("No {name} yet.", { name: group.pluralDisplayName.toLowerCase() })}
         </p>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-3">
           {group.resources.map((child) =>
             renderChildResource ? (
               <React.Fragment key={child.id}>{renderChildResource(child, group)}</React.Fragment>
             ) : (
-              <ChildResourcePill
+              <DraggableChildTile
                 key={child.id}
                 child={child}
-                onClick={() => onChildClick?.(child)}
+                iconKey={group.iconKey}
+                onOpen={() => onChildClick?.(child)}
               />
             ),
           )}
@@ -1289,17 +1292,18 @@ function dispatchPillAction(action: HostAction): void {
 }
 
 /**
- * A plugin-declared child pill.
+ * A plugin-declared child tile.
  *
  * Schema items (`DetailViewSchema.children` and every `childGroups` entry, on
  * Overview and inside tabs alike) carry a resource id, a badge list and an
  * optional click action, none of which line up with the `ChildResource` shape
- * `ChildResourcePill` renders. This is that mapping, in one place, including
+ * `ChildResourceTile` renders. This is that mapping, in one place, including
  * the fallback of navigating to the child when it declares no action.
  */
-function SchemaChildPill({ child }: { child: DashboardCardSchema }) {
+function SchemaChildTile({ child }: { child: DashboardCardSchema }) {
   return (
-    <ChildResourcePill
+    <ChildResourceTile
+      iconKey={inferIconKey(child.resourceTypeId)}
       child={{
         id: child.resourceId,
         displayName: child.displayName,
@@ -1325,7 +1329,7 @@ function SchemaChildPill({ child }: { child: DashboardCardSchema }) {
   );
 }
 
-/** One `childGroups` entry: heading, optional create button, and its pills. */
+/** One `childGroups` entry: heading, optional create button, and its tiles. */
 function SchemaChildGroup({ group }: { group: ChildGroupSchema }) {
   const gt = useGT();
   return (
@@ -1347,9 +1351,9 @@ function SchemaChildGroup({ group }: { group: ChildGroupSchema }) {
       {group.items.length === 0 ? (
         <p className="text-xs text-on-surface-faint">{group.emptyText ?? gt("No items yet.")}</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-3">
           {group.items.map((child) => (
-            <SchemaChildPill key={child.resourceId} child={child} />
+            <SchemaChildTile key={child.resourceId} child={child} />
           ))}
         </div>
       )}
@@ -1357,43 +1361,36 @@ function SchemaChildGroup({ group }: { group: ChildGroupSchema }) {
   );
 }
 
-/** Fallback child pill: used when no custom renderChildResource is provided */
-function ChildResourcePill({
+/**
+ * A tile for a plugin-declared child (`DashboardCardSchema`), which is not
+ * draggable: these carry no account id, and many are pseudo-resources (a
+ * Firestore index, a backup schedule) with nothing a drop could pin. Children
+ * from `childResourceGroups` are real resources and use `DraggableChildTile`.
+ */
+function ChildResourceTile({
   child,
+  iconKey,
   onClick,
   nonInteractive,
 }: {
   child: ChildResource;
+  iconKey?: string | undefined;
   onClick: () => void;
   nonInteractive?: boolean | undefined;
 }) {
-  const statusDot = child.status && (
-    <StatusIssueIndicator status={child.status.status} label={child.status.label} />
-  );
-  if (nonInteractive) {
-    return (
-      <div className="flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-full border border-border-strong bg-surface-raised/60 text-left">
-        {statusDot}
-        <span className="text-sm font-medium text-on-surface-secondary">{child.displayName}</span>
-        {child.subtitle && <span className="text-xs text-on-surface-muted">{child.subtitle}</span>}
-      </div>
-    );
-  }
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-full border border-border-strong bg-surface-raised hover:border-border-strong transition-colors text-left"
-    >
-      {statusDot}
-      <span className="text-sm font-medium text-on-surface-secondary">{child.displayName}</span>
-      {child.subtitle && <span className="text-xs text-on-surface-muted">{child.subtitle}</span>}
-      <ArrowIcon
-        direction="right"
-        size={12}
-        className="text-on-surface-faint group-hover:text-on-surface-tertiary transition-colors ml-1"
-      />
-    </button>
+    <TileFrame
+      iconKey={iconKey}
+      name={child.displayName}
+      subtitle={child.subtitle}
+      nonInteractive={nonInteractive}
+      status={
+        child.status ? (
+          <StatusIssueIndicator status={child.status.status} label={child.status.label} />
+        ) : undefined
+      }
+      buttonProps={{ onClick }}
+    />
   );
 }
 
@@ -1429,7 +1426,7 @@ function TabButton({
       onKeyDown={onKeyDown}
       className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
         active
-          ? "border-blue-500 text-white"
+          ? "border-accent text-on-surface"
           : "border-transparent text-on-surface-muted hover:text-on-surface-secondary hover:border-border-strong"
       }`}
     >

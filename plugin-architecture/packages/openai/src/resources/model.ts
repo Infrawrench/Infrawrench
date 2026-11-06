@@ -16,7 +16,7 @@ export const ModelResourceType = rt({
   fields: [
     f("modelId", "Model ID"),
     f("ownedBy", "Owned By", { required: false }),
-    f("created", "Created", { required: false }),
+    f("created", "Created", { showcase: true, required: false }),
     f("isFineTuned", "Fine-tuned", { kind: "boolean", required: false }),
     f("supportsTts", "Text-to-speech", { kind: "boolean", required: false }),
     f("supportsStt", "Transcription", { kind: "boolean", required: false }),

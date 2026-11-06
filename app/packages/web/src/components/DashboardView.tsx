@@ -24,13 +24,19 @@ import {
   useDataString,
   type DashboardCardKind,
   formatErrorMessage,
-  extractHostLabel,
+  ShowcaseLines,
   toast,
   DashboardAddMenu,
   DashboardExportActions,
   CloseIcon,
+  ResourceTypeIcon,
 } from "@infrawrench/ui";
-import type { ProbeStatus } from "@infrawrench/plugin-base";
+import {
+  buildResourceShowcase,
+  omitLiveShowcaseStats,
+  type ProbeStatus,
+  type ShowcaseField,
+} from "@infrawrench/plugin-base";
 import { WorkflowDashboardCard, type WorkflowDashboardCardData } from "@infrawrench/ui/workflows";
 import {
   BudgetConfigModal,
@@ -109,6 +115,8 @@ interface PinDetail {
   displayName: string;
   pluginId: string;
   pluginLogoSvg: string;
+  iconKey?: string;
+  showcase?: ShowcaseField[];
   pluginDisplayName: string;
   resourceTypeId: string;
   accountId: string;
@@ -682,12 +690,12 @@ export function DashboardView({
                 if (e.key === "Enter") void saveName(e.currentTarget.value);
                 if (e.key === "Escape") setEditingName(false);
               }}
-              className="text-2xl font-semibold bg-transparent border-b border-blue-500 text-on-surface focus:outline-none"
+              className="text-2xl font-semibold bg-transparent border-b border-accent text-on-surface focus:outline-none"
             />
           ) : (
             <div className="flex items-center gap-2">
               <h1
-                className="text-2xl font-semibold text-on-surface cursor-default hover:text-white"
+                className="text-2xl font-semibold text-on-surface cursor-default hover:text-on-surface"
                 onDoubleClick={() => setEditingName(true)}
                 title={gt("Double-click to rename")}
               >
@@ -1166,10 +1174,14 @@ function PinCard({
           }
         })()
       : ((detail.fieldsJson as Record<string, unknown>) ?? {});
-  const host = extractHostLabel(fields);
-
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">
+      <ResourceTypeIcon
+        iconKey={detail.iconKey}
+        size={136}
+        strokeWidth={1.25}
+        className="pointer-events-none absolute -right-[68px] -top-[68px] text-on-surface opacity-[0.1]"
+      />
       <button
         type="button"
         onClick={async () => {
@@ -1210,8 +1222,15 @@ function PinCard({
           <p className="text-base font-semibold text-on-surface leading-tight">
             {detail.displayName}
           </p>
-          {host && <p className="text-xs text-on-surface-muted mt-0.5 truncate">{host}</p>}
         </div>
+        <span className="flex flex-col">
+          <ShowcaseLines
+            showcase={omitLiveShowcaseStats(
+              buildResourceShowcase(fields, detail.showcase),
+              detail.status.stats,
+            )}
+          />
+        </span>
       </button>
 
       <ConnectionFooter status={detail.status} />

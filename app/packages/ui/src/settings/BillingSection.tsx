@@ -148,7 +148,7 @@ export function BillingSection() {
             </p>
           </div>
           <span
-            className={`text-xs font-medium px-2 py-1 rounded-full ${
+            className={`text-xs font-medium px-2 py-1 rounded-md ${
               complimentary
                 ? "bg-purple-500/10 text-notice"
                 : isActive || isTrial || (!subscriptionPaid && prepaidSeats > 0)
@@ -190,7 +190,7 @@ export function BillingSection() {
               type="button"
               onClick={() => void handleUpgrade()}
               disabled={loading}
-              className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+              className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
             >
               {loading
                 ? gt("Redirecting...")
@@ -262,7 +262,7 @@ export function BillingSection() {
                 type="button"
                 onClick={() => void handleBuyCapacity()}
                 disabled={loading}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
               >
                 {loading
                   ? gt("Redirecting...")
@@ -306,7 +306,7 @@ export function BillingSection() {
                           })}
                     </span>
                     <span
-                      className={`text-xs font-medium px-2 py-1 rounded-full ${
+                      className={`text-xs font-medium px-2 py-1 rounded-md ${
                         slotIsLive(slot)
                           ? "bg-green-500/10 text-success"
                           : "bg-surface-overlay text-on-surface-tertiary"

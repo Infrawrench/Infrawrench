@@ -8,7 +8,7 @@ export const VercelDeploymentResourceType = rt({
   fields: [
     f("name", "Name"),
     f("url", "URL", { required: false }),
-    f("state", "State", { required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("target", "Target", { required: false }),
     f("source", "Source", { required: false }),
     f("projectId", "Project ID", { required: false }),
@@ -17,9 +17,9 @@ export const VercelDeploymentResourceType = rt({
     f("gitCommitSha", "Commit SHA", { required: false }),
     f("gitCommitMessage", "Commit Message", { required: false }),
     f("inspectorUrl", "Inspector URL", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
     f("readyAt", "Ready At", { required: false }),
-    f("framework", "Framework", { required: false }),
+    f("framework", "Framework", { showcase: true, required: false }),
     f("errorMessage", "Error", { required: false }),
   ],
   outputs: [

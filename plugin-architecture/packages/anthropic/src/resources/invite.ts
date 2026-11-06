@@ -17,6 +17,7 @@ export const InviteResourceType = rt({
   fields: [
     f("email", "Email", { editable: false }),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       editable: false,
       enumValues: [
@@ -32,13 +33,14 @@ export const InviteResourceType = rt({
       ],
     }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
       enumValues: ["pending", "accepted", "expired", "deleted"],
     }),
     f("invitedAt", "Invited", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
     f("acceptedAt", "Accepted", { required: false, editable: false }),
   ],
   outputs: [o("inviteId", "Invite ID"), o("email", "Email")],

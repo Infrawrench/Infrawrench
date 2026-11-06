@@ -10,7 +10,12 @@ export const NeonAuthOauthProviderResourceType = rt({
       kind: "enum",
       enumValues: ["google", "github", "microsoft", "vercel"],
     }),
-    f("type", "Type", { kind: "enum", enumValues: ["standard", "shared"], required: false }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["standard", "shared"],
+      required: false,
+    }),
     f("clientId", "Client ID", { required: false }),
     f("projectId", "Project ID"),
     f("branchId", "Branch ID"),

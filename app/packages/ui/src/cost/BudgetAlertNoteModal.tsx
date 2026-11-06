@@ -145,7 +145,7 @@ export function BudgetAlertNoteModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors"
+              className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent transition-colors"
             >
               {gt("Done")}
             </button>
@@ -162,7 +162,7 @@ export function BudgetAlertNoteModal({
                 type="button"
                 disabled={busy || problem !== null}
                 onClick={() => void save()}
-                className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50"
+                className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent transition-colors disabled:opacity-50"
               >
                 {busy ? gt("Saving…") : rewording ? gt("Save") : gt("Add note")}
               </button>

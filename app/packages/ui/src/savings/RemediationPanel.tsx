@@ -158,11 +158,11 @@ export function RemediationPanel({ remediation, oneClickLabel }: RemediationPane
           <li key={`${index}:${command.command}`} className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-on-surface-faint">{index + 1}.</span>
-              <span className="rounded-full border border-border px-2 py-0.5 text-on-surface-tertiary">
+              <span className="rounded-md border border-border px-2 py-0.5 text-on-surface-tertiary">
                 {remediationToolLabel(command.tool)}
               </span>
               {command.destructive && (
-                <span className="rounded-full border border-danger-border px-2 py-0.5 font-medium text-danger">
+                <span className="rounded-md border border-danger-border px-2 py-0.5 font-medium text-danger">
                   {gt("Destructive")}
                 </span>
               )}

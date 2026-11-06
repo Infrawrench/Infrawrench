@@ -11,7 +11,7 @@ export const CatalogResourceType = rt({
     f("catalogType", "Type", { required: false }),
     f("isolationMode", "Isolation Mode", { required: false }),
     f("securable_kind", "Securable Kind", { required: false }),
-    f("schemaCount", "Schemas", { kind: "number", required: false }),
+    f("schemaCount", "Schemas", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [o("catalogName", "Catalog Name"), o("metastoreId", "Metastore ID")],
   supportsCreate: true,

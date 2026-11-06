@@ -14,7 +14,7 @@ export const AccountResourceType = rt({
   description: "The Rev AI developer account, its USD balances, and the Speech playground",
   fields: [
     f("email", "Email", { required: false }),
-    f("region", "Deployment", { required: false }),
+    f("region", "Deployment", { showcase: true, required: false }),
     f("endpoint", "API Endpoint", { required: false }),
     f("freeBalance", "Free Balance (USD)", { kind: "number", required: false }),
     f("purchasedBalance", "Purchased Balance (USD)", { kind: "number", required: false }),

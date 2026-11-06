@@ -14,7 +14,7 @@ export const NeonAuthResourceType = rt({
     f("baseUrl", "Base URL", { required: false }),
     f("emailAndPassword", "Email + Password", { kind: "boolean", required: false }),
     f("allowLocalhost", "Allow Localhost", { kind: "boolean", required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [
     o("jwksUrl", "JWKS URL"),

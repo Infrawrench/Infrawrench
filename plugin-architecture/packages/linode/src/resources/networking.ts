@@ -8,7 +8,12 @@ export const NodeBalancerResourceType = rt({
   description: "A Linode NodeBalancer (managed load balancer)",
   fields: [
     f("label", "Label"),
-    f("region", "Region", { kind: "enum", enumValues: REGION_IDS, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: REGION_IDS,
+      editable: false,
+    }),
     f("nbType", "Tier", { required: false, editable: false }),
     f("hostname", "Hostname", { required: false, editable: false }),
     f("ipv4", "IPv4", { required: false, editable: false }),
@@ -19,8 +24,13 @@ export const NodeBalancerResourceType = rt({
       description:
         "New TCP connections per second allowed from one client IP (0 to 20; 0 disables)",
     }),
-    f("configCount", "Ports", { kind: "number", required: false, editable: false }),
-    f("nodeCount", "Backend Nodes", { kind: "number", required: false, editable: false }),
+    f("configCount", "Ports", { showcase: true, kind: "number", required: false, editable: false }),
+    f("nodeCount", "Backend Nodes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("nodesUp", "Nodes Up", { kind: "number", required: false, editable: false }),
     f("nodesDown", "Nodes Down", { kind: "number", required: false, editable: false }),
     f("transferMb", "Transfer This Month (MB)", {
@@ -68,6 +78,7 @@ export const FirewallResourceType = rt({
   fields: [
     f("label", "Label"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["enabled", "disabled"],
@@ -83,8 +94,18 @@ export const FirewallResourceType = rt({
       enumValues: ["ACCEPT", "DROP"],
       description: "What happens to outbound traffic no rule matches",
     }),
-    f("inboundRuleCount", "Inbound Rules", { kind: "number", required: false, editable: false }),
-    f("outboundRuleCount", "Outbound Rules", { kind: "number", required: false, editable: false }),
+    f("inboundRuleCount", "Inbound Rules", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("outboundRuleCount", "Outbound Rules", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("deviceCount", "Devices", { kind: "number", required: false, editable: false }),
     f("devices", "Protects", { required: false, editable: false }),
     f("tags", "Tags", { required: false }),
@@ -118,11 +139,26 @@ export const VpcResourceType = rt({
   description: "A Linode Virtual Private Cloud",
   fields: [
     f("label", "Label"),
-    f("region", "Region", { kind: "enum", enumValues: REGION_IDS, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: REGION_IDS,
+      editable: false,
+    }),
     f("description", "Description", { required: false }),
-    f("subnetCount", "Subnets", { kind: "number", required: false, editable: false }),
+    f("subnetCount", "Subnets", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("subnets", "Subnet Ranges", { required: false, editable: false }),
-    f("linodeCount", "Attached Linodes", { kind: "number", required: false, editable: false }),
+    f("linodeCount", "Attached Linodes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("created", "Created", { required: false, editable: false }),
   ],
   outputs: [o("vpcId", "VPC ID")],
@@ -141,8 +177,13 @@ export const ReservedIpResourceType = rt({
   id: "reserved-ip",
   description: "A reserved public IPv4 address",
   fields: [
-    f("address", "Address", { editable: false }),
-    f("region", "Region", { kind: "enum", enumValues: REGION_IDS, editable: false }),
+    f("address", "Address", { showcase: true, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: REGION_IDS,
+      editable: false,
+    }),
     f("assignedEntityId", "Assigned To", {
       required: false,
       editable: false,
@@ -173,14 +214,20 @@ export const DomainResourceType = rt({
   id: "domain",
   description: "A domain hosted on Linode DNS Manager",
   fields: [
-    f("domain", "Domain", { editable: false }),
+    f("domain", "Domain", { showcase: true, editable: false }),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["master", "slave"],
       editable: false,
       description: "master: Linode is authoritative. slave: Linode mirrors another nameserver",
     }),
-    f("status", "Status", { kind: "enum", required: false, enumValues: ["active", "disabled"] }),
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      required: false,
+      enumValues: ["active", "disabled"],
+    }),
     f("soaEmail", "SOA Email", { required: false }),
     f("ttlSec", "Default TTL", { kind: "number", required: false }),
     f("masterIps", "Primary Nameserver IPs", {
@@ -188,7 +235,12 @@ export const DomainResourceType = rt({
       description: "Comma-separated; only used for slave domains",
     }),
     f("description", "Description", { required: false }),
-    f("recordCount", "Records", { kind: "number", required: false, editable: false }),
+    f("recordCount", "Records", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("tags", "Tags", { required: false }),
   ],
   outputs: [o("nameservers", "Nameservers")],
@@ -214,6 +266,7 @@ export const DomainRecordResourceType = rt({
   description: "A DNS record in a Linode DNS Manager domain",
   fields: [
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["A", "AAAA", "NS", "MX", "CNAME", "TXT", "SRV", "PTR", "CAA"],
       editable: false,
@@ -221,11 +274,11 @@ export const DomainRecordResourceType = rt({
     f("name", "Name", { required: false, description: "Relative to the domain; @ for the apex" }),
     f("target", "Target"),
     f("ttlSec", "TTL", { kind: "number", required: false }),
-    f("priority", "Priority", { kind: "number", required: false }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false }),
     f("weight", "Weight", { kind: "number", required: false }),
     f("port", "Port", { kind: "number", required: false }),
     f("service", "Service", { required: false }),
-    f("protocol", "Protocol", { required: false }),
+    f("protocol", "Protocol", { showcase: true, required: false }),
     f("tag", "CAA Tag", {
       kind: "enum",
       required: false,

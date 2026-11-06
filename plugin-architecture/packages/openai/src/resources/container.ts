@@ -12,7 +12,7 @@ export const ContainerResourceType = rt({
     "A sandbox the Code Interpreter tool runs inside. Containers expire after an idle window and are billed per session.",
   fields: [
     f("name", "Name"),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("memoryLimit", "Memory Limit", {
       kind: "enum",
       enumValues: ["1g", "4g", "16g", "64g"],
@@ -20,7 +20,7 @@ export const ContainerResourceType = rt({
     }),
     f("expiresAfterMinutes", "Idle Expiry (minutes)", { kind: "number", required: false }),
     f("networkPolicy", "Network Policy", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("lastActiveAt", "Last Active", { required: false }),
   ],
   outputs: [o("containerId", "Container ID"), o("name", "Name")],

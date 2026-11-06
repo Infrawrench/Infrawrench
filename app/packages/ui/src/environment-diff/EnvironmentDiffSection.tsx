@@ -37,7 +37,7 @@ const STATUS_LABELS: Record<EnvironmentDiffStatus, string> = {
 /** Pill tones per status, matching the PostureSection translucent-badge recipe. */
 const STATUS_BADGE_CLASSES: Record<EnvironmentDiffStatus, string> = {
   "only-in-a": "bg-amber-500/10 text-series-3",
-  "only-in-b": "bg-sky-500/10 text-series-1",
+  "only-in-b": "bg-accent/10 text-series-1",
   changed: "bg-violet-500/10 text-series-8",
 };
 
@@ -331,7 +331,7 @@ function EnvironmentDiffResults({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 mb-5">
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-amber-500/10 text-series-3">
+        <span className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium bg-amber-500/10 text-series-3">
           <T>
             <span className="tabular-nums">
               <Var>{data.totals.onlyInA}</Var>
@@ -339,7 +339,7 @@ function EnvironmentDiffResults({
             only in <Var>{nameOf(data.a.accountId)}</Var>
           </T>
         </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-sky-500/10 text-series-1">
+        <span className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium bg-accent/10 text-series-1">
           <T>
             <span className="tabular-nums">
               <Var>{data.totals.onlyInB}</Var>
@@ -347,7 +347,7 @@ function EnvironmentDiffResults({
             only in <Var>{nameOf(data.b.accountId)}</Var>
           </T>
         </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-violet-500/10 text-series-8">
+        <span className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium bg-violet-500/10 text-series-8">
           <T>
             <span className="tabular-nums">
               <Var>{data.totals.changed}</Var>
@@ -355,7 +355,7 @@ function EnvironmentDiffResults({
             differ
           </T>
         </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-surface-overlay text-on-surface-tertiary">
+        <span className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium bg-surface-overlay text-on-surface-tertiary">
           <T>
             <span className="tabular-nums">
               <Var>{data.totals.identical}</Var>
@@ -438,7 +438,7 @@ function TypeSummaryTable({ data }: { data: EnvironmentDiffResponse }) {
               <td className="px-4 py-2 align-top text-on-surface">
                 {type.resourceTypeName}
                 {type.missingFrom && (
-                  <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-warning">
+                  <span className="ml-2 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] text-warning">
                     <T>
                       missing from{" "}
                       <Var>
@@ -508,7 +508,7 @@ function EntryTypeGroup({
               <tr key={entry.key} className="border-b border-border last:border-b-0">
                 <td className="px-4 py-2.5 whitespace-nowrap align-top">
                   <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES[entry.status]}`}
+                    className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES[entry.status]}`}
                   >
                     {gtData(STATUS_LABELS[entry.status])}
                   </span>

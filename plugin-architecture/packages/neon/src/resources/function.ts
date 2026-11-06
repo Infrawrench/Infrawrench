@@ -17,8 +17,8 @@ export const NeonFunctionResourceType = rt({
     f("branchId", "Branch ID"),
     f("invocationUrl", "Invocation URL", { required: false }),
     f("deploymentStatus", "Deployment Status", { required: false }),
-    f("runtime", "Runtime", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("runtime", "Runtime", { showcase: true, required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [o("invocationUrl", "Invocation URL"), o("functionId", "Function ID")],
   dependsOn: [

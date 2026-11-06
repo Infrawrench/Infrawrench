@@ -104,7 +104,7 @@ export function KeyValueListPicker({
               onChange={(e) => update(i, { key: e.target.value })}
               placeholder={keyPlaceholder}
               aria-label={keyLabel ?? keyPlaceholder ?? keyName}
-              className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+              className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
             />
           </div>
           <div className="flex-shrink-0">
@@ -121,7 +121,7 @@ export function KeyValueListPicker({
                   onClick={() => update(i, { value: opt.id })}
                   className={`px-3 py-2 rounded-lg border text-xs transition-all ${
                     entry.value === opt.id
-                      ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                      ? "border-accent bg-accent-muted text-accent-on-muted"
                       : "border-border-strong bg-surface-overlay/50 text-on-surface-tertiary hover:border-border-strong"
                   }`}
                 >

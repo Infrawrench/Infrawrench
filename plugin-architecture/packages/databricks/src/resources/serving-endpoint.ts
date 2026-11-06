@@ -6,7 +6,11 @@ export const ServingEndpointResourceType = rt({
   description: "A Databricks Model Serving endpoint for real-time model inference",
   fields: [
     f("name", "Name"),
-    f("state", "State", { kind: "enum", enumValues: ["READY", "NOT_READY", "UNKNOWN"] }),
+    f("state", "State", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["READY", "NOT_READY", "UNKNOWN"],
+    }),
     f("task", "Task", { required: false }),
     f("creator", "Creator", { required: false }),
   ],

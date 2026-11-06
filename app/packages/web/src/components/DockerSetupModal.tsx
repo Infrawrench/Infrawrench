@@ -329,7 +329,7 @@ export function DockerSetupModal({
                 type="button"
                 onClick={() => void startSetup()}
                 disabled={!selectedKeyId || !sshUser.trim() || !accountName.trim()}
-                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors disabled:opacity-50"
               >
                 {gt("Start Setup")}
               </button>
@@ -368,7 +368,7 @@ function StepIndicator({ label, active, done }: { label: string; active: boolean
       className={`flex items-center gap-1.5 ${active ? "text-accent" : done ? "text-success" : "text-on-surface-faint"}`}
     >
       <span
-        className={`w-1.5 h-1.5 rounded-full ${active ? "bg-blue-400 animate-pulse" : done ? "bg-green-400" : "bg-surface-sunken"}`}
+        className={`w-1.5 h-1.5 rounded-full ${active ? "bg-accent animate-pulse" : done ? "bg-green-400" : "bg-surface-sunken"}`}
       />
       {label}
     </div>

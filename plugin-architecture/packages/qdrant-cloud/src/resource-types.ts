@@ -45,14 +45,21 @@ export const ClusterResourceType = rt({
     }),
     f("clusterId", "Cluster ID", { editable: false }),
     f("cloudProvider", "Cloud", { editable: false }),
-    f("region", "Region", { editable: false }),
-    f("status", "Status", { kind: "enum", enumValues: CLUSTER_PHASES, editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      enumValues: CLUSTER_PHASES,
+      editable: false,
+    }),
     f("statusReason", "Status Reason", { required: false, editable: false }),
     f("version", "Qdrant Version", {
+      showcase: true,
       required: false,
       description: "Upgrade by entering a newer release; the detail page lists the available ones",
     }),
     f("nodes", "Nodes", {
+      showcase: true,
       kind: "number",
       description:
         "Scaling out adds nodes; scaling in is refused by Qdrant when data would not fit",
@@ -174,8 +181,8 @@ export const DatabaseApiKeyResourceType = rt({
     f("postfix", "Ends With", { required: false, editable: false }),
     f("createdBy", "Created By", { required: false, editable: false }),
     f("createdByEmail", "Creator Email", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("apiKey", "API Key", {
@@ -207,6 +214,7 @@ export const BackupResourceType = rt({
     f("clusterId", "Cluster ID", { editable: false }),
     f("clusterName", "Cluster", { required: false, editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "SUCCEEDED",
@@ -221,9 +229,19 @@ export const BackupResourceType = rt({
     }),
     f("scheduleId", "Schedule ID", { required: false, editable: false }),
     f("cloudProvider", "Cloud", { required: false, editable: false }),
-    f("region", "Region", { required: false, editable: false }),
-    f("retentionDays", "Retention (days)", { kind: "number", required: false, editable: false }),
-    f("sizeGb", "Cluster Disk (GiB)", { kind: "number", required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("retentionDays", "Retention (days)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("sizeGb", "Cluster Disk (GiB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("monthlyCost", "Storage Cost per Month", {
       kind: "number",
       required: false,
@@ -260,19 +278,22 @@ export const BackupScheduleResourceType = rt({
     f("clusterId", "Cluster ID", { editable: false }),
     f("clusterName", "Cluster", { required: false, editable: false }),
     f("schedule", "Schedule (cron, UTC)", {
+      showcase: true,
       description: "Standard 5-field crontab, e.g. 0 2 * * * for daily at 02:00",
     }),
     f("retentionDays", "Retention (days)", {
+      showcase: true,
       kind: "number",
       description: "How long each backup is kept, 1 to 365 days",
     }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["ACTIVE", "DISABLED", "FAILED_TO_SYNC", "NOT_FOUND"],
       required: false,
       editable: false,
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   dependsOn: [{ fieldKey: "clusterId", targetTypeId: "cluster", label: "backs up" }],
   iconKey: "schedule",
@@ -290,11 +311,12 @@ export const BackupRestoreResourceType = rt({
     f("clusterName", "Cluster", { required: false, editable: false }),
     f("backupId", "Backup ID", { editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["RUNNING", "SUCCEEDED", "FAILED", "SKIPPED", "FAILED_TO_SYNC", "NOT_FOUND"],
       editable: false,
     }),
-    f("createdAt", "Started", { required: false, editable: false }),
+    f("createdAt", "Started", { showcase: true, required: false, editable: false }),
   ],
   dependsOn: [
     { fieldKey: "backupId", targetTypeId: "backup", label: "restores" },
@@ -313,12 +335,17 @@ export const HybridEnvironmentResourceType = rt({
     f("name", "Name"),
     f("environmentId", "Environment ID", { editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["READY", "NOT_READY", "FAILED_TO_SYNC", "PENDING"],
       editable: false,
     }),
-    f("namespace", "Namespace", { required: false, editable: false }),
-    f("kubernetesVersion", "Kubernetes Version", { required: false, editable: false }),
+    f("namespace", "Namespace", { showcase: true, required: false, editable: false }),
+    f("kubernetesVersion", "Kubernetes Version", {
+      showcase: true,
+      required: false,
+      editable: false,
+    }),
     f("kubernetesDistribution", "Distribution", { required: false, editable: false }),
     f("kubernetesNodes", "Kubernetes Nodes", { kind: "number", required: false, editable: false }),
     f("readyForClusters", "Ready for Clusters", { required: false, editable: false }),
@@ -329,7 +356,7 @@ export const HybridEnvironmentResourceType = rt({
     }),
     f("statusMessage", "Status Message", { required: false, editable: false }),
     f("createdByEmail", "Created By", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("environmentId", "Environment ID"),
@@ -355,13 +382,20 @@ export const CollectionResourceType = rt({
     f("clusterId", "Cluster ID", { editable: false }),
     f("clusterName", "Cluster", { required: false, editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["green", "yellow", "grey", "red"],
       required: false,
       editable: false,
     }),
-    f("pointsCount", "Points", { kind: "number", required: false, editable: false }),
+    f("pointsCount", "Points", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("indexedVectorsCount", "Indexed Vectors", {
+      showcase: true,
       kind: "number",
       required: false,
       editable: false,

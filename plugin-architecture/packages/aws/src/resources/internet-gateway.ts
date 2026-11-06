@@ -8,7 +8,7 @@ export const InternetGatewayResourceType = rt({
   fields: [
     f("internetGatewayId", "Gateway ID"),
     f("vpcId", "Attached VPC", { required: false }),
-    f("state", "State", { required: false }),
+    f("state", "State", { showcase: true, required: false }),
   ],
   outputs: [],
   dependsOn: [{ fieldKey: "vpcId", targetTypeId: "vpc", label: "attached to" }],

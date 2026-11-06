@@ -6,14 +6,14 @@ export const ContainerInstanceResourceType = rt({
   description: "An Azure Container Instances group",
   fields: [
     f("name", "Name"),
-    f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
-    f("provisioningState", "Provisioning State"),
+    f("resourceGroup", "Resource Group", { showcase: true }),
+    f("location", "Location", { showcase: true }),
+    f("provisioningState", "Provisioning State", { showcase: true }),
     f("osType", "OS Type"),
     f("restartPolicy", "Restart Policy", { required: false }),
     f("containers", "Containers", { kind: "number", required: false }),
     f("ipAddress", "IP Address", { required: false }),
-    f("fqdn", "FQDN", { required: false }),
+    f("fqdn", "FQDN", { showcase: true, required: false }),
     f("imageRegistries", "Image Registries", {
       required: false,
       description: "Registry hosts the group's images are pulled from",

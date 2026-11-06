@@ -10,11 +10,13 @@ export const NetlifyDatabaseResourceType = rt({
     f("siteName", "Site"),
     f("siteId", "Site ID", { required: false }),
     f("state", "State", {
+      showcase: true,
       required: false,
       description: "State of the production branch",
     }),
-    f("branchCount", "Branches", { kind: "number", required: false }),
+    f("branchCount", "Branches", { showcase: true, kind: "number", required: false }),
     f("sizeBytes", "Size (bytes)", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Logical size of the production branch",
@@ -24,7 +26,7 @@ export const NetlifyDatabaseResourceType = rt({
     f("maxCu", "Max Compute Units", { kind: "number", required: false }),
     f("suspendTimeoutSeconds", "Suspend After (s)", { kind: "number", required: false }),
     f("lastActiveAt", "Last Active", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [
     o("connectionString", "Connection String", {

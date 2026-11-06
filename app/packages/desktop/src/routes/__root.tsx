@@ -696,7 +696,7 @@ function RootLayout() {
                   className={`px-3 py-1.5 text-xs text-center border-b ${
                     banner.variant === "warning"
                       ? "bg-amber-500/10 text-warning border-amber-500/30"
-                      : "bg-blue-500/10 text-info border-blue-500/30"
+                      : "bg-accent/10 text-info border-accent/30"
                   }`}
                 >
                   {banner.message}
@@ -719,7 +719,7 @@ function RootLayout() {
 
           <div className="flex flex-1 overflow-hidden">
             {!sidebarCollapsed && (
-              <aside className="w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
+              <aside className="surface-sidebar w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
                 <div className="flex items-center justify-between p-1 border-b border-border">
                   <div
                     className="flex-1 min-w-0"
@@ -824,7 +824,7 @@ function RootLayout() {
               <button
                 type="button"
                 onClick={toggleSidebar}
-                className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
+                className="surface-sidebar w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
                 aria-label={gt("Expand sidebar")}
               >
                 <PanelLeftOpenIcon />

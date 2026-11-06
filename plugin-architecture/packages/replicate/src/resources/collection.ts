@@ -8,7 +8,7 @@ export const CollectionResourceType = rt({
     f("slug", "Slug"),
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    f("modelCount", "Models", { kind: "number", required: false }),
+    f("modelCount", "Models", { showcase: true, kind: "number", required: false }),
     f("models", "Model List", { required: false }),
   ],
   outputs: [o("slug", "Collection Slug"), o("collectionUrl", "Collection URL")],

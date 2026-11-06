@@ -7,7 +7,9 @@ import { ErrorNotice } from "../ErrorNotice.js";
 import { ImportYamlModal } from "../ImportYamlModal.js";
 import type { PeerPaneData } from "./detail-types.js";
 import { StatusIssueIndicator } from "../IssueIndicator.js";
-import { WarningIcon } from "../icons/ChromeIcons.js";
+import { PortForwardIcon, StopIcon, TerminalIcon, WarningIcon } from "../icons/ChromeIcons.js";
+import { inferIconKey } from "../icons/ResourceTypeIcon.js";
+import { TILE_ACTION_CLASS, TileFrame } from "../../dnd/TileFrame.js";
 import { dispatchPromptNoSqlCommand } from "../../utils.js";
 import { useDataString } from "../../i18n/data-strings.js";
 import {
@@ -212,7 +214,7 @@ export function PeerPaneView({
                 resourceId: parentResourceId,
               })
             }
-            className="ml-5 px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 transition-colors"
+            className="ml-5 px-4 py-2 text-sm font-medium text-on-accent bg-accent rounded-md hover:bg-accent/90 transition-colors"
           >
             {gtData(guidance.action.label)}
           </button>
@@ -228,7 +230,7 @@ export function PeerPaneView({
       <div className="flex flex-col items-center justify-center py-16 px-6 text-center gap-y-4">
         <div
           aria-hidden="true"
-          className="size-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin"
+          className="size-10 rounded-full border-2 border-accent/30 border-t-blue-400 animate-spin"
         />
         <div className="space-y-1.5">
           <p className="text-sm font-medium text-on-surface-secondary">
@@ -255,7 +257,7 @@ export function PeerPaneView({
   return (
     <div
       ref={setDropRef}
-      className={`space-y-3 transition-colors rounded-xl ${isOver && supportsSecretImport ? "ring-2 ring-blue-500/50 bg-accent-muted" : ""}`}
+      className={`space-y-3 transition-colors rounded-xl ${isOver && supportsSecretImport ? "ring-2 ring-accent/50 bg-accent-muted" : ""}`}
       data-parent-resource-id={parentResourceId}
     >
       {guidanceBlock}
@@ -266,7 +268,7 @@ export function PeerPaneView({
               value={nsFilter ?? ""}
               onChange={(e) => setNsFilter(e.target.value || null)}
               aria-label={gt("Filter by namespace")}
-              className="text-xs bg-surface-overlay border border-border-strong text-on-surface-secondary rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
+              className="text-xs bg-surface-overlay border border-border-strong text-on-surface-secondary rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent-subtle transition-colors"
             >
               <option value="">
                 {gt("All namespaces ({count})", { count: namespaces.length })}
@@ -296,7 +298,7 @@ export function PeerPaneView({
                 if (!k9s.disabled) k9s.onOpen();
               }}
               disabled={k9s.disabled}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-surface-overlay disabled:text-on-surface-tertiary disabled:hover:bg-surface-overlay text-sm font-medium text-white transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover disabled:bg-surface-overlay disabled:text-on-surface-tertiary disabled:hover:bg-surface-overlay text-sm font-medium text-on-accent transition-colors"
             >
               {gtData(k9s.label)}
             </button>
@@ -390,7 +392,7 @@ export function PeerPaneView({
                     onSelect={(ns) => setNsFilter(nsFilter === ns ? null : ns)}
                   />
                 ) : (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-3">
                     {visibleItems.map((resource) => {
                       const isService = group.resourceTypeId === "k8s-service";
                       const hasSelector = resource.fields["hasSelector"] === "true";
@@ -402,9 +404,8 @@ export function PeerPaneView({
                               String(resource.fields["namespace"] ?? "default")),
                       );
                       return (
-                        <PeerResourcePill
+                        <PeerResourceTile
                           key={resource.id}
-                          pane={pane}
                           group={group}
                           resource={resource}
                           accountId={accountId}
@@ -482,7 +483,7 @@ export function PeerPaneView({
       )}
 
       {isOver && supportsSecretImport && (
-        <div className="rounded-xl border-2 border-dashed border-blue-500/40 bg-accent-muted px-4 py-6 text-center">
+        <div className="rounded-xl border-2 border-dashed border-accent/40 bg-accent-muted px-4 py-6 text-center">
           <p className="text-sm font-medium text-accent-on-muted">
             {gt("Drop to create K8s Secret")}
           </p>
@@ -505,7 +506,7 @@ export function PeerPaneView({
  * Each pill carries the namespace's `subtitle`: the phase plus, when cost
  * allocation resolved, the daily cost and the tighter of the two efficiency
  * figures (`Active · ~$4.20/day · 18% CPU`). That is the same secondary line
- * `PeerResourcePill` puts under a workload's name, so the two grids read the
+ * `PeerResourceTile` puts under a workload's name, so the two grids read the
  * same way; a pill without a subtitle is still a single line.
  *
  * Callers pass only the namespaces the pane can filter to (see the comment at
@@ -538,7 +539,7 @@ function NamespaceGrid({
             // instead. `min-w-0` is what lets the truncation happen at all.
             className={`flex min-w-0 max-w-full flex-col items-start gap-0.5 rounded-lg px-2.5 py-1 text-left transition-colors ${
               isActive
-                ? "bg-blue-600 text-white"
+                ? "bg-accent text-on-accent"
                 : "bg-surface-overlay text-on-surface-secondary hover:bg-surface-sunken hover:text-on-surface"
             }`}
           >
@@ -562,8 +563,7 @@ function NamespaceGrid({
   );
 }
 
-function PeerResourcePill({
-  pane,
+function PeerResourceTile({
   group,
   resource,
   accountId,
@@ -574,7 +574,6 @@ function PeerResourcePill({
   onStopPortForward,
   onExec,
 }: {
-  pane: PeerPaneData;
   group: PeerPaneResourceGroup;
   resource: PeerPaneResource;
   accountId: string;
@@ -586,6 +585,7 @@ function PeerResourcePill({
   onExec?: () => void;
 }): ReactNode {
   const gt = useGT();
+  const iconKey = group.iconKey ?? inferIconKey(group.resourceTypeId);
   const draggableResource: DraggableResource = {
     id: resource.id,
     pluginId: resource.pluginId,
@@ -594,6 +594,7 @@ function PeerResourcePill({
     displayName: resource.displayName,
     fields: resource.fields,
     ...(resource.externalId ? { externalId: resource.externalId } : {}),
+    ...(iconKey ? { iconKey } : {}),
   };
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -605,26 +606,79 @@ function PeerResourcePill({
   });
 
   return (
-    // The wrapper is non-interactive; the native button below carries the dnd
-    // drag ref/listeners/attributes so the exec/port-forward buttons stay
-    // siblings rather than focusable descendants of an interactive element.
-    <div
-      className={`group flex items-center gap-2 pr-3 rounded-full border bg-surface-raised ${onClick ? "cursor-pointer hover:bg-surface-sunken" : "cursor-grab"} active:cursor-grabbing transition-colors ${
+    <TileFrame
+      iconKey={iconKey}
+      name={resource.displayName}
+      subtitle={resource.subtitle}
+      detail={
         activePortForward
-          ? "border-emerald-500/40"
-          : isDragging
-            ? "opacity-40 border-border-strong"
-            : "border-border-strong hover:border-border-strong"
-      }`}
-    >
-      <button
-        ref={setNodeRef}
-        {...listeners}
-        {...attributes}
-        type="button"
-        onClick={onClick}
-        {...(onClick
+          ? `:${activePortForward.localPort} → :${activePortForward.remotePort}`
+          : undefined
+      }
+      live={!!activePortForward}
+      isDragging={isDragging}
+      status={<StatusIssueIndicator status={resource.status} />}
+      footer={
+        onExec ||
+        (onPortForward && !activePortForward) ||
+        (activePortForward && onStopPortForward) ? (
+          <>
+            {onExec && (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onExec();
+                }}
+                className={TILE_ACTION_CLASS}
+                title={gt("Exec shell")}
+                aria-label={gt("Exec shell into {name}", { name: resource.displayName })}
+              >
+                <TerminalIcon size={14} />
+              </button>
+            )}
+            {onPortForward && !activePortForward && (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPortForward();
+                }}
+                disabled={isPortForwarding}
+                className={TILE_ACTION_CLASS}
+                title={gt("Port forward")}
+                aria-label={gt("Port forward")}
+              >
+                <PortForwardIcon size={14} />
+              </button>
+            )}
+            {activePortForward && onStopPortForward && (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onStopPortForward(activePortForward.sessionId);
+                }}
+                className={`${TILE_ACTION_CLASS} text-danger hover:text-danger`}
+                title={gt("Stop port forward")}
+                aria-label={gt("Stop port forward")}
+              >
+                <StopIcon size={14} />
+              </button>
+            )}
+          </>
+        ) : undefined
+      }
+      buttonRef={setNodeRef}
+      buttonProps={{
+        ...attributes,
+        ...listeners,
+        ...(onClick
           ? {
+              onClick,
               onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
@@ -632,75 +686,8 @@ function PeerResourcePill({
                 }
               },
             }
-          : {})}
-        className={`flex items-center gap-2 min-w-0 pl-3 py-2 text-left ${onClick ? "cursor-pointer" : "cursor-grab"} active:cursor-grabbing`}
-      >
-        <span
-          className="size-4 flex-shrink-0"
-          dangerouslySetInnerHTML={{ __html: pane.pluginLogoSvg }}
-          aria-hidden
-        />
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-on-surface truncate">
-              {resource.displayName}
-            </span>
-            <StatusIssueIndicator status={resource.status} />
-          </div>
-          {resource.subtitle && (
-            <p className="text-xs text-on-surface-muted truncate">{resource.subtitle}</p>
-          )}
-          {activePortForward && (
-            <p className="text-xs text-success font-mono truncate">
-              :{activePortForward.localPort} → :{activePortForward.remotePort}
-            </p>
-          )}
-        </div>
-      </button>
-      {onExec && (
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onExec();
-          }}
-          className="ml-1 h-6 px-2 rounded-full bg-surface-overlay hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors whitespace-nowrap"
-          title={gt("Exec shell")}
-          aria-label={gt("Exec shell into {name}", { name: resource.displayName })}
-        >
-          <span aria-hidden="true">⌨</span>
-        </button>
-      )}
-      {onPortForward && !activePortForward && (
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onPortForward();
-          }}
-          disabled={isPortForwarding}
-          className="ml-1 h-6 px-2 rounded-full bg-surface-overlay hover:bg-surface-sunken disabled:opacity-50 text-xs text-on-surface-secondary transition-colors whitespace-nowrap"
-          title={gt("Port forward")}
-        >
-          {isPortForwarding ? "…" : "⇌"}
-        </button>
-      )}
-      {activePortForward && onStopPortForward && (
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onStopPortForward(activePortForward.sessionId);
-          }}
-          className="ml-1 size-6 rounded-full bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/50 text-xs text-danger transition-colors"
-          title={gt("Stop port forward")}
-        >
-          ■
-        </button>
-      )}
-    </div>
+          : {}),
+      }}
+    />
   );
 }

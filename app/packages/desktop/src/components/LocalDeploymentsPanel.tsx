@@ -42,13 +42,13 @@ export function LocalDeploymentsPanel() {
 
   return (
     <div className="flex flex-col h-full min-h-0 text-on-surface">
-      <div className="p-4 border-b border-white/10 space-y-2">
+      <div className="p-4 border-b border-on-surface/10 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-sm font-semibold">{gt("Deploy")}</h1>
           <button
             type="button"
             onClick={() => void load()}
-            className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
+            className="text-xs px-3 py-1.5 rounded bg-on-surface/10 hover:bg-on-surface/20 text-on-surface-secondary"
           >
             {gt("Refresh")}
           </button>
@@ -83,7 +83,7 @@ export function LocalDeploymentsPanel() {
           <table className="w-full text-xs">
             <caption className="sr-only">{gt("Deploys from this machine")}</caption>
             <thead className="text-[11px] uppercase tracking-wide text-on-surface-faint">
-              <tr className="border-b border-white/10">
+              <tr className="border-b border-on-surface/10">
                 <Th>{gt("When")}</Th>
                 <Th>{gt("Env")}</Th>
                 <Th>{gt("Project")}</Th>
@@ -124,7 +124,7 @@ function RunRow({
   const hasDetail = run.notes.length > 0 || run.error !== null;
   return (
     <>
-      <tr className="border-b border-white/5">
+      <tr className="border-b border-on-surface/5">
         <Td>{formatDate(run.startedAt)}</Td>
         <Td>{run.env || "—"}</Td>
         <Td>
@@ -168,7 +168,7 @@ function RunRow({
             <button
               type="button"
               onClick={onToggle}
-              className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
+              className="text-xs px-2 py-1 rounded bg-on-surface/10 hover:bg-on-surface/20 text-on-surface-secondary"
             >
               {expanded ? gt("Hide") : gt("Details")}
             </button>
@@ -176,7 +176,7 @@ function RunRow({
         </Td>
       </tr>
       {expanded && hasDetail && (
-        <tr className="border-b border-white/5">
+        <tr className="border-b border-on-surface/5">
           <td colSpan={8} className="px-3 py-2">
             <div className="space-y-2 bg-surface-overlay rounded p-2">
               <p className="text-[11px] text-on-surface-faint">{run.dir}</p>

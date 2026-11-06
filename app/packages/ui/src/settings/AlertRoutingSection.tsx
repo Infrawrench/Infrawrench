@@ -237,7 +237,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
               type="button"
               onClick={() => void handleSave()}
               disabled={saving || firstProblem !== null}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white disabled:opacity-50"
+              className="rounded-md bg-accent px-3 py-1.5 text-xs text-on-accent disabled:opacity-50"
             >
               {saving ? gt("Saving…") : gt("Save rules")}
             </button>

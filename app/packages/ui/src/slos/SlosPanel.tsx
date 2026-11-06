@@ -291,7 +291,7 @@ function FreezeModal({
               type="button"
               onClick={() => void start()}
               disabled={saving}
-              className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent disabled:opacity-50"
             >
               {saving ? gt("Starting…") : gt("Start freeze")}
             </button>
@@ -448,7 +448,7 @@ function SloDetail({
           <button
             type="button"
             onClick={() => setFreezing(true)}
-            className="shrink-0 rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white"
+            className="shrink-0 rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent"
           >
             {gt("Start a change freeze")}
           </button>
@@ -665,7 +665,7 @@ export function SlosPanel({ client, sloId, onSloChange }: SlosPanelProps) {
               <button
                 type="button"
                 onClick={() => setEditing({ existing: null })}
-                className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover text-on-accent transition-colors"
               >
                 {gt("New SLO")}
               </button>

@@ -7,16 +7,27 @@ export const LoadBalancerResourceType = rt({
   fields: [
     f("name", "Name"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["running", "initializing", "unknown"],
       editable: false,
     }),
     f("type", "Type", { required: false, editable: false }),
-    f("location", "Location", { required: false, editable: false }),
+    f("location", "Location", { showcase: true, required: false, editable: false }),
     f("ipv4", "IPv4", { required: false, editable: false }),
     f("ipv6", "IPv6", { required: false, editable: false }),
-    f("targetCount", "Targets", { kind: "number", required: false, editable: false }),
-    f("serviceCount", "Services", { kind: "number", required: false, editable: false }),
+    f("targetCount", "Targets", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("serviceCount", "Services", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("targetServerIds", "Target Servers", {
       required: false,
       description:

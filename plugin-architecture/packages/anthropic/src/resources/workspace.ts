@@ -23,7 +23,7 @@ export const WorkspaceResourceType = rt({
       required: false,
       description: "Hex colour shown in the Console workspace switcher, e.g. #6C5BB9.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("archivedAt", "Archived", { required: false, editable: false }),
     f("workspaceGeo", "Workspace Geo", { required: false, editable: false }),
     f("defaultInferenceGeo", "Default Inference Geo", {

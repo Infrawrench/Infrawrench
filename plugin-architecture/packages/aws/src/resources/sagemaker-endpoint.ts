@@ -7,6 +7,7 @@ export const SageMakerEndpointResourceType = rt({
   fields: [
     f("endpointName", "Endpoint Name"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "OutOfService",

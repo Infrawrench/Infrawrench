@@ -14,7 +14,7 @@ export const VoiceResourceType = rt({
   fields: [
     f("name", "Name"),
     f("voiceId", "Voice ID", { editable: false }),
-    f("category", "Category", { required: false, editable: false }),
+    f("category", "Category", { showcase: true, required: false, editable: false }),
     f("description", "Description", { required: false }),
     f("labels", "Labels", { required: false, editable: false }),
     f("accent", "Accent", { required: false, editable: false }),

@@ -8,8 +8,8 @@ export const SSLCertificateResourceType = rt({
   fields: [
     f("hosts", "Hosts"),
     f("issuer", "Issuer", { required: false }),
-    f("status", "Status"),
-    f("type", "Type", { required: false }),
+    f("status", "Status", { showcase: true }),
+    f("type", "Type", { showcase: true, required: false }),
     f("expiresOn", "Expires", { required: false }),
     f("zoneName", "Zone", { required: false }),
   ],

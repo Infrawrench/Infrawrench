@@ -15,7 +15,7 @@ export const ApiKeyResourceType = rt({
     f("scopes", "Scopes", { required: false, editable: false }),
     f("tags", "Tags", { required: false, editable: false }),
     f("apiKeyId", "Key ID", { required: false, editable: false }),
-    f("created", "Created", { required: false, editable: false }),
+    f("created", "Created", { showcase: true, required: false, editable: false }),
     f("expirationDate", "Expires", { required: false, editable: false }),
     f("memberEmail", "Owner", { required: false, editable: false }),
   ],

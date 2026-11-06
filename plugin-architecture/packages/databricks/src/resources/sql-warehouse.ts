@@ -21,6 +21,7 @@ export const SqlWarehouseResourceType = rt({
     f("warehouseId", "Warehouse ID", { editable: false }),
     f("name", "Name"),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       editable: false,
       enumValues: ["STARTING", "RUNNING", "STOPPING", "STOPPED", "DELETING", "DELETED"],

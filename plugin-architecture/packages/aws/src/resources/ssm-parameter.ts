@@ -7,9 +7,14 @@ export const SSMParameterResourceType = rt({
   description: "An AWS Systems Manager Parameter Store parameter",
   fields: [
     f("name", "Name"),
-    f("type", "Type", { kind: "enum", enumValues: ["String", "StringList", "SecureString"] }),
-    f("version", "Version", { kind: "number", required: false }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["String", "StringList", "SecureString"],
+    }),
+    f("version", "Version", { showcase: true, kind: "number", required: false }),
     f("tier", "Tier", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["Standard", "Advanced", "Intelligent-Tiering"],

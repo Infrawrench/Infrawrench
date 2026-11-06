@@ -67,7 +67,7 @@ export function ConfirmDeleteModal({
           <p className="text-xs text-on-surface-tertiary mb-4">
             This action cannot be undone. To confirm, type{" "}
             <Var>
-              <span className="text-white font-medium select-all">{name}</span>
+              <span className="text-on-surface font-medium select-all">{name}</span>
             </Var>{" "}
             below.
           </p>

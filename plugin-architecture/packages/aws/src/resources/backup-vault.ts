@@ -8,7 +8,7 @@ export const BackupVaultResourceType = rt({
     f("backupVaultName", "Vault Name"),
     f("numberOfRecoveryPoints", "Recovery Points", { kind: "number", required: false }),
     f("encryptionKeyArn", "KMS Key ARN", { required: false }),
-    f("creationDate", "Created", { required: false }),
+    f("creationDate", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("backupVaultArn", "Backup Vault ARN")],
   iconKey: "storage",

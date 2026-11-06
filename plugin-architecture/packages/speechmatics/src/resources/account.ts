@@ -20,7 +20,7 @@ export const AccountResourceType = rt({
   description:
     "The Speechmatics account on this region: 30-day usage, available language packs and the Speech playground.",
   fields: [
-    f("region", "Region"),
+    f("region", "Region", { showcase: true }),
     f("endpoint", "Batch API Endpoint", { required: false }),
     f("managementToken", "Management Token Set", { kind: "boolean", required: false }),
     f("usageSince", "Usage Window Start", { required: false }),

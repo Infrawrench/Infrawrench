@@ -7,7 +7,7 @@ export const AppServicePlanResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
+    f("location", "Location", { showcase: true }),
     f("kind", "Kind", { required: false }),
     f("sku", "SKU", { required: false, description: "SKU name, e.g. P1v3" }),
     f("tier", "Tier", { required: false, description: "Service tier, e.g. PremiumV3" }),
@@ -18,6 +18,7 @@ export const AppServicePlanResourceType = rt({
       description: "Instances the SKU is scaled to",
     }),
     f("workerCount", "Instances", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Instances currently assigned to the plan",
@@ -28,11 +29,12 @@ export const AppServicePlanResourceType = rt({
       description: "Linux or Windows workers",
     }),
     f("siteCount", "Apps", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Web apps and function apps assigned to the plan",
     }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("provisioningState", "Provisioning State", { required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],

@@ -15,6 +15,7 @@ export const ConnectionResourceType = rt({
     f("name", "Name"),
     f("connectionType", "Type", { required: false, editable: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
@@ -22,7 +23,7 @@ export const ConnectionResourceType = rt({
     }),
     f("domains", "Domains", { required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("connectionId", "Connection ID")],
   parentTypeId: "organization",

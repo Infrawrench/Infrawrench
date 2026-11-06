@@ -21,8 +21,11 @@ export const ReservedIpResourceType = rt({
   id: "reserved-ip",
   description: "A DigitalOcean reserved IP address (formerly floating IP)",
   fields: [
-    f("ip", "IP Address"),
-    f("region", "Region", { description: "Region slug the address is reserved to, e.g. nyc3." }),
+    f("ip", "IP Address", { showcase: true }),
+    f("region", "Region", {
+      showcase: true,
+      description: "Region slug the address is reserved to, e.g. nyc3.",
+    }),
     f("dropletId", "Assigned Droplet", {
       required: false,
       description: "ID of the Droplet this address is assigned to. Empty when unassigned.",

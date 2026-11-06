@@ -28,7 +28,7 @@ export const ModelEndpointResourceType = rt({
     f("maxPromptTokens", "Max Prompt Tokens", { kind: "number", required: false }),
     f("maxCompletionTokens", "Max Completion Tokens", { kind: "number", required: false }),
     f("quantization", "Quantization", { required: false }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("promptPricePerMillion", "Prompt Price (per 1M)", { kind: "number", required: false }),
     f("completionPricePerMillion", "Completion Price (per 1M)", {
       kind: "number",

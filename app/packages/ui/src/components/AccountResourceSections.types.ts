@@ -23,7 +23,7 @@ import type {
 
 export interface AccountResourceSectionsProps<T extends SectionTypeDef, R extends SectionResource> {
   categories: SectionCategoryState<T, R>[];
-  /** Render a single resource pill/item. */
+  /** Render a single resource tile. */
   renderResource: (resource: R, category: SectionCategoryState<T, R>) => ReactNode;
   /** Render an optional "Create" button inside a category. Return null to skip. */
   renderCreateButton?: (typeDef: T) => ReactNode;

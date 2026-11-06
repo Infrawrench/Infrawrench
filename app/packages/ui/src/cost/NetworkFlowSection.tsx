@@ -24,7 +24,7 @@ const SCOPE_TONE: Record<string, string> = {
   private_interconnect: "text-notice bg-purple-500/10",
   provider_service: "text-success bg-emerald-500/10",
   intra_zone: "text-success bg-emerald-500/10",
-  internet_ingress: "text-info bg-sky-500/10",
+  internet_ingress: "text-info bg-accent/10",
   unknown: "text-on-surface-tertiary bg-surface-overlay",
 };
 

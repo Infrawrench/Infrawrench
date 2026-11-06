@@ -10,9 +10,10 @@ export const BedrockModelResourceType = rt({
     f("modelId", "Model ID", {
       description: "Foundation model id or inference profile id passed to Converse",
     }),
-    f("modelName", "Model Name", { required: false }),
+    f("modelName", "Model Name", { showcase: true, required: false }),
     f("providerName", "Provider", { required: false }),
     f("kind", "Kind", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["foundation-model", "inference-profile", "application-inference-profile"],

@@ -3,13 +3,14 @@ import { f, rt } from "@infrawrench/plugin-base";
 export const StatefulSetResourceType = rt({
   name: "StatefulSet",
   id: "k8s-statefulset",
+  iconKey: "database",
   description: "A Kubernetes StatefulSet that manages stateful workloads with stable identities",
   fields: [
     f("name", "Name"),
-    f("namespace", "Namespace"),
-    f("replicas", "Desired Replicas", { kind: "number", required: false }),
+    f("namespace", "Namespace", { showcase: true }),
+    f("replicas", "Desired Replicas", { showcase: true, kind: "number", required: false }),
     f("readyReplicas", "Ready Replicas", { kind: "number", required: false }),
-    f("image", "Image", { required: false }),
+    f("image", "Image", { showcase: true, required: false }),
     f("serviceAccountName", "Service Account", {
       required: false,
       description: "The ServiceAccount the pod template runs as, when it names one",

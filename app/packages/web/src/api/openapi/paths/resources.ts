@@ -24,6 +24,9 @@ const ChildTypeRef = strict({
   id: z.string(),
   displayName: z.string(),
   pluralDisplayName: z.string().optional(),
+  iconKey: z.string().optional(),
+  /** The fields this type marked to show on a child's tile. */
+  showcase: z.array(strict({ key: z.string(), label: z.string() })).optional(),
   supportsCreate: z.boolean(),
   /** Field schema, shipped only for child types that support update. */
   fields: z.array(JsonObject).optional(),

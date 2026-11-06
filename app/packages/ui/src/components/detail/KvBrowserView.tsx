@@ -233,7 +233,7 @@ export function KvBrowserView({
             setNewValue("");
             setAddError(null);
           }}
-          className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-white transition-colors"
+          className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-on-accent transition-colors"
         >
           {gt("+ Add key")}
         </button>
@@ -335,7 +335,7 @@ export function KvBrowserView({
                   type="button"
                   onClick={() => void saveValue()}
                   disabled={!dirty || savingValue || valueLoading || binary}
-                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-on-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {savingValue ? gt("Saving…") : gt("Save")}
                 </button>
@@ -438,7 +438,7 @@ export function KvBrowserView({
                 type="button"
                 onClick={() => void submitAdd()}
                 disabled={adding}
-                className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-white disabled:opacity-50 transition-colors"
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-on-accent disabled:opacity-50 transition-colors"
               >
                 {adding ? gt("Saving…") : gt("Save")}
               </button>

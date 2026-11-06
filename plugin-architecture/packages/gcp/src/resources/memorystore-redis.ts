@@ -4,14 +4,20 @@ export const MemorystoreRedisResourceType = rt({
   name: "Memorystore Redis",
   plural: "Memorystore Redis Instances",
   id: "memorystore-redis",
+  iconKey: "cache",
   description: "A Google Cloud Memorystore for Redis instance",
   fields: [
     f("name", "Name"),
-    f("region", "Region"),
-    f("tier", "Tier", { kind: "enum", required: false, enumValues: ["BASIC", "STANDARD_HA"] }),
+    f("region", "Region", { showcase: true }),
+    f("tier", "Tier", {
+      showcase: true,
+      kind: "enum",
+      required: false,
+      enumValues: ["BASIC", "STANDARD_HA"],
+    }),
     f("memorySizeGb", "Memory (GB)", { kind: "number", required: false }),
     f("redisVersion", "Redis Version", { required: false }),
-    f("state", "State", { required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("authorizedNetwork", "Authorized Network", {
       required: false,
       description: "Name of the VPC network the instance is connected to",

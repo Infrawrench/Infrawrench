@@ -16,9 +16,9 @@ export const ProjectRateLimitResourceType = rt({
   description:
     "A per-model rate limit on a project: requests and tokens per minute plus, where the model has them, images, audio, daily requests and batch tokens. Editable up to the organization's own limit. Requires an Admin API key.",
   fields: [
-    f("model", "Model", { editable: false }),
+    f("model", "Model", { showcase: true, editable: false }),
     f("projectId", "Project ID", { editable: false }),
-    f("projectName", "Project", { required: false, editable: false }),
+    f("projectName", "Project", { showcase: true, required: false, editable: false }),
     f("maxRequestsPerMinute", "Requests / min", { kind: "number" }),
     f("maxTokensPerMinute", "Tokens / min", { kind: "number" }),
     f("maxImagesPerMinute", "Images / min", { kind: "number", required: false }),

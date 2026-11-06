@@ -25,11 +25,12 @@ export const WebhookResourceType = rt({
         "Comma-separated: batch.succeeded, batch.expired, batch.failed, interaction.requires_action, interaction.completed, interaction.failed, video.generated.",
     }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["enabled", "disabled", "disabled_due_to_failed_deliveries"],
     }),
     f("signingSecrets", "Signing Secrets", { required: false, editable: false }),
-    f("createTime", "Created", { required: false, editable: false }),
+    f("createTime", "Created", { showcase: true, required: false, editable: false }),
     f("updateTime", "Updated", { required: false, editable: false }),
   ],
   outputs: [o("webhookId", "Webhook ID"), o("uri", "URI")],

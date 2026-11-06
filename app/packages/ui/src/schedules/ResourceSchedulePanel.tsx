@@ -110,7 +110,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
           <button
             type="button"
             onClick={() => setEditorOpen(true)}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
           >
             {gt("Add sleep schedule…")}
           </button>
@@ -129,7 +129,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
             </span>
             <span className="text-xs text-on-surface-faint">{schedule.timezone}</span>
             {schedule.paused && (
-              <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+              <span className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
                 {gt("Paused")}
               </span>
             )}

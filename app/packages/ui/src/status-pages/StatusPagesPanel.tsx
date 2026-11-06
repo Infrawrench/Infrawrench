@@ -224,11 +224,11 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 <h3 className="flex items-center gap-2 text-sm font-medium text-on-surface">
                   {gtData(page.title)}
                   {page.published ? (
-                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-success">
+                    <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs text-success">
                       {gt("Live")}
                     </span>
                   ) : (
-                    <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-faint">
+                    <span className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-faint">
                       {gt("Draft")}
                     </span>
                   )}

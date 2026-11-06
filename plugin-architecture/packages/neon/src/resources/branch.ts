@@ -21,11 +21,12 @@ export const NeonBranchResourceType = rt({
         "Protected branches can't be deleted or reset, and are covered by IP allow-lists set to protected branches only.",
     }),
     f("expiresAt", "Expires At", {
+      showcase: true,
       required: false,
       description:
         "ISO 8601 time when Neon deletes the branch automatically (at most 30 days ahead). Blank removes the expiry.",
     }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("branchId", "Branch ID"),
@@ -46,7 +47,7 @@ export const NeonBranchResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
-  iconKey: "neon",
+  iconKey: "branch",
   peerIntegrations: [
     {
       pluginId: "postgres",

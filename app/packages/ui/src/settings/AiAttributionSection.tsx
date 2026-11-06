@@ -816,7 +816,7 @@ function DimensionForm({
           {keys.map((k) => (
             <span
               key={k}
-              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs border border-border rounded-full"
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs border border-border rounded-md"
             >
               {k}
               <button
@@ -860,7 +860,7 @@ function DimensionForm({
               <button
                 key={k}
                 type="button"
-                className="px-2 py-0.5 text-xs border border-dashed border-border rounded-full"
+                className="px-2 py-0.5 text-xs border border-dashed border-border rounded-md"
                 onClick={() => addKey(k)}
               >
                 {k}
@@ -1065,7 +1065,7 @@ function StatsCard({ base, dimensions }: { base: string; dimensions: AiAttributi
                   </div>
                   <div className="h-1.5 bg-surface-overlay rounded">
                     <div
-                      className="h-1.5 bg-blue-600 rounded"
+                      className="h-1.5 bg-accent rounded"
                       style={{
                         width: `${maxSpend > 0 ? Math.max(1, (r.amount / maxSpend) * 100) : 0}%`,
                       }}

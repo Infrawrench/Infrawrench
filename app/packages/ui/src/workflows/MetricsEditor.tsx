@@ -25,7 +25,7 @@ export function MetricsEditor({
   };
 
   return (
-    <div className="px-3 py-2 border-b border-white/10 text-xs">
+    <div className="px-3 py-2 border-b border-on-surface/10 text-xs">
       <div className="flex items-center justify-between mb-1">
         <span className="opacity-60">{gt("Metrics")}</span>
         <button
@@ -36,7 +36,7 @@ export function MetricsEditor({
               { key: `metric${defs.length + 1}`, label: gt("Metric"), type: "number" },
             ])
           }
-          className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
+          className="px-2 py-0.5 rounded bg-on-surface/10 hover:bg-on-surface/20"
         >
           {gt("+ Add metric")}
         </button>
@@ -53,20 +53,20 @@ export function MetricsEditor({
             onChange={(e) => update(i, { key: e.target.value })}
             placeholder={gt("key")}
             aria-label={gt("Metric key")}
-            className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-28 font-mono"
+            className="bg-transparent border border-on-surface/15 rounded px-1 py-0.5 w-28 font-mono"
           />
           <input
             value={d.label}
             onChange={(e) => update(i, { label: e.target.value })}
             placeholder={gt("label")}
             aria-label={gt("Metric label")}
-            className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-32"
+            className="bg-transparent border border-on-surface/15 rounded px-1 py-0.5 w-32"
           />
           <select
             value={d.type}
             onChange={(e) => update(i, { type: e.target.value as WorkflowMetricDef["type"] })}
             aria-label={gt("Metric type")}
-            className="bg-transparent border border-white/15 rounded px-1 py-0.5"
+            className="bg-transparent border border-on-surface/15 rounded px-1 py-0.5"
           >
             <option value="number">number</option>
             <option value="string">string</option>
@@ -77,7 +77,7 @@ export function MetricsEditor({
             onChange={(e) => update(i, { unit: e.target.value })}
             placeholder={gt("unit")}
             aria-label={gt("Metric unit")}
-            className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-16"
+            className="bg-transparent border border-on-surface/15 rounded px-1 py-0.5 w-16"
           />
           <span className="opacity-60">= {String(valueByKey.get(d.key) ?? "—")}</span>
           <button

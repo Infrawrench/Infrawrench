@@ -333,7 +333,7 @@ function BilledSourceEditor({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50"
+              className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent transition-colors disabled:opacity-50"
               disabled={saving || invalid !== null || filters.length === 0}
               onClick={() => void save(filters)}
             >

@@ -15,11 +15,12 @@ export const VocabularyResourceType = rt({
   description: "A saved Rev AI phrase list that jobs can reference by id",
   fields: [
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["in_progress", "complete", "failed"],
     }),
     f("metadata", "Metadata", { required: false }),
-    f("createdOn", "Created", { required: false }),
+    f("createdOn", "Created", { showcase: true, required: false }),
     f("completedOn", "Completed", { required: false }),
     f("failure", "Failure", { required: false }),
     f("failureDetail", "Failure Detail", { required: false }),

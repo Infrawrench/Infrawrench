@@ -6,9 +6,9 @@ export const PredictionResourceType = rt({
   description: "A single run of a model on Replicate, with its input, output and timing metrics",
   fields: [
     f("predictionId", "Prediction ID"),
-    f("status", "Status", { required: false }),
-    f("model", "Model", { required: false }),
-    f("version", "Version", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
+    f("model", "Model", { showcase: true, required: false }),
+    f("version", "Version", { showcase: true, required: false }),
     f("source", "Source", { required: false }),
     f("deployment", "Deployment", { required: false }),
     f("error", "Error", { required: false }),
@@ -19,7 +19,7 @@ export const PredictionResourceType = rt({
       description:
         "Model-specific counters Replicate reports beyond the two timings, such as token counts or image counts",
     }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("startedAt", "Started", { required: false }),
     f("completedAt", "Completed", { required: false }),
     f("deadline", "Deadline", { required: false }),

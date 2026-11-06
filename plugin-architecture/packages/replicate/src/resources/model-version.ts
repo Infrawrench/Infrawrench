@@ -7,9 +7,9 @@ export const ModelVersionResourceType = rt({
     "One pushed version of a model this account owns, with the Cog version it was built with",
   fields: [
     f("versionId", "Version ID", { editable: false }),
-    f("model", "Model", { editable: false }),
+    f("model", "Model", { showcase: true, editable: false }),
     f("cogVersion", "Cog Version", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("isLatest", "Latest", { kind: "boolean", required: false, editable: false }),
   ],
   outputs: [

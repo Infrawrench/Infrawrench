@@ -4,6 +4,7 @@ export const LogSinkResourceType = rt({
   name: "Log Sink",
   pinnable: false,
   id: "log-sink",
+  iconKey: "logs",
   description: "A Google Cloud Logging sink (log router)",
   fields: [
     f("name", "Name"),

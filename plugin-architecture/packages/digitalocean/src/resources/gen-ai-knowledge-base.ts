@@ -7,7 +7,7 @@ export const GenAiKnowledgeBaseResourceType = rt({
     "A DigitalOcean Gradient AI knowledge base: a vector index over your documents that agents can query.",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("embeddingModelUuid", "Embedding Model", {
       required: false,
       editable: false,
@@ -21,7 +21,12 @@ export const GenAiKnowledgeBaseResourceType = rt({
     f("projectId", "Project ID", { required: false, editable: false }),
     f("isPublic", "Public", { required: false, editable: false }),
     f("lastIndexingStatus", "Last Indexing Status", { required: false, editable: false }),
-    f("dataSourceCount", "Data Sources", { kind: "number", required: false, editable: false }),
+    f("dataSourceCount", "Data Sources", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("tags", "Tags", { required: false }),
   ],
   outputs: [

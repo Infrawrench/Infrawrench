@@ -20,8 +20,8 @@ export const VoiceResourceType = rt({
   fields: [
     f("displayName", "Name", { required: false }),
     f("voiceId", "Voice ID"),
-    f("type", "Type", { kind: "enum", enumValues: ["prompted", "replicated"] }),
-    f("model", "Created With", { required: false }),
+    f("type", "Type", { showcase: true, kind: "enum", enumValues: ["prompted", "replicated"] }),
+    f("model", "Created With", { showcase: true, required: false }),
     f("prompt", "Prompt", { required: false }),
     f("languageCode", "Language", { required: false }),
     f("gender", "Gender", { required: false }),
@@ -29,7 +29,7 @@ export const VoiceResourceType = rt({
     f("persona", "Persona", { required: false }),
     f("pitch", "Pitch", { required: false }),
     f("description", "Description", { required: false }),
-    f("expireTime", "Expires", { required: false }),
+    f("expireTime", "Expires", { showcase: true, required: false }),
   ],
   outputs: [
     o("voiceId", "Voice ID", {

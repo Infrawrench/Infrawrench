@@ -5,11 +5,11 @@ export const TursoDatabaseInstanceResourceType = rt({
   id: "turso-database-instance",
   description: "A primary or replica instance backing a Turso database",
   fields: [
-    f("database", "Database"),
+    f("database", "Database", { showcase: true }),
     f("name", "Name"),
     f("uuid", "UUID", { required: false }),
-    f("type", "Type", { required: false }),
-    f("region", "Region", { required: false }),
+    f("type", "Type", { showcase: true, required: false }),
+    f("region", "Region", { showcase: true, required: false }),
     f("hostname", "Hostname", { required: false }),
   ],
   outputs: [o("hostname", "Hostname"), o("instanceName", "Instance Name")],
@@ -17,5 +17,5 @@ export const TursoDatabaseInstanceResourceType = rt({
     { fieldKey: "database", targetTypeId: "turso-database", label: "instance of" },
     { fieldKey: "region", targetTypeId: "turso-location", label: "in location" },
   ],
-  iconKey: "turso",
+  iconKey: "server",
 });

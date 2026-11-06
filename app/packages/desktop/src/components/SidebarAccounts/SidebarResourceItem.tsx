@@ -66,7 +66,7 @@ export function SidebarResourceItem({
       type="button"
       className={`flex w-full items-center gap-2 px-3 py-1 text-left text-xs rounded cursor-pointer transition-colors ${
         showDropHint
-          ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-blue-500"
+          ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-accent"
           : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
       } ${isDragging ? "opacity-40" : ""}`}
       onClick={activate}

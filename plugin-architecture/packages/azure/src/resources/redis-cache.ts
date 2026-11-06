@@ -7,13 +7,13 @@ export const RedisCacheResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
-    f("sku", "SKU"),
+    f("location", "Location", { showcase: true }),
+    f("sku", "SKU", { showcase: true }),
     f("capacity", "Capacity", { kind: "number" }),
-    f("provisioningState", "Provisioning State"),
+    f("provisioningState", "Provisioning State", { showcase: true }),
     f("redisVersion", "Redis Version", { required: false }),
     f("nonSslPort", "Non-SSL Port Enabled", { kind: "boolean", required: false }),
-    f("shardCount", "Shard Count", { kind: "number", required: false }),
+    f("shardCount", "Shard Count", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [
     o("hostName", "Hostname"),

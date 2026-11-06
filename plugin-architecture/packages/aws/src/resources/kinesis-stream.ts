@@ -7,10 +7,11 @@ export const KinesisStreamResourceType = rt({
   fields: [
     f("streamName", "Stream Name"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["CREATING", "DELETING", "ACTIVE", "UPDATING"],
     }),
-    f("shardCount", "Open Shards", { kind: "number", required: false }),
+    f("shardCount", "Open Shards", { showcase: true, kind: "number", required: false }),
     f("retentionPeriodHours", "Retention (hours)", { kind: "number", required: false }),
     f("streamModeDetails", "Stream Mode", { required: false }),
     f("encryptionType", "Encryption", { required: false }),

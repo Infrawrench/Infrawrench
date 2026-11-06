@@ -7,7 +7,12 @@ export const PrivateNetworkResourceType = rt({
   description: "A Scaleway VPC Private Network (vpc/v2)",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { kind: "enum", enumValues: SCW_REGIONS, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: SCW_REGIONS,
+      editable: false,
+    }),
     f("subnets", "Subnets", { required: false, editable: false }),
     f("vpcId", "VPC", { required: false, editable: false }),
     f("dhcpEnabled", "DHCP", { kind: "boolean", required: false, editable: false }),

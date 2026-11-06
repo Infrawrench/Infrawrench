@@ -7,9 +7,9 @@ export const NetlifyBuildHookResourceType = rt({
   description: "A build hook that triggers deploys via a unique URL",
   fields: [
     f("title", "Title"),
-    f("branch", "Branch", { required: false }),
+    f("branch", "Branch", { showcase: true, required: false }),
     f("url", "Hook URL", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
     f("siteId", "Site", { required: false, editable: false }),
   ],
   outputs: [o("hookId", "Hook ID"), o("hookUrl", "Hook URL", { sensitive: true })],

@@ -11,7 +11,7 @@ export const ElasticIPResourceType = rt({
     f("associationId", "Association ID", { required: false }),
     f("instanceId", "Instance ID", { required: false }),
     f("networkInterfaceId", "Network Interface", { required: false }),
-    f("domain", "Domain", { required: false }),
+    f("domain", "Domain", { showcase: true, required: false }),
   ],
   outputs: [o("publicIp", "Public IP")],
   dependsOn: [{ fieldKey: "instanceId", targetTypeId: "ec2-instance", label: "attached to" }],

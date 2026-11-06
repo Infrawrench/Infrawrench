@@ -168,7 +168,7 @@ export function InstantiateModal({
                 onClick={() => setTtlHours(preset.hours)}
                 className={`rounded-lg px-2.5 py-1 text-xs transition-colors ${
                   ttlHours === preset.hours
-                    ? "bg-blue-600 text-white"
+                    ? "bg-accent text-on-accent"
                     : "bg-surface-sunken text-on-surface-secondary hover:bg-surface"
                 }`}
               >
@@ -304,7 +304,7 @@ export function InstantiateModal({
             disabled={
               busy || name.trim() === "" || ttlProblem !== null || parameterProblem !== null
             }
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {busy ? gt("Creating…") : gt("Create environment")}
           </button>

@@ -21,7 +21,7 @@ export const UtAppResourceType = rt({
       enumValues: ["public-read", "private"],
     }),
     f("allowAclOverride", "Per-file ACL Overrides", { kind: "boolean", required: false }),
-    f("region", "Region", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
     f("filesUploaded", "Files Uploaded", { kind: "number", required: false }),
     f("appTotalBytes", "Storage Used", { kind: "number", required: false }),
     f("totalBytes", "Storage Counted Against Quota", { kind: "number", required: false }),

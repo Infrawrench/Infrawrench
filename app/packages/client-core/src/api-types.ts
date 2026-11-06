@@ -15,7 +15,7 @@
  * the OpenAPI doc honest).
  */
 
-import type { AttachTarget, PeerPaneSchema } from "@infrawrench/plugin-base";
+import type { AttachTarget, PeerPaneSchema, ShowcaseField } from "@infrawrench/plugin-base";
 
 /**
  * Full account row as returned by `GET /api/org/:orgId/accounts`.
@@ -194,6 +194,10 @@ export interface Resource {
 export interface ResourceTypeSummary {
   id: string;
   displayName: string;
+  /** What this type is, as a word from `RESOURCE_ICON_KEYS`; draws its tile icon. */
+  iconKey?: string;
+  /** The fields this type marked `showcase: true`, which its tile shows. */
+  showcase?: ShowcaseField[];
   pluralDisplayName: string;
   parentTypeId: string | undefined;
   supportsCreate: boolean;

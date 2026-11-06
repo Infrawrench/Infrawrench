@@ -8,13 +8,13 @@ export const GpuClusterResourceType = rt({
   fields: [
     f("clusterName", "Name", { editable: false }),
     f("clusterId", "Cluster ID", { editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("clusterType", "Cluster Type", {
       kind: "enum",
       enumValues: ["KUBERNETES", "SLURM"],
       required: false,
     }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("gpuType", "GPU Type", { required: false, editable: false }),
     f("numGpus", "GPUs", {
       kind: "number",
@@ -41,8 +41,14 @@ export const GpuClusterResourceType = rt({
     f("cudaVersion", "CUDA Version", { required: false, editable: false }),
     f("nvidiaDriverVersion", "NVIDIA Driver", { required: false, editable: false }),
     f("numCpuWorkers", "CPU Workers", { kind: "number", required: false, editable: false }),
-    f("gpuWorkerCount", "GPU Worker Nodes", { kind: "number", required: false, editable: false }),
+    f("gpuWorkerCount", "GPU Worker Nodes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("controlPlaneCount", "Control Plane Nodes", {
+      showcase: true,
       kind: "number",
       required: false,
       editable: false,

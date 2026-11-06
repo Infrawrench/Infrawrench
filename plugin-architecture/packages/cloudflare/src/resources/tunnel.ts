@@ -6,11 +6,15 @@ export const TunnelResourceType = rt({
   description: "A Cloudflare Tunnel for secure origin connections",
   fields: [
     f("name", "Name"),
-    f("status", "Status"),
+    f("status", "Status", { showcase: true }),
     f("tunnelType", "Tunnel Type", { required: false }),
     f("remoteConfig", "Remote Config", { kind: "boolean", required: false }),
-    f("connectionsCount", "Active Connections", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("connectionsCount", "Active Connections", {
+      showcase: true,
+      kind: "number",
+      required: false,
+    }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("tunnelId", "Tunnel ID"), o("tunnelToken", "Tunnel Token", { sensitive: true })],
   supportsCreate: true,

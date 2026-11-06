@@ -11,8 +11,8 @@ export const NetlifySiteResourceType = rt({
     f("sslUrl", "SSL URL", { required: false, editable: false }),
     f("customDomain", "Custom Domain", { required: false, editable: false }),
     f("domainAliases", "Domain Aliases", { required: false, editable: false }),
-    f("state", "State", { required: false, editable: false }),
-    f("plan", "Plan", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
+    f("plan", "Plan", { showcase: true, required: false, editable: false }),
     f("repoUrl", "Repository", { required: false, editable: false }),
     f("repoBranch", "Production Branch", { required: false }),
     f("buildCommand", "Build Command", { required: false }),
@@ -23,7 +23,7 @@ export const NetlifySiteResourceType = rt({
       required: false,
       description: "Stop automatic builds from Git pushes",
     }),
-    f("framework", "Framework", { required: false, editable: false }),
+    f("framework", "Framework", { showcase: true, required: false, editable: false }),
     f("functionsRegion", "Functions Region", { required: false, editable: false }),
     f("ssl", "SSL", { kind: "boolean", required: false, editable: false }),
     f("forceSsl", "Force SSL", {
@@ -33,7 +33,7 @@ export const NetlifySiteResourceType = rt({
     }),
     f("managedDns", "Managed DNS", { kind: "boolean", required: false, editable: false }),
     f("accountName", "Team", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
     f("updatedAt", "Updated At", { required: false, editable: false }),
   ],
   outputs: [

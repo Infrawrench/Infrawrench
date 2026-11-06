@@ -1,3 +1,4 @@
+import type { ShowcaseField } from "@infrawrench/plugin-base";
 export interface PinnedRow {
   resource_id: string;
   /** Position in the dashboard's single drag-reorderable card sequence. */
@@ -14,6 +15,10 @@ export interface PluginMeta {
   logoSvg: string;
   displayName: string;
   terminalResourceTypeIds: string[];
+  /** Resource type id to its `iconKey`. */
+  iconKeys: Record<string, string>;
+  /** Resource type id to the fields it marked `showcase: true`. */
+  showcases: Record<string, ShowcaseField[]>;
 }
 
 export interface CardStatus {

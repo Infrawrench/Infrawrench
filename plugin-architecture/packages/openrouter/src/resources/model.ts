@@ -23,7 +23,7 @@ export const ModelResourceType = rt({
     f("inputModalities", "Input Modalities", { required: false }),
     f("outputModalities", "Output Modalities", { required: false }),
     f("tokenizer", "Tokenizer", { required: false }),
-    f("created", "Created", { required: false }),
+    f("created", "Created", { showcase: true, required: false }),
     f("knowledgeCutoff", "Knowledge Cutoff", { required: false }),
     f("expirationDate", "Expires", { required: false }),
     f("huggingFaceId", "Hugging Face ID", { required: false }),

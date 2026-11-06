@@ -30,7 +30,7 @@ import { apiDelete, apiPost } from "@/lib/api";
 import type { WebTerminalSession } from "./WebTerminal";
 
 const PRIMARY_BUTTON =
-  "px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors";
+  "px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors";
 const SECONDARY_BUTTON =
   "px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors";
 const DANGER_BUTTON =
@@ -220,7 +220,7 @@ export function SharedConsolePanel({
                     type="checkbox"
                     checked={allowHandover}
                     onChange={(e) => setAllowHandover(e.target.checked)}
-                    className="mt-0.5 accent-blue-600"
+                    className="mt-0.5 accent-accent"
                   />
                   <T>
                     <span>

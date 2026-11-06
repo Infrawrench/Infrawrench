@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.93.0",
+    "version": "1.94.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5857,6 +5857,30 @@
           "pluralDisplayName": {
             "type": "string"
           },
+          "iconKey": {
+            "type": "string",
+            "description": "What this type of resource is, in a shared vocabulary (`cpu`, `database`, ...)."
+          },
+          "showcase": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The fields this type marked to show on its tile, read from each resource's synced fields."
+          },
           "parentTypeId": {
             "type": "string"
           },
@@ -8553,6 +8577,28 @@
           },
           "pluginLogoSvg": {
             "type": "string"
+          },
+          "iconKey": {
+            "type": "string"
+          },
+          "showcase": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label"
+              ],
+              "additionalProperties": false
+            }
           },
           "pluginDisplayName": {
             "type": "string"
@@ -30219,6 +30265,28 @@
           },
           "pluralDisplayName": {
             "type": "string"
+          },
+          "iconKey": {
+            "type": "string"
+          },
+          "showcase": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label"
+              ],
+              "additionalProperties": false
+            }
           },
           "supportsCreate": {
             "type": "boolean"

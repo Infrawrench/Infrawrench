@@ -117,7 +117,7 @@ export function AddResourcesModal({ client, memberIds, onAdd, onClose }: AddReso
                 key={row.id}
                 type="button"
                 onClick={() => toggle(row)}
-                className="rounded-full border border-border bg-surface-raised px-2 py-0.5 text-xs text-on-surface hover:border-border-strong"
+                className="rounded-md border border-border bg-surface-raised px-2 py-0.5 text-xs text-on-surface hover:border-border-strong"
                 aria-label={gt("Remove {name} from the selection", { name: row.displayName })}
               >
                 {row.displayName} ×

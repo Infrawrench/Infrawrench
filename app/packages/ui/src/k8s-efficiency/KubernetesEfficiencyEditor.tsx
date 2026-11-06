@@ -409,7 +409,7 @@ export function KubernetesEfficiencyEditor({
                     type="checkbox"
                     checked={categories.includes(c)}
                     onChange={() => toggleCategory(c)}
-                    className="accent-blue-500"
+                    className="accent-accent"
                   />
                   {labels.category(c)}
                 </label>
@@ -430,7 +430,7 @@ export function KubernetesEfficiencyEditor({
                     name={`${uid}-idle`}
                     checked={config.idle === "separate"}
                     onChange={() => set({ idle: "separate" })}
-                    className="mt-1 accent-blue-500"
+                    className="mt-1 accent-accent"
                   />
                   <span>
                     {gt("Separate rows")}
@@ -445,7 +445,7 @@ export function KubernetesEfficiencyEditor({
                     name={`${uid}-idle`}
                     checked={config.idle === "spread"}
                     onChange={() => set({ idle: "spread" })}
-                    className="mt-1 accent-blue-500"
+                    className="mt-1 accent-accent"
                   />
                   <span>
                     {gt("Spread across groups")}
@@ -467,7 +467,7 @@ export function KubernetesEfficiencyEditor({
                     name={`${uid}-basis`}
                     checked={config.basis === "total"}
                     onChange={() => set({ basis: "total" })}
-                    className="mt-1 accent-blue-500"
+                    className="mt-1 accent-accent"
                   />
                   <span>
                     {gt("Total cost")}
@@ -482,7 +482,7 @@ export function KubernetesEfficiencyEditor({
                     name={`${uid}-basis`}
                     checked={config.basis === "allocated"}
                     onChange={() => set({ basis: "allocated" })}
-                    className="mt-1 accent-blue-500"
+                    className="mt-1 accent-accent"
                   />
                   <span>
                     {gt("Allocated cost")}
@@ -554,7 +554,7 @@ export function KubernetesEfficiencyEditor({
               type="button"
               disabled={saving || Boolean(problem) || Boolean(nameProblem)}
               onClick={() => void save()}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
             >
               {saving ? gt("Saving…") : existing ? gt("Save") : gt("Create report")}
             </button>

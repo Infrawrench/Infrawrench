@@ -6,8 +6,8 @@ export const VolumeResourceType = rt({
   description: "A DigitalOcean Block Storage volume",
   fields: [
     f("name", "Name"),
-    f("region", "Region"),
-    f("sizeGb", "Size (GB)", { kind: "number" }),
+    f("region", "Region", { showcase: true }),
+    f("sizeGb", "Size (GB)", { showcase: true, kind: "number" }),
     f("filesystemType", "Filesystem", {
       kind: "enum",
       required: false,

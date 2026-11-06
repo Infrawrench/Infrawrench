@@ -279,7 +279,7 @@ export function OnCallSection() {
                   {entry.shift ? personLabel(entry.shift) : gt("Nobody")}
                 </span>
                 {entry.shift?.source === "override" && (
-                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-warning">
+                  <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-xs text-warning">
                     {gt("Covering")}
                   </span>
                 )}
@@ -388,7 +388,7 @@ export function OnCallSection() {
                           : [...draft.participantUserIds, member.userId],
                       })
                     }
-                    className={`rounded-full border px-2.5 py-1 transition-colors ${
+                    className={`rounded-md border px-2.5 py-1 transition-colors ${
                       on
                         ? "border-transparent bg-surface-overlay text-on-surface"
                         : "border-border text-on-surface-tertiary hover:text-on-surface-secondary"
@@ -460,7 +460,7 @@ export function OnCallSection() {
                 {schedule.name}
               </button>
               {!schedule.enabled && (
-                <span className="rounded-full bg-surface-overlay px-2 py-0.5 text-xs text-on-surface-faint">
+                <span className="rounded-md bg-surface-overlay px-2 py-0.5 text-xs text-on-surface-faint">
                   {gt("Off")}
                 </span>
               )}

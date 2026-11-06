@@ -4,6 +4,7 @@ export const PubSubSubscriptionResourceType = rt({
   name: "Pub/Sub Subscription",
   pinnable: false,
   id: "pubsub-subscription",
+  iconKey: "inbox",
   description: "A Google Cloud Pub/Sub subscription",
   fields: [
     f("name", "Name"),

@@ -7,8 +7,8 @@ export const DiskResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
-    f("diskSizeGb", "Size (GB)", { kind: "number" }),
+    f("location", "Location", { showcase: true }),
+    f("diskSizeGb", "Size (GB)", { showcase: true, kind: "number" }),
     f("diskState", "Disk State", {
       kind: "enum",
       enumValues: [
@@ -21,7 +21,7 @@ export const DiskResourceType = rt({
         "ActiveSASFrozen",
       ],
     }),
-    f("sku", "SKU", { required: false }),
+    f("sku", "SKU", { showcase: true, required: false }),
     f("osType", "OS Type", { required: false }),
     f("managedBy", "Managed By", { required: false }),
     f("encryption", "Encryption", { required: false }),

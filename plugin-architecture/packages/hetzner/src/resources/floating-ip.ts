@@ -7,9 +7,15 @@ export const FloatingIpResourceType = rt({
   fields: [
     f("name", "Name", { required: false }),
     f("description", "Description", { required: false }),
-    f("ip", "IP Address", { editable: false }),
-    f("type", "Type", { kind: "enum", enumValues: ["ipv4", "ipv6"], editable: false }),
+    f("ip", "IP Address", { showcase: true, editable: false }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["ipv4", "ipv6"],
+      editable: false,
+    }),
     f("location", "Location", {
+      showcase: true,
       kind: "enum",
       enumValues: ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"],
       editable: false,

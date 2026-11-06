@@ -24,7 +24,7 @@ export const InstanceResourceType = rt({
     }),
     f("primaryDomain", "Primary Domain", { required: false, editable: false }),
     f("frontendApiUrl", "Frontend API URL", { required: false, editable: false }),
-    f("userCount", "Users", { kind: "number", required: false, editable: false }),
+    f("userCount", "Users", { showcase: true, kind: "number", required: false, editable: false }),
     f("activeUsers30d", "Active Users (30 days)", {
       kind: "number",
       required: false,
@@ -80,7 +80,7 @@ export const UserResourceType = rt({
     f("organizations", "Organizations", { required: false, editable: false }),
     f("lastSignInAt", "Last Sign-in", { required: false, editable: false }),
     f("lastActiveAt", "Last Active", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("userId", "User ID")],
   principalRole: {
@@ -108,14 +108,19 @@ export const OrganizationResourceType = rt({
       description: "0 means unlimited.",
     }),
     f("adminDeleteEnabled", "Admins Can Delete", { kind: "boolean", required: false }),
-    f("membersCount", "Members", { kind: "number", required: false, editable: false }),
+    f("membersCount", "Members", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("pendingInvitations", "Pending Invitations", {
       kind: "number",
       required: false,
       editable: false,
     }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("organizationId", "Organization ID"), o("slug", "Slug")],
   supportsCreate: true,
@@ -166,7 +171,7 @@ export const JwtTemplateResourceType = rt({
       required: false,
       editable: false,
     }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("name", "Template Name", { description: "Pass to getToken({ template })." })],
   supportsCreate: true,
@@ -188,7 +193,7 @@ export const OAuthApplicationResourceType = rt({
     f("consentScreenEnabled", "Consent Screen", { kind: "boolean", required: false }),
     f("pkceRequired", "PKCE Required", { kind: "boolean", required: false }),
     f("discoveryUrl", "Discovery URL", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("clientId", "Client ID"), o("discoveryUrl", "Discovery URL")],
   credentialFormats: [
@@ -213,7 +218,7 @@ export const EnterpriseConnectionResourceType = rt({
     "A SAML or OIDC enterprise SSO connection (Okta, Entra ID, Google Workspace, custom) for one or more email domains.",
   fields: [
     f("name", "Name"),
-    f("provider", "Provider", { required: false, editable: false }),
+    f("provider", "Provider", { showcase: true, required: false, editable: false }),
     f("domains", "Domains", {
       required: false,
       description: "Comma-separated email domains routed to this connection.",
@@ -255,7 +260,7 @@ export const MachineResourceType = rt({
     f("name", "Name"),
     f("defaultTokenTtl", "Default Token TTL (seconds)", { kind: "number", required: false }),
     f("scopedMachines", "Can Call", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("machineId", "Machine ID"),
@@ -291,7 +296,7 @@ export const AllowlistIdentifierResourceType = rt({
   fields: [
     f("identifier", "Identifier", { editable: false }),
     f("identifierType", "Type", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
   supportsCreate: true,
@@ -309,7 +314,7 @@ export const BlocklistIdentifierResourceType = rt({
   fields: [
     f("identifier", "Identifier", { editable: false }),
     f("identifierType", "Type", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
   supportsCreate: true,
@@ -324,10 +329,10 @@ export const InvitationResourceType = rt({
   description: "A pending invitation to sign up to the application.",
   fields: [
     f("email", "Email", { editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("url", "Invitation URL", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
   supportsCreate: true,
@@ -342,7 +347,7 @@ export const RedirectUrlResourceType = rt({
   description: "A whitelisted redirect URL for native and mobile OAuth flows.",
   fields: [
     f("url", "URL", { editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("url", "URL")],
   supportsCreate: true,

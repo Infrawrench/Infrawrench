@@ -3,10 +3,11 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const BackendServiceResourceType = rt({
   name: "Backend Service",
   id: "backend-service",
+  iconKey: "server",
   description: "A Google Cloud Load Balancing backend service",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
     f("description", "Description", { required: false }),
     f("protocol", "Protocol", { required: false }),
     f("port", "Port", { kind: "number", required: false }),
@@ -17,12 +18,12 @@ export const BackendServiceResourceType = rt({
       kind: "number",
       required: false,
     }),
-    f("healthCheckCount", "Health Checks", { kind: "number", required: false }),
+    f("healthCheckCount", "Health Checks", { showcase: true, kind: "number", required: false }),
     f("healthCheckNames", "Health Check Names", {
       required: false,
       description: "Names of the health checks probing this backend service",
     }),
-    f("backendCount", "Backends", { kind: "number", required: false }),
+    f("backendCount", "Backends", { showcase: true, kind: "number", required: false }),
     f("backendGroups", "Backend Groups", {
       required: false,
       description: "Names of the instance groups or network endpoint groups behind this service",

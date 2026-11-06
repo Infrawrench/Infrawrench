@@ -12,6 +12,7 @@ export const UptimeCheckResourceType = rt({
   fields: [
     f("name", "Name"),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["https", "http", "ping"],
       description: "https/http fetch the URL; ping sends ICMP to the host.",

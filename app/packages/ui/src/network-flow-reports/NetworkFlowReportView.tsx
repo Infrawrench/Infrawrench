@@ -93,7 +93,7 @@ export function NetworkFlowReportView({ result }: NetworkFlowReportViewProps) {
   const color = (s: NetworkFlowReportSeries, i: number) =>
     s.groupKey === NETWORK_FLOW_REPORT_OTHER_KEY
       ? chart.tick
-      : (chart.colors[i % chart.colors.length] ?? "#60a5fa");
+      : (chart.colors[i % chart.colors.length] ?? "var(--color-chart-primary)");
   const empty = result.overall.every((s) => s.total.bytes === 0);
 
   return (
@@ -171,7 +171,7 @@ export function NetworkFlowReportView({ result }: NetworkFlowReportViewProps) {
               onClick={() => setFigure(f)}
               className={`rounded-lg px-2.5 py-1 text-xs border ${
                 figure === f
-                  ? "border-blue-500 text-on-surface"
+                  ? "border-accent text-on-surface"
                   : "border-border text-on-surface-secondary hover:border-border-strong"
               }`}
             >

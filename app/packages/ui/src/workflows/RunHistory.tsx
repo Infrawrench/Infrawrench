@@ -188,8 +188,8 @@ export function RunResultPanel({ run }: { run: WorkflowRunResult }) {
   const gt = useGT();
   const statusLabel = useRunStatusLabel();
   return (
-    <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
-      <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
+    <div className="h-48 border-t border-on-surface/10 flex flex-col min-h-0">
+      <div className="px-3 py-1 text-xs border-b border-on-surface/10 flex items-center gap-2">
         <span className={`font-semibold ${runStatusClass(run.status)}`}>
           {statusLabel(run.status)}
         </span>
@@ -208,8 +208,8 @@ export function RunResultPanel({ run }: { run: WorkflowRunResult }) {
 export function LiveLogPanel({ logs }: { logs: WorkflowRunLog[] }) {
   const gt = useGT();
   return (
-    <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
-      <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
+    <div className="h-48 border-t border-on-surface/10 flex flex-col min-h-0">
+      <div className="px-3 py-1 text-xs border-b border-on-surface/10 flex items-center gap-2">
         <span className="font-semibold text-warning">{gt("running…")}</span>
       </div>
       <div className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
@@ -263,7 +263,7 @@ export function WorkflowRunHistory({
   const hidden = ordered.length - visible.length;
 
   return (
-    <section className="border-t border-white/10 text-xs flex flex-col min-h-0">
+    <section className="border-t border-on-surface/10 text-xs flex flex-col min-h-0">
       <div className="px-3 py-1.5 flex items-center gap-2">
         <button
           type="button"
@@ -295,7 +295,7 @@ export function WorkflowRunHistory({
             <table className="w-full">
               <caption className="sr-only">{gt("Run history")}</caption>
               <thead className="text-[10px] uppercase tracking-wide opacity-50">
-                <tr className="border-b border-white/10">
+                <tr className="border-b border-on-surface/10">
                   <th scope="col" className="text-left font-normal px-3 py-1">
                     {gt("Status")}
                   </th>
@@ -320,7 +320,7 @@ export function WorkflowRunHistory({
                   return [
                     <tr
                       key={run.id}
-                      className={`border-b border-white/5 ${isCurrent ? "bg-white/5" : ""}`}
+                      className={`border-b border-on-surface/5 ${isCurrent ? "bg-on-surface/5" : ""}`}
                     >
                       <td className="px-3 py-1">
                         <span className={runStatusClass(run.status)}>
@@ -351,7 +351,7 @@ export function WorkflowRunHistory({
                             type="button"
                             onClick={() => setExpandedRunId(expanded ? null : run.id)}
                             aria-expanded={expanded}
-                            className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
+                            className="px-2 py-0.5 rounded bg-on-surface/10 hover:bg-on-surface/20"
                           >
                             {expanded ? gt("Hide logs") : gt("Logs")}
                           </button>
@@ -359,7 +359,7 @@ export function WorkflowRunHistory({
                       </td>
                     </tr>,
                     expanded ? (
-                      <tr key={`${run.id}-logs`} className="border-b border-white/5">
+                      <tr key={`${run.id}-logs`} className="border-b border-on-surface/5">
                         <td colSpan={5} className="px-3 py-2 bg-surface-raised/40">
                           <div className="max-h-40 overflow-auto font-mono text-[11px] leading-relaxed">
                             <RunOutcomeBody run={run} />
@@ -376,7 +376,7 @@ export function WorkflowRunHistory({
                 <button
                   type="button"
                   onClick={() => setShowAll(true)}
-                  className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
+                  className="px-2 py-0.5 rounded bg-on-surface/10 hover:bg-on-surface/20"
                 >
                   {gt("Show {count} more", { count: hidden })}
                 </button>

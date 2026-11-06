@@ -7,12 +7,12 @@ export const GenAiAgentResourceType = rt({
     "A DigitalOcean Gradient AI agent: a conversational endpoint on a foundation model, optionally with knowledge bases, function routes, and child agents.",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
     f("modelUuid", "Model", {
       required: false,
       description: "Foundation model UUID powering the agent",
     }),
-    f("modelName", "Model Name", { required: false, editable: false }),
+    f("modelName", "Model Name", { showcase: true, required: false, editable: false }),
     f("modelRouterUuid", "Inference Router", {
       required: false,
       description:
@@ -28,13 +28,14 @@ export const GenAiAgentResourceType = rt({
     f("temperature", "Temperature", { kind: "number", required: false }),
     f("maxTokens", "Max Tokens", { kind: "number", required: false }),
     f("k", "Top-k", { kind: "number", required: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("deploymentVisibility", "Endpoint Visibility", {
       required: false,
       editable: false,
       description: "Public or Private. Toggleable via the Make Public/Private header action.",
     }),
     f("knowledgeBaseCount", "Knowledge Bases", {
+      showcase: true,
       kind: "number",
       required: false,
       editable: false,

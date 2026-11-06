@@ -18,10 +18,11 @@ export const MQBrokerResourceType = rt({
     f("brokerName", "Broker Name"),
     f("brokerId", "Broker ID"),
     f("engineType", "Engine", { kind: "enum", enumValues: ["ACTIVEMQ", "RABBITMQ"] }),
-    f("engineVersion", "Engine Version", { required: false }),
+    f("engineVersion", "Engine Version", { showcase: true, required: false }),
     f("hostInstanceType", "Instance Type", { required: false }),
     f("deploymentMode", "Deployment Mode", { required: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "CREATION_IN_PROGRESS",

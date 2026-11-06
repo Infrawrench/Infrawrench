@@ -15,7 +15,7 @@ export const KapsuleClusterResourceType = rt({
   description: "A managed Kubernetes cluster on Scaleway",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { kind: "enum", enumValues: REGIONS, editable: false }),
+    f("region", "Region", { showcase: true, kind: "enum", enumValues: REGIONS, editable: false }),
     f("version", "Kubernetes Version", {
       description:
         "e.g. 1.33.4. Changing it upgrades the control plane and every pool, one minor version at a time",
@@ -25,6 +25,7 @@ export const KapsuleClusterResourceType = rt({
       editable: false,
     }),
     f("nodeCount", "Node Count", {
+      showcase: true,
       kind: "number",
       description: "Total nodes. Editing it resizes the first pool",
     }),
@@ -36,12 +37,13 @@ export const KapsuleClusterResourceType = rt({
     f("poolCount", "Pools", { kind: "number", required: false, editable: false }),
     f("cni", "CNI", { required: false, editable: false }),
     f("diskSizeGb", "Disk Size (GB)", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Root volume size of the first node pool",
       editable: false,
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("kubeconfig", "Kubeconfig", {

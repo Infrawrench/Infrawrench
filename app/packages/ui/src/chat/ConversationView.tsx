@@ -455,7 +455,7 @@ export function ConversationView({
               onChange={(e) => void handleModelChange(e.target.value)}
               disabled={streaming.active}
               aria-label={gt("Model")}
-              className="bg-surface-overlay border border-border rounded-md px-2 py-1 text-xs text-on-surface-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              className="bg-surface-overlay border border-border rounded-md px-2 py-1 text-xs text-on-surface-secondary focus:outline-none focus:ring-1 focus:ring-accent-subtle disabled:opacity-50"
             >
               {CHAT_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -502,7 +502,7 @@ export function ConversationView({
           ))}
           {streaming.userText && (
             <div className="flex justify-end">
-              <div className="max-w-[75%] bg-blue-600 text-white rounded-2xl rounded-br-md px-4 py-2 text-sm whitespace-pre-wrap break-words">
+              <div className="max-w-[75%] bg-accent text-on-accent rounded-2xl rounded-br-md px-4 py-2 text-sm whitespace-pre-wrap break-words">
                 {streaming.userText}
               </div>
             </div>
@@ -555,14 +555,14 @@ export function ConversationView({
             disabled={streaming.active || sleeping != null}
             placeholder={placeholder ?? gt("Ask anything about your infrastructure…")}
             rows={2}
-            className="flex-1 bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+            className="flex-1 bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent-subtle resize-none"
             aria-label={gt("Message")}
           />
           <button
             type="button"
             onClick={() => void handleSend()}
             disabled={streaming.active || sleeping != null || input.trim().length === 0}
-            className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
           >
             {gt("Send")}
           </button>
@@ -609,7 +609,7 @@ function MessageBubble({
       .join("\n");
     return (
       <div className="flex justify-end">
-        <div className="max-w-[75%] bg-blue-600 text-white rounded-2xl rounded-br-md px-4 py-2 text-sm whitespace-pre-wrap break-words">
+        <div className="max-w-[75%] bg-accent text-on-accent rounded-2xl rounded-br-md px-4 py-2 text-sm whitespace-pre-wrap break-words">
           {text}
         </div>
       </div>
@@ -871,13 +871,13 @@ function SecretRequestCard({
               disabled={submitting || request.status === "submitting"}
               autoComplete="new-password"
               aria-label={request.title ?? gt("Secret value for {name}", { name: request.name })}
-              className="min-w-0 flex-1 bg-surface border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="min-w-0 flex-1 bg-surface border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent-subtle"
             />
             <button
               type="button"
               disabled={submitting || request.status === "submitting" || value.length === 0}
               onClick={() => void submit()}
-              className="px-2.5 py-1 font-medium bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50 disabled:pointer-events-none"
+              className="px-2.5 py-1 font-medium bg-accent hover:bg-accent-hover text-on-accent rounded disabled:opacity-50 disabled:pointer-events-none"
             >
               {submitting ? gt("Storing…") : gt("Store")}
             </button>
@@ -983,7 +983,7 @@ function QuestionCard({
               type="button"
               disabled={submitting || !complete}
               onClick={() => void submit()}
-              className="px-2.5 py-1 font-medium bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50 disabled:pointer-events-none"
+              className="px-2.5 py-1 font-medium bg-accent hover:bg-accent-hover text-on-accent rounded disabled:opacity-50 disabled:pointer-events-none"
             >
               {submitting ? gt("Sending…") : gt("Submit")}
             </button>
@@ -1028,7 +1028,7 @@ function QuestionField({
           rows={3}
           maxLength={ASK_QUESTION_LIMITS.maxAnswerLength}
           aria-label={question.prompt}
-          className="w-full bg-surface border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[4.5rem]"
+          className="w-full bg-surface border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent-subtle resize-y min-h-[4.5rem]"
         />
       </label>
     );
@@ -1052,7 +1052,7 @@ function QuestionField({
               onClick={() => onChange(questionDraft(option.id, value.text))}
               className={`text-left px-2 py-1.5 rounded border transition-colors disabled:opacity-50 ${
                 checked
-                  ? "border-blue-500 bg-blue-500/10 text-on-surface"
+                  ? "border-accent bg-accent/10 text-on-surface"
                   : "border-border hover:border-on-surface-muted text-on-surface-secondary"
               }`}
             >
@@ -1062,7 +1062,7 @@ function QuestionField({
         })}
         <div
           className={`rounded border px-2 py-1.5 space-y-1.5 ${
-            selected === ASK_QUESTION_OTHER_ID ? "border-blue-500 bg-blue-500/10" : "border-border"
+            selected === ASK_QUESTION_OTHER_ID ? "border-accent bg-accent/10" : "border-border"
           }`}
         >
           <button
@@ -1086,7 +1086,7 @@ function QuestionField({
             maxLength={ASK_QUESTION_LIMITS.maxAnswerLength}
             placeholder={gt("Type another answer…")}
             aria-label={gt("Other answer for {prompt}", { prompt: question.prompt })}
-            className="w-full bg-surface border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full bg-surface border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-accent-subtle"
           />
         </div>
       </div>

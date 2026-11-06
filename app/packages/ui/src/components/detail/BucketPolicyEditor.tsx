@@ -196,7 +196,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
         <button
           type="button"
           onClick={() => void fetchPolicy()}
-          className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
+          className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors"
         >
           {gt("Retry")}
         </button>
@@ -255,7 +255,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
             type="button"
             onClick={() => void fetchPolicy()}
             disabled={applying}
-            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded transition-colors disabled:opacity-50"
           >
             {gt("Reload")}
           </button>
@@ -264,7 +264,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
               type="button"
               onClick={() => void handleApply()}
               disabled={applying || !dirty || lintErrors.length > 0}
-              className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors whitespace-nowrap"
+              className="px-3 py-1 text-xs font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded transition-colors whitespace-nowrap"
             >
               {applying ? gt("Applying…") : gt("Apply")}
             </button>
@@ -330,14 +330,14 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
                 <button
                   type="button"
                   onClick={addBlankStatement}
-                  className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors"
+                  className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded transition-colors"
                 >
                   {gt("+ Add statement")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setTemplatePickerOpen(true)}
-                  className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors"
+                  className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded transition-colors"
                 >
                   {gt("+ From template…")}
                 </button>

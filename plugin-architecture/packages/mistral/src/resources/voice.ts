@@ -29,7 +29,7 @@ export const MistralVoiceResourceType = rt({
     f("description", "Description", { required: false }),
     f("tags", "Tags", { required: false }),
     f("custom", "Custom Clone", { kind: "boolean", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("voiceId", "Voice ID"), o("name", "Voice Name")],
   supportsUpdate: true,

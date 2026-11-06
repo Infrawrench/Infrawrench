@@ -72,7 +72,7 @@ type View = "month" | "agenda" | "subscriptions";
 const MS_PER_DAY = 86_400_000;
 
 const KIND_BADGE_CLASSES: Record<CalendarEventKind, string> = {
-  "change-freeze": "bg-sky-500/10 text-info",
+  "change-freeze": "bg-accent/10 text-info",
   "sleep-schedule": "bg-surface-overlay text-on-surface-tertiary",
   expiry: "bg-amber-500/10 text-warning",
   "commitment-expiry": "bg-violet-500/10 text-on-surface-secondary",
@@ -429,7 +429,7 @@ export function CalendarSection({
                   type="button"
                   aria-pressed={shown}
                   onClick={() => toggleKind(kind)}
-                  className={`rounded-full border px-2.5 py-1 transition-colors ${
+                  className={`rounded-md border px-2.5 py-1 transition-colors ${
                     shown
                       ? "border-transparent bg-surface-overlay text-on-surface"
                       : "border-border text-on-surface-tertiary hover:text-on-surface-secondary"
@@ -738,7 +738,7 @@ function SubscriptionsView({
                         return next;
                       })
                     }
-                    className={`rounded-full border px-2.5 py-1 transition-colors ${
+                    className={`rounded-md border px-2.5 py-1 transition-colors ${
                       on
                         ? "border-transparent bg-surface-overlay text-on-surface"
                         : "border-border text-on-surface-tertiary hover:text-on-surface-secondary"

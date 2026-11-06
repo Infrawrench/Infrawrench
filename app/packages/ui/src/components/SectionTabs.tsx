@@ -130,7 +130,7 @@ export function SectionTabs<T extends string>({
               onKeyDown={(e) => onKeyDown(e, index)}
               className={`-mb-px px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                 selected
-                  ? "border-blue-500 text-on-surface"
+                  ? "border-accent text-on-surface"
                   : "border-transparent text-on-surface-muted hover:text-on-surface-secondary hover:border-border-strong"
               }`}
             >

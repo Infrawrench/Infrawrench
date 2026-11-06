@@ -22,7 +22,7 @@ export const ProjectResourceType = rt({
     f("description", "Description", { required: false, editable: false }),
     f("isDefault", "Default Project", { kind: "boolean", required: false, editable: false }),
     f("isActive", "Active", { kind: "boolean", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("projectId", "Project ID"), o("projectName", "Project Name")],
   supportsCreate: true,

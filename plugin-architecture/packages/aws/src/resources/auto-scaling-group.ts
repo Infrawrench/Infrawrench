@@ -9,7 +9,7 @@ export const AutoScalingGroupResourceType = rt({
     f("minSize", "Min Size", { kind: "number" }),
     f("maxSize", "Max Size", { kind: "number" }),
     f("desiredCapacity", "Desired Capacity", { kind: "number" }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("healthCheckType", "Health Check Type", {
       kind: "enum",
       required: false,
@@ -17,7 +17,7 @@ export const AutoScalingGroupResourceType = rt({
     }),
     f("availabilityZones", "Availability Zones", { required: false }),
     f("launchTemplate", "Launch Template", { required: false }),
-    f("instanceCount", "Instance Count", { kind: "number", required: false }),
+    f("instanceCount", "Instance Count", { showcase: true, kind: "number", required: false }),
     f("subnetIds", "Subnets", {
       required: false,
       description: "Comma-separated subnet IDs the group launches into (VPCZoneIdentifier)",

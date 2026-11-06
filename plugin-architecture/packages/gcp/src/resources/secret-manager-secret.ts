@@ -4,11 +4,12 @@ export const SecretManagerSecretResourceType = rt({
   name: "Secret Manager Secret",
   pinnable: false,
   id: "secret-manager-secret",
+  iconKey: "secret",
   description: "A Google Cloud Secret Manager secret",
   fields: [
     f("name", "Name"),
     f("replicationType", "Replication Type", { required: false }),
-    f("versionCount", "Versions", { kind: "number", required: false }),
+    f("versionCount", "Versions", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [o("latestVersion", "Latest Version Value", { sensitive: true })],
   supportsCreate: true,

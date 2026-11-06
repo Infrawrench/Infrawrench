@@ -9,10 +9,15 @@ export const VercelDnsRecordResourceType = rt({
   parentTypeId: "vercel-domain",
   fields: [
     f("name", "Name", { description: "Subdomain, or empty for the apex" }),
-    f("type", "Type", { kind: "enum", enumValues: DNS_RECORD_TYPES, editable: false }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: DNS_RECORD_TYPES,
+      editable: false,
+    }),
     f("content", "Value"),
-    f("ttl", "TTL", { kind: "number", required: false }),
-    f("priority", "MX Priority", { kind: "number", required: false }),
+    f("ttl", "TTL", { showcase: true, kind: "number", required: false }),
+    f("priority", "MX Priority", { showcase: true, kind: "number", required: false }),
     f("comment", "Comment", { required: false }),
     f("domain", "Domain", { editable: false }),
     f("creator", "Created By", { required: false, editable: false }),

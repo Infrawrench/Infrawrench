@@ -19,7 +19,7 @@ export const AccountResourceType = rt({
     "The AssemblyAI API key, its recent transcription activity, and the Speech playground",
   fields: [
     f("endpoint", "API Endpoint", { required: false }),
-    f("region", "API Region", { required: false }),
+    f("region", "API Region", { showcase: true, required: false }),
     f("sampledTranscripts", "Transcripts Sampled", { kind: "number", required: false }),
     f("completedTranscripts", "Completed", { kind: "number", required: false }),
     f("erroredTranscripts", "Failed", { kind: "number", required: false }),

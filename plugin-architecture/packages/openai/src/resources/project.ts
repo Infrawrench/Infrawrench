@@ -17,8 +17,13 @@ export const ProjectResourceType = rt({
     "An organization project: the unit API keys, members and usage are billed and rate-limited under. Requires an Admin API key.",
   fields: [
     f("name", "Name"),
-    f("status", "Status", { kind: "enum", enumValues: ["active", "archived"], required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["active", "archived"],
+      required: false,
+    }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("archivedAt", "Archived", { required: false }),
     f("residency", "Data Residency", { required: false, editable: false }),
     f("externalKeyId", "Encryption Key", { required: false, editable: false }),

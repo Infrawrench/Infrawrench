@@ -21,7 +21,7 @@ export const GroqModelResourceType = rt({
     f("contextWindow", "Context Window", { kind: "number", required: false }),
     f("maxCompletionTokens", "Max Completion Tokens", { kind: "number", required: false }),
     f("active", "Active", { kind: "boolean", required: false }),
-    f("created", "Created", { required: false }),
+    f("created", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("modelId", "Model ID"), o("baseUrl", "OpenAI-Compatible Base URL")],
   supportsDelete: false,

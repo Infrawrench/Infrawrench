@@ -8,6 +8,7 @@ export const ClusterResourceType = rt({
     f("clusterId", "Cluster ID", { editable: false }),
     f("clusterName", "Cluster Name", { editable: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       editable: false,
       enumValues: [

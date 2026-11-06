@@ -9,10 +9,11 @@ export const Route53RecordSetResourceType = rt({
   fields: [
     f("name", "Record Name"),
     f("type", "Record Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["A", "AAAA", "CNAME", "MX", "NS", "TXT", "SRV", "SOA", "PTR", "CAA", "ALIAS"],
     }),
-    f("ttl", "TTL", { kind: "number", required: false }),
+    f("ttl", "TTL", { showcase: true, kind: "number", required: false }),
     f("values", "Values", { required: false }),
     f("hostedZoneId", "Hosted Zone ID"),
   ],

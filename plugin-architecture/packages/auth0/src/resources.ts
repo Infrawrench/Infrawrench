@@ -15,8 +15,8 @@ export const TenantResourceType = rt({
     f("friendlyName", "Friendly Name", {
       description: "Shown on the Universal Login page and in emails.",
     }),
-    f("domain", "Domain", { required: false, editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("domain", "Domain", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("supportEmail", "Support Email", { required: false }),
     f("supportUrl", "Support URL", { required: false }),
     f("pictureUrl", "Logo URL (tenant)", { required: false }),
@@ -191,10 +191,15 @@ export const UserResourceType = rt({
     f("blocked", "Blocked", { kind: "boolean", required: false }),
     f("connection", "Connection", { required: false, editable: false }),
     f("userId", "User ID", { required: false, editable: false }),
-    f("loginsCount", "Logins", { kind: "number", required: false, editable: false }),
+    f("loginsCount", "Logins", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("lastLogin", "Last Login", { required: false, editable: false }),
     f("lastIp", "Last IP", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("userId", "User ID")],
   credentialFormats: [
@@ -261,8 +266,13 @@ export const ActionResourceType = rt({
   fields: [
     f("name", "Name"),
     f("trigger", "Trigger", { required: false, editable: false }),
-    f("runtime", "Runtime", { kind: "enum", required: false, enumValues: ["node18", "node22"] }),
-    f("status", "Build Status", { required: false, editable: false }),
+    f("runtime", "Runtime", {
+      showcase: true,
+      kind: "enum",
+      required: false,
+      enumValues: ["node18", "node22"],
+    }),
+    f("status", "Build Status", { showcase: true, required: false, editable: false }),
     f("deployed", "Deployed", { kind: "boolean", required: false, editable: false }),
     f("allChangesDeployed", "All Changes Deployed", {
       kind: "boolean",
@@ -272,7 +282,7 @@ export const ActionResourceType = rt({
     f("bound", "In Flow", { kind: "boolean", required: false, editable: false }),
     f("dependencies", "Dependencies", { required: false, editable: false }),
     f("secrets", "Secrets", { required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("actionId", "Action ID")],
   supportsCreate: true,
@@ -288,8 +298,9 @@ export const LogStreamResourceType = rt({
     "Streams tenant logs to an HTTP endpoint, Datadog, Splunk, Sumo Logic, AWS EventBridge, Azure Event Grid, Segment or Mixpanel.",
   fields: [
     f("name", "Name"),
-    f("type", "Destination", { required: false, editable: false }),
+    f("type", "Destination", { showcase: true, required: false, editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["active", "paused", "suspended"],
@@ -311,9 +322,9 @@ export const CustomDomainResourceType = rt({
   description:
     "A custom login domain. Publish the verification record it lists, verify, and point a CNAME at the origin domain.",
   fields: [
-    f("domain", "Domain", { editable: false }),
-    f("status", "Status", { required: false, editable: false }),
-    f("type", "Certificates", { required: false, editable: false }),
+    f("domain", "Domain", { showcase: true, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
+    f("type", "Certificates", { showcase: true, required: false, editable: false }),
     f("primary", "Primary", { kind: "boolean", required: false, editable: false }),
     f("originDomainName", "CNAME Target", { required: false, editable: false }),
     f("verificationStatus", "Verification", { required: false, editable: false }),

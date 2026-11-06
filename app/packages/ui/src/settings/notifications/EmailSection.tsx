@@ -10,7 +10,7 @@ import { useSettingsHost } from "../host.js";
 import { CloseIcon } from "../../components/icons/ChromeIcons.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 
 /**
  * The email "connection": not something to connect (the deployment's mail
@@ -178,7 +178,7 @@ export function EmailSection({ orgId }: { orgId: string }) {
               {domains.map((d) => (
                 <li
                   key={d}
-                  className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-sunken px-2 py-0.5 text-xs text-on-surface"
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-sunken px-2 py-0.5 text-xs text-on-surface"
                 >
                   {d}
                   <button
@@ -229,7 +229,7 @@ export function EmailSection({ orgId }: { orgId: string }) {
           type="button"
           disabled={busy || !dirty}
           onClick={() => void save()}
-          className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+          className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent hover:bg-accent-hover disabled:opacity-50"
         >
           {busy ? gt("Saving…") : gt("Save")}
         </button>

@@ -14,12 +14,14 @@ export const SERVICE_STATUSES = ["active", "warning", "critical", "maintenance",
 export const ServiceResourceType = rt({
   name: "Service",
   id: "pagerduty-service",
+  iconKey: "service",
   description:
     "Something PagerDuty pages about: incidents open on a service and go to its escalation policy. Edit timeouts and urgency, change the escalation policy, open an incident, disable or re-enable it, and chart incidents, time to acknowledge and time to resolve.",
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: SERVICE_STATUSES,
       required: false,
@@ -50,7 +52,12 @@ export const ServiceResourceType = rt({
       editable: false,
     }),
     f("teams", "Teams", { required: false, editable: false }),
-    f("integrationCount", "Integrations", { kind: "number", required: false, editable: false }),
+    f("integrationCount", "Integrations", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("lastIncidentAt", "Last Incident", { required: false, editable: false }),
     f("htmlUrl", "PagerDuty URL", { required: false, editable: false }),
   ],
@@ -73,6 +80,7 @@ export const EscalationPolicyResourceType = rt({
   name: "Escalation Policy",
   plural: "Escalation Policies",
   id: "pagerduty-escalation-policy",
+  iconKey: "route",
   description:
     "Who is notified, in which order and after how long. See who is on call at each level right now.",
   fields: [
@@ -99,6 +107,7 @@ export const EscalationPolicyResourceType = rt({
 export const ScheduleResourceType = rt({
   name: "Schedule",
   id: "pagerduty-schedule",
+  iconKey: "calendar",
   description:
     "An on-call rotation. See who is on call now and for the next week, and add or remove overrides.",
   fields: [
@@ -121,6 +130,7 @@ export const ScheduleResourceType = rt({
 export const TeamResourceType = rt({
   name: "Team",
   id: "pagerduty-team",
+  iconKey: "team",
   description: "A group of people, with the services and policies they own.",
   fields: [
     f("name", "Name"),
@@ -138,11 +148,12 @@ export const TeamResourceType = rt({
 export const UserResourceType = rt({
   name: "User",
   id: "pagerduty-user",
+  iconKey: "user",
   description: "Somebody PagerDuty can page. Matched to Infrawrench members by email for on-call.",
   fields: [
     f("name", "Name"),
     f("email", "Email"),
-    f("role", "Role", { required: false }),
+    f("role", "Role", { showcase: true, required: false }),
     f("timeZone", "Time Zone", { required: false }),
     f("jobTitle", "Job Title", { required: false }),
     f("teams", "Teams", { required: false }),
@@ -156,6 +167,7 @@ export const UserResourceType = rt({
 export const IncidentResourceType = rt({
   name: "Incident",
   id: "pagerduty-incident",
+  iconKey: "alert",
   description:
     "Open incidents, and those resolved in the last week. Acknowledge, resolve, reassign, snooze, change urgency or priority, and add notes.",
   parentTypeId: "pagerduty-service",
@@ -163,12 +175,13 @@ export const IncidentResourceType = rt({
     f("title", "Title"),
     f("number", "Number", { kind: "number", required: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["triggered", "acknowledged", "resolved"],
       required: false,
     }),
     f("urgency", "Urgency", { kind: "enum", enumValues: URGENCIES, required: false }),
-    f("priority", "Priority", { required: false }),
+    f("priority", "Priority", { showcase: true, required: false }),
     f("serviceName", "Service", { required: false }),
     f("escalationPolicyName", "Escalation Policy", { required: false }),
     f("assignees", "Assigned To", { required: false }),
@@ -176,7 +189,7 @@ export const IncidentResourceType = rt({
       required: false,
       description: "The dedup key of the alert that opened it.",
     }),
-    f("createdAt", "Opened", { required: false }),
+    f("createdAt", "Opened", { showcase: true, required: false }),
     f("resolvedAt", "Resolved", { required: false }),
     f("htmlUrl", "PagerDuty URL", { required: false }),
   ],
@@ -187,6 +200,7 @@ export const IncidentResourceType = rt({
 export const MaintenanceWindowResourceType = rt({
   name: "Maintenance Window",
   id: "pagerduty-maintenance-window",
+  iconKey: "clock",
   description:
     "A window during which the chosen services open no incidents. Schedule one, move its end, or end it early.",
   fields: [
@@ -194,6 +208,7 @@ export const MaintenanceWindowResourceType = rt({
     f("startTime", "Starts", { required: false }),
     f("endTime", "Ends", { required: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["upcoming", "ongoing", "past"],
       required: false,
@@ -213,6 +228,7 @@ export const MaintenanceWindowResourceType = rt({
 export const BusinessServiceResourceType = rt({
   name: "Business Service",
   id: "pagerduty-business-service",
+  iconKey: "building",
   description:
     "A capability your customers see (checkout, login), modelled above the technical services it depends on.",
   fields: [
@@ -232,6 +248,7 @@ export const BusinessServiceResourceType = rt({
 export const EventOrchestrationResourceType = rt({
   name: "Event Orchestration",
   id: "pagerduty-event-orchestration",
+  iconKey: "workflow",
   description:
     "A global ruleset that receives events on its own routing key and routes them to services. Alert routing rules can send here too.",
   fields: [
@@ -239,7 +256,7 @@ export const EventOrchestrationResourceType = rt({
     f("description", "Description", { required: false }),
     f("teamName", "Team", { required: false, editable: false }),
     f("routes", "Routes", { kind: "number", required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("orchestrationId", "Orchestration ID"),

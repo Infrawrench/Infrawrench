@@ -526,7 +526,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       <button
         type="button"
         onClick={toggleSidebar}
-        className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
+        className="surface-sidebar w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
         aria-label={gt("Expand sidebar")}
       >
         <PanelLeftOpenIcon />
@@ -536,7 +536,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
 
   return (
     <>
-      <aside className="w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
+      <aside className="surface-sidebar w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
         <div className="flex items-center justify-between p-1 border-b border-border">
           <div className="flex-1 min-w-0">
             <OrgSwitcher
@@ -874,7 +874,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                           setRenameValue("");
                         }
                       }}
-                      className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+                      className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
                     />
                   </div>
                 );
@@ -918,7 +918,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                       setNewDashboardName("");
                     }
                   }}
-                  className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+                  className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
                 />
               </div>
             )}

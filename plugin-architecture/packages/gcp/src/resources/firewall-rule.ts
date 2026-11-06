@@ -9,7 +9,7 @@ export const FirewallRuleResourceType = rt({
     f("name", "Name"),
     f("network", "Network"),
     f("direction", "Direction", { required: false }),
-    f("priority", "Priority", { kind: "number", required: false }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false }),
     f("action", "Action", { required: false }),
     f("sourceRanges", "Source Ranges", { required: false }),
     f("destinationRanges", "Destination Ranges", { required: false }),

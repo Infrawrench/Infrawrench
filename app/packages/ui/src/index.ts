@@ -387,10 +387,19 @@ export type {
 
 export { DndShell } from "./dnd/DndShell.js";
 export type { DndShellProps } from "./dnd/DndShell.js";
-export { ResourcePill } from "./dnd/ResourcePill.js";
-export type { ResourcePillProps } from "./dnd/ResourcePill.js";
-export { DraggableChildPill } from "./dnd/DraggableChildPill.js";
-export type { DraggableChildPillProps } from "./dnd/DraggableChildPill.js";
+export { ResourceTile } from "./dnd/ResourceTile.js";
+export type { ResourceTileProps } from "./dnd/ResourceTile.js";
+export { DraggableChildTile } from "./dnd/DraggableChildTile.js";
+export type { DraggableChildTileProps } from "./dnd/DraggableChildTile.js";
+export {
+  CreateTile,
+  ShowcaseLines,
+  TileFrame,
+  TileSkeleton,
+  TILE_SIZE_CLASS,
+} from "./dnd/TileFrame.js";
+export type { TileFrameProps } from "./dnd/TileFrame.js";
+export { ResourceTypeIcon, inferIconKey } from "./components/icons/ResourceTypeIcon.js";
 export { DroppableDashboardItem } from "./dnd/DroppableDashboardItem.js";
 export type { DroppableDashboardItemProps } from "./dnd/DroppableDashboardItem.js";
 export { DroppableDashboardArea } from "./dnd/DroppableDashboardArea.js";
@@ -562,7 +571,6 @@ export {
   dispatchRerollParentOutput,
   getListableResourceTypes,
   getAccountRootType,
-  extractHostLabel,
   buildChildResourceGroups,
   resourceTabTitle,
 } from "./utils.js";
@@ -717,6 +725,11 @@ export {
   SettingsIcon,
   UploadIcon,
   WarningIcon,
+  PinIcon,
+  PlusIcon,
+  TerminalIcon,
+  PortForwardIcon,
+  StopIcon,
   type ChromeIconProps,
   type IconDirection,
 } from "./components/icons/ChromeIcons.js";

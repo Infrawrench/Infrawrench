@@ -8,6 +8,7 @@ export const StorageBoxResourceType = rt({
   fields: [
     f("name", "Name"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["active", "initializing", "locked"],
@@ -17,10 +18,15 @@ export const StorageBoxResourceType = rt({
       description:
         "Storage Box type, e.g. bx11, bx21. Changing it resizes the box (Hetzner change_type)",
     }),
-    f("location", "Location", { required: false, editable: false }),
+    f("location", "Location", { showcase: true, required: false, editable: false }),
     f("username", "Username", { required: false, editable: false }),
     f("server", "Server", { required: false, editable: false }),
-    f("sizeGb", "Capacity (GB)", { kind: "number", required: false, editable: false }),
+    f("sizeGb", "Capacity (GB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("usedGb", "Used (GB)", { kind: "number", required: false, editable: false }),
     f("snapshotsGb", "Snapshots (GB)", { kind: "number", required: false, editable: false }),
     f("sshEnabled", "SSH", { kind: "boolean", required: false }),

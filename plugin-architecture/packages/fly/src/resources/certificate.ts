@@ -6,9 +6,9 @@ export const CertificateResourceType = rt({
   description: "A Fly.io TLS certificate for a custom app hostname",
   parentTypeId: "app",
   fields: [
-    f("hostname", "Hostname"),
+    f("hostname", "Hostname", { showcase: true }),
     f("appName", "App"),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("configured", "Configured", { kind: "boolean", required: false }),
     f("acmeDnsConfigured", "ACME DNS", { kind: "boolean", required: false }),
     f("acmeAlpnConfigured", "ACME TLS-ALPN", { kind: "boolean", required: false }),

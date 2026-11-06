@@ -202,3 +202,50 @@ export function WarningIcon(props: ChromeIconProps) {
     </StrokeIcon>
   );
 }
+
+export function PinIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+    </StrokeIcon>
+  );
+}
+
+export function PlusIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </StrokeIcon>
+  );
+}
+
+export function TerminalIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="m7 11 2-2-2-2" />
+      <path d="M11 13h4" />
+      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+    </StrokeIcon>
+  );
+}
+
+export function PortForwardIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <path d="M8 3 4 7l4 4" />
+      <path d="M4 7h16" />
+      <path d="m16 21 4-4-4-4" />
+      <path d="M20 17H4" />
+    </StrokeIcon>
+  );
+}
+
+export function StopIcon(props: ChromeIconProps) {
+  return (
+    <StrokeIcon {...props}>
+      <rect width="14" height="14" x="5" y="5" rx="2" />
+    </StrokeIcon>
+  );
+}

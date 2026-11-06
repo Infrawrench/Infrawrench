@@ -683,7 +683,7 @@ export function SidebarDashboards() {
                 setNewName("");
               }
             }}
-            className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+            className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
           />
         </div>
       )}

@@ -22,7 +22,7 @@ export const SambaNovaModelType = rt({
     "A model served by SambaNova SambaCloud, with its list price, context length and output limit",
   fields: [
     f("modelId", "Model ID"),
-    f("kind", "Type", { required: false }),
+    f("kind", "Type", { showcase: true, required: false }),
     f("ownedBy", "Owned By", { required: false }),
     f("contextLength", "Context Length", { kind: "number", required: false }),
     f("maxCompletionTokens", "Max Completion Tokens", { kind: "number", required: false }),

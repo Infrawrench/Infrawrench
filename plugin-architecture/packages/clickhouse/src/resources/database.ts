@@ -7,7 +7,7 @@ export const DatabaseResourceType = rt({
   description: "A database within a ClickHouse Cloud service",
   fields: [
     f("name", "Name"),
-    f("engine", "Engine", { required: false }),
+    f("engine", "Engine", { showcase: true, required: false }),
     f("comment", "Comment", { required: false }),
   ],
   outputs: [o("databaseName", "Database Name")],

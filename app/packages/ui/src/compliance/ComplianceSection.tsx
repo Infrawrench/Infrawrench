@@ -120,7 +120,7 @@ function useEvidenceStatusLabel(): (status: EvidenceStatus) => string {
 function Badge({ className, children }: { className: string; children: ReactNode }) {
   return (
     <span
-      className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${className}`}
+      className={`inline-flex items-center whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-medium ${className}`}
     >
       {children}
     </span>
@@ -464,7 +464,7 @@ function ControlRow({
             {control.sources.map((id) => (
               <span
                 key={id}
-                className={`rounded-full border border-border px-1.5 text-[11px] ${
+                className={`rounded-md border border-border px-1.5 text-[11px] ${
                   missing.has(id)
                     ? "text-on-surface-faint line-through"
                     : "text-on-surface-tertiary"

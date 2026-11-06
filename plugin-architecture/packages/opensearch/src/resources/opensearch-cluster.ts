@@ -7,10 +7,10 @@ export const OpenSearchClusterResourceType = rt({
     "An OpenSearch (or Elasticsearch-compatible) cluster: browse indices, run searches, manage snapshots, aliases, data streams and lifecycle policies",
   fields: [
     f("endpoint", "Endpoint"),
-    f("version", "Version", { required: false }),
+    f("version", "Version", { showcase: true, required: false }),
     f("clusterName", "Cluster Name", { required: false }),
     f("distribution", "Distribution", { required: false }),
-    f("status", "Health", { required: false }),
+    f("status", "Health", { showcase: true, required: false }),
   ],
   outputs: [o("endpoint", "Endpoint"), o("clusterName", "Cluster Name"), o("version", "Version")],
   supportsMetrics: true,

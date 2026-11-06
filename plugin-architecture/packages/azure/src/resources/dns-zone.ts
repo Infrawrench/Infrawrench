@@ -6,7 +6,7 @@ export const DNSZoneResourceType = rt({
   description: "An Azure DNS Zone",
   fields: [
     f("name", "Name"),
-    f("resourceGroup", "Resource Group"),
+    f("resourceGroup", "Resource Group", { showcase: true }),
     f("zoneType", "Zone Type"),
     f("numberOfRecordSets", "Record Sets", { kind: "number", required: false }),
     f("maxNumberOfRecordSets", "Max Record Sets", { kind: "number", required: false }),

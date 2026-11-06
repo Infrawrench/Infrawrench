@@ -31,14 +31,24 @@ export const OrganizationType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("slug", "Slug", { editable: false }),
-    f("plan", "Plan", { required: false, editable: false }),
-    f("memberCount", "Members", { kind: "number", required: false, editable: false }),
+    f("plan", "Plan", { showcase: true, required: false, editable: false }),
+    f("memberCount", "Members", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("membersWithoutMfa", "Members without MFA", {
       kind: "number",
       required: false,
       editable: false,
     }),
-    f("projectCount", "Projects", { kind: "number", required: false, editable: false }),
+    f("projectCount", "Projects", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
   ],
   outputs: [o("slug", "Organization Slug")],
   postureChecks: [
@@ -55,7 +65,7 @@ export const OrganizationType = rt({
         "At least one member of this Supabase organization has not enrolled a second factor, so a stolen password is enough to reach every project in it.",
     },
   ],
-  iconKey: "supabase",
+  iconKey: "organization",
 });
 
 export const ProjectType = rt({
@@ -67,8 +77,8 @@ export const ProjectType = rt({
     f("name", "Name", { description: "Display name of the project." }),
     f("ref", "Project Ref", { editable: false }),
     f("organizationSlug", "Organization", { editable: false }),
-    f("region", "Region", { editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("dbHost", "Database Host", { required: false, editable: false }),
     f("postgresVersion", "Postgres Version", { required: false, editable: false }),
     f("postgresEngine", "Postgres Engine", { required: false, editable: false }),
@@ -82,6 +92,7 @@ export const ProjectType = rt({
         "Dedicated compute add-on. Changing it restarts the database for a few minutes and changes the bill.",
     }),
     f("diskSizeGb", "Disk Size (GB)", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Provisioned disk. Disks can only grow, and only once every six hours.",
@@ -145,7 +156,12 @@ export const ProjectType = rt({
     }),
     f("pitrEnabled", "PITR Enabled", { kind: "boolean", required: false, editable: false }),
     f("automatedBackups", "Daily Backups", { kind: "boolean", required: false, editable: false }),
-    f("readReplicaCount", "Read Replicas", { kind: "number", required: false, editable: false }),
+    f("readReplicaCount", "Read Replicas", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("createdAt", "Created At", { required: false, editable: false }),
   ],
   outputs: [
@@ -266,7 +282,7 @@ export const ProjectType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
-  iconKey: "supabase",
+  iconKey: "project",
 });
 
 export const BranchType = rt({
@@ -291,7 +307,7 @@ export const BranchType = rt({
       editable: false,
     }),
     f("withData", "Seeded With Data", { kind: "boolean", required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("projectStatus", "Project Status", { required: false, editable: false }),
     f("prNumber", "Pull Request", { kind: "number", required: false, editable: false }),
     f("notifyUrl", "Status Webhook URL", {
@@ -299,8 +315,8 @@ export const BranchType = rt({
       description: "HTTP endpoint Supabase calls with branch status updates.",
     }),
     f("deletionScheduledAt", "Deletion Scheduled At", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
-    f("updatedAt", "Updated At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("branchRef", "Branch Project Ref"),
@@ -327,7 +343,7 @@ export const BranchType = rt({
   showInSidebar: true,
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "supabase",
+  iconKey: "branch",
 });
 
 export const FunctionType = rt({
@@ -338,8 +354,8 @@ export const FunctionType = rt({
     f("name", "Name"),
     f("slug", "Slug", { editable: false }),
     f("projectRef", "Project", { editable: false }),
-    f("status", "Status", { required: false, editable: false }),
-    f("version", "Version", { kind: "number", required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
+    f("version", "Version", { showcase: true, kind: "number", required: false, editable: false }),
     f("verifyJwt", "Verify JWT", {
       kind: "boolean",
       required: false,
@@ -348,8 +364,8 @@ export const FunctionType = rt({
     f("entrypointPath", "Entrypoint", { required: false, editable: false }),
     f("importMap", "Uses Import Map", { kind: "boolean", required: false, editable: false }),
     f("url", "URL", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
-    f("updatedAt", "Updated At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("url", "Invocation URL"), o("slug", "Slug")],
   dependsOn: [{ fieldKey: "projectRef", targetTypeId: "supabase-project", label: "in project" }],
@@ -358,7 +374,7 @@ export const FunctionType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
-  iconKey: "supabase",
+  iconKey: "function",
 });
 
 export const SecretType = rt({
@@ -376,14 +392,14 @@ export const SecretType = rt({
       description: "Write-only. Leave blank to keep the current value.",
     }),
     f("digest", "Value Digest (SHA-256)", { required: false, editable: false }),
-    f("updatedAt", "Updated At", { required: false, editable: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
   dependsOn: [{ fieldKey: "projectRef", targetTypeId: "supabase-project", label: "in project" }],
   parentTypeId: "supabase-project",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "supabase",
+  iconKey: "secret",
 });
 
 export const ApiKeyType = rt({
@@ -395,14 +411,15 @@ export const ApiKeyType = rt({
     f("name", "Name", { editable: false }),
     f("projectRef", "Project", { editable: false }),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["publishable", "secret", "legacy"],
       editable: false,
     }),
     f("description", "Description", { required: false }),
     f("prefix", "Prefix", { required: false, editable: false }),
-    f("role", "Postgres Role", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("role", "Postgres Role", { showcase: true, required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
     f("updatedAt", "Updated At", { required: false, editable: false }),
   ],
   outputs: [o("apiKey", "API Key", { sensitive: true })],
@@ -419,7 +436,7 @@ export const ApiKeyType = rt({
   parentTypeId: "supabase-project",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "supabase",
+  iconKey: "key",
 });
 
 export const BucketType = rt({
@@ -444,8 +461,8 @@ export const BucketType = rt({
       description: "Comma-separated, e.g. image/png, image/*. Empty allows everything.",
     }),
     f("owner", "Owner", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
-    f("updatedAt", "Updated At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("bucketName", "Bucket Name"), o("publicUrl", "Public URL Prefix")],
   dependsOn: [{ fieldKey: "projectRef", targetTypeId: "supabase-project", label: "in project" }],
@@ -465,7 +482,7 @@ export const BucketType = rt({
   supportsStorageBrowser: true,
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "supabase",
+  iconKey: "bucket",
 });
 
 export const BackupType = rt({
@@ -476,16 +493,16 @@ export const BackupType = rt({
   fields: [
     f("projectRef", "Project"),
     f("backupId", "Backup ID", { kind: "number" }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("physical", "Physical Backup", { kind: "boolean", required: false }),
-    f("createdAt", "Taken At", { required: false }),
+    f("createdAt", "Taken At", { showcase: true, required: false }),
   ],
   outputs: [],
   backupRole: { role: "snapshot", sourceKey: "projectRef", createdKey: "createdAt" },
   dependsOn: [{ fieldKey: "projectRef", targetTypeId: "supabase-project", label: "backup of" }],
   parentTypeId: "supabase-project",
   supportsDelete: false,
-  iconKey: "supabase",
+  iconKey: "backup",
 });
 
 export const ReadReplicaType = rt({
@@ -495,16 +512,21 @@ export const ReadReplicaType = rt({
   fields: [
     f("identifier", "Identifier", { editable: false }),
     f("projectRef", "Project", { editable: false }),
-    f("region", "Region", { editable: false }),
-    f("status", "Status", { required: false, editable: false }),
-    f("computeSize", "Compute Size", { required: false, editable: false }),
-    f("diskSizeGb", "Disk Size (GB)", { kind: "number", required: false, editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
+    f("computeSize", "Compute Size", { showcase: true, required: false, editable: false }),
+    f("diskSizeGb", "Disk Size (GB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
   ],
   outputs: [o("connectionString", "Pooler Connection String", { sensitive: true })],
   dependsOn: [{ fieldKey: "projectRef", targetTypeId: "supabase-project", label: "replica of" }],
   parentTypeId: "supabase-project",
   supportsCreate: true,
-  iconKey: "supabase",
+  iconKey: "database",
 });
 
 export const AuthType = rt({
@@ -548,7 +570,7 @@ export const AuthType = rt({
   parentTypeId: "supabase-project",
   supportsDelete: false,
   pinnable: false,
-  iconKey: "supabase",
+  iconKey: "lock",
 });
 
 export const SsoProviderType = rt({
@@ -573,7 +595,7 @@ export const SsoProviderType = rt({
       ],
       required: false,
     }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
   dependsOn: [{ fieldKey: "projectRef", targetTypeId: "supabase-project", label: "in project" }],
@@ -581,7 +603,7 @@ export const SsoProviderType = rt({
   pinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "supabase",
+  iconKey: "sso",
 });
 
 export const ThirdPartyAuthType = rt({
@@ -591,19 +613,19 @@ export const ThirdPartyAuthType = rt({
   description:
     "A third-party auth integration: Supabase accepts JWTs issued by another provider (Clerk, Auth0, Firebase, Cognito, WorkOS…)",
   fields: [
-    f("type", "Type", { required: false }),
+    f("type", "Type", { showcase: true, required: false }),
     f("projectRef", "Project"),
     f("oidcIssuerUrl", "OIDC Issuer URL", { required: false }),
     f("jwksUrl", "JWKS URL", { required: false }),
     f("resolvedAt", "Keys Resolved At", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [],
   dependsOn: [{ fieldKey: "projectRef", targetTypeId: "supabase-project", label: "in project" }],
   parentTypeId: "supabase-project",
   pinnable: false,
   supportsCreate: true,
-  iconKey: "supabase",
+  iconKey: "plug",
 });
 
 export const SigningKeyType = rt({
@@ -615,13 +637,14 @@ export const SigningKeyType = rt({
     f("algorithm", "Algorithm", { editable: false }),
     f("projectRef", "Project", { editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["in_use", "standby", "previously_used", "revoked"],
       description:
         "standby → in_use rotates signing to this key; previously_used keys still verify; revoked keys do not.",
     }),
-    f("createdAt", "Created At", { required: false, editable: false }),
-    f("updatedAt", "Updated At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("publicJwk", "Public JWK")],
   dependsOn: [{ fieldKey: "projectRef", targetTypeId: "supabase-project", label: "in project" }],
@@ -638,7 +661,7 @@ export const SigningKeyType = rt({
   pinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "supabase",
+  iconKey: "key",
 });
 
 export const resourceTypes: ResourceTypeDefinition[] = [

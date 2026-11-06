@@ -126,7 +126,7 @@ export function AssociationPicker({
             onKeyDown={onTabKeyDown}
             className={`flex-1 min-w-0 truncate px-3 py-2.5 text-sm transition-colors ${
               mode === "provider"
-                ? "text-accent border-b-2 border-blue-400"
+                ? "text-accent border-b-2 border-accent"
                 : "text-on-surface-muted hover:text-on-surface-secondary"
             }`}
           >
@@ -146,7 +146,7 @@ export function AssociationPicker({
             onKeyDown={onTabKeyDown}
             className={`flex-1 min-w-0 truncate px-3 py-2.5 text-sm transition-colors ${
               mode === "literal"
-                ? "text-accent border-b-2 border-blue-400"
+                ? "text-accent border-b-2 border-accent"
                 : "text-on-surface-muted hover:text-on-surface-secondary"
             }`}
           >
@@ -176,7 +176,7 @@ export function AssociationPicker({
                     onClick={() => setSelectedProviderId(resource.resourceId)}
                     className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${
                       selectedProviderId === resource.resourceId
-                        ? "border-blue-500 bg-accent-muted"
+                        ? "border-accent bg-accent-muted"
                         : "border-border hover:border-border-strong"
                     }`}
                   >
@@ -209,7 +209,7 @@ export function AssociationPicker({
                 value={literalValue}
                 onChange={(e) => setLiteralValue(e.target.value)}
                 placeholder={gt("Paste {field} value...", { field: fieldKey })}
-                className="w-full h-40 bg-surface-overlay border border-border-strong rounded-lg p-3 text-sm font-mono text-on-surface-secondary placeholder:text-on-surface-faint resize-none focus:outline-none focus:border-blue-500"
+                className="w-full h-40 bg-surface-overlay border border-border-strong rounded-lg p-3 text-sm font-mono text-on-surface-secondary placeholder:text-on-surface-faint resize-none focus:outline-none focus:border-accent-subtle"
                 aria-label={gt("{field} value", { field: fieldKey })}
               />
             </div>
@@ -229,7 +229,7 @@ export function AssociationPicker({
             type="button"
             onClick={handleConfirm}
             disabled={mode === "provider" ? !selectedProviderId : !literalValue.trim()}
-            className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm text-white transition-colors"
+            className="flex-1 py-2 rounded-lg bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-sm text-on-accent transition-colors"
           >
             {gt("Confirm")}
           </button>

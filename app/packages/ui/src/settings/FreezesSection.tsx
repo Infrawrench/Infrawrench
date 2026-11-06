@@ -98,7 +98,7 @@ export function FreezesSection() {
           <button
             type="button"
             onClick={() => setShowCreate((v) => !v)}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors whitespace-nowrap"
+            className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors whitespace-nowrap"
           >
             {showCreate ? gt("Cancel") : gt("Declare freeze")}
           </button>
@@ -173,15 +173,15 @@ export function FreezesSection() {
                     </td>
                     <td className="px-4 py-2 text-xs">
                       {inEffect ? (
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-amber-500/15 text-warning font-medium">
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-amber-500/15 text-warning font-medium">
                           {gt("In effect")}
                         </span>
                       ) : scheduled ? (
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-blue-500/15 text-info font-medium">
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-accent/15 text-info font-medium">
                           {gt("Scheduled")}
                         </span>
                       ) : (
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-surface-overlay text-on-surface-muted">
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-surface-overlay text-on-surface-muted">
                           {gt("Ended")}
                         </span>
                       )}
@@ -320,7 +320,7 @@ function CreateFreezeForm({
           type="button"
           onClick={() => void submit()}
           disabled={submitting}
-          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+          className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
         >
           {submitting ? gt("Declaring…") : gt("Declare freeze")}
         </button>

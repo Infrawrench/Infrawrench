@@ -15,7 +15,7 @@ export const PsRoleResourceType = rt({
     f("databaseName", "Database", { editable: false }),
     f("branchName", "Branch", { editable: false }),
     f("username", "Username", { required: false, editable: false }),
-    f("host", "Host", { required: false, editable: false }),
+    f("host", "Host", { showcase: true, required: false, editable: false }),
     f("inheritedRoles", "Inherited Roles", { required: false, editable: false }),
     f("superuser", "Inherits postgres", { kind: "boolean", required: false, editable: false }),
     f("default", "Default Role", { kind: "boolean", required: false, editable: false }),
@@ -30,8 +30,8 @@ export const PsRoleResourceType = rt({
       enumValues: ["off", "warn", "on"],
       required: false,
     }),
-    f("createdAt", "Created At", { required: false, editable: false }),
-    f("expiresAt", "Expires At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("username", "Username"),
@@ -57,7 +57,7 @@ export const PsRoleResourceType = rt({
   parentTypeId: "ps-branch",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "planetscale",
+  iconKey: "role",
   secretExportTemplates: [
     {
       id: "connection-url",

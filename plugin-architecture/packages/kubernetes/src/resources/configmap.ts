@@ -4,16 +4,17 @@ export const ConfigMapResourceType = rt({
   name: "ConfigMap",
   pinnable: false,
   id: "k8s-configmap",
+  iconKey: "sliders",
   description: "A Kubernetes ConfigMap that stores non-sensitive configuration data",
   fields: [
     f("name", "Name"),
-    f("namespace", "Namespace"),
+    f("namespace", "Namespace", { showcase: true }),
     f("qualifiedName", "Qualified Name", {
       required: false,
       description: "namespace/name, as referenced by objects in this namespace",
     }),
     f("keys", "Keys", { required: false }),
-    f("dataCount", "Data Entries", { kind: "number", required: false }),
+    f("dataCount", "Data Entries", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [],
   dependsOn: [

@@ -194,7 +194,7 @@ export function TagPolicySection() {
                     type="button"
                     onClick={() => void save()}
                     disabled={saving}
-                    className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                    className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
                   >
                     {saving ? gt("Saving…") : savedAt ? gt("Saved. Save again") : gt("Save policy")}
                   </button>
@@ -428,7 +428,7 @@ function AllocationSection({
             {centrePaths.map(({ id, path }) => (
               <li
                 key={id}
-                className="px-2.5 py-1 rounded-full border border-border text-sm text-on-surface-secondary"
+                className="px-2.5 py-1 rounded-md border border-border text-sm text-on-surface-secondary"
               >
                 {path}
               </li>
@@ -746,7 +746,7 @@ function NewRuleForm({
         type="button"
         onClick={() => void submit()}
         disabled={submitting || !costCentreId}
-        className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+        className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
       >
         {submitting ? gt("Adding…") : gt("Add rule")}
       </button>

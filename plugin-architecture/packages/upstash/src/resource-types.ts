@@ -56,8 +56,18 @@ const AccountType = rt({
   pinnable: false,
   fields: [
     f("email", "Email", { editable: false }),
-    f("redisCount", "Redis Databases", { kind: "number", required: false, editable: false }),
-    f("vectorCount", "Vector Indexes", { kind: "number", required: false, editable: false }),
+    f("redisCount", "Redis Databases", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("vectorCount", "Vector Indexes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("searchCount", "Search Indexes", { kind: "number", required: false, editable: false }),
     f("teamCount", "Teams", { kind: "number", required: false, editable: false }),
   ],
@@ -72,11 +82,11 @@ const RedisType = rt({
     "A serverless Upstash Redis database, with its read regions, plan, budget and backups",
   fields: [
     f("name", "Name", { description: "Renames the database." }),
-    f("state", "State", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
     f("platform", "Cloud", { required: false, editable: false }),
-    f("region", "Primary Region", { required: false, editable: false }),
+    f("region", "Primary Region", { showcase: true, required: false, editable: false }),
     f("readRegions", "Read Regions", { required: false, editable: false }),
-    f("plan", "Plan", { required: false, editable: false }),
+    f("plan", "Plan", { showcase: true, required: false, editable: false }),
     f("budget", "Monthly Budget (USD)", {
       kind: "number",
       required: false,
@@ -96,7 +106,7 @@ const RedisType = rt({
     f("tls", "TLS", { kind: "boolean", required: false, editable: false }),
     f("prodPack", "Production Pack", { kind: "boolean", required: false, editable: false }),
     f("endpoint", "Endpoint", { required: false, editable: false }),
-    f("port", "Port", { kind: "number", required: false, editable: false }),
+    f("port", "Port", { showcase: true, kind: "number", required: false, editable: false }),
     f("diskLimitGb", "Storage Limit (GB)", { kind: "number", required: false, editable: false }),
     f("maxCommandsPerSecond", "Max Commands/s", {
       kind: "number",
@@ -177,8 +187,8 @@ const VectorType = rt({
     "An Upstash Vector index (dense, sparse or hybrid) with its REST endpoint and tokens",
   fields: [
     f("name", "Name", { description: "Renames the index." }),
-    f("region", "Region", { required: false, editable: false }),
-    f("plan", "Plan", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("plan", "Plan", { showcase: true, required: false, editable: false }),
     f("indexType", "Index Type", { required: false, editable: false }),
     f("similarity", "Similarity", { required: false, editable: false }),
     f("dimensions", "Dimensions", { kind: "number", required: false, editable: false }),
@@ -188,7 +198,7 @@ const VectorType = rt({
     f("maxVectors", "Max Vectors", { kind: "number", required: false, editable: false }),
     f("maxDailyQueries", "Max Daily Queries", { kind: "number", required: false, editable: false }),
     f("owner", "Owner", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("restUrl", "REST URL"),
@@ -219,14 +229,14 @@ const SearchType = rt({
   description: "An Upstash Search index with its REST endpoint and tokens",
   fields: [
     f("name", "Name", { description: "Renames the index." }),
-    f("region", "Region", { required: false, editable: false }),
-    f("plan", "Plan", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("plan", "Plan", { showcase: true, required: false, editable: false }),
     f("endpoint", "Endpoint", { required: false, editable: false }),
     f("maxDocuments", "Max Documents", { kind: "number", required: false, editable: false }),
     f("maxDailyQueries", "Max Daily Queries", { kind: "number", required: false, editable: false }),
     f("inputEnrichment", "Input Enrichment", { kind: "boolean", required: false, editable: false }),
     f("owner", "Owner", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("restUrl", "REST URL"),
@@ -258,9 +268,9 @@ const QStashType = rt({
   description:
     "A regional QStash account: plan, budget and limits, signing keys, the dead letter queue and message logs",
   fields: [
-    f("region", "Region", { editable: false }),
-    f("state", "State", { required: false, editable: false }),
-    f("plan", "Plan", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
+    f("plan", "Plan", { showcase: true, required: false, editable: false }),
     f("reservedPlan", "Fixed Plan", { required: false, editable: false }),
     f("budget", "Monthly Budget (USD)", {
       kind: "number",
@@ -283,7 +293,7 @@ const QStashType = rt({
     f("maxTopics", "Max URL Groups", { kind: "number", required: false, editable: false }),
     f("maxRetries", "Max Retries", { kind: "number", required: false, editable: false }),
     f("owner", "Owner", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("url", "QStash URL"),
@@ -329,7 +339,7 @@ const ScheduleType = rt({
     f("lastRun", "Last Run", { required: false, editable: false }),
     f("nextRun", "Next Run", { required: false, editable: false }),
     f("qstashId", "QStash Account", { editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   dependsOn: [
     { fieldKey: "qstashId", targetTypeId: T.qstash, label: "in" },
@@ -368,7 +378,7 @@ const QueueType = rt({
     f("lag", "Waiting Messages", { kind: "number", required: false, editable: false }),
     f("paused", "Paused", { kind: "boolean", required: false, editable: false }),
     f("qstashId", "QStash Account", { editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   dependsOn: [{ fieldKey: "qstashId", targetTypeId: T.qstash, label: "in" }],
   lifecycle: {
@@ -396,9 +406,14 @@ const UrlGroupType = rt({
       required: false,
       description: "Comma-separated endpoint URLs. Saving replaces the list.",
     }),
-    f("endpointCount", "Endpoint Count", { kind: "number", required: false, editable: false }),
+    f("endpointCount", "Endpoint Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("qstashId", "QStash Account", { editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   dependsOn: [{ fieldKey: "qstashId", targetTypeId: T.qstash, label: "in" }],
   iconKey: "network",
@@ -413,8 +428,8 @@ const TeamType = rt({
   description: "An Upstash team and its members",
   fields: [
     f("name", "Name", { editable: false }),
-    f("members", "Members", { kind: "number", required: false, editable: false }),
-    f("role", "Your Role", { required: false, editable: false }),
+    f("members", "Members", { showcase: true, kind: "number", required: false, editable: false }),
+    f("role", "Your Role", { showcase: true, required: false, editable: false }),
   ],
   iconKey: "users",
   supportsCreate: true,

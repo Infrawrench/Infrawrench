@@ -4,13 +4,14 @@ export const AlloyDbInstanceResourceType = rt({
   name: "AlloyDB Instance",
   pinnable: false,
   id: "alloydb-instance",
+  iconKey: "database",
   description: "An instance within a Google Cloud AlloyDB cluster",
   fields: [
     f("name", "Name"),
-    f("instanceType", "Instance Type", { required: false }),
-    f("state", "State", { required: false }),
-    f("cpuCount", "CPU Count", { kind: "number", required: false }),
-    f("ipAddress", "IP Address", { required: false }),
+    f("instanceType", "Instance Type", { showcase: true, required: false }),
+    f("state", "State", { showcase: true, required: false }),
+    f("cpuCount", "CPU Count", { showcase: true, kind: "number", required: false }),
+    f("ipAddress", "IP Address", { showcase: true, required: false }),
     f("availabilityType", "Availability Type", { required: false }),
     f("cluster", "Cluster", {
       required: false,

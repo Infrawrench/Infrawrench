@@ -148,7 +148,7 @@ export function DeclareIncidentModal({
                   aria-pressed={severity === option.id}
                   className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                     severity === option.id
-                      ? "bg-blue-600 text-white"
+                      ? "bg-accent text-on-accent"
                       : "bg-surface-sunken text-on-surface-secondary hover:bg-surface"
                   }`}
                 >
@@ -272,7 +272,7 @@ export function DeclareIncidentModal({
                             }
                             className={`px-2 py-1 rounded-lg text-xs transition-colors ${
                               checked
-                                ? "bg-blue-600 text-white"
+                                ? "bg-accent text-on-accent"
                                 : "bg-surface-sunken text-on-surface-secondary hover:bg-surface"
                             }`}
                           >

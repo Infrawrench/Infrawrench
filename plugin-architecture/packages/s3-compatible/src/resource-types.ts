@@ -8,10 +8,15 @@ export const EndpointResourceType = rt({
     "The S3-compatible endpoint itself: which server software answers, how many buckets it holds and, on MinIO, the cluster's mode, capacity, usage and server health.",
   fields: [
     f("endpoint", "Endpoint", { editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("addressing", "Addressing", { required: false, editable: false }),
     f("server", "Server", { required: false, editable: false }),
-    f("bucketCount", "Buckets", { kind: "number", required: false, editable: false }),
+    f("bucketCount", "Buckets", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("minioMode", "MinIO Mode", { required: false, editable: false }),
     f("minioVersion", "MinIO Version", { required: false, editable: false }),
     f("deploymentId", "Deployment ID", { required: false, editable: false }),
@@ -39,8 +44,8 @@ export const ServerResourceType = rt({
   showInSidebar: true,
   fields: [
     f("endpoint", "Endpoint", { editable: false }),
-    f("state", "State", { required: false, editable: false }),
-    f("version", "Version", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
+    f("version", "Version", { showcase: true, required: false, editable: false }),
     f("edition", "Edition", { required: false, editable: false }),
     f("uptimeSeconds", "Uptime (seconds)", { kind: "number", required: false, editable: false }),
     f("pool", "Pool", { kind: "number", required: false, editable: false }),
@@ -65,7 +70,7 @@ export const BucketResourceType = rt({
     "A bucket on the endpoint. Browse, upload and delete objects, edit its policy, versioning, Object Lock default retention and tags, and manage lifecycle and CORS rules.",
   fields: [
     f("name", "Name", { editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("createdAt", "Created", { required: false, editable: false }),
     f("versioning", "Versioning", {
       kind: "enum",
@@ -79,10 +84,19 @@ export const BucketResourceType = rt({
       enumValues: ["none", "GOVERNANCE", "COMPLIANCE"],
       required: false,
     }),
-    f("retentionDays", "Default Retention (days)", { kind: "number", required: false }),
+    f("retentionDays", "Default Retention (days)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+    }),
     f("tags", "Tags", { required: false, description: "Comma-separated key=value pairs." }),
     f("hasPolicy", "Has Bucket Policy", { kind: "boolean", required: false, editable: false }),
-    f("sizeBytes", "Size (bytes)", { kind: "number", required: false, editable: false }),
+    f("sizeBytes", "Size (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("objects", "Objects", { kind: "number", required: false, editable: false }),
   ],
   outputs: [

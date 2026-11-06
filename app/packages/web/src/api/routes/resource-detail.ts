@@ -13,7 +13,7 @@ import {
 } from "../../services/plugin-clients";
 import { loadSecretStatesForResource } from "../../services/secret-states";
 import type { ResourceInstance, DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
-import { isFieldEditable } from "@infrawrench/plugin-base";
+import { isFieldEditable, pickShowcaseValues, showcaseFields } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 import { registerManifestRoutes } from "./resource-detail/manifests";
@@ -337,6 +337,8 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
             id: rt.id,
             displayName: rt.displayName,
             pluralDisplayName: rt.pluralDisplayName,
+            ...(rt.iconKey ? { iconKey: rt.iconKey } : {}),
+            showcase: showcaseFields(rt),
             supportsCreate: rt.supportsCreate ?? false,
             // Ship the field schema for child types that support update, so the
             // detail view can render an inline edit form for child-table rows.
@@ -359,8 +361,8 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     status?: { kind: "status-dot"; status: string; label?: string };
     fields?: Record<string, unknown>;
   }> = [];
-  // Only ship per-child field bags when the detail view actually renders a
-  // child table for that type, otherwise it's wasted payload.
+  // Only ship whole per-child field bags when the detail view actually renders
+  // a child table for that type, otherwise it's wasted payload.
   const childTableTypeIds = new Set((finalSchema.childTables ?? []).map((t) => t.typeId));
   for (let i = 0; i < childResults.length; i++) {
     const result = childResults[i]!;
@@ -375,7 +377,13 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
         pluginId: r.pluginId,
         accountId: r.accountId,
         ...(sidebar.status ? { status: sidebar.status } : {}),
-        ...(childTableTypeIds.has(r.resourceTypeId) ? { fields: r.fields ?? {} } : {}),
+        // A child table needs every field; a tile only what it can show.
+        fields: childTableTypeIds.has(r.resourceTypeId)
+          ? (r.fields ?? {})
+          : pickShowcaseValues(
+              r.fields,
+              childTypes.find((t) => t.id === r.resourceTypeId)?.showcase ?? [],
+            ),
       });
     }
   }

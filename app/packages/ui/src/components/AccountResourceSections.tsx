@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
+import { TileSkeleton } from "../dnd/TileFrame.js";
 import {
   getVisibleAccountCategories,
   pickDefaultAccountSectionId,
@@ -92,7 +93,7 @@ export function AccountResourceSections<
           onChange={(event) => setSearchQuery(event.target.value)}
           placeholder={gt("Search sections or resources...")}
           aria-label={gt("Search sections or resources")}
-          className="w-full md:max-w-sm bg-surface-raised border border-border rounded-md px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-muted focus:outline-none focus:border-blue-500"
+          className="w-full md:max-w-sm bg-surface-raised border border-border rounded-md px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-muted focus:outline-none focus:border-accent-subtle"
         />
         {visibleCategories.length > 0 && (
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -101,9 +102,9 @@ export function AccountResourceSections<
                 type="button"
                 key={cat.typeDef.id}
                 onClick={() => setActiveSectionId(cat.typeDef.id)}
-                className={`px-3 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-colors ${
+                className={`px-3 py-1.5 rounded-md border text-xs font-medium whitespace-nowrap transition-colors ${
                   activeSectionId === cat.typeDef.id
-                    ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                    ? "border-accent bg-accent-muted text-accent-on-muted"
                     : "border-border text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
                 }`}
               >
@@ -127,19 +128,15 @@ export function AccountResourceSections<
           </h2>
 
           {activeCategory.loading ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="h-8 rounded-full bg-surface-overlay animate-pulse"
-                  style={{ width: `${5 + i * 1.5}rem` }}
-                />
+                <TileSkeleton key={i} />
               ))}
             </div>
           ) : activeCategory.error ? (
             <div className="text-xs text-danger">{activeCategory.error}</div>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {activeCategory.resources.map((resource) => renderResource(resource, activeCategory))}
               {activeCategory.typeDef.supportsCreate &&
                 renderCreateButton?.(activeCategory.typeDef)}

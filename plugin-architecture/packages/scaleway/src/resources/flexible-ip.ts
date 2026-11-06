@@ -7,14 +7,16 @@ export const FlexibleIpResourceType = rt({
   plural: "Flexible IPs",
   description: "A Scaleway Instance flexible (routed) public IP",
   fields: [
-    f("address", "Address", { editable: false }),
-    f("zone", "Zone", { kind: "enum", enumValues: SCW_ZONES, editable: false }),
+    f("address", "Address", { showcase: true, editable: false }),
+    f("zone", "Zone", { showcase: true, kind: "enum", enumValues: SCW_ZONES, editable: false }),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["routed_ipv4", "routed_ipv6"],
       editable: false,
     }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["detached", "attached", "pending", "error"],

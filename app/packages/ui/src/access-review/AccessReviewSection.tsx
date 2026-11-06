@@ -150,21 +150,21 @@ function SummaryChips({ data }: { data: AccessReviewResponse }) {
   const principals = data.principals.length;
   return (
     <div className="flex flex-wrap items-center gap-2 mb-4">
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-secondary">
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-on-surface-secondary">
         <span className="tabular-nums">{principals}</span>
         {principals === 1 ? gt("principal") : gt("principals")}
       </span>
       {ACCESS_REVIEW_SEVERITIES.map((severity) => (
         <span
           key={severity}
-          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
+          className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
         >
           <span className="tabular-nums">{data.counts[severity]}</span>
           {gtData(ACCESS_REVIEW_SEVERITY_LABELS[severity])}
         </span>
       ))}
       {data.dismissedCount > 0 && (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
           <span className="tabular-nums">{data.dismissedCount}</span>
           {gt("Dismissed")}
         </span>
@@ -222,7 +222,7 @@ function ActiveFindingRow({
         )}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap align-top">
-        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+        <span className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
           {gtData(PRINCIPAL_ROLE_LABELS[p.role])}
         </span>
       </td>
@@ -284,7 +284,7 @@ function ActiveFindingRow({
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
         <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[finding.severity]}`}
+          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[finding.severity]}`}
         >
           {gtData(ACCESS_REVIEW_SEVERITY_LABELS[finding.severity])}
         </span>
@@ -363,7 +363,7 @@ function DismissedFindingRow({
         </span>
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
-        <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-on-surface-tertiary">
+        <span className="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-on-surface-tertiary">
           {gtData(ACCESS_REVIEW_SEVERITY_LABELS[finding.severity])}
         </span>
       </td>

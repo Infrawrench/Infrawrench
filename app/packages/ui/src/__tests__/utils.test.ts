@@ -9,7 +9,6 @@ import {
   buildDefaultFields,
   getListableResourceTypes,
   getAccountRootType,
-  extractHostLabel,
   buildChildResourceGroups,
   resourceTabTitle,
   dispatchResourcesChanged,
@@ -277,28 +276,6 @@ describe("getAccountRootType", () => {
     // arriving over the wire is not covered by that: an account must never
     // open to something nested inside something else.
     expect(getAccountRootType([{ id: "x", accountRoot: true, parentTypeId: "a" }])).toBeNull();
-  });
-});
-
-describe("extractHostLabel", () => {
-  it("returns empty when no host fields", () => {
-    expect(extractHostLabel({})).toBe("");
-  });
-  it("returns host directly", () => {
-    expect(extractHostLabel({ host: "db.example.com" })).toBe("db.example.com");
-  });
-  it("parses hostname from URL", () => {
-    expect(extractHostLabel({ host: "https://db.example.com:5432" })).toBe("db.example.com");
-  });
-  it("falls back to region then engine", () => {
-    expect(extractHostLabel({ region: "us-east-1" })).toBe("us-east-1");
-    expect(extractHostLabel({ engine: "postgres" })).toBe("postgres");
-  });
-  it("truncates long hosts", () => {
-    const out = extractHostLabel({ host: "a".repeat(40) }, 10);
-    // Truncation keeps maxLength-2 chars and appends a single-char ellipsis (…).
-    expect(out.length).toBe(9);
-    expect(out.endsWith("…")).toBe(true);
   });
 });
 

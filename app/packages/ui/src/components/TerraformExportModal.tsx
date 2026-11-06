@@ -179,7 +179,7 @@ export function TerraformExportModal({
             type="button"
             onClick={download}
             disabled={!hasHcl}
-            className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+            className="flex-1 px-4 py-2 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg transition-colors"
           >
             {gt("Download {filename}", { filename })}
           </button>

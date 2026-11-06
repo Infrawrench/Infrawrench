@@ -8,6 +8,7 @@ export const CloudFormationStackResourceType = rt({
     f("stackName", "Stack Name"),
     f("stackId", "Stack ID"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "CREATE_IN_PROGRESS",

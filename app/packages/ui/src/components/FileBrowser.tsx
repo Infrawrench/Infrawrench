@@ -455,7 +455,7 @@ export function FileBrowser({
                 type="button"
                 onClick={() => void handleDownload([...selected])}
                 disabled={bulkWorking}
-                className="px-2.5 py-1 text-xs text-on-surface-secondary hover:text-white border border-border-strong hover:border-border-strong rounded transition-colors disabled:opacity-40 inline-flex items-center gap-1"
+                className="px-2.5 py-1 text-xs text-on-surface-secondary hover:text-on-surface border border-border-strong hover:border-border-strong rounded transition-colors disabled:opacity-40 inline-flex items-center gap-1"
               >
                 <DownloadIcon size={12} />
                 {gt("Download")}
@@ -525,7 +525,7 @@ export function FileBrowser({
                       if (el) el.indeterminate = someSelected;
                     }}
                     onChange={toggleAll}
-                    className="size-3 accent-blue-500 cursor-pointer"
+                    className="size-3 accent-accent cursor-pointer"
                   />
                 </th>
                 <th scope="col" className="text-left px-2 py-1.5 font-medium">
@@ -564,12 +564,12 @@ export function FileBrowser({
                           }
                         }}
                         placeholder={gt("Folder name")}
-                        className="bg-surface-overlay border border-border-strong rounded px-2 py-0.5 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+                        className="bg-surface-overlay border border-border-strong rounded px-2 py-0.5 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
                       />
                       <button
                         type="button"
                         onClick={() => void handleMakeFolder()}
-                        className="px-2 py-0.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                        className="px-2 py-0.5 text-xs bg-accent hover:bg-accent-hover text-on-accent rounded transition-colors"
                       >
                         {gt("Create")}
                       </button>
@@ -658,7 +658,7 @@ export function FileBrowser({
                           )
                         }
                         onClick={(e) => e.stopPropagation()}
-                        className="size-3 accent-blue-500 cursor-pointer"
+                        className="size-3 accent-accent cursor-pointer"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -741,7 +741,7 @@ export function FileBrowser({
                               (e.nativeEvent as MouseEvent).shiftKey,
                           )
                         }
-                        className="size-3 accent-blue-500 cursor-pointer"
+                        className="size-3 accent-accent cursor-pointer"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -844,7 +844,7 @@ export function FileBrowser({
                   <div className="w-24 flex-shrink-0 flex items-center gap-1.5">
                     <div className="flex-1 bg-surface-overlay rounded-full h-1">
                       <div
-                        className="bg-blue-500 h-1 rounded-full transition-all"
+                        className="bg-accent h-1 rounded-full transition-all"
                         style={{ width: `${t.pct}%` }}
                       />
                     </div>

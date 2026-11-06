@@ -6,8 +6,8 @@ export const DeploymentResourceType = rt({
   description: "A Kubernetes Deployment",
   fields: [
     f("name", "Name"),
-    f("namespace", "Namespace"),
-    f("replicas", "Desired Replicas", { kind: "number", required: false }),
+    f("namespace", "Namespace", { showcase: true }),
+    f("replicas", "Desired Replicas", { showcase: true, kind: "number", required: false }),
     f("serviceAccountName", "Service Account", {
       required: false,
       description: "The ServiceAccount the pod template runs as, when it names one",

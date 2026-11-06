@@ -7,7 +7,12 @@ export const VercelProjectResourceType = rt({
   description: "A Vercel project, deployed from Git or the CLI",
   fields: [
     f("name", "Name"),
-    f("framework", "Framework", { kind: "enum", enumValues: FRAMEWORK_IDS, required: false }),
+    f("framework", "Framework", {
+      showcase: true,
+      kind: "enum",
+      enumValues: FRAMEWORK_IDS,
+      required: false,
+    }),
     f("nodeVersion", "Node Version", { kind: "enum", enumValues: NODE_VERSIONS, required: false }),
     f("serverlessFunctionRegion", "Region", {
       kind: "enum",
@@ -23,8 +28,8 @@ export const VercelProjectResourceType = rt({
     f("productionUrl", "Production URL", { required: false, editable: false }),
     f("gitRepo", "Git Repository", { required: false, editable: false }),
     f("ownerId", "Owner", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
-    f("updatedAt", "Updated At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false, editable: false }),
     f("live", "Live", { required: false, editable: false }),
     f("paused", "Paused", {
       kind: "boolean",
@@ -52,7 +57,7 @@ export const VercelProjectResourceType = rt({
   supportsUpdate: true,
   // Web Analytics page views, visitors and custom events (production only).
   supportsMetrics: true,
-  iconKey: "vercel",
+  iconKey: "project",
   // Stable alias is `<project>.vercel.app`; git-branch aliases are
   // `<project>-git-<branch>-<scope>.vercel.app`. Capture group 1 is the
   // project name so the name claimant resolves both. Deployment-hash forms

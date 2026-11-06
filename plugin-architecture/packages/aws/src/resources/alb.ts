@@ -6,8 +6,13 @@ export const ALBResourceType = rt({
   description: "An AWS Elastic Load Balancer (ALB/NLB/GLB)",
   fields: [
     f("name", "Name"),
-    f("type", "Type", { kind: "enum", enumValues: ["application", "network", "gateway"] }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["application", "network", "gateway"],
+    }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["active", "provisioning", "active_impaired", "failed"],
     }),

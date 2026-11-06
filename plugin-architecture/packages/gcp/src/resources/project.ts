@@ -4,12 +4,13 @@ export const GcpProjectResourceType = rt({
   name: "Project",
   pinnable: false,
   id: "gcp-project",
+  iconKey: "project",
   description: "A GCP project this account's credentials can see",
   fields: [
     f("projectId", "Project ID"),
     f("name", "Name", { required: false }),
     f("projectNumber", "Project Number", { required: false }),
-    f("state", "State", { required: false }),
+    f("state", "State", { showcase: true, required: false }),
   ],
   outputs: [
     o("projectId", "Project ID"),

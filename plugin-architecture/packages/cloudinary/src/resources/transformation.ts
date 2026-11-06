@@ -8,7 +8,12 @@ export const TransformationResourceType = rt({
     f("name", "Name", { editable: false }),
     f("named", "Named", { kind: "boolean", required: false, editable: false }),
     f("used", "Used", { kind: "boolean", required: false, editable: false }),
-    f("usageCount", "Usage Count", { kind: "number", required: false, editable: false }),
+    f("usageCount", "Usage Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("allowedForStrict", "Allowed for Strict", {
       kind: "boolean",
       required: false,

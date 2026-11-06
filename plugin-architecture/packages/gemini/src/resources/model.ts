@@ -22,7 +22,7 @@ export const ModelResourceType = rt({
     f("name", "Resource Name"),
     f("baseModelId", "Base Model ID", { required: false }),
     f("displayName", "Display Name", { required: false }),
-    f("version", "Version", { required: false }),
+    f("version", "Version", { showcase: true, required: false }),
     f("descriptionText", "Description", { required: false }),
     f("inputTokenLimit", "Input Token Limit", { kind: "number", required: false }),
     f("outputTokenLimit", "Output Token Limit", { kind: "number", required: false }),

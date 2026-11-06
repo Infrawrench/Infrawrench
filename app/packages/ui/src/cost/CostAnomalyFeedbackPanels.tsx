@@ -334,7 +334,7 @@ export function AnomalyPrecisionReport({ client }: { client: CostsClient }) {
                   })}
                 >
                   <span
-                    className="block h-2 rounded-full bg-blue-500"
+                    className="block h-2 rounded-full bg-accent"
                     style={{ width: `${Math.round((p.precision ?? 0) * 100)}%` }}
                   />
                 </span>

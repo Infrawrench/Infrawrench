@@ -154,7 +154,7 @@ export function SshKeyPicker({
         }`}
       >
         <span
-          className={`w-2 h-2 rounded-full flex-shrink-0 ${noneSelected ? "bg-blue-400" : "bg-surface-sunken"}`}
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${noneSelected ? "bg-accent" : "bg-surface-sunken"}`}
         />
         {gt("No SSH key")}
       </button>
@@ -188,7 +188,7 @@ export function SshKeyPicker({
                   }`}
                 >
                   <span
-                    className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-surface-sunken"}`}
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-accent" : "bg-surface-sunken"}`}
                   />
                   <span className="flex-1 min-w-0">
                     <span className="font-medium block text-xs">{k.name}</span>
@@ -226,7 +226,7 @@ export function SshKeyPicker({
                   }`}
                 >
                   <span
-                    className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-surface-sunken"}`}
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-accent" : "bg-surface-sunken"}`}
                   />
                   <span className="flex-1 min-w-0">
                     <span className="font-medium font-mono block text-xs">{k.name}</span>
@@ -289,7 +289,7 @@ export function SshKeyPicker({
                         }`}
                       >
                         <span
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-surface-sunken"}`}
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-accent" : "bg-surface-sunken"}`}
                         />
                         <span className="flex-1 min-w-0">
                           <span className="font-medium block text-xs">{k.name}</span>

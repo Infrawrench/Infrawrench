@@ -207,7 +207,7 @@ export function RecordingPlayer({
           }}
           disabled={!ready || duration === 0}
           aria-label={gt("Playback position")}
-          className="flex-1 accent-blue-500"
+          className="flex-1 accent-accent"
         />
 
         <span className="text-xs text-on-surface-muted tabular-nums whitespace-nowrap">

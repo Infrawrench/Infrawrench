@@ -29,18 +29,18 @@ export const OrganizationType = rt({
   fields: [
     f("name", "Name", { description: "Display name of the organization." }),
     f("organizationId", "Organization ID", { editable: false }),
-    f("status", "Status", ro),
+    f("status", "Status", { ...ro, showcase: true }),
     f("billingStatus", "Billing Status", ro),
     f("billingReason", "Billing Note", ro),
     f("usageTier", "Usage Tier", ro),
     f("marketplace", "Billed Through", ro),
-    f("memberCount", "Members", { kind: "number", ...ro }),
-    f("createdAt", "Created At", ro),
+    f("memberCount", "Members", { showcase: true, kind: "number", ...ro }),
+    f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [o("organizationId", "Organization ID")],
   supportsUpdate: true,
   supportsDelete: false,
-  iconKey: "xata",
+  iconKey: "organization",
 });
 
 export const ProjectType = rt({
@@ -65,8 +65,8 @@ export const ProjectType = rt({
       required: false,
       description: "Comma-separated IPs or CIDR blocks (up to 64).",
     }),
-    f("branchCount", "Branches", { kind: "number", ...ro }),
-    f("createdAt", "Created At", ro),
+    f("branchCount", "Branches", { showcase: true, kind: "number", ...ro }),
+    f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [o("projectId", "Project ID")],
   dependsOn: [
@@ -87,7 +87,7 @@ export const ProjectType = rt({
   showInSidebar: true,
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "xata",
+  iconKey: "project",
 });
 
 export const BranchType = rt({
@@ -103,9 +103,9 @@ export const BranchType = rt({
     f("projectId", "Project", { editable: false }),
     f("organizationId", "Organization", { editable: false }),
     f("parentId", "Parent Branch", ro),
-    f("region", "Region", { editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("statusType", "Status", ro),
-    f("status", "Cluster Status", ro),
+    f("status", "Cluster Status", { ...ro, showcase: true }),
     f("statusMessage", "Status Message", ro),
     f("instanceType", "Instance Type", {
       ...ro,
@@ -114,11 +114,12 @@ export const BranchType = rt({
     }),
     f("image", "Postgres Image", ro),
     f("replicas", "Replicas", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Standby replicas (0-4) besides the primary.",
     }),
-    f("storageGb", "Storage (GiB)", { kind: "number", required: false }),
+    f("storageGb", "Storage (GiB)", { showcase: true, kind: "number", required: false }),
     f("instanceCount", "Instances", { kind: "number", ...ro }),
     f("instanceReadyCount", "Instances Ready", { kind: "number", ...ro }),
     f("scaleToZero", "Scale to Zero", { kind: "boolean", required: false }),
@@ -181,7 +182,7 @@ export const BranchType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
-  iconKey: "xata",
+  iconKey: "branch",
 });
 
 export const BackupType = rt({
@@ -213,7 +214,7 @@ export const BackupType = rt({
   ],
   parentTypeId: "xata-project",
   supportsDelete: false,
-  iconKey: "xata",
+  iconKey: "backup",
 });
 
 export const ApiKeyType = rt({
@@ -229,9 +230,9 @@ export const ApiKeyType = rt({
     f("projects", "Projects", { required: false, description: "Empty means every project." }),
     f("branches", "Branches", { required: false, description: "Empty means every branch." }),
     f("fullAccess", "Unrestricted", { kind: "boolean", required: false }),
-    f("createdAt", "Created At", { required: false }),
-    f("expiresAt", "Expires At", { required: false }),
-    f("lastUsedAt", "Last Used At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false }),
+    f("lastUsedAt", "Last Used At", { showcase: true, required: false }),
   ],
   outputs: [o("token", "Token", { sensitive: true })],
   expiryFields: [
@@ -252,7 +253,7 @@ export const ApiKeyType = rt({
   },
   parentTypeId: "xata-organization",
   supportsCreate: true,
-  iconKey: "xata",
+  iconKey: "key",
 });
 
 export const MemberType = rt({
@@ -265,6 +266,7 @@ export const MemberType = rt({
     f("name", "Name", ro),
     f("organizationId", "Organization", { editable: false }),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       enumValues: ["admin", "editor"],
       description: "Admins manage members, billing and keys; editors manage projects and branches.",
@@ -274,7 +276,7 @@ export const MemberType = rt({
   principalRole: { role: "user", adminIndicatorKey: "role", adminValues: ["admin"] },
   parentTypeId: "xata-organization",
   supportsUpdate: true,
-  iconKey: "xata",
+  iconKey: "member",
 });
 
 export const InvitationType = rt({
@@ -285,15 +287,15 @@ export const InvitationType = rt({
   fields: [
     f("email", "Email"),
     f("organizationId", "Organization"),
-    f("role", "Role", { kind: "enum", enumValues: ["admin", "editor"] }),
-    f("status", "Status", { required: false }),
-    f("expiresAt", "Expires At", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("role", "Role", { showcase: true, kind: "enum", enumValues: ["admin", "editor"] }),
+    f("status", "Status", { showcase: true, required: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [],
   parentTypeId: "xata-organization",
   supportsCreate: true,
-  iconKey: "xata",
+  iconKey: "invite",
 });
 
 export const resourceTypes: ResourceTypeDefinition[] = [

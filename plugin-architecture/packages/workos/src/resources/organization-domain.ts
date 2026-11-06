@@ -11,8 +11,9 @@ export const OrganizationDomainResourceType = rt({
   description:
     "A domain claimed by an organization. Add one here, publish the TXT record it shows, then verify it.",
   fields: [
-    f("domain", "Domain", { editable: false }),
+    f("domain", "Domain", { showcase: true, editable: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
@@ -27,7 +28,7 @@ export const OrganizationDomainResourceType = rt({
     f("txtRecordName", "TXT record name", { required: false, editable: false }),
     f("txtRecordValue", "TXT record value", { required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("domainId", "Domain ID"),

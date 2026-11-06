@@ -57,7 +57,7 @@ export function ChatListView({ client, onOpen }: Props): React.ReactElement {
             onChange={(e) => setModel(e.target.value)}
             aria-label={gt("Model for new chats")}
             title={modelDescription ? gtData(modelDescription) : undefined}
-            className="bg-surface-overlay border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="bg-surface-overlay border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent-subtle"
           >
             {CHAT_MODELS.map((m) => (
               <option key={m.id} value={m.id}>
@@ -68,7 +68,7 @@ export function ChatListView({ client, onOpen }: Props): React.ReactElement {
           <button
             type="button"
             onClick={() => void handleNew()}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+            className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors"
           >
             {gt("New chat")}
           </button>

@@ -18,10 +18,10 @@ export const EmbedJobResourceType = rt({
   description: "A bulk embedding job over an uploaded dataset",
   fields: [
     f("name", "Name", { required: false }),
-    f("status", "Status", { required: false }),
-    f("model", "Model", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
+    f("model", "Model", { showcase: true, required: false }),
     f("truncate", "Truncate", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("inputDatasetId", "Input Dataset", { required: false }),
     f("outputDatasetId", "Output Dataset", { required: false }),
   ],

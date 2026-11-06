@@ -338,7 +338,7 @@ function ExportDialog({
             type="button"
             onClick={() => void start()}
             disabled={busy || !from || !to || from > to}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
           >
             {busy ? gt("Starting…") : gt("Start export")}
           </button>
@@ -399,7 +399,7 @@ function ExportDialog({
                       aria-label={gt("Export progress")}
                     >
                       <div
-                        className="h-full bg-blue-500 transition-all"
+                        className="h-full bg-accent transition-all"
                         style={{ width: `${Math.max(2, Math.round(job.progress * 100))}%` }}
                       />
                     </div>

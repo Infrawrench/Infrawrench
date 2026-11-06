@@ -7,6 +7,7 @@ export const NATGatewayResourceType = rt({
   fields: [
     f("natGatewayId", "NAT Gateway ID"),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["pending", "failed", "available", "deleting", "deleted"],
     }),

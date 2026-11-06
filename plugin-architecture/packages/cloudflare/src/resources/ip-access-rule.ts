@@ -6,7 +6,7 @@ export const IpAccessRuleResourceType = rt({
   id: "ip-access-rule",
   description: "A Cloudflare IP Access Rule (allow/block/challenge by IP, CIDR, ASN, or country)",
   fields: [
-    f("mode", "Mode"),
+    f("mode", "Mode", { showcase: true }),
     f("target", "Target", { editable: false }),
     f("value", "Value", { editable: false }),
     f("notes", "Notes", { required: false }),

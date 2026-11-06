@@ -31,7 +31,7 @@ import { LoadedAlertEmailRecipientsField } from "./AlertEmailRecipientsField.js"
 import type { CostsClient } from "./types.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 /** How many recent events the section shows. */
@@ -242,11 +242,11 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-on-surface">{alert.name}</span>
-                  <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-on-surface-faint">
+                  <span className="rounded-md border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-on-surface-faint">
                     {gtData(CADENCE_BADGE[alert.cadence])}
                   </span>
                   {!alert.enabled && (
-                    <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
+                    <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
                       {gt("Paused")}
                     </span>
                   )}
@@ -647,7 +647,7 @@ export function CostChangeAlertConfigModal({
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
+              className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent transition-colors"
             >
               {saving ? gt("Saving…") : gt("Save")}
             </button>

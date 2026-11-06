@@ -6,7 +6,7 @@ export const NeonAuthDomainResourceType = rt({
   id: "neon-auth-domain",
   description: "A domain allowed as a Neon Auth redirect URI target",
   fields: [
-    f("domain", "Domain"),
+    f("domain", "Domain", { showcase: true }),
     // Carried because Neon's delete-domain call requires the owning auth provider.
     f("authProvider", "Provider", { required: false }),
     f("projectId", "Project ID"),

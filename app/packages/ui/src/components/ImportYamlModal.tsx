@@ -126,7 +126,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
             type="button"
             onClick={handleApply}
             disabled={busy || !yamlText.trim()}
-            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-surface-overlay disabled:text-on-surface-tertiary text-sm font-medium text-white transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover disabled:bg-surface-overlay disabled:text-on-surface-tertiary text-sm font-medium text-on-accent transition-colors"
           >
             {busy ? gt("Applying…") : gt("Apply")}
           </button>

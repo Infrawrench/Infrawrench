@@ -17,14 +17,19 @@ export const AccountResourceType = rt({
     "The Backblaze B2 account the application key belongs to: its S3 endpoint, what the key may do, and month-to-date usage from the daily usage reports.",
   fields: [
     f("accountId", "Account ID", { editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("s3Region", "S3 Region", { required: false, editable: false }),
     f("s3Endpoint", "S3 Endpoint", { required: false, editable: false }),
     f("capabilities", "Key Capabilities", { required: false, editable: false }),
     f("keyRestrictedTo", "Key Restricted To", { required: false, editable: false }),
     f("namePrefix", "Key Name Prefix", { required: false, editable: false }),
     f("keyExpiresAt", "Key Expires", { required: false, editable: false }),
-    f("bucketCount", "Buckets", { kind: "number", required: false, editable: false }),
+    f("bucketCount", "Buckets", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("usageReports", "Usage Reports", { required: false, editable: false }),
   ],
   outputs: [
@@ -105,14 +110,20 @@ export const BucketResourceType = rt({
       description:
         "Stored in the bucket info as Cache-Control; B2 sends it with every download from this bucket that has no Cache-Control of its own.",
     }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("s3Region", "S3 Region", { required: false, editable: false }),
     f("lifecycleRuleCount", "Lifecycle Rules", {
+      showcase: true,
       kind: "number",
       required: false,
       editable: false,
     }),
-    f("corsRuleCount", "CORS Rules", { kind: "number", required: false, editable: false }),
+    f("corsRuleCount", "CORS Rules", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("replicationRuleCount", "Replication Rules", {
       kind: "number",
       required: false,
@@ -280,6 +291,7 @@ export const ReplicationRuleResourceType = rt({
     f("destinationBucketName", "Destination Bucket", { required: false, editable: false }),
     f("fileNamePrefix", "File Name Prefix", { required: false }),
     f("priority", "Priority", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "When two rules match a file, the higher priority wins (1 to 2147483647).",
@@ -349,7 +361,7 @@ export const ApplicationKeyResourceType = rt({
     f("bucketIds", "Bucket IDs", { required: false, editable: false }),
     f("bucketNames", "Buckets", { required: false, editable: false }),
     f("namePrefix", "File Name Prefix", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
     f("isAdmin", "Can Manage Keys", { kind: "boolean", required: false, editable: false }),
     f("options", "Options", { required: false, editable: false }),
   ],

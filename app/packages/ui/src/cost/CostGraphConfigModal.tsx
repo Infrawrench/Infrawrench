@@ -856,7 +856,7 @@ export function CostGraphConfigModal({
               type="button"
               onClick={() => void save()}
               disabled={saving || filterError !== null}
-              className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
+              className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent transition-colors"
             >
               {saving ? gt("Saving…") : gt("Save")}
             </button>

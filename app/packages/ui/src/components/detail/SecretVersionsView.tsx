@@ -143,14 +143,14 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
           <button
             type="button"
             onClick={() => void fetchVersions()}
-            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
+            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors"
           >
             {gt("Reload")}
           </button>
           <button
             type="button"
             onClick={() => setShowAdd(true)}
-            className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
+            className="px-3 py-1 text-xs font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-md transition-colors"
           >
             {gt("+ Add version")}
           </button>
@@ -245,7 +245,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                               type="button"
                               disabled={destroyed || isBusy}
                               onClick={() => void handleAccess(v)}
-                              className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
+                              className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors disabled:opacity-40"
                             >
                               {gt("Reveal")}
                             </button>
@@ -255,7 +255,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                               type="button"
                               disabled={isBusy}
                               onClick={() => void handleModify(v, "disable")}
-                              className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
+                              className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors disabled:opacity-40"
                             >
                               {gt("Disable")}
                             </button>
@@ -265,7 +265,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                               type="button"
                               disabled={isBusy}
                               onClick={() => void handleModify(v, "enable")}
-                              className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
+                              className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors disabled:opacity-40"
                             >
                               {gt("Enable")}
                             </button>
@@ -317,14 +317,14 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
               <button
                 type="button"
                 onClick={() => void navigator.clipboard.writeText(reveal.value)}
-                className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
+                className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors"
               >
                 {gt("Copy")}
               </button>
               <button
                 type="button"
                 onClick={() => setReveal(null)}
-                className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
+                className="px-3 py-1.5 text-xs font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-md transition-colors"
               >
                 {gt("Close")}
               </button>
@@ -342,7 +342,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
               <button
                 type="button"
                 onClick={() => setRevealError(null)}
-                className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
+                className="px-3 py-1.5 text-xs font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-md transition-colors"
               >
                 {gt("Close")}
               </button>
@@ -370,7 +370,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 placeholder={gt("Paste the secret value here…")}
                 aria-label={gt("Secret value")}
                 rows={8}
-                className="w-full rounded border border-border-strong bg-surface-sunken/60 text-xs font-mono p-3 text-on-surface focus:outline-none focus:border-blue-500"
+                className="w-full rounded border border-border-strong bg-surface-sunken/60 text-xs font-mono p-3 text-on-surface focus:outline-none focus:border-accent-subtle"
               />
             )}
             {!capability.valuelessAdd && capability.supportsFileUpload && (
@@ -395,7 +395,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 type="button"
                 disabled={adding}
                 onClick={() => setShowAdd(false)}
-                className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
+                className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors disabled:opacity-40"
               >
                 {gt("Cancel")}
               </button>
@@ -403,7 +403,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 type="button"
                 disabled={adding}
                 onClick={() => void handleAdd()}
-                className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors disabled:opacity-40"
+                className="px-3 py-1.5 text-xs font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-md transition-colors disabled:opacity-40"
               >
                 {adding ? gt("Adding…") : gt("Add version")}
               </button>
@@ -428,7 +428,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
               <button
                 type="button"
                 onClick={() => setConfirm(null)}
-                className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
+                className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors"
               >
                 {gt("Cancel")}
               </button>

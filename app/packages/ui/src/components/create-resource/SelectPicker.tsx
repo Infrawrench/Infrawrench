@@ -65,7 +65,7 @@ export function SelectPicker({
                 onClick={() => onChange(opt.id)}
                 className={`text-left px-3 py-2.5 rounded-lg border transition-all min-w-0 ${
                   value === opt.id
-                    ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                    ? "border-accent bg-accent-muted text-accent-on-muted"
                     : "border-border-strong bg-surface-overlay/50 text-on-surface-secondary hover:border-border-strong"
                 }`}
               >

@@ -18,6 +18,7 @@ export const MSKClusterResourceType = rt({
   fields: [
     f("clusterName", "Cluster Name"),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "ACTIVE",
@@ -32,7 +33,7 @@ export const MSKClusterResourceType = rt({
     }),
     f("kafkaVersion", "Kafka Version", { required: false }),
     f("numberOfBrokerNodes", "Broker Nodes", { kind: "number", required: false }),
-    f("instanceType", "Instance Type", { required: false }),
+    f("instanceType", "Instance Type", { showcase: true, required: false }),
     f("storagePerBrokerGb", "Storage/Broker (GB)", { kind: "number", required: false }),
     f("subnetIds", "Client Subnets", {
       required: false,

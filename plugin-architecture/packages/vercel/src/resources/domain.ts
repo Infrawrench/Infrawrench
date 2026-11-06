@@ -17,10 +17,10 @@ export const VercelDomainResourceType = rt({
       description:
         "Renew automatically before expiry. Only applies to domains bought through Vercel.",
     }),
-    f("expiresAt", "Expires At", { required: false, editable: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false, editable: false }),
     f("boughtAt", "Bought At", { required: false, editable: false }),
     f("teamId", "Team", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("domainName", "Domain Name"), o("nameservers", "Nameservers")],
   // `GET /v5/domains` reports the owning team but no project link: a

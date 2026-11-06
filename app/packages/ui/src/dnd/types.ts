@@ -8,6 +8,8 @@ export interface DraggableResource {
   displayName: string;
   fields: Record<string, unknown>;
   externalId?: string | undefined;
+  /** The type's icon (`ResourceTypeDefinition.iconKey`), drawn on the tile and its drag preview. */
+  iconKey?: string | undefined;
   /** Resource types this resource can be attached to via drag-drop, if any. */
   attachTargets?: AttachTarget[] | undefined;
   /** True when this resource declares an `sshEndpoint`: a valid SSH-tunnel drop target. */

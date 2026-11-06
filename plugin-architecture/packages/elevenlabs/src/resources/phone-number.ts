@@ -15,7 +15,7 @@ export const PhoneNumberResourceType = rt({
     f("phoneNumber", "Number", { editable: false }),
     f("label", "Label", { required: false }),
     f("phoneNumberId", "Phone Number ID", { required: false, editable: false }),
-    f("provider", "Provider", { required: false, editable: false }),
+    f("provider", "Provider", { showcase: true, required: false, editable: false }),
     f("agentId", "Agent ID", { required: false, editable: false }),
     f("agentName", "Agent", { required: false, editable: false }),
   ],

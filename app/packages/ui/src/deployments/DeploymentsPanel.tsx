@@ -251,7 +251,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
 
   return (
     <div className="flex flex-col h-full min-h-0 text-on-surface">
-      <div className="p-4 border-b border-white/10 space-y-3">
+      <div className="p-4 border-b border-on-surface/10 space-y-3">
         <h1 className="text-sm font-semibold">{gt("Deploy")}</h1>
 
         <div className="flex flex-wrap items-end gap-3">
@@ -333,7 +333,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
             type="button"
             onClick={() => void run("deploy")}
             disabled={!canRun}
-            className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40"
+            className="text-xs px-3 py-1.5 rounded bg-accent hover:bg-accent-hover text-on-accent disabled:opacity-40"
           >
             {busy === "deploy" ? gt("Deploying…") : gt("Deploy")}
           </button>
@@ -419,10 +419,10 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
 }
 
 const inputClass =
-  "bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-40 min-w-[12rem]";
+  "bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle disabled:opacity-40 min-w-[12rem]";
 
 const ghostButton =
-  "text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary disabled:opacity-40";
+  "text-xs px-3 py-1.5 rounded bg-on-surface/10 hover:bg-on-surface/20 text-on-surface-secondary disabled:opacity-40";
 
 /**
  * A captioned control. The caption is a real `<label htmlFor>` rather than a
@@ -587,7 +587,7 @@ function TriggersSection({
   const duplicate = triggers.some((t) => t.repo === repo && t.branch === branch && t.env === env);
 
   return (
-    <div className="p-4 border-b border-white/10 space-y-3">
+    <div className="p-4 border-b border-on-surface/10 space-y-3">
       <h2 className="text-[11px] uppercase tracking-wide text-on-surface-faint">
         {gt("Deploy on push")}
       </h2>
@@ -597,7 +597,7 @@ function TriggersSection({
       ) : (
         <table className="w-full text-xs">
           <thead className="text-[11px] uppercase tracking-wide text-on-surface-faint">
-            <tr className="border-b border-white/10">
+            <tr className="border-b border-on-surface/10">
               <Th>{gt("Watching")}</Th>
               <Th>{gt("Deploys")}</Th>
               <Th>{gt("Last commit seen")}</Th>
@@ -608,7 +608,7 @@ function TriggersSection({
           </thead>
           <tbody>
             {triggers.map((t) => (
-              <tr key={t.id} className="border-b border-white/5">
+              <tr key={t.id} className="border-b border-on-surface/5">
                 <Td>
                   {t.repo} @ {t.branch}
                 </Td>
@@ -631,7 +631,7 @@ function TriggersSection({
                       repo: t.repo,
                       branch: t.branch,
                     })}
-                    className="accent-blue-500"
+                    className="accent-accent"
                   />
                 </Td>
                 <Td>
@@ -754,7 +754,7 @@ function RunHistory({
     <table className="w-full text-xs">
       <caption className="sr-only">{gt("Deploy history")}</caption>
       <thead className="text-[11px] uppercase tracking-wide text-on-surface-faint">
-        <tr className="border-b border-white/10">
+        <tr className="border-b border-on-surface/10">
           <Th>{gt("When")}</Th>
           <Th>{gt("Env")}</Th>
           <Th>{gt("Repo")}</Th>
@@ -767,7 +767,7 @@ function RunHistory({
       </thead>
       <tbody>
         {runs.flatMap((r) => [
-          <tr key={r.id} className="border-b border-white/5">
+          <tr key={r.id} className="border-b border-on-surface/5">
             <Td>{new Date(r.startedAt).toLocaleString()}</Td>
             <Td>{r.env || "—"}</Td>
             <Td>{r.repo ?? "—"}</Td>
@@ -814,7 +814,7 @@ function RunHistory({
             </Td>
           </tr>,
           openRunId === r.id ? (
-            <tr key={`${r.id}-cost`} className="border-b border-white/5">
+            <tr key={`${r.id}-cost`} className="border-b border-on-surface/5">
               <td colSpan={8} className="px-3 py-3 bg-surface-raised/40">
                 <DeploymentCostImpactPanel
                   state={impactState}

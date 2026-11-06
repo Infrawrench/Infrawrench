@@ -12,7 +12,7 @@ export const ApiKeyResourceType = rt({
   fields: [
     f("keyId", "Key ID", { editable: false }),
     f("name", "Name"),
-    f("state", "State", { kind: "enum", enumValues: ["enabled", "disabled"] }),
+    f("state", "State", { showcase: true, kind: "enum", enumValues: ["enabled", "disabled"] }),
     f("keySuffix", "Key Suffix", { required: false, editable: false }),
     f("roles", "Roles", { required: false, editable: false }),
     f("isAdmin", "Admin", {
@@ -21,9 +21,9 @@ export const ApiKeyResourceType = rt({
       editable: false,
       description: "True when an assigned role is an admin role.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("expireAt", "Expires", { required: false, editable: false }),
-    f("lastUsedAt", "Last Used", { required: false, editable: false }),
+    f("lastUsedAt", "Last Used", { showcase: true, required: false, editable: false }),
     f("ipAccessList", "IP Access List", { required: false, editable: false }),
   ],
   outputs: [o("keyId", "Key ID")],

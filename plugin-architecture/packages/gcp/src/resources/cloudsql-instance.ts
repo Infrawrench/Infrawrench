@@ -4,13 +4,14 @@ import { CLOUDSQL_EXTENDED_SUPPORT } from "../extended-support.js";
 export const CloudSqlInstanceResourceType = rt({
   name: "Cloud SQL Instance",
   id: "cloudsql-instance",
+  iconKey: "database",
   description: "A Google Cloud SQL managed database instance",
   fields: [
     f("name", "Name"),
     f("databaseVersion", "Database Version", { required: false }),
-    f("region", "Region"),
-    f("tier", "Machine Tier", { required: false }),
-    f("state", "State", { required: false }),
+    f("region", "Region", { showcase: true }),
+    f("tier", "Machine Tier", { showcase: true, required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("publicIpAddress", "Public IP", {
       required: false,
       editable: false,

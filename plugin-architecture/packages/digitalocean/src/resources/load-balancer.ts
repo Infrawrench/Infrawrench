@@ -17,7 +17,7 @@ export const LoadBalancerResourceType = rt({
   description: "A DigitalOcean load balancer: regional HTTP, regional network (TCP/UDP) or global.",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("lbType", "Type", {
       kind: "enum",
       required: false,
@@ -55,7 +55,7 @@ export const LoadBalancerResourceType = rt({
       required: false,
       enumValues: ["DEFAULT", "STRONG"],
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("dropletIds", "Target Droplet IDs", {
       required: false,
       editable: false,
@@ -73,7 +73,7 @@ export const LoadBalancerResourceType = rt({
       description: "entry → target, e.g. https:443 → http:80",
     }),
     f("vpcUuid", "VPC", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("ip", "Public IPv4"),

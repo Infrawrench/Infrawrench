@@ -211,7 +211,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                   type="button"
                   autoFocus
                   onClick={handleSignIn}
-                  className="w-full px-4 py-2.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                  className="w-full px-4 py-2.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors"
                 >
                   {gt("Sign in to Infrawrench Cloud")}
                 </button>
@@ -294,7 +294,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                     onClick={() =>
                       void invoke("open_external_url", { url: `${CLOUD_URL}/onboarding` })
                     }
-                    className="w-full px-4 py-2.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                    className="w-full px-4 py-2.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors"
                   >
                     {gt("Create an organization")}
                   </button>

@@ -6,8 +6,13 @@ export const PlacementGroupResourceType = rt({
   description: "A Hetzner Cloud placement group for spreading servers across hosts",
   fields: [
     f("name", "Name"),
-    f("type", "Type", { editable: false }),
-    f("serverCount", "Servers", { kind: "number", required: false, editable: false }),
+    f("type", "Type", { showcase: true, editable: false }),
+    f("serverCount", "Servers", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
   ],
   outputs: [o("placementGroupId", "Placement Group ID")],
   supportsCreate: true,

@@ -12,6 +12,7 @@ export const UserResourceType = rt({
     f("userId", "User ID", { editable: false }),
     f("email", "Email", { required: false, editable: false }),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       enumValues: USER_ROLES,
       required: false,
@@ -23,8 +24,8 @@ export const UserResourceType = rt({
       description: "Only used when the role is custom.",
     }),
     f("serviceAccount", "Service Account", { kind: "boolean", required: false, editable: false }),
-    f("state", "State", { required: false, editable: false }),
-    f("createTime", "Created", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
+    f("createTime", "Created", { showcase: true, required: false, editable: false }),
     f("updateTime", "Updated", { required: false, editable: false }),
   ],
   outputs: [o("userName", "User Resource Name"), o("email", "Email")],

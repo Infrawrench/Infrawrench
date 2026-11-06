@@ -17,10 +17,10 @@ export const FileResourceType = rt({
   fields: [
     f("fileId", "File ID"),
     f("filename", "Filename"),
-    f("bytes", "Size (bytes)", { kind: "number", required: false }),
+    f("bytes", "Size (bytes)", { showcase: true, kind: "number", required: false }),
     f("purpose", "Purpose", { required: false }),
-    f("createdAt", "Created", { required: false }),
-    f("expiresAt", "Expires", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false }),
     f("publicUrl", "Public URL", { required: false }),
     f("publicUrlExpiresAt", "Public URL Expires", { required: false }),
   ],

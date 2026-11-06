@@ -14,7 +14,7 @@ import {
 import type { CostsClient } from "./types.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 /**
@@ -320,7 +320,7 @@ function SavedFilterEditModal({
               type="button"
               onClick={() => void save()}
               disabled={saving || filterError !== null}
-              className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
+              className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent transition-colors"
             >
               {saving ? gt("Saving…") : gt("Save")}
             </button>

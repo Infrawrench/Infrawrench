@@ -20,7 +20,7 @@ import { labelClass, selectClass } from "../cost/form-styles.js";
 import { useColumnLabel } from "./labels.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 
 interface AvailableGroup {
   key: string;
@@ -300,7 +300,7 @@ export function ResourceReportColumnsModal({
             type="button"
             disabled={problem !== null}
             onClick={() => onApply(draft)}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
           >
             {gt("Apply")}
           </button>

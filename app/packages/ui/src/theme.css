@@ -8,11 +8,11 @@
 
 @theme {
   /* ── Surfaces ── */
-  --color-surface: #ffffff;
-  --color-surface-raised: #f9fafb;
-  --color-surface-overlay: #f3f4f6;
-  --color-surface-sunken: #e5e7eb;
-  --color-surface-inset: #f9fafb;
+  --color-surface: #e9e9eb;
+  --color-surface-raised: #f7f7f8;
+  --color-surface-overlay: #e1e1e4;
+  --color-surface-sunken: #d8d8dc;
+  --color-surface-inset: #f1f1f3;
 
   /* ── Text (on-surface) ──
      Every value here clears WCAG AA (4.5:1) against all four surfaces
@@ -20,26 +20,29 @@
      #6b7280 used to serve tertiary/muted/faint and only cleared AA on
      surface (4.83) and raised (4.63); it was 4.39 on overlay and 3.90 on
      sunken. `theme-contrast.test.ts` enforces the four-surface rule. */
-  --color-on-surface: #111827;
-  --color-on-surface-secondary: #374151;
-  --color-on-surface-tertiary: #5b6371;
-  --color-on-surface-muted: #5b6371;
-  --color-on-surface-faint: #5b6371;
+  --color-on-surface: #18181b;
+  --color-on-surface-secondary: #36363b;
+  --color-on-surface-tertiary: #52525a;
+  --color-on-surface-muted: #52525a;
+  --color-on-surface-faint: #55555d;
 
   /* ── Borders ── */
-  --color-border: #e5e7eb;
-  --color-border-strong: #d1d5db;
+  --color-border: #d4d4d8;
+  --color-border-strong: #bcbcc2;
 
-  /* ── Accent (blue) ── */
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-accent-strong: #1e40af;
-  --color-accent-subtle: #3b82f6;
-  --color-accent-muted: #eff6ff;
-  --color-accent-muted-border: #bfdbfe;
-  --color-accent-on-muted: #1e40af;
+  /* ── Accent (grey) ──
+     The interface has no brand hue. Emphasis comes from value instead: the
+     accent is the darkest step of the ramp in light mode and the lightest in
+     dark mode, so a primary button is the highest-contrast thing on a page. */
+  --color-accent: #27272a;
+  --color-accent-hover: #3f3f46;
+  --color-accent-strong: #18181b;
+  --color-accent-subtle: #62626b;
+  --color-accent-muted: #dcdce0;
+  --color-accent-muted-border: #b4b4bb;
+  --color-accent-on-muted: #18181b;
   /* Text sitting on a solid accent fill (primary buttons). Light mode's
-     accent is dark enough for white; dark mode's accent is a light blue, so
+     accent is dark enough for white; dark mode's accent is a light grey, so
      the label flips dark: `theme-contrast.test.ts` holds both above AA. */
   --color-on-accent: #ffffff;
 
@@ -53,123 +56,212 @@
      The `-strong` variants are the higher-emphasis step (hover, or a label
      sitting on a tinted chip): darker than the base in light mode, lighter
      in dark mode, so "stronger" always means "more contrast". */
-  --color-danger: #b91c1c;
-  --color-danger-strong: #991b1b;
-  --color-warning: #8f5700;
-  --color-warning-strong: #6b4100;
-  --color-success: #0d6b3f;
-  --color-success-strong: #0a5531;
-  --color-info: #1d4ed8;
-  --color-info-strong: #1e40af;
+  --color-danger: #a91818;
+  --color-danger-strong: #8a1616;
+  --color-warning: #7a4a00;
+  --color-warning-strong: #5f3900;
+  --color-success: #0a5c36;
+  --color-success-strong: #08492b;
+  /* Neutral on purpose: "info" carries no urgency, so it reads as plain emphasis
+     beside the three hues above that do. */
+  --color-info: #3f3f46;
+  --color-info-strong: #27272a;
   /* One step above warning on a severity ladder, below danger. */
-  --color-severe: #ad3c09;
+  --color-severe: #973408;
   /* Non-status highlight (complimentary plan, private interconnect). */
   --color-notice: #7e22ce;
 
   /* ── Categorical series ──
      For palettes assigned by position rather than by meaning: log stream
      labels, environment-diff sides. Distinct hues, not a severity ramp. */
-  --color-series-1: #0369a1;
-  --color-series-2: #046a4d;
-  --color-series-3: #8f5700;
-  --color-series-4: #a21caf;
-  --color-series-5: #be123c;
-  --color-series-6: #0c6a83;
-  --color-series-7: #436b0c;
+  --color-series-1: #035a8a;
+  --color-series-2: #045c43;
+  --color-series-3: #7a4a00;
+  --color-series-4: #8f1a9b;
+  --color-series-5: #a81036;
+  --color-series-6: #0a5b70;
+  --color-series-7: #395b0a;
   --color-series-8: #6d28d9;
+
+  /* ── Elevation ──
+     Deliberately small. Cards sit just off the page; nothing floats. */
+  --shadow-tile: 0 1px 2px rgb(24 24 27 / 0.1), 0 1px 1px rgb(24 24 27 / 0.05);
+  --shadow-tile-hover: 0 3px 8px rgb(24 24 27 / 0.14), 0 1px 2px rgb(24 24 27 / 0.08);
+  --shadow-card: 0 1px 3px rgb(24 24 27 / 0.1), 0 2px 6px rgb(24 24 27 / 0.06);
 }
 
 :root {
   color-scheme: light dark;
 
   /* ── Charts (not used by Tailwind utilities, just CSS vars) ── */
-  --color-chart-grid: #e5e7eb;
-  --color-chart-axis: #6b7280;
-  --color-chart-tick: #6b7280;
-  --color-chart-tooltip-bg: #ffffff;
-  --color-chart-tooltip-border: #e5e7eb;
+  --color-chart-grid: #d4d4d8;
+  --color-chart-axis: #71717a;
+  --color-chart-tick: #62626b;
+  --color-chart-tooltip-bg: #f7f7f8;
+  --color-chart-tooltip-border: #d4d4d8;
+  /* The line of a chart with a single series. Categorical charts keep their
+     hues (`SERIES_COLORS`): there, colour is the data rather than decoration.
+     Near the end of the ramp so it can't be taken for the mid-grey "Other" bucket
+     (`OTHER_SERIES_COLOR`) when it leads a stacked chart. */
+  --color-chart-primary: #27272a;
 
   /* ── Terminal ── */
   --color-terminal-bg: #ffffff;
   --color-terminal-fg: #1e1e1e;
   --color-terminal-cursor: #1e1e1e;
   --color-terminal-cursor-accent: #ffffff;
-  --color-terminal-selection: #add6ff;
+  --color-terminal-selection: #cfcfd4;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     /* ── Surfaces ── */
-    --color-surface: #030712;
-    --color-surface-raised: #111827;
-    --color-surface-overlay: #1f2937;
-    --color-surface-sunken: #374151;
-    --color-surface-inset: #030712;
+    --color-surface: #2b2b2f;
+    --color-surface-raised: #36363b;
+    --color-surface-overlay: #404046;
+    --color-surface-sunken: #48484f;
+    --color-surface-inset: #242427;
 
     /* ── Text (on-surface) ── */
-    --color-on-surface: #f3f4f6;
-    --color-on-surface-secondary: #e5e7eb;
+    --color-on-surface: #f4f4f5;
+    --color-on-surface-secondary: #e4e4e7;
     /* Tertiary > muted > faint in prominence, all clearing WCAG AA (4.5:1)
-       on all four surfaces. The previous values only held on surface,
-       raised and overlay: on sunken (#374151) tertiary was 4.06, muted
-       3.76 and faint 3.33. */
-    --color-on-surface-tertiary: #b0b7c3;
-    --color-on-surface-muted: #aab2bf;
-    --color-on-surface-faint: #a6aebb;
+       on all four surfaces, sunken being the one that decides these. */
+    --color-on-surface-tertiary: #c6c6cc;
+    --color-on-surface-muted: #c0c0c7;
+    --color-on-surface-faint: #bcbcc3;
 
     /* ── Borders ── */
-    --color-border: #1f2937;
-    --color-border-strong: #374151;
+    --color-border: #404046;
+    --color-border-strong: #55555c;
 
-    /* ── Accent (blue) ── */
-    --color-accent: #60a5fa;
-    --color-accent-hover: #93c5fd;
-    --color-accent-strong: #93c5fd;
-    --color-accent-subtle: #60a5fa;
-    --color-accent-muted: #172554;
-    --color-accent-muted-border: #1e3a5f;
-    --color-accent-on-muted: #93c5fd;
-    --color-on-accent: #172554;
+    /* ── Accent (grey) ── */
+    --color-accent: #e4e4e7;
+    --color-accent-hover: #f4f4f5;
+    --color-accent-strong: #fafafa;
+    --color-accent-subtle: #a1a1aa;
+    --color-accent-muted: #4a4a51;
+    --color-accent-muted-border: #62626a;
+    --color-accent-on-muted: #f4f4f5;
+    --color-on-accent: #18181b;
 
     /* ── Status ──
        The palette shades these replace (red-400, amber-400, green-400, …),
-       except where that shade did not clear AA on surface-sunken (#374151)
-       and had to be lightened a step: danger was red-400 (3.73) and info
-       was blue-400 (4.05). */
-    --color-danger: #fb9494;
+       lightened where a shade did not clear AA on surface-sunken. */
+    --color-danger: #ffb3b3;
     --color-danger-strong: #fecaca;
-    --color-warning: #fbbf24;
-    --color-warning-strong: #fcd34d;
-    --color-success: #4ade80;
-    --color-success-strong: #86efac;
-    --color-info: #85b6fc;
-    --color-info-strong: #bfdbfe;
-    --color-severe: #fb923c;
-    --color-notice: #d8b4fe;
+    --color-warning: #fcd34d;
+    --color-warning-strong: #fde68a;
+    --color-success: #6ee7a0;
+    --color-success-strong: #a7f3c4;
+    --color-info: #d4d4d8;
+    --color-info-strong: #f4f4f5;
+    --color-severe: #fdb07a;
+    --color-notice: #dcc0fe;
 
     /* ── Categorical series ── */
-    --color-series-1: #38bdf8;
-    --color-series-2: #34d399;
-    --color-series-3: #fbbf24;
-    --color-series-4: #f0abfc;
-    --color-series-5: #fda4af;
-    --color-series-6: #22d3ee;
-    --color-series-7: #a3e635;
-    --color-series-8: #c4b5fd;
+    --color-series-1: #7dd3fc;
+    --color-series-2: #5eead4;
+    --color-series-3: #fcd34d;
+    --color-series-4: #f5c2fd;
+    --color-series-5: #fdbcc6;
+    --color-series-6: #67e8f9;
+    --color-series-7: #bef264;
+    --color-series-8: #d4c8fe;
+
+    /* ── Elevation ──
+       Dark surfaces need more shadow than light ones to separate at all. */
+    --shadow-tile: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 1px rgb(0 0 0 / 0.2);
+    --shadow-tile-hover: 0 3px 8px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.25);
+    --shadow-card: 0 1px 3px rgb(0 0 0 / 0.3), 0 2px 6px rgb(0 0 0 / 0.2);
 
     /* ── Charts ── */
-    --color-chart-grid: #374151;
-    --color-chart-axis: #4b5563;
-    --color-chart-tick: #9ca3af;
-    --color-chart-tooltip-bg: #1f2937;
-    --color-chart-tooltip-border: #374151;
+    --color-chart-grid: #48484f;
+    --color-chart-axis: #62626a;
+    --color-chart-tick: #b4b4bb;
+    --color-chart-tooltip-bg: #404046;
+    --color-chart-tooltip-border: #55555c;
+    --color-chart-primary: #e4e4e7;
 
     /* ── Terminal ── */
     --color-terminal-bg: #0d0d0d;
     --color-terminal-fg: #d4d4d4;
     --color-terminal-cursor: #d4d4d4;
     --color-terminal-cursor-accent: #0d0d0d;
-    --color-terminal-selection: #264f78;
+    --color-terminal-selection: #4a4a51;
+  }
+}
+
+/*
+ * The dark sidebar. A custom property scope rather than a parallel set of
+ * `sidebar-*` tokens: every utility already reads `var(--color-*)`, so anything
+ * rendered inside this class, shared components included, picks up the dark
+ * values without knowing it is in a sidebar. It holds in both colour schemes.
+ * `theme-contrast.test.ts` runs this block through the same AA checks as the
+ * two schemes above.
+ */
+.surface-sidebar {
+  color-scheme: dark;
+
+  --color-surface: #1b1b1e;
+  --color-surface-raised: #26262a;
+  --color-surface-overlay: #313136;
+  --color-surface-sunken: #3a3a40;
+  --color-surface-inset: #161618;
+
+  --color-on-surface: #f4f4f5;
+  --color-on-surface-secondary: #e4e4e7;
+  --color-on-surface-tertiary: #c0c0c7;
+  --color-on-surface-muted: #b4b4bc;
+  --color-on-surface-faint: #aeaeb6;
+
+  --color-border: #2d2d32;
+  --color-border-strong: #404046;
+
+  --color-accent: #e4e4e7;
+  --color-accent-hover: #f4f4f5;
+  --color-accent-strong: #fafafa;
+  --color-accent-subtle: #a1a1aa;
+  --color-accent-muted: #3a3a40;
+  --color-accent-muted-border: #55555c;
+  --color-accent-on-muted: #f4f4f5;
+  --color-on-accent: #18181b;
+
+  --color-danger: #fda4a4;
+  --color-danger-strong: #fecaca;
+  --color-warning: #fcd34d;
+  --color-warning-strong: #fde68a;
+  --color-success: #6ee7a0;
+  --color-success-strong: #a7f3c4;
+  --color-info: #d4d4d8;
+  --color-info-strong: #f4f4f5;
+  --color-severe: #fdb07a;
+  --color-notice: #dcc0fe;
+
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
+}
+
+/*
+ * The small lift on every card in the app. These are written by hand in a few
+ * hundred places with the same three classes, so the rule keys off those rather
+ * than asking each one to remember a shadow. `:where()` keeps specificity at
+ * zero, which lets a `shadow-*` utility on any one of them still win.
+ */
+@layer base {
+  /* With no hue to set a link apart from the text around it, a plain `<a>` in the
+     accent colour gets the underline that does. */
+  :where(a.text-accent) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  :where(
+    .bg-surface-raised.border.rounded-lg,
+    .bg-surface-raised.border.rounded-xl,
+    .bg-surface-raised.border.rounded-2xl
+  ) {
+    box-shadow: var(--shadow-card);
   }
 }
 

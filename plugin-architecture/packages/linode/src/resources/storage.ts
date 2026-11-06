@@ -9,11 +9,17 @@ export const VolumeResourceType = rt({
   fields: [
     f("label", "Label"),
     f("sizeGb", "Size (GB)", {
+      showcase: true,
       kind: "number",
       description: "Volumes can grow (10 to 16,384 GB) but never shrink",
     }),
-    f("region", "Region", { kind: "enum", enumValues: REGION_IDS, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: REGION_IDS,
+      editable: false,
+    }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("linodeId", "Attached Linode", {
       required: false,
       editable: false,
@@ -61,12 +67,22 @@ export const BucketResourceType = rt({
   description: "A Linode Object Storage bucket",
   fields: [
     f("name", "Name", { editable: false }),
-    f("region", "Region", { kind: "enum", enumValues: REGION_IDS, editable: false }),
-    f("hostname", "Hostname", { required: false, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: REGION_IDS,
+      editable: false,
+    }),
+    f("hostname", "Hostname", { showcase: true, required: false, editable: false }),
     f("s3Endpoint", "S3 Endpoint", { required: false, editable: false }),
     f("endpointType", "Endpoint Type", { required: false, editable: false }),
     f("objects", "Objects", { kind: "number", required: false, editable: false }),
-    f("sizeBytes", "Size (bytes)", { kind: "number", required: false, editable: false }),
+    f("sizeBytes", "Size (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("acl", "Access", {
       kind: "enum",
       required: false,

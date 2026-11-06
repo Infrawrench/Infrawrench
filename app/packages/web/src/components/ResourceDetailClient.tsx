@@ -5,7 +5,7 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   DetailView,
   StarButton,
-  DraggableChildPill,
+  DraggableChildTile,
   BlastRadiusPanel,
   BlastRadiusSummary,
   ConfirmDeleteModal,
@@ -59,6 +59,7 @@ import type {
   SynthesizeSpeechResult,
   TerraformExportOutcome,
   TranscribeAudioResult,
+  ShowcaseField,
 } from "@infrawrench/plugin-base";
 import type {
   PeerIntegrationStub,
@@ -125,6 +126,8 @@ interface ChildTypeData {
   id: string;
   displayName: string;
   pluralDisplayName: string;
+  iconKey?: string;
+  showcase?: ShowcaseField[];
   supportsCreate: boolean;
   fields?: FieldDefinition[];
 }
@@ -1480,8 +1483,13 @@ export function ResourceDetailClient({
               onChildCreate={handleChildCreate}
               onChildDelete={handleChildDelete}
               onChildEdit={handleChildEdit}
-              renderChildResource={(child) => (
-                <DraggableChildPill child={child} onOpen={() => handleChildClick(child)} />
+              renderChildResource={(child, group) => (
+                <DraggableChildTile
+                  child={child}
+                  iconKey={group.iconKey}
+                  showcase={group.showcase}
+                  onOpen={() => handleChildClick(child)}
+                />
               )}
               {...(hasManifestEditor ||
               detailSchema.bucketPolicyEditor ||

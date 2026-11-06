@@ -21,9 +21,9 @@ export const WorkspaceResourceType = rt({
     f("slug", "Slug", { editable: false }),
     f("private", "Private", { kind: "boolean", required: false, editable: false }),
     f("forkingMode", "Forking", { required: false, editable: false }),
-    f("members", "Members", { kind: "number", required: false, editable: false }),
+    f("members", "Members", { showcase: true, kind: "number", required: false, editable: false }),
     f("administrator", "You Are an Admin", { kind: "boolean", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("slug", "Workspace slug"), o("uuid", "Workspace UUID"), o("webUrl", "Web URL")],
   accountRoot: true,
@@ -45,8 +45,8 @@ export const ProjectResourceType = rt({
       required: false,
       editable: false,
     }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("key", "Project key"), o("webUrl", "Web URL")],
   supportsCreate: true,
@@ -66,6 +66,7 @@ export const RepositoryResourceType = rt({
     f("description", "Description", { required: false }),
     f("private", "Private", { kind: "boolean", required: false }),
     f("project", "Project", {
+      showcase: true,
       required: false,
       description: "Project key to move the repository to.",
     }),
@@ -75,8 +76,13 @@ export const RepositoryResourceType = rt({
       enumValues: ["allow_forks", "no_public_forks", "no_forks"],
     }),
     f("mainBranch", "Main Branch", { required: false, editable: false }),
-    f("language", "Language", { required: false, editable: false }),
-    f("sizeBytes", "Size (bytes)", { kind: "number", required: false, editable: false }),
+    f("language", "Language", { showcase: true, required: false, editable: false }),
+    f("sizeBytes", "Size (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("pipelinesEnabled", "Pipelines Enabled", {
       kind: "boolean",
       required: false,
@@ -121,8 +127,8 @@ export const PipelineResourceType = rt({
     "A recent Bitbucket Pipelines run: ref, commit, trigger, state and result, build minutes and duration, with each step and its log. Stop a running pipeline, or create one to run the default, branch or custom pipeline on a branch with variables.",
   fields: [
     f("buildNumber", "Build Number", { kind: "number", required: false, editable: false }),
-    repoRef,
-    f("state", "State", { required: false, editable: false }),
+    { ...repoRef, showcase: true },
+    f("state", "State", { showcase: true, required: false, editable: false }),
     f("result", "Result", { required: false, editable: false }),
     f("refType", "Ref Type", { required: false, editable: false }),
     f("refName", "Ref", { required: false, editable: false }),
@@ -132,7 +138,7 @@ export const PipelineResourceType = rt({
     f("creator", "Started By", { required: false, editable: false }),
     f("buildSeconds", "Build Seconds Used", { kind: "number", required: false, editable: false }),
     f("durationSecs", "Duration (seconds)", { kind: "number", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("completedAt", "Completed", { required: false, editable: false }),
   ],
   outputs: [o("pipelineUuid", "Pipeline UUID"), o("webUrl", "Web URL")],
@@ -174,7 +180,7 @@ export const RepositoryVariableResourceType = rt({
   parentTypeId: "repository",
   description:
     "A repository variable passed to every pipeline in the repository, and whether it is secured. Values are never stored here. Create one, replace its value or secure it under Edit, or delete it.",
-  fields: [...variableFields, repoRef],
+  fields: [...variableFields, { ...repoRef, showcase: true }],
   outputs: [o("key", "Name")],
   supportsCreate: true,
   supportsUpdate: true,
@@ -221,7 +227,7 @@ export const EnvironmentResourceType = rt({
     f("lastDeployedAt", "Last Deployed", { required: false, editable: false }),
     f("lastDeployedBy", "Last Deployed By", { required: false, editable: false }),
     f("lastRelease", "Last Release", { required: false, editable: false }),
-    repoRef,
+    { ...repoRef, showcase: true },
   ],
   outputs: [o("environmentUuid", "Environment UUID")],
   supportsCreate: true,
@@ -239,8 +245,8 @@ export const DeploymentVariableResourceType = rt({
     "A variable passed only to deployment steps targeting one environment, and whether it is secured. Create one, replace its value or secure it, or delete it.",
   fields: [
     ...variableFields,
-    f("environment", "Environment", { required: false, editable: false }),
-    repoRef,
+    f("environment", "Environment", { showcase: true, required: false, editable: false }),
+    { ...repoRef, showcase: true },
   ],
   outputs: [o("key", "Name")],
   supportsCreate: true,
@@ -258,7 +264,7 @@ export const BranchRestrictionResourceType = rt({
   description:
     "A branch permission or merge check on matching branches: who may push or merge, whether force push or deletion is blocked, and how many approvals or passing builds a merge needs. Create, edit or delete it.",
   fields: [
-    f("kind", "Rule", { editable: false }),
+    f("kind", "Rule", { showcase: true, editable: false }),
     f("match", "Applies To", { required: false, editable: false }),
     f("pattern", "Branch Pattern", { required: false }),
     f("value", "Required Count", {
@@ -268,7 +274,7 @@ export const BranchRestrictionResourceType = rt({
     }),
     f("users", "Exempt Users", { required: false, editable: false }),
     f("groups", "Exempt Groups", { required: false, editable: false }),
-    repoRef,
+    { ...repoRef, showcase: true },
   ],
   outputs: [o("restrictionId", "Rule ID")],
   supportsCreate: true,
@@ -293,7 +299,7 @@ const webhookFields = [
       "Signs deliveries (X-Hub-Signature). Write-only; leave empty to keep the current one.",
   }),
   f("secretSet", "Secret Set", { kind: "boolean", required: false, editable: false }),
-  f("createdAt", "Created", { required: false, editable: false }),
+  f("createdAt", "Created", { showcase: true, required: false, editable: false }),
 ];
 
 const webhookPosture = (id: string) => [
@@ -314,7 +320,7 @@ export const RepositoryWebhookResourceType = rt({
   parentTypeId: "repository",
   description:
     "A repository webhook: URL, events, whether it is active and whether deliveries are signed. Create, edit, activate or deactivate, or delete it.",
-  fields: [...webhookFields, repoRef],
+  fields: [...webhookFields, { ...repoRef, showcase: true }],
   outputs: [o("url", "URL")],
   supportsCreate: true,
   supportsUpdate: true,
@@ -344,8 +350,8 @@ const keyFields = [
   f("label", "Label"),
   f("comment", "Key Comment", { required: false, editable: false }),
   f("keyType", "Key Type", { required: false, editable: false }),
-  f("lastUsedAt", "Last Used", { required: false, editable: false }),
-  f("createdAt", "Added", { required: false, editable: false }),
+  f("lastUsedAt", "Last Used", { showcase: true, required: false, editable: false }),
+  f("createdAt", "Added", { showcase: true, required: false, editable: false }),
 ];
 
 const keyPrincipal = { role: "key" as const, lastUsedKey: "lastUsedAt" };
@@ -356,7 +362,7 @@ export const DeployKeyResourceType = rt({
   parentTypeId: "repository",
   description:
     "A read-only SSH access key for one repository, with when it was last used. Add one, relabel it or remove it.",
-  fields: [...keyFields, repoRef],
+  fields: [...keyFields, { ...repoRef, showcase: true }],
   outputs: [o("label", "Label")],
   supportsCreate: true,
   supportsUpdate: true,
@@ -387,7 +393,7 @@ export const ProjectDeployKeyResourceType = rt({
     "A read-only SSH access key for every repository in a project, with when it was last used. Add one or remove it.",
   fields: [
     ...keyFields.map((x) => ({ ...x, editable: false })),
-    f("project", "Project", { required: false, editable: false }),
+    f("project", "Project", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("label", "Label")],
   supportsCreate: true,
@@ -418,13 +424,13 @@ export const RunnerResourceType = rt({
       description:
         "Comma-separated. self.hosted and one platform label (linux, linux.arm64, linux.shell, windows, macos) are required.",
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("scope", "Registered To", { required: false, editable: false }),
-    f("version", "Version", { required: false, editable: false }),
+    f("version", "Version", { showcase: true, required: false, editable: false }),
     f("latestVersion", "Latest Version", { required: false, editable: false }),
     f("cordoned", "Cordoned", { kind: "boolean", required: false, editable: false }),
     f("stateUpdatedAt", "Last Seen", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("runnerUuid", "Runner UUID"),
@@ -459,9 +465,9 @@ export const ScheduleResourceType = rt({
     f("refName", "Branch", { required: false, editable: false }),
     f("selector", "Pipeline", { required: false, editable: false }),
     f("enabled", "Enabled", { kind: "boolean", required: false }),
-    repoRef,
-    f("updatedAt", "Updated", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    { ...repoRef, showcase: true },
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("scheduleUuid", "Schedule UUID")],
   supportsCreate: true,
@@ -479,9 +485,14 @@ export const CacheResourceType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("path", "Path", { required: false, editable: false }),
-    f("sizeBytes", "Size (bytes)", { kind: "number", required: false, editable: false }),
-    repoRef,
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("sizeBytes", "Size (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    { ...repoRef, showcase: true },
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("name", "Cache name")],
   supportsDelete: true,

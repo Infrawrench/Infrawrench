@@ -225,7 +225,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     titleBarStyle: "hiddenInset",
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#030712" : "#ffffff",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#2b2b2f" : "#e9e9eb",
     webPreferences: {
       // Resolve from the app root, not __dirname: main.ts is code-split into
       // out/main/chunks/ (the CLI bootstrap dynamically imports it), so

@@ -135,7 +135,7 @@ export function InsertDocumentPanel({
         onChange={(e) => onTextChange(e.target.value)}
         rows={6}
         aria-label={gt("Document JSON to insert")}
-        className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 resize-y"
+        className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle resize-y"
         spellCheck={false}
         placeholder='{ "key": "value" }'
       />
@@ -144,7 +144,7 @@ export function InsertDocumentPanel({
         <button
           type="button"
           onClick={onSubmit}
-          className="px-3 py-1.5 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors"
+          className="px-3 py-1.5 rounded bg-accent text-xs text-on-accent hover:bg-accent-hover transition-colors"
         >
           {gt("Insert Document")}
         </button>
@@ -296,7 +296,7 @@ export function DocumentRow({
                 onChange={(e) => setEditText(e.target.value)}
                 rows={10}
                 aria-label={gt("Document JSON")}
-                className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-blue-500 resize-y"
+                className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-accent-subtle resize-y"
                 spellCheck={false}
               />
               {editError && <div className="text-xs text-danger">{editError}</div>}
@@ -312,7 +312,7 @@ export function DocumentRow({
                   type="button"
                   onClick={() => void handleSave()}
                   disabled={saving}
-                  className="px-3 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
+                  className="px-3 py-1 rounded bg-accent text-xs text-on-accent hover:bg-accent-hover disabled:opacity-50 transition-colors"
                 >
                   {saving ? gt("Saving…") : gt("Save")}
                 </button>

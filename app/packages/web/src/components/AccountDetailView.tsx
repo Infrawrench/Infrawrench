@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import {
-  ResourcePill,
+  ResourceTile,
+  CreateTile,
   ConfirmDeleteModal,
   EditCredentialsModal,
   ProviderOAuthReconnectBanner,
@@ -240,7 +241,7 @@ export function AccountDetailView({
                 type="button"
                 onClick={handleRename}
                 disabled={isSaving}
-                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                className="px-2 py-1 text-xs bg-accent text-on-accent rounded hover:bg-accent-hover disabled:opacity-50"
               >
                 {gt("Save")}
               </button>
@@ -385,7 +386,6 @@ export function AccountDetailView({
         onActiveSectionIdChange={onActiveSectionIdChange}
         renderResource={(resource, activeCategory) => {
           const fields = resource.fieldsJson ?? {};
-          const subtitle = String(fields["host"] ?? fields["region"] ?? fields["engine"] ?? "");
           const draggable: DraggableResource = {
             id: resource.id,
             pluginId: resource.pluginId,
@@ -394,6 +394,7 @@ export function AccountDetailView({
             displayName: resource.displayName,
             fields,
             ...(resource.externalId != null ? { externalId: resource.externalId } : {}),
+            ...(activeCategory.typeDef.iconKey ? { iconKey: activeCategory.typeDef.iconKey } : {}),
             ...(activeCategory.typeDef.attachTargets
               ? { attachTargets: activeCategory.typeDef.attachTargets }
               : {}),
@@ -401,10 +402,10 @@ export function AccountDetailView({
             ...(activeCategory.typeDef.sshTunnelAttachSource ? { isTunnelSshSource: true } : {}),
           };
           return (
-            <ResourcePill
+            <ResourceTile
               key={resource.id}
               resource={draggable}
-              subtitle={subtitle || undefined}
+              showcase={activeCategory.typeDef.showcase}
               onOpen={() =>
                 void navigate({
                   to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
@@ -420,15 +421,11 @@ export function AccountDetailView({
           );
         }}
         renderCreateButton={(typeDef) => (
-          <button
-            type="button"
+          <CreateTile
             key={`create-${typeDef.id}`}
+            label={gt("Create {type}", { type: gtData(typeDef.displayName) })}
             onClick={() => setCreateTarget(typeDef)}
-            className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-border-strong text-on-surface-faint hover:border-blue-600 hover:text-accent transition-colors text-sm"
-          >
-            <span className="text-base leading-none">+</span>
-            <span>{gt("Create {type}", { type: gtData(typeDef.displayName) })}</span>
-          </button>
+          />
         )}
       />
 

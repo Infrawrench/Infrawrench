@@ -13,8 +13,9 @@ export const DirectoryResourceType = rt({
     "A Directory Sync directory (Okta SCIM, Entra/Azure SCIM, Google Workspace, Workday, …). Owns the synced directory users and groups. Set up via the dashboard or Admin Portal; deletable here.",
   fields: [
     f("name", "Name", { editable: false }),
-    f("type", "Provider", { required: false, editable: false }),
+    f("type", "Provider", { showcase: true, required: false, editable: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
@@ -24,8 +25,8 @@ export const DirectoryResourceType = rt({
     f("externalKey", "External Key", { required: false, editable: false }),
     f("activeUsers", "Active users", { kind: "number", required: false, editable: false }),
     f("inactiveUsers", "Inactive users", { kind: "number", required: false, editable: false }),
-    f("groupCount", "Groups", { kind: "number", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("groupCount", "Groups", { showcase: true, kind: "number", required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("directoryId", "Directory ID")],
   parentTypeId: "organization",
