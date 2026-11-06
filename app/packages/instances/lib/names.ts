@@ -6,8 +6,11 @@
  * `ecs.g7.large`, Azure's VM sizes (`Standard_D2s_v3`: series `Dsv3`, 2
  * vCPUs), Google Cloud's machine types (`n2-standard-2`: `n2-standard`, 2
  * vCPUs), and RunPod's CPU pods (`cpu3c-2-4`: flavor, vCPUs, GB of memory).
- * RunPod's GPU types (`NVIDIA H100 80GB HBM3`) have no sizes and do not
- * parse. The warehouse loader's `familyAndSize`
+ * OVHcloud's flavors (`b3-8`) follow Google's shape; Oracle's shapes
+ * (`VM.Standard.E5.Flex-2-16`), IBM's profiles (`bx3d-2x10`), Hetzner's server
+ * types (`cx23`) and OVHcloud's eco servers (`24sys01`) are below.
+ * RunPod's GPU types (`NVIDIA H100 80GB HBM3`) and Hetzner's auction listings
+ * have no sizes and do not parse. The warehouse loader's `familyAndSize`
  * (`web/src/aws-bulk-pricing/warehouse.ts`) follows the same schemes.
  */
 
@@ -78,8 +81,65 @@ function parseGcp(name: string): ParsedName | null {
   };
 }
 
+/** Oracle: a flexible size (`VM.Standard.E5.Flex-2-16`: OCPUs and GB), or a fixed shape ending in its OCPUs (`VM.Standard2.4`). */
+const ORACLE_SHAPE = /^((?:VM|BM)\..+?)(?:-(\d+(?:\.\d+)?-\d+(?:\.\d+)?)|\.(\d+))$/;
+
+function parseOracle(name: string): ParsedName | null {
+  const match = ORACLE_SHAPE.exec(name);
+  if (!match) return null;
+  const family = match[1]!;
+  return {
+    family,
+    size: match[2] ?? match[3]!,
+    familyKey: `|${family}|`,
+    // One kind of shape: `VM.Standard.E5.Flex` and `VM.Standard.E4.Flex`.
+    generationKey: `|${family.split(".").slice(0, 2).join(".")}|`,
+  };
+}
+
+/** IBM Cloud: family, then vCPUs, memory and any GPUs (`bx3d-2x10`, `gx3-16x80x1l4`). */
+const IBM_PROFILE = /^(([a-z]+\d*)[a-z]*)-(\d+x\d+.*)$/;
+/** Hetzner: a line, then two digits (`cx23`, `cpx31`). */
+const HETZNER_SERVER = /^(cx|cpx|cax|ccx)(\d+)$/;
+/** OVHcloud eco: year and range, number, maybe a letter (`24sys01`, `25sk60b`). */
+const OVH_ECO_SERVER = /^((\d{2})[a-z]+?)(\d+)[a-z]?(?:-.+)?$/;
+
+function parseSmallProviders(name: string): ParsedName | null {
+  const ibm = IBM_PROFILE.exec(name);
+  if (ibm) {
+    return {
+      family: ibm[1]!,
+      size: ibm[3]!,
+      familyKey: `|${ibm[1]}|`,
+      generationKey: `|${ibm[2]}|`,
+    };
+  }
+  const hetzner = HETZNER_SERVER.exec(name);
+  if (hetzner) {
+    return {
+      family: hetzner[1]!,
+      size: hetzner[2]!,
+      familyKey: `|${hetzner[1]}|`,
+      generationKey: `|${hetzner[1]}|`,
+    };
+  }
+  const eco = OVH_ECO_SERVER.exec(name);
+  if (eco) {
+    return {
+      family: eco[1]!,
+      size: eco[3]!,
+      familyKey: `|${eco[1]}|`,
+      generationKey: `|${eco[1]}|`,
+    };
+  }
+  return null;
+}
+
 export function parseName(name: string): ParsedName | null {
   if (name.startsWith("Standard_") || name.startsWith("Basic_")) return parseAzure(name);
+  if (name.startsWith("VM.") || name.startsWith("BM.")) return parseOracle(name);
+  const small = parseSmallProviders(name);
+  if (small) return small;
   if (!name.includes(".")) {
     const gcp = parseGcp(name);
     if (gcp) return gcp;
@@ -91,6 +151,16 @@ export function parseName(name: string): ParsedName | null {
       size: pod[3]!,
       familyKey: `|${pod[1]}|`,
       generationKey: `|${pod[2]}|`,
+    };
+  }
+  // OVHcloud flavors Google's shape doesn't cover: the size is after the last hyphen (`eg-120`).
+  const flavor = /^([A-Za-z0-9-]+)-(\d+)$/.exec(name);
+  if (flavor) {
+    return {
+      family: flavor[1]!,
+      size: flavor[2]!,
+      familyKey: `|${flavor[1]}|`,
+      generationKey: `|${flavor[1]}|`,
     };
   }
   const tokens = name.split(".");
@@ -117,7 +187,10 @@ export function sizeRank(size: string): number {
   if (named >= 0) return named;
   const n = /^(\d+)xlarge$/.exec(size);
   if (n) return 5 + Number(n[1]);
-  // RunPod CPU pods and Azure's constrained sizes, by vCPUs.
+  // IBM's profiles, by vCPUs.
+  const profile = /^(\d+)x\d+/.exec(size);
+  if (profile) return Number(profile[1]);
+  // RunPod CPU pods, Oracle's flexible sizes and Azure's constrained sizes, by vCPUs or OCPUs.
   const pod = /^(\d+)-\d+$/.exec(size);
   if (pod) return Number(pod[1]);
   // Azure's and Google Cloud's sizes are vCPUs (or GPUs, `8g`).

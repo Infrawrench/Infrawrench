@@ -105,7 +105,8 @@ const PURCHASE_OPTIONS: Readonly<Record<string, string>> = {
  * Azure's savings plans, Alibaba's subscriptions and Google Cloud's committed
  * use discounts each have one payment option, so it would add nothing;
  * Alibaba's and Azure's reserved instances say which they are, since the same
- * instance also has subscriptions or savings plans.
+ * instance also has subscriptions or savings plans. Hetzner's monthly cap and
+ * OVHcloud's and IBM's plans likewise have one payment option each.
  */
 export function termLabel(term: ReservedTerm, tr: Translate): string {
   const option = tr(PURCHASE_OPTIONS[term.purchaseOption] ?? term.purchaseOption);
@@ -118,6 +119,14 @@ export function termLabel(term: ReservedTerm, tr: Translate): string {
       return tr(msg("Subscription"));
     case "Committed Use":
       return tr(msg("Committed use discount"));
+    case "Monthly Cap":
+      return tr(msg("Monthly cap"));
+    case "Monthly":
+      return tr(msg("Monthly plan"));
+    case "Prepaid":
+      return tr(msg("Prepaid"));
+    case "Reserved":
+      return tr(msg("Reserved"));
     case "Reserved Instance":
       return tr(msg("Reserved instance, {option}"), { option });
     default:
@@ -151,6 +160,12 @@ export function commitmentLabel(term: ReservedTerm, tr: Translate): string {
       if (term.lease === "1yr") return tr(msg("1-year commitment"));
       if (term.lease === "3yr") return tr(msg("3-year commitment"));
       return tr(msg("Commitment, {lease}"), { lease });
+    case "Monthly Cap":
+      return tr(msg("Monthly cap"));
+    case "Monthly":
+      return tr(msg("Monthly plan"));
+    case "Prepaid":
+      return tr(msg("Prepaid, {lease}"), { lease });
     default:
       if (term.lease === "1yr") return tr(msg("1-year reserved"));
       if (term.lease === "3yr") return tr(msg("3-year reserved"));

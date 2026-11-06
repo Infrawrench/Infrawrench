@@ -56,10 +56,10 @@ GROUP BY platform, col`;
 
 // Codes only: AWS lists a few locations by name, with no code.
 export const REGIONS_SQL = `
-SELECT multiIf(source IN ('alibaba', 'azure', 'gcp', 'runpod'), source, 'aws') AS cloud,
+SELECT multiIf(source IN ('alibaba', 'azure', 'gcp', 'runpod', 'oracle', 'ibm'), source, source IN ('hetzner', 'hetznerauction'), 'hetzner', source IN ('ovh', 'ovheco'), 'ovh', 'aws') AS cloud,
        region, any(location) AS name
 FROM regions
-WHERE location_type IN ('AWS Region', 'Alibaba Cloud Region', 'Azure Region', 'Google Cloud Region')
+WHERE location_type IN ('AWS Region', 'Alibaba Cloud Region', 'Azure Region', 'Google Cloud Region', 'Hetzner Location', 'OVHcloud Pricing Zone', 'OVHcloud Data Center', 'IBM Cloud Region')
   AND region != location
 GROUP BY cloud, region
 ORDER BY cloud, region`;
@@ -80,6 +80,12 @@ const PLATFORM_ORDER = [
   "azure",
   "gcp",
   "alibaba",
+  "oracle",
+  "ibm",
+  "hetzner",
+  "hetznerauction",
+  "ovh",
+  "ovheco",
   "runpod",
 ];
 const CLOUD_NAMES: Record<string, string> = {
@@ -87,6 +93,9 @@ const CLOUD_NAMES: Record<string, string> = {
   azure: "Azure",
   gcp: "Google Cloud",
   alibaba: "Alibaba Cloud",
+  ibm: "IBM Cloud",
+  hetzner: "Hetzner",
+  ovh: "OVHcloud",
 };
 
 const rank = (order: readonly string[], value: string) => {

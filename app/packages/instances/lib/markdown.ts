@@ -29,6 +29,12 @@ const SOURCES: Readonly<Record<Cloud, string>> = {
     "the Azure Retail Prices API, with specs from Azure's pricing calculator; Spot and Low Priority prices are variants of a size's price",
   gcp: "Google Cloud's Cloud Billing Catalog API, worked out from each machine series' per-vCPU, per-GiB and per-GPU rates and each machine type's shape (without bundled Local SSD, OS licenses or sustained use discounts), with specs from the Compute Engine API",
   alibaba: "Alibaba Cloud's ECS price list (the international site)",
+  oracle:
+    "Oracle's price list API, with shapes from its cost estimator; Oracle charges the same in every commercial region, so every price is in the location `global`, and flexible shapes are priced at a set of sizes, named `<shape>-<ocpus>-<GB>`",
+  ibm: "IBM Cloud's Global Catalog; about 90 older profiles have no on-demand price of their own and show IBM's rate for an hourly reservation, which is an approximation",
+  hetzner:
+    "Hetzner's public price API, with specs from its website; the price without a primary IPv4 and the price with one are separate variants",
+  ovh: "OVHcloud's public order catalogs, in USD; Public Cloud locations are pricing zones, not regions, and eco servers are only rented by the month, so their hourly prices are the rent over 730 hours",
   runpod:
     "RunPod's public API; RunPod charges the same in every data center, so every price is in the location `global`",
 };
@@ -298,7 +304,7 @@ export function renderIndexMarkdown(platforms: PlatformSummary[], tr: Translate)
   const out = [
     "# Cloud instance types",
     "",
-    "> Specs and prices for every instance type in AWS's compute-priced services, Azure Virtual Machines, Google Cloud Compute Engine, Alibaba Cloud ECS and RunPod's GPU and CPU pods, in every region, with the full history of both, from each provider's own price lists.",
+    "> Specs and prices for every instance type in AWS's compute-priced services, Azure Virtual Machines, Google Cloud Compute Engine, Alibaba Cloud ECS, Oracle Cloud Compute, IBM Cloud Virtual Servers for VPC, Hetzner cloud servers and Server Auction listings, OVHcloud Public Cloud and eco servers, and RunPod's GPU and CPU pods, in every region, with the full history of both, from each provider's own price lists.",
     "",
     ABOUT,
   ];

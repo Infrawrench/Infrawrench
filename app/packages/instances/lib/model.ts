@@ -26,6 +26,8 @@ export interface InstanceModel {
   variants: string[][];
   terms: ReservedTerm[];
   attributes: AttributeChange[];
+  /** Only rented by the month, so `current` is the rent over the hours in a month; see `DecodedInstance`. */
+  billedMonthly: boolean;
   /** Current on-demand USD per hour, per region (by index), as `[variant, hourly]` pairs. */
   current: [number, number][][];
   /** How many regions offered the instance (in any variant) over time, as `[at, count]`. */
@@ -345,6 +347,7 @@ export function buildModel(
     variants: d.variants,
     terms: d.terms,
     attributes: d.attributes,
+    billedMonthly: d.billedMonthly,
     current,
     availability: availability(d),
     defaultRegion: defaults.region,

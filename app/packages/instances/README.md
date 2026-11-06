@@ -3,7 +3,9 @@
 A chat about cloud instance prices on the home page, and one page per instance type, for every platform the bulk pricing data
 covers: AWS (EC2, RDS, ElastiCache, OpenSearch, Redshift, DocumentDB, Neptune,
 MemoryDB, DAX, SageMaker, EMR and GameLift), Azure Virtual Machines, Google
-Cloud Compute Engine, Alibaba Cloud ECS, and RunPod's
+Cloud Compute Engine, Alibaba Cloud ECS, Oracle Cloud Compute, IBM Cloud Virtual
+Servers for VPC, Hetzner cloud servers and Server Auction listings, OVHcloud
+Public Cloud and eco servers, and RunPod's
 GPU types and CPU pods: specs, current prices in every region, and the full
 history of both. EC2 pages also show spot prices. The clouds and their
 platforms are listed in `lib/platforms.ts`.
@@ -16,7 +18,7 @@ Router on Vite) and served by a Cloudflare Worker.
 | Path                                                                                      | What                                                                                                                                                                                |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/`                                                                                       | The chat; `?q=` asks at once, `?draft=` only fills the box (breadcrumb button)                                                                                                      |
-| `/<cloud>`                                                                                | One cloud's services (`/aws`, `/azure`, `/gcp`, `/alibaba`, `/runpod`), with instance-type and family counts                                                                        |
+| `/<cloud>`                                                                                | One cloud's services (`/aws`, `/azure`, `/gcp`, `/alibaba`, `/oracle`, `/ibm`, `/hetzner`, `/ovh`, `/runpod`), with instance-type and family counts                                 |
 | `/chat/<id>`                                                                              | A conversation, kept in the visitor's browser (`lib/chat/storage.ts`)                                                                                                               |
 | `/v/<id>`                                                                                 | A table or chart shared from the chat, full window; a follow-up opens `/chat/<id>`                                                                                                  |
 | `/alerts/<id>`                                                                            | Confirm or stop an email alert (the link in alert emails)                                                                                                                           |

@@ -62,6 +62,25 @@ const SECTIONS: readonly Section[] = [
       cores: msg("vCPUs"),
       ram: msg("Memory (GiB)"),
       isVcpu: msg("Cores are vCPUs"),
+      // Hetzner, OVHcloud, Oracle and IBM
+      // OVHcloud lists vCores for flavors, and physical cores and threads for eco servers.
+      "cpu.cores": msg("CPU cores"),
+      "cpu.threads": msg("vCPUs"),
+      "memory.size": msg("Memory (GiB)"),
+      "CPU.Name": msg("Processor"),
+      "RAM.Size": msg("Memory (GB)"),
+      diskInGb: msg("Disk (GB)"),
+      diskType: msg("Disk type"),
+      ocpus: msg("OCPUs"),
+      ocpuPrice: msg("Price per OCPU per hour (USD)"),
+      memoryGbPrice: msg("Price per GB of memory per hour (USD)"),
+      shape: msg("Shape"),
+      gpuCount: msg("GPUs"),
+      gpu_count: msg("GPUs"),
+      gpu_model: msg("GPU model"),
+      setupFee: msg("Setup fee (USD)"),
+      billing: msg("Billing"),
+      range: msg("Range"),
       // Google Cloud
       guestCpus: msg("vCPUs"),
       memoryMb: msg("Memory (MB)"),
@@ -192,13 +211,26 @@ const KNOWN: Readonly<Record<string, string>> = {
   licenseModel: msg("License"),
 };
 
+/** Oracle bills by OCPU: two vCPUs, or one on its A1 Arm shapes. */
+function oracleVcpus(attrs: Record<string, string>): string | undefined {
+  if (!attrs.ocpus) return undefined;
+  return String(Number(attrs.ocpus) * (/\.A1\./.test(attrs.shape ?? "") ? 1 : 2));
+}
+
 /**
  * How many GPUs the attributes list, under any platform's key: AWS's `gpu`,
  * Alibaba's `GPUAmount`, Google Cloud's `acceleratorCount`, or Azure's `gpu`,
  * which reads `8x H100`. 0 when none are listed.
  */
 export function gpuCount(attrs: Readonly<Record<string, string>>): number {
-  const raw = attrs.gpu ?? attrs.GPUAmount ?? attrs.acceleratorCount ?? "";
+  const raw =
+    attrs.gpu ??
+    attrs.GPUAmount ??
+    attrs.acceleratorCount ??
+    attrs["gpu.number"] ??
+    attrs.gpuCount ??
+    attrs.gpu_count ??
+    "";
   const n = Number(/^\s*(\d+(?:\.\d+)?)/.exec(raw)?.[1]);
   return Number.isFinite(n) ? n : 0;
 }
@@ -216,12 +248,23 @@ export function isGpuType(attrs: Readonly<Record<string, string>>): boolean {
  * `memoryInGb` is GPU memory.
  */
 export function specs(attrs: Readonly<Record<string, string>>): { vcpu?: string; memory?: string } {
-  const vcpu = attrs.vcpu ?? attrs.vCpu ?? attrs.CpuCoreCount ?? attrs.cores ?? attrs.guestCpus;
+  const vcpu =
+    attrs.vcpu ??
+    attrs.vCpu ??
+    attrs.CpuCoreCount ??
+    attrs.cores ??
+    attrs.guestCpus ??
+    attrs["cpu.threads"] ??
+    attrs["cpu.cores"] ??
+    (attrs.vcpu_architecture ? attrs.cpu : undefined) ??
+    oracleVcpus(attrs);
   const plain = (n: number) => String(Math.round(n * 100) / 100);
   const gib =
     attrs.memoryGib ??
     (attrs.MemorySize ? String(Number(attrs.MemorySize)) : undefined) ??
     (attrs.ram ? String(Number(attrs.ram)) : undefined) ??
+    attrs["memory.size"] ??
+    attrs["RAM.Size"] ??
     (attrs.memoryMb ? plain(Number(attrs.memoryMb) / 1024) : undefined);
   const memory =
     attrs.memory ??
@@ -261,6 +304,11 @@ const VARIANT_LABELS: Readonly<Record<string, string>> = {
   cloudType: msg("Cloud"),
   priority: msg("Priority"),
   provisioningModel: msg("Provisioning model"),
+  ipv4: msg("Public IPv4"),
+  capacityType: msg("Capacity type"),
+  memory: msg("Memory"),
+  storage: msg("Storage"),
+  systemStorage: msg("System storage"),
 };
 
 /** `dedicatedEbsThroughput` to `Dedicated ebs throughput`. */

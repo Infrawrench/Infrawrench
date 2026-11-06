@@ -4,7 +4,9 @@ import { msg } from "gt-react";
  * The clouds the site covers, in the order the site lists them. Each is the
  * first path segment of its pages (`/aws/ec2/m5.large`,
  * `/alibaba/ecs/ecs.g7.large`, `/azure/vms/Standard_D2s_v3`,
- * `/gcp/compute/n2-standard-2`, `/runpod/pods/NVIDIA%20H100%2080GB%20HBM3`).
+ * `/gcp/compute/n2-standard-2`, `/hetzner/cloud/cx23`, `/hetzner/auction/3107671`,
+ * `/ovh/cloud/b3-8`, `/ovh/eco/24sys01`, `/oracle/compute/BM.GPU.H100.8`,
+ * `/ibm/vpc/bx3d-2x10`, `/runpod/pods/NVIDIA%20H100%2080GB%20HBM3`).
  */
 export interface CloudInfo {
   /** As the provider writes its own name. */
@@ -16,6 +18,10 @@ export const CLOUDS = {
   azure: { label: "Azure" },
   gcp: { label: "Google Cloud" },
   alibaba: { label: "Alibaba Cloud" },
+  oracle: { label: "Oracle Cloud" },
+  ibm: { label: "IBM Cloud" },
+  hetzner: { label: "Hetzner" },
+  ovh: { label: "OVHcloud" },
   runpod: { label: "RunPod" },
 } as const satisfies Readonly<Record<string, CloudInfo>>;
 
@@ -174,6 +180,60 @@ export const PLATFORMS: Readonly<Record<string, PlatformInfo>> = {
     summary: msg("GPU and CPU pods"),
     preferredVariant: { cloudType: "Secure Cloud" },
     otherLabel: msg("GPUs"),
+  },
+  hetzner: {
+    cloud: "hetzner",
+    slug: "cloud",
+    label: "Cloud Servers",
+    summary: msg("Virtual servers by server type"),
+    preferredVariant: { ipv4: "Primary IPv4" },
+    preferredTerm: "Monthly Cap|Postpaid",
+    defaultRegion: "fsn1",
+  },
+  hetznerauction: {
+    cloud: "hetzner",
+    slug: "auction",
+    label: "Server Auction",
+    summary: msg("Used dedicated servers, each its own listing"),
+    preferredVariant: { ipv4: "Primary IPv4" },
+    preferredTerm: "Monthly Cap|Postpaid",
+    defaultRegion: "fsn1",
+    otherLabel: msg("Listings"),
+  },
+  ovh: {
+    cloud: "ovh",
+    slug: "cloud",
+    label: "Public Cloud",
+    summary: msg("Virtual machines by flavor"),
+    preferredVariant: { operatingSystem: "Linux" },
+    preferredTerm: "Monthly|Postpaid",
+    defaultRegion: "world",
+  },
+  ovheco: {
+    cloud: "ovh",
+    slug: "eco",
+    label: "Eco Servers",
+    summary: msg("Kimsufi, So you Start, Rise and Advance dedicated servers"),
+    preferredVariant: {},
+    preferredTerm: "Prepaid|All Upfront",
+    defaultRegion: "gra",
+  },
+  oracle: {
+    cloud: "oracle",
+    slug: "compute",
+    label: "Compute",
+    summary: msg("Virtual machine and bare metal shapes"),
+    preferredVariant: { operatingSystem: "Linux" },
+    defaultRegion: "global",
+  },
+  ibm: {
+    cloud: "ibm",
+    slug: "vpc",
+    label: "Virtual Servers for VPC",
+    summary: msg("Virtual servers by profile"),
+    preferredVariant: { capacityType: "On-Demand" },
+    preferredTerm: "Reserved|No Upfront",
+    defaultRegion: "us-south",
   },
 };
 

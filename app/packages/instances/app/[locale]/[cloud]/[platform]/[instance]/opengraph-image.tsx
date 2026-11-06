@@ -205,9 +205,9 @@ export default async function Image({
       m.deletedAt !== null
         ? tr(msg("Retired"))
         : onDemand !== undefined
-          ? money(onDemand)
+          ? money(m.billedMonthly ? onDemand * ((365 * 24) / 12) : onDemand)
           : tr(msg("N/A")),
-    perHour: tr(msg("per hour on demand")),
+    perHour: m.billedMonthly ? tr(msg("per month")) : tr(msg("per hour on demand")),
     where:
       m.deletedAt !== null
         ? lastPrice !== undefined
@@ -245,7 +245,9 @@ export default async function Image({
         term && !["Savings Plan", "Subscription"].includes(term.offeringClass) ? term : undefined;
       const name =
         s.id === "od"
-          ? tr(msg("On demand"))
+          ? m.billedMonthly
+            ? tr(msg("Monthly rent"))
+            : tr(msg("On demand"))
           : reserved?.lease === "1yr"
             ? tr(msg("1-yr RI"))
             : reserved?.lease === "3yr"

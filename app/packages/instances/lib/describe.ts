@@ -5,6 +5,8 @@ import type { Translate } from "./i18n/server";
 import { latestAttributes, type InstanceModel } from "./model";
 import { CLOUDS, cloudOf, fullLabel } from "./platforms";
 
+const HOURS_PER_MONTH = (365 * 24) / 12;
+
 /**
  * One or two sentences about the instance, for the page and its meta
  * description. Whole sentences are translation sources, with the specs as a
@@ -52,16 +54,25 @@ export function describe(m: InstanceModel, tr: Translate, locale: string): strin
   const price = m.current[m.defaultRegion]?.find(([v]) => v === m.defaultVariant)?.[1];
   if (m.deletedAt !== null) sentences.push(tr(msg("{provider} no longer lists it."), { provider }));
   else if (region && price !== undefined) {
-    const formatted = formatMoney(price, undefined, locale);
+    const formatted = formatMoney(
+      m.billedMonthly ? price * HOURS_PER_MONTH : price,
+      undefined,
+      locale,
+    );
     sentences.push(
-      gpuType
-        ? tr(msg("It costs {price} per GPU per hour on demand."), { price: formatted })
-        : m.regions.length <= 1
-          ? tr(msg("It costs {price} per hour on demand."), { price: formatted })
-          : tr(msg("It costs {price} per hour on demand in {region}."), {
-              price: formatted,
-              region: region.name,
-            }),
+      m.billedMonthly
+        ? tr(msg("It rents for {price} a month in {region}."), {
+            price: formatted,
+            region: region.name,
+          })
+        : gpuType
+          ? tr(msg("It costs {price} per GPU per hour on demand."), { price: formatted })
+          : m.regions.length <= 1
+            ? tr(msg("It costs {price} per hour on demand."), { price: formatted })
+            : tr(msg("It costs {price} per hour on demand in {region}."), {
+                price: formatted,
+                region: region.name,
+              }),
     );
   }
   // Chinese and Japanese run sentences together after their full stop.

@@ -38,6 +38,10 @@ const REGION_GROUPS: Readonly<Record<string, string>> = {
   "Azure Region": msg("Azure regions"),
   "Google Cloud Region": msg("Google Cloud regions"),
   "Alibaba Cloud Region": msg("Alibaba Cloud regions"),
+  "IBM Cloud Region": msg("IBM Cloud regions"),
+  "Hetzner Location": msg("Hetzner locations"),
+  "OVHcloud Pricing Zone": msg("OVHcloud pricing zones"),
+  "OVHcloud Data Center": msg("OVHcloud data centers"),
 };
 const GROUP_ORDER = Object.keys(REGION_GROUPS);
 const OTHER_GROUP = msg("Other locations");
@@ -88,7 +92,8 @@ export function useInstancePricing(
   const [region, setRegionState] = useState(m.defaultRegion);
   const [variant, setVariant] = useState(m.defaultVariant);
   const [termOption, setTermOption] = useState(defaultTerm);
-  const [duration, setDuration] = useState<Duration>("hourly");
+  const defaultDuration: Duration = m.billedMonthly ? "monthly" : "hourly";
+  const [duration, setDuration] = useState<Duration>(defaultDuration);
   const [currency, setCurrency] = useState("USD");
   const [regionData, setRegionData] = useState<Record<number, RegionData>>({
     [m.defaultRegion]: m.regionData,
@@ -142,7 +147,7 @@ export function useInstancePricing(
       const value = m.variants[variant]![k]!;
       if (value !== m.variants[m.defaultVariant]![k]) q.set(m.variantKeys[k]!, value);
     }
-    if (duration !== "hourly") q.set("duration", duration);
+    if (duration !== defaultDuration) q.set("duration", duration);
     if (termOption !== defaultTerm) q.set("reserved", termOption);
     if (currency !== "USD") q.set("currency", currency);
     if (rememberCurrency) storeCurrency(currency);
@@ -341,7 +346,10 @@ export function PriceRow({ pricing }: { pricing: InstancePricing }) {
     pricing;
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-2" aria-live="polite" aria-atomic="true">
-      <Price label={gt("On demand")} value={noneOffered ? notAvailable : price(onDemand)} />
+      <Price
+        label={m.billedMonthly ? gt("Monthly rent") : gt("On demand")}
+        value={noneOffered ? notAvailable : price(onDemand)}
+      />
       {headline.map((term) => {
         const v = latestReserved(term);
         return (

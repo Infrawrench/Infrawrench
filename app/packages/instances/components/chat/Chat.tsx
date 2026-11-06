@@ -58,6 +58,10 @@ const SERVICES = [
   "Azure Virtual Machines",
   "RunPod GPUs",
   "Google Compute Engine",
+  "Hetzner Cloud",
+  "Oracle Cloud Compute",
+  "OVHcloud",
+  "IBM Cloud VPC",
   "Amazon RDS",
   "Alibaba Cloud ECS",
   "ElastiCache",
@@ -441,7 +445,7 @@ export function ChatHome() {
       </h1>
       <p className="mx-auto mt-3 max-w-xl text-center text-ink-2">
         {gt(
-          "Ask in plain language about AWS, Azure, Google Cloud, Alibaba Cloud and RunPod. Answers come from each provider's own price lists for every region, with history, as tables and charts you can share.",
+          "Ask in plain language about AWS, Azure, Google Cloud, Alibaba Cloud, Oracle Cloud, IBM Cloud, Hetzner, OVHcloud and RunPod. Answers come from each provider's own price lists for every region, with history, as tables and charts you can share.",
         )}
       </p>
       <div className="mt-8">

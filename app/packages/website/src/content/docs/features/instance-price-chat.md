@@ -1,6 +1,6 @@
 ---
 title: Instance price chat
-description: Ask about AWS, Azure, Google Cloud, Alibaba Cloud and RunPod instance types and prices in plain language on instances.infrawrench.com, and get tables and charts you can filter, share and get email alerts on.
+description: Ask about AWS, Azure, Google Cloud, Alibaba Cloud, Oracle Cloud, IBM Cloud, Hetzner, OVHcloud and RunPod instance types and prices in plain language on instances.infrawrench.com, and get tables and charts you can filter, share and get email alerts on.
 ---
 
 The home page of [instances.infrawrench.com](https://instances.infrawrench.com) is a chat about cloud instance types and their prices. Ask a question in plain language, in any of the site's languages. Answers use the same data as the rest of the site, for every region, with price history:
@@ -9,6 +9,10 @@ The home page of [instances.infrawrench.com](https://instances.infrawrench.com) 
 - **Azure**: Virtual Machines sizes, with pay-as-you-go, Spot and Low Priority prices, reservations and savings plans from the Azure Retail Prices API, from November 2026.
 - **Google Cloud**: Compute Engine machine types, with Standard and Spot prices and committed use discounts from Google's Cloud Billing Catalog, from November 2026.
 - **Alibaba Cloud**: ECS instance types, with pay-as-you-go, subscription and reserved instance prices from Alibaba Cloud's international price list, back to May 2018.
+- **Oracle Cloud**: Compute shapes, Linux and Windows, from Oracle's price list, from November 2026.
+- **IBM Cloud**: Virtual Server for VPC profiles, with on-demand, Spot, burstable and reserved prices from IBM's Global Catalog, from November 2026.
+- **Hetzner**: cloud servers and Server Auction listings, per location, with their monthly caps, from November 2026.
+- **OVHcloud**: Public Cloud flavors by pricing zone, and Kimsufi, So you Start, Rise and Advance servers, which are rented by the month, in USD from its order catalogs, from November 2026.
 - **RunPod**: GPU types (priced per GPU) and CPU pods, in Secure Cloud and Community Cloud, with savings plans, from November 2026.
 
 It also knows every incident AWS has posted on its public Health Dashboard since 2008, so you can ask about outages too. You don't need an account.
@@ -67,7 +71,7 @@ Alerts follow the table's exact query, so ask for a table that changes only when
 - Questions are limited to a few a minute from one address.
 - The data is each provider's public list prices in USD (Alibaba Cloud's from its international site). It doesn't include your own discounts, AWS Savings Plans or taxes.
 - EC2 spot prices are Linux and Windows only, show the lowest price across each region's availability zones, and go back to August 2026.
-- Google Cloud prices leave out bundled Local SSD, OS licenses and sustained use discounts. Azure dedicated hosts aren't included. RunPod stock levels and spot prices aren't included.
+- About 90 older IBM Cloud profiles show IBM's rate for an hourly reservation, which is an approximation of their on-demand price. Oracle Cloud's flexible shapes are priced at a set of sizes, and its preemptible prices aren't included. Google Cloud prices leave out bundled Local SSD, OS licenses and sustained use discounts. Azure dedicated hosts aren't included. RunPod stock levels and spot prices aren't included.
 - Your questions are sent to Anthropic's Claude through Cloudflare's AI Gateway to write the answers, and aren't stored. Shared links store only the table's title and query. See the [privacy policy](https://infrawrench.com/privacy#instances-chat).
 
 You can also use the same data without the chat. Browse it at [instances.infrawrench.com/aws](https://instances.infrawrench.com/aws), [/azure](https://instances.infrawrench.com/azure), [/gcp](https://instances.infrawrench.com/gcp), [/alibaba](https://instances.infrawrench.com/alibaba) and [/runpod](https://instances.infrawrench.com/runpod), query it yourself with the [instance pricing SQL API](../team-and-billing/instance-pricing-api.md) (the same tables the chat queries, so a chat answer's **SQL** runs there unchanged), ask an assistant connected to the [MCP server](./mcp.md) or the in-app chat to run it with `query_instance_pricing`, or download it with the [bulk instances API](../team-and-billing/bulk-instances-api.md).

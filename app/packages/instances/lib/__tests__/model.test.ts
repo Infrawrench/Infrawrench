@@ -584,6 +584,142 @@ describe("other clouds", () => {
     expect(specs({ memoryInGb: "80", productFamily: "GPU", priceUnit: "GPU-Hour" })).toEqual({});
   });
 
+  it("puts Hetzner, OVHcloud, Oracle and IBM under their own clouds", () => {
+    expect(instancePath("hetzner", "cx23")).toBe("/hetzner/cloud/cx23");
+    expect(instancePath("hetznerauction", "3107671")).toBe("/hetzner/auction/3107671");
+    expect(instancePath("ovh", "b3-8")).toBe("/ovh/cloud/b3-8");
+    expect(instancePath("ovheco", "24sys01")).toBe("/ovh/eco/24sys01");
+    expect(instancePath("oracle", "BM.GPU.H100.8")).toBe("/oracle/compute/BM.GPU.H100.8");
+    expect(instancePath("ibm", "bx3d-2x10")).toBe("/ibm/vpc/bx3d-2x10");
+    expect(platformAt("ovh", "eco")).toBe("ovheco");
+    expect(platformAt("hetzner", "auction")).toBe("hetznerauction");
+    expect(fullLabel("ibm")).toBe("IBM Cloud Virtual Servers for VPC");
+  });
+
+  it("parses their names", () => {
+    expect(parseName("cx23")).toMatchObject({ family: "cx", size: "23" });
+    expect(parseName("b3-8")).toMatchObject({ family: "b3", size: "8" });
+    expect(parseName("24sys01")).toMatchObject({ family: "24sys", size: "01" });
+    expect(parseName("25sk60b")).toMatchObject({ family: "25sk", size: "60" });
+    expect(parseName("24skgame01-apac")).toMatchObject({ family: "24skgame", size: "01" });
+    expect(parseName("eg-120")).toMatchObject({ family: "eg", size: "120" });
+    expect(parseName("vx3d-22x352-spl")).toMatchObject({ family: "vx3d", size: "22x352-spl" });
+    // RunPod's CPU pods keep their own scheme.
+    expect(parseName("cpu3c-2-4")).toMatchObject({ family: "cpu3c", size: "2-4" });
+    expect(parseName("VM.Standard.E5.Flex-2-16")).toMatchObject({
+      family: "VM.Standard.E5.Flex",
+      size: "2-16",
+    });
+    expect(parseName("BM.GPU.H100.8")).toMatchObject({ family: "BM.GPU.H100", size: "8" });
+    expect(parseName("bx3d-2x10")).toMatchObject({ family: "bx3d", size: "2x10" });
+    expect(parseName("gx3-16x80x1l4")).toMatchObject({ family: "gx3", size: "16x80x1l4" });
+    // A listing id has no family or size.
+    expect(parseName("3107671")).toBeNull();
+    expect(sizeRank("2x10")).toBeLessThan(sizeRank("16x80x1l4"));
+    expect(sizeRank("2-16")).toBeLessThan(sizeRank("8-64"));
+  });
+
+  it("counts an eco server's threads and an Oracle shape's OCPUs as vCPUs", () => {
+    expect(specs({ "cpu.cores": "6", "cpu.threads": "12" }).vcpu).toBe("12");
+    expect(specs({ ocpus: "2", shape: "VM.Standard.E5.Flex" }).vcpu).toBe("4");
+    expect(specs({ ocpus: "4", shape: "VM.Standard.A1.Flex" }).vcpu).toBe("4");
+    expect(specs({ "cpu.cores": "8" }).vcpu).toBe("8");
+  });
+
+  it("makes a monthly rental's rent its main price", () => {
+    // [string table]: an OVHcloud eco server, with no on-demand rows.
+    const table = [
+      "gra",
+      "regionCode",
+      "ram-32g",
+      "softraid",
+      "",
+      "1mo",
+      "Rental",
+      "All Upfront",
+      "1yr",
+      "Prepaid",
+      "range",
+      "soyoustart",
+      "ram-64g",
+    ];
+    const eco = decodeInstance({
+      compression_table: table,
+      platform: "ovheco",
+      offer: "OVHEco",
+      name: "24sys01",
+      variant_keys: ["memory", "storage", "systemStorage"],
+      regions: [[0, [[1, 0]]]],
+      variants: [
+        [2, 3, 4],
+        [12, 3, 4],
+      ],
+      reserved_terms: [
+        [8, 9, 7],
+        [5, 6, 7],
+      ],
+      instance: [
+        [[10, 11]],
+        [],
+        0,
+        [],
+        [
+          [1000, 0, 0, 1, 0, 73],
+          [1000, 0, 1, 1, 0, 146],
+          [1000, 0, 0, 0, 0, 800],
+          [2000, 0, 0, 1, 0, 80.3],
+        ],
+        1000,
+        null,
+      ],
+    });
+    expect(eco.billedMonthly).toBe(true);
+    // The rent isn't a commitment any more, and the other term has followed its index.
+    expect(eco.terms).toEqual([
+      { lease: "1yr", offeringClass: "Prepaid", purchaseOption: "All Upfront" },
+    ]);
+    expect(eco.reserved).toEqual([
+      { at: 1000, region: 0, variant: 0, term: 0, hourly: 0, upfront: 800 },
+    ]);
+    expect(eco.onDemand.map((r) => [r.at, r.variant, r.hourly])).toEqual([
+      [1000, 0, 0.1],
+      [1000, 1, 0.2],
+      [2000, 0, 0.11],
+    ]);
+
+    const m = buildModel(eco, PLATFORMS.ovheco!, { asOf: 3000, family: [], related: [], fx: null });
+    expect(m.billedMonthly).toBe(true);
+    // Both configurations can be picked, because each has a price.
+    expect(m.current[0]).toEqual([
+      [0, 0.11],
+      [1, 0.2],
+    ]);
+    expect(m.shownKeys).toEqual([0]);
+    const money = translatorFor("en", {});
+    expect(priceHistory(m, buildRegionData(eco, 0), 0, "Prepaid|All Upfront")[0]!.label).toBe(
+      "Monthly rent",
+    );
+    expect(describeInstance(m, money, "en")).toContain("rents for $80.30 a month in gra");
+  });
+
+  it("leaves an instance with on-demand prices and a monthly term alone", () => {
+    // Hetzner's monthly cap is a term, and its hourly price is the real one.
+    const hetzner = decodeInstance({
+      compression_table: ["fsn1", "regionCode", "IPv6 only", "1mo", "Monthly Cap", "Postpaid"],
+      platform: "hetzner",
+      offer: "HetznerCloud",
+      name: "cx23",
+      variant_keys: ["ipv4"],
+      regions: [[0, [[1, 0]]]],
+      variants: [[2]],
+      reserved_terms: [[3, 4, 5]],
+      instance: [[], [], 0.0104, [[1000, 0, 0]], [[1000, 0, 0, 0, 0, 6.49]], 1000, null],
+    });
+    expect(hetzner.billedMonthly).toBe(false);
+    expect(hetzner.onDemand[0]!.hourly).toBe(0.0104);
+    expect(hetzner.reserved).toHaveLength(1);
+  });
+
   it("puts Azure and Google Cloud under their own clouds", () => {
     expect(instancePath("azure", "Standard_D2s_v3")).toBe("/azure/vms/Standard_D2s_v3");
     expect(instancePath("gcp", "n2-standard-2")).toBe("/gcp/compute/n2-standard-2");

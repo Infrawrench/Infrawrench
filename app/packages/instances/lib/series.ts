@@ -62,7 +62,11 @@ export function priceHistory(
   termOption: string,
 ): PriceSeries[] {
   const out: PriceSeries[] = [
-    { id: "od", label: msg("On demand"), points: data.onDemand[variant] ?? [] },
+    {
+      id: "od",
+      label: m.billedMonthly ? msg("Monthly rent") : msg("On demand"),
+      points: data.onDemand[variant] ?? [],
+    },
   ];
   headlineTerms(m, termOption).forEach((term, slot) => {
     const rows = data.reserved[`${variant}:${term}`];

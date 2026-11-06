@@ -7,6 +7,9 @@
 
 import { locationName } from "@infrawrench/server-core/aws-pricing-warehouse/regions";
 
+/** Hours in a month, as the page's "Monthly" duration counts them. */
+const HOURS_PER_MONTH = (365 * 24) / 12;
+
 /** The variant keys of EC2 bundles, which don't list their own. */
 const EC2_VARIANT_KEYS = [
   "operatingSystem",
@@ -87,6 +90,13 @@ interface ReservedRow {
 
 export interface DecodedInstance {
   name: string;
+  /**
+   * Only rented by the month (OVHcloud's eco servers). The bundle has no
+   * on-demand rows for these, only the rent as a term, so {@link decodeInstance}
+   * makes the rent the instance's main price: `onDemand` is the rent over the
+   * hours in a month, which the page shows back as the rent, under its own label.
+   */
+  billedMonthly: boolean;
   platform: string;
   createdAt: number;
   deletedAt: number | null;
@@ -173,6 +183,21 @@ export function decodeInstance(file: InstanceFile): DecodedInstance {
   const [, , basePrice, od, rs, createdAt, deletedAt] = file.instance;
   const byTime = (a: { at: number }, b: { at: number }) => a.at - b.at;
 
+  const allTerms = file.reserved_terms.map(([lease, offeringClass, purchaseOption]) => ({
+    lease: str(lease),
+    offeringClass: str(offeringClass),
+    purchaseOption: str(purchaseOption),
+  }));
+  const rentTerm =
+    od.length === 0
+      ? allTerms.findIndex((t) => t.lease === "1mo" && t.offeringClass === "Rental")
+      : -1;
+  const billedMonthly = rentTerm >= 0;
+  // The rent leaves the committed terms, so the others keep their order under new indices.
+  const terms = allTerms.filter((_, i) => i !== rentTerm);
+  const termIndex = (i: number) => (billedMonthly && i > rentTerm ? i - 1 : i);
+  const rents = billedMonthly ? rs.filter((row) => row[3] === rentTerm) : [];
+
   return {
     name: file.name,
     platform: file.platform,
@@ -181,37 +206,41 @@ export function decodeInstance(file: InstanceFile): DecodedInstance {
     regions,
     variantKeys: file.variant_keys ?? EC2_VARIANT_KEYS,
     variants: file.variants.map((fields) => fields.map(str)),
-    terms: file.reserved_terms.map(([lease, offeringClass, purchaseOption]) => ({
-      lease: str(lease),
-      offeringClass: str(offeringClass),
-      purchaseOption: str(purchaseOption),
-    })),
+    billedMonthly,
+    terms,
     attributes: decodeAttributes(file, str, region),
     // [ts, region, variant, price: omitted = base price, null = no longer offered]
     // AWS sometimes lists an instance at $0 on demand while it has no capacity
     // to sell (p4d.24xlarge in us-east-1, on and off since 2024). Nothing is
     // free on demand, so $0 reads as not offered. Reserved rows are left alone:
     // an all-upfront term is legitimately $0 an hour.
-    onDemand: od
-      .map(([ts, loc, variant, ...price]) => {
-        const hourly = price.length === 0 ? basePrice : (price[0] ?? null);
-        return {
+    onDemand: (billedMonthly
+      ? rents.map(([ts, loc, variant, , , upfront]) => ({
           at: ts!,
           region: region(loc),
           variant: variant!,
-          hourly: hourly === 0 ? null : hourly,
-        };
-      })
-      .sort(byTime),
+          hourly: upfront === null || upfront === undefined ? null : upfront / HOURS_PER_MONTH,
+        }))
+      : od.map(([ts, loc, variant, ...price]) => {
+          const hourly = price.length === 0 ? basePrice : (price[0] ?? null);
+          return {
+            at: ts!,
+            region: region(loc),
+            variant: variant!,
+            hourly: hourly === 0 ? null : hourly,
+          };
+        })
+    ).sort(byTime),
     // [ts, region, variant, term, hourly: null = no longer offered, upfront: omitted if 0]
     reserved: rs
+      .filter((row) => !billedMonthly || row[3] !== rentTerm)
       .map(([ts, loc, variant, term, hourly, upfront]) => {
         const removed = hourly === null || hourly === undefined;
         return {
           at: ts!,
           region: region(loc),
           variant: variant!,
-          term: term!,
+          term: termIndex(term!),
           hourly: removed ? null : hourly,
           upfront: removed ? null : (upfront ?? 0),
         };
