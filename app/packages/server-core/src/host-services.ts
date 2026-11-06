@@ -27,6 +27,7 @@ import { resolveDispatcher } from "./bastion/registry";
 import { realtimeEnabled } from "./realtime/client";
 import { BastionDisconnectedError } from "./bastion/errors";
 import { GatewayOnlyError, isEdgeRuntime } from "./runtime/gateway-only";
+import { queryWarehouse } from "./aws-pricing-warehouse/query";
 import { sessionHandoffInScope } from "./runtime/request-scope";
 import {
   guardDriverConnection,
@@ -388,6 +389,26 @@ function oauthHostServices(
   };
 }
 
+/**
+ * The instance pricing warehouse, for plugins' estimates and size pickers. Absent
+ * without its read-only token (a self-hosted deployment), when plugins fall back
+ * to their providers' own price APIs.
+ */
+function warehouseHostServices(): Pick<HostServices, "instancePricing"> {
+  const token = process.env["PRICING_WAREHOUSE_READ_TOKEN"];
+  if (!token) return {};
+  const config = { token, url: process.env["PRICING_WAREHOUSE_URL"] };
+  return {
+    instancePricing: {
+      async query(sql, maxRows) {
+        const started = Date.now();
+        const result = await queryWarehouse(sql, config, { maxRows });
+        return { ...result, elapsedMs: Date.now() - started };
+      },
+    },
+  };
+}
+
 export async function buildPluginHostServices(
   manifest: PluginManifest,
   credentials: Record<string, string>,
@@ -405,6 +426,7 @@ export async function buildPluginHostServices(
   const oauth = oauthHostServices(manifest, credentials, options);
   const base: HostServices = {
     http: buildHttpHostServices(bastionId ?? null, scope),
+    ...warehouseHostServices(),
     secrets: options.accountId ? accountSecretHostServices(options.accountId) : secretHostServices,
     ...(oauth ? { oauth } : {}),
   };

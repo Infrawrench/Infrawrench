@@ -15,7 +15,12 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { buildCostEstimate, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  buildCostEstimate,
+  externalIdOf,
+  fetchInstanceOnDemandRates,
+  type InstancePricingHostServices,
+} from "@infrawrench/plugin-base";
 import { AliApi, isPermissionGap, mapLimit } from "./api.js";
 import { fetchBalance, fetchCostData, fetchQuotas, monthToDate } from "./billing.js";
 import { createResource, getCreateConfig, RDS_ENGINES } from "./create.js";
@@ -67,8 +72,10 @@ export class AlibabaCloudClient implements PluginClient {
   private readonly api: AliApi;
   private readonly inventory: Inventory;
   private readonly priceCache = new Map<string, Promise<number | null>>();
+  private readonly instancePricing: InstancePricingHostServices | undefined;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
+    this.instancePricing = services?.instancePricing;
     const accessKeyId = (credentials["accessKeyId"] ?? "").trim();
     const accessKeySecret = (credentials["accessKeySecret"] ?? "").trim();
     if (!accessKeyId) throw new Error("Alibaba Cloud plugin: missing accessKeyId credential");
@@ -857,6 +864,19 @@ export class AlibabaCloudClient implements PluginClient {
     return fetchQuotas(this.api, this.inventory.homeRegion);
   }
 
+  /** On-demand hourly rates from the warehouse, one query for any number of types; null without it. */
+  private warehouseHourly(
+    instanceTypes: readonly string[],
+    region: string,
+  ): Promise<Record<string, number> | null> {
+    return fetchInstanceOnDemandRates(this.instancePricing, {
+      platform: "alibaba",
+      region,
+      instanceTypes,
+      selection: { operating_system: "Linux", "variant.networkType": "VPC" },
+    });
+  }
+
   /** Hourly list price of an ECS configuration from `DescribePrice`, cached per configuration. */
   private ecsHourly(params: Record<string, unknown>, region: string): Promise<number | null> {
     const key = JSON.stringify({ region, ...params });
@@ -884,6 +904,18 @@ export class AlibabaCloudClient implements PluginClient {
   ): Promise<Record<string, number>> {
     if (typeId !== "ecs-instance" || !request.regionId) return {};
     const region = request.regionId;
+    const warehouse = await this.warehouseHourly(
+      request.sizes.map((s) => s.id),
+      region,
+    );
+    if (warehouse) {
+      return Object.fromEntries(
+        Object.entries(warehouse).map(([type, hourly]) => [
+          type,
+          Math.round(hourly * HOURS_PER_MONTH * 100) / 100,
+        ]),
+      );
+    }
     const prices = await mapLimit(request.sizes, 6, async (s) => ({
       id: s.id,
       hourly: await this.ecsHourly({ ResourceType: "instance", InstanceType: s.id }, region),
@@ -903,7 +935,8 @@ export class AlibabaCloudClient implements PluginClient {
       if (!type) return null;
       const diskGb = Number(fields["systemDiskGb"] || 40);
       const category = fields["diskCategory"] || "cloud_essd";
-      const [instance, withDisk] = await Promise.all([
+      const [warehouse, liveInstance, withDisk] = await Promise.all([
+        this.warehouseHourly([type], region),
         this.ecsHourly({ ResourceType: "instance", InstanceType: type }, region),
         this.ecsHourly(
           {
@@ -915,8 +948,12 @@ export class AlibabaCloudClient implements PluginClient {
           region,
         ),
       ]);
+      const instance = warehouse?.[type] ?? liveInstance;
       if (instance === null) return null;
-      const disk = withDisk !== null ? Math.max(0, withDisk - instance) : null;
+      // A disk has no price of its own to read: it is what it adds to the same
+      // source's price for the bare instance.
+      const disk =
+        withDisk !== null && liveInstance !== null ? Math.max(0, withDisk - liveInstance) : null;
       return buildCostEstimate(
         [
           { label: `${type} (pay-as-you-go)`, monthlyAmount: instance * HOURS_PER_MONTH },

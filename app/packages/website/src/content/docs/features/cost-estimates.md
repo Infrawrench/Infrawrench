@@ -54,13 +54,13 @@ When only _part_ of a resource can be priced, the badge reads **at least $X/mo**
 
 ## Provider support
 
-| Provider                                   | Priced types                                                                                                           |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| [AWS](../plugins/aws.md)                   | EC2 instances, EBS volumes, RDS instances, EKS node groups                                                             |
-| [Azure](../plugins/azure.md)               | VMs, AKS clusters, managed disks, Container Instances, Redis caches, App Service and Function App plans, SQL databases |
-| [Google Cloud](../plugins/gcp.md)          | Compute Engine instances and disks, GKE node pools                                                                     |
-| [DigitalOcean](../plugins/digitalocean.md) | Managed databases (per node)                                                                                           |
+| Provider                                   | Priced types                                                                                                                                 |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| [AWS](../plugins/aws.md)                   | EC2 instances, EBS volumes, RDS instances, ElastiCache clusters, OpenSearch domains, Redshift clusters, EKS node groups                      |
+| [Azure](../plugins/azure.md)               | VMs, AKS clusters, managed disks, Container Instances, Redis caches, App Service and Function App plans, SQL databases, Container Registries |
+| [Google Cloud](../plugins/gcp.md)          | Compute Engine instances and disks, GKE node pools                                                                                           |
+| [DigitalOcean](../plugins/digitalocean.md) | Managed databases (per node)                                                                                                                 |
 
-For AWS, the account's credentials need the `pricing:GetProducts` permission (used by the [Price List Query API](../plugins/aws.md)). Without it, AWS resources show no estimate. Azure and Google Cloud need no extra permissions.
+AWS, Google Cloud and Alibaba Cloud instance rates come from the same data as [instances.infrawrench.com](https://instances.infrawrench.com), which needs nothing from your account: no permission and no pricing API access. Those providers' own price APIs are the fallback if that data is unreachable. They also price what it doesn't cover, so for AWS volumes and storage the account's credentials still need the `pricing:GetProducts` permission (used by the [Price List Query API](../plugins/aws.md)). Without it, an estimate that includes them reads **at least $X/mo** and lists only the parts it could price. Azure rates need no permissions.
 
 Every figure is region-specific. The same instance type costs a different amount in Tokyo than in Virginia, and changing the region picker updates it.

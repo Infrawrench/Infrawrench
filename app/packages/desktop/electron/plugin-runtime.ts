@@ -29,6 +29,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { readOAuthGrantState } from "@infrawrench/plugin-base";
 import { getPlugin } from "../src/plugins/loader";
+import { mainInstancePricing } from "./instance-pricing-client";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { getSqlite, normalizeSql, persist } from "./db";
 import {
@@ -243,7 +244,11 @@ export function buildPluginHostServices(
   manifest: PluginManifest,
   credentials: Record<string, string>,
 ): HostServices {
-  const base: HostServices = { http: httpHostServices, secrets: secretHostServices };
+  const base: HostServices = {
+    instancePricing: mainInstancePricing,
+    http: httpHostServices,
+    secrets: secretHostServices,
+  };
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
     return { ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost), ...base };

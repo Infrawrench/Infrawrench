@@ -1,7 +1,11 @@
 import { useEffect, useState, useMemo } from "react";
+import { useGT } from "gt-react";
 import type { SizeOption } from "@infrawrench/plugin-base";
 import { SizeCard } from "./SizeCard.js";
 import { ChevronIcon } from "../icons/ChromeIcons.js";
+
+/** Past this many sizes (a provider's whole catalog), browsing alone is not enough. */
+const FILTER_THRESHOLD = 24;
 
 export function SizePicker({
   sizes,
@@ -18,6 +22,8 @@ export function SizePicker({
    */
   filterValue?: string;
 }) {
+  const gt = useGT();
+  const [query, setQuery] = useState("");
   const scoped = useMemo(() => {
     if (!filterValue) return sizes;
     const matched = sizes.filter((s) => !s.availableFor || s.availableFor.includes(filterValue));
@@ -40,13 +46,21 @@ export function SizePicker({
 
   const categories = useMemo(() => {
     const map = new Map<string, SizeOption[]>();
+    const needle = query.trim().toLowerCase();
     for (const s of scoped) {
+      if (
+        needle &&
+        !s.label.toLowerCase().includes(needle) &&
+        !(s.category ?? "").toLowerCase().includes(needle)
+      ) {
+        continue;
+      }
       const cat = s.category ?? "Standard";
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(s);
     }
     return map;
-  }, [scoped]);
+  }, [scoped, query]);
 
   // Find which category contains the current selection, default it open
   const selectedCategory = useMemo(() => {
@@ -80,9 +94,19 @@ export function SizePicker({
 
   return (
     <div className="border border-border-strong rounded-lg overflow-hidden">
+      {scoped.length > FILTER_THRESHOLD && (
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={gt("Filter by name or family")}
+          aria-label={gt("Filter by name or family")}
+          className="w-full border-b border-border-strong bg-transparent px-4 py-2 text-xs text-on-surface placeholder:text-on-surface-faint focus:outline-none"
+        />
+      )}
       <div className="divide-y divide-border-strong/60 max-h-[260px] overflow-y-auto">
         {[...categories.entries()].map(([cat, catSizes]) => {
-          const isOpen = openCats.has(cat);
+          const isOpen = openCats.has(cat) || query.trim() !== "";
           const hasSelection = catSizes.some((s) => s.id === value);
           const selectedInCat = hasSelection ? catSizes.find((s) => s.id === value) : null;
           return (

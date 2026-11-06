@@ -14,13 +14,20 @@
  *
  * Docs: https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_pricing_GetProducts.html
  */
+import {
+  fetchInstanceOnDemandRates,
+  type InstancePricingHostServices,
+} from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
+import { EC2_LINUX } from "./instance-pricing.js";
 import { fetchSigned } from "./signed-request.js";
 
 const PRICING_HOST = "api.pricing.us-east-1.amazonaws.com";
 const PRICING_REGION = "us-east-1";
 export const HOURS_PER_MONTH = 730;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+/** Comfortably above the form's own static EC2 list, far below the provider's catalog. */
+const LIVE_LOOKUP_LIMIT = 150;
 
 /** `PriceList` entries arrive as JSON-encoded strings; this is their parsed shape. */
 interface PriceListEntry {
@@ -195,13 +202,36 @@ async function fetchHourlyUsd(
 /**
  * Monthly on-demand USD prices for a set of instance types in one region.
  * Types without a resolvable price are omitted (never guessed).
+ *
+ * The warehouse answers when the host has one: one query, however many types,
+ * with no `pricing:GetProducts` permission needed. A type it leaves out is not
+ * sold there. Only if it cannot answer at all does this fall back to one Price
+ * List call per type, and not for a whole catalog: over
+ * {@link LIVE_LOOKUP_LIMIT} types it prices nothing rather than send thousands
+ * of signed calls from a picker that can open without prices.
  */
 export async function fetchEc2MonthlyPrices(
   credentials: AwsCredentials,
   regionCode: string,
   instanceTypes: readonly string[],
+  pricing?: InstancePricingHostServices,
 ): Promise<Record<string, number>> {
   const unique = [...new Set(instanceTypes)];
+  const warehouse = await fetchInstanceOnDemandRates(pricing, {
+    platform: "ec2",
+    region: regionCode,
+    instanceTypes: unique,
+    selection: EC2_LINUX,
+  });
+  if (warehouse) {
+    return Object.fromEntries(
+      Object.entries(warehouse).map(([type, hourly]) => [
+        type,
+        Number((hourly * HOURS_PER_MONTH).toFixed(2)),
+      ]),
+    );
+  }
+  if (unique.length > LIVE_LOOKUP_LIMIT) return {};
   const rates = await Promise.all(
     unique.map((type) => fetchHourlyUsd(credentials, regionCode, type)),
   );

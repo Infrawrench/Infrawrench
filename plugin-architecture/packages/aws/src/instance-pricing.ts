@@ -1,38 +1,54 @@
 import type { InstancePricingCapability, ResourceInstance } from "@infrawrench/plugin-base";
 
 /** RDS engine ids as the price lists write them. */
-const RDS_ENGINES: Readonly<Record<string, { engine: string; edition?: string }>> = {
+export const RDS_ENGINES: Readonly<
+  Record<string, { engine: string; edition?: string; license?: string }>
+> = {
   postgres: { engine: "PostgreSQL" },
   mysql: { engine: "MySQL" },
   mariadb: { engine: "MariaDB" },
   "aurora-postgresql": { engine: "Aurora PostgreSQL" },
   "aurora-mysql": { engine: "Aurora MySQL" },
-  "oracle-ee": { engine: "Oracle", edition: "Enterprise" },
-  "oracle-ee-cdb": { engine: "Oracle", edition: "Enterprise" },
-  "oracle-se2": { engine: "Oracle", edition: "Standard Two" },
-  "oracle-se2-cdb": { engine: "Oracle", edition: "Standard Two" },
-  "sqlserver-ee": { engine: "SQL Server", edition: "Enterprise" },
-  "sqlserver-se": { engine: "SQL Server", edition: "Standard" },
-  "sqlserver-web": { engine: "SQL Server", edition: "Web" },
-  "sqlserver-ex": { engine: "SQL Server", edition: "Express" },
+  // A license is part of the price: SQL Server Standard on db.m5.large is $0.977
+  // an hour license-included and $0.30 on its `NA` row, so leaving this open
+  // quotes a fraction of the real rate. Enterprise Oracle is BYOL only.
+  "oracle-ee": { engine: "Oracle", edition: "Enterprise", license: "Bring your own license" },
+  "oracle-ee-cdb": { engine: "Oracle", edition: "Enterprise", license: "Bring your own license" },
+  "oracle-se2": { engine: "Oracle", edition: "Standard Two", license: "License included" },
+  "oracle-se2-cdb": { engine: "Oracle", edition: "Standard Two", license: "License included" },
+  "sqlserver-ee": { engine: "SQL Server", edition: "Enterprise", license: "License included" },
+  "sqlserver-se": { engine: "SQL Server", edition: "Standard", license: "License included" },
+  "sqlserver-web": { engine: "SQL Server", edition: "Web", license: "License included" },
+  "sqlserver-ex": { engine: "SQL Server", edition: "Express", license: "License included" },
   "db2-ae": { engine: "Db2", edition: "Advanced" },
   "db2-se": { engine: "Db2", edition: "Standard" },
 };
 
-const CACHE_ENGINES: Readonly<Record<string, string>> = {
+export const CACHE_ENGINES: Readonly<Record<string, string>> = {
   valkey: "Valkey",
   redis: "Redis",
   memcached: "Memcached",
 };
 
 /** What the price lists call a plain Linux instance; a resource's OS is not in its fields. */
-const EC2_LINUX: Readonly<Record<string, string>> = {
+export const EC2_LINUX: Readonly<Record<string, string>> = {
   operating_system: "Linux",
   tenancy: "Shared",
   pre_installed_sw: "NA",
   capacity_status: "Used",
   license_model: "No License required",
 };
+
+/** What the price lists call a given RDS engine and deployment. */
+export function rdsSelection(engine: string, multiAz: boolean): Record<string, string> {
+  const known = RDS_ENGINES[engine];
+  return {
+    deployment_option: multiAz ? "Multi-AZ" : "Single-AZ",
+    ...(known?.engine ? { database_engine: known.engine } : {}),
+    ...(known?.edition ? { database_edition: known.edition } : {}),
+    ...(known?.license ? { license_model: known.license } : {}),
+  };
+}
 
 function list(value: unknown): string[] {
   return String(value ?? "")
@@ -61,15 +77,15 @@ export function awsInstancePricing(
       return panel("ec2", list(fields["instanceType"]), { ...EC2_LINUX });
     case "eks-cluster":
       return panel("ec2", list(fields["instanceTypes"]), { ...EC2_LINUX });
-    case "rds-instance": {
-      const engine = RDS_ENGINES[String(fields["engine"] ?? "")];
-      return panel("rds", list(fields["instanceClass"]), {
-        deployment_option:
-          fields["multiAZ"] === true || fields["multiAZ"] === "true" ? "Multi-AZ" : "Single-AZ",
-        ...(engine?.engine ? { database_engine: engine.engine } : {}),
-        ...(engine?.edition ? { database_edition: engine.edition } : {}),
-      });
-    }
+    case "rds-instance":
+      return panel(
+        "rds",
+        list(fields["instanceClass"]),
+        rdsSelection(
+          String(fields["engine"] ?? ""),
+          fields["multiAZ"] === true || fields["multiAZ"] === "true",
+        ),
+      );
     case "elasticache-cluster": {
       const engine = CACHE_ENGINES[String(fields["engine"] ?? "")];
       return panel("elasticache", list(fields["nodeType"]), engine ? { cache_engine: engine } : {});

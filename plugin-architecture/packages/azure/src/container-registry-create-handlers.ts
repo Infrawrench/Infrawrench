@@ -36,9 +36,9 @@ export async function getContainerRegistryCreateConfig(
         required: true,
         defaultValue: "Basic",
         options: [
-          { id: "Basic", label: "Basic (~$0.167/day)" },
-          { id: "Standard", label: "Standard (~$0.667/day)" },
-          { id: "Premium", label: "Premium (~$1.667/day, geo-replication)" },
+          { id: "Basic", label: "Basic" },
+          { id: "Standard", label: "Standard" },
+          { id: "Premium", label: "Premium (geo-replication)" },
         ],
       },
       {

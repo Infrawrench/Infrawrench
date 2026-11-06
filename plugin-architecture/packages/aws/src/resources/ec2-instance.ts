@@ -94,9 +94,9 @@ export const EC2InstanceResourceType = rt({
   supportsCreate: true,
   // Edit = change instance type only.
   supportsUpdate: true,
-  // Right-sizing: the create form's curated size list carries capacity;
-  // prices hydrate per region through getCreateSizePricing (Price List Query
-  // API; needs pricing:GetProducts). CloudWatch has no agentless memory
+  // Right-sizing: the create form's size list carries capacity; prices hydrate
+  // per region through getCreateSizePricing (the instance pricing warehouse, or
+  // the Price List Query API without one). CloudWatch has no agentless memory
   // metric for EC2, so the host's unmeasured-memory floor applies.
   rightsizing: {
     sizeFieldKey: "instanceType",

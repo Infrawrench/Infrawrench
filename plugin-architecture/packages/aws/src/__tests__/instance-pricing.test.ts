@@ -31,6 +31,7 @@ describe("awsInstancePricing", () => {
       deployment_option: "Multi-AZ",
       database_engine: "Oracle",
       database_edition: "Standard Two",
+      license_model: "License included",
     });
   });
 

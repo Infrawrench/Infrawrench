@@ -19,6 +19,7 @@ import type {
   SecretHostServices,
 } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
 
+import { mainInstancePricing } from "../instance-pricing-client";
 import { dockerDrivers, k8sDrivers, kvDrivers, sqlDrivers } from "../drivers";
 import { getSqlite } from "../db";
 import { buildAad, decryptValue, getEncryptionKey } from "../main-utils";
@@ -106,7 +107,11 @@ function buildHostServices(
   manifest: PluginManifest,
   credentials: Record<string, string>,
 ): HostServices {
-  const base: HostServices = { ...httpHostServices, secrets: secretHostServices };
+  const base: HostServices = {
+    ...httpHostServices,
+    secrets: secretHostServices,
+    instancePricing: mainInstancePricing,
+  };
 
   if (manifest.dockerDriver) {
     const driver = dockerDrivers.get(manifest.dockerDriver.driver);

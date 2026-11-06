@@ -4,6 +4,7 @@ import type {
   GetConfigHandler,
   CreateHandler,
 } from "./create-handlers/shared.js";
+import { withCurrentInstanceSizes } from "./instance-sizes.js";
 import { computeGetCreateConfig, computeCreateResource } from "./create-handlers/compute.js";
 import {
   networkingGetCreateConfig,
@@ -53,7 +54,7 @@ export async function awsGetCreateConfig(
 ): Promise<CreateResourceConfig> {
   for (const handler of getConfigHandlers) {
     const result = await handler(ctx, typeId, parentResourceId);
-    if (result !== null) return result;
+    if (result !== null) return withCurrentInstanceSizes(ctx.instancePricing, typeId, result);
   }
   throw new Error(`AWS plugin: getCreateConfig not supported for type "${typeId}"`);
 }

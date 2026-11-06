@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 
 const { driversMock } = vi.hoisted(() => ({
   driversMock: {
@@ -102,5 +102,35 @@ describe("buildPluginHostServices", () => {
     const services = await buildPluginHostServices(manifest, {});
     expect(services).toBeDefined();
     expect(services!.http).toBeDefined();
+  });
+});
+
+describe("buildPluginHostServices: instance pricing warehouse", () => {
+  const manifest = { id: "aws" } as unknown as PluginManifest;
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("is absent without the read token, so plugins use their providers' price APIs", async () => {
+    vi.stubEnv("PRICING_WAREHOUSE_READ_TOKEN", "");
+    const services = await buildPluginHostServices(manifest, {}, { bastionId: null });
+    expect(services?.instancePricing).toBeUndefined();
+  });
+
+  it("queries the warehouse directly with the read token", async () => {
+    vi.stubEnv("PRICING_WAREHOUSE_READ_TOKEN", "read-only-test-token");
+    vi.stubEnv("PRICING_WAREHOUSE_URL", "https://warehouse.test/");
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response('["x"]\n["UInt8"]\n[1]\n', { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const services = await buildPluginHostServices(manifest, {}, { bastionId: null });
+    const result = await services!.instancePricing!.query("SELECT 1 AS x", 10);
+    expect(result.rows).toEqual([[1]]);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain("warehouse.test");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer read-only-test-token");
   });
 });

@@ -35,7 +35,7 @@ The add-account form, and **Check credentials** on the account page, test what y
 - **Metrics and dashboards**: `cloudwatch:GetMetricStatistics`, `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, plus `logs:FilterLogEvents` and `logs:DescribeLogStreams` for the Logs tabs.
 - **Cost reporting**: `ce:GetCostAndUsage`, plus `ce:GetReservationUtilization` for the [blended basis](#blended-commitment-discounts). These are not part of `ReadOnlyAccess`-style policies, so this is the check that most often fails.
 - **[Idle resource findings](../features/idle-resources.md)**: `cloudwatch:GetMetricData`, and `pricing:GetProducts` to price what a finding saves.
-- **[Cost estimates](../features/cost-estimates.md)**: `pricing:GetProducts`, for prices on the create form, the size picker and the resource page. This is also outside typical read-only policies. Without it nothing breaks, you just see no estimates.
+- **[Cost estimates](../features/cost-estimates.md)**: instance rates need no permission. `pricing:GetProducts` adds volume and storage rates to them, and is the fallback for instance rates. This is also outside typical read-only policies.
 
 The check can generate an IAM policy JSON document for the features you tick. Attach it as an inline policy on the IAM user whose keys you pasted. It also grants `iam:SimulatePrincipalPolicy`, which keeps later checks exact.
 

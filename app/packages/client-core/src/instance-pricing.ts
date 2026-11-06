@@ -1,3 +1,11 @@
+import {
+  INSTANCE_LIST_PRICES_ONLY,
+  INSTANCE_PRICING_DIMENSIONS,
+  instancePricingLiteral as literal,
+  instancePricingSelectionSql as selectionSql,
+  type InstancePricingCell,
+  type InstancePricingResult,
+} from "@infrawrench/plugin-base";
 import { INSTANCE_PRICING_KEY } from "./instance-pricing-key";
 
 /**
@@ -7,14 +15,7 @@ import { INSTANCE_PRICING_KEY } from "./instance-pricing-key";
  * reaches the API (same-origin fetch, or IPC to the main process).
  */
 
-export type InstancePricingCell = string | number | boolean | null;
-
-export interface InstancePricingResult {
-  columns: { name: string; type: string }[];
-  rows: InstancePricingCell[][];
-  truncated: boolean;
-  elapsedMs: number;
-}
+export type { InstancePricingCell, InstancePricingResult };
 
 /** How a host runs one statement. Rejects with a message fit to show. */
 export type InstancePricingQuery = (sql: string, maxRows: number) => Promise<InstancePricingResult>;
@@ -71,50 +72,7 @@ export function instancePricingPageUrl(
   return `${SITE}${base}/${encodeURIComponent(instanceType)}${query}`;
 }
 
-const literal = (value: string) => `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-
-/**
- * The `prices` columns a product is priced by, most defining first (the order
- * of the pickers); everything else sits in `variant`.
- */
-export const INSTANCE_PRICING_DIMENSIONS = [
-  "operating_system",
-  "tenancy",
-  "database_engine",
-  "database_edition",
-  "deployment_option",
-  "deployment_model",
-  "engine_media_type",
-  "cache_engine",
-  "software_type",
-  "component",
-  "pre_installed_sw",
-  "license_model",
-  "capacity_status",
-] as const;
-
-/** `UnusedBox` prices idle capacity reservations and `ExtendedSupport*` is a surcharge tier. */
-const LIST_PRICES_ONLY = `usage_type NOT LIKE '%Unused%' AND usage_type NOT LIKE 'ExtendedSupport%'`;
-
-const VARIANT_KEY = /^variant\.[A-Za-z0-9_]+$/;
-
-/**
- * `selection` as SQL. An empty value also matches, because some rows leave a
- * dimension unset where it does not apply (EC2 spot has no tenancy).
- */
-function selectionSql(selection: Readonly<Record<string, string>>): string {
-  const known = new Set<string>(INSTANCE_PRICING_DIMENSIONS);
-  return Object.entries(selection)
-    .flatMap(([key, value]) => {
-      const values = `(${literal(value)}, '')`;
-      if (known.has(key)) return [` AND ${key} IN ${values}`];
-      if (VARIANT_KEY.test(key)) {
-        return [` AND variant[${literal(key.slice("variant.".length))}] IN ${values}`];
-      }
-      return [];
-    })
-    .join("");
-}
+export { INSTANCE_PRICING_DIMENSIONS };
 
 const typeSql = (platform: string, instanceType: string) =>
   `platform = ${literal(platform)} AND instance_type = ${literal(instanceType)}`;
@@ -137,7 +95,7 @@ export function regionNamesSql(platform: string): string {
 
 /** Every price on offer now for the type in one region, in every variant. */
 export function regionOffersSql(platform: string, instanceType: string, region: string): string {
-  return `SELECT pricing, lease, offering_class, purchase_option, ${INSTANCE_PRICING_DIMENSIONS.join(", ")}, variant, hourly_usd, upfront_usd, effective_hourly_usd FROM prices WHERE ${typeSql(platform, instanceType)} AND region = ${literal(region)} AND current AND ${LIST_PRICES_ONLY}`;
+  return `SELECT pricing, lease, offering_class, purchase_option, ${INSTANCE_PRICING_DIMENSIONS.join(", ")}, variant, hourly_usd, upfront_usd, effective_hourly_usd FROM prices WHERE ${typeSql(platform, instanceType)} AND region = ${literal(region)} AND current AND ${INSTANCE_LIST_PRICES_ONLY}`;
 }
 
 /** The selected variant's on-demand periods in every region: prices by region and availability. */
@@ -146,7 +104,7 @@ export function onDemandByRegionSql(
   instanceType: string,
   selection: Readonly<Record<string, string>>,
 ): string {
-  return `SELECT region, toUnixTimestamp(valid_from) AS validFrom, toUnixTimestamp(valid_to) AS validTo, effective_hourly_usd AS price FROM prices WHERE ${typeSql(platform, instanceType)} AND pricing = 'on_demand' AND ${LIST_PRICES_ONLY}${selectionSql(selection)}`;
+  return `SELECT region, toUnixTimestamp(valid_from) AS validFrom, toUnixTimestamp(valid_to) AS validTo, effective_hourly_usd AS price FROM prices WHERE ${typeSql(platform, instanceType)} AND pricing = 'on_demand' AND ${INSTANCE_LIST_PRICES_ONLY}${selectionSql(selection)}`;
 }
 
 export function spotByRegionSql(
@@ -164,7 +122,7 @@ export function priceHistorySql(
   region: string,
   selection: Readonly<Record<string, string>>,
 ): string {
-  return `SELECT pricing, lease, offering_class, purchase_option, toUnixTimestamp(valid_from) AS validFrom, toUnixTimestamp(valid_to) AS validTo, effective_hourly_usd AS price FROM prices WHERE ${typeSql(platform, instanceType)} AND region = ${literal(region)} AND pricing != 'spot' AND ${LIST_PRICES_ONLY}${selectionSql(selection)} ORDER BY valid_from`;
+  return `SELECT pricing, lease, offering_class, purchase_option, toUnixTimestamp(valid_from) AS validFrom, toUnixTimestamp(valid_to) AS validTo, effective_hourly_usd AS price FROM prices WHERE ${typeSql(platform, instanceType)} AND region = ${literal(region)} AND pricing != 'spot' AND ${INSTANCE_LIST_PRICES_ONLY}${selectionSql(selection)} ORDER BY valid_from`;
 }
 
 /** Spot history at one point a day, which is all a chart this size can show. */
@@ -183,7 +141,7 @@ export function familySizesSql(
   region: string,
   selection: Readonly<Record<string, string>>,
 ): string {
-  return `SELECT instance_type AS instanceType, any(vcpu) AS vcpu, any(memory_gib) AS memoryGib, any(gpus) AS gpus, min(effective_hourly_usd) AS price FROM prices WHERE platform = ${literal(platform)} AND family = ${literal(family)} AND region = ${literal(region)} AND current AND pricing = 'on_demand' AND ${LIST_PRICES_ONLY}${selectionSql(selection)} GROUP BY instance_type ORDER BY price, instance_type`;
+  return `SELECT instance_type AS instanceType, any(vcpu) AS vcpu, any(memory_gib) AS memoryGib, any(gpus) AS gpus, min(effective_hourly_usd) AS price FROM prices WHERE platform = ${literal(platform)} AND family = ${literal(family)} AND region = ${literal(region)} AND current AND pricing = 'on_demand' AND ${INSTANCE_LIST_PRICES_ONLY}${selectionSql(selection)} GROUP BY instance_type ORDER BY price, instance_type`;
 }
 
 export function attributeChangesSql(

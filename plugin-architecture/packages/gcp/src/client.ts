@@ -56,6 +56,7 @@ import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
 import {
   buildCostEstimate,
+  fetchInstanceOnDemandRates,
   streamOpenAiSseChat,
   withAiCostTags,
   withMetricsCapability,
@@ -614,9 +615,17 @@ export class GcpClient implements PluginClient {
     zone: string,
   ): Promise<Record<string, number>> {
     const region = regionFromZone(zone);
+    // The warehouse needs no Cloud Billing access and has every machine type's
+    // own price, GPUs included. Without it, prices are worked out from the
+    // Billing Catalog's per-core and per-GiB rates.
+    const warehouse = await this.warehouseMonthlyPrices(
+      machineTypes.map((m) => m.id),
+      region,
+    );
+    if (warehouse && machineTypes.every((m) => warehouse[m.id] !== undefined)) return warehouse;
     const geo = geoFromRegion(region);
     const rates = await this.getPricingRatesForGeo(geo);
-    return estimateMachineTypeMonthlyPrices(machineTypes, rates);
+    return { ...estimateMachineTypeMonthlyPrices(machineTypes, rates), ...warehouse };
   }
 
   private async getDiskMonthlyRate(zone: string, diskType: string): Promise<number | null> {
@@ -900,7 +909,28 @@ export class GcpClient implements PluginClient {
    * Monthly price for one machine type in a zone, using the spec cache when
    * it is warm and falling back to a single machineTypes GET when it is not.
    */
+  private async warehouseMonthlyPrices(
+    machineTypes: readonly string[],
+    region: string,
+  ): Promise<Record<string, number> | null> {
+    const rates = await fetchInstanceOnDemandRates(this.hostServices?.instancePricing, {
+      platform: "gcp",
+      region,
+      instanceTypes: machineTypes,
+      selection: { "variant.provisioningModel": "Standard" },
+    });
+    if (!rates) return null;
+    return Object.fromEntries(
+      Object.entries(rates).map(([type, hourly]) => [
+        type,
+        Number((hourly * HOURS_PER_MONTH).toFixed(2)),
+      ]),
+    );
+  }
+
   private async machineTypeMonthlyPrice(machineType: string, zone: string): Promise<number | null> {
+    const known = await this.warehouseMonthlyPrices([machineType], regionFromZone(zone));
+    if (known?.[machineType] !== undefined) return known[machineType];
     let spec = this.machineTypeSpecCache.get(machineType);
     if (!spec) {
       const fetched = await this.get<{ guestCpus: number; memoryMb: number }>(

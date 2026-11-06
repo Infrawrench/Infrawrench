@@ -16,6 +16,9 @@ export type {
   DockerHostServices,
   KubernetesHostServices,
   HttpHostServices,
+  InstancePricingCell,
+  InstancePricingHostServices,
+  InstancePricingResult,
   SecretHostServices,
   PeerPaneContext,
   LogsFetchParams,
@@ -722,3 +725,13 @@ export type {
   OAuthServerClientDeclaration,
   OAuthTokenSet,
 } from "./oauth.js";
+export {
+  INSTANCE_LIST_PRICES_ONLY,
+  INSTANCE_PRICING_DIMENSIONS,
+  clearInstanceRateCache,
+  fetchInstanceCatalog,
+  fetchInstanceOnDemandRates,
+  instancePricingLiteral,
+  instancePricingSelectionSql,
+} from "./instance-rates.js";
+export type { InstanceCatalogEntry, InstanceRateRequest } from "./instance-rates.js";

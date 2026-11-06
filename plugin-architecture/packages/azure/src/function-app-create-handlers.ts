@@ -77,9 +77,9 @@ export async function getFunctionAppCreateConfig(
         defaultValue: "Y1",
         options: [
           { id: "Y1", label: "Consumption (Serverless, pay per execution)" },
-          { id: "B1", label: "Basic B1 (~$13/mo)" },
-          { id: "S1", label: "Standard S1 (~$69/mo)" },
-          { id: "EP1", label: "Elastic Premium EP1 (~$171/mo)" },
+          { id: "B1", label: "Basic B1" },
+          { id: "S1", label: "Standard S1" },
+          { id: "EP1", label: "Elastic Premium EP1" },
         ],
       },
     ],

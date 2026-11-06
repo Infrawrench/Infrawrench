@@ -25,12 +25,63 @@ const emptyRates: AzurePricingRates = {
   diskGbMonthUsd: {},
   redisMonthlyUsd: {},
   appServiceMonthlyUsd: {},
+  containerRegistryMonthlyUsd: {},
   functionAppMonthlyUsd: {},
   sqlDbMonthlyUsd: {},
   containerInstance: null,
 };
 
 afterEach(() => vi.restoreAllMocks());
+
+describe("Container Registry pricing", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // Meters as the Retail Prices API returned them for eastus, 2026-11.
+  const meter = (
+    skuName: string,
+    meterName: string,
+    unitOfMeasure: string,
+    retailPrice: number,
+  ) => ({
+    type: "Consumption",
+    skuName,
+    meterName,
+    unitOfMeasure,
+    retailPrice,
+  });
+
+  it("reads each tier's daily registry unit, not its storage or task meters", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) =>
+        priceResponse(
+          new URL(String(input)).searchParams.get("$filter")?.includes("Container Registry")
+            ? [
+                meter("Basic", "Basic Registry Unit", "1/Day", 0.1666),
+                meter("Basic", "Data Stored", "1 GB/Month", 0.1),
+                meter("Premium", "Premium Registry Unit", "1/Day", 1.6666),
+                meter("Premium", "Premium Registry Replication Unit", "1/Day", 1.6666),
+                meter("Premium", "Premium Connected registry", "1/Day", 0.33333),
+              ]
+            : [],
+        ),
+      ),
+    );
+    const rates = await fetchAzurePricingRates("containerregistrytest");
+    expect(rates.containerRegistryMonthlyUsd["Basic"]).toBeCloseTo((0.1666 * 730) / 24);
+    expect(rates.containerRegistryMonthlyUsd["Premium"]).toBeCloseTo((1.6666 * 730) / 24);
+    expect(Object.keys(rates.containerRegistryMonthlyUsd)).toHaveLength(2);
+  });
+
+  it("estimates the chosen tier, defaulting to Basic", () => {
+    const rates = { ...emptyRates, containerRegistryMonthlyUsd: { Basic: 5, Premium: 50 } };
+    expect(
+      estimateAzureCost("azure-container-registry", { sku: "Premium" }, rates)?.monthlyAmount,
+    ).toBe(50);
+    expect(estimateAzureCost("azure-container-registry", {}, rates)?.monthlyAmount).toBe(5);
+    expect(estimateAzureCost("azure-container-registry", { sku: "Unknown" }, rates)).toBeNull();
+  });
+});
 
 describe("fetchAzurePricingRates", () => {
   it("parses VM, disk, redis, app service, sql and container rates from retail rows", async () => {

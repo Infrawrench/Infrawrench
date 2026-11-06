@@ -40,7 +40,7 @@ Not every provider measures memory. Where it isn't available (Hetzner, EC2, Comp
 
 - **Hetzner Cloud:** Servers (per-location EUR prices; CPU only, as Hetzner doesn't report memory)
 - **DigitalOcean:** Droplets (USD prices; memory measured where the DO Metrics Agent runs on the Droplet)
-- **AWS:** EC2 instances (live per-region on-demand prices; needs the `pricing:GetProducts` permission)
+- **AWS:** EC2 instances (current per-region on-demand prices, with no permission needed)
 - **Azure:** Virtual machines (memory from the Available Memory Bytes metric)
 - **Google Cloud:** Compute Engine VM instances (Cloud Billing catalog prices)
 - **Linode (Akamai Cloud):** Linodes (regional USD prices; CPU only, as Linode doesn't report memory; LKE worker nodes are resized through their node pool instead)

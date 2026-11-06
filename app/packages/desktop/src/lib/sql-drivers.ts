@@ -1,4 +1,5 @@
 import { invoke } from "../lib/invoke";
+import { desktopInstancePricingQuery } from "./instance-pricing";
 import { getDb } from "../db/client";
 import type { HostServices, PluginManifest, SecretHostServices } from "@infrawrench/plugin-base";
 
@@ -280,7 +281,11 @@ export function buildPluginHostServices(
   // `secrets` is added to every host-services bundle so any plugin (driver
   // or HTTP-only) can resolve persisted secret-field values via the same
   // IPC-backed lookup. Mirrors the server-core `buildPluginHostServices`.
-  const base: HostServices = { ...httpHostServices, secrets: secretHostServices };
+  const base: HostServices = {
+    ...httpHostServices,
+    secrets: secretHostServices,
+    instancePricing: { query: desktopInstancePricingQuery },
+  };
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
     return { ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost), ...base };

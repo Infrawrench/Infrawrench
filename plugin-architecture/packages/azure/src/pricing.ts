@@ -64,6 +64,8 @@ export interface AzurePricingRates {
   functionAppMonthlyUsd: Record<string, number>;
   /** SQL Database SKU (e.g. "Basic", "S0", "P1") -> USD per month */
   sqlDbMonthlyUsd: Record<string, number>;
+  /** Container Registry tier (Basic, Standard, Premium) -> USD per month */
+  containerRegistryMonthlyUsd: Record<string, number>;
   /** Per-second Linux Container Instance rates */
   containerInstance: { vcpuPerSecondUsd: number; memoryGbPerSecondUsd: number } | null;
 }
@@ -239,6 +241,20 @@ function parseAppServiceRates(items: RetailPriceItem[]): {
   return { appService, functionApp };
 }
 
+/**
+ * Each tier's flat daily charge, the `<tier> Registry Unit` meter; storage over
+ * the included allowance and task minutes are metered separately.
+ */
+function parseContainerRegistryRates(items: RetailPriceItem[]): Record<string, number> {
+  const rates: Record<string, number> = {};
+  for (const item of items) {
+    if (item.type !== "Consumption" || item.unitOfMeasure !== "1/Day") continue;
+    if (item.meterName !== `${item.skuName} Registry Unit`) continue;
+    rates[item.skuName] = (item.retailPrice * HOURS_PER_MONTH) / 24;
+  }
+  return rates;
+}
+
 function parseSqlDbRates(items: RetailPriceItem[]): Record<string, number> {
   const rates: Record<string, number> = {};
   for (const item of items) {
@@ -316,7 +332,7 @@ export async function fetchAzurePricingRates(
   http?: HttpHostServices,
 ): Promise<AzurePricingRates> {
   const regionFilter = `armRegionName eq '${region}'`;
-  const [vm, disk, redis, appService, sqlDb, containerInstance] = await Promise.all([
+  const [vm, disk, redis, appService, sqlDb, containerInstance, registry] = await Promise.all([
     fetchPage(`serviceName eq 'Virtual Machines' and ${regionFilter}`, http).catch(() => []),
     fetchPage(
       `serviceFamily eq 'Storage' and ${regionFilter} and serviceName eq 'Storage'`,
@@ -326,6 +342,7 @@ export async function fetchAzurePricingRates(
     fetchPage(`serviceName eq 'Azure App Service' and ${regionFilter}`, http).catch(() => []),
     fetchPage(`serviceName eq 'SQL Database' and ${regionFilter}`, http).catch(() => []),
     fetchPage(`serviceName eq 'Container Instances' and ${regionFilter}`, http).catch(() => []),
+    fetchPage(`serviceName eq 'Container Registry' and ${regionFilter}`, http).catch(() => []),
   ]);
 
   const { appService: appServiceRates, functionApp: functionAppRates } =
@@ -338,6 +355,7 @@ export async function fetchAzurePricingRates(
     appServiceMonthlyUsd: appServiceRates,
     functionAppMonthlyUsd: functionAppRates,
     sqlDbMonthlyUsd: parseSqlDbRates(sqlDb),
+    containerRegistryMonthlyUsd: parseContainerRegistryRates(registry),
     containerInstance: parseContainerInstanceRates(containerInstance),
   };
 }

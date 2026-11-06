@@ -223,6 +223,18 @@ export function estimateAzureCost(
     return buildCostEstimate([flatLine(`Database (${sku})`, rates.sqlDbMonthlyUsd[sku])]);
   }
 
+  if (typeId === "azure-container-registry") {
+    const sku = pick(fields, "sku") || "Basic";
+    return buildCostEstimate(
+      [flatLine(`Registry (${sku})`, rates.containerRegistryMonthlyUsd[sku])],
+      {
+        notes: [
+          "Storage over the tier's allowance, task minutes and data transfer are not included.",
+        ],
+      },
+    );
+  }
+
   if (typeId === "azure-disk") {
     const diskSizeGb = positiveNumber(pick(fields, "diskSizeGb", "sizeGb"), 128);
     const sku = pick(fields, "sku") || DEFAULT_DISK_SKU;

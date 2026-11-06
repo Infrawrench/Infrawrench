@@ -460,6 +460,20 @@ export interface SecretHostServices {
   setPlaintext?(resourceId: string, fieldKey: string, value: string): Promise<void>;
 }
 
+/** One read-only statement against the instance pricing warehouse; see `instance-rates.ts`. */
+export interface InstancePricingHostServices {
+  query(sql: string, maxRows: number): Promise<InstancePricingResult>;
+}
+
+export type InstancePricingCell = string | number | boolean | null;
+
+export interface InstancePricingResult {
+  columns: { name: string; type: string }[];
+  rows: InstancePricingCell[][];
+  truncated: boolean;
+  elapsedMs: number;
+}
+
 export interface HostServices {
   /** Present only when the plugin's manifest declares a sqlDriver */
   sql?: SqlHostServices;
@@ -475,6 +489,12 @@ export interface HostServices {
   k8s?: KubernetesHostServices;
   /** Always available: proxies HTTP requests through the host for custom CA support */
   http?: HttpHostServices;
+  /**
+   * The instance pricing warehouse, when this host can reach it. Plugins read it
+   * through `fetchInstanceOnDemandRates` / `fetchInstanceCatalog` and must carry
+   * on without it (a self-hosted deployment may have no warehouse).
+   */
+  instancePricing?: InstancePricingHostServices;
   /** Always available: read decrypted plaintext for the plugin's own persisted secretStates */
   secrets?: SecretHostServices;
   /**

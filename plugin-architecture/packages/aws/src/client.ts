@@ -42,6 +42,10 @@ import type {
   JitRole,
   JitScope,
 } from "@infrawrench/plugin-base";
+import {
+  fetchInstanceOnDemandRates,
+  type InstancePricingHostServices,
+} from "@infrawrench/plugin-base";
 import { withAiCostTags, withMetricsCapability } from "@infrawrench/plugin-base";
 import type {
   AiRequestLogFetchRange,
@@ -150,6 +154,7 @@ import {
 } from "./dashboard-metrics.js";
 import { estimateAwsCost } from "./cost-estimate.js";
 import { awsInstancePricing } from "./instance-pricing.js";
+import { SIZE_PICKER_PRICING } from "./instance-sizes.js";
 import {
   buildServerlessCacheModifyParams,
   modifyServerlessCache,
@@ -220,6 +225,7 @@ export class AWSClient implements PluginClient {
       region,
       ...(services?.http ? { http: services.http } : {}),
     };
+    this.instancePricing = services?.instancePricing;
   }
 
   private makeId(accountId: string, typeId: string, externalId: string): string {
@@ -294,6 +300,8 @@ export class AWSClient implements PluginClient {
     };
   }
 
+  private readonly instancePricing: InstancePricingHostServices | undefined;
+
   private createCtxFor(region: string): AwsCreateContext {
     const creds = this.credsFor(region);
     const sub: AwsCreateContext = {
@@ -322,6 +330,7 @@ export class AWSClient implements PluginClient {
       getResource: (typeId, resourceId, accountId) =>
         this.getResource(typeId, resourceId, accountId),
       withRegion: (r: string) => this.createCtxFor(r),
+      instancePricing: this.instancePricing,
     };
     return sub;
   }
@@ -535,7 +544,7 @@ export class AWSClient implements PluginClient {
     if (types.length === 0) return "";
 
     const region = String(cluster.fields["region"] ?? "") || this.creds.region;
-    const monthly = await fetchEc2MonthlyPrices(this.creds, region, types);
+    const monthly = await fetchEc2MonthlyPrices(this.creds, region, types, this.instancePricing);
     const byInstanceType: Record<string, number> = {};
     for (const [type, price] of Object.entries(monthly)) {
       byInstanceType[type] = price / PRICING_HOURS_PER_MONTH;
@@ -1120,24 +1129,36 @@ export class AWSClient implements PluginClient {
    * rate resolves to null and no estimate is quoted at all.
    */
   async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
-    return estimateAwsCost(this.creds, typeId, fields);
+    return estimateAwsCost(this.creds, typeId, fields, this.instancePricing);
   }
 
   /**
-   * Per-region monthly on-demand prices for the size picker, via the Price
-   * List Query API. Requires the `pricing:GetProducts` permission; without it
-   * the result is empty and the picker simply shows no price chips.
+   * Per-region monthly on-demand prices for the size picker, from the instance
+   * pricing warehouse. Without one, EC2 falls back to the Price List Query API,
+   * which needs the `pricing:GetProducts` permission (the picker shows no price
+   * chips if it is missing), and the other types show none.
    */
   async getCreateSizePricing(
     typeId: string,
     request: { regionId?: string; sizes: Array<{ id: string }> },
   ): Promise<Record<string, number>> {
-    if (typeId !== "ec2-instance") return {};
     const region = request.regionId ?? this.creds.region;
-    return fetchEc2MonthlyPrices(
-      this.creds,
+    const sizes = request.sizes.map((s) => s.id);
+    if (typeId === "ec2-instance" || typeId === "eks-cluster") {
+      return fetchEc2MonthlyPrices(this.creds, region, sizes, this.instancePricing);
+    }
+    const picker = SIZE_PICKER_PRICING[typeId];
+    if (!picker) return {};
+    const rates = await fetchInstanceOnDemandRates(this.instancePricing, {
+      ...picker,
       region,
-      request.sizes.map((s) => s.id),
+      instanceTypes: sizes,
+    });
+    return Object.fromEntries(
+      Object.entries(rates ?? {}).map(([type, hourly]) => [
+        type,
+        Number((hourly * PRICING_HOURS_PER_MONTH).toFixed(2)),
+      ]),
     );
   }
 

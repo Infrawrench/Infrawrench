@@ -1,15 +1,13 @@
 /**
- * Per-type monthly cost estimation for AWS, built on the live Price List
- * rates in `./pricing.ts`.
+ * Per-type monthly cost estimation for AWS.
  *
- * This module used to be a static us-east-1 table. That table quoted the same
- * number in Tokyo as in Virginia and had drifted to instance generations the
- * size picker no longer offers, so it was recorded as known-broken rather
- * than trusted. Everything here now resolves through `pricing:GetProducts`
- * for the region the form has selected, and anything without a resolvable
- * rate is left out of the estimate instead of being approximated: see
- * `buildCostEstimate`, which drops unpriced components and returns `null`
- * when nothing at all could be priced.
+ * Instance rates come from the instance pricing warehouse when the host has
+ * one: it needs no AWS permission and covers every engine and service. Failing
+ * that, and for everything the warehouse does not hold (volumes, storage), they
+ * come from `pricing:GetProducts` for the region the form has selected
+ * (`./pricing.ts`). Anything without a resolvable rate is left out of the
+ * estimate instead of being approximated: see `buildCostEstimate`, which drops
+ * unpriced components and returns `null` when nothing at all could be priced.
  *
  * Field keys are the create form's. Most listers store the same spellings
  * (`region`, `instanceType`, `sizeGb`, `volumeType`, `instanceClass`,
@@ -19,14 +17,19 @@
  */
 import {
   buildCostEstimate,
+  fetchInstanceOnDemandRates,
   type CostEstimate,
   type CostEstimateLineItem,
+  type InstancePricingHostServices,
 } from "@infrawrench/plugin-base";
 
 import type { AwsCredentials } from "./auth.js";
+import { CACHE_ENGINES, EC2_LINUX, RDS_ENGINES, rdsSelection } from "./instance-pricing.js";
 import {
+  HOURS_PER_MONTH,
   fetchEbsGbMonthPrice,
   fetchEc2MonthlyPrice,
+  fetchElastiCacheNodeHourlyUsd,
   fetchRdsMonthlyPrice,
   fetchRdsStorageGbMonthPrice,
 } from "./pricing.js";
@@ -69,6 +72,42 @@ function storageLine(
   };
 }
 
+/** One instance's monthly on-demand price: the warehouse's, or else `live()`'s. */
+async function instanceMonthly(
+  pricing: InstancePricingHostServices | undefined,
+  platform: string,
+  region: string,
+  instanceType: string,
+  selection: Readonly<Record<string, string>>,
+  live: () => Promise<number | null>,
+): Promise<number | null> {
+  const rates = await fetchInstanceOnDemandRates(pricing, {
+    platform,
+    region,
+    instanceTypes: [instanceType],
+    selection,
+  });
+  const hourly = rates?.[instanceType];
+  return hourly === undefined ? live() : Number((hourly * HOURS_PER_MONTH).toFixed(2));
+}
+
+/** `count × type` nodes billed by the hour, or null when there is no rate. */
+function nodesLine(
+  label: string,
+  instanceType: string,
+  count: number,
+  monthly: number | null,
+): CostEstimateLineItem | null {
+  if (monthly == null) return null;
+  return {
+    label: `${label} (${count} × ${instanceType})`,
+    monthlyAmount: monthly * count,
+    detail: `${count} × ${money(monthly)}/month`,
+    quantity: count,
+    unit: "nodes",
+  };
+}
+
 /**
  * Estimate the monthly cost of an AWS configuration.
  *
@@ -80,6 +119,7 @@ export async function estimateAwsCost(
   credentials: AwsCredentials,
   typeId: string,
   fields: Record<string, string>,
+  pricing?: InstancePricingHostServices,
 ): Promise<CostEstimate | null> {
   const region = fields["region"] || credentials.region;
   if (!region) return null;
@@ -88,23 +128,25 @@ export async function estimateAwsCost(
     const instanceType = fields["instanceType"] ?? "";
     if (!instanceType) return null;
     const diskGb = positiveNumber(fields["diskSizeGb"], 20);
-    const [instanceMonthly, diskRate] = await Promise.all([
-      fetchEc2MonthlyPrice(credentials, region, instanceType),
+    const [monthly, diskRate] = await Promise.all([
+      instanceMonthly(pricing, "ec2", region, instanceType, EC2_LINUX, () =>
+        fetchEc2MonthlyPrice(credentials, region, instanceType),
+      ),
       diskGb > 0 ? fetchEbsGbMonthPrice(credentials, region, ROOT_VOLUME_TYPE) : null,
     ]);
     return buildCostEstimate(
       [
-        instanceMonthly == null
+        monthly == null
           ? null
           : {
               label: `Instance (${instanceType})`,
-              monthlyAmount: instanceMonthly,
-              detail: `${money(instanceMonthly / 730)}/hour × 730 h`,
+              monthlyAmount: monthly,
+              detail: `${money(monthly / 730)}/hour × 730 h`,
             },
         storageLine(`Root volume (${ROOT_VOLUME_TYPE})`, diskGb, diskRate),
       ],
       {
-        partial: instanceMonthly == null || (diskGb > 0 && diskRate == null),
+        partial: monthly == null || (diskGb > 0 && diskRate == null),
         notes: ["On-demand Linux rate. Data transfer and snapshots are not included."],
       },
     );
@@ -138,27 +180,43 @@ export async function estimateAwsCost(
     const storageGb = isAurora
       ? 0
       : positiveNumber(fields["allocatedStorage"], RDS_DEFAULT_STORAGE_GB);
-    const [instanceMonthly, storageRate] = await Promise.all([
-      fetchRdsMonthlyPrice(credentials, region, instanceClass, engine, multiAz),
+    const [monthly, storageRate] = await Promise.all([
+      // An engine the price lists do not name is not guessed at: the live
+      // lookup below refuses it too, so the line drops and the estimate is partial.
+      RDS_ENGINES[engine]
+        ? instanceMonthly(
+            pricing,
+            "rds",
+            region,
+            instanceClass,
+            rdsSelection(engine, multiAz),
+            () => fetchRdsMonthlyPrice(credentials, region, instanceClass, engine, multiAz),
+          )
+        : null,
       storageGb > 0 ? fetchRdsStorageGbMonthPrice(credentials, region, multiAz) : null,
     ]);
     const deployment = multiAz ? "Multi-AZ" : "Single-AZ";
+    // The form does not ask about the license, so the estimate says which it used.
+    const license = RDS_ENGINES[engine]?.license;
     return buildCostEstimate(
       [
-        instanceMonthly == null
+        monthly == null
           ? null
           : {
               label: `Instance (${instanceClass})`,
-              monthlyAmount: instanceMonthly,
-              detail: `${deployment} ${engine}, ${money(instanceMonthly / 730)}/hour × 730 h`,
+              monthlyAmount: monthly,
+              detail: `${deployment} ${engine}, ${money(monthly / 730)}/hour × 730 h`,
             },
         storageLine("Allocated storage", storageGb, storageRate, ` (${deployment})`),
       ],
       {
-        partial: instanceMonthly == null || (storageGb > 0 && storageRate == null) || isAurora,
-        notes: isAurora
-          ? ["Instance hours only; Aurora storage and I/O are billed separately."]
-          : ["Backups beyond the free allocation and I/O are not included."],
+        partial: monthly == null || (storageGb > 0 && storageRate == null) || isAurora,
+        notes: [
+          isAurora
+            ? "Instance hours only; Aurora storage and I/O are billed separately."
+            : "Backups beyond the free allocation and I/O are not included.",
+          ...(license ? [`Priced as ${license.toLowerCase()}.`] : []),
+        ],
       },
     );
   }
@@ -177,7 +235,11 @@ export async function estimateAwsCost(
     const nodeCount = Math.max(1, Math.floor(positiveNumber(fields["nodeCount"], 2)));
     const diskGb = positiveNumber(fields["diskSizeGb"], 20);
     const [nodeMonthly, diskRate] = await Promise.all([
-      instanceType ? fetchEc2MonthlyPrice(credentials, region, instanceType) : null,
+      instanceType
+        ? instanceMonthly(pricing, "ec2", region, instanceType, EC2_LINUX, () =>
+            fetchEc2MonthlyPrice(credentials, region, instanceType),
+          )
+        : null,
       diskGb > 0 ? fetchEbsGbMonthPrice(credentials, region, ROOT_VOLUME_TYPE) : null,
     ]);
     const perNodeDisk = diskRate == null ? 0 : diskGb * diskRate;
@@ -212,6 +274,68 @@ export async function estimateAwsCost(
         ],
       },
     );
+  }
+
+  if (typeId === "elasticache-cluster") {
+    // The form's field is `cacheNodeType` / `numCacheNodes`; the lister stores
+    // `nodeType` / `numNodes`.
+    const nodeType = fields["cacheNodeType"] || fields["nodeType"] || "";
+    if (!nodeType) return null;
+    const engine = (fields["engine"] || "redis").toLowerCase();
+    const count = Math.max(
+      1,
+      Math.floor(positiveNumber(fields["numCacheNodes"] ?? fields["numNodes"], 1)),
+    );
+    const monthly = await instanceMonthly(
+      pricing,
+      "elasticache",
+      region,
+      nodeType,
+      CACHE_ENGINES[engine] ? { cache_engine: CACHE_ENGINES[engine] } : {},
+      async () => {
+        const hourly = await fetchElastiCacheNodeHourlyUsd(credentials, region, nodeType, engine);
+        return hourly == null ? null : Number((hourly * HOURS_PER_MONTH).toFixed(2));
+      },
+    );
+    return buildCostEstimate([nodesLine("Nodes", nodeType, count, monthly)], {
+      notes: ["Backup storage and data transfer are not included."],
+    });
+  }
+
+  if (typeId === "opensearch-domain") {
+    const instanceType = fields["instanceType"] ?? "";
+    if (!instanceType) return null;
+    const count = Math.max(1, Math.floor(positiveNumber(fields["instanceCount"], 1)));
+    const monthly = await instanceMonthly(
+      pricing,
+      "opensearch",
+      region,
+      instanceType,
+      {},
+      async () => null,
+    );
+    return buildCostEstimate([nodesLine("Instances", instanceType, count, monthly)], {
+      partial: true,
+      notes: ["Instance hours only; EBS storage and dedicated master nodes are billed separately."],
+    });
+  }
+
+  if (typeId === "redshift-cluster") {
+    const nodeType = fields["nodeType"] ?? "";
+    if (!nodeType) return null;
+    const count = Math.max(1, Math.floor(positiveNumber(fields["numberOfNodes"], 1)));
+    const monthly = await instanceMonthly(
+      pricing,
+      "redshift",
+      region,
+      nodeType,
+      {},
+      async () => null,
+    );
+    return buildCostEstimate([nodesLine("Nodes", nodeType, count, monthly)], {
+      partial: true,
+      notes: ["Compute only; managed storage and backups are billed separately."],
+    });
   }
 
   return null;

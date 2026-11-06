@@ -1,5 +1,6 @@
 import type {
   CreateResourceConfig,
+  InstancePricingHostServices,
   ResourceInstance,
   PolicyOption,
 } from "@infrawrench/plugin-base";
@@ -7,6 +8,8 @@ import type { AwsCredentials } from "../auth.js";
 
 export interface AwsCreateContext {
   creds: AwsCredentials;
+  /** The instance pricing warehouse, when the host has one. */
+  instancePricing?: InstancePricingHostServices | undefined;
   hostForService(service: string): string;
   ec2<T>(action: string, params?: Record<string, string>): Promise<T>;
   json<T>(service: string, target: string, body: Record<string, unknown>): Promise<T>;
