@@ -504,6 +504,7 @@ export type {
   TableRow,
   TableNode,
   ChatPanelCapability,
+  InstancePricingCapability,
   ChatMessage,
   ChatStreamEvent,
   PublishPanelCapability,

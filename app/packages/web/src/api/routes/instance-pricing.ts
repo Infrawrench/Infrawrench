@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { INSTANCE_PRICING_KEY } from "@infrawrench/client-core";
 import { authenticateApiRequest } from "@/auth/api-auth";
 import {
   InstancePricingNotConfiguredError,
@@ -27,6 +28,12 @@ const app = new Hono();
  * like `/api/v1/whoami` and `/api/v1/aws-bulk-pricing`: it is the providers'
  * public price lists. The warehouse token is read-only, which is the real boundary.
  *
+ * `POST /api/v1/instance-pricing/query`, and no other route (not even its
+ * `aws-pricing` alias), also accepts the key the web and desktop apps ship with
+ * (`client-core/src/instance-pricing-key.ts`), so the resource page's pricing
+ * panel works with no account: the desktop app runs signed out, and the web
+ * SPA's session is a cookie this router does not read.
+ *
  * The MCP and chat tools (`tools/instance-pricing.ts`) call the same helpers.
  */
 
@@ -37,7 +44,16 @@ function unavailable(c: Context) {
   );
 }
 
+function carriesQueryKey(c: Context): boolean {
+  return (
+    c.req.method === "POST" &&
+    c.req.path === "/api/v1/instance-pricing/query" &&
+    c.req.header("authorization") === `Bearer ${INSTANCE_PRICING_KEY}`
+  );
+}
+
 app.use("*", async (c, next) => {
+  if (carriesQueryKey(c)) return next();
   const auth = await authenticateApiRequest(c.req.raw);
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
   return next();

@@ -140,6 +140,7 @@ const INVOKE_CHANNELS = [
   "cloud_get_create_config",
   "cloud_get_create_pricing",
   "cloud_get_cost_estimate",
+  "instance_pricing_query",
   "cloud_invoke_action",
   "cloud_fetch_metrics",
   "cloud_get_logs",

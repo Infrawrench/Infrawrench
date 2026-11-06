@@ -149,6 +149,7 @@ import {
   fetchMetricSeries as fetchMetricSeriesImpl,
 } from "./dashboard-metrics.js";
 import { estimateAwsCost } from "./cost-estimate.js";
+import { awsInstancePricing } from "./instance-pricing.js";
 import {
   buildServerlessCacheModifyParams,
   modifyServerlessCache,
@@ -893,6 +894,8 @@ export class AWSClient implements PluginClient {
       3_600_000,
     );
     if (AWS_LOG_TYPES.has(resource.resourceTypeId)) detail.logs = { defaultTailLines: 200 };
+    const instancePricing = awsInstancePricing(resource, region);
+    if (instancePricing) detail.instancePricing = instancePricing;
     return detail;
   }
 

@@ -21,7 +21,7 @@ import type {
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
 import { useGT } from "gt-react";
-import { formatMonthlyEstimate } from "@infrawrench/client-core";
+import { formatMonthlyEstimate, type InstancePricingQuery } from "@infrawrench/client-core";
 import { MetricChart } from "../charts/MetricChart.js";
 import { CostEstimateChip } from "../CostEstimateChip.js";
 import { CarbonEstimateChip } from "../CarbonEstimateChip.js";
@@ -34,6 +34,7 @@ import { ManifestEditorView } from "./ManifestEditorView.js";
 import { SettingsEditorView } from "./SettingsEditorView.js";
 import { BucketPolicyEditor } from "./BucketPolicyEditor.js";
 import { DescribeView } from "./DescribeView.js";
+import { InstancePricingPanel } from "./InstancePricingPanel.js";
 import { LogsView } from "./LogsView.js";
 import { ChatPanel } from "./ChatPanel.js";
 import { PublishPanel } from "./PublishPanel.js";
@@ -95,6 +96,11 @@ interface DetailViewProps {
   onApplyManifest?: (manifest: string) => Promise<void>;
   /** Fetch describe text: used by the Describe tab when schema.describe is set */
   onGetDescribe?: () => Promise<string>;
+  /**
+   * Run a statement against the instance pricing warehouse: used by the
+   * collapsible panel on Overview when schema.instancePricing is set.
+   */
+  onQueryInstancePricing?: InstancePricingQuery;
   /** Fetch log output: used by the Logs tab when schema.logs is set */
   onGetLogs?: (params: LogsFetchParams) => Promise<LogsFetchResult>;
   /** List artifacts: used by the Artifacts tab when schema.artifactRegistry is set */
@@ -280,6 +286,7 @@ export function DetailView({
   onApplyManifest,
   onGetDescribe,
   onGetLogs,
+  onQueryInstancePricing,
   onListArtifacts,
   onListKvKeys,
   onGetKvValue,
@@ -789,6 +796,15 @@ export function DetailView({
           {schema.sections.map((section, i) => (
             <SchemaRenderer key={i} node={section} resourceId={resourceId} />
           ))}
+
+          {schema.instancePricing && onQueryInstancePricing && (
+            // Keyed so another resource's page starts from its own selection.
+            <InstancePricingPanel
+              key={resourceId}
+              capability={schema.instancePricing}
+              query={onQueryInstancePricing}
+            />
+          )}
 
           {schema.children && schema.children.length > 0 && (
             <div>

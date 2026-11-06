@@ -85,6 +85,7 @@ import { buildAzureDashboardStats } from "./dashboard-stats.js";
 import { fetchAzureMetricSeries } from "./metrics.js";
 import { fetchAzureLogs } from "./logs.js";
 import { renderAzureDetail, renderAzureSidebarItem } from "./renderers.js";
+import { azureInstancePricing } from "./instance-pricing.js";
 import { fetchAzureCostData } from "./cost-data.js";
 import { fetchAzureCommitments } from "./commitments.js";
 import { fetchAzureVulnerabilityFindings } from "./vulnerabilities.js";
@@ -555,12 +556,14 @@ export class AzureClient implements PluginClient {
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     // Azure Monitor's default window (see `metrics.ts`) is the last hour;
     // AKS additionally merges the Kubernetes peer's cost series.
-    return withMetricsCapability(
+    const detail = withMetricsCapability(
       renderAzureDetail(resource, this.resourceTypes),
       this.resourceTypes,
       resource.resourceTypeId,
       3_600_000,
     );
+    const instancePricing = azureInstancePricing(resource);
+    return instancePricing ? { ...detail, instancePricing } : detail;
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

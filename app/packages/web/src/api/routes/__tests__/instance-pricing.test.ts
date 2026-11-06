@@ -6,6 +6,8 @@ vi.mock("@/auth/api-auth", () => ({
 }));
 
 const { instancePricingRoutes } = await import("@/api/routes/instance-pricing");
+const { Hono } = await import("hono");
+const { INSTANCE_PRICING_KEY } = await import("@infrawrench/client-core");
 
 /** What the warehouse answers, as JSONCompactEachRowWithNamesAndTypes. */
 function warehouseRows(names: string[], types: string[], rows: unknown[][]): Response {
@@ -51,6 +53,53 @@ const post = (body: unknown) =>
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+
+describe("the apps' built-in key", () => {
+  // Mounted the way `api/index.ts` mounts it: the check reads the full path.
+  const api = new Hono();
+  api.route("/api/v1/instance-pricing", instancePricingRoutes);
+  api.route("/api/v1/aws-pricing", instancePricingRoutes);
+
+  const call = (method: string, path: string, token: string | null) =>
+    api.request(path, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      ...(method === "POST" ? { body: JSON.stringify({ sql: "SELECT 1" }) } : {}),
+    });
+
+  beforeEach(() => mockAuth.mockResolvedValue(null));
+
+  it("opens the query route, without consulting credentials", async () => {
+    const res = await call("POST", "/api/v1/instance-pricing/query", INSTANCE_PRICING_KEY);
+    expect(res.status).toBe(200);
+    expect(mockAuth).not.toHaveBeenCalled();
+    expect(sent[0]?.auth).toBe("Bearer read-only-test-token");
+  });
+
+  it("opens nothing else", async () => {
+    for (const [method, path] of [
+      ["GET", "/api/v1/instance-pricing/schema"],
+      ["POST", "/api/v1/aws-pricing/query"],
+      ["GET", "/api/v1/aws-pricing/schema"],
+      ["GET", "/api/v1/instance-pricing/query"],
+    ] as const) {
+      const res = await call(method, path, INSTANCE_PRICING_KEY);
+      expect(res.status, `${method} ${path}`).toBe(401);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("needs the exact key, or a credential", async () => {
+    for (const token of [null, "wrong", INSTANCE_PRICING_KEY.slice(0, -1)]) {
+      const res = await call("POST", "/api/v1/instance-pricing/query", token);
+      expect(res.status).toBe(401);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 
 describe("POST /api/v1/instance-pricing/query", () => {
   it("runs the statement with the read-only token and returns typed rows", async () => {

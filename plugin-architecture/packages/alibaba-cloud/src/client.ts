@@ -48,6 +48,7 @@ import {
 } from "./listers.js";
 import { fetchSeries, metricTarget } from "./metrics.js";
 import { DEFAULT_REGION } from "./regions.js";
+import { alibabaInstancePricing } from "./instance-pricing.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
@@ -246,7 +247,9 @@ export class AlibabaCloudClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
-    return renderDetail(resource, RESOURCE_TYPES);
+    const detail = renderDetail(resource, RESOURCE_TYPES);
+    const instancePricing = alibabaInstancePricing(resource);
+    return instancePricing ? { ...detail, instancePricing } : detail;
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

@@ -1086,3 +1086,5 @@ export * from "./search";
 export * from "./fuzzy";
 export * from "./resource-insight";
 export * from "./resource-reports";
+export * from "./instance-pricing";
+export * from "./instance-pricing-key";

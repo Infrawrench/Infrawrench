@@ -23,6 +23,8 @@ There are two endpoints, both in the [OpenAPI spec](./openapi.md) (tag **Instanc
 
 The older paths `/api/v1/aws-pricing/query` and `/api/v1/aws-pricing/schema` still work the same way, but are marked deprecated. Use the new ones in new code.
 
+The web and desktop apps' [instance pricing panel](../features/instance-pricing-panel.md) calls the query endpoint with a key built into those apps. That key is licensed for them alone, so your own code needs a credential.
+
 Any Infrawrench bearer credential works: an [API key](./api-keys.md) (`iwk_…`), an agent credential or a WorkOS access token. No scope is needed, since the data is the providers' public price lists. If you'd rather download whole services and work offline, the [bulk instances API](./bulk-instances-api.md) serves the same price lists as files.
 
 The [MCP server](../features/mcp.md) and the in-app [AI chat](../features/ai-chat.md) offer the same two calls as tools, `get_instance_pricing_schema` and `query_instance_pricing`. Neither needs a permission. `query_instance_pricing` runs one read-only statement and takes the same `sql` and `maxRows`.

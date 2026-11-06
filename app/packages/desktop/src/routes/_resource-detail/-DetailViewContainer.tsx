@@ -66,6 +66,7 @@ import { fetchDesktopServicesForResource } from "../../lib/services-client";
 import { ServiceAnnotation } from "@infrawrench/ui/services";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
 import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
+import { desktopInstancePricingQuery } from "../../lib/instance-pricing";
 
 interface DetailViewContainerProps {
   schema: DetailViewSchema;
@@ -310,6 +311,7 @@ export function DetailViewContainer({
         pluginLogoSvg={logoSvg}
         costEstimate={costEstimate}
         carbonEstimate={carbonEstimate}
+        onQueryInstancePricing={desktopInstancePricingQuery}
         {...(onReroll ? { onReroll } : {})}
         peerPanes={peerPanes}
         renderPeerPane={(pane) => (

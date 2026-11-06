@@ -83,6 +83,7 @@ import { registerIwappdHandlers, shutdownIwappdSessions } from "./iwappd-host";
 import "./k8s-host";
 import "./cloud-auth";
 import "./cloud-data";
+import "./instance-pricing";
 import "./cloud-sync";
 import "./cloud-ssh-keys";
 import "./workflow-host";

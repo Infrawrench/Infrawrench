@@ -125,6 +125,7 @@ import type { GcpCreateContext } from "./create-handlers.js";
 import { gcpGetCreateConfig, gcpCreateResource } from "./create-handlers.js";
 import type { GcpDetailContext } from "./detail-context.js";
 import { gcpRenderDetail } from "./detail-renderers.js";
+import { gcpInstancePricing } from "./instance-pricing.js";
 import type { CloudRunContext } from "./cloud-run-handlers.js";
 import {
   fetchCloudRunServiceFull,
@@ -1272,12 +1273,14 @@ export class GcpClient implements PluginClient {
     // Cloud Monitoring's default window (see `monitoring-client.ts`) is the
     // last hour. Renderers that want a different one (Cloud Run, Cloud
     // Functions: 24h) set `metricsCapability` themselves and are left alone.
-    return withMetricsCapability(
+    const detail = withMetricsCapability(
       gcpRenderDetail(this.detailCtx, resource),
       this.resourceTypes,
       resource.resourceTypeId,
       3_600_000,
     );
+    const instancePricing = gcpInstancePricing(resource);
+    return instancePricing ? { ...detail, instancePricing } : detail;
   }
 
   /**

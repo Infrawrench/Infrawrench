@@ -288,6 +288,14 @@ export const detailViewSchema = z.object({
     .optional(),
   headerActions: z.array(actionNodeSchema).optional(),
   metricsCapability: z.object({ defaultTimeRangeMs: z.number().optional() }).optional(),
+  instancePricing: z
+    .object({
+      platform: z.string().min(1),
+      instanceTypes: z.array(z.string().min(1)).min(1),
+      region: z.string().optional(),
+      selection: z.record(z.string(), z.string()).optional(),
+    })
+    .optional(),
   noSqlBrowser: z
     .object({
       driver: z.enum(["firestore", "mongodb-peer", "dynamodb"]),

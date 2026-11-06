@@ -399,4 +399,6 @@
 // 1.91.0: optional `measurement` on `POST /billing/checkout` and
 // `POST /billing/capacity/checkout`, plus `POST /billing/measurement-consent`
 // to update consent on an unpaid checkout. Additive.
-export const API_VERSION = "1.91.0";
+// 1.92.0: `POST /api/v1/instance-pricing/query`, and only that path, also accepts
+// the key the web and desktop apps ship with. Additive.
+export const API_VERSION = "1.92.0";

@@ -725,6 +725,8 @@ export interface DetailViewSchema {
   secretVersions?: SecretVersionsCapability;
   /** If present, the host renders a Metrics tab with time-series charts */
   metricsCapability?: { defaultTimeRangeMs?: number };
+  /** If present, the host renders the collapsible instance pricing panel on Overview. */
+  instancePricing?: InstancePricingCapability;
   /** If present, the host renders an inline NoSQL document browser. */
   noSqlBrowser?: NoSqlBrowserCapability;
   /** If present, the host renders a "Keys" tab backed by KV listing/get/put/delete. */
@@ -747,6 +749,26 @@ export interface DetailViewSchema {
    * `PluginClient.synthesizeSpeech` / `PluginClient.transcribeAudio`.
    */
   speechPanel?: SpeechPanelCapability;
+}
+
+/**
+ * What this resource runs, in the instance pricing warehouse's terms (see
+ * `@infrawrench/server-core/aws-pricing-warehouse/schema`). The host fetches and
+ * charts the prices; only the plugin knows how its fields map onto them.
+ */
+export interface InstancePricingCapability {
+  /** The warehouse's `platform`: `ec2`, `rds`, `azure`, `gcp`, `alibaba`, `runpod`... */
+  platform: string;
+  /** As the warehouse names them. More than one (a cluster's node types) adds a picker. */
+  instanceTypes: string[];
+  /** The warehouse's `region`. Without one the panel opens on the first the type is sold in. */
+  region?: string;
+  /**
+   * The variant this resource runs: a `prices` column, or `variant.<key>` for a
+   * key of its `variant` map, to its value. The user can change any of it, and
+   * a value the region does not sell falls back to the cheapest that it does.
+   */
+  selection?: Record<string, string>;
 }
 
 /**

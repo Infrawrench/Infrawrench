@@ -108,7 +108,9 @@ export function registerInstancePricingPaths(ctx: BuildContext) {
     "GameLift, RunPod GPU types and CPU pods, Alibaba Cloud ECS, Azure virtual machines and " +
     "Google Cloud Compute Engine. It is the data behind " +
     "instances.infrawrench.com. Needs no scope. Use `GET /api/v1/instance-pricing/schema` for " +
-    "the columns, or the tables below; filter `prices` on `platform` and `current`.\n\n" +
+    "the columns, or the tables below; filter `prices` on `platform` and `current`. The " +
+    "Infrawrench web and desktop apps call this path with a key built into them; that key is " +
+    "licensed for those apps only, so your own code should use an API key.\n\n" +
     tableList;
   const alias = (path: string) =>
     `Deprecated alias of \`${path}\`, its path before the warehouse covered clouds other than ` +

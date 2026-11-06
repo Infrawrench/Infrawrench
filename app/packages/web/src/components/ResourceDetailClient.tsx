@@ -95,6 +95,7 @@ import { createWebLeasesClient } from "@/lib/leases-client";
 import { createWebOwnershipClient } from "@/lib/ownership-client";
 import { fetchWebServicesForResource } from "@/lib/services-client";
 import { createWebBlastRadiusClient } from "@/lib/blast-radius-client";
+import { webInstancePricingQuery } from "@/lib/instance-pricing";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import type { WebTerminalSession } from "@/components/WebTerminal";
@@ -1390,6 +1391,7 @@ export function ResourceDetailClient({
             <DetailView
               schema={detailSchema}
               resourceId={resourceId}
+              onQueryInstancePricing={webInstancePricingQuery}
               pluginLogoSvg={pluginLogoSvg}
               titleAccessory={
                 <StarButton

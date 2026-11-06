@@ -28,6 +28,7 @@ import {
   splitList,
   volumeUsers,
 } from "./mappers.js";
+import { runpodInstancePricing } from "./instance-pricing.js";
 import { renderRunpodDetail, renderRunpodSidebarItem } from "./render.js";
 import { fingerprintId, joinSshKeys, parseSshKeys, sshFingerprint } from "./ssh-keys.js";
 import type {
@@ -681,7 +682,9 @@ export class RunpodClient implements PluginClient {
   // ── Rendering ────────────────────────────────────────────────────────
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
-    return renderRunpodDetail(resource, this.resourceTypes);
+    const detail = renderRunpodDetail(resource, this.resourceTypes);
+    const instancePricing = runpodInstancePricing(resource);
+    return instancePricing ? { ...detail, instancePricing } : detail;
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
