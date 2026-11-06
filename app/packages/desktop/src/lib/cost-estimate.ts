@@ -9,7 +9,7 @@
  * keeps the standing figure and the "+$340/month" delta consistent with each
  * other.
  */
-import type { CostEstimate, PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
+import type { CostEstimate, HostPluginClient, ResourceInstance } from "@infrawrench/plugin-base";
 import {
   effectiveCarbonDeclaration,
   readCarbonInputs,
@@ -35,7 +35,7 @@ export interface ResourceCostEstimatorOptions {
   resource: ResourceInstance | null;
   accountId: string;
   resourceId: string;
-  getLocalClient: () => PluginClient | null;
+  getLocalClient: () => HostPluginClient | null;
   getCloudCtx: () => CloudCtx | null;
 }
 
@@ -105,7 +105,10 @@ export function makeResourceCarbonEstimator(
       const declaration = type ? effectiveCarbonDeclaration(type) : null;
       if (!declaration) return resourceCarbonEstimate(null);
       const client = getLocalClient();
-      const configs = new Map<string, ReturnType<NonNullable<PluginClient["getCreateConfig"]>>>();
+      const configs = new Map<
+        string,
+        ReturnType<NonNullable<HostPluginClient["getCreateConfig"]>>
+      >();
       const inputs = await readCarbonInputs(
         declaration,
         { ...(resource.fields ?? {}), ...changedFields },

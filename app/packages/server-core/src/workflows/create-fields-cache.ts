@@ -20,7 +20,7 @@ import {
   type WorkflowCreateFieldInfo,
   type WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime";
-import type { PluginClient } from "@infrawrench/plugin-base";
+import type { HostPluginClient } from "@infrawrench/plugin-base";
 
 const TTL_MS = 10 * 60 * 1000;
 /** Cap a single `getCreateConfig` so one slow provider can't stall the editor's typings. */
@@ -59,7 +59,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 export async function getCreateFieldsForType(
   pluginId: string,
   typeId: string,
-  getClient: () => Promise<PluginClient>,
+  getClient: () => Promise<HostPluginClient>,
 ): Promise<WorkflowCreateFieldInfo[] | null> {
   const key = `${pluginId}:${typeId}`;
   const now = Date.now();
@@ -94,9 +94,9 @@ export async function getCreateFieldsForType(
 export async function enrichPlugin(
   entry: WorkflowPluginInfo,
   accountId: string,
-  getClient: () => Promise<PluginClient>,
+  getClient: () => Promise<HostPluginClient>,
 ): Promise<void> {
-  let clientPromise: Promise<PluginClient> | null = null;
+  let clientPromise: Promise<HostPluginClient> | null = null;
   const getClientOnce = () => (clientPromise ??= getClient());
 
   // Per-type capability flags, read from each type's DetailViewSchema (one

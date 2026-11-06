@@ -7,22 +7,22 @@ import {
   deriveSSHUsername,
   toast,
   useDataString,
-  SSH_TUNNEL_PRESETS,
+  sshTunnelPresets,
   buildSshTunnelCredentials,
   SshKeyRadioGroup,
-  type SshTunnelPresetKey,
+  type SshTunnelPreset,
 } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
 import type { SshKey } from "@/lib/api-types";
+import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
 import { useHostKeyTrust } from "@/lib/useHostKeyTrust";
-
-type PresetKey = SshTunnelPresetKey;
 
 interface SshTunnelModalProps {
   sshHost: string;
   defaultUsername?: string | undefined;
-  defaultService?: PresetKey | undefined;
+  /** The id of the plugin to preselect. Defaults to the first preset. */
+  defaultService?: string | undefined;
   onClose: () => void;
   onTunnelEstablished: (newAccountId: string) => void;
 }
@@ -43,13 +43,24 @@ export function SshTunnelModal({
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
   const [keys, setKeys] = useState<SshKey[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
-  const [service, setService] = useState<PresetKey>(defaultService ?? "docker");
+  const [presets, setPresets] = useState<SshTunnelPreset[]>([]);
+  const [service, setService] = useState(defaultService);
   const [customPort, setCustomPort] = useState(22222);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const preset = SSH_TUNNEL_PRESETS[service];
-  const remotePort = service === "custom" ? customPort : preset.port;
+  const preset = presets.find((p) => p.key === service) ?? presets[0];
+  const isCustom = preset?.pluginId === null;
+  const remotePort = isCustom ? customPort : (preset?.port ?? 0);
+
+  useEffect(() => {
+    fetchPluginCatalog(orgId)
+      .then((plugins) => setPresets(sshTunnelPresets(plugins)))
+      .catch((err) => {
+        setPresets(sshTunnelPresets([]));
+        toast.error(gt("Failed to load services"), { description: formatErrorMessage(err) });
+      });
+  }, [orgId]);
 
   useEffect(() => {
     apiGet<SshKey[]>(`/api/org/${orgId}/ssh-keys`)
@@ -73,12 +84,12 @@ export function SshTunnelModal({
       setError(gt("Select an SSH key first"));
       return;
     }
-    const pluginId = preset.pluginId;
-    if (!pluginId) {
+    const pluginId = preset?.pluginId;
+    if (!preset || !pluginId) {
       setError(gt("Select a service type"));
       return;
     }
-    if (service === "custom" && !customPort) {
+    if (isCustom && !customPort) {
       setError(gt("Remote port is required"));
       return;
     }
@@ -86,7 +97,7 @@ export function SshTunnelModal({
     setConnecting(true);
     setError(null);
     try {
-      const credentials = buildSshTunnelCredentials(pluginId, remotePort);
+      const credentials = buildSshTunnelCredentials(preset, remotePort);
       const displayName = `${preset.label} on ${sshHost}`;
 
       const result = await withTrustPrompt(() =>
@@ -212,24 +223,21 @@ export function SshTunnelModal({
                 {gt("Target Service")}
               </span>
               <div className="grid grid-cols-3 gap-2">
-                {(
-                  Object.entries(SSH_TUNNEL_PRESETS) as [
-                    PresetKey,
-                    (typeof SSH_TUNNEL_PRESETS)[PresetKey],
-                  ][]
-                ).map(([key, p]) => (
+                {presets.map((p) => (
                   <button
-                    key={key}
+                    key={p.key}
                     type="button"
-                    onClick={() => setService(key)}
+                    onClick={() => setService(p.key)}
                     className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
-                      service === key
+                      preset?.key === p.key
                         ? "border-accent bg-accent-muted text-accent-on-muted"
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
                     }`}
                   >
-                    <div className="font-medium">{gtData(p.label)}</div>
-                    {key !== "custom" && (
+                    <div className="font-medium">
+                      {p.pluginId === null ? gt("Custom…") : gtData(p.label)}
+                    </div>
+                    {p.pluginId !== null && (
                       <div className="text-on-surface-muted mt-0.5">:{p.port}</div>
                     )}
                   </button>
@@ -237,7 +245,7 @@ export function SshTunnelModal({
               </div>
             </div>
 
-            {service === "custom" && (
+            {isCustom && (
               <div className="flex items-center gap-3">
                 <label
                   id="ssh-tunnel-remote-port-label"

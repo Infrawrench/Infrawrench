@@ -3,7 +3,7 @@ import type { Readable } from "node:stream";
 import { Client as SshClient } from "ssh2";
 import type { ClientChannel } from "ssh2";
 import type { WebContents } from "electron";
-import { forwardOutHop } from "@infrawrench/plugin-ssh";
+import { forwardOutHop } from "@infrawrench/ssh-tunnel-core/chain";
 import { CLOUD_KEY_SENTINEL, ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "./ssh-agent";
 import { get1PasswordAgentPath } from "./onepassword-agent";
 import { buildInProcessAgent } from "./ssh-shell-agent";

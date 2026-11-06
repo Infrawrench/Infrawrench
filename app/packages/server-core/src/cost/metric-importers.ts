@@ -56,7 +56,7 @@ import {
   type BusinessMetricSourceDeclaration,
   type BusinessMetricSourcePoint,
   type BusinessMetricSourceRange,
-  type PluginClient,
+  type HostPluginClient,
 } from "@infrawrench/plugin-base";
 
 import { db } from "../db/client";
@@ -134,7 +134,7 @@ export function nextImportRunAt(
 
 /** What a source needs from the account: its client, plugin, and the plugin's form. */
 interface SourceContext {
-  client: PluginClient;
+  client: HostPluginClient;
   declaration: BusinessMetricSourceDeclaration;
   pluginId: string;
 }

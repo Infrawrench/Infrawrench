@@ -125,18 +125,11 @@ export const PLANNER_MIN_WINDOW_DAYS = 60;
 /** Materiality floor: p10 × 365 must clear this (cell currency). */
 export const PLANNER_MATERIALITY_ANNUAL = 1_000;
 
-/**
- * Published discount figures per provider: "up to" marketing numbers, which
- * is exactly why `basis` exists. Sources in the module header.
- */
-const PROVIDER_DISCOUNTS: Record<
+/** Each provider's published discount, from `manifest.commitments.discount`. */
+export type PlannerDiscounts = ReadonlyMap<
   string,
   { min?: number; max: number; basis: "range" | "upper_bound" }
-> = {
-  aws: { max: 0.66, basis: "upper_bound" },
-  gcp: { max: 0.55, basis: "upper_bound" },
-  azure: { min: 0.36, max: 0.72, basis: "range" },
-};
+>;
 
 /** Nearest-rank percentile (deliberately not interpolated) of a sorted-ascending array. */
 export function nearestRankPercentile(sortedAscending: readonly number[], p: number): number {
@@ -155,6 +148,7 @@ function median(values: readonly number[]): number {
 function evaluateCell(
   cell: PlannerCellInput,
   windowDays: readonly string[],
+  discounts: PlannerDiscounts,
 ): CommitmentRecommendation | PlannerRejectedCell {
   const identity = {
     pluginId: cell.pluginId,
@@ -195,7 +189,7 @@ function evaluateCell(
     return { ...identity, gate: "materiality" };
   }
 
-  const discount = PROVIDER_DISCOUNTS[cell.pluginId] ?? { max: 0, basis: "upper_bound" as const };
+  const discount = discounts.get(cell.pluginId) ?? { max: 0, basis: "upper_bound" as const };
   // Shallow end of the discount: the published floor, else 0; the loss
   // bound is then a ceiling on regret rather than an estimate.
   const shallow = discount.min ?? 0;
@@ -226,6 +220,7 @@ function evaluateCell(
 export function planCommitmentRecommendations(
   cells: readonly PlannerCellInput[],
   windowDays: readonly string[],
+  discounts: PlannerDiscounts,
 ): PlannerResult {
   if (windowDays.length < PLANNER_MIN_WINDOW_DAYS) {
     return {
@@ -241,8 +236,8 @@ export function planCommitmentRecommendations(
   for (const cell of cells) {
     // Only providers with a published discount are recommendable; others
     // never even reach the gates (there is no rate to size a saving with).
-    if (!PROVIDER_DISCOUNTS[cell.pluginId]) continue;
-    const result = evaluateCell(cell, windowDays);
+    if (!discounts.has(cell.pluginId)) continue;
+    const result = evaluateCell(cell, windowDays, discounts);
     if ("gate" in result) rejected.push(result);
     else recommendations.push(result);
   }

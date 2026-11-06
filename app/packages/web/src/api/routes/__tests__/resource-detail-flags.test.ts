@@ -102,7 +102,7 @@ interface SetupOpts {
   getSshConfig?:
     (() => { host: string; port: number; username: string; privateKey: string }) | null;
   sqlDriver?: { driver: string; credentialKey: string } | null;
-  kvDriver?: { driver: string; credentialKey: string } | null;
+  kvDriver?: { driver: string; credentialKey: string; browser?: "keys" | "documents" } | null;
   dockerDriver?: { driver: string; credentialKey: string } | null;
   storageBrowser?: { bucketName: string } | null;
   resourceSqlDriver?: { driver: string; connectionStringOutputKey: string } | null;
@@ -336,10 +336,10 @@ describe("resource-detail feature flag parity with desktop", () => {
     expect(body.isMongoDb).toBe(false);
   });
 
-  it("isMongoDb=true when kvDriver is mongodb", async () => {
+  it("isMongoDb=true when the KV driver declares a document browser", async () => {
     setupMocks({
       getSshConfig: null,
-      kvDriver: { driver: "mongodb", credentialKey: "connectionString" },
+      kvDriver: { driver: "wire", credentialKey: "connectionString", browser: "documents" },
     });
 
     const body = await getDetail(buildApp());

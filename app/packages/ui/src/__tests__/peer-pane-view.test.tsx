@@ -47,6 +47,7 @@ function paneData(groups?: PeerPaneResourceGroup[]): PeerPaneData {
           title: "Namespaces (3) · by cost",
           resourceTypeId: "k8s-namespace",
           pluginId: "kubernetes",
+          role: "namespace",
           items: [
             ns("payments", "Active · ~$4.20/day · 18% CPU"),
             ns("web", "Active · ~$1.10/day · 62% mem"),
@@ -106,6 +107,48 @@ describe("PeerPaneView namespace grid", () => {
     expect(screen.getByRole("heading", { name: /Namespaces/ })).toHaveTextContent("(2)");
     expect(screen.getByRole("button", { name: /^payments/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^web/ })).toBeInTheDocument();
+  });
+
+  it("offers a port forward only on a group that declares the service role", () => {
+    const service = {
+      ...pod("api", "payments"),
+      fields: { namespace: "payments", hasSelector: "true" },
+    };
+    const groups = (role?: "service") => [
+      {
+        title: "Services (1)",
+        resourceTypeId: "any-type",
+        pluginId: "any-plugin",
+        ...(role ? { role } : {}),
+        items: [service],
+      },
+    ];
+    const portForward = {
+      entries: [],
+      starting: null,
+      error: null,
+      onStart: vi.fn(),
+      onStop: vi.fn(),
+    };
+    const renderGroups = (data: PeerPaneData) =>
+      render(
+        <DndContext>
+          <PeerPaneView
+            pane={data}
+            accountId="acct"
+            parentResourceId="acct:k8s-cluster:default"
+            onOpenPill={vi.fn()}
+            portForward={portForward}
+          />
+        </DndContext>,
+      );
+
+    const plain = renderGroups(paneData(groups()));
+    expect(screen.queryByRole("button", { name: "Port forward" })).toBeNull();
+    plain.unmount();
+
+    renderGroups(paneData(groups("service")));
+    expect(screen.getByRole("button", { name: "Port forward" })).toBeInTheDocument();
   });
 
   it("appends a count to a group title that carries none", () => {

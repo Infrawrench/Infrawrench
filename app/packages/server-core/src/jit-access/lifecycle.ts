@@ -38,7 +38,7 @@ import { publishEvent } from "../events/publish";
 import { orgAppUrl } from "../app-url";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, lte, or } from "drizzle-orm";
-import type { JitGrantSpec, PluginClient } from "@infrawrench/plugin-base";
+import type { JitGrantSpec, HostPluginClient } from "@infrawrench/plugin-base";
 import type { JitEndReason } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
@@ -174,7 +174,10 @@ export function grantSpec(row: JitRequestRow): JitGrantSpec {
 }
 
 /** The account's client, or a thrown error that says why there is none. */
-export async function jitClient(organizationId: string, accountId: string): Promise<PluginClient> {
+export async function jitClient(
+  organizationId: string,
+  accountId: string,
+): Promise<HostPluginClient> {
   const resolved = await getOrgAccountClient(accountId, organizationId);
   if (!resolved) {
     throw new Error(

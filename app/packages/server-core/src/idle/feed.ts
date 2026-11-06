@@ -22,7 +22,7 @@ import {
   type IdleSavingsEstimate,
   type OrphanAccountGroup,
   type OrphanedResource,
-  type Plugin,
+  type HostPlugin,
   type RemediationSource,
 } from "@infrawrench/plugin-base";
 import type {
@@ -213,7 +213,7 @@ export async function loadStoredIdleFindings(organizationId: string): Promise<St
 }
 
 /** Plugin metadata in the shape {@link mergeIdleFindings} reads. */
-export function idleFeedPlugins(loaded: readonly { plugin: Plugin }[]): IdleFeedPlugin[] {
+export function idleFeedPlugins(loaded: readonly { plugin: HostPlugin }[]): IdleFeedPlugin[] {
   return loaded
     .filter(({ plugin }) => plugin.manifest.idleFindings)
     .map(({ plugin }) => ({

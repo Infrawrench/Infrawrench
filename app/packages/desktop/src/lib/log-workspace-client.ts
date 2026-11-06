@@ -1,4 +1,4 @@
-import type { LogsFetchParams, LogsFetchResult, PluginClient } from "@infrawrench/plugin-base";
+import type { LogsFetchParams, LogsFetchResult, HostPluginClient } from "@infrawrench/plugin-base";
 import {
   discoverSidecarLogStreams,
   type LogStreamSelector,
@@ -47,9 +47,9 @@ interface LocalResourceRow {
   updated_at: string;
 }
 
-const localClients = new Map<string, Promise<PluginClient>>();
+const localClients = new Map<string, Promise<HostPluginClient>>();
 
-function getLocalClient(accountId: string, pluginId: string): Promise<PluginClient> {
+function getLocalClient(accountId: string, pluginId: string): Promise<HostPluginClient> {
   let client = localClients.get(accountId);
   if (!client) {
     client = createPluginClient(accountId, pluginId);
@@ -86,7 +86,7 @@ async function listLocalLogResources(): Promise<LogResourceOption[]> {
     const peerTypeDefs = (loaded?.plugin.resourceTypes ?? []).filter(
       (t) => (t.peerIntegrations?.length ?? 0) > 0,
     );
-    let client: PluginClient | null = null;
+    let client: HostPluginClient | null = null;
     try {
       client = await getLocalClient(account.id, account.plugin_id);
     } catch {
@@ -203,7 +203,7 @@ export function createDesktopLogWorkspaceClient(orgId: string | null): LogWorksp
         selector: LogStreamSelector,
         params: LogsFetchParams,
       ): Promise<LogsFetchResult> {
-        let client: PluginClient;
+        let client: HostPluginClient;
         if (selector.parentResourceId) {
           // Sidecar stream: the peer client is minted from the parent's
           // outputs; the account's own plugin is looked up from the row.

@@ -1,8 +1,8 @@
 import ssh2 from "ssh2";
 import type { Readable } from "node:stream";
 import type { SshConfig } from "@infrawrench/plugin-base";
-import { forwardOutHop, resolveSshChain } from "@infrawrench/plugin-ssh";
 import { execSshScript } from "@infrawrench/ssh-tunnel-core";
+import { forwardOutHop, resolveSshChain } from "@infrawrench/ssh-tunnel-core/chain";
 import { getClientForAccount } from "./plugin-clients";
 import { resolveSafeHost } from "./host-validation";
 import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "./ssh-host-keys";
@@ -17,7 +17,7 @@ export async function connectSshInstaller(
     ? await resolveSshChain(throughAccountId, async (accountId) => {
         const ctx = await getClientForAccount(accountId, organizationId);
         const hop = ctx?.client.getSshConfig?.();
-        if (!ctx || ctx.plugin.manifest.id !== "ssh" || !hop)
+        if (!ctx || !ctx.plugin.manifest.jumpHost || !hop)
           throw new Error("SSH jump account not found.");
         return {
           ...hop,

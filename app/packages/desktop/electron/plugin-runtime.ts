@@ -20,8 +20,8 @@ import type {
   HostServices,
   HttpHostServices,
   MetricSeries,
-  Plugin,
-  PluginClient,
+  HostPlugin,
+  HostPluginClient,
   PluginManifest,
   ResourceInstance,
   ResourceTypeDefinition,
@@ -322,7 +322,7 @@ export function withOAuthHostService(
 /** Load the plugin + decrypted credentials for a local account. */
 async function createAccountPluginClient(
   account: LocalAccountRow,
-): Promise<{ plugin: Plugin; client: PluginClient }> {
+): Promise<{ plugin: HostPlugin; client: HostPluginClient }> {
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) throw new UserFacingError(`Plugin "${account.pluginId}" is not available.`);
   const credentials = await getAccountCredentials(account.id);

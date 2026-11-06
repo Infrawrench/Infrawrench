@@ -25,7 +25,7 @@ import type {
 } from "@infrawrench/client-core";
 import { COST_EXPORT_BASE_COLUMNS, COST_EXPORT_PROVENANCE_COLUMNS } from "@infrawrench/client-core";
 import type {
-  PluginClient,
+  HostPluginClient,
   WarehouseCell,
   WarehouseColumn,
   WarehouseColumnType,
@@ -193,7 +193,7 @@ export async function listWarehouseSinks(
 async function sinkClient(
   organizationId: string,
   accountId: string,
-): Promise<{ client: PluginClient; pluginId: string; sink: WarehouseSinkDeclaration }> {
+): Promise<{ client: HostPluginClient; pluginId: string; sink: WarehouseSinkDeclaration }> {
   const resolved = await getOrgAccountClient(accountId, organizationId);
   if (!resolved) {
     throw new WarehouseDestinationError(

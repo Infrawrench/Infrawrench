@@ -15,6 +15,7 @@ import {
 import { invoke } from "@/lib/invoke";
 import { getDb } from "@/db/client";
 import { createPluginClient } from "@/lib/plugin-client";
+import { loadPlugins } from "@/plugins/loader";
 import { sshExecCommand } from "@/lib/ssh-tunnel";
 import {
   createCloudFanoutSnippet,
@@ -135,20 +136,32 @@ function LocalFanout() {
     (async () => {
       try {
         const db = await getDb();
-        const rows = await db.select<Array<{ id: string; display_name: string }>>(
-          "SELECT id, display_name FROM accounts WHERE plugin_id = 'ssh' ORDER BY display_name",
-        );
+        const [rows, plugins] = await Promise.all([
+          db.select<Array<{ id: string; display_name: string; plugin_id: string }>>(
+            "SELECT id, display_name, plugin_id FROM accounts ORDER BY display_name",
+          ),
+          loadPlugins(),
+        ]);
         if (cancelled) return;
+        const hostPluginIds = new Set(
+          plugins.flatMap(({ plugin }) => (plugin.manifest.jumpHost ? [plugin.manifest.id] : [])),
+        );
         setTargets(
-          rows.map((r) => ({
-            kind: "account" as const,
-            id: r.id,
-            label: r.display_name,
-            pluginId: "ssh",
-            running: true,
-            needsKey: false,
-            tags: [],
-          })),
+          rows.flatMap((r) =>
+            hostPluginIds.has(r.plugin_id)
+              ? [
+                  {
+                    kind: "account" as const,
+                    id: r.id,
+                    label: r.display_name,
+                    pluginId: r.plugin_id,
+                    running: true,
+                    needsKey: false,
+                    tags: [],
+                  },
+                ]
+              : [],
+          ),
         );
       } catch (e) {
         if (!cancelled) setTargetsError(e instanceof Error ? e.message : "Failed to load hosts");
@@ -170,7 +183,7 @@ function LocalFanout() {
           async (target): Promise<FanoutHostResult> => {
             const started = Date.now();
             try {
-              const client = await createPluginClient(target.id, "ssh");
+              const client = await createPluginClient(target.id, target.pluginId);
               const config = client.getSshConfig?.();
               if (!config) throw new Error("Account has no SSH configuration");
               const res = await sshExecCommand(

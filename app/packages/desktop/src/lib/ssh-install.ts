@@ -3,7 +3,7 @@ import type {
   SshInstallInput,
   SshInstallResult,
 } from "@infrawrench/plugin-base";
-import { resolveSshChain } from "@infrawrench/plugin-ssh";
+import { resolveSshChain } from "@infrawrench/ssh-tunnel-core/chain";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { createPluginClient } from "./plugin-client";
@@ -95,7 +95,10 @@ export async function runLocalSshInstall(
           "SELECT plugin_id FROM accounts WHERE id = $1",
           [accountId],
         );
-        if (hop?.plugin_id !== "ssh") throw new Error("SSH jump account not found.");
+        const hopPlugin = hop ? await getPlugin(hop.plugin_id) : undefined;
+        if (!hop || !hopPlugin?.plugin.manifest.jumpHost) {
+          throw new Error("SSH jump account not found.");
+        }
         const client = await createPluginClient(accountId, hop.plugin_id);
         const creds = await invoke<Record<string, string>>("account_get_credentials", {
           accountId,

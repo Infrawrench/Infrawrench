@@ -612,8 +612,12 @@ export { attachAltBufferScrollHandler } from "./xterm-scroll.js";
 export type { ScrollableTerminal, AttachAltBufferScrollHandle } from "./xterm-scroll.js";
 export { buildInitialShellCommand, shellQuote } from "./terminal-shell.js";
 
-export { SSH_TUNNEL_PRESETS, buildSshTunnelCredentials } from "./ssh-tunnel-presets.js";
-export type { SshTunnelPresetKey } from "./ssh-tunnel-presets.js";
+export {
+  CUSTOM_SSH_TUNNEL_PRESET,
+  buildSshTunnelCredentials,
+  sshTunnelPresets,
+} from "./ssh-tunnel-presets.js";
+export type { SshTunnelPlugin, SshTunnelPreset } from "./ssh-tunnel-presets.js";
 
 export { runDockerSetupScript } from "./docker-setup-script.js";
 export type {

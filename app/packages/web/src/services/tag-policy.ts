@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Context } from "hono";
-import type { PluginClient } from "@infrawrench/plugin-base";
+import type { HostPluginClient } from "@infrawrench/plugin-base";
 import {
   TAG_POLICY_OVERRIDE_HEADER,
   TAG_POLICY_UNMET_CODE,
@@ -53,7 +53,7 @@ function tagPolicyBlockedPayload(policy: TagPolicy, violations: TagPolicyViolati
  * opt-in), the same fail-open stance as `isActionDestructive`.
  */
 async function createConfigDeclaresTagField(
-  client: PluginClient,
+  client: HostPluginClient,
   resourceTypeId: string,
   parentResourceId: string | undefined,
 ): Promise<boolean> {
@@ -67,7 +67,7 @@ async function createConfigDeclaresTagField(
 }
 
 interface TagPolicyCreateTarget {
-  client: PluginClient;
+  client: HostPluginClient;
   pluginId: string;
   resourceTypeId: string;
   accountId: string;

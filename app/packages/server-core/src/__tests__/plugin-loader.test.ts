@@ -895,7 +895,7 @@ describe("metrics declarations", () => {
   }> {
     const out: Array<{ id: string; hasMetrics: boolean; declaresCapability: boolean }> = [];
     for (const plugin of registry.BUNDLED_PLUGINS) {
-      const client = plugin.createClient(makeMockCredentials(plugin.manifest.id));
+      const client = plugin.createClient(makeMockCredentials(plugin));
       for (const rt of plugin.resourceTypes) {
         const schema = client.renderDetail(createMockResource(plugin.manifest.id, rt));
         out.push({
@@ -938,7 +938,7 @@ describe("metrics declarations", () => {
   it("supportsMetrics only appears on plugins whose client can fetch series", () => {
     const bad: string[] = [];
     for (const plugin of registry.BUNDLED_PLUGINS) {
-      const client = plugin.createClient(makeMockCredentials(plugin.manifest.id));
+      const client = plugin.createClient(makeMockCredentials(plugin));
       if (typeof client.fetchMetricSeries === "function") continue;
       for (const rt of plugin.resourceTypes) {
         if (rt.supportsMetrics) bad.push(`${plugin.manifest.id}/${rt.id}`);

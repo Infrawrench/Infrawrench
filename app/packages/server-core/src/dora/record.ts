@@ -10,7 +10,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   resolveDeployEvent,
   type DeployEventResource,
-  type Plugin,
+  type HostPlugin,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
 import type { DoraDeploymentInput } from "@infrawrench/client-core";
@@ -45,7 +45,7 @@ function asDeployResource(r: {
 export async function recordDeployEventsFromSync(
   organizationId: string,
   accountId: string,
-  plugin: Plugin,
+  plugin: HostPlugin,
   fetched: ResourceInstance[],
 ): Promise<number> {
   const capability = plugin.deployEvents;

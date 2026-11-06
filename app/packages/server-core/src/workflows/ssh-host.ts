@@ -25,7 +25,7 @@ import type {
   SshStreamChunkLite,
 } from "@infrawrench/workflow-runtime";
 import type { ConnectConfig } from "ssh2";
-import type { PluginClient, SshConfig } from "@infrawrench/plugin-base";
+import type { HostPluginClient, SshConfig } from "@infrawrench/plugin-base";
 import {
   sftpList as sftpHostList,
   sftpMkdir as sftpHostMkdir,
@@ -88,7 +88,7 @@ async function loadPrivateKey(organizationId: string, sshKeyId: string): Promise
  * interactive SSH/tunnel path (see web `tunnel-ssh-attach.ts`).
  */
 async function resolveHostFromResource(
-  client: PluginClient,
+  client: HostPluginClient,
   hostOutputKey: string,
   params: { accountId: string; typeId: string; resourceId: string },
 ): Promise<string | null> {
@@ -106,7 +106,7 @@ async function resolveHostFromResource(
  */
 async function resolveResourceSshConfig(
   organizationId: string,
-  client: PluginClient,
+  client: HostPluginClient,
   sshEndpoint: { hostOutputKey: string; defaultUsername?: string } | undefined,
   params: {
     accountId: string;

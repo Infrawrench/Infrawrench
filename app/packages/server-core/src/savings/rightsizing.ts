@@ -2,7 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import {
   primitiveFields,
   resolveRemediationCommands,
-  type Plugin,
+  type HostPlugin,
   type RemediationFinding,
   type ResourceTypeDefinition,
   type RightsizingDeclaration,
@@ -89,7 +89,7 @@ interface DeclaredType {
   typeDef: ResourceTypeDefinition;
   declaration: RightsizingDeclaration;
   pluginName: string;
-  plugin: Plugin;
+  plugin: HostPlugin;
 }
 
 async function computeRightsizing(organizationId: string): Promise<RightsizingListResponse> {

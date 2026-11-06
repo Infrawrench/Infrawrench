@@ -3,8 +3,8 @@ import type {
   DashboardStat,
   MetricSeries,
   PeerPluginIntegration,
-  Plugin,
-  PluginClient,
+  HostPlugin,
+  HostPluginClient,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
 import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
@@ -198,7 +198,7 @@ async function recordChangeTimeline(
 async function recordDeploys(
   organizationId: string,
   accountId: string,
-  plugin: Plugin,
+  plugin: HostPlugin,
   fetched: ResourceInstance[],
 ): Promise<void> {
   if (!plugin.deployEvents) return;
@@ -432,8 +432,8 @@ export async function syncAccountResources(
 async function refreshPinnedStats(
   accountId: string,
   organizationId: string,
-  plugin: Plugin,
-  client: PluginClient,
+  plugin: HostPlugin,
+  client: HostPluginClient,
 ): Promise<void> {
   const pinned = await db
     .selectDistinct({
@@ -575,8 +575,8 @@ async function refreshPinnedStats(
  * parent's metrics for the cycle.
  */
 async function fetchPeerMetricSeriesForPoller(
-  parentClient: PluginClient,
-  parentPlugin: Plugin,
+  parentClient: HostPluginClient,
+  parentPlugin: HostPlugin,
   integrations: PeerPluginIntegration[],
   resourceTypeId: string,
   resourceId: string,

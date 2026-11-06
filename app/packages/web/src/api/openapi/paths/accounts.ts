@@ -138,6 +138,25 @@ const PluginSummary = strict({
     description:
       "Present only when this server can connect the plugin through provider OAuth (the plugin supports it and the server has a client configured). See `POST /provider-oauth/{pluginId}/authorize`.",
   }),
+  sshTunnel: strict({
+    label: z.string(),
+    defaultPort: z.number().int(),
+    credentials: z.record(z.string()).openapi({
+      description:
+        "What an account tunneled to this service stores; `{port}` stands for the local end of the tunnel.",
+    }),
+  })
+    .optional()
+    .openapi({
+      description: "Present when the plugin can be reached through an SSH tunnel to a remote host.",
+    }),
+  jumpHost: z.boolean().optional().openapi({
+    description: "This plugin's accounts are SSH hosts that other accounts can connect through.",
+  }),
+  kvBrowser: z.enum(["keys", "documents"]).optional().openapi({
+    description:
+      "Which browser the plugin's connections open: `documents` for collections of JSON documents, `keys` for the key-value console. Absent means `keys`, or that the plugin has no key-value driver.",
+  }),
 }).openapi("PluginSummary");
 
 const PreflightCheck = strict({

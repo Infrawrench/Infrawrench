@@ -1,46 +1,64 @@
 import { describe, expect, it } from "vitest";
-import { SSH_TUNNEL_PRESETS, buildSshTunnelCredentials } from "../ssh-tunnel-presets";
+import {
+  CUSTOM_SSH_TUNNEL_PRESET,
+  buildSshTunnelCredentials,
+  sshTunnelPresets,
+} from "../ssh-tunnel-presets";
 
-describe("SSH_TUNNEL_PRESETS", () => {
-  it("maps known services to ports", () => {
-    expect(SSH_TUNNEL_PRESETS.docker.port).toBe(2375);
-    expect(SSH_TUNNEL_PRESETS.postgres.port).toBe(5432);
-    expect(SSH_TUNNEL_PRESETS.mysql.port).toBe(3306);
-    expect(SSH_TUNNEL_PRESETS.redis.port).toBe(6379);
-    expect(SSH_TUNNEL_PRESETS.memcached.port).toBe(11211);
+const docker = {
+  id: "docker",
+  sshTunnel: {
+    label: "Docker",
+    defaultPort: 2375,
+    credentials: { dockerHost: "tcp://localhost:{port}" },
+  },
+};
+const postgres = {
+  id: "postgres",
+  sshTunnel: {
+    label: "PostgreSQL",
+    defaultPort: 5432,
+    credentials: { connectionString: "postgresql://localhost:{port}/postgres" },
+  },
+};
+
+describe("sshTunnelPresets", () => {
+  it("derives a preset from each plugin that declares a tunnel", () => {
+    const [preset] = sshTunnelPresets([{ id: "aws" }, docker]);
+    expect(preset).toEqual({
+      key: "docker",
+      label: "Docker",
+      pluginId: "docker",
+      port: 2375,
+      credentials: { dockerHost: "tcp://localhost:{port}" },
+    });
   });
-  it("custom has a null pluginId", () => {
-    expect(SSH_TUNNEL_PRESETS.custom.pluginId).toBeNull();
+
+  it("orders by port whatever order the plugins came in", () => {
+    const keys = sshTunnelPresets([postgres, docker]).map((p) => p.key);
+    expect(keys).toEqual(["docker", "postgres", "custom"]);
+  });
+
+  it("always ends with the host's custom entry, which has no plugin", () => {
+    expect(sshTunnelPresets([])).toEqual([CUSTOM_SSH_TUNNEL_PRESET]);
+    expect(CUSTOM_SSH_TUNNEL_PRESET.pluginId).toBeNull();
   });
 });
 
 describe("buildSshTunnelCredentials", () => {
-  it("docker uses dockerHost tcp url", () => {
-    expect(buildSshTunnelCredentials("docker", 2375)).toEqual({
+  it("fills {port} in what the plugin declared", () => {
+    const [dockerPreset, postgresPreset] = sshTunnelPresets([docker, postgres]);
+    expect(buildSshTunnelCredentials(dockerPreset!, 2375)).toEqual({
       dockerHost: "tcp://localhost:2375",
     });
-  });
-  it("postgres uses a connection string", () => {
-    expect(buildSshTunnelCredentials("postgres", 5432)).toEqual({
-      connectionString: "postgresql://localhost:5432/postgres",
+    expect(buildSshTunnelCredentials(postgresPreset!, 15432)).toEqual({
+      connectionString: "postgresql://localhost:15432/postgres",
     });
   });
-  it("mysql uses a connection string", () => {
-    expect(buildSshTunnelCredentials("mysql", 3306)).toEqual({
-      connectionString: "mysql://localhost:3306/mysql",
+
+  it("defaults a preset without credentials to a host", () => {
+    expect(buildSshTunnelCredentials(CUSTOM_SSH_TUNNEL_PRESET, 8080)).toEqual({
+      host: "localhost:8080",
     });
-  });
-  it("redis uses a connection string", () => {
-    expect(buildSshTunnelCredentials("redis", 6379)).toEqual({
-      connectionString: "redis://localhost:6379",
-    });
-  });
-  it("memcached uses a connection string", () => {
-    expect(buildSshTunnelCredentials("memcached", 11211)).toEqual({
-      connectionString: "memcached://localhost:11211",
-    });
-  });
-  it("unknown plugin falls back to host", () => {
-    expect(buildSshTunnelCredentials("whatever", 8080)).toEqual({ host: "localhost:8080" });
   });
 });

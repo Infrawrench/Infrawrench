@@ -482,8 +482,13 @@ func specChecks() []specCheck {
 			// describe a UI form. None of it belongs in Terraform state, so the
 			// plugins data source drops all three rather than bloating every
 			// state file that reads it. oauth describes the "Connect with X"
-			// button, a browser consent flow Terraform cannot drive.
-			ignored: []string{"logoSvg", "credentialFields", "preflight", "oauth"},
+			// button, a browser consent flow Terraform cannot drive. sshTunnel,
+			// jumpHost and kvBrowser tell the app's connect dialogs what to offer,
+			// which is no more use in state than the form fields.
+			ignored: []string{
+				"logoSvg", "credentialFields", "preflight", "oauth",
+				"sshTunnel", "jumpHost", "kvBrowser",
+			},
 		},
 	}
 }

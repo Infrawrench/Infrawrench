@@ -32,8 +32,8 @@ import type {
   PagingEventAction,
   PagingIncident,
   PagingSeverity,
-  Plugin,
-  PluginClient,
+  HostPlugin,
+  HostPluginClient,
 } from "@infrawrench/plugin-base";
 import {
   pagingDedupKey,
@@ -90,8 +90,8 @@ export async function pagingDeclaration(
 }
 
 interface PagingAccountClient {
-  client: PluginClient;
-  plugin: Plugin;
+  client: HostPluginClient;
+  plugin: HostPlugin;
   paging: PagingCapabilityDeclaration;
   pluginId: string;
 }

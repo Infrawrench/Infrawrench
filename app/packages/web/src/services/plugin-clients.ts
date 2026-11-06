@@ -1,6 +1,6 @@
-import type { PeerPaneSchema, PeerPluginIntegration, Plugin } from "@infrawrench/plugin-base";
+import type { PeerPaneSchema, PeerPluginIntegration, HostPlugin } from "@infrawrench/plugin-base";
 import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
-import type { PluginClient } from "@infrawrench/plugin-base";
+import type { HostPluginClient } from "@infrawrench/plugin-base";
 import { getPlugin } from "../plugins/loader";
 import { buildPeerPluginClient } from "@infrawrench/server-core/peer-clients";
 import { getOrgAccountClient } from "@infrawrench/server-core/org-accounts";
@@ -27,8 +27,8 @@ interface PeerPaneResult {
  * lazy (POST /peer-panes) endpoints.
  */
 export async function buildPeerPanes(
-  parentClient: PluginClient,
-  parentPlugin: Plugin,
+  parentClient: HostPluginClient,
+  parentPlugin: HostPlugin,
   integrations: PeerPluginIntegration[],
   resourceTypeId: string,
   resourceId: string,

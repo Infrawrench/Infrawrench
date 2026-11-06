@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { T, Var, useGT } from "gt-react";
-import type { SecretExportTemplate, PluginClient } from "@infrawrench/plugin-base";
+import type { SecretExportTemplate, HostPluginClient } from "@infrawrench/plugin-base";
 import { camelToTitle } from "@infrawrench/plugin-base";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
@@ -39,7 +39,7 @@ export function SecretExportModal({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [targetClient, setTargetClient] = useState<PluginClient | null>(null);
+  const [targetClient, setTargetClient] = useState<HostPluginClient | null>(null);
   // May differ from source.resourceTypeId for __account__ drops.
   const [effectiveTypeId, setEffectiveTypeId] = useState<string>(source.resourceTypeId);
 

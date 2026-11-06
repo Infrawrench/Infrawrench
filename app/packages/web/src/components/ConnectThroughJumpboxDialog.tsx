@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 import { Modal } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
+import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
 import type { AccountListItem } from "@/lib/api-types";
 import { AddAccountModal } from "./AddAccountModal";
@@ -44,6 +45,7 @@ export function ConnectThroughJumpboxDialog({
   const gt = useGT();
   const orgId = useOrgId();
   const [sshAccounts, setSshAccounts] = useState<AccountListItem[] | null>(null);
+  const [jumpPluginId, setJumpPluginId] = useState<string | undefined>();
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [jumpboxId, setJumpboxId] = useState<string>("");
   const [useAddress, setUseAddress] = useState<"public" | "private">(
@@ -53,8 +55,15 @@ export function ConnectThroughJumpboxDialog({
   const [name, setName] = useState(() => gt("{name} via jumpbox", { name: sourceDisplayName }));
 
   useEffect(() => {
-    apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`)
-      .then((rows) => setSshAccounts(rows.filter((r) => r.pluginId === "ssh")))
+    Promise.all([
+      apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`),
+      fetchPluginCatalog(orgId),
+    ])
+      .then(([rows, catalog]) => {
+        const jumpPlugins = catalog.filter((p) => p.jumpHost);
+        setJumpPluginId(jumpPlugins[0]?.id);
+        setSshAccounts(rows.filter((r) => jumpPlugins.some((p) => p.id === r.pluginId)));
+      })
       // A failed load must not read as "no SSH accounts yet": that message
       // sends the user off to create an account they may already have.
       .catch((e: unknown) =>
@@ -68,7 +77,7 @@ export function ConnectThroughJumpboxDialog({
       <AddAccountModal
         onClose={onClose}
         onAdded={onAdded}
-        prefilledPluginId="ssh"
+        {...(jumpPluginId ? { prefilledPluginId: jumpPluginId } : {})}
         prefilledDisplayName={name.trim() || sourceDisplayName}
         prefilledCredentials={{
           host: chosenHost,

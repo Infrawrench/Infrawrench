@@ -1,12 +1,12 @@
 import { invoke } from "./invoke";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./sql-drivers";
-import type { PluginClient } from "@infrawrench/plugin-base";
+import type { HostPluginClient } from "@infrawrench/plugin-base";
 
 export async function createPluginClient(
   accountId: string,
   pluginId: string,
-): Promise<PluginClient> {
+): Promise<HostPluginClient> {
   const credentials = await invoke<Record<string, string>>("account_get_credentials", {
     accountId,
   });
@@ -32,7 +32,7 @@ export async function createPeerPluginClient(
   parentPluginId: string,
   parentResourceId: string,
   peerPluginId: string,
-): Promise<PluginClient> {
+): Promise<HostPluginClient> {
   const parentLoaded = await getPlugin(parentPluginId);
   if (!parentLoaded) throw new Error(`Plugin "${parentPluginId}" not loaded`);
   const parentClient = await createPluginClient(accountId, parentPluginId);

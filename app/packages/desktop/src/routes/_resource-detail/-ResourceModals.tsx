@@ -2,7 +2,7 @@ import type {
   AssociationSource,
   CredentialFormat,
   FieldDefinition,
-  PluginClient,
+  HostPluginClient,
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
@@ -48,7 +48,7 @@ interface ResourceModalsProps {
   accountId: string;
   decodedResourceId: string;
   onCloseExportCredential: () => void;
-  getLocalClient: () => PluginClient | null;
+  getLocalClient: () => HostPluginClient | null;
   getCloudCtx: () => CloudCtx | null;
 
   confirmDelete: boolean;
@@ -169,7 +169,7 @@ export function ResourceModals({
                 accountId,
                 formatId,
                 cloud.parentResourceId,
-              )) as Awaited<ReturnType<NonNullable<PluginClient["exportCredential"]>>>;
+              )) as Awaited<ReturnType<NonNullable<HostPluginClient["exportCredential"]>>>;
               return result;
             }
             throw new Error("No client available for credential export");

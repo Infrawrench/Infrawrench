@@ -1,7 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { and, desc, eq } from "drizzle-orm";
 import type { Context } from "hono";
-import type { PluginClient } from "@infrawrench/plugin-base";
+import type { HostPluginClient } from "@infrawrench/plugin-base";
 import { db } from "@/db/client";
 import { changeFreezes } from "@/db/schema";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
@@ -179,7 +179,7 @@ export async function checkChangeFreezeForTool(
  * unresolvable actions are treated as non-destructive (the flag is opt-in).
  */
 export async function isActionDestructive(
-  client: PluginClient,
+  client: HostPluginClient,
   resourceTypeId: string,
   resourceId: string,
   accountId: string,

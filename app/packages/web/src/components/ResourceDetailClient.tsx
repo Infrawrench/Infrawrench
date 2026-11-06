@@ -1515,7 +1515,7 @@ export function ResourceDetailClient({
                     onModifySecretVersion: handleModifySecretVersion,
                   }
                 : {})}
-              {...(pluginId === "kubernetes" && resourceTypeId === "k8s-pod" && parentResourceId
+              {...(detailSchema.execConsole && parentResourceId
                 ? {
                     onOpenConsole: async () => {
                       const { token } = await apiPost<{ token: string }>(

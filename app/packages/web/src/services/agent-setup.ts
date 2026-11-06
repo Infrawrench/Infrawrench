@@ -22,7 +22,7 @@ import { and, eq, isNull, lte, or } from "drizzle-orm";
 const { Client: SshClient } = ssh2;
 // Re-establish the class's dual value/type nature lost by destructuring.
 type SshClient = InstanceType<typeof SshClient>;
-import type { Plugin, ResourceInstance } from "@infrawrench/plugin-base";
+import type { HostPlugin, ResourceInstance } from "@infrawrench/plugin-base";
 import type {
   AgentSetupPlan,
   AgentSshTarget,
@@ -578,7 +578,7 @@ async function waitForAgentSshTarget(
 }
 
 function agentVmStatus(
-  plugin: Plugin,
+  plugin: HostPlugin,
   resourceTypeId: string,
   resource: ResourceInstance,
 ): "setting-up" | "up" {
@@ -590,7 +590,7 @@ function agentVmStatus(
 }
 
 function resolveAgentSshTarget(
-  plugin: Plugin,
+  plugin: HostPlugin,
   row: SessionRow,
   resource: ResourceInstance,
 ): AgentSshTarget {

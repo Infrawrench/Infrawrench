@@ -1,7 +1,7 @@
 import type {
   HostServices,
   MetricSeries,
-  PluginClient,
+  HostPluginClient,
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
@@ -144,6 +144,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   if (!isCancelled()) {
     setters.setIsKvPlugin(isKv);
     setters.setKvDriverName(kvDriverDecl?.driver ?? null);
+    setters.setKvDocumentBrowser(kvDriverDecl?.browser === "documents");
     setters.setIsDockerPlugin(isDocker);
     setters.setDockerDriverName(dockerDriverDecl?.driver ?? null);
   }
@@ -565,7 +566,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
 }
 
 async function fetchLocalPeerMetrics(
-  parentClient: PluginClient,
+  parentClient: HostPluginClient,
   integrations: NonNullable<ResourceTypeDefinition["peerIntegrations"]>,
   parentResource: ResourceInstance,
   accountId: string,

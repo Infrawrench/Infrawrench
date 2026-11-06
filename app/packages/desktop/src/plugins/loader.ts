@@ -3,14 +3,17 @@
  * disable whole plugins (DISABLED_PLUGINS) or restrict a plugin to specific
  * resource types (ENABLED_RESOURCE_TYPES).
  */
-import type { Plugin } from "@infrawrench/plugin-base";
-import { pluginManifestSchema, validatePreflightContract } from "@infrawrench/plugin-base";
+import type { HostPlugin, Plugin } from "@infrawrench/plugin-base";
+import { validatePluginContract } from "@infrawrench/plugin-base";
+import { hostPlugins } from "@infrawrench/plugin-base/effect";
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
 
 import { DISABLED_PLUGINS, ENABLED_RESOURCE_TYPES } from "../../env";
 import { PLUGIN_MODULES } from "./modules";
 
 interface LoadedPlugin {
-  plugin: Plugin;
+  /** Contract methods run on call and return Promises; see `hostPlugin`. */
+  plugin: HostPlugin;
 }
 
 let _loaded: LoadedPlugin[] | null = null;
@@ -18,7 +21,7 @@ let _loaded: LoadedPlugin[] | null = null;
 export async function loadPlugins(): Promise<LoadedPlugin[]> {
   if (_loaded) return _loaded;
 
-  const loaded: LoadedPlugin[] = [];
+  const valid: Plugin[] = [];
 
   const disabledPlugins = new Set(DISABLED_PLUGINS);
 
@@ -31,7 +34,7 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       continue;
     }
 
-    const result = pluginManifestSchema.safeParse(mod.plugin.manifest);
+    const result = validate(pluginManifestSchema, mod.plugin.manifest);
     if (!result.success) {
       console.error(
         `[plugin-loader] Invalid manifest for "${mod.plugin.manifest?.id ?? "unknown"}"`,
@@ -39,11 +42,9 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       continue;
     }
 
-    const contractProblem = validatePreflightContract(mod.plugin);
-    if (contractProblem) {
-      console.error(
-        `[plugin-loader] Invalid preflight contract for "${mod.plugin.manifest.id}": ${contractProblem}`,
-      );
+    const problems = validatePluginContract(mod.plugin);
+    if (problems.length > 0) {
+      console.error(`[plugin-loader] "${mod.plugin.manifest.id}" breaks the contract:`, problems);
       continue;
     }
 
@@ -59,11 +60,11 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
         }
       : mod.plugin;
 
-    loaded.push({ plugin: filteredPlugin });
+    valid.push(filteredPlugin);
   }
 
-  _loaded = loaded;
-  return loaded;
+  _loaded = hostPlugins(valid).map((plugin) => ({ plugin }));
+  return _loaded;
 }
 
 export async function getPlugin(pluginId: string): Promise<LoadedPlugin | undefined> {

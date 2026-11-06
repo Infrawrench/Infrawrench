@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import type { Plugin, PluginManifest, ResourceInstance } from "@infrawrench/plugin-base";
+import type { HostPlugin, PluginManifest, ResourceInstance } from "@infrawrench/plugin-base";
 
 // vi.mock factories are hoisted above every const in this file, so the driver
 // stubs have to be created inside them and read back afterwards.
@@ -163,14 +163,14 @@ describe("getAccountCredentials", () => {
 });
 
 describe("listAccountResourcesLive", () => {
-  const plugin = (resourceTypes: unknown[], listResources: unknown): { plugin: Plugin } =>
+  const plugin = (resourceTypes: unknown[], listResources: unknown): { plugin: HostPlugin } =>
     ({
       plugin: {
         manifest: manifest(),
         resourceTypes,
         createClient: () => ({ listResources, resolveOutput: vi.fn() }),
       },
-    }) as unknown as { plugin: Plugin };
+    }) as unknown as { plugin: HostPlugin };
 
   it("lists top-level types and child types that opted into the sidebar", async () => {
     const listResources = vi.fn().mockResolvedValue([]);
@@ -238,7 +238,7 @@ describe("resolveResourceOutputs", () => {
         ],
         createClient: () => ({ listResources: vi.fn(), resolveOutput }),
       },
-    } as unknown as { plugin: Plugin });
+    } as unknown as { plugin: HostPlugin });
 
     const outputs = await resolveResourceOutputs(account, "droplet", "acc-1:droplet:1");
     expect(outputs).toEqual({ ipv4: "ipv4-value" });
@@ -263,7 +263,7 @@ describe("resolveResourceOutputs", () => {
         ],
         createClient: () => ({ listResources: vi.fn(), resolveOutput }),
       },
-    } as unknown as { plugin: Plugin });
+    } as unknown as { plugin: HostPlugin });
 
     await expect(resolveResourceOutputs(account, "droplet", "id")).resolves.toEqual({
       ipv4: "1.2.3.4",

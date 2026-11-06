@@ -27,7 +27,7 @@ import {
   startSessionRecording,
   type SessionRecorder,
 } from "@infrawrench/server-core/ssh-recording/recorder";
-import { forwardOutHop, resolveSshChain, type SshHop } from "@infrawrench/plugin-ssh";
+import { forwardOutHop, resolveSshChain, type SshHop } from "@infrawrench/ssh-tunnel-core/chain";
 import { sharedConsoleHub } from "@/services/shared-console/hub";
 import { startHostLink, stopHostLink } from "./shared-console/relay";
 
@@ -41,7 +41,7 @@ interface DirectSshParams {
 
 /**
  * Load an SSH account's credentials and return them shaped for the chain
- * resolver. Throws if the account is missing or not an SSH plugin account.
+ * resolver. Throws if the account is missing or its plugin isn't a jump host.
  */
 async function loadSshAccountForChain(
   accountIdToLoad: string,
@@ -61,7 +61,8 @@ async function loadSshAccountForChain(
   if (!account) {
     throw new Error(`SSH jumpbox account ${accountIdToLoad} not found`);
   }
-  if (account.pluginId !== "ssh") {
+  const loaded = await getPlugin(account.pluginId);
+  if (!loaded?.plugin.manifest.jumpHost) {
     throw new Error(
       `SSH jumpbox chain hop ${accountIdToLoad} is not an SSH account (plugin=${account.pluginId})`,
     );
@@ -186,8 +187,8 @@ export async function handleSshSession(
         return;
       }
       targetConfig = pluginSshConfig;
-      // Only SSH plugin accounts can declare a jump chain.
-      if (account.pluginId === "ssh") {
+      // Only a jump host plugin's accounts can declare a jump chain.
+      if (loaded.plugin.manifest.jumpHost) {
         connectThroughAccountId = credentials.connectThroughAccountId || undefined;
       }
     }

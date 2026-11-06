@@ -8,7 +8,7 @@ import { eq, and } from "drizzle-orm";
 const { Client: SshClient } = ssh2;
 // Re-establish the class's dual value/type nature lost by destructuring.
 type SshClient = InstanceType<typeof SshClient>;
-import type { PluginClient, SshConfig } from "@infrawrench/plugin-base";
+import type { HostPluginClient, SshConfig } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { sshKeys } from "../db/schema";
 import { decrypt, buildAad } from "./encryption";
@@ -21,7 +21,7 @@ import { resolveSafeHost } from "./host-validation";
  * - otherwise fall back to the org SSH key + host (sshEndpoint-based resources like EC2)
  */
 export async function resolveSshConfig(
-  client: PluginClient,
+  client: HostPluginClient,
   organizationId: string,
   input: { sshKeyId?: string; sshHost?: string; sshUsername?: string },
 ): Promise<SshConfig> {

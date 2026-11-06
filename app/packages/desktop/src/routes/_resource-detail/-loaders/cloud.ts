@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type {
   CredentialFormat,
   DetailViewSchema,
@@ -7,7 +6,7 @@ import type {
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
-import { metricSeriesSchema } from "@infrawrench/plugin-base";
+import { decodeOrThrow, metricsResponseSchema } from "@infrawrench/plugin-base/validation";
 import {
   buildChildResourceGroups,
   formatErrorMessage,
@@ -26,9 +25,6 @@ import {
   fetchCloudMetrics,
 } from "../../../lib/cloud-api";
 import type { LoaderParams } from "./types";
-
-/** `POST /resources/:pluginId/:typeId/metrics` answers `{ series: [...] }`. */
-const metricsResponseSchema = z.object({ series: z.array(metricSeriesSchema) });
 
 export async function loadCloudResource(orgId: string, params: LoaderParams): Promise<void> {
   const {
@@ -105,6 +101,7 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     hasSqlEditor: boolean;
     hasKvConsole: boolean;
     kvDriverName?: string;
+    isMongoDb?: boolean;
     hasDockerActions: boolean;
     sshHost: string | null;
     defaultSshUsername: string | null;
@@ -187,6 +184,7 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
   setters.setPgConnected(detail.hasSqlEditor);
   setters.setIsKvPlugin(detail.hasKvConsole);
   setters.setKvDriverName(detail.kvDriverName ?? null);
+  setters.setKvDocumentBrowser(detail.isMongoDb ?? false);
   setters.setKvConnected(detail.hasKvConsole);
   setters.setIsDockerPlugin(detail.hasDockerActions);
   setters.setDockerDriverName(null);
@@ -253,7 +251,9 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     })
       .then((res) => {
         if (!isCancelled())
-          setters.setMetricSeries(metricsResponseSchema.parse(res).series as MetricSeries[]);
+          setters.setMetricSeries(
+            decodeOrThrow(metricsResponseSchema, res).series as MetricSeries[],
+          );
       })
       .catch((err) => {
         if (!isCancelled()) toast.error(`Couldn't load metrics: ${formatErrorMessage(err)}`);

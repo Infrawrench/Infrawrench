@@ -12,7 +12,7 @@
  *    what the UI shows). This is per-type accurate and needs no API call.
  */
 import type {
-  PluginClient,
+  HostPluginClient,
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
@@ -39,7 +39,7 @@ export function staticResourceCapabilities(
  * values. Best-effort: if `renderDetail` throws on the probe, returns {}.
  */
 export function detailResourceCapabilities(
-  client: PluginClient,
+  client: HostPluginClient,
   pluginId: string,
   typeId: string,
   accountId: string,
@@ -77,7 +77,7 @@ export function detailResourceCapabilities(
   };
 }
 
-export function clientSupportsImportYaml(client: PluginClient): boolean {
+export function clientSupportsImportYaml(client: HostPluginClient): boolean {
   return typeof client.importYaml === "function";
 }
 

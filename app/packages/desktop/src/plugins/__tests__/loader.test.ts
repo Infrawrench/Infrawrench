@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // isolation.
 
 const safeParse = vi.fn();
+vi.mock("@infrawrench/plugin-base/validation", () => ({
+  pluginManifestSchema: {},
+  validate: (_schema: unknown, m: unknown) => safeParse(m),
+}));
 vi.mock("@infrawrench/plugin-base", () => ({
-  pluginManifestSchema: { safeParse: (m: unknown) => safeParse(m) },
-  validatePreflightContract: () => null,
+  validatePluginContract: () => [],
   // Real plugins imported when a mock is missing reach for these builders;
   // stub them so an unfinished mock list fails loudly on the allowlist check
   // instead of hanging the suite on a missing-export TypeError.
@@ -29,11 +32,14 @@ vi.mock("../../../env", () => ({
 
 const awsPlugin = {
   manifest: { id: "aws" },
-  resourceTypes: [{ id: "ec2" }, { id: "s3" }],
+  resourceTypes: [
+    { id: "ec2", outputs: [] },
+    { id: "s3", outputs: [] },
+  ],
 };
 const pgPlugin = {
   manifest: { id: "postgres" },
-  resourceTypes: [{ id: "table" }],
+  resourceTypes: [{ id: "table", outputs: [] }],
 };
 
 vi.mock("@infrawrench/plugin-aws", () => ({ plugin: awsPlugin }));

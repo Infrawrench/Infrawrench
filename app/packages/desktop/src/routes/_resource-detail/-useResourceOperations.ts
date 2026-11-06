@@ -1,3 +1,9 @@
+import {
+  decodeOrThrow,
+  queryCostEstimateSchema,
+  queryExecuteResultSchema,
+  queryResultSchema,
+} from "@infrawrench/plugin-base/validation";
 import { useCallback } from "react";
 import type {
   ArtifactEntry,
@@ -5,7 +11,7 @@ import type {
   ChatStreamEvent,
   LogsFetchParams,
   LogsFetchResult,
-  PluginClient,
+  HostPluginClient,
   PublishMessagePayload,
   PublishMessageResult,
   QueryCostEstimate,
@@ -16,11 +22,7 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
-import {
-  queryCostEstimateSchema,
-  queryExecuteResultSchema,
-  queryResultSchema,
-} from "@infrawrench/plugin-base";
+import {} from "@infrawrench/plugin-base";
 import { dispatchRefreshResource, type QueryResult } from "@infrawrench/ui";
 import {
   accessCloudSecretVersion,
@@ -63,7 +65,7 @@ export interface ResourceOperationsDeps {
   decodedResourceId: string;
   resource: ResourceInstance | null;
   cloudCtxRef: { current: CloudCtx | null };
-  clientRef: { current: PluginClient | null };
+  clientRef: { current: HostPluginClient | null };
   connectionStringRef: { current: string };
   sqlDriverIdRef: { current: string };
 }
@@ -100,7 +102,7 @@ export function useResourceOperations(deps: ResourceOperationsDeps) {
           resourceTypeId: cloud.resourceTypeId,
           sql,
         });
-        return queryResultSchema.parse(raw);
+        return decodeOrThrow(queryResultSchema, raw);
       }
       const client = clientRef.current;
       if (client?.executeQuery) {
@@ -120,7 +122,8 @@ export function useResourceOperations(deps: ResourceOperationsDeps) {
     async (sql: string, params: unknown[]): Promise<number> => {
       const cloud = cloudCtxRef.current;
       if (cloud) {
-        const result = queryExecuteResultSchema.parse(
+        const result = decodeOrThrow(
+          queryExecuteResultSchema,
           await cloudSqlExecute(cloud.orgId, {
             accountId,
             resourceId: decodedResourceId,
@@ -155,7 +158,7 @@ export function useResourceOperations(deps: ResourceOperationsDeps) {
           resourceTypeId: res.resourceTypeId,
           resourceId: decodedResourceId,
           ...params,
-        })) as Awaited<ReturnType<NonNullable<PluginClient["listKvKeys"]>>>;
+        })) as Awaited<ReturnType<NonNullable<HostPluginClient["listKvKeys"]>>>;
       }
       const client = clientRef.current;
       if (!client?.listKvKeys) throw new Error("Plugin does not support KV listing");
@@ -232,7 +235,8 @@ export function useResourceOperations(deps: ResourceOperationsDeps) {
     async (sql: string): Promise<QueryCostEstimate> => {
       const cloud = cloudCtxRef.current;
       if (cloud) {
-        return queryCostEstimateSchema.parse(
+        return decodeOrThrow(
+          queryCostEstimateSchema,
           await cloudSqlEstimate(cloud.orgId, {
             accountId,
             resourceId: decodedResourceId,

@@ -103,6 +103,9 @@ app.get("/plugins", async (c) => {
         helpLink: f.helpLink,
       })),
       preflight: p.plugin.manifest.preflight ?? null,
+      sshTunnel: p.plugin.manifest.sshTunnel,
+      jumpHost: p.plugin.manifest.jumpHost,
+      kvBrowser: p.plugin.manifest.kvDriver?.browser,
       // Present only when this server can run the plugin's OAuth flow.
       ...(() => {
         const oauth = pluginOAuthSummary(p.plugin.manifest);

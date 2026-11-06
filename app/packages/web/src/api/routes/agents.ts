@@ -8,8 +8,8 @@ import {
 import type {
   AgentVmCapability,
   CreateFieldConfig,
-  Plugin,
-  PluginClient,
+  HostPlugin,
+  HostPluginClient,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
@@ -507,7 +507,7 @@ app.post("/sessions", async (c) => {
 
   let resource;
   let warnings;
-  let plugin: Plugin | null = null;
+  let plugin: HostPlugin | null = null;
   try {
     const ctx = await getClientForAccount(body.settings.accountId, organizationId);
     if (!ctx) throw new Error("Account not found");
@@ -908,7 +908,7 @@ async function refreshAgentSession(
 }
 
 function agentVmStatus(
-  plugin: Plugin | null,
+  plugin: HostPlugin | null,
   resourceTypeId: string,
   resource: ResourceInstance,
 ): "setting-up" | "up" {
@@ -962,7 +962,7 @@ function agentDefaultFields(agentVm: AgentVmCapability) {
 }
 
 async function agentCreateFields(
-  client: PluginClient | undefined,
+  client: HostPluginClient | undefined,
   resourceTypeId: string,
   agentVm: AgentVmCapability,
 ): Promise<CreateFieldConfig[]> {
@@ -981,7 +981,7 @@ async function agentCreateFields(
 }
 
 async function withAgentSshKey(
-  plugin: Plugin,
+  plugin: HostPlugin,
   resourceTypeId: string,
   fields: Record<string, string>,
   organizationId: string,

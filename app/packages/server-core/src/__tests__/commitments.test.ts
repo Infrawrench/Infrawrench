@@ -219,12 +219,19 @@ describe("nearestRankPercentile", () => {
   });
 });
 
+const DISCOUNTS = new Map([
+  ["aws", { max: 0.66, basis: "upper_bound" as const }],
+  ["gcp", { max: 0.55, basis: "upper_bound" as const }],
+  ["azure", { min: 0.36, max: 0.72, basis: "range" as const }],
+]);
+
 describe("planCommitmentRecommendations", () => {
   it("recommends p10 of a steady material workload with break-even arithmetic", () => {
     // $100/day ± a dip to $90 on 9 of 90 days: present, flat, tight floor.
     const result = planCommitmentRecommendations(
       [plannerCell((_, i) => (i % 10 === 0 ? 90 : 100))],
       WINDOW_DAYS,
+      DISCOUNTS,
     );
     expect(result.available).toBe(true);
     expect(result.recommendations).toHaveLength(1);
@@ -245,6 +252,7 @@ describe("planCommitmentRecommendations", () => {
     const result = planCommitmentRecommendations(
       [plannerCell((_, i) => (i % 2 === 0 ? 100 : undefined))],
       WINDOW_DAYS,
+      DISCOUNTS,
     );
     expect(result.recommendations).toHaveLength(0);
     expect(result.rejected[0]!.gate).toBe("presence");
@@ -256,6 +264,7 @@ describe("planCommitmentRecommendations", () => {
     const result = planCommitmentRecommendations(
       [plannerCell((_, i) => (i < 60 ? 100 : 40))],
       WINDOW_DAYS,
+      DISCOUNTS,
     );
     expect(result.rejected[0]!.gate).toBe("not_in_decline");
   });
@@ -266,13 +275,14 @@ describe("planCommitmentRecommendations", () => {
     const result = planCommitmentRecommendations(
       [plannerCell((_, i) => (i % 8 === 0 ? 30 : 170))],
       WINDOW_DAYS,
+      DISCOUNTS,
     );
     expect(result.rejected[0]!.gate).toBe("floor");
   });
 
   it("gates immaterial workloads", () => {
     // $2/day → p10×365 = $730 < $1,000.
-    const result = planCommitmentRecommendations([plannerCell(() => 2)], WINDOW_DAYS);
+    const result = planCommitmentRecommendations([plannerCell(() => 2)], WINDOW_DAYS, DISCOUNTS);
     expect(result.rejected[0]!.gate).toBe("materiality");
   });
 
@@ -280,6 +290,7 @@ describe("planCommitmentRecommendations", () => {
     const result = planCommitmentRecommendations(
       [{ ...plannerCell(() => 100), pluginId: "azure" }],
       WINDOW_DAYS,
+      DISCOUNTS,
     );
     const rec = result.recommendations[0]!;
     expect(rec.savingBasis).toBe("range");
@@ -294,6 +305,7 @@ describe("planCommitmentRecommendations", () => {
     const result = planCommitmentRecommendations(
       [{ ...plannerCell(() => 100), pluginId: "hetzner" }],
       WINDOW_DAYS,
+      DISCOUNTS,
     );
     expect(result.recommendations).toHaveLength(0);
     expect(result.rejected).toHaveLength(0);
@@ -301,7 +313,7 @@ describe("planCommitmentRecommendations", () => {
 
   it("declares itself unavailable under the minimum window", () => {
     const shortWindow = WINDOW_DAYS.slice(0, PLANNER_MIN_WINDOW_DAYS - 1);
-    const result = planCommitmentRecommendations([plannerCell(() => 100)], shortWindow);
+    const result = planCommitmentRecommendations([plannerCell(() => 100)], shortWindow, DISCOUNTS);
     expect(result.available).toBe(false);
     expect(result.recommendations).toHaveLength(0);
   });

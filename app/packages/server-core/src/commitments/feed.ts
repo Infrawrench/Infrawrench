@@ -310,7 +310,13 @@ export async function getCommitmentsFeed(
     }
     cell.dailySpend.set(row.day, (cell.dailySpend.get(row.day) ?? 0) + row.amount);
   }
-  const planner = planCommitmentRecommendations([...cellMap.values()], plannerDays);
+  const discounts = new Map(
+    plugins.flatMap(({ plugin }) => {
+      const discount = plugin.manifest.commitments?.discount;
+      return discount ? [[plugin.manifest.id, discount] as const] : [];
+    }),
+  );
+  const planner = planCommitmentRecommendations([...cellMap.values()], plannerDays, discounts);
 
   // ── Failures + pending ────────────────────────────────────────────────
   const failures: CommitmentPollFailure[] = [];

@@ -49,7 +49,7 @@ import { runWithConcurrency } from "@infrawrench/client-core";
 import type {
   AgentVmCapability,
   CreateFieldConfig,
-  PluginClient,
+  HostPluginClient,
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
@@ -1912,7 +1912,7 @@ function agentDefaultFields(agentVm: AgentVmCapability) {
 }
 
 async function agentCreateFields(
-  client: PluginClient | null,
+  client: HostPluginClient | null,
   resourceTypeId: string,
   agentVm: AgentVmCapability,
 ): Promise<CreateFieldConfig[]> {

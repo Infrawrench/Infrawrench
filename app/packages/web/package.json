@@ -36,7 +36,6 @@
     "@infrawrench/appstream-host": "workspace:*",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",
-    "@infrawrench/plugin-ssh": "workspace:*",
     "@infrawrench/server-core": "workspace:*",
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",

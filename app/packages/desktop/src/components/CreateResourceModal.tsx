@@ -23,7 +23,7 @@ import type { ResourcePickerOption } from "@infrawrench/ui";
 import type {
   AssociationSource,
   CreateResourceConfig,
-  PluginClient,
+  HostPluginClient,
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
@@ -70,7 +70,7 @@ interface CreateResourceModalProps {
   accountId: string;
   pluginId: string;
   resourceType: ResourceTypeDefinition;
-  clientFactory?: () => PluginClient | Promise<PluginClient>;
+  clientFactory?: () => HostPluginClient | Promise<HostPluginClient>;
   parentResourceId?: string;
   /** Start the form from these values (the Price catalog's "use in estimate"). */
   initialFields?: Record<string, string>;
@@ -88,7 +88,7 @@ export function CreateResourceModal({
   onClose,
   onCreated,
 }: CreateResourceModalProps) {
-  const clientRef = useRef<PluginClient | null>(null);
+  const clientRef = useRef<HostPluginClient | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [requiredTags, setRequiredTags] = useState<RequiredTag[] | undefined>();
 
@@ -163,7 +163,7 @@ export function CreateResourceModal({
       };
     }
 
-    const localClients = new Map<string, Promise<PluginClient>>();
+    const localClients = new Map<string, Promise<HostPluginClient>>();
     const getLocalClient = (acctId: string, plugId: string) => {
       const key = `${acctId}:${plugId}`;
       let existing = localClients.get(key);

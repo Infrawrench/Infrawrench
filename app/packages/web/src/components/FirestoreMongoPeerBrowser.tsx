@@ -5,12 +5,13 @@ import {
   type MongoPeerAccount,
 } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
+import { fetchPluginCatalog } from "@/lib/plugin-catalog";
 import { useOrgId } from "@/lib/useOrgId";
 import type { AccountListItem } from "@/lib/api-types";
 
 /**
  * Web variant of the Firestore Enterprise+MongoDB-compat browser. Lists the
- * caller's MongoDB accounts, persists the selected one in localStorage keyed
+ * caller's accounts on a plugin with a document browser, persists the selected one in localStorage keyed
  * by the Firestore resource id, and renders MongoDocumentBrowser scoped to
  * that account with the Firestore database id as the Mongo database name.
  */
@@ -34,9 +35,14 @@ export function FirestoreMongoPeerBrowser({
     let cancelled = false;
     async function load() {
       try {
-        const rows = await apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`);
+        const [rows, catalog] = await Promise.all([
+          apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`),
+          fetchPluginCatalog(orgId),
+        ]);
         if (cancelled) return;
-        const list = rows.filter((r) => r.pluginId === "mongodb");
+        const list = rows.filter((r) =>
+          catalog.some((p) => p.id === r.pluginId && p.kvBrowser === "documents"),
+        );
         setAccounts(list);
         if (!linkedAccountId && list.length === 1 && list[0]) {
           localStorage.setItem(storageKey, list[0].id);

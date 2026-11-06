@@ -2,7 +2,7 @@
  * Fan-out SSH: run one command across many SSH-capable hosts.
  *
  * Targets come in two flavours, mirroring the single-host terminal:
- *  - "account": accounts of the `ssh` plugin, whose client natively exposes
+ *  - "account": accounts of a `jumpHost` plugin, whose client natively exposes
  *    `getSshConfig()` (host, username, and key live in the account creds).
  *  - "resource": resources whose type declares `sshEndpoint` (EC2 instances,
  *    droplets, Hetzner servers, …); paired with an org SSH key at run time,
@@ -125,17 +125,21 @@ export function deriveResourceTarget(
   };
 }
 
-/** All SSH-capable targets in the org: `ssh` accounts + sshEndpoint resources. */
+/** All SSH-capable targets in the org: `jumpHost` accounts + sshEndpoint resources. */
 export async function listFanoutTargets(organizationId: string): Promise<FanoutTargetSummary[]> {
   const targets: FanoutTargetSummary[] = [];
+  const plugins = await loadPlugins();
 
   const sshAccounts = await db
-    .select({ id: accounts.id, displayName: accounts.displayName })
+    .select({ id: accounts.id, displayName: accounts.displayName, pluginId: accounts.pluginId })
     .from(accounts)
     .where(
       and(
         eq(accounts.organizationId, organizationId),
-        eq(accounts.pluginId, "ssh"),
+        inArray(
+          accounts.pluginId,
+          plugins.flatMap(({ plugin }) => (plugin.manifest.jumpHost ? [plugin.manifest.id] : [])),
+        ),
         isNull(accounts.deletedAt),
       ),
     );
@@ -145,7 +149,7 @@ export async function listFanoutTargets(organizationId: string): Promise<FanoutT
       id: a.id,
       accountId: a.id,
       label: a.displayName,
-      pluginId: "ssh",
+      pluginId: a.pluginId,
       running: true,
       needsKey: false,
       tags: [],
@@ -153,7 +157,6 @@ export async function listFanoutTargets(organizationId: string): Promise<FanoutT
   }
 
   // Resource types that declare sshEndpoint, from the plugin registry.
-  const plugins = await loadPlugins();
   const sshTypes = new Map<string, Pick<ResourceTypeDefinition, "sshEndpoint">>();
   for (const { plugin } of plugins) {
     for (const rt of plugin.resourceTypes) {
@@ -286,7 +289,7 @@ export async function runFanout(
       if (ref.kind === "account") {
         const ctx = await getClientForAccount(ref.id, organizationId);
         if (!ctx) return failResult(base, ref.id, "Account not found", started);
-        if (ctx.plugin.manifest.id !== "ssh") {
+        if (!ctx.plugin.manifest.jumpHost) {
           return failResult(base, ref.id, "Account is not an SSH host", started);
         }
         label = await accountLabel(ref.id, organizationId);

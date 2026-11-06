@@ -132,6 +132,41 @@ describe("Account routes", () => {
       expect(body[0].credentialFields[0].sensitive).toBe(true);
     });
 
+    it("carries what the host needs from each plugin's manifest", async () => {
+      const sshTunnel = {
+        label: "Thing",
+        defaultPort: 1234,
+        credentials: { connectionString: "thing://localhost:{port}" },
+      };
+      mockLoadPlugins.mockResolvedValue([
+        {
+          plugin: {
+            manifest: {
+              id: "tunneled",
+              displayName: "Tunneled",
+              logoSvg: "<svg/>",
+              credentialFields: [],
+              sshTunnel,
+              jumpHost: true,
+              kvDriver: { driver: "wire", credentialKey: "uri", browser: "documents" },
+            },
+          },
+        },
+        {
+          plugin: {
+            manifest: { id: "bare", displayName: "Bare", logoSvg: "<svg/>", credentialFields: [] },
+          },
+        },
+      ]);
+
+      const res = await buildApp().request("/plugins", { method: "GET" });
+      const [tunneled, bare] = await res.json();
+      expect(tunneled).toMatchObject({ sshTunnel, jumpHost: true, kvBrowser: "documents" });
+      expect(bare).not.toHaveProperty("sshTunnel");
+      expect(bare).not.toHaveProperty("jumpHost");
+      expect(bare).not.toHaveProperty("kvBrowser");
+    });
+
     it("serves the URL the web client asks for", async () => {
       mockLoadPlugins.mockResolvedValue([]);
 

@@ -8,13 +8,13 @@
  * its server client authenticates (a public `auth: "none"` server client is
  * still the server's client, with a redirect the desktop cannot receive).
  */
-import type { OAuthPluginHooks, PluginManifest } from "@infrawrench/plugin-base";
+import type { HostedMethods, OAuthPluginHooks, PluginManifest } from "@infrawrench/plugin-base";
 import type { LoopbackClient } from "./loopback";
 
 /** The slice of a loaded plugin this rule reads. */
 export interface OAuthCapablePlugin {
   manifest: Pick<PluginManifest, "id" | "oauth">;
-  registerOAuthClient?: OAuthPluginHooks["registerOAuthClient"];
+  registerOAuthClient?: HostedMethods<OAuthPluginHooks>["registerOAuthClient"];
 }
 
 export type LocalClientSource = LoopbackClient | ((redirectUri: string) => Promise<LoopbackClient>);

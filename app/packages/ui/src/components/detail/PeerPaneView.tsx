@@ -123,7 +123,7 @@ export function PeerPaneView({
   const namespaces = useMemo(() => {
     const nsSet = new Set<string>();
     for (const group of resourceGroups) {
-      if (group.resourceTypeId === "k8s-namespace") continue;
+      if (group.role === "namespace") continue;
       for (const item of group.items) {
         const ns = item.namespace ?? String(item.fields["namespace"] ?? "");
         if (ns) nsSet.add(ns);
@@ -135,7 +135,7 @@ export function PeerPaneView({
   const filteredGroups = useMemo(() => {
     if (!nsFilter) return resourceGroups;
     return resourceGroups.map((group) => {
-      if (group.resourceTypeId === "k8s-namespace") {
+      if (group.role === "namespace") {
         return {
           ...group,
           items: group.items.filter((item) => item.displayName === nsFilter),
@@ -325,7 +325,7 @@ export function PeerPaneView({
 
       {visibleGroups.map((group) => {
         const groupKey = `${group.pluginId}:${group.resourceTypeId}`;
-        const isNamespaceGroup = group.resourceTypeId === "k8s-namespace";
+        const isNamespaceGroup = group.role === "namespace";
         const isCollapsed = collapsedGroups.has(groupKey);
         // The namespace group is a filter control over this pane's own
         // listings, so it offers only namespaces the pane can filter *to*.
@@ -394,7 +394,7 @@ export function PeerPaneView({
                 ) : (
                   <div className="flex flex-wrap gap-3">
                     {visibleItems.map((resource) => {
-                      const isService = group.resourceTypeId === "k8s-service";
+                      const isService = group.role === "service";
                       const hasSelector = resource.fields["hasSelector"] === "true";
                       const pfEntry = portForward?.entries.find(
                         (pf) =>
