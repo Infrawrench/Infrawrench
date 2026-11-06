@@ -6,6 +6,7 @@ import { PRICES, shardOf, shardsOf } from "@infrawrench/server-core/aws-pricing-
 
 import { readTables, reduceInstance, type InstanceValue } from "../format";
 import { syncAwsBulkPricing, syncPlatform, type BundleBucket, type PricingKv } from "../sync";
+import { ClickHouseHttp } from "../warehouse";
 import {
   RowBinary,
   architectureOf,
@@ -645,6 +646,44 @@ function fakeWarehouse(
     },
   };
 }
+
+describe("deduplication of INSERTs", () => {
+  const columns = [{ name: "k", type: "UInt64" }] as unknown as Parameters<
+    ClickHouseHttp["insert"]
+  >[1];
+
+  it("sends the same token again when the answer was lost, so the batch lands once", async () => {
+    const queries: (string | null)[] = [];
+    const ch = new ClickHouseHttp({
+      url: "https://warehouse.test/",
+      token: "t",
+      fetch: (async (url: URL) => {
+        queries.push(url.searchParams.get("query"));
+        if (queries.length === 1) throw new TypeError("connection lost after the commit");
+        return new Response("");
+      }) as unknown as typeof fetch,
+    });
+    await ch.insert("staging.prices", columns, new Uint8Array(1), "load-0");
+    expect(queries).toEqual([
+      "INSERT INTO staging.prices (k) SETTINGS insert_deduplication_token = 'load-0' FORMAT RowBinary",
+      "INSERT INTO staging.prices (k) SETTINGS insert_deduplication_token = 'load-0' FORMAT RowBinary",
+    ]);
+  });
+
+  it("sends no setting without a token", async () => {
+    let query: string | null = null;
+    const ch = new ClickHouseHttp({
+      url: "https://warehouse.test/",
+      token: "t",
+      fetch: (async (url: URL) => {
+        query = url.searchParams.get("query");
+        return new Response("");
+      }) as unknown as typeof fetch,
+    });
+    await ch.insert("t", columns, new Uint8Array(1));
+    expect(query).toBe("INSERT INTO t (k) FORMAT RowBinary");
+  });
+});
 
 describe("sync with a warehouse", () => {
   it("loads a bundle the warehouse lacks even when KV already has it, without rewriting KV", async () => {

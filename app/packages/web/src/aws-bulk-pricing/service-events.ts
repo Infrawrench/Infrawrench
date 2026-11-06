@@ -617,9 +617,17 @@ export class ServiceEventsTable {
     const staging = `${STAGING_DATABASE}.${SERVICE_EVENTS.name}`;
     await this.ch.exec(`TRUNCATE TABLE ${staging}`);
     const buffer = new RowBinary();
+    // A retry repeats the token of its batch, and CloudHouse applies a batch once.
+    const load = crypto.randomUUID();
+    let batch = 0;
     const flush = async () => {
       if (buffer.rows === 0) return;
-      await this.ch.insert(staging, SERVICE_EVENTS.columns, buffer.bytes().slice());
+      await this.ch.insert(
+        staging,
+        SERVICE_EVENTS.columns,
+        buffer.bytes().slice(),
+        `${load}-${batch++}`,
+      );
       buffer.reset();
     };
     for (const event of events) {
@@ -627,7 +635,7 @@ export class ServiceEventsTable {
       if (buffer.length >= BATCH_BYTES) await flush();
     }
     await flush();
-    // A retried INSERT can land twice; never swap duplicates in.
+    // Tokens make a retried INSERT land once; still, never swap duplicates in.
     const [row] = await this.ch.rows<{ n: string | number }>(`SELECT count() AS n FROM ${staging}`);
     if (Number(row?.n ?? 0) !== events.length) {
       throw new Error(`service events: staged ${String(row?.n)} rows but sent ${events.length}`);

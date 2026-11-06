@@ -73,11 +73,22 @@ export class ClickHouseHttp {
       .map((line) => JSON.parse(line) as T);
   }
 
-  async insert(table: string, columns: readonly Column[], body: Uint8Array): Promise<void> {
+  /**
+   * `token` makes the INSERT safe to send again when its answer was lost:
+   * CloudHouse applies it once per table however many times it arrives, so
+   * it must be the same for every attempt at a batch, and new for each batch.
+   */
+  async insert(
+    table: string,
+    columns: readonly Column[],
+    body: Uint8Array,
+    token?: string,
+  ): Promise<void> {
     const url = new URL(this.config.url);
+    const settings = token ? ` SETTINGS insert_deduplication_token = '${token}'` : "";
     url.searchParams.set(
       "query",
-      `INSERT INTO ${table} (${columns.map((c) => c.name).join(", ")}) FORMAT RowBinary`,
+      `INSERT INTO ${table} (${columns.map((c) => c.name).join(", ")})${settings} FORMAT RowBinary`,
     );
     await this.send(url, body);
   }
@@ -1163,6 +1174,9 @@ class ClickHouseLoad implements WarehouseLoad {
   private readonly inFlight = new Set<Promise<void>>();
   private failure: unknown = null;
   private readonly regions = new Map<string, [string, string]>();
+  /** Tokens of this load's INSERTs: a retry repeats one, and another run never does. */
+  private readonly loadId = crypto.randomUUID();
+  private batches = 0;
 
   constructor(
     private readonly ch: ClickHouseHttp,
@@ -1210,7 +1224,12 @@ class ClickHouseLoad implements WarehouseLoad {
     const rows = buffer.rows;
     buffer.reset();
     const send = this.ch
-      .insert(`${STAGING_DATABASE}.${table.name}`, table.columns, body)
+      .insert(
+        `${STAGING_DATABASE}.${table.name}`,
+        table.columns,
+        body,
+        `${this.loadId}-${this.batches++}`,
+      )
       .then(() => {
         this.sent.set(table, this.sent.get(table)! + rows);
       })
@@ -1245,7 +1264,7 @@ class ClickHouseLoad implements WarehouseLoad {
     await Promise.all(this.inFlight);
     if (this.failure) throw this.failure;
 
-    // A retried INSERT may have landed twice; a count that disagrees fails
+    // Tokens make a retried INSERT land once; a count that disagrees still fails
     // the load rather than swapping in duplicates.
     for (const table of TABLES) {
       if (table === SYNC_STATE) continue;
