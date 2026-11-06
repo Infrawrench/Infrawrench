@@ -12,9 +12,9 @@ const SECONDARY =
 const PRIMARY =
   "whitespace-nowrap rounded-md bg-accent-fill px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-accent-fill-hover";
 
-type CtaTarget = "get_infrawrench" | "full_page" | "brand";
+type CtaTarget = "get_infrawrench" | "full_page" | "brand" | "specs";
 
-function clicked(kind: EmbedKind, target: CtaTarget) {
+export function clicked(kind: EmbedKind, target: CtaTarget) {
   captureAnalytics("embed_cta_clicked", { embed: kind, target });
 }
 

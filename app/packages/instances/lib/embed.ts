@@ -16,15 +16,17 @@ const PLAYER_WIDTH = 640;
 const PLAYER_HEIGHT = 480;
 
 /**
- * Instance pages advertising the player. X decides per domain whether to honor
- * it, and the pricing sync posts these pages' links, so it spreads one page at
- * a time until a real post has been seen working.
+ * The image X shows on a player card: a small square thumbnail with a play
+ * button over its center, where a wide image would be center-cropped. So it gets
+ * the logo, and `og:image` stays the full share card, for search engines and
+ * every other platform.
  */
-const PLAYER_CARD_INSTANCES: ReadonlySet<string> = new Set(["/aws/ec2/m5.large"]);
-
-export function instanceHasPlayerCard(path: string): boolean {
-  return PLAYER_CARD_INSTANCES.has(path);
-}
+export const PLAYER_POSTER = {
+  url: "/x-poster.png",
+  width: 1000,
+  height: 1000,
+  alt: "Infrawrench Instances",
+};
 
 /** A site path's player: always locale-prefixed, since `proxy.ts` does not route `/embed`. */
 export function embedPath(locale: string, path: string): string {

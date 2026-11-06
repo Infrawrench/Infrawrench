@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { SharedView } from "@/components/chat/Chat";
 import { loadView, viewData } from "@/lib/chat/views";
-import { playerCardTags } from "@/lib/embed";
+import { PLAYER_POSTER, playerCardTags } from "@/lib/embed";
 import { isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 
@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       "A table of cloud instance prices, from the providers' price lists, shared from Infrawrench Instances.",
     ),
   );
-  // The image itself comes from opengraph-image.tsx beside this file.
+  // The share card comes from opengraph-image.tsx beside this file.
   return {
     title: tr(msg("{title} - Infrawrench Instances"), { title }),
     description,
@@ -54,7 +54,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       type: "website",
       locale,
     },
-    twitter: { card: "player", title, description },
+    // First, because X cuts the description off beside the poster.
+    twitter: {
+      card: "player",
+      title,
+      description: `${tr(msg("Tap to explore it right here."))} ${description}`,
+      images: [PLAYER_POSTER],
+    },
     other: playerCardTags(locale, path),
   };
 }

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { embedPath, getInfrawrenchUrl, instanceHasPlayerCard, playerCardTags } from "../embed";
-import { instancePath } from "../platforms";
+import { embedPath, getInfrawrenchUrl, playerCardTags } from "../embed";
 
 describe("player cards", () => {
   it("name an absolute, locale-prefixed player", () => {
@@ -13,11 +12,6 @@ describe("player cards", () => {
 
   it("keep the English prefix, which only proxy.ts would strip", () => {
     expect(embedPath("en", "/v/abc")).toBe("/embed/en/v/abc");
-  });
-
-  it("match the rollout list against real instance paths", () => {
-    expect(instanceHasPlayerCard(instancePath("ec2", "m5.large"))).toBe(true);
-    expect(instanceHasPlayerCard(instancePath("ec2", "m5.xlarge"))).toBe(false);
   });
 });
 

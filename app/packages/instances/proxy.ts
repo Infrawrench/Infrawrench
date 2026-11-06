@@ -34,6 +34,9 @@ export function proxy(request: NextRequest) {
   const segments = url.pathname.split("/").filter(Boolean);
 
   if (segments[0] === DEFAULT_LOCALE) {
+    // The metadata names share cards under `/en`; serve them there, because a
+    // crawler fetching an image should not have to follow a redirect to it.
+    if (segments.at(-1) === "opengraph-image") return NextResponse.next();
     const target = url.clone();
     target.pathname = url.pathname.slice(DEFAULT_LOCALE.length + 1) || "/";
     return NextResponse.redirect(target, 308);

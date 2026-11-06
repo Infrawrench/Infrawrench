@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { msg } from "gt-react";
 import { notFound } from "next/navigation";
 import { InstanceView } from "@/components/InstanceView";
 import { describe, instanceTitle } from "@/lib/describe";
-import { instanceHasPlayerCard, playerCardTags } from "@/lib/embed";
+import { PLAYER_POSTER, playerCardTags } from "@/lib/embed";
 import { LOCALES, isLocale, localePath } from "@/lib/i18n/locales";
 import { getTranslator } from "@/lib/i18n/server";
 import { loadInstance } from "@/lib/load";
@@ -43,8 +44,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const description = describe(model, tr, locale);
   const path = instancePath(model.platform, model.name);
   const url = localePath(locale, path);
-  const player = instanceHasPlayerCard(path);
-  // The image itself comes from opengraph-image.tsx beside this file.
+  // The share card comes from opengraph-image.tsx beside this file.
   return {
     title,
     description,
@@ -66,8 +66,14 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       type: "website",
       locale,
     },
-    twitter: { card: player ? "player" : "summary_large_image", title, description },
-    ...(player ? { other: playerCardTags(locale, path) } : {}),
+    // First, because X cuts the description off beside the poster.
+    twitter: {
+      card: "player",
+      title,
+      description: `${tr(msg("Tap to explore it right here."))} ${description}`,
+      images: [PLAYER_POSTER],
+    },
+    other: playerCardTags(locale, path),
   };
 }
 
