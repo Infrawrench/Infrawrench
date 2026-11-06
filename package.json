@@ -24,7 +24,10 @@
     "react-doctor": "^0.2.16",
     "turbo": "^2.10.9",
     "typescript": "catalog:",
-    "unrun": "^0.3.1"
+    "unrun": "^0.3.1",
+    "effect": "catalog:",
+    "openapi-typescript": "7.13.0",
+    "yaml": "^2.8.3"
   },
   "engines": {
     "node": ">=20",

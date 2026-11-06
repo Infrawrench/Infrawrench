@@ -65,6 +65,12 @@ export interface ResourceOutput {
    * in the UI but load-bearing for downstream consumers.
    */
   hidden?: boolean;
+  /**
+   * This output is a value a DNS record can point at. Every DNS provider's
+   * record form offers it in its resource picker, so a new compute type shows
+   * up there without the DNS plugins hearing about it.
+   */
+  dnsValue?: "ipv4" | "ipv6" | "hostname";
 }
 
 /**
@@ -790,6 +796,12 @@ export interface CarbonDeclaration {
    * twice.
    */
   role?: "instance" | "aggregate";
+  /**
+   * This row may be the same machine as a compute instance listed elsewhere
+   * (a Kubernetes node that is also an EC2 instance): the total skips it when
+   * its name matches one. Requires nothing from the provider's API.
+   */
+  mayDuplicateInstance?: boolean;
   /** Field holding the region, zone or location the hardware runs in. */
   regionFieldKey: string;
   /**

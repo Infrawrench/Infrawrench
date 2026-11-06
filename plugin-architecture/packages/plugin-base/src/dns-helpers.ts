@@ -1,4 +1,4 @@
-import type { AssociationSource, CreateFieldConfig } from "./create.js";
+import type { AssociationRole, CreateFieldConfig } from "./create.js";
 
 /**
  * Shared builder for the "content / value" field of a DNS record create form.
@@ -36,74 +36,6 @@ export interface DnsContentFieldOptions {
 /** Record types whose value should be pickable from another resource. */
 export const PICKABLE_DNS_TYPES = ["A", "AAAA", "CNAME"] as const;
 
-/** IPv4-producing outputs across providers, for A records. */
-export const DNS_IPV4_SOURCES: AssociationSource[] = [
-  { pluginId: "aws", resourceTypeId: "ec2-instance", outputKey: "publicIp" },
-  { pluginId: "aws", resourceTypeId: "elastic-ip", outputKey: "publicIp" },
-  { pluginId: "digitalocean", resourceTypeId: "droplet", outputKey: "ipv4" },
-  { pluginId: "azure", resourceTypeId: "azure-vm", outputKey: "publicIp" },
-  { pluginId: "azure", resourceTypeId: "azure-public-ip", outputKey: "ipAddress" },
-  { pluginId: "hetzner", resourceTypeId: "server", outputKey: "ipv4" },
-  { pluginId: "hetzner", resourceTypeId: "floating-ip", outputKey: "ip" },
-  { pluginId: "scaleway", resourceTypeId: "instance", outputKey: "publicIp" },
-  { pluginId: "gcp", resourceTypeId: "gce-instance", outputKey: "externalIp" },
-  { pluginId: "gcp", resourceTypeId: "forwarding-rule", outputKey: "IPAddress" },
-  { pluginId: "linode", resourceTypeId: "linode", outputKey: "ipv4" },
-  { pluginId: "linode", resourceTypeId: "reserved-ip", outputKey: "ip" },
-  { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "ipv4" },
-  { pluginId: "vultr", resourceTypeId: "instance", outputKey: "ipv4" },
-  { pluginId: "vultr", resourceTypeId: "bare-metal", outputKey: "ipv4" },
-  { pluginId: "vultr", resourceTypeId: "load-balancer", outputKey: "ipv4" },
-  { pluginId: "vultr", resourceTypeId: "reserved-ip", outputKey: "ip" },
-  { pluginId: "civo", resourceTypeId: "instance", outputKey: "ipv4" },
-  { pluginId: "civo", resourceTypeId: "load-balancer", outputKey: "ipv4" },
-  { pluginId: "civo", resourceTypeId: "reserved-ip", outputKey: "ip" },
-  { pluginId: "upcloud", resourceTypeId: "server", outputKey: "ipv4" },
-  { pluginId: "upcloud", resourceTypeId: "floating-ip", outputKey: "ip" },
-  { pluginId: "exoscale", resourceTypeId: "instance", outputKey: "ipv4" },
-  { pluginId: "exoscale", resourceTypeId: "elastic-ip", outputKey: "ip" },
-  { pluginId: "exoscale", resourceTypeId: "nlb", outputKey: "ipv4" },
-  { pluginId: "alibaba-cloud", resourceTypeId: "ecs-instance", outputKey: "publicIp" },
-  { pluginId: "alibaba-cloud", resourceTypeId: "eip", outputKey: "ipAddress" },
-  { pluginId: "ibm-cloud", resourceTypeId: "instance", outputKey: "publicIp" },
-  { pluginId: "openstack", resourceTypeId: "os-server", outputKey: "publicIp" },
-  { pluginId: "openstack", resourceTypeId: "os-floating-ip", outputKey: "ip" },
-  { pluginId: "lambda-cloud", resourceTypeId: "instance", outputKey: "ip" },
-  { pluginId: "paperspace", resourceTypeId: "machine", outputKey: "publicIp" },
-];
-
-/** IPv6-producing outputs across providers, for AAAA records. */
-export const DNS_IPV6_SOURCES: AssociationSource[] = [
-  { pluginId: "digitalocean", resourceTypeId: "droplet", outputKey: "ipv6" },
-  { pluginId: "hetzner", resourceTypeId: "server", outputKey: "ipv6" },
-  { pluginId: "fly", resourceTypeId: "machine", outputKey: "privateIp" },
-  { pluginId: "linode", resourceTypeId: "linode", outputKey: "ipv6" },
-  { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "ipv6" },
-  { pluginId: "vultr", resourceTypeId: "instance", outputKey: "ipv6" },
-  { pluginId: "vultr", resourceTypeId: "bare-metal", outputKey: "ipv6" },
-  { pluginId: "vultr", resourceTypeId: "load-balancer", outputKey: "ipv6" },
-  { pluginId: "civo", resourceTypeId: "instance", outputKey: "ipv6" },
-  { pluginId: "upcloud", resourceTypeId: "server", outputKey: "ipv6" },
-  { pluginId: "exoscale", resourceTypeId: "instance", outputKey: "ipv6" },
-];
-
-/** Hostname-producing outputs across providers, for CNAME records. */
-export const DNS_HOSTNAME_SOURCES: AssociationSource[] = [
-  { pluginId: "aws", resourceTypeId: "alb", outputKey: "dnsName" },
-  { pluginId: "aws", resourceTypeId: "ec2-instance", outputKey: "publicDns" },
-  { pluginId: "aws", resourceTypeId: "rds-instance", outputKey: "endpoint" },
-  { pluginId: "aws", resourceTypeId: "rds-cluster", outputKey: "endpoint" },
-  { pluginId: "aws", resourceTypeId: "documentdb-cluster", outputKey: "endpoint" },
-  { pluginId: "digitalocean", resourceTypeId: "spaces-bucket", outputKey: "endpoint" },
-  { pluginId: "azure", resourceTypeId: "azure-vm", outputKey: "fqdn" },
-  { pluginId: "azure", resourceTypeId: "azure-public-ip", outputKey: "fqdn" },
-  { pluginId: "linode", resourceTypeId: "nodebalancer", outputKey: "hostname" },
-  { pluginId: "linode", resourceTypeId: "bucket", outputKey: "hostname" },
-  { pluginId: "upcloud", resourceTypeId: "load-balancer", outputKey: "hostname" },
-  { pluginId: "alibaba-cloud", resourceTypeId: "alb", outputKey: "dnsName" },
-  { pluginId: "ibm-cloud", resourceTypeId: "load-balancer", outputKey: "hostname" },
-];
-
 /**
  * Build the mode toggle + per-type resource pickers + custom text input for a
  * DNS record's value field. Spread the result into a create config's `fields`
@@ -119,7 +51,7 @@ export function dnsContentField(opts: DnsContentFieldOptions): CreateFieldConfig
 
   const picker = (
     recordType: (typeof PICKABLE_DNS_TYPES)[number],
-    sources: AssociationSource[],
+    associationRole: AssociationRole,
     pickerLabel: string,
     description: string,
   ): CreateFieldConfig => ({
@@ -128,7 +60,7 @@ export function dnsContentField(opts: DnsContentFieldOptions): CreateFieldConfig
     kind: "resource-picker",
     required,
     referenceMode: true,
-    associationSources: sources,
+    associationRole,
     description,
     showWhen: {
       allOf: [
@@ -155,19 +87,19 @@ export function dnsContentField(opts: DnsContentFieldOptions): CreateFieldConfig
     },
     picker(
       "A",
-      DNS_IPV4_SOURCES,
+      "dns-ipv4",
       `${label}: pick an IPv4 resource`,
       "The record will track this resource's public IPv4 address.",
     ),
     picker(
       "AAAA",
-      DNS_IPV6_SOURCES,
+      "dns-ipv6",
       `${label}: pick an IPv6 resource`,
       "The record will track this resource's public IPv6 address.",
     ),
     picker(
       "CNAME",
-      DNS_HOSTNAME_SOURCES,
+      "dns-hostname",
       `${label}: pick a hostname resource`,
       "The record will track this resource's hostname.",
     ),

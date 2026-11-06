@@ -75,6 +75,7 @@ export interface CreditBalance {
  * down" want completely different reactions.
  */
 export class CreditAccessError extends Error {
+  readonly _tag = "CreditAccessError";
   readonly helpLabel?: string;
   readonly helpUrl?: string;
 

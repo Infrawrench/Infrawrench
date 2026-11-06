@@ -4,7 +4,7 @@ import {
   normalizeVulnerabilitySeverity,
   type VulnerabilityFinding,
 } from "../vulnerabilities.js";
-import { resourceTypeDefinitionSchema } from "../validation/resource.schema.js";
+import { resourceTypeDefinitionSchema, validate } from "../validation/index.js";
 
 function finding(over: Partial<VulnerabilityFinding> = {}): VulnerabilityFinding {
   return {
@@ -85,7 +85,7 @@ describe("runningImages validation", () => {
 
   it("accepts a well-formed declaration", () => {
     expect(
-      resourceTypeDefinitionSchema.safeParse({
+      validate(resourceTypeDefinitionSchema, {
         ...base,
         runningImages: { imageKeys: ["image"], runningKey: "status", runningValues: ["Running"] },
       }).success,
@@ -94,7 +94,7 @@ describe("runningImages validation", () => {
 
   it("rejects a running field without values", () => {
     expect(
-      resourceTypeDefinitionSchema.safeParse({
+      validate(resourceTypeDefinitionSchema, {
         ...base,
         runningImages: { imageKeys: ["image"], runningKey: "status" },
       }).success,

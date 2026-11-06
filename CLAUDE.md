@@ -12,9 +12,29 @@ The mobile app (`app/packages/mobile`, Expo + expo-router) is a cloud companion 
 
 When you make code for providers remember that the user shouldn't have to know the API. If it needs a resource or a slug of some kind, add a picker. Also remember this replaces the cloud dash by in large and is not a replacement to it. If you add something, think about how the user can edit it if possible. Look online to verify API's, assume your memory is wrong. Make sure to include all possible metrics/side tools where possible. When you want a logo SVG, please also look online. You aren't good at freestyling logos.
 
+## Plugin contract (Effect)
+
+The plugin contract is written in [Effect](https://effect.website): every asynchronous `PluginClient` method, plugin hook and node driver method returns a `PluginEffect<A>`, and streaming returns a `PluginStream<A>`. KNOWLEDGE.md ("Plugin contract") has the design; what binds changes made elsewhere:
+
+- **Hosts never hold a contract client.** `plugin-loader` (and both desktop loaders) pass every plugin through `hostPlugins`, so `loaded.plugin.createClient(...)` gives a `HostPluginClient` whose methods run on call and return Promises, throwing what the plugin threw. Host code names `HostPlugin` and `HostPluginClient`, never `Plugin` or `PluginClient`. Running on call is a security property, not a convenience: `withEgressScope` is an AsyncLocalStorage scope around each call, so a lazy Effect escaping it would run with the SSRF guard already gone.
+- **A plugin declares itself with `definePlugin`.** A new capability is one row in `MANIFEST_REQUIREMENTS` (`plugin-base/src/define-plugin.ts`), which drives the compile-time check, the loaders and the conformance tests. Write manifests as `export const manifest = { ... } satisfies PluginManifest` with `credentialFields: defineCredentials([...])`; annotating `: PluginManifest` erases what the check reads.
+- **Plugin knowledge goes on the plugin.** A list of plugin ids in a host or in `plugin-base` is a bug: add a manifest field or a flag on the field (`dnsValue` on an output, `egressHosts`, `sshTunnel`, `jumpHost`, `commitments.discount`). Published datasets keyed by something other than a plugin, such as the carbon factors keyed by grid, are not plugin knowledge.
+- **`@infrawrench/plugin-base`'s root entry has no Effect runtime and must stay that way**, because the SPA and mobile import it: Effect types there are `import type` only. Runtime lives in `@infrawrench/plugin-base/effect`, validators in `@infrawrench/plugin-base/validation`.
+- **A contract method calling another** goes through `runPluginEffect(this.x(...))`. Awaiting the Effect directly does nothing, and tsc-rs's `floatingEffect` rule does not catch every form (`await client.x?.()` gets past it), so never hold a contract client outside a plugin.
+
+# Learning more about Effect
+
+This repository uses the Effect Typescript library.
+
+Before writing any Effect code, first read `node_modules/effect/AGENTS.md`
+**completely**, and follow the links in the file when required.
+
+If you need to learn more about particular Effect apis and concepts that the
+guide doesn't cover, search through the source code in `node_modules/effect/src`.
+
 ## Type checking (tsc-rs)
 
-TypeScript 7 packages depend on `"typescript": "catalog:"`, never the npm `typescript`. The catalog entry is `@tsc-rs/typescript` (tsc-rs installed under the name `typescript`), so `tsc` and tsdown's declaration emit both run the Rust compiler. A package on plain `typescript` still builds, silently without tsc-rs. `website` and `mobile` are the exception: they alias `typescript` to `@typescript/typescript6`. Rationale and the bump procedure are in KNOWLEDGE.md ("Type checking").
+TypeScript 7 packages depend on `"typescript": "catalog:"`, never the npm `typescript`. The catalog entry is `@tsc-rs/typescript` (tsc-rs installed under the name `typescript`), so `tsc` and tsdown's declaration emit both run the Rust compiler. `tsconfig.base.json` turns on its built-in Effect diagnostics (codes TS377xxx), which fail `tsc` like any other error; they need no `@effect/language-service` install. A package on plain `typescript` still builds, silently without tsc-rs. `website` and `mobile` are the exception: they alias `typescript` to `@typescript/typescript6`. Rationale and the bump procedure are in KNOWLEDGE.md ("Type checking").
 
 ## Editor extensions
 

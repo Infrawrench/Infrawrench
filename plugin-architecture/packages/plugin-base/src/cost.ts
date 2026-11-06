@@ -471,6 +471,12 @@ export interface CommitmentRecord {
  */
 export interface CommitmentsCapabilityDeclaration {
   kinds: CommitmentKind[];
+  /**
+   * The published discount the commitment planner models with. Absent means the
+   * planner skips this provider rather than guess. `basis` exists because these
+   * are "up to" marketing figures for most providers.
+   */
+  discount?: { min?: number; max: number; basis: "range" | "upper_bound" };
 }
 
 /**
@@ -495,6 +501,7 @@ export interface CostHelpLink {
  * user has to act on rather than a generic docs index.
  */
 export class CostSetupError extends Error {
+  readonly _tag = "CostSetupError";
   readonly helpLink: CostHelpLink | undefined;
 
   constructor(message: string, helpLink?: CostHelpLink) {

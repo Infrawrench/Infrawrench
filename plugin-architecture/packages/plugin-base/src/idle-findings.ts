@@ -193,6 +193,7 @@ export interface IdleFindingRecord {
  * idle". Matched structurally by name, like `QuotaAccessError`.
  */
 export class IdleFindingAccessError extends Error {
+  readonly _tag = "IdleFindingAccessError";
   readonly helpLabel: string | undefined;
   readonly helpUrl: string | undefined;
 

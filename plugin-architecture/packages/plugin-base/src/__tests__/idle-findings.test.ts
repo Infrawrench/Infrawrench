@@ -10,7 +10,7 @@ import {
   type IdleFindingRecord,
   type IdleScanRequest,
 } from "../idle-findings.js";
-import { pluginManifestSchema } from "../validation/index.js";
+import { pluginManifestSchema, validate } from "../validation/index.js";
 
 const rule = {
   thresholds: [
@@ -180,14 +180,13 @@ describe("helpers", () => {
 describe("manifest validation", () => {
   const base = {
     id: "demo",
-    version: "0.1.0",
     displayName: "Demo",
     description: "Demo plugin",
     logoSvg: "<svg/>",
-    author: "Infrawrench",
-    minHostVersion: "0.1.0",
+    egressHosts: [],
+    credentialFields: [],
   };
-  const valid = (m: unknown) => pluginManifestSchema.safeParse(m).success;
+  const valid = (m: unknown) => validate(pluginManifestSchema, m).success;
   const idleFindings = {
     rules: [
       {

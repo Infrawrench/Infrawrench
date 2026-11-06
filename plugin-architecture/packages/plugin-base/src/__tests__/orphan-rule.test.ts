@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateOrphanRule, type OrphanRule } from "../resource.js";
-import { resourceTypeDefinitionSchema } from "../validation/index.js";
+import { resourceTypeDefinitionSchema, validate } from "../validation/index.js";
 
 const unattachedVolume: OrphanRule = {
   conditions: [{ fieldKey: "attachedTo", when: "empty" }],
@@ -89,14 +89,15 @@ const resourceTypeWith = (orphanRule: unknown) => ({
 
 describe("orphanRule validation", () => {
   it("accepts an `empty` condition with no value", () => {
-    expect(resourceTypeDefinitionSchema.safeParse(resourceTypeWith(unattachedVolume)).success).toBe(
+    expect(validate(resourceTypeDefinitionSchema, resourceTypeWith(unattachedVolume)).success).toBe(
       true,
     );
   });
 
   it("accepts `equals` / `notEquals` when value is present", () => {
     for (const when of ["equals", "notEquals"] as const) {
-      const parsed = resourceTypeDefinitionSchema.safeParse(
+      const parsed = validate(
+        resourceTypeDefinitionSchema,
         resourceTypeWith({
           conditions: [{ fieldKey: "status", when, value: "available" }],
           reason: "r",
@@ -110,7 +111,8 @@ describe("orphanRule validation", () => {
   // rather than failing manifest validation.
   it("rejects `equals` / `notEquals` with no value", () => {
     for (const when of ["equals", "notEquals"] as const) {
-      const parsed = resourceTypeDefinitionSchema.safeParse(
+      const parsed = validate(
+        resourceTypeDefinitionSchema,
         resourceTypeWith({ conditions: [{ fieldKey: "status", when }], reason: "r" }),
       );
       expect(parsed.success).toBe(false);
@@ -118,7 +120,8 @@ describe("orphanRule validation", () => {
   });
 
   it("accepts an explicit empty-string value for `equals`", () => {
-    const parsed = resourceTypeDefinitionSchema.safeParse(
+    const parsed = validate(
+      resourceTypeDefinitionSchema,
       resourceTypeWith({
         conditions: [{ fieldKey: "users", when: "equals", value: "" }],
         reason: "r",

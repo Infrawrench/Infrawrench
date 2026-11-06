@@ -150,6 +150,7 @@ export interface QuotaCapabilityDeclaration {
  * problem.
  */
 export class QuotaAccessError extends Error {
+  readonly _tag = "QuotaAccessError";
   readonly helpLabel: string | undefined;
   readonly helpUrl: string | undefined;
 

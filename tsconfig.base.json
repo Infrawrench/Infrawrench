@@ -16,6 +16,12 @@
     "sourceMap": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["*"]
+    "types": ["*"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": { "unstableApiUsage": "off", "experimentalApiUsage": "off" }
+      }
+    ]
   }
 }

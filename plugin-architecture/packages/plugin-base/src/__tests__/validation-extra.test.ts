@@ -9,69 +9,69 @@ import {
   queryCostEstimateSchema,
   queryResultSchema,
   queryExecuteResultSchema,
+  validate,
 } from "../validation/index.js";
 
 describe("metric schemas", () => {
   it("metricSeriesPointSchema validates a point", () => {
-    expect(metricSeriesPointSchema.safeParse({ timestamp: 1, value: 2 }).success).toBe(true);
-    expect(metricSeriesPointSchema.safeParse({ timestamp: "x", value: 2 }).success).toBe(false);
+    expect(validate(metricSeriesPointSchema, { timestamp: 1, value: 2 }).success).toBe(true);
+    expect(validate(metricSeriesPointSchema, { timestamp: "x", value: 2 }).success).toBe(false);
   });
 
   it("metricSeriesSchema validates a series with optional unit", () => {
     expect(
-      metricSeriesSchema.safeParse({
+      validate(metricSeriesSchema, {
         label: "CPU",
         unit: "%",
         points: [{ timestamp: 1, value: 50 }],
       }).success,
     ).toBe(true);
-    expect(metricSeriesSchema.safeParse({ label: "CPU", points: [] }).success).toBe(true);
-    expect(metricSeriesSchema.safeParse({ points: [] }).success).toBe(false);
+    expect(validate(metricSeriesSchema, { label: "CPU", points: [] }).success).toBe(true);
+    expect(validate(metricSeriesSchema, { points: [] }).success).toBe(false);
   });
 });
 
 describe("query schemas", () => {
   it("queryCostEstimateSchema requires bytesProcessed", () => {
-    expect(queryCostEstimateSchema.safeParse({ bytesProcessed: 100 }).success).toBe(true);
+    expect(validate(queryCostEstimateSchema, { bytesProcessed: 100 }).success).toBe(true);
     expect(
-      queryCostEstimateSchema.safeParse({
+      validate(queryCostEstimateSchema, {
         bytesProcessed: 100,
         estimatedCostUsd: 0.01,
         cacheHit: true,
         pricingNote: "n",
       }).success,
     ).toBe(true);
-    expect(queryCostEstimateSchema.safeParse({}).success).toBe(false);
+    expect(validate(queryCostEstimateSchema, {}).success).toBe(false);
   });
 
   it("queryResultSchema validates rows + durationMs", () => {
-    expect(queryResultSchema.safeParse({ rows: [{ a: 1, b: "x" }], durationMs: 12 }).success).toBe(
+    expect(validate(queryResultSchema, { rows: [{ a: 1, b: "x" }], durationMs: 12 }).success).toBe(
       true,
     );
-    expect(queryResultSchema.safeParse({ rows: [], durationMs: 0 }).success).toBe(true);
-    expect(queryResultSchema.safeParse({ rows: "no", durationMs: 1 }).success).toBe(false);
+    expect(validate(queryResultSchema, { rows: [], durationMs: 0 }).success).toBe(true);
+    expect(validate(queryResultSchema, { rows: "no", durationMs: 1 }).success).toBe(false);
   });
 
   it("queryExecuteResultSchema allows optional affectedRows", () => {
-    expect(queryExecuteResultSchema.safeParse({}).success).toBe(true);
-    expect(queryExecuteResultSchema.safeParse({ affectedRows: 5 }).success).toBe(true);
-    expect(queryExecuteResultSchema.safeParse({ affectedRows: "x" }).success).toBe(false);
+    expect(validate(queryExecuteResultSchema, {}).success).toBe(true);
+    expect(validate(queryExecuteResultSchema, { affectedRows: 5 }).success).toBe(true);
+    expect(validate(queryExecuteResultSchema, { affectedRows: "x" }).success).toBe(false);
   });
 });
 
 describe("pluginManifestSchema extra branches", () => {
   const base = {
     id: "x",
-    version: "1.0.0",
     displayName: "X",
     logoSvg: "<svg/>",
-    author: "me",
-    minHostVersion: "0.1.0",
+    egressHosts: [],
+    credentialFields: [],
   };
 
   it("accepts rateLimit", () => {
     expect(
-      pluginManifestSchema.safeParse({
+      validate(pluginManifestSchema, {
         ...base,
         rateLimit: { capacity: 10, refillPerSecond: 2 },
       }).success,
@@ -80,14 +80,14 @@ describe("pluginManifestSchema extra branches", () => {
 
   it("rejects non-positive rateLimit values", () => {
     expect(
-      pluginManifestSchema.safeParse({ ...base, rateLimit: { capacity: 0, refillPerSecond: 2 } })
+      validate(pluginManifestSchema, { ...base, rateLimit: { capacity: 0, refillPerSecond: 2 } })
         .success,
     ).toBe(false);
   });
 
   it("accepts credentialFields with regions and accountReference", () => {
     expect(
-      pluginManifestSchema.safeParse({
+      validate(pluginManifestSchema, {
         ...base,
         credentialFields: [
           {
@@ -105,7 +105,7 @@ describe("pluginManifestSchema extra branches", () => {
 
   it("rejects empty accountReference pluginId", () => {
     expect(
-      pluginManifestSchema.safeParse({
+      validate(pluginManifestSchema, {
         ...base,
         credentialFields: [
           { key: "k", label: "L", sensitive: false, accountReference: { pluginId: "" } },
@@ -128,7 +128,7 @@ describe("resourceTypeDefinitionSchema extra branches", () => {
 
   it("accepts attachTargets and supportsMetrics", () => {
     expect(
-      resourceTypeDefinitionSchema.safeParse({
+      validate(resourceTypeDefinitionSchema, {
         ...base,
         attachTargets: [{ pluginId: "gcp", resourceTypeId: "gce-instance", matchField: "zone" }],
         supportsMetrics: true,
@@ -139,7 +139,7 @@ describe("resourceTypeDefinitionSchema extra branches", () => {
 
   it("rejects secretExportTemplates with empty entries", () => {
     expect(
-      resourceTypeDefinitionSchema.safeParse({
+      validate(resourceTypeDefinitionSchema, {
         ...base,
         secretExportTemplates: [{ id: "e", displayName: "E", entries: [] }],
       }).success,
@@ -148,7 +148,7 @@ describe("resourceTypeDefinitionSchema extra branches", () => {
 
   it("accepts peer integration unreachableWhen", () => {
     expect(
-      resourceTypeDefinitionSchema.safeParse({
+      validate(resourceTypeDefinitionSchema, {
         ...base,
         peerIntegrations: [
           {
@@ -165,7 +165,7 @@ describe("resourceTypeDefinitionSchema extra branches", () => {
 
   it("rejects unreachableWhen with empty fieldsEmpty", () => {
     expect(
-      resourceTypeDefinitionSchema.safeParse({
+      validate(resourceTypeDefinitionSchema, {
         ...base,
         peerIntegrations: [
           {
@@ -183,7 +183,7 @@ describe("resourceTypeDefinitionSchema extra branches", () => {
 describe("schemaNodeSchema additional node kinds", () => {
   it("accepts metric-chart node", () => {
     expect(
-      schemaNodeSchema.safeParse({
+      validate(schemaNodeSchema, {
         kind: "metric-chart",
         title: "CPU",
         series: [{ label: "node", unit: "%", points: [{ timestamp: 1, value: 2 }] }],
@@ -194,7 +194,7 @@ describe("schemaNodeSchema additional node kinds", () => {
 
   it("accepts grid nesting via lazy recursion", () => {
     expect(
-      schemaNodeSchema.safeParse({
+      validate(schemaNodeSchema, {
         kind: "grid",
         columns: 3,
         items: [{ kind: "grid", columns: 1, items: [{ kind: "text", content: "x" }] }],
@@ -204,14 +204,14 @@ describe("schemaNodeSchema additional node kinds", () => {
 
   it("accepts reroll-parent-output and plugin-action host actions", () => {
     expect(
-      schemaNodeSchema.safeParse({
+      validate(schemaNodeSchema, {
         kind: "action",
         label: "Reroll",
         action: { type: "reroll-parent-output", outputKey: "pw", confirmMessage: "sure?" },
       }).success,
     ).toBe(true);
     expect(
-      schemaNodeSchema.safeParse({
+      validate(schemaNodeSchema, {
         kind: "action",
         label: "Run",
         action: { type: "plugin-action", actionId: "do-it", successMessage: "done" },
@@ -221,7 +221,7 @@ describe("schemaNodeSchema additional node kinds", () => {
 
   it("accepts prompt-nosql-command action", () => {
     expect(
-      schemaNodeSchema.safeParse({
+      validate(schemaNodeSchema, {
         kind: "action",
         label: "Create user",
         action: {
@@ -255,7 +255,7 @@ describe("detailViewSchema additional branches", () => {
       onRowClick: "navigate",
       readOnlyRowWhen: { fieldKey: "managed", fieldValues: ["true"] },
     };
-    const result = detailViewSchema.safeParse({
+    const result = validate(detailViewSchema, {
       title: "Zone",
       sections: [],
       childGroups: [
@@ -290,7 +290,7 @@ describe("detailViewSchema additional branches", () => {
 
   it("rejects childTable with invalid format", () => {
     expect(
-      detailViewSchema.safeParse({
+      validate(detailViewSchema, {
         title: "X",
         sections: [],
         childTables: [
@@ -308,7 +308,7 @@ describe("detailViewSchema additional branches", () => {
 
   it("rejects noSqlBrowser with unknown driver", () => {
     expect(
-      detailViewSchema.safeParse({
+      validate(detailViewSchema, {
         title: "X",
         sections: [],
         noSqlBrowser: { driver: "couchdb", databaseLabel: "x" },

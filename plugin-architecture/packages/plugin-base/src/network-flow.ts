@@ -510,6 +510,7 @@ export function applyNetworkRateOverrides(
  * the reason with its fix, the way `CostSetupError` does for cost collection.
  */
 export class NetworkFlowSetupError extends Error {
+  readonly _tag = "NetworkFlowSetupError";
   readonly helpUrl: string | undefined;
 
   constructor(message: string, helpUrl?: string) {

@@ -7,6 +7,8 @@ packages:
 # and mobile do not use the catalog: they alias `typescript` to TypeScript 6.
 catalog:
   typescript: "npm:@tsc-rs/typescript@0.8.0"
+  # The plugin contract is written in Effect (plugin-base and every plugin).
+  effect: "4.1.2"
 
 overrides:
   yaml: ">=2.8.3"
