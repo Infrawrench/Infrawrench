@@ -132,7 +132,7 @@ export function SshInstallModal({
               type="button"
               disabled={running || loading || !ready || !account || !!loadError}
               onClick={() => void run()}
-              className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white disabled:opacity-50"
+              className="px-4 py-2 text-sm rounded-lg bg-accent text-on-accent disabled:opacity-50"
             >
               {running ? gt("Installing…") : gt("Install and connect")}
             </button>

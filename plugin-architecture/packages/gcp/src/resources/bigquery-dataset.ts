@@ -3,11 +3,12 @@ import { f, rt } from "@infrawrench/plugin-base";
 export const BigQueryDatasetResourceType = rt({
   name: "BigQuery Dataset",
   id: "bigquery-dataset",
+  iconKey: "database",
   description: "A Google BigQuery dataset",
   fields: [
     f("name", "Dataset ID"),
     f("friendlyName", "Friendly Name", { required: false }),
-    f("location", "Location", { required: false }),
+    f("location", "Location", { showcase: true, required: false }),
     f("description", "Description", { required: false }),
     f("defaultTableExpirationMs", "Default table expiration (ms)", {
       kind: "number",

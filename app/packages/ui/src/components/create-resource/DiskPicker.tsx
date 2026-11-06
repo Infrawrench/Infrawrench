@@ -55,7 +55,7 @@ export function DiskPicker({
             }`}
           >
             <span
-              className={`size-2 rounded-full flex-shrink-0 ${value === d.id ? "bg-blue-400" : "bg-surface-sunken"}`}
+              className={`size-2 rounded-full flex-shrink-0 ${value === d.id ? "bg-accent" : "bg-surface-sunken"}`}
             />
             <span className="flex-1 min-w-0">
               <span className="font-medium truncate block">{d.label}</span>

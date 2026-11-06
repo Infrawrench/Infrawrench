@@ -4,6 +4,7 @@ export const VertexGeminiModelResourceType = rt({
   name: "Gemini Model",
   pinnable: false,
   id: "vertex-gemini-model",
+  iconKey: "model",
   description:
     "A Vertex AI Gemini chat model. Open one to chat with it in the Playground tab via Vertex AI's OpenAI-compatible streaming endpoint.",
   fields: [f("modelId", "Model ID"), f("description", "Description", { required: false })],

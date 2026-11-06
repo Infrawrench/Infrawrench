@@ -7,6 +7,7 @@ export const AppRunnerServiceResourceType = rt({
   fields: [
     f("serviceName", "Name"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "CREATE_FAILED",

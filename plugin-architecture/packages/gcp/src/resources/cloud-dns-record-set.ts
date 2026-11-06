@@ -6,10 +6,10 @@ export const CloudDnsRecordSetResourceType = rt({
   id: "cloud-dns-record-set",
   description: "A DNS record set within a Google Cloud DNS zone",
   fields: [
-    f("type", "Type"),
+    f("type", "Type", { showcase: true }),
     f("name", "Name"),
     f("rrdatas", "Data"),
-    f("ttl", "TTL", { kind: "number", required: false }),
+    f("ttl", "TTL", { showcase: true, kind: "number", required: false }),
     f("zoneName", "Zone", { required: false }),
   ],
   outputs: [],

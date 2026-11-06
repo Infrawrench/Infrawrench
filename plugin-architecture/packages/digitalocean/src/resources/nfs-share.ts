@@ -7,7 +7,7 @@ export const NfsShareResourceType = rt({
     "A DigitalOcean Network File Storage share: NFSv4.1, mountable across Droplets and DOKS nodes in a VPC",
   fields: [
     f("name", "Name"),
-    f("region", "Region"),
+    f("region", "Region", { showcase: true }),
     f("sizeGib", "Size (GiB)", { kind: "number" }),
     f("performanceTier", "Performance Tier", {
       kind: "enum",
@@ -16,7 +16,7 @@ export const NfsShareResourceType = rt({
     }),
     f("vpcIds", "VPC IDs", { required: false }),
     f("mountTarget", "Mount Target", { required: false }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
   ],
   outputs: [o("mountCommand", "Mount Command"), o("mountTarget", "Mount Target")],
   // Comma-joined `vpc_ids`: one edge per VPC the share is exported to.

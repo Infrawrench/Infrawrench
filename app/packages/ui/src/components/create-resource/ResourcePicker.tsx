@@ -94,7 +94,7 @@ export function ResourcePicker({
             >
               <span
                 className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  selectedResource?.id === r.id ? "bg-blue-400" : "bg-surface-sunken"
+                  selectedResource?.id === r.id ? "bg-accent" : "bg-surface-sunken"
                 }`}
               />
               <span className="flex-1 min-w-0">

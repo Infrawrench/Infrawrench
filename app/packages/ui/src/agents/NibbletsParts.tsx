@@ -106,7 +106,7 @@ export function NibbletsSessionDetails({
             <button
               type="button"
               onClick={onOpenLink}
-              className="text-accent hover:underline"
+              className="text-accent underline underline-offset-2"
               title={gt("See this link and its agents in Settings → Agent Credentials")}
             >
               {gt("Linked to this organization")}
@@ -122,7 +122,7 @@ export function NibbletsSessionDetails({
             href={NIBBLETS_CONNECT_URL}
             target="_blank"
             rel="noreferrer"
-            className="text-accent hover:underline"
+            className="text-accent underline underline-offset-2"
             title={gt("Works once Authorize server has linked it to Nibblets Connect")}
           >
             {gt("Open Nibblets")}

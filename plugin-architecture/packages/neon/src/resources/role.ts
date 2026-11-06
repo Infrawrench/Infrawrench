@@ -21,5 +21,5 @@ export const NeonRoleResourceType = rt({
   principalRole: { role: "user", parentKey: "branchId" },
   parentTypeId: "neon-branch",
   supportsCreate: true,
-  iconKey: "neon",
+  iconKey: "role",
 });

@@ -17,6 +17,7 @@ export const VpcResourceType = rt({
   fields: [
     f("name", "Name"),
     f("region", "Region", {
+      showcase: true,
       description: "Region slug the VPC lives in, e.g. nyc3. Fixed at creation.",
     }),
     f("ipRange", "IP Range", {
@@ -30,7 +31,7 @@ export const VpcResourceType = rt({
       description:
         "Whether new resources in this region land here when no VPC is specified. A region's default VPC cannot be deleted.",
     }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [o("vpcId", "VPC ID", { description: "The VPC uuid, as used by vpc_uuid / vpc_ids" })],
   supportsCreate: true,

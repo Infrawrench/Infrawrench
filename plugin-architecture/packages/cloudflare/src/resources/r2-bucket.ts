@@ -6,8 +6,9 @@ export const R2BucketResourceType = rt({
   description: "A Cloudflare R2 object storage bucket",
   fields: [
     f("name", "Name", { editable: false }),
-    f("location", "Location Hint", { required: false, editable: false }),
+    f("location", "Location Hint", { showcase: true, required: false, editable: false }),
     f("storageClass", "Default Storage Class", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["Standard", "InfrequentAccess"],
@@ -15,7 +16,7 @@ export const R2BucketResourceType = rt({
         "Storage class new uploads get. Infrequent Access stores data for less but bills retrieval and has a 30-day minimum. Existing objects keep their class.",
     }),
     f("jurisdiction", "Jurisdiction", { required: false, editable: false }),
-    f("createdOn", "Created", { required: false, editable: false }),
+    f("createdOn", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("bucketName", "Bucket Name"),

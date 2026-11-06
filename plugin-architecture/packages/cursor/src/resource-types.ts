@@ -12,7 +12,7 @@ export const TeamResourceType = rt({
   description:
     "Your Cursor team: seats, spend this billing cycle, and team-wide usage metrics (active users, requests by feature, included vs usage-based requests, accepted lines and Tab acceptance). Enterprise teams also get the Analytics API series and AI-attributed commit lines. The Logs tab shows the team audit log.",
   fields: [
-    f("members", "Members", { kind: "number", editable: false }),
+    f("members", "Members", { showcase: true, kind: "number", editable: false }),
     f("paidSeats", "Paid seats", { kind: "number", editable: false }),
     f("idleSeats", "Idle seats (30 days)", { kind: "number", editable: false }),
     f("unpaidAdmins", "Unpaid admins", { kind: "number", editable: false }),
@@ -55,6 +55,7 @@ export const TeamMemberResourceType = rt({
     f("email", "Email", { editable: false }),
     f("name", "Name", { required: false, editable: false }),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       enumValues: ["owner", "member", "free-owner"],
       editable: false,
@@ -166,7 +167,7 @@ export const ModelResourceType = rt({
       editable: false,
     }),
     f("users30d", "Members using it", { kind: "number", required: false, editable: false }),
-    f("lastUsedAt", "Last used", { required: false, editable: false }),
+    f("lastUsedAt", "Last used", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("model", "Model")],
   supportsCreate: false,
@@ -183,7 +184,7 @@ export const BillingGroupResourceType = rt({
     "A Cursor billing group, used to attribute spend to a department or cost centre. Shows spend this billing cycle, daily spend and members. Create, rename, change members (by email) or delete.",
   fields: [
     f("name", "Name"),
-    f("memberCount", "Members", { kind: "number", editable: false }),
+    f("memberCount", "Members", { showcase: true, kind: "number", editable: false }),
     f("members", "Member emails", {
       required: false,
       description:
@@ -195,7 +196,7 @@ export const BillingGroupResourceType = rt({
       editable: false,
     }),
     f("directoryGroup", "Synced directory group", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("groupId", "Group ID")],
   supportsCreate: true,
@@ -213,7 +214,7 @@ export const DirectoryGroupResourceType = rt({
     "A Cursor team directory group with its monthly spending limit and members. Create, rename, set or clear the spending limit, change members (by email) or delete.",
   fields: [
     f("name", "Name"),
-    f("memberCount", "Members", { kind: "number", editable: false }),
+    f("memberCount", "Members", { showcase: true, kind: "number", editable: false }),
     f("members", "Member emails", {
       required: false,
       description:
@@ -225,8 +226,8 @@ export const DirectoryGroupResourceType = rt({
       description:
         "Whole US dollars per member per month, 0 to 2,147,483,647. Leave empty to remove the limit.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("groupId", "Group ID")],
   supportsCreate: true,
@@ -246,7 +247,7 @@ export const RepoBlocklistResourceType = rt({
     f("patterns", "Blocked patterns", {
       description: "Comma-separated glob patterns, for example *.env, config/*, secrets/**",
     }),
-    f("patternCount", "Pattern count", { kind: "number", editable: false }),
+    f("patternCount", "Pattern count", { showcase: true, kind: "number", editable: false }),
   ],
   outputs: [o("repoId", "Blocklist ID"), o("url", "Repository URL")],
   supportsCreate: true,

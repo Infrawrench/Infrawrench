@@ -9,7 +9,7 @@ export const APIGatewayResourceType = rt({
     f("apiId", "API ID"),
     f("protocolType", "Protocol", { kind: "enum", enumValues: ["HTTP", "WEBSOCKET", "REST"] }),
     f("description", "Description", { required: false }),
-    f("routeCount", "Routes", { kind: "number", required: false }),
+    f("routeCount", "Routes", { showcase: true, kind: "number", required: false }),
     f("createdDate", "Created", { required: false }),
   ],
   outputs: [o("apiEndpoint", "API Endpoint"), o("apiId", "API ID")],

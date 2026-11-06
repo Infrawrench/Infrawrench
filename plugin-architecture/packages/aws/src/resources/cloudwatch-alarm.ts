@@ -6,9 +6,13 @@ export const CloudWatchAlarmResourceType = rt({
   description: "An Amazon CloudWatch metric alarm",
   fields: [
     f("alarmName", "Alarm Name"),
-    f("state", "State", { kind: "enum", enumValues: ["OK", "ALARM", "INSUFFICIENT_DATA"] }),
+    f("state", "State", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["OK", "ALARM", "INSUFFICIENT_DATA"],
+    }),
     f("metricName", "Metric", { required: false }),
-    f("namespace", "Namespace", { required: false }),
+    f("namespace", "Namespace", { showcase: true, required: false }),
     f("comparisonOperator", "Comparison", { required: false }),
     f("threshold", "Threshold", { kind: "number", required: false }),
     f("period", "Period (s)", { kind: "number", required: false }),

@@ -71,6 +71,12 @@ function block(marker: string): string {
 
 const lightVars = parseVars(block("@theme"));
 const darkVars = { ...lightVars, ...parseVars(block("@media (prefers-color-scheme: dark)")) };
+/**
+ * The sidebar is dark in both schemes, so its block is read on its own. The
+ * "sidebar scope" tests below hold it to setting every token it needs, because
+ * one it left out would inherit the page's value, which differs per scheme.
+ */
+const sidebarVars = parseVars(block(".surface-sidebar {"));
 
 function relativeLuminance(hex: string): number {
   const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
@@ -118,6 +124,8 @@ const AA = 4.5;
 describe.each([
   ["light", lightVars],
   ["dark", darkVars],
+  // Series tokens stay out of the sidebar on purpose: it draws no charts.
+  ["sidebar", { ...darkVars, ...sidebarVars }],
 ])("%s scheme", (scheme, vars) => {
   it("defines every surface and foreground token", () => {
     for (const token of [...SURFACE_TOKENS, ...FOREGROUND_TOKENS]) {
@@ -137,6 +145,17 @@ describe.each([
   });
 });
 
+describe("sidebar scope", () => {
+  // A token the scope leaves out inherits the page's value, which in the light
+  // scheme is a dark grey on a dark grey: invisible, and nothing else would say so.
+  it.each([...SURFACE_TOKENS, ...FOREGROUND_TOKENS.filter((t) => !t.startsWith("series-"))])(
+    "sets --color-%s itself",
+    (token) => {
+      expect(sidebarVars[token]).toMatch(/^#[0-9a-f]{6}$/);
+    },
+  );
+});
+
 describe("accent fills", () => {
   // `text-on-accent` sits on solid accent fills (primary buttons), not on the
   // surfaces, so it gets its own check: AA against the accent it is paired
@@ -147,6 +166,7 @@ describe("accent fills", () => {
   it.each([
     ["light", lightVars],
     ["dark", darkVars],
+    ["sidebar", sidebarVars],
   ])("%s --color-on-accent clears WCAG AA on accent and accent-hover", (scheme, vars) => {
     expect(vars["on-accent"], `--color-on-accent missing in ${scheme}`).toMatch(/^#[0-9a-f]{6}$/);
     for (const fill of ["accent", "accent-hover"]) {
@@ -184,6 +204,36 @@ describe("token hierarchy", () => {
       }
     },
   );
+});
+
+describe("no blue in the interface", () => {
+  // Accent is grey. A `bg-blue-600` is not just the wrong hue: its hardcoded
+  // `text-white` label also goes unreadable the moment it is swapped for the
+  // accent, whose dark mode fill is light. Use the accent tokens.
+  const BLUE =
+    /(?<![\w-])(?:bg|border|ring|accent|shadow|from|via|to|fill|stroke|outline|divide)-(?:blue|sky|indigo)-\d{2,3}\b/;
+
+  it.each(["ui", "web", "desktop"])("is true of every component in %s", (pkg) => {
+    const offenders: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) {
+          // `mcp/` renders inside third-party AI clients, under its own theme.
+          if (entry.name !== "__tests__" && entry.name !== "mcp") walk(path);
+        } else if (/\.tsx?$/.test(entry.name)) {
+          readFileSync(path, "utf8")
+            .split("\n")
+            .forEach((line, i) => {
+              const hit = BLUE.exec(line);
+              if (hit) offenders.push(`${path.slice(ROOT.length + 1)}:${i + 1} → ${hit[0]}`);
+            });
+        }
+      }
+    };
+    walk(`${ROOT}/app/packages/${pkg}/src`);
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe("no hardcoded palette text utilities", () => {

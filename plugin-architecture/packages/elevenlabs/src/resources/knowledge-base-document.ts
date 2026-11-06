@@ -15,10 +15,10 @@ export const KnowledgeBaseDocumentResourceType = rt({
   fields: [
     f("name", "Name"),
     f("documentId", "Document ID", { required: false }),
-    f("type", "Type", { required: false }),
-    f("sizeBytes", "Size (bytes)", { kind: "number", required: false }),
+    f("type", "Type", { showcase: true, required: false }),
+    f("sizeBytes", "Size (bytes)", { showcase: true, kind: "number", required: false }),
     f("dependentAgents", "Dependent Agents", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("updatedAt", "Updated", { required: false }),
   ],
   outputs: [o("documentId", "Document ID")],

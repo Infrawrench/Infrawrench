@@ -6,15 +6,15 @@ export const NetlifyDnsZoneResourceType = rt({
   description: "A Netlify Managed DNS zone",
   fields: [
     f("name", "Name"),
-    f("domain", "Domain", { required: false }),
+    f("domain", "Domain", { showcase: true, required: false }),
     f("dnsServers", "DNS Servers", { required: false }),
     f("supportedRecordTypes", "Supported Record Types", { required: false }),
     f("ipv6Enabled", "IPv6 Enabled", { kind: "boolean", required: false }),
     f("dedicated", "Dedicated", { kind: "boolean", required: false }),
     f("accountName", "Team", { required: false }),
     f("siteId", "Site", { required: false }),
-    f("createdAt", "Created At", { required: false }),
-    f("updatedAt", "Updated At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false }),
   ],
   outputs: [o("zoneId", "Zone ID"), o("domain", "Domain")],
   // Netlify returns `site_id` on a zone when the zone was created for a site.

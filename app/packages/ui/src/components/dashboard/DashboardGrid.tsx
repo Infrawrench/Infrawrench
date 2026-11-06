@@ -1,4 +1,5 @@
 import type { DashboardCardSchema } from "@infrawrench/plugin-base";
+import { PinIcon } from "../icons/ChromeIcons.js";
 import { DashboardCard } from "./DashboardCard.js";
 
 interface DashboardGridProps {
@@ -13,7 +14,7 @@ export function DashboardGrid({
   if (cards.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-on-surface-faint">
-        <span className="text-4xl mb-3">📌</span>
+        <PinIcon size={32} className="mb-3" />
         <p className="text-sm">{emptyMessage}</p>
       </div>
     );

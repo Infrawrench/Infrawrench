@@ -9,12 +9,12 @@ import {
 import { useDataString } from "../i18n/data-strings.js";
 
 export const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 export const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 export const smallButtonClass =
   "px-2 py-1 rounded-lg text-xs text-on-surface-secondary hover:bg-surface-sunken disabled:opacity-50";
 export const primaryButtonClass =
-  "rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white disabled:opacity-50";
+  "rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent disabled:opacity-50";
 export const secondaryButtonClass =
   "rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50";
 
@@ -94,7 +94,7 @@ export function ScoreBadge({
         : gt("No level · {score}", { score: formatScorecardScore(score) });
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-on-surface tabular-nums whitespace-nowrap"
+      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-on-surface tabular-nums whitespace-nowrap"
       style={
         color && score !== null ? { borderColor: color, backgroundColor: `${color}22` } : undefined
       }

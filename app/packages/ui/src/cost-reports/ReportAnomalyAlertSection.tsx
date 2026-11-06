@@ -313,7 +313,7 @@ function AnomalyAlertEditor({
           type="button"
           onClick={() => void save()}
           disabled={busy || Boolean(problem)}
-          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+          className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
         >
           {busy ? gt("Saving…") : gt("Save")}
         </button>

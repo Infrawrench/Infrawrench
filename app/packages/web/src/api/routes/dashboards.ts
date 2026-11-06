@@ -8,7 +8,7 @@ import {
 } from "../../services/object-sharing";
 import { eq, and, inArray, isNull, desc, max, gte, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import type { ProbeStatus } from "@infrawrench/plugin-base";
+import { showcaseFields, type ProbeStatus } from "@infrawrench/plugin-base";
 import type { StoredWorkflowMetricDef as MetricDef } from "@infrawrench/ui/workflows";
 import {
   widgetConfigSchemaFor,
@@ -1345,6 +1345,9 @@ app.get("/pin/:pinId", async (c) => {
   const loaded = await getPlugin(pin.pluginId);
   const pluginLogoSvg = loaded?.plugin.manifest.logoSvg ?? "";
   const pluginDisplayName = loaded?.plugin.manifest.displayName ?? pin.pluginId;
+  const pinType = loaded?.plugin.resourceTypes.find((t) => t.id === pin.resourceTypeId);
+  const iconKey = pinType?.iconKey;
+  const showcase = pinType ? showcaseFields(pinType) : [];
 
   const [latestStats, latestMetrics, accountCounts] = await Promise.all([
     pin.resourceTypeId === "__account__"
@@ -1367,7 +1370,14 @@ app.get("/pin/:pinId", async (c) => {
   });
 
   const { dashboardOrgId: _omit, ...pinFields } = pin;
-  return c.json({ ...pinFields, pluginLogoSvg, pluginDisplayName, status });
+  return c.json({
+    ...pinFields,
+    pluginLogoSvg,
+    pluginDisplayName,
+    ...(iconKey ? { iconKey } : {}),
+    showcase,
+    status,
+  });
 });
 
 /** GET /api/dashboards/pin/:pinId/range?fromMs=…&toMs=…: historical metric series */

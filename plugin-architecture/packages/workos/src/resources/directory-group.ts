@@ -14,7 +14,7 @@ export const DirectoryGroupResourceType = rt({
     f("idpId", "IdP ID", { required: false, editable: false }),
     f("directoryId", "Directory ID", { required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("directoryGroupId", "Directory Group ID")],
   // Groups grant through membership, so they belong on the review even though

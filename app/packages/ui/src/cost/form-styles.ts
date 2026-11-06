@@ -1,5 +1,5 @@
 export const selectBaseClass =
-  "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 export const selectClass = `w-full ${selectBaseClass}`;
 export const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 

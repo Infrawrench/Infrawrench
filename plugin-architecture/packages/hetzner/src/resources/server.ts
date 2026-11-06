@@ -7,6 +7,7 @@ export const ServerResourceType = rt({
   fields: [
     f("name", "Name"),
     f("status", "Status", {
+      showcase: true,
       editable: false,
       kind: "enum",
       enumValues: [
@@ -22,15 +23,18 @@ export const ServerResourceType = rt({
       ],
     }),
     f("serverType", "Server Type", {
+      showcase: true,
       description:
         "Server type slug, e.g. cx23, cpx22, cax11. Changing it resizes the server (Hetzner change_type; requires the server to be powered off)",
     }),
     f("location", "Location", {
+      showcase: true,
       kind: "enum",
       enumValues: ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"],
       editable: false,
     }),
     f("image", "Image", {
+      showcase: true,
       description: "OS image name, e.g. ubuntu-24.04",
       editable: false,
     }),

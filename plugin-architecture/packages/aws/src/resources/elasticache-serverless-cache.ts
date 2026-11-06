@@ -18,12 +18,13 @@ export const ElastiCacheServerlessCacheResourceType = rt({
   fields: [
     f("name", "Cache Name", { editable: false }),
     f("engine", "Engine", {
+      showcase: true,
       kind: "enum",
       enumValues: ["valkey", "redis", "memcached"],
       editable: false,
     }),
-    f("engineVersion", "Engine Version", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("engineVersion", "Engine Version", { showcase: true, required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("description", "Description", { required: false }),
     f("maxDataStorageGb", "Max Data Storage (GB)", {
       kind: "number",

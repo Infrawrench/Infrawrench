@@ -7,15 +7,20 @@ export const PostgresClusterResourceType = rt({
   fields: [
     f("name", "Name"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["creating", "initializing", "ready", "deleting", "deleted", "failed"],
     }),
     f("plan", "Plan", { required: false }),
-    f("region", "Region", { required: false, description: "Region of the primary node" }),
+    f("region", "Region", {
+      showcase: true,
+      required: false,
+      description: "Region of the primary node",
+    }),
     f("pgMajorVersion", "Postgres Version", { required: false }),
     f("cpuKind", "CPU Kind", { required: false }),
-    f("cpus", "vCPUs", { kind: "number", required: false }),
-    f("memoryMb", "Memory (MB)", { kind: "number", required: false }),
+    f("cpus", "vCPUs", { showcase: true, kind: "number", required: false }),
+    f("memoryMb", "Memory (MB)", { showcase: true, kind: "number", required: false }),
     f("diskSizeGb", "Disk (GB)", { kind: "number", required: false }),
     f("replicas", "Replicas", { kind: "number", required: false }),
     f("postgisEnabled", "PostGIS", { kind: "boolean", required: false }),

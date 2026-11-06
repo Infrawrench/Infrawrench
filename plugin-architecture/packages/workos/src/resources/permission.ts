@@ -16,7 +16,7 @@ export const PermissionResourceType = rt({
     f("description", "Description", { required: false }),
     f("system", "System", { kind: "boolean", required: false, editable: false }),
     f("resourceTypeSlug", "Resource type", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("permissionSlug", "Permission Slug")],
   pinnable: false,

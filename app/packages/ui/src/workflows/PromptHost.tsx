@@ -93,21 +93,21 @@ export function PromptHost({ title }: PromptHostProps) {
             <button
               type="button"
               onClick={() => answer(null)}
-              className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
+              className="text-xs px-3 py-1.5 rounded bg-on-surface/10 hover:bg-on-surface/20 text-on-surface-secondary"
             >
               {gt("Cancel")}
             </button>
             <button
               type="button"
               onClick={() => answer(false)}
-              className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
+              className="text-xs px-3 py-1.5 rounded bg-on-surface/10 hover:bg-on-surface/20 text-on-surface-secondary"
             >
               {gt("No")}
             </button>
             <button
               type="button"
               onClick={() => answer(true)}
-              className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
+              className="text-xs px-3 py-1.5 rounded bg-accent hover:bg-accent-hover text-on-accent"
             >
               {gt("Yes")}
             </button>
@@ -142,7 +142,7 @@ export function PromptHost({ title }: PromptHostProps) {
                     });
                   }
                 }}
-                className="w-full h-64 bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs font-mono text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 mb-2 resize-y"
+                className="w-full h-64 bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs font-mono text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle mb-2 resize-y"
               />
             ) : kind === "select" ? (
               <select
@@ -155,7 +155,7 @@ export function PromptHost({ title }: PromptHostProps) {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submitText();
                 }}
-                className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 mb-4"
+                className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle mb-4"
               >
                 {(spec.options ?? []).map((o) => (
                   <option key={o.value} value={o.value}>
@@ -183,7 +183,7 @@ export function PromptHost({ title }: PromptHostProps) {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submitText();
                 }}
-                className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 mb-4"
+                className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle mb-4"
               />
             )}
             <div className="flex items-center justify-end gap-2">
@@ -197,14 +197,14 @@ export function PromptHost({ title }: PromptHostProps) {
               <button
                 type="button"
                 onClick={() => answer(null)}
-                className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
+                className="text-xs px-3 py-1.5 rounded bg-on-surface/10 hover:bg-on-surface/20 text-on-surface-secondary"
               >
                 {gt("Cancel")}
               </button>
               <button
                 type="button"
                 onClick={submitText}
-                className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
+                className="text-xs px-3 py-1.5 rounded bg-accent hover:bg-accent-hover text-on-accent"
               >
                 {gt("Submit")}
               </button>

@@ -6,10 +6,10 @@ export const AccessApplicationResourceType = rt({
   description: "A Cloudflare Zero Trust Access application",
   fields: [
     f("name", "Name"),
-    f("domain", "Domain"),
-    f("type", "Type", { required: false, editable: false }),
+    f("domain", "Domain", { showcase: true }),
+    f("type", "Type", { showcase: true, required: false, editable: false }),
     f("sessionDuration", "Session Duration", { required: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("updatedAt", "Updated", { required: false, editable: false }),
   ],
   outputs: [

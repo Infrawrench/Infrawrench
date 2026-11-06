@@ -53,7 +53,7 @@ export function SshKeysSection() {
           <button
             type="button"
             onClick={() => setShowGenerate(true)}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+            className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors"
           >
             {gt("Generate Key")}
           </button>
@@ -193,7 +193,7 @@ export function SshKeysSection() {
               onClick={() => {
                 void navigator.clipboard.writeText(generatedKey.privateKey);
               }}
-              className="mt-3 w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+              className="mt-3 w-full px-3 py-2 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors"
             >
               {gt("Copy private key to clipboard")}
             </button>
@@ -283,7 +283,7 @@ function GenerateKeyModal({
             type="button"
             onClick={() => void handleCreate()}
             disabled={saving}
-            className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="w-full px-3 py-2 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
           >
             {saving ? gt("Generating...") : gt("Generate key")}
           </button>
@@ -391,7 +391,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
             type="button"
             onClick={() => void handleImport()}
             disabled={saving}
-            className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="w-full px-3 py-2 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
           >
             {saving ? gt("Importing...") : gt("Import key")}
           </button>

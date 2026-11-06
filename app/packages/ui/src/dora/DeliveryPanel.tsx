@@ -92,7 +92,7 @@ function BandChip({ band }: { band: DoraBand | null }) {
   const gt = useGT();
   return (
     <span
-      className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${bandClass(band)}`}
+      className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-medium ${bandClass(band)}`}
     >
       {doraBandLabel(band, gt)}
     </span>
@@ -304,7 +304,7 @@ function BreakdownTable({
                 <button
                   type="button"
                   onClick={() => onPick(row.key)}
-                  className="text-left text-accent hover:underline"
+                  className="text-left text-accent underline underline-offset-2"
                 >
                   {row.key === null ? gt("Not known") : row.label}
                 </button>
@@ -343,13 +343,22 @@ function ExternalLink({
 }) {
   if (onOpenUrl) {
     return (
-      <button type="button" onClick={() => onOpenUrl(url)} className="text-accent hover:underline">
+      <button
+        type="button"
+        onClick={() => onOpenUrl(url)}
+        className="text-accent underline underline-offset-2"
+      >
         {label}
       </button>
     );
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="text-accent underline underline-offset-2"
+    >
       {label}
     </a>
   );
@@ -390,7 +399,7 @@ function ChangeRow({
           <code className="text-xs text-on-surface-faint">{change.commitSha.slice(0, 7)}</code>
         )}
         {change.isRollback && (
-          <span className="text-[11px] rounded-full px-2 py-0.5 bg-warning/15 text-warning">
+          <span className="text-[11px] rounded-md px-2 py-0.5 bg-warning/15 text-warning">
             {gt("Rollback")}
           </span>
         )}

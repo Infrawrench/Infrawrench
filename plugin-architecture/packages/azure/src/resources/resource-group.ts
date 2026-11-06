@@ -6,8 +6,8 @@ export const ResourceGroupResourceType = rt({
   description: "An Azure Resource Group",
   fields: [
     f("name", "Name"),
-    f("location", "Location"),
-    f("provisioningState", "Provisioning State"),
+    f("location", "Location", { showcase: true }),
+    f("provisioningState", "Provisioning State", { showcase: true }),
   ],
   outputs: [o("resourceId", "Resource ID")],
   iconKey: "project",

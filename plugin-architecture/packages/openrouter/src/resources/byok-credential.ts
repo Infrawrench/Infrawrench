@@ -15,7 +15,7 @@ export const ByokCredentialResourceType = rt({
   fields: [
     f("name", "Name", { required: false }),
     f("credentialId", "Credential ID", { editable: false }),
-    f("provider", "Provider", { editable: false }),
+    f("provider", "Provider", { showcase: true, editable: false }),
     f("label", "Key", { required: false, editable: false }),
     f("workspaceId", "Workspace ID", { required: false, editable: false }),
     f("disabled", "Disabled", { kind: "boolean", required: false }),
@@ -37,7 +37,7 @@ export const ByokCredentialResourceType = rt({
       editable: false,
     }),
     f("sortOrder", "Priority", { kind: "number", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("credentialId", "Credential ID"), o("provider", "Provider Slug")],
   dependsOn: [

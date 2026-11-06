@@ -23,9 +23,9 @@ export const ApiKeyResourceType = rt({
     f("name", "Name", { required: false }),
     f("clientRef", "Client Reference", { required: false }),
     f("projectId", "Project ID", { required: false }),
-    f("projectName", "Project", { required: false }),
+    f("projectName", "Project", { showcase: true, required: false }),
     f("product", "Product", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [
     o("apiKeyId", "API Key ID"),

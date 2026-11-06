@@ -14,8 +14,8 @@ export const NeonBucketResourceType = rt({
     }),
     f("projectId", "Project ID"),
     f("branchId", "Branch ID"),
-    f("region", "Region", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [o("bucketName", "Bucket Name"), o("s3Endpoint", "S3 Endpoint"), o("region", "Region")],
   dependsOn: [

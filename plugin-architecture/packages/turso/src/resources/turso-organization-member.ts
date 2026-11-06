@@ -9,6 +9,7 @@ export const TursoOrganizationMemberResourceType = rt({
     f("username", "Username", { editable: false }),
     f("email", "Email", { required: false, editable: false }),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["owner", "admin", "member", "viewer"],
@@ -18,5 +19,5 @@ export const TursoOrganizationMemberResourceType = rt({
   // Turso's member list carries no timestamps; the role is the one signal.
   principalRole: { role: "user", adminIndicatorKey: "role", adminValues: ["owner", "admin"] },
   supportsUpdate: true,
-  iconKey: "turso",
+  iconKey: "member",
 });

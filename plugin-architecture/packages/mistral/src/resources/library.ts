@@ -23,8 +23,8 @@ export const MistralLibraryResourceType = rt({
     f("documents", "Documents", { kind: "number", required: false, editable: false }),
     f("totalSize", "Total Size (bytes)", { kind: "number", required: false, editable: false }),
     f("ownerType", "Owner", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("libraryId", "Library ID", {

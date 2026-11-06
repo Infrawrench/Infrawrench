@@ -295,6 +295,9 @@ const PinFullResponse = strict({
   fieldsJson: JsonObject,
   outputsJson: JsonObject,
   pluginLogoSvg: z.string(),
+  iconKey: z.string().optional(),
+  /** The fields this type marked to show on the card. */
+  showcase: z.array(strict({ key: z.string(), label: z.string() })).optional(),
   pluginDisplayName: z.string(),
   status: ProbeStatus,
 }).openapi("PinFull");

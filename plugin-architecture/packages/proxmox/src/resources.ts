@@ -26,7 +26,7 @@ export const ClusterResourceType = rt({
   fields: [
     f("name", "Name", ro),
     f("quorate", "Quorate", { kind: "boolean", ...ro }),
-    f("nodeCount", "Nodes", { kind: "number", ...ro }),
+    f("nodeCount", "Nodes", { showcase: true, kind: "number", ...ro }),
     f("onlineNodes", "Online Nodes", { kind: "number", ...ro }),
     f("pveVersion", "Proxmox VE Version", ro),
     f("firewallEnabled", "Datacenter Firewall", {
@@ -68,11 +68,16 @@ export const NodeResourceType = rt({
   description: "A Proxmox VE host in the cluster",
   fields: [
     f("name", "Name", ro),
-    f("status", "Status", { kind: "enum", enumValues: ["online", "offline", "unknown"], ...ro }),
-    f("ip", "IP Address", ro),
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["online", "offline", "unknown"],
+      ...ro,
+    }),
+    f("ip", "IP Address", { ...ro, showcase: true }),
     f("cpuModel", "CPU", ro),
-    f("cpuCount", "CPU Threads", { kind: "number", ...ro }),
-    f("memoryGb", "Memory (GiB)", { kind: "number", ...ro }),
+    f("cpuCount", "CPU Threads", { showcase: true, kind: "number", ...ro }),
+    f("memoryGb", "Memory (GiB)", { showcase: true, kind: "number", ...ro }),
     f("pveVersion", "Proxmox VE Version", ro),
     f("kernel", "Kernel", ro),
     f("subscriptionLevel", "Subscription", ro),
@@ -130,16 +135,18 @@ export const VmResourceType = rt({
   fields: [
     f("name", "Name"),
     guestCommon.vmid,
-    guestCommon.node,
+    { ...guestCommon.node, showcase: true },
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["running", "stopped", "paused", "unknown"],
       ...ro,
     }),
     guestCommon.template,
-    f("cores", "Cores per Socket", { kind: "number", required: false }),
+    f("cores", "Cores per Socket", { showcase: true, kind: "number", required: false }),
     f("sockets", "Sockets", { kind: "number", required: false }),
     f("memoryMb", "Memory (MiB)", {
+      showcase: true,
       kind: "number",
       required: false,
       description:
@@ -222,15 +229,21 @@ export const CtResourceType = rt({
   fields: [
     f("name", "Hostname"),
     guestCommon.vmid,
-    guestCommon.node,
-    f("status", "Status", { kind: "enum", enumValues: ["running", "stopped", "unknown"], ...ro }),
+    { ...guestCommon.node, showcase: true },
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["running", "stopped", "unknown"],
+      ...ro,
+    }),
     guestCommon.template,
     f("cores", "Cores", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Empty means the container may use every core of its node",
     }),
-    f("memoryMb", "Memory (MiB)", { kind: "number", required: false }),
+    f("memoryMb", "Memory (MiB)", { showcase: true, kind: "number", required: false }),
     f("swapMb", "Swap (MiB)", { kind: "number", required: false }),
     f("diskGb", "Root Disk (GiB)", { kind: "number", ...ro }),
     f("rootfs", "Root Filesystem", ro),
@@ -285,8 +298,8 @@ export const StorageResourceType = rt({
   description: "A storage as seen from one node: disk images, ISOs, container templates, backups",
   fields: [
     f("storage", "Storage ID", ro),
-    f("node", "Node", ro),
-    f("type", "Type", ro),
+    f("node", "Node", { ...ro, showcase: true }),
+    f("type", "Type", { ...ro, showcase: true }),
     f("content", "Content Types", {
       required: false,
       description: "Comma-separated: images, rootdir, iso, vztmpl, backup, snippets, import",
@@ -313,14 +326,14 @@ export const BackupResourceType = rt({
   fields: [
     f("volid", "Volume ID", ro),
     f("storage", "Storage", ro),
-    f("node", "Node", ro),
+    f("node", "Node", { ...ro, showcase: true }),
     f("vmid", "Guest VMID", ro),
     f("guestType", "Guest Type", { kind: "enum", enumValues: ["qemu", "lxc"], ...ro }),
     f("vmId", "Virtual Machine", ro),
     f("ctId", "Container", ro),
     f("createdAt", "Created", ro),
-    f("sizeGb", "Size (GiB)", { kind: "number", ...ro }),
-    f("format", "Format", ro),
+    f("sizeGb", "Size (GiB)", { showcase: true, kind: "number", ...ro }),
+    f("format", "Format", { ...ro, showcase: true }),
     f("encrypted", "Encrypted", { kind: "boolean", ...ro }),
     f("verifyState", "Verification", ro),
     f("notes", "Notes", { required: false }),
@@ -346,7 +359,10 @@ export const BackupJobResourceType = rt({
   description: "A scheduled vzdump backup job",
   fields: [
     f("jobId", "Job ID", ro),
-    f("schedule", "Schedule", { description: "systemd calendar event, e.g. 'daily', 'sat 02:00'" }),
+    f("schedule", "Schedule", {
+      showcase: true,
+      description: "systemd calendar event, e.g. 'daily', 'sat 02:00'",
+    }),
     f("storage", "Storage", { required: false }),
     f("selection", "Guests", {
       required: false,
@@ -358,8 +374,9 @@ export const BackupJobResourceType = rt({
       description: "VMIDs skipped when All Guests is on",
     }),
     f("pool", "Pool", { required: false }),
-    f("node", "Only on Node", { required: false }),
+    f("node", "Only on Node", { showcase: true, required: false }),
     f("mode", "Mode", {
+      showcase: true,
       kind: "enum",
       enumValues: ["snapshot", "suspend", "stop"],
       required: false,
@@ -395,7 +412,7 @@ export const PoolResourceType = rt({
     f("poolid", "Pool ID", ro),
     f("comment", "Comment", { required: false }),
     f("members", "Members", ro),
-    f("memberCount", "Member Count", { kind: "number", ...ro }),
+    f("memberCount", "Member Count", { showcase: true, kind: "number", ...ro }),
   ],
   outputs: [o("poolid", "Pool ID")],
   supportsCreate: true,
@@ -419,6 +436,7 @@ export const HaResourceResourceType = rt({
     f("vmId", "Virtual Machine", ro),
     f("ctId", "Container", ro),
     f("state", "Requested State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["started", "stopped", "disabled", "ignored"],
       required: false,
@@ -433,7 +451,7 @@ export const HaResourceResourceType = rt({
     }),
     f("group", "HA Group", ro),
     f("comment", "Comment", { required: false }),
-    f("node", "Current Node", ro),
+    f("node", "Current Node", { ...ro, showcase: true }),
     f("currentState", "Current State", ro),
   ],
   outputs: [o("sid", "Service ID")],
@@ -454,9 +472,15 @@ export const HaRuleResourceType = rt({
     "A high-availability placement rule (Proxmox VE 9+): node affinity or resource affinity",
   fields: [
     f("rule", "Rule ID", ro),
-    f("type", "Type", { kind: "enum", enumValues: ["node-affinity", "resource-affinity"], ...ro }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["node-affinity", "resource-affinity"],
+      ...ro,
+    }),
     f("resources", "Resources", { description: "e.g. vm:100,ct:101" }),
     f("nodes", "Nodes", {
+      showcase: true,
       required: false,
       description: "Node affinity only: node[:priority], comma-separated, e.g. pve1:2,pve2:1",
     }),
@@ -478,7 +502,11 @@ export const HaRuleResourceType = rt({
 
 const fwRuleFields = [
   f("pos", "Position", { kind: "number", ...ro }),
-  f("type", "Direction", { kind: "enum", enumValues: ["in", "out", "forward", "group"] }),
+  f("type", "Direction", {
+    showcase: true,
+    kind: "enum",
+    enumValues: ["in", "out", "forward", "group"],
+  }),
   f("action", "Action", {
     description: "ACCEPT, DROP, REJECT, or a security group name for a group rule",
   }),
@@ -536,7 +564,7 @@ export const SecurityGroupResourceType = rt({
   fields: [
     f("group", "Name", ro),
     f("comment", "Comment", { required: false }),
-    f("ruleCount", "Rules", { kind: "number", ...ro }),
+    f("ruleCount", "Rules", { showcase: true, kind: "number", ...ro }),
   ],
   outputs: [o("group", "Name")],
   supportsCreate: true,
@@ -552,7 +580,7 @@ export const FirewallAliasResourceType = rt({
   description: "A named IP address or network usable in firewall rules",
   fields: [
     f("name", "Name", ro),
-    f("cidr", "Address / CIDR"),
+    f("cidr", "Address / CIDR", { showcase: true }),
     f("comment", "Comment", { required: false }),
   ],
   outputs: [o("cidr", "Address / CIDR")],
@@ -570,7 +598,7 @@ export const IpsetResourceType = rt({
     f("name", "Name", ro),
     f("comment", "Comment", { required: false }),
     f("entries", "Entries", ro),
-    f("entryCount", "Entry Count", { kind: "number", ...ro }),
+    f("entryCount", "Entry Count", { showcase: true, kind: "number", ...ro }),
   ],
   outputs: [],
   supportsCreate: true,

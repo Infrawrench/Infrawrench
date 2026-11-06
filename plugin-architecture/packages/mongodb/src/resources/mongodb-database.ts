@@ -5,8 +5,8 @@ export const MongoDBDatabaseResourceType = rt({
   id: "mongodb-database",
   description: "A MongoDB database. Browse collections and documents.",
   fields: [
-    f("host", "Host", { required: false }),
-    f("database", "Database"),
+    f("host", "Host", { showcase: true, required: false }),
+    f("database", "Database", { showcase: true }),
     f("connectionString", "Connection String", { kind: "secret" }),
   ],
   outputs: [
@@ -15,5 +15,5 @@ export const MongoDBDatabaseResourceType = rt({
   ],
   supportsCreate: true,
   supportsMetrics: true,
-  iconKey: "mongodb",
+  iconKey: "database",
 });

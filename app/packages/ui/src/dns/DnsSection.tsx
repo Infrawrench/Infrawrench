@@ -128,7 +128,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
       {data !== null && (
         <>
           <div className="flex flex-wrap items-center gap-2 mb-6">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-overlay px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-surface-overlay px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
               <T>
                 <span className="tabular-nums">
                   <Var>{data.counts.zones}</Var>
@@ -136,7 +136,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                 zones
               </T>
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-overlay px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-surface-overlay px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
               <T>
                 <span className="tabular-nums">
                   <Var>{data.counts.records}</Var>
@@ -147,7 +147,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
             {(["dangling", "owned", "external"] as const).map((key) => (
               <span
                 key={key}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_BADGE_CLASSES[key]}`}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${STATUS_BADGE_CLASSES[key]}`}
               >
                 <span className="tabular-nums">
                   {key === "owned" ? data.counts.owned : data.counts[key]}
@@ -193,7 +193,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                                 zone.domain
                               )}
                               {zone.isPrivate && (
-                                <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-normal text-on-surface-faint">
+                                <span className="ml-2 rounded-md border border-border px-2 py-0.5 text-[11px] font-normal text-on-surface-faint">
                                   {gt("Private")}
                                 </span>
                               )}
@@ -220,7 +220,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                             <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
                               {zone.danglingCount > 0 && (
                                 <span
-                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES.dangling}`}
+                                  className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES.dangling}`}
                                 >
                                   {gt("{count} dangling", { count: zone.danglingCount })}
                                 </span>
@@ -283,7 +283,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                           className="border-b border-border last:border-b-0 hover:bg-surface-raised"
                         >
                           <td className="px-4 py-2.5 whitespace-nowrap align-top">
-                            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+                            <span className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
                               {record.type}
                             </span>
                           </td>
@@ -300,7 +300,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                               record.name
                             )}
                             {record.proxied && (
-                              <span className="ml-2 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-normal text-severe">
+                              <span className="ml-2 rounded-md bg-orange-500/10 px-2 py-0.5 text-[11px] font-normal text-severe">
                                 {gt("Proxied")}
                               </span>
                             )}
@@ -341,7 +341,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                           </td>
                           <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
                             <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES[record.status]}`}
+                              className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES[record.status]}`}
                             >
                               {STATUS_BADGE_LABELS[record.status]}
                             </span>

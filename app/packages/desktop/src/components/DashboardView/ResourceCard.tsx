@@ -1,5 +1,6 @@
 import { useGT } from "gt-react";
-import { extractHostLabel, useDataString, CloseIcon } from "@infrawrench/ui";
+import { buildResourceShowcase, omitLiveShowcaseStats } from "@infrawrench/plugin-base";
+import { useDataString, CloseIcon, ResourceTypeIcon, ShowcaseLines } from "@infrawrench/ui";
 import { ConnectionFooter } from "./ConnectionFooter";
 import type { CardStatus, PinnedRow, PluginMeta } from "./types";
 
@@ -28,10 +29,14 @@ export function ResourceCard({
     }
   })();
 
-  const host = extractHostLabel(fields);
-
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">
+      <ResourceTypeIcon
+        iconKey={pluginMeta?.iconKeys[row.resource_type_id]}
+        size={136}
+        strokeWidth={1.25}
+        className="pointer-events-none absolute -right-[68px] -top-[68px] text-on-surface opacity-[0.1]"
+      />
       <button
         type="button"
         onClick={(e) => {
@@ -64,8 +69,15 @@ export function ResourceCard({
           <p className="text-base font-semibold text-on-surface leading-tight">
             {row.display_name}
           </p>
-          {host && <p className="text-xs text-on-surface-muted mt-0.5 truncate">{host}</p>}
         </div>
+        <span className="flex flex-col">
+          <ShowcaseLines
+            showcase={omitLiveShowcaseStats(
+              buildResourceShowcase(fields, pluginMeta?.showcases[row.resource_type_id]),
+              status?.stats,
+            )}
+          />
+        </span>
       </button>
 
       <ConnectionFooter status={status} onConnect={onConnect} />

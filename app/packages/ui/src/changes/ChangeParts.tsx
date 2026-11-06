@@ -3,7 +3,7 @@ import type { ResourceChangeEntry, ResourceChangeKind, ResourceFieldChange } fro
 
 const KIND_BADGE_CLASSES: Record<ResourceChangeKind, string> = {
   created: "bg-green-500/10 text-success",
-  updated: "bg-blue-500/10 text-info",
+  updated: "bg-accent/10 text-info",
   deleted: "bg-red-500/10 text-danger",
 };
 
@@ -15,7 +15,7 @@ const KIND_BADGE_CLASSES: Record<ResourceChangeKind, string> = {
 export function ChangeKindBadge({ kind }: { kind: ResourceChangeKind }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${KIND_BADGE_CLASSES[kind]}`}
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${KIND_BADGE_CLASSES[kind]}`}
     >
       {CHANGE_KIND_LABELS[kind]}
     </span>

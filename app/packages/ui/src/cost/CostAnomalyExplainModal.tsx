@@ -162,7 +162,7 @@ export function CostAnomalyExplainModal({
                   key={hint}
                   type="button"
                   onClick={() => setText(`${costAnomalyExplanationPrefill(anomaly)}${hint}`)}
-                  className="rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-on-surface-faint hover:border-border-strong hover:text-on-surface-secondary"
+                  className="rounded-md border border-dashed border-border px-2 py-0.5 text-[11px] text-on-surface-faint hover:border-border-strong hover:text-on-surface-secondary"
                 >
                   {hint}
                 </button>
@@ -191,7 +191,7 @@ export function CostAnomalyExplainModal({
             type="button"
             disabled={busy || problem !== null}
             onClick={() => void save()}
-            className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50"
+            className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent transition-colors disabled:opacity-50"
           >
             {busy ? gt("Saving…") : rewording ? gt("Save") : gt("Explain")}
           </button>

@@ -25,13 +25,18 @@ export const InstanceResourceType = rt({
   description: "A Lambda Cloud on-demand GPU instance",
   fields: [
     f("name", "Name", { required: false }),
-    f("status", "Status", { kind: "enum", enumValues: [...INSTANCE_STATES], editable: false }),
-    f("region", "Region", { editable: false }),
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      enumValues: [...INSTANCE_STATES],
+      editable: false,
+    }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("regionName", "Region Name", { required: false, editable: false }),
     f("instanceType", "Instance Type", { editable: false }),
     f("gpuDescription", "GPU", { required: false, editable: false }),
-    f("gpus", "GPUs", { kind: "number", required: false, editable: false }),
-    f("vcpus", "vCPUs", { kind: "number", required: false, editable: false }),
+    f("gpus", "GPUs", { showcase: true, kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
     f("memoryGib", "Memory (GiB)", { kind: "number", required: false, editable: false }),
     f("storageGib", "Local Storage (GiB)", { kind: "number", required: false, editable: false }),
     f("architecture", "Architecture", { required: false, editable: false }),
@@ -83,7 +88,7 @@ export const FilesystemResourceType = rt({
   description: "A persistent Lambda Cloud filesystem in one region",
   fields: [
     f("name", "Name", { editable: false }),
-    f("region", "Region", { editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("mountPoint", "Default Mount Point", { required: false, editable: false }),
     f("inUse", "In Use", { kind: "boolean", required: false, editable: false }),
     f("usedGb", "Used (GB)", {
@@ -93,7 +98,7 @@ export const FilesystemResourceType = rt({
       description: "Approximate; Lambda refreshes it every few hours",
     }),
     f("createdBy", "Created By", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   showInSidebar: true,
   iconKey: "volume",
@@ -111,9 +116,14 @@ export const FirewallRulesetResourceType = rt({
   description: "Inbound firewall rules for the instances in one region that use this ruleset",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("rules", "Rules", { description: RULES_DESCRIPTION }),
-    f("ruleCount", "Rule Count", { kind: "number", required: false, editable: false }),
+    f("ruleCount", "Rule Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("instanceIds", "Instances", { required: false, editable: false }),
     f("openToInternet", "Open to the Internet", {
       kind: "boolean",
@@ -125,7 +135,7 @@ export const FirewallRulesetResourceType = rt({
       required: false,
       editable: false,
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   dependsOn: [{ fieldKey: "instanceIds", targetTypeId: "instance", label: "protects" }],
   showInSidebar: true,
@@ -152,7 +162,12 @@ export const GlobalFirewallResourceType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("rules", "Rules", { description: RULES_DESCRIPTION }),
-    f("ruleCount", "Rule Count", { kind: "number", required: false, editable: false }),
+    f("ruleCount", "Rule Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("openToInternet", "Open to the Internet", {
       kind: "boolean",
       required: false,

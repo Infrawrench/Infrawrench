@@ -7,8 +7,8 @@ export const TargetGroupResourceType = rt({
   parentTypeId: "alb",
   fields: [
     f("name", "Name"),
-    f("protocol", "Protocol"),
-    f("port", "Port", { kind: "number" }),
+    f("protocol", "Protocol", { showcase: true }),
+    f("port", "Port", { showcase: true, kind: "number" }),
     f("targetType", "Target Type", {
       kind: "enum",
       enumValues: ["instance", "ip", "lambda", "alb"],

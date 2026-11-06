@@ -4,10 +4,11 @@ export const SubnetResourceType = rt({
   name: "Subnet",
   pinnable: false,
   id: "subnet",
+  iconKey: "network",
   description: "A Google Cloud VPC subnetwork",
   fields: [
     f("name", "Name"),
-    f("region", "Region"),
+    f("region", "Region", { showcase: true }),
     f("network", "Network", { required: false }),
     f("ipCidrRange", "IP CIDR Range"),
     f("gatewayAddress", "Gateway", { required: false }),

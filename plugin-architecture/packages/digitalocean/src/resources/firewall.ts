@@ -17,7 +17,7 @@ export const FirewallResourceType = rt({
     f("name", "Name", {
       description: "Starts with a letter or digit; then letters, digits, periods and dashes only.",
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("dropletIds", "Droplet IDs", {
       required: false,
       editable: false,
@@ -28,9 +28,19 @@ export const FirewallResourceType = rt({
       editable: false,
       description: "Droplet tags this firewall applies to.",
     }),
-    f("inboundRuleCount", "Inbound Rules", { kind: "number", required: false, editable: false }),
-    f("outboundRuleCount", "Outbound Rules", { kind: "number", required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("inboundRuleCount", "Inbound Rules", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("outboundRuleCount", "Outbound Rules", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
   dependsOn: [{ fieldKey: "dropletIds", targetTypeId: "droplet", label: "protects" }],

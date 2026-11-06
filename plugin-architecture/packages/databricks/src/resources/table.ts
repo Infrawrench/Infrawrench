@@ -4,6 +4,7 @@ export const TableResourceType = rt({
   name: "Table",
   pinnable: false,
   id: "databricks-table",
+  iconKey: "table",
   description: "A Unity Catalog table (managed, external, or view)",
   fields: [
     f("name", "Name"),
@@ -17,7 +18,7 @@ export const TableResourceType = rt({
     f("owner", "Owner", { required: false }),
     f("comment", "Comment", { required: false }),
     f("storageLocation", "Storage Location", { required: false }),
-    f("columnCount", "Columns", { kind: "number", required: false }),
+    f("columnCount", "Columns", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [o("fullName", "Full Name"), o("storageLocation", "Storage Location")],
   // `schemaName` is the bare schema name while a schema's external id is

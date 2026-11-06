@@ -6,8 +6,9 @@ export const FirewallResourceType = rt({
   description: "A Hetzner Cloud firewall with inbound/outbound rules",
   fields: [
     f("name", "Name"),
-    f("rulesCount", "Rules", { kind: "number", required: false, editable: false }),
+    f("rulesCount", "Rules", { showcase: true, kind: "number", required: false, editable: false }),
     f("appliedToCount", "Applied To", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Number of servers/label selectors this firewall is applied to",

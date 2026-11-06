@@ -7,7 +7,7 @@ export const ProductEnvironmentResourceType = rt({
     "The Cloudinary product environment itself: plan, credit and storage usage, folder mode and upload limits",
   fields: [
     f("cloudName", "Cloud Name"),
-    f("plan", "Plan", { required: false }),
+    f("plan", "Plan", { showcase: true, required: false }),
     f("folderMode", "Folder Mode", {
       kind: "enum",
       required: false,
@@ -16,7 +16,7 @@ export const ProductEnvironmentResourceType = rt({
     f("creditsUsed", "Credits Used", { kind: "number", required: false }),
     f("creditsLimit", "Credit Limit", { kind: "number", required: false }),
     f("creditsUsedPercent", "Credits Used (%)", { kind: "number", required: false }),
-    f("storageBytes", "Storage (bytes)", { kind: "number", required: false }),
+    f("storageBytes", "Storage (bytes)", { showcase: true, kind: "number", required: false }),
     f("bandwidthBytes", "Bandwidth (bytes)", { kind: "number", required: false }),
     f("transformations", "Transformations", { kind: "number", required: false }),
     f("assets", "Assets", { kind: "number", required: false }),

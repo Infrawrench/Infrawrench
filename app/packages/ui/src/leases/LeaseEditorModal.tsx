@@ -5,7 +5,7 @@ import { Modal } from "../components/Modal.js";
 import type { LeasesClient, ResourceLease } from "./types.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 /** The resource the editor attaches a lease to. */
@@ -218,7 +218,7 @@ export function LeaseEditorModal({
               type="button"
               onClick={() => void save()}
               disabled={saving || inputProblem !== null}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
             >
               {saving ? gt("Saving…") : existing ? gt("Save changes") : gt("Create lease")}
             </button>

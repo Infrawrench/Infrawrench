@@ -7,7 +7,7 @@ export const FineTuneResourceType = rt({
   description: "A Together AI fine-tuning job and the adapter or full model it produces",
   fields: [
     f("jobId", "Job ID"),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("baseModel", "Base Model", { required: false }),
     f("outputName", "Output Model", { required: false }),
     f("trainingFile", "Training File", { required: false }),
@@ -17,10 +17,10 @@ export const FineTuneResourceType = rt({
     f("epochs", "Epochs", { kind: "number", required: false }),
     f("batchSize", "Batch Size", { kind: "number", required: false }),
     f("learningRate", "Learning Rate", { kind: "number", required: false }),
-    f("tokenCount", "Tokens Processed", { kind: "number", required: false }),
+    f("tokenCount", "Tokens Processed", { showcase: true, kind: "number", required: false }),
     f("totalPrice", "Price (USD)", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
-    f("updatedAt", "Updated", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false }),
   ],
   outputs: [
     o("jobId", "Job ID"),

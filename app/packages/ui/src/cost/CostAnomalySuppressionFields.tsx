@@ -24,7 +24,7 @@ import {
 import type { CostsClient } from "./types.js";
 
 const fieldClass =
-  "rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60";
+  "rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle disabled:opacity-60";
 
 interface Option {
   value: string;
@@ -434,7 +434,7 @@ export function SuppressionEditorModal({
             type="button"
             disabled={busy || problem !== null || !save}
             onClick={() => void submit()}
-            className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50"
+            className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent transition-colors disabled:opacity-50"
           >
             {busy ? gt("Saving…") : gt("Save")}
           </button>

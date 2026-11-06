@@ -6,10 +6,10 @@ export const NeonDataApiResourceType = rt({
   description: "A Neon Data API endpoint exposing a branch database over REST",
   fields: [
     f("url", "URL"),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("projectId", "Project ID"),
     f("branchId", "Branch ID"),
-    f("database", "Database"),
+    f("database", "Database", { showcase: true }),
     f("schemas", "Schemas", { required: false }),
     f("anonymousRole", "Anonymous Role", { required: false }),
   ],
@@ -20,5 +20,5 @@ export const NeonDataApiResourceType = rt({
   ],
   parentTypeId: "neon-database",
   supportsCreate: true,
-  iconKey: "neon",
+  iconKey: "api",
 });

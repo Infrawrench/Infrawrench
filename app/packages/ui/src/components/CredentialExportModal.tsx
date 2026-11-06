@@ -143,7 +143,7 @@ export function CredentialExportModal({
                         key={f.id}
                         className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
                           selectedFormatId === f.id
-                            ? "border-blue-500 bg-accent-muted"
+                            ? "border-accent bg-accent-muted"
                             : "border-border-strong hover:border-border-strong/80 hover:bg-surface-overlay/50"
                         }`}
                       >
@@ -269,7 +269,7 @@ export function CredentialExportModal({
                 type="button"
                 onClick={() => void handleGenerate()}
                 disabled={loading || !selectedFormat}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg transition-colors"
               >
                 {loading ? gt("Generating…") : gt("Generate")}
               </button>
@@ -286,7 +286,7 @@ export function CredentialExportModal({
               <button
                 type="button"
                 onClick={download}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover rounded-lg transition-colors"
               >
                 {gt("Download {filename}", { filename: result.filename })}
               </button>

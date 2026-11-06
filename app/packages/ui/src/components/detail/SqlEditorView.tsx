@@ -329,7 +329,7 @@ export function SqlEditorView({
                     <button
                       type="button"
                       onClick={() => clickTable(table.name)}
-                      className="flex-1 text-left p-1 text-xs text-on-surface-secondary hover:text-white hover:bg-surface-overlay rounded truncate leading-tight"
+                      className="flex-1 text-left p-1 text-xs text-on-surface-secondary hover:text-on-surface hover:bg-surface-overlay rounded truncate leading-tight"
                     >
                       {table.name}
                     </button>
@@ -418,7 +418,7 @@ export function SqlEditorView({
                     downloadCsv(`${name}-${ts}.csv`, rowsToCsv(result.rows, cols));
                   }}
                   title={gt("Download results as CSV")}
-                  className="px-3 py-1 text-xs font-medium border border-border-strong hover:border-blue-500 text-on-surface-secondary rounded-md transition-colors whitespace-nowrap"
+                  className="px-3 py-1 text-xs font-medium border border-border-strong hover:border-accent text-on-surface-secondary rounded-md transition-colors whitespace-nowrap"
                 >
                   {gt("Export CSV")}
                 </button>
@@ -433,7 +433,7 @@ export function SqlEditorView({
                       ? gtData(estimate.pricingNote)
                       : gt("Dry-run query to estimate scanned bytes and cost")
                   }
-                  className="px-3 py-1 text-xs font-medium border border-border-strong hover:border-blue-500 disabled:opacity-50 text-on-surface-secondary rounded-md transition-colors whitespace-nowrap"
+                  className="px-3 py-1 text-xs font-medium border border-border-strong hover:border-accent disabled:opacity-50 text-on-surface-secondary rounded-md transition-colors whitespace-nowrap"
                 >
                   {estimating ? gt("Estimating…") : gt("Estimate")}
                 </button>
@@ -442,7 +442,7 @@ export function SqlEditorView({
                 type="button"
                 onClick={() => runQuery(query)}
                 disabled={running}
-                className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors whitespace-nowrap"
+                className="px-3 py-1 text-xs font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-md transition-colors whitespace-nowrap"
               >
                 {running ? gt("Running…") : gt("Run  ⌘↵")}
               </button>
@@ -578,7 +578,7 @@ export function SqlEditorView({
                                     }
                                     if (e.key === "Escape") cancelEdit();
                                   }}
-                                  className="w-full bg-surface-sunken border border-border-strong rounded px-2 py-0.5 text-xs font-mono text-on-surface focus:outline-none focus:border-blue-400"
+                                  className="w-full bg-surface-sunken border border-border-strong rounded px-2 py-0.5 text-xs font-mono text-on-surface focus:outline-none focus:border-accent-subtle"
                                   placeholder="NULL"
                                 />
                               </td>

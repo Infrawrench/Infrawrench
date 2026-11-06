@@ -1,4 +1,9 @@
-import type { FieldDefinition, PeerPaneSchema, StatusDotNode } from "@infrawrench/plugin-base";
+import type {
+  FieldDefinition,
+  PeerPaneSchema,
+  ShowcaseField,
+  StatusDotNode,
+} from "@infrawrench/plugin-base";
 
 export interface PeerPaneData {
   tabLabel: string;
@@ -21,7 +26,7 @@ export interface ChildResource {
   accountId: string;
   status?: StatusDotNode | undefined;
   subtitle?: string | undefined;
-  /** Non-secret field values: populated when the detail renders a child table. */
+  /** Non-secret field values: all of them for a child table, otherwise just what its tile reads. */
   fields?: Record<string, unknown> | undefined;
 }
 
@@ -30,6 +35,8 @@ export interface ChildResourceGroup {
   typeId: string;
   displayName: string;
   pluralDisplayName: string;
+  iconKey?: string | undefined;
+  showcase?: ShowcaseField[] | undefined;
   supportsCreate: boolean;
   resources: ChildResource[];
   /** Field schema for the child type: populates the inline edit form. */

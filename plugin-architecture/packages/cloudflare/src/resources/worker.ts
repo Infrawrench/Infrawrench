@@ -6,7 +6,7 @@ export const WorkerResourceType = rt({
   description: "A Cloudflare Worker script",
   fields: [
     f("name", "Name"),
-    f("createdOn", "Created", { required: false }),
+    f("createdOn", "Created", { showcase: true, required: false }),
     f("modifiedOn", "Modified", { required: false }),
     f("compatibilityDate", "Compat Date", { required: false }),
     f("routes", "Routes", { required: false }),

@@ -10,7 +10,7 @@ export const EmailRoutingRuleResourceType = rt({
     f("enabled", "Enabled", { kind: "boolean" }),
     f("matchers", "Matchers", { required: false, editable: false }),
     f("actions", "Actions", { required: false, editable: false }),
-    f("priority", "Priority", { kind: "number", required: false, editable: false }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false, editable: false }),
     f("zoneName", "Zone", { required: false, editable: false }),
   ],
   outputs: [],

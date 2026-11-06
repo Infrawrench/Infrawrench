@@ -6,7 +6,7 @@ export const DomainResourceType = rt({
   description: "A DigitalOcean DNS domain",
   fields: [
     f("name", "Domain"),
-    f("ttl", "Default TTL", { kind: "number", required: false }),
+    f("ttl", "Default TTL", { showcase: true, kind: "number", required: false }),
     f("zoneFile", "Zone File", { required: false }),
   ],
   outputs: [

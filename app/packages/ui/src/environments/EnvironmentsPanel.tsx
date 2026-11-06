@@ -482,7 +482,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
             <button
               type="button"
               onClick={() => setCapturing(true)}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-blue-500"
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent transition-colors hover:bg-accent-hover"
             >
               {gt("Capture template")}
             </button>

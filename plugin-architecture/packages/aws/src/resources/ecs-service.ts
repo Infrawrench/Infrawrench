@@ -7,14 +7,14 @@ export const ECSServiceResourceType = rt({
   fields: [
     f("serviceName", "Service Name"),
     f("clusterName", "Cluster"),
-    f("status", "Status"),
+    f("status", "Status", { showcase: true }),
     f("launchType", "Launch Type", {
       kind: "enum",
       required: false,
       enumValues: ["FARGATE", "EC2", "EXTERNAL"],
     }),
-    f("desiredCount", "Desired Count", { kind: "number", required: false }),
-    f("runningCount", "Running Count", { kind: "number", required: false }),
+    f("desiredCount", "Desired Count", { showcase: true, kind: "number", required: false }),
+    f("runningCount", "Running Count", { showcase: true, kind: "number", required: false }),
     f("taskDefinition", "Task Definition", { required: false }),
   ],
   outputs: [o("serviceArn", "Service ARN")],

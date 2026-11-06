@@ -160,7 +160,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
           // i18n-ignore: example IAM statement id
           placeholder="MyStatement"
           aria-label={gt("Statement ID (Sid)")}
-          className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
+          className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent-subtle"
         />
       </Row>
 
@@ -196,7 +196,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
               )
             }
             aria-label={gt("Principal type")}
-            className="bg-surface border border-border-strong rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
+            className="bg-surface border border-border-strong rounded px-2 py-1 text-xs focus:outline-none focus:border-accent-subtle"
           >
             <option value="everyone">{gt("Everyone (*)")}</option>
             <option value="aws">{gt("Specific AWS principal(s)")}</option>
@@ -215,7 +215,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
                   : gt("one ARN per line")
               }
               rows={3}
-              className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
+              className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent-subtle"
             />
           )}
         </div>
@@ -329,7 +329,7 @@ function ActionPicker({
           // i18n-ignore: IAM action syntax example
           placeholder="s3:GetObject…"
           aria-label={gt("Add an action")}
-          className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
+          className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent-subtle"
         />
         {open && suggestions.length > 0 && (
           <ul className="absolute z-10 left-0 right-0 top-full mt-0.5 bg-surface border border-border-strong rounded shadow-lg max-h-56 overflow-y-auto">
@@ -398,8 +398,8 @@ function ResourceEditor({
           onClick={() => toggle(bucketArn)}
           className={`text-xs px-2 py-0.5 rounded border ${
             values.includes(bucketArn)
-              ? "bg-blue-500/20 border-blue-500/50 text-info"
-              : "border-border-strong text-on-surface-tertiary hover:text-white"
+              ? "bg-accent/20 border-accent/50 text-info"
+              : "border-border-strong text-on-surface-tertiary hover:text-on-surface"
           }`}
         >
           <T>
@@ -411,8 +411,8 @@ function ResourceEditor({
           onClick={() => toggle(objectArn)}
           className={`text-xs px-2 py-0.5 rounded border ${
             values.includes(objectArn)
-              ? "bg-blue-500/20 border-blue-500/50 text-info"
-              : "border-border-strong text-on-surface-tertiary hover:text-white"
+              ? "bg-accent/20 border-accent/50 text-info"
+              : "border-border-strong text-on-surface-tertiary hover:text-on-surface"
           }`}
         >
           {gt("All objects (`/*`)")}
@@ -425,7 +425,7 @@ function ResourceEditor({
             onChange={(e) => updateAt(i, e.target.value)}
             placeholder={`${bucketArn}/some/prefix/*`}
             aria-label={gt("Resource ARN")}
-            className="flex-1 bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
+            className="flex-1 bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent-subtle"
           />
           <button
             type="button"
@@ -542,7 +542,7 @@ function ConditionEditor({
             value={row.op}
             onChange={(e) => update(i, { op: e.target.value })}
             aria-label={gt("Condition operator")}
-            className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs focus:outline-none focus:border-blue-500"
+            className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs focus:outline-none focus:border-accent-subtle"
           >
             {CONDITION_OPS.includes(row.op) ? null : <option value={row.op}>{row.op}</option>}
             {CONDITION_OPS.map((op) => (
@@ -557,14 +557,14 @@ function ConditionEditor({
             // i18n-ignore: IAM condition key example
             placeholder="aws:SecureTransport"
             aria-label={gt("Condition key")}
-            className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
+            className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-accent-subtle"
           />
           <input
             value={row.value}
             onChange={(e) => update(i, { value: e.target.value })}
             placeholder={gt("false  (comma-separated for multiple values)")}
             aria-label={gt("Condition value")}
-            className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
+            className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-accent-subtle"
           />
           <button
             type="button"

@@ -468,7 +468,7 @@ export function QueryMonitorsSection({
               {testResult && (
                 <div className="rounded-lg border border-border p-3 text-xs">
                   <div className="flex flex-wrap items-baseline gap-2">
-                    <span className={`rounded-full px-2 py-0.5 ${STATE_CLASSES[testResult.state]}`}>
+                    <span className={`rounded-md px-2 py-0.5 ${STATE_CLASSES[testResult.state]}`}>
                       {stateLabel(gt, testResult.state)}
                     </span>
                     <span className="text-on-surface">
@@ -537,12 +537,12 @@ export function QueryMonitorsSection({
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="text-sm font-medium text-on-surface">{monitor.name}</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${STATE_CLASSES[monitor.state]}`}
+                      className={`rounded-md px-2 py-0.5 text-xs ${STATE_CLASSES[monitor.state]}`}
                     >
                       {stateLabel(gt, monitor.state)}
                     </span>
                     {!monitor.enabled && (
-                      <span className="rounded-full bg-surface-overlay px-2 py-0.5 text-xs text-on-surface-faint">
+                      <span className="rounded-md bg-surface-overlay px-2 py-0.5 text-xs text-on-surface-faint">
                         {gt("Paused")}
                       </span>
                     )}

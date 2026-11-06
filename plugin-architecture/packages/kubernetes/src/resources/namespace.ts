@@ -4,6 +4,7 @@ export const NamespaceResourceType = rt({
   name: "Namespace",
   pinnable: false,
   id: "k8s-namespace",
+  iconKey: "folder",
   description: "A Kubernetes namespace",
   fields: [f("name", "Name")],
   outputs: [],

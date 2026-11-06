@@ -8,9 +8,9 @@ export const PageRuleResourceType = rt({
   fields: [
     f("targets", "URL Pattern", { editable: false }),
     f("actions", "Actions", { required: false, editable: false }),
-    f("status", "Status"),
-    f("priority", "Priority", { kind: "number", required: false }),
-    f("createdOn", "Created", { required: false, editable: false }),
+    f("status", "Status", { showcase: true }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false }),
+    f("createdOn", "Created", { showcase: true, required: false, editable: false }),
     f("modifiedOn", "Modified", { required: false, editable: false }),
     f("zoneName", "Zone", { required: false, editable: false }),
   ],

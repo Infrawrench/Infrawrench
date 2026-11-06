@@ -170,7 +170,7 @@ export function JitAccessPoliciesSection() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-on-surface">{p.name}</span>
                   {!p.enabled && (
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-surface-overlay text-on-surface-tertiary">
+                    <span className="px-2 py-0.5 rounded-md text-xs bg-surface-overlay text-on-surface-tertiary">
                       {gt("Off")}
                     </span>
                   )}

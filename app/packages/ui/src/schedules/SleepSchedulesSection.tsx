@@ -45,7 +45,7 @@ function LastRunBadge({ schedule }: { schedule: SleepSchedule }) {
         : "border-red-500/50 text-danger";
   return (
     <span
-      className={`rounded-full border px-2 py-0.5 text-xs ${tone}`}
+      className={`rounded-md border px-2 py-0.5 text-xs ${tone}`}
       title={schedule.lastRunError ?? undefined}
     >
       {label}
@@ -217,7 +217,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
                       {s.paused ? (
-                        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+                        <span className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
                           {gt("Paused")}
                         </span>
                       ) : s.nextTransitionAt ? (

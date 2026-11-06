@@ -18,9 +18,9 @@ export const NeonCredentialResourceType = rt({
     f("scopes", "Scopes"),
     f("projectId", "Project ID"),
     f("branchId", "Branch ID"),
-    f("createdAt", "Created At", { required: false }),
-    f("lastUsedAt", "Last Used", { required: false }),
-    f("expiresAt", "Expires At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
+    f("lastUsedAt", "Last Used", { showcase: true, required: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false }),
   ],
   outputs: [
     o("apiToken", "API Token", { sensitive: true }),

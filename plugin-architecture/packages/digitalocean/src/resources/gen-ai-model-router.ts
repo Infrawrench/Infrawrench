@@ -17,7 +17,12 @@ export const GenAiModelRouterResourceType = rt({
       editable: false,
       description: "Comma-separated list of fallback model UUIDs",
     }),
-    f("policyCount", "Policies", { kind: "number", required: false, editable: false }),
+    f("policyCount", "Policies", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
   ],
   outputs: [],
   supportsCreate: true,

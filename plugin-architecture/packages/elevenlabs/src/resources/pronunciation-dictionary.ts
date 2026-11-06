@@ -22,8 +22,8 @@ export const PronunciationDictionaryResourceType = rt({
     f("description", "Description", { required: false, editable: false }),
     f("permission", "Your Permission", { required: false, editable: false }),
     f("createdBy", "Created By", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("ruleCount", "Rules", { kind: "number", required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("ruleCount", "Rules", { showcase: true, kind: "number", required: false, editable: false }),
   ],
   outputs: [
     o("dictionaryId", "Dictionary ID"),

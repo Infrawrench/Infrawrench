@@ -80,6 +80,7 @@ export const ManagedDatabaseResourceType = rt({
     }),
     f("version", "Version", { description: "Engine version, e.g. 16 for PostgreSQL 16" }),
     f("region", "Region", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "nyc1",
@@ -95,8 +96,8 @@ export const ManagedDatabaseResourceType = rt({
         "syd1",
       ],
     }),
-    f("size", "Node Size", { description: "Node size slug, e.g. db-s-1vcpu-1gb" }),
-    f("nodeCount", "Node Count", { kind: "number" }),
+    f("size", "Node Size", { showcase: true, description: "Node size slug, e.g. db-s-1vcpu-1gb" }),
+    f("nodeCount", "Node Count", { showcase: true, kind: "number" }),
   ],
   outputs: [
     o("connectionString", "Connection String", {

@@ -16,6 +16,7 @@ export const PostgresResourceType = rt({
     f("postgresId", "Postgres ID", { editable: false }),
     f("name", "Name", { description: "Up to 50 characters." }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       editable: false,
       enumValues: [
@@ -30,10 +31,11 @@ export const PostgresResourceType = rt({
         "deleting",
       ],
     }),
-    f("provider", "Cloud Provider", { required: false, editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("provider", "Cloud Provider", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("postgresVersion", "Postgres Version", { required: false, editable: false }),
     f("size", "Instance Size", {
+      showcase: true,
       required: false,
       description: "VM size, e.g. r8gd.large on AWS or c4a-highmem-4 on GCP.",
     }),

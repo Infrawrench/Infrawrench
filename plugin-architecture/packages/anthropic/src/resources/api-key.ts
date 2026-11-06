@@ -24,6 +24,7 @@ export const ApiKeyResourceType = rt({
   fields: [
     f("name", "Name"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["active", "inactive", "archived", "expired"],
     }),
@@ -35,8 +36,8 @@ export const ApiKeyResourceType = rt({
       editable: false,
       enumValues: ["workspace", "organization"],
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
     f("createdById", "Created By", { required: false, editable: false }),
     f("createdByType", "Created By Type", { required: false, editable: false }),
     f("principalType", "Principal Type", { required: false, editable: false }),

@@ -13,7 +13,7 @@ export const GroqBatchResourceType = rt({
   plural: "Batches",
   fields: [
     f("batchId", "Batch ID"),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("endpoint", "Endpoint", { required: false }),
     f("completionWindow", "Completion Window", { required: false }),
     f("inputFileId", "Input File", { required: false }),
@@ -24,8 +24,8 @@ export const GroqBatchResourceType = rt({
     f("failedRequests", "Failed Requests", { kind: "number", required: false }),
     f("errors", "Validation Errors", { required: false }),
     f("metadata", "Metadata", { required: false }),
-    f("createdAt", "Created", { required: false }),
-    f("expiresAt", "Expires", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false }),
     f("completedAt", "Completed", { required: false }),
   ],
   outputs: [

@@ -24,7 +24,7 @@ export const MistralApiKeyResourceType = rt({
     f("workspaceId", "Workspace ID", { required: false }),
     f("product", "Product", { required: false }),
     f("createdBy", "Created By", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("lastUsed", "Last Used", { required: false }),
     f("expirationDate", "Expires", { required: false }),
   ],

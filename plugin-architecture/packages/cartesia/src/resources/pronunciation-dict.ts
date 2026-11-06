@@ -23,12 +23,17 @@ export const PronunciationDictResourceType = rt({
       required: false,
       description: "Entries as text = pronunciation, separated by semicolons",
     }),
-    f("entryCount", "Entry Count", { kind: "number", required: false, editable: false }),
+    f("entryCount", "Entry Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("accessType", "Access", { kind: "enum", required: false, enumValues: ["private", "public"] }),
-    f("visibility", "Visibility", { required: false, editable: false }),
+    f("visibility", "Visibility", { showcase: true, required: false, editable: false }),
     f("isOwner", "Owned by You", { kind: "boolean", required: false, editable: false }),
     f("pinned", "Pinned", { kind: "boolean", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("dictId", "Dictionary ID", {

@@ -49,6 +49,7 @@ export function namespacePeerGroup(namespaces: ResourceInstance[], costs?: CostI
   return {
     title,
     resourceTypeId: "k8s-namespace" as const,
+    iconKey: "folder",
     pluginId: "kubernetes" as const,
     items,
   };
@@ -58,6 +59,7 @@ export function podPeerGroup(pods: ResourceInstance[], costs?: CostIndex) {
   return {
     title: `Pods (${pods.length})`,
     resourceTypeId: "k8s-pod" as const,
+    iconKey: "container",
     pluginId: "kubernetes" as const,
     supportsCreate: true,
     items: pods.map((pod): PeerPaneResource => {
@@ -92,6 +94,7 @@ export function deploymentPeerGroup(deployments: ResourceInstance[], costs?: Cos
   return {
     title: `Deployments (${deployments.length})`,
     resourceTypeId: "k8s-deployment" as const,
+    iconKey: "deployment",
     pluginId: "kubernetes" as const,
     items: deployments.map((d): PeerPaneResource => {
       const ready = d.fields["readyReplicas"] ?? 0;
@@ -132,6 +135,7 @@ export function statefulSetPeerGroup(items: ResourceInstance[], costs?: CostInde
   return {
     title: `StatefulSets (${items.length})`,
     resourceTypeId: "k8s-statefulset" as const,
+    iconKey: "database",
     pluginId: "kubernetes" as const,
     items: items.map((s): PeerPaneResource => {
       const ready = s.fields["readyReplicas"] ?? 0;
@@ -170,6 +174,7 @@ export function daemonSetPeerGroup(items: ResourceInstance[], costs?: CostIndex)
   return {
     title: `DaemonSets (${items.length})`,
     resourceTypeId: "k8s-daemonset" as const,
+    iconKey: "layers",
     pluginId: "kubernetes" as const,
     items: items.map((d): PeerPaneResource => {
       const ready = Number(d.fields["numberReady"] ?? 0);
@@ -208,6 +213,7 @@ export function servicePeerGroup(items: ResourceInstance[]) {
   return {
     title: `Services (${items.length})`,
     resourceTypeId: "k8s-service" as const,
+    iconKey: "service",
     pluginId: "kubernetes" as const,
     items: items.map((s): PeerPaneResource => ({
       id: s.id,
@@ -233,6 +239,7 @@ export function ingressPeerGroup(items: ResourceInstance[]) {
   return {
     title: `Ingresses (${items.length})`,
     resourceTypeId: "k8s-ingress" as const,
+    iconKey: "route",
     pluginId: "kubernetes" as const,
     items: items.map((i): PeerPaneResource => ({
       id: i.id,
@@ -254,6 +261,7 @@ export function jobPeerGroup(items: ResourceInstance[]) {
   return {
     title: `Jobs (${items.length})`,
     resourceTypeId: "k8s-job" as const,
+    iconKey: "job",
     pluginId: "kubernetes" as const,
     items: items.map((j): PeerPaneResource => ({
       id: j.id,
@@ -275,6 +283,7 @@ export function cronJobPeerGroup(items: ResourceInstance[]) {
   return {
     title: `CronJobs (${items.length})`,
     resourceTypeId: "k8s-cronjob" as const,
+    iconKey: "schedule",
     pluginId: "kubernetes" as const,
     items: items.map((c): PeerPaneResource => ({
       id: c.id,

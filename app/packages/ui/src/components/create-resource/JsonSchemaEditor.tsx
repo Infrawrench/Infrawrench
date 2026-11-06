@@ -84,13 +84,13 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
               placeholder={gt("property name")}
               aria-label={gt("Property name")}
               spellCheck={false}
-              className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+              className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
             />
             <select
               value={row.type}
               onChange={(e) => update(i, { type: e.target.value as PropertyType })}
               aria-label={gt("Property type")}
-              className="w-24 bg-surface-overlay border border-border-strong rounded-lg px-2 py-1.5 text-sm text-on-surface-secondary focus:outline-none focus:border-blue-500"
+              className="w-24 bg-surface-overlay border border-border-strong rounded-lg px-2 py-1.5 text-sm text-on-surface-secondary focus:outline-none focus:border-accent-subtle"
             >
               {PROPERTY_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -104,7 +104,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
                 checked={row.required}
                 onChange={(e) => update(i, { required: e.target.checked })}
                 aria-label={gt("Required")}
-                className="accent-blue-500"
+                className="accent-accent"
               />
             </label>
             <button
@@ -124,7 +124,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
             placeholder={gt("description (optional)")}
             aria-label={gt("Property description")}
             spellCheck={false}
-            className="w-full bg-surface-overlay/60 border border-border rounded-lg px-3 py-1 text-xs text-on-surface-tertiary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+            className="w-full bg-surface-overlay/60 border border-border rounded-lg px-3 py-1 text-xs text-on-surface-tertiary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
           />
         </div>
       ))}

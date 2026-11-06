@@ -318,7 +318,7 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
             {QUOTA_SEVERITIES.map((severity) => (
               <span
                 key={severity}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
               >
                 <span className="tabular-nums">{counts[severity]}</span>
                 {severity === "critical"
@@ -414,7 +414,7 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
                                 <td className="px-4 py-2.5 font-medium text-on-surface">
                                   {row.name}
                                   {row.region && (
-                                    <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-normal text-on-surface-tertiary">
+                                    <span className="ml-2 rounded-md border border-border px-2 py-0.5 text-[11px] font-normal text-on-surface-tertiary">
                                       {row.region}
                                     </span>
                                   )}

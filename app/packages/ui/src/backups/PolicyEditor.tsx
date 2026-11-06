@@ -161,7 +161,7 @@ export function PolicyEditor({
                         : [...draft.resourceTypeIds, option.id],
                     })
                   }
-                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
+                  className={`rounded-md border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
                     selected
                       ? "border-transparent bg-surface-overlay text-on-surface"
                       : "border-border text-on-surface-tertiary hover:text-on-surface-secondary"

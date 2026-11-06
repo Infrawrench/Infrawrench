@@ -8,10 +8,10 @@ export const AIServicesAccountResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
+    f("location", "Location", { showcase: true }),
     f("kind", "Kind", { description: "Account kind, e.g. AIServices, OpenAI, Speech" }),
-    f("sku", "SKU"),
-    f("provisioningState", "Provisioning State"),
+    f("sku", "SKU", { showcase: true }),
+    f("provisioningState", "Provisioning State", { showcase: true }),
     f("customSubDomainName", "Custom Subdomain", { required: false }),
     f("publicNetworkAccess", "Public Network Access", { required: false }),
     f("localAuthEnabled", "Key Authentication", {
@@ -19,7 +19,7 @@ export const AIServicesAccountResourceType = rt({
       required: false,
       description: "Whether API keys are accepted. Off means Entra ID tokens only",
     }),
-    f("deploymentCount", "Model Deployments", { kind: "number", required: false }),
+    f("deploymentCount", "Model Deployments", { showcase: true, kind: "number", required: false }),
     f("deployments", "Deployments", {
       required: false,
       description: "Model deployments on the account: name (model version, SKU x capacity)",

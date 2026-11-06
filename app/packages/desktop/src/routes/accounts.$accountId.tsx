@@ -2,7 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import { invoke } from "../lib/invoke";
-import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import {
+  showcaseFields,
+  type ResourceInstance,
+  type ResourceTypeDefinition,
+} from "@infrawrench/plugin-base";
 import {
   useUIStore,
   useTabId,
@@ -22,6 +26,7 @@ import {
   ProviderOAuthReconnectBanner,
   isProviderOAuthCancelled,
   type AccountOAuthStatus,
+  CreateTile,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
@@ -56,7 +61,7 @@ import {
   resourceTabTarget,
   accountTabTarget,
 } from "../lib/workspace-tabs";
-import { ResourcePill } from "./_account-detail/-ResourcePill";
+import { ResourceTile } from "./_account-detail/-ResourceTile";
 import { ResourcePanel } from "./resource.$accountId.$resourceId";
 
 export const Route = createFileRoute("/accounts/$accountId")({
@@ -1027,7 +1032,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                 type="button"
                 onClick={handleRename}
                 disabled={isSaving}
-                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                className="px-2 py-1 text-xs bg-accent text-on-accent rounded hover:bg-accent-hover disabled:opacity-50"
               >
                 {gt("Save")}
               </button>
@@ -1091,10 +1096,12 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         activeSectionId={activeSectionId}
         onActiveSectionIdChange={setActiveSectionId}
         renderResource={(resource, cat) => (
-          <ResourcePill
+          <ResourceTile
             key={resource.id}
             resource={resource}
             typeId={cat.typeDef.id}
+            iconKey={cat.typeDef.iconKey}
+            showcase={showcaseFields(cat.typeDef)}
             {...(cat.typeDef.attachTargets ? { attachTargets: cat.typeDef.attachTargets } : {})}
             pinned={pinned.has(resource.id)}
             acceptsSecretImport={kubeconfigTypeIds.has(cat.typeDef.id)}
@@ -1138,15 +1145,11 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           />
         )}
         renderCreateButton={(typeDef) => (
-          <button
-            type="button"
+          <CreateTile
             key={`create-${typeDef.id}`}
+            label={gt("Create {type}", { type: gtData(typeDef.displayName) })}
             onClick={() => setCreateTarget(typeDef)}
-            className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-border-strong text-on-surface-faint hover:border-blue-600 hover:text-accent transition-colors text-sm"
-          >
-            <span className="text-base leading-none">+</span>
-            <span>{gt("Create {type}", { type: gtData(typeDef.displayName) })}</span>
-          </button>
+          />
         )}
       />
 

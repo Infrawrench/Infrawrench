@@ -6,13 +6,13 @@ export const DBSubnetGroupResourceType = rt({
   description: "An RDS DB subnet group: the VPC subnets an RDS cluster or instance runs in",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
     f("vpcId", "VPC ID"),
     f("subnetIds", "Subnets", {
       required: false,
       description: "Comma-separated subnet IDs that make up the group",
     }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("description", "Description", { required: false }),
   ],
   outputs: [o("subnetGroupArn", "Subnet Group ARN")],

@@ -141,7 +141,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
           <button
             type="button"
             onClick={() => setHistory([])}
-            className="ml-auto px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
+            className="ml-auto px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors"
           >
             {gt("Clear history")}
           </button>
@@ -199,7 +199,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
                 type="button"
                 onClick={() => void send()}
                 disabled={sending}
-                className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-sm font-medium text-on-accent bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
               >
                 {sending ? gt("Sending…") : submitLabel}
               </button>

@@ -7,6 +7,7 @@ export const ImageResourceType = rt({
   fields: [
     f("name", "Name"),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["snapshot", "backup", "custom", "distribution", "application"],
@@ -14,9 +15,9 @@ export const ImageResourceType = rt({
     f("distribution", "Distribution", { required: false }),
     f("slug", "Slug", { required: false }),
     f("regions", "Regions", { required: false }),
-    f("sizeGb", "Size (GB)", { kind: "number", required: false }),
+    f("sizeGb", "Size (GB)", { showcase: true, kind: "number", required: false }),
     f("minDiskSize", "Min Disk (GB)", { kind: "number", required: false }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
   ],
   outputs: [],
   parentTypeId: "project",

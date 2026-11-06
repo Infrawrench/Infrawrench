@@ -165,7 +165,7 @@ export function TeamSection() {
               type="button"
               onClick={() => void handleInvite()}
               disabled={inviting}
-              className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+              className="px-4 py-2 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
             >
               {inviting ? gt("Inviting...") : gt("Invite")}
             </button>

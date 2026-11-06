@@ -8,9 +8,9 @@ import {
 import { Modal } from "../components/Modal.js";
 
 const INPUT =
-  "rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const PRIMARY =
-  "rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50";
+  "rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent transition-colors disabled:opacity-50";
 const SECONDARY =
   "rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong";
 

@@ -218,7 +218,7 @@ export function CostAnomalyBreakdownModal({
                       type="button"
                       disabled={saving}
                       onClick={() => void saveAsReport()}
-                      className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50"
+                      className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm text-on-accent transition-colors disabled:opacity-50"
                     >
                       {saving ? gt("Saving…") : gt("Save as cost report")}
                     </button>
@@ -273,7 +273,7 @@ export function CostAnomalyBreakdownModal({
                         return (
                           <tr
                             key={id}
-                            className={`text-on-surface-secondary ${isSelected ? "bg-blue-500/10" : ""}`}
+                            className={`text-on-surface-secondary ${isSelected ? "bg-accent/10" : ""}`}
                           >
                             <td className="px-3 py-1.5">
                               {chartable ? (

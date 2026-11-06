@@ -21,7 +21,7 @@ export const ProjectApiKeyResourceType = rt({
     f("name", "Name", { required: false }),
     f("redactedValue", "Key", { required: false }),
     f("projectId", "Project ID"),
-    f("projectName", "Project", { required: false }),
+    f("projectName", "Project", { showcase: true, required: false }),
     f("ownerType", "Owner Type", {
       kind: "enum",
       enumValues: ["user", "service_account"],
@@ -34,8 +34,8 @@ export const ProjectApiKeyResourceType = rt({
       required: false,
     }),
     f("createdAt", "Created", { required: false }),
-    f("lastUsedAt", "Last Used", { required: false }),
-    f("expiresAt", "Expires", { required: false }),
+    f("lastUsedAt", "Last Used", { showcase: true, required: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false }),
   ],
   outputs: [
     o("apiKeyId", "API Key ID"),

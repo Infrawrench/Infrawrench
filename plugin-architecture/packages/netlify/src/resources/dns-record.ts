@@ -7,10 +7,10 @@ export const NetlifyDnsRecordResourceType = rt({
   description: "A DNS record in a Netlify Managed DNS zone",
   fields: [
     f("name", "Hostname"),
-    f("type", "Type"),
+    f("type", "Type", { showcase: true }),
     f("content", "Value"),
-    f("ttl", "TTL", { kind: "number", required: false }),
-    f("priority", "Priority", { kind: "number", required: false }),
+    f("ttl", "TTL", { showcase: true, kind: "number", required: false }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false }),
     f("managed", "Managed", { kind: "boolean", required: false }),
     f("tag", "Tag", { required: false }),
     f("flag", "Flag", { kind: "number", required: false }),

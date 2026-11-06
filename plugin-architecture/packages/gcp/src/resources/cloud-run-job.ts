@@ -3,11 +3,12 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const CloudRunJobResourceType = rt({
   name: "Cloud Run Job",
   id: "cloud-run-job",
+  iconKey: "job",
   description:
     "A Google Cloud Run job: containers that run to completion, on demand or on a schedule",
   fields: [
     f("name", "Name", { editable: false }),
-    f("region", "Region", { editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("image", "Container Image", {
       description: "Container image every task runs, e.g. us-docker.pkg.dev/project/repo/image:tag",
     }),
@@ -17,6 +18,7 @@ export const CloudRunJobResourceType = rt({
       description: "Every container image in the task template, sidecars included",
     }),
     f("taskCount", "Tasks", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Number of tasks each execution runs",
@@ -41,8 +43,13 @@ export const CloudRunJobResourceType = rt({
       editable: false,
       description: "Email of the service account the tasks run as",
     }),
-    f("state", "State", { required: false, editable: false }),
-    f("executionCount", "Executions", { kind: "number", required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
+    f("executionCount", "Executions", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("lastExecution", "Last Execution", { required: false, editable: false }),
     f("lastExecutionStatus", "Last Execution Status", { required: false, editable: false }),
     f("lastExecutionTime", "Last Execution Time", { required: false, editable: false }),

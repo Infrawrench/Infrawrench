@@ -168,7 +168,7 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
           <button
             type="button"
             onClick={() => void invoke("open_external_url", { url: K9S_INSTALL_URL })}
-            className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors"
+            className="px-3 py-2 rounded-lg bg-accent hover:bg-accent-hover text-sm font-medium text-on-accent transition-colors"
           >
             {gt("Open install guide")}
           </button>

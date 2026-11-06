@@ -13,6 +13,7 @@ export const WebhookEndpointResourceType = rt({
   fields: [
     f("endpointUrl", "Endpoint URL"),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["enabled", "disabled"],
@@ -22,7 +23,7 @@ export const WebhookEndpointResourceType = rt({
       description:
         "Subscribed event types, comma-separated, e.g. user.created, dsync.user.updated.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("webhookEndpointId", "Webhook Endpoint ID"),

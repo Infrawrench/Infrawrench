@@ -29,7 +29,7 @@ function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
   const gt = useGT();
   if (!owner) {
     return (
-      <span className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-on-surface-faint">
+      <span className="rounded-md border border-dashed border-border px-2 py-0.5 text-xs text-on-surface-faint">
         {gt("Unowned")}
       </span>
     );
@@ -281,13 +281,13 @@ export function SavingsSection({ client, onOpenResource, onOpenExternal }: Savin
                         )}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+                        <span className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
                           {gtData(r.resourceTypeName)}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 w-full text-on-surface-secondary">
                         {r.idle && (
-                          <span className="mr-2 rounded-full border border-warning/40 px-2 py-0.5 text-xs text-warning">
+                          <span className="mr-2 rounded-md border border-warning/40 px-2 py-0.5 text-xs text-warning">
                             {gtData(r.idle.ruleLabel)}
                           </span>
                         )}

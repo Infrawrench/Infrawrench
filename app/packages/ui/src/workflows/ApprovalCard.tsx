@@ -56,7 +56,7 @@ export function ApprovalCard({
   const gt = useGT();
   const expired = new Date(approval.expiresAt).getTime() <= Date.now();
   return (
-    <div className="px-3 py-2 flex items-start gap-3 border-b border-white/5">
+    <div className="px-3 py-2 flex items-start gap-3 border-b border-on-surface/5">
       <div className="flex-1 min-w-0">
         <div className="text-xs font-semibold text-warning">
           {gt("Approval needed: {title}", { title: approval.title })}

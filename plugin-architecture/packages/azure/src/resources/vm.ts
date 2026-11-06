@@ -8,13 +8,15 @@ export const VMResourceType = rt({
     // Azure VM names are immutable; the only editable field is vmSize (the
     // right-sizing resize path), so everything else is locked out of Edit.
     f("name", "Name", { editable: false }),
-    f("resourceGroup", "Resource Group", { editable: false }),
-    f("location", "Location", { editable: false }),
+    f("resourceGroup", "Resource Group", { showcase: true, editable: false }),
+    f("location", "Location", { showcase: true, editable: false }),
     f("vmSize", "VM Size", {
+      showcase: true,
       description:
         "ARM SKU, e.g. Standard_D2s_v5. Changing it resizes the VM (Azure restarts it during the change)",
     }),
     f("provisioningState", "Provisioning State", {
+      showcase: true,
       editable: false,
       kind: "enum",
       enumValues: ["Succeeded", "Creating", "Updating", "Deleting", "Failed"],

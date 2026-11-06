@@ -7,12 +7,13 @@ export const DnsRecordResourceType = rt({
   description: "A set of DNS records sharing a name and type (an RRSet) in a Hetzner DNS zone",
   fields: [
     f("name", "Name", { description: "Relative to the zone; @ is the apex", editable: false }),
-    f("type", "Type", { editable: false }),
+    f("type", "Type", { showcase: true, editable: false }),
     f("content", "Values", {
       description:
         "The record values, one per line or comma-separated. TXT values keep their double quotes",
     }),
     f("ttl", "TTL", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Seconds. Leave empty to use the zone's default TTL",

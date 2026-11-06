@@ -405,4 +405,6 @@
 // listings (`hetzner`, `hetznerauction`), OVHcloud Public Cloud and eco servers (`ovh`,
 // `ovheco`), Oracle Cloud compute (`oracle`) and IBM Cloud VPC (`ibm`); the instance
 // pricing descriptions say so. Additive.
-export const API_VERSION = "1.93.0";
+// 1.94.0: resource type summaries, child type refs and dashboard pin details gain an
+// optional `iconKey`, the word a plugin declares for what a type is. Additive.
+export const API_VERSION = "1.94.0";

@@ -29,7 +29,7 @@ import type { BudgetWithStatus, CostApi } from "./types.js";
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 // Shared with mobile, which authors the same budgets without this package.
@@ -213,7 +213,7 @@ export function BudgetConfigModal({
                   }
                   className={`px-3 py-1 rounded-lg text-xs border transition-colors ${
                     (input.measure ?? "cost") === measure
-                      ? "border-blue-500 bg-blue-500/10 text-on-surface"
+                      ? "border-accent bg-accent/10 text-on-surface"
                       : "border-border text-on-surface-secondary hover:bg-surface-sunken"
                   }`}
                 >
@@ -433,7 +433,7 @@ export function BudgetConfigModal({
               type="button"
               onClick={() => void save()}
               disabled={saving || filterError !== null}
-              className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
+              className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent transition-colors"
             >
               {saving ? gt("Saving…") : gt("Save")}
             </button>
@@ -655,7 +655,7 @@ function BudgetPeriodField({
             onClick={() => switchMode(option)}
             className={`px-3 py-1 rounded-lg text-xs border transition-colors ${
               mode === option
-                ? "border-blue-500 bg-blue-500/10 text-on-surface"
+                ? "border-accent bg-accent/10 text-on-surface"
                 : "border-border text-on-surface-secondary hover:bg-surface-sunken"
             }`}
           >

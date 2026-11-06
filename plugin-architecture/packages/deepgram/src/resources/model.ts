@@ -22,7 +22,7 @@ export const ModelResourceType = rt({
       enumValues: ["stt", "tts"],
     }),
     f("architecture", "Architecture", { required: false, editable: false }),
-    f("version", "Version", { required: false, editable: false }),
+    f("version", "Version", { showcase: true, required: false, editable: false }),
     f("languages", "Languages", { required: false, editable: false }),
     f("accent", "Accent", { required: false, editable: false }),
     f("age", "Age", { required: false, editable: false }),

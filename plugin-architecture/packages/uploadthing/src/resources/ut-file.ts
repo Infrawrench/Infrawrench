@@ -17,9 +17,10 @@ export const UtFileResourceType = rt({
   fields: [
     f("key", "File Key", { editable: false }),
     f("name", "Name"),
-    f("size", "Size (bytes)", { kind: "number", required: false, editable: false }),
+    f("size", "Size (bytes)", { showcase: true, kind: "number", required: false, editable: false }),
     f("sizeLabel", "Size", { required: false, editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["Uploaded", "Uploading", "Failed", "Deletion Pending"],

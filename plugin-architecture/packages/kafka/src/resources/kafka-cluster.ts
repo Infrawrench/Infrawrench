@@ -20,5 +20,5 @@ export const KafkaClusterResourceType = rt({
     o("clusterId", "Cluster ID"),
   ],
   supportsMetrics: true,
-  iconKey: "kafka",
+  iconKey: "cluster",
 });

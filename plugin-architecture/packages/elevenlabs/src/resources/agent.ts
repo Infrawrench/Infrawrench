@@ -17,6 +17,7 @@ export const AgentResourceType = rt({
     f("name", "Name"),
     f("agentId", "Agent ID", { required: false, editable: false }),
     f("language", "Language", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: AGENT_LANGUAGES.map((language) => language.id),
@@ -38,7 +39,7 @@ export const AgentResourceType = rt({
     f("creator", "Created By", { required: false, editable: false }),
     f("lastCallAt", "Last Call", { required: false, editable: false }),
     f("archived", "Archived", { kind: "boolean", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("agentId", "Agent ID", {

@@ -41,11 +41,11 @@ export const OrganizationType = rt({
     f("name", "Name", { editable: false }),
     f("label", "Label", ro),
     f("organizationId", "Organization ID", ro),
-    f("createdAt", "Created At", ro),
+    f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [o("organizationId", "Organization ID")],
   supportsDelete: false,
-  iconKey: "cockroach",
+  iconKey: "organization",
 });
 
 export const FolderType = rt({
@@ -61,7 +61,7 @@ export const FolderType = rt({
   dependsOn: [{ fieldKey: "parentId", targetTypeId: "crdb-folder", label: "inside" }],
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "folder",
 });
 
 export const ClusterType = rt({
@@ -72,10 +72,10 @@ export const ClusterType = rt({
     f("name", "Name", { editable: false }),
     f("plan", "Plan", ro),
     f("cloudProvider", "Cloud", ro),
-    f("region", "Primary Region", ro),
+    f("region", "Primary Region", { ...ro, showcase: true }),
     f("regions", "Regions", ro),
     f("version", "CockroachDB Version", ro),
-    f("state", "State", ro),
+    f("state", "State", { ...ro, showcase: true }),
     f("operationStatus", "Operation", ro),
     f("upgradeStatus", "Upgrade Status", ro),
     f("sqlDns", "SQL Host", ro),
@@ -84,11 +84,13 @@ export const ClusterType = rt({
     f("folderId", "Folder", ro),
     f("deleteProtection", "Delete Protection", { kind: "boolean", required: false }),
     f("nodeCount", "Nodes", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Advanced: nodes per region (minimum 3 for production).",
     }),
     f("vcpus", "vCPUs per Node", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Advanced: the machine is chosen from this. Scaling rolls the nodes.",
@@ -194,7 +196,7 @@ export const ClusterType = rt({
   backupPolicy: { protectedBy: ["crdb-backup"], automatedBackupFieldKey: "backupsEnabled" },
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "cluster",
 });
 
 export const DatabaseType = rt({
@@ -204,14 +206,14 @@ export const DatabaseType = rt({
   fields: [
     f("name", "Name", { description: "Renaming a database breaks clients that name it." }),
     f("clusterId", "Cluster", { editable: false }),
-    f("tableCount", "Tables", { kind: "number", ...ro }),
+    f("tableCount", "Tables", { showcase: true, kind: "number", ...ro }),
   ],
   outputs: [o("databaseName", "Database Name")],
   dependsOn: dependsOnCluster,
   parentTypeId: "crdb-cluster",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "database",
 });
 
 export const SqlUserType = rt({
@@ -269,7 +271,7 @@ export const SqlUserType = rt({
   parentTypeId: "crdb-cluster",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "user",
 });
 
 export const AllowlistEntryType = rt({
@@ -279,7 +281,7 @@ export const AllowlistEntryType = rt({
   id: "crdb-allowlist-entry",
   description: "A CIDR range allowed to reach the cluster's SQL port and/or DB Console",
   fields: [
-    f("cidr", "CIDR", { editable: false }),
+    f("cidr", "CIDR", { showcase: true, editable: false }),
     f("clusterId", "Cluster", { editable: false }),
     f("name", "Name", { required: false }),
     f("sql", "SQL Access", { kind: "boolean", required: false }),
@@ -303,7 +305,7 @@ export const AllowlistEntryType = rt({
   parentTypeId: "crdb-cluster",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "shield",
 });
 
 export const BackupType = rt({
@@ -317,7 +319,7 @@ export const BackupType = rt({
   dependsOn: [{ fieldKey: "clusterId", targetTypeId: "crdb-cluster", label: "backup of" }],
   parentTypeId: "crdb-cluster",
   supportsDelete: false,
-  iconKey: "cockroach",
+  iconKey: "backup",
 });
 
 export const RestoreType = rt({
@@ -327,22 +329,22 @@ export const RestoreType = rt({
   description: "A restore of a managed backup",
   fields: [
     f("clusterId", "Cluster"),
-    f("type", "Scope"),
-    f("status", "Status"),
+    f("type", "Scope", { showcase: true }),
+    f("status", "Status", { showcase: true }),
     f("progressPercent", "Progress (%)", { kind: "number", required: false }),
     f("backupId", "Backup", { required: false }),
     f("backupEndTime", "Backup Taken At", { required: false }),
     f("sourceCluster", "Source Cluster", { required: false }),
     f("objects", "Objects", { required: false }),
     f("error", "Error", { required: false }),
-    f("createdAt", "Started At", { required: false }),
+    f("createdAt", "Started At", { showcase: true, required: false }),
     f("completedAt", "Completed At", { required: false }),
   ],
   outputs: [],
   dependsOn: dependsOnCluster,
   parentTypeId: "crdb-cluster",
   supportsDelete: false,
-  iconKey: "cockroach",
+  iconKey: "restore",
 });
 
 export const LogExportType = rt({
@@ -352,20 +354,20 @@ export const LogExportType = rt({
   description:
     "Export of a cluster's logs to CloudWatch, Cloud Logging, Azure Log Analytics or an OTLP endpoint",
   fields: [
-    f("type", "Destination", { editable: false }),
+    f("type", "Destination", { showcase: true, editable: false }),
     f("clusterId", "Cluster", { editable: false }),
-    f("status", "Status", ro),
+    f("status", "Status", { ...ro, showcase: true }),
     f("deliveryStatus", "Delivery", ro),
     f("message", "Message", ro),
     f("logName", "Log Name", ro),
-    f("region", "Destination Region", ro),
+    f("region", "Destination Region", { ...ro, showcase: true }),
     f("redact", "Redact", { kind: "boolean", ...ro }),
   ],
   outputs: [],
   dependsOn: dependsOnCluster,
   parentTypeId: "crdb-cluster",
   supportsCreate: true,
-  iconKey: "cockroach",
+  iconKey: "logs",
 });
 
 export const MetricExportType = rt({
@@ -375,9 +377,9 @@ export const MetricExportType = rt({
   description:
     "Export of a cluster's metrics to Datadog, CloudWatch or a Prometheus scrape endpoint",
   fields: [
-    f("kind", "Destination", { editable: false }),
+    f("kind", "Destination", { showcase: true, editable: false }),
     f("clusterId", "Cluster", { editable: false }),
-    f("status", "Status", ro),
+    f("status", "Status", { ...ro, showcase: true }),
     f("message", "Message", ro),
     f("target", "Target", ro),
   ],
@@ -385,7 +387,7 @@ export const MetricExportType = rt({
   dependsOn: dependsOnCluster,
   parentTypeId: "crdb-cluster",
   supportsCreate: true,
-  iconKey: "cockroach",
+  iconKey: "chart",
 });
 
 export const BlackoutWindowType = rt({
@@ -403,7 +405,7 @@ export const BlackoutWindowType = rt({
   parentTypeId: "crdb-cluster",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "clock",
 });
 
 export const EgressRuleType = rt({
@@ -414,14 +416,19 @@ export const EgressRuleType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("clusterId", "Cluster", { editable: false }),
-    f("type", "Type", { kind: "enum", enumValues: ["FQDN", "CIDR"], editable: false }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["FQDN", "CIDR"],
+      editable: false,
+    }),
     f("destination", "Destination", { editable: false }),
     f("ports", "Ports", {
       required: false,
       description: "Comma-separated; empty allows every port.",
     }),
     f("description", "Description", { required: false }),
-    f("state", "State", ro),
+    f("state", "State", { ...ro, showcase: true }),
     f("managed", "Managed by CockroachDB Cloud", { kind: "boolean", ...ro }),
   ],
   outputs: [],
@@ -429,7 +436,7 @@ export const EgressRuleType = rt({
   parentTypeId: "crdb-cluster",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "firewall",
 });
 
 export const ServiceAccountType = rt({
@@ -442,7 +449,7 @@ export const ServiceAccountType = rt({
     f("roles", "Roles", ro),
     f("orgAdmin", "Organization Admin", { kind: "boolean", ...ro }),
     f("creator", "Created By", ro),
-    f("createdAt", "Created At", ro),
+    f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [o("serviceAccountId", "Service Account ID")],
   principalRole: {
@@ -453,7 +460,7 @@ export const ServiceAccountType = rt({
   },
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "bot",
 });
 
 export const ApiKeyType = rt({
@@ -465,7 +472,7 @@ export const ApiKeyType = rt({
     f("name", "Name"),
     f("serviceAccountId", "Service Account", { editable: false }),
     f("serviceAccountName", "Service Account Name", ro),
-    f("createdAt", "Created At", ro),
+    f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [o("secret", "Secret", { sensitive: true })],
   dependsOn: [
@@ -483,7 +490,7 @@ export const ApiKeyType = rt({
   parentTypeId: "crdb-service-account",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "cockroach",
+  iconKey: "key",
 });
 
 export const resourceTypes: ResourceTypeDefinition[] = [

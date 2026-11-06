@@ -33,7 +33,7 @@ export function SizeCard({
       onClick={onSelect}
       className={`text-left p-3 rounded-lg border transition-all ${
         selected
-          ? "border-blue-500 bg-accent-muted"
+          ? "border-accent bg-accent-muted"
           : "border-border-strong bg-surface-overlay/50 hover:border-border-strong"
       }`}
     >
@@ -55,7 +55,7 @@ export function SizeCard({
         </div>
         <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${selected ? "bg-blue-500" : "bg-surface-sunken"}`}
+            className={`h-full rounded-full transition-all ${selected ? "bg-accent" : "bg-surface-sunken"}`}
             style={{ width: `${cpuPct}%` }}
           />
         </div>
@@ -69,7 +69,7 @@ export function SizeCard({
         </div>
         <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${selected ? "bg-blue-400" : "bg-surface-sunken"}`}
+            className={`h-full rounded-full transition-all ${selected ? "bg-accent" : "bg-surface-sunken"}`}
             style={{ width: `${memPct}%` }}
           />
         </div>

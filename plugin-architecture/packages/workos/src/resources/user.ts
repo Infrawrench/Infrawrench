@@ -28,7 +28,7 @@ export const UserResourceType = rt({
       description: "Preferred locale for emails and hosted pages, e.g. en-GB.",
     }),
     f("lastSignInAt", "Last Sign-In", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("userId", "User ID", {

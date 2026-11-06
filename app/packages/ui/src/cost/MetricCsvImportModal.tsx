@@ -19,7 +19,7 @@ import {
 import type { CostsClient } from "./types.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 /** Largest file the browser parses: past this it belongs in an importer. */
@@ -439,7 +439,7 @@ export function MetricCsvImportModal({
             type="button"
             disabled={busy || !result || result.values.length === 0}
             onClick={() => void upload()}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent hover:bg-accent-hover disabled:opacity-50"
           >
             {busy ? gt("Uploading…") : gt("Upload values")}
           </button>

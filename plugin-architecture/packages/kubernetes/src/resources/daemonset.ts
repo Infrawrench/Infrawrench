@@ -4,13 +4,14 @@ export const DaemonSetResourceType = rt({
   name: "DaemonSet",
   pinnable: false,
   id: "k8s-daemonset",
+  iconKey: "layers",
   description: "A Kubernetes DaemonSet that runs a pod on every (or selected) node",
   fields: [
     f("name", "Name"),
-    f("namespace", "Namespace"),
+    f("namespace", "Namespace", { showcase: true }),
     f("desiredNumberScheduled", "Desired", { kind: "number", required: false }),
     f("numberReady", "Ready", { kind: "number", required: false }),
-    f("image", "Image", { required: false }),
+    f("image", "Image", { showcase: true, required: false }),
     f("images", "Images", {
       required: false,
       description:

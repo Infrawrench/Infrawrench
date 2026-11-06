@@ -16,9 +16,10 @@ export const VpcNatGatewayResourceType = rt({
   description: "A DigitalOcean VPC NAT gateway providing outbound internet access to a VPC.",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { editable: false }),
-    f("state", "State", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
     f("size", "Size", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Scaling units (1-5). Each adds 2 Gbps of bandwidth and is billed separately.",
@@ -32,7 +33,7 @@ export const VpcNatGatewayResourceType = rt({
     f("udpTimeoutSeconds", "UDP Timeout (s)", { kind: "number", required: false }),
     f("tcpTimeoutSeconds", "TCP Timeout (s)", { kind: "number", required: false }),
     f("icmpTimeoutSeconds", "ICMP Timeout (s)", { kind: "number", required: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("egressIp", "Egress IP")],
   dependsOn: [{ fieldKey: "vpcUuids", targetTypeId: "vpc", label: "routes" }],

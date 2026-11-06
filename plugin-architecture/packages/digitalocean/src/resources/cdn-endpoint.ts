@@ -28,7 +28,7 @@ export const CdnEndpointResourceType = rt({
       required: false,
       description: "Certificate used for the custom domain.",
     }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("endpoint", "CDN Hostname"), o("url", "CDN URL")],
   dependsOn: [{ fieldKey: "certificateId", targetTypeId: "certificate", label: "uses" }],

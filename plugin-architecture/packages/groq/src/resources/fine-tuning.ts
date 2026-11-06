@@ -16,12 +16,12 @@ export const GroqFineTuningResourceType = rt({
   fields: [
     f("fineTuningId", "Fine-Tuning ID"),
     f("name", "Name", { required: false }),
-    f("type", "Type", { required: false }),
+    f("type", "Type", { showcase: true, required: false }),
     f("baseModel", "Base Model", { required: false }),
     f("fineTunedModel", "Fine-Tuned Model", { required: false }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("inputFileId", "Input File", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [
     o("fineTunedModel", "Fine-Tuned Model ID"),

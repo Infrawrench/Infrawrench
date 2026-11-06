@@ -242,6 +242,16 @@ const ResourceTypeSummary = strict({
   id: z.string(),
   displayName: z.string(),
   pluralDisplayName: z.string().optional(),
+  iconKey: z.string().optional().openapi({
+    description: "What this type of resource is, in a shared vocabulary (`cpu`, `database`, ...).",
+  }),
+  showcase: z
+    .array(strict({ key: z.string(), label: z.string() }))
+    .optional()
+    .openapi({
+      description:
+        "The fields this type marked to show on its tile, read from each resource's synced fields.",
+    }),
   parentTypeId: z.string().optional(),
   supportsCreate: z.boolean(),
   attachTargets: z

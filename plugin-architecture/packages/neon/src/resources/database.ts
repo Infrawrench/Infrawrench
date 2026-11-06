@@ -27,7 +27,7 @@ export const NeonDatabaseResourceType = rt({
   parentTypeId: "neon-branch",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "neon",
+  iconKey: "database",
   peerIntegrations: [
     {
       pluginId: "postgres",

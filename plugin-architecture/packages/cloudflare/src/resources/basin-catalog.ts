@@ -12,7 +12,7 @@ export const BasinCatalogResourceType = rt({
     f("bucket", "R2 Bucket", { editable: false }),
     f("warehouseName", "Warehouse", { required: false, editable: false }),
     f("catalogUri", "Catalog URI", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("credentialStatus", "Maintenance Credential", { required: false, editable: false }),
     f("compaction", "Compaction", {
       kind: "enum",

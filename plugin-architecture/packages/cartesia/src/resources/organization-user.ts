@@ -16,7 +16,12 @@ export const OrganizationUserResourceType = rt({
   fields: [
     f("email", "Email", { required: false }),
     f("name", "Name", { required: false }),
-    f("role", "Role", { kind: "enum", required: false, enumValues: ["admin", "member"] }),
+    f("role", "Role", {
+      showcase: true,
+      kind: "enum",
+      required: false,
+      enumValues: ["admin", "member"],
+    }),
     f("userId", "User ID", { required: false }),
     f("joinedAt", "Joined", { required: false }),
   ],

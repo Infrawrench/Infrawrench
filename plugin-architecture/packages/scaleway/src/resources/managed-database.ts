@@ -10,17 +10,24 @@ export const ManagedDatabaseResourceType = rt({
   fields: [
     f("name", "Name"),
     f("engine", "Engine", {
+      showcase: true,
       kind: "enum",
       enumValues: ["PostgreSQL", "MySQL", "Redis"],
       editable: false,
     }),
     f("engineVersion", "Engine Version", { editable: false }),
-    f("region", "Region", { kind: "enum", enumValues: SCW_REGIONS, editable: false }),
+    f("region", "Region", {
+      showcase: true,
+      kind: "enum",
+      enumValues: SCW_REGIONS,
+      editable: false,
+    }),
     f("nodeType", "Node Type", {
+      showcase: true,
       description:
         "Instance node type, e.g. DB-DEV-S, db-pro2-xs. Changing it upgrades the instance in place (Scaleway can only scale up)",
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("isHaCluster", "High Availability", { kind: "boolean", required: false, editable: false }),
     f("volumeType", "Volume Type", { required: false, editable: false }),
     f("volumeSizeGb", "Volume Size (GB)", {

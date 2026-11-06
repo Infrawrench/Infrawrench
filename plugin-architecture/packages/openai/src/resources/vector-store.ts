@@ -13,6 +13,7 @@ export const VectorStoreResourceType = rt({
   fields: [
     f("name", "Name", { required: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["expired", "in_progress", "completed"],
       required: false,
@@ -22,9 +23,9 @@ export const VectorStoreResourceType = rt({
     f("filesCompleted", "Files Ready", { kind: "number", required: false }),
     f("filesInProgress", "Files Processing", { kind: "number", required: false }),
     f("filesFailed", "Files Failed", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("lastActiveAt", "Last Active", { required: false }),
-    f("expiresAt", "Expires", { required: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false }),
   ],
   outputs: [o("vectorStoreId", "Vector Store ID"), o("name", "Name")],
   iconKey: "search",

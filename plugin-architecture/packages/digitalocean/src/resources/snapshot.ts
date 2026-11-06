@@ -14,7 +14,7 @@ export const SnapshotResourceType = rt({
     }),
     f("resourceId", "Source ID", { required: false }),
     f("regions", "Regions", { required: false }),
-    f("sizeGb", "Size (GB)", { kind: "number", required: false }),
+    f("sizeGb", "Size (GB)", { showcase: true, kind: "number", required: false }),
     f("minDiskSize", "Min Disk (GB)", { kind: "number", required: false }),
   ],
   outputs: [],

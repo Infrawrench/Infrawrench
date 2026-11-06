@@ -10,7 +10,7 @@ export const HyperdriveResourceType = rt({
     f("originHost", "Origin Host", { required: false }),
     f("originPort", "Origin Port", { kind: "number", required: false }),
     f("originScheme", "Scheme", { required: false }),
-    f("database", "Database", { required: false }),
+    f("database", "Database", { showcase: true, required: false }),
     f("user", "User", { required: false }),
     f("password", "Password", {
       kind: "password",

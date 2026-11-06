@@ -230,7 +230,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
           type="button"
           onClick={() => void run()}
           disabled={busy}
-          className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-medium text-on-accent bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
         >
           {busy
             ? gt("Synthesizing…")
@@ -251,7 +251,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
             <a
               href={clip.url}
               download={clip.fileName}
-              className="text-accent hover:underline shrink-0"
+              className="text-accent underline underline-offset-2 shrink-0"
             >
               {gt("Download")}
             </a>
@@ -518,7 +518,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
           type="button"
           onClick={() => void run()}
           disabled={busy || !audio || recording}
-          className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-medium text-on-accent bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
         >
           {busy
             ? gt("Transcribing…")

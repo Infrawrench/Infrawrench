@@ -4,6 +4,7 @@ export const ServiceAccountResourceType = rt({
   name: "Service Account",
   pinnable: false,
   id: "gcp-service-account",
+  iconKey: "bot",
   description: "A Google Cloud IAM service account",
   fields: [
     f("name", "Name"),

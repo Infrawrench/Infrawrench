@@ -34,7 +34,7 @@ export const ProjectResourceType = rt({
     f("projectId", "Project ID", ro),
     f("environments", "Environments", { ...ro, kind: "number" }),
     f("configs", "Configs", { ...ro, kind: "number" }),
-    f("createdAt", "Created", ro),
+    f("createdAt", "Created", { ...ro, showcase: true }),
   ],
   outputs: [o("project", "Project slug")],
   supportsCreate: true,
@@ -51,7 +51,7 @@ export const EnvironmentResourceType = rt({
   description:
     "An environment in a project (development, staging, production…). Create one, rename it or change its slug, or delete it with its configs.",
   fields: [
-    f("project", "Project", ro),
+    f("project", "Project", { ...ro, showcase: true }),
     f("name", "Name", { required: true }),
     f("slug", "Slug", {
       required: true,
@@ -59,7 +59,7 @@ export const EnvironmentResourceType = rt({
     }),
     f("personalConfigs", "Personal Configs", { ...ro, kind: "boolean" }),
     f("initialFetchAt", "First Fetched", ro),
-    f("createdAt", "Created", ro),
+    f("createdAt", "Created", { ...ro, showcase: true }),
   ],
   outputs: [o("slug", "Environment slug")],
   dependsOn: [{ fieldKey: "project", targetTypeId: "doppler-project", label: "in" }],
@@ -77,12 +77,12 @@ export const ConfigResourceType = rt({
   description:
     "A config: an environment's root config or a branch of it. The Keys tab reads and edits its secrets. Create a branch config, rename it, clone it, lock or unlock it, make it inheritable, read its change log, or delete it.",
   fields: [
-    f("project", "Project", ro),
+    f("project", "Project", { ...ro, showcase: true }),
     f("name", "Name", {
       required: true,
       description: "Branch configs are named <environment>_<branch>.",
     }),
-    f("environment", "Environment", ro),
+    f("environment", "Environment", { ...ro, showcase: true }),
     f("root", "Root Config", { ...ro, kind: "boolean" }),
     f("locked", "Locked", { ...ro, kind: "boolean" }),
     f("inheritable", "Inheritable", {
@@ -96,7 +96,7 @@ export const ConfigResourceType = rt({
     f("initialFetchAt", "First Fetched", ro),
     f("lastFetchAt", "Last Fetched", ro),
     f("neverFetched", "Never Fetched", { ...ro, kind: "boolean" }),
-    f("createdAt", "Created", ro),
+    f("createdAt", "Created", { ...ro, showcase: true }),
   ],
   outputs: [o("project", "Project"), o("config", "Config name")],
   dependsOn: [
@@ -130,7 +130,7 @@ export const SecretResourceType = rt({
   description:
     "A secret in a config. Values never sync into Infrawrench: set a new value, change its visibility (masked, unmasked or restricted) or note, or delete it. Its value is an output other resources can reference.",
   fields: [
-    f("project", "Project", ro),
+    f("project", "Project", { ...ro, showcase: true }),
     f("config", "Config", ro),
     f("name", "Name", ro),
     f("newValue", "New Value", {
@@ -140,6 +140,7 @@ export const SecretResourceType = rt({
         "Leave blank to keep the current value. ${OTHER_SECRET} references are expanded by Doppler.",
     }),
     f("visibility", "Visibility", {
+      showcase: true,
       kind: "enum",
       enumValues: ["masked", "unmasked", "restricted"],
       required: false,
@@ -177,13 +178,13 @@ export const ServiceTokenResourceType = rt({
   description:
     "A service token scoped to one config, read-only or read/write, used by applications and CI to fetch secrets. Create one (the token is shown once) or revoke it.",
   fields: [
-    f("project", "Project", ro),
+    f("project", "Project", { ...ro, showcase: true }),
     f("config", "Config", ro),
     f("name", "Name", ro),
     f("access", "Access", ro),
-    f("environment", "Environment", ro),
+    f("environment", "Environment", { ...ro, showcase: true }),
     f("createdAt", "Created", ro),
-    f("expiresAt", "Expires", ro),
+    f("expiresAt", "Expires", { ...ro, showcase: true }),
     f("neverExpires", "Never Expires", { ...ro, kind: "boolean" }),
   ],
   outputs: [
@@ -228,8 +229,8 @@ export const IntegrationResourceType = rt({
     "A connection to an external service that Doppler syncs secrets to or rotates secrets in (AWS, GCP, Azure, GitHub, Vercel, Kubernetes…), with its syncs. Delete it.",
   fields: [
     f("name", "Name", ro),
-    f("type", "Type", ro),
-    f("kind", "Kind", ro),
+    f("type", "Type", { ...ro, showcase: true }),
+    f("kind", "Kind", { ...ro, showcase: true }),
     f("enabled", "Enabled", { ...ro, kind: "boolean" }),
     f("syncs", "Syncs", { ...ro, kind: "number" }),
   ],
@@ -247,7 +248,7 @@ export const SyncResourceType = rt({
   description:
     "A secrets sync pushing one config to an integration, with when it last synced. Delete it (optionally removing the synced secrets from the target).",
   fields: [
-    f("project", "Project", ro),
+    f("project", "Project", { ...ro, showcase: true }),
     f("config", "Config", ro),
     f("integrationName", "Integration", ro),
     f("integrationType", "Integration Type", ro),
@@ -275,7 +276,7 @@ export const WebhookResourceType = rt({
   description:
     "A project webhook Doppler calls when secrets change in the configs it is enabled for. Create, edit (name, URL, configs), enable, disable or delete.",
   fields: [
-    f("project", "Project", ro),
+    f("project", "Project", { ...ro, showcase: true }),
     f("name", "Name", { required: false }),
     f("url", "URL", { required: true, description: "Must be https." }),
     f("enabledConfigs", "Configs", {
@@ -303,7 +304,7 @@ export const UserResourceType = rt({
     f("name", "Name", ro),
     f("username", "Username", ro),
     f("access", "Workplace Role", ro),
-    f("createdAt", "Joined", ro),
+    f("createdAt", "Joined", { ...ro, showcase: true }),
   ],
   outputs: [o("email", "Email")],
   principalRole: { role: "user", adminIndicatorKey: "access", adminValues: ["owner", "admin"] },
@@ -323,9 +324,9 @@ export const GroupResourceType = rt({
       description: "admin, collaborator, viewer, no_access or a custom role's identifier.",
     }),
     f("members", "Members", { required: false, description: "Comma-separated member emails." }),
-    f("memberCount", "Member Count", { ...ro, kind: "number" }),
+    f("memberCount", "Member Count", { showcase: true, ...ro, kind: "number" }),
     f("projects", "Projects", ro),
-    f("createdAt", "Created", ro),
+    f("createdAt", "Created", { ...ro, showcase: true }),
   ],
   outputs: [],
   principalRole: { role: "group" },
@@ -343,7 +344,7 @@ export const ServiceAccountResourceType = rt({
   fields: [
     f("name", "Name", ro),
     f("workplaceRole", "Workplace Role", ro),
-    f("createdAt", "Created", ro),
+    f("createdAt", "Created", { ...ro, showcase: true }),
   ],
   outputs: [],
   principalRole: {
@@ -365,9 +366,9 @@ export const ServiceAccountTokenResourceType = rt({
   fields: [
     f("serviceAccountName", "Service Account", ro),
     f("name", "Name", ro),
-    f("createdAt", "Created", ro),
-    f("lastUsedAt", "Last Used", ro),
-    f("expiresAt", "Expires", ro),
+    f("createdAt", "Created", { ...ro, showcase: true }),
+    f("lastUsedAt", "Last Used", { ...ro, showcase: true }),
+    f("expiresAt", "Expires", { ...ro, showcase: true }),
     f("neverExpires", "Never Expires", { ...ro, kind: "boolean" }),
   ],
   outputs: [],

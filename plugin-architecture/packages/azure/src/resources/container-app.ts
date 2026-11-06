@@ -11,14 +11,15 @@ export const ContainerAppResourceType = rt({
     // revision (Azure's own behaviour for template changes).
     f("name", "Name", { editable: false }),
     f("resourceGroup", "Resource Group", { editable: false }),
-    f("location", "Location", { editable: false }),
+    f("location", "Location", { showcase: true, editable: false }),
     f("environment", "Environment", {
       editable: false,
       description: "Container Apps environment the app runs in",
     }),
-    f("provisioningState", "Provisioning State", { editable: false }),
+    f("provisioningState", "Provisioning State", { showcase: true, editable: false }),
     f("runningStatus", "Running Status", { required: false, editable: false }),
     f("image", "Image", {
+      showcase: true,
       description:
         "Image of the app's first container, e.g. myregistry.azurecr.io/api:1.4. Changing it rolls out a new revision",
     }),
@@ -48,7 +49,12 @@ export const ContainerAppResourceType = rt({
     f("activeRevisionsMode", "Revisions Mode", { required: false, editable: false }),
     f("latestRevisionName", "Latest Revision", { required: false, editable: false }),
     f("workloadProfileName", "Workload Profile", { required: false, editable: false }),
-    f("containerCount", "Containers", { kind: "number", required: false, editable: false }),
+    f("containerCount", "Containers", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("images", "Images", {
       required: false,
       editable: false,

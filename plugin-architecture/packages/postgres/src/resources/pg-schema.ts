@@ -4,6 +4,7 @@ export const PostgresSchemaResourceType = rt({
   name: "Schema",
   pinnable: false,
   id: "pg-schema",
+  iconKey: "table",
   description: "A PostgreSQL schema within a database",
   fields: [f("name", "Schema Name")],
   outputs: [o("tableCount", "Table Count")],

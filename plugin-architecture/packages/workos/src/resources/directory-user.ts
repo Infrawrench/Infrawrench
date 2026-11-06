@@ -16,7 +16,7 @@ export const DirectoryUserResourceType = rt({
     f("idpId", "IdP ID", { required: false, editable: false }),
     f("directoryId", "Directory ID", { required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("directoryUserId", "Directory User ID")],
   // A mirror of the IdP's record: creation is all Directory Sync gives us.

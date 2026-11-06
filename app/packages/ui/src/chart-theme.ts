@@ -14,9 +14,11 @@ function readChartTheme(): ChartTheme {
   const s = getComputedStyle(document.documentElement);
   const v = (name: string) => s.getPropertyValue(name).trim();
   return {
-    // The categorical rotation is shared with mobile rather than restated
-    // here, so the same series is the same colour on every surface.
-    colors: [...SERIES_COLORS],
+    // The rotation is shared with mobile rather than restated here, with one
+    // difference: the first slot is the neutral chart line instead of its blue,
+    // so a one-series chart reads as part of the grey interface. Hue starts at
+    // the second series, where it is telling series apart.
+    colors: [v("--color-chart-primary") || SERIES_COLORS[0]!, ...SERIES_COLORS.slice(1)],
     grid: v("--color-chart-grid") || "#374151",
     axis: v("--color-chart-axis") || "#4b5563",
     tick: v("--color-chart-tick") || "#9ca3af",

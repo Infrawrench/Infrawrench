@@ -53,13 +53,13 @@ export const TeamType = rt({
   fields: [
     f("teamId", "Team ID", { kind: "number", editable: false }),
     f("slug", "Slug", ro),
-    f("memberCount", "Members", { kind: "number", ...ro }),
-    f("adminCount", "Admins", { kind: "number", ...ro }),
+    f("memberCount", "Members", { showcase: true, kind: "number", ...ro }),
+    f("adminCount", "Admins", { showcase: true, kind: "number", ...ro }),
     f("pendingInvites", "Pending Invitations", { kind: "number", ...ro }),
     f("projectCount", "Projects", { kind: "number", ...ro }),
   ],
   outputs: [o("teamId", "Team ID"), o("slug", "Team Slug")],
-  iconKey: "convex",
+  iconKey: "team",
 });
 
 export const ProjectType = rt({
@@ -72,7 +72,7 @@ export const ProjectType = rt({
     f("projectId", "Project ID", { kind: "number", editable: false }),
     f("teamSlug", "Team", ro),
     f("prodDeploymentName", "Production Deployment", ro),
-    f("createdAt", "Created At", ro),
+    f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [o("projectId", "Project ID"), o("slug", "Project Slug")],
   dependsOn: [
@@ -85,7 +85,7 @@ export const ProjectType = rt({
   ],
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "convex",
+  iconKey: "project",
 });
 
 export const DeploymentType = rt({
@@ -103,7 +103,7 @@ export const DeploymentType = rt({
       required: false,
       description: "Changing the type moves the deployment between prod, dev, preview and custom.",
     }),
-    f("region", "Region", ro),
+    f("region", "Region", { ...ro, showcase: true }),
     f("class", "Class", {
       kind: "enum",
       enumValues: DEPLOYMENT_CLASSES,
@@ -122,6 +122,7 @@ export const DeploymentType = rt({
     f("dashboardEditConfirmation", "Confirm Dashboard Edits", { kind: "boolean", required: false }),
     f("sendLogsToClient", "Send Function Logs to Clients", { kind: "boolean", required: false }),
     f("expiresAt", "Expires At", {
+      showcase: true,
       required: false,
       description: "ISO timestamp when Convex deletes the deployment. Empty means never.",
     }),
@@ -129,7 +130,7 @@ export const DeploymentType = rt({
     f("siteUrl", "HTTP Actions URL", ro),
     f("previewIdentifier", "Preview Identifier", ro),
     f("lastDeployAt", "Last Deploy", ro),
-    f("createdAt", "Created At", ro),
+    f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [
     o("deploymentUrl", "Deployment URL", { description: "CONVEX_URL for clients." }),
@@ -159,7 +160,7 @@ export const DeploymentType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
-  iconKey: "convex",
+  iconKey: "deployment",
 });
 
 export const EnvVarType = rt({
@@ -189,7 +190,7 @@ export const EnvVarType = rt({
   parentTypeId: "convex-deployment",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "convex",
+  iconKey: "env",
 });
 
 export const DefaultEnvVarType = rt({
@@ -217,7 +218,7 @@ export const DefaultEnvVarType = rt({
   parentTypeId: "convex-project",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "convex",
+  iconKey: "env",
 });
 
 export const DeployKeyType = rt({
@@ -231,9 +232,9 @@ export const DeployKeyType = rt({
     f("deploymentName", "Deployment"),
     f("allowedActions", "Allowed Actions", { required: false }),
     f("managed", "Managed By Integration", { kind: "boolean", required: false }),
-    f("createdAt", "Created At", { required: false }),
-    f("lastUsedAt", "Last Used At", { required: false }),
-    f("expiresAt", "Expires At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
+    f("lastUsedAt", "Last Used At", { showcase: true, required: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false }),
   ],
   outputs: [o("deployKey", "Deploy Key", { sensitive: true })],
   dependsOn: [
@@ -250,7 +251,7 @@ export const DeployKeyType = rt({
   principalRole: { role: "key", lastUsedKey: "lastUsedAt", createdKey: "createdAt" },
   parentTypeId: "convex-deployment",
   supportsCreate: true,
-  iconKey: "convex",
+  iconKey: "key",
 });
 
 export const PreviewDeployKeyType = rt({
@@ -262,9 +263,9 @@ export const PreviewDeployKeyType = rt({
     f("name", "Name"),
     f("projectId", "Project", { kind: "number" }),
     f("managed", "Managed By Integration", { kind: "boolean", required: false }),
-    f("createdAt", "Created At", { required: false }),
-    f("lastUsedAt", "Last Used At", { required: false }),
-    f("expiresAt", "Expires At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
+    f("lastUsedAt", "Last Used At", { showcase: true, required: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false }),
   ],
   outputs: [o("previewDeployKey", "Preview Deploy Key", { sensitive: true })],
   dependsOn: [{ fieldKey: "projectId", targetTypeId: "convex-project", label: "for project" }],
@@ -279,7 +280,7 @@ export const PreviewDeployKeyType = rt({
   principalRole: { role: "key", lastUsedKey: "lastUsedAt", createdKey: "createdAt" },
   parentTypeId: "convex-project",
   supportsCreate: true,
-  iconKey: "convex",
+  iconKey: "key",
 });
 
 export const CustomDomainType = rt({
@@ -288,12 +289,12 @@ export const CustomDomainType = rt({
   description:
     "A custom domain serving a deployment's API (convex.cloud) or HTTP actions (convex.site)",
   fields: [
-    f("domain", "Domain"),
+    f("domain", "Domain", { showcase: true }),
     f("deploymentName", "Deployment"),
     f("requestDestination", "Serves", { kind: "enum", enumValues: ["convexCloud", "convexSite"] }),
     f("verified", "Verified", { kind: "boolean", required: false }),
     f("verifiedAt", "Verified At", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [o("url", "URL")],
   dependsOn: [
@@ -306,7 +307,7 @@ export const CustomDomainType = rt({
   ],
   parentTypeId: "convex-deployment",
   supportsCreate: true,
-  iconKey: "convex",
+  iconKey: "domain",
 });
 
 export const LogStreamType = rt({
@@ -317,7 +318,7 @@ export const LogStreamType = rt({
   fields: [
     f("streamType", "Destination", { editable: false }),
     f("deploymentName", "Deployment", { editable: false }),
-    f("status", "Status", ro),
+    f("status", "Status", { ...ro, showcase: true }),
     f("failureReason", "Failure", ro),
     f("target", "Target", {
       ...ro,
@@ -325,6 +326,7 @@ export const LogStreamType = rt({
     }),
     f("url", "Webhook URL", { required: false, description: "Webhook streams only." }),
     f("format", "Webhook Format", {
+      showcase: true,
       kind: "enum",
       enumValues: ["json", "jsonl"],
       required: false,
@@ -349,7 +351,7 @@ export const LogStreamType = rt({
   parentTypeId: "convex-deployment",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "convex",
+  iconKey: "logs",
 });
 
 export const UsageLimitType = rt({
@@ -382,7 +384,7 @@ export const UsageLimitType = rt({
   pinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "convex",
+  iconKey: "sliders",
 });
 
 export const MemberType = rt({
@@ -393,6 +395,7 @@ export const MemberType = rt({
     f("email", "Email", { editable: false }),
     f("name", "Name", ro),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       enumValues: ["admin", "developer"],
       description: "Built-in role. Custom roles are assigned in the Convex dashboard.",
@@ -405,7 +408,7 @@ export const MemberType = rt({
   pinnable: false,
   supportsUpdate: true,
   supportsDelete: false,
-  iconKey: "convex",
+  iconKey: "member",
 });
 
 export const InviteType = rt({
@@ -414,14 +417,18 @@ export const InviteType = rt({
   description: "A pending invitation to join the team",
   fields: [
     f("email", "Email"),
-    f("role", "Role", { kind: "enum", enumValues: ["admin", "developer", "custom"] }),
+    f("role", "Role", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["admin", "developer", "custom"],
+    }),
     f("expired", "Expired", { kind: "boolean", required: false }),
   ],
   outputs: [],
   parentTypeId: "convex-team",
   pinnable: false,
   supportsCreate: true,
-  iconKey: "convex",
+  iconKey: "invite",
 });
 
 export const CustomRoleType = rt({
@@ -431,16 +438,16 @@ export const CustomRoleType = rt({
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    f("statementCount", "Statements", { kind: "number", ...ro }),
+    f("statementCount", "Statements", { showcase: true, kind: "number", ...ro }),
     f("statements", "Statements (JSON)", { ...ro }),
-    f("createdAt", "Created At", ro),
+    f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [],
   parentTypeId: "convex-team",
   pinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "convex",
+  iconKey: "role",
 });
 
 export const AccessTokenType = rt({
@@ -449,9 +456,9 @@ export const AccessTokenType = rt({
   description: "A team access token created by the member who owns this account's token",
   fields: [
     f("name", "Name"),
-    f("createdAt", "Created At", { required: false }),
-    f("lastUsedAt", "Last Used At", { required: false }),
-    f("expiresAt", "Expires At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
+    f("lastUsedAt", "Last Used At", { showcase: true, required: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false }),
   ],
   outputs: [],
   expiryFields: [
@@ -466,7 +473,7 @@ export const AccessTokenType = rt({
   principalRole: { role: "key", lastUsedKey: "lastUsedAt", createdKey: "createdAt" },
   parentTypeId: "convex-team",
   pinnable: false,
-  iconKey: "convex",
+  iconKey: "key",
 });
 
 export const resourceTypes: ResourceTypeDefinition[] = [

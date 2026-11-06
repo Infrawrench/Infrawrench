@@ -20,7 +20,7 @@ export function ImageRow({
       }`}
     >
       <span
-        className={`size-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-surface-sunken"}`}
+        className={`size-2 rounded-full flex-shrink-0 ${selected ? "bg-accent" : "bg-surface-sunken"}`}
       />
       <span className="truncate">{img.label}</span>
       {img.isOwned && (

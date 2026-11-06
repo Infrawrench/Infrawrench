@@ -16,9 +16,14 @@ export const FileResourceType = rt({
   fields: [
     f("filename", "Filename", { editable: false }),
     f("mimeType", "MIME Type", { required: false, editable: false }),
-    f("sizeBytes", "Size (bytes)", { kind: "number", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("sizeBytes", "Size (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
     f("downloadable", "Downloadable", { kind: "boolean", required: false, editable: false }),
   ],
   outputs: [

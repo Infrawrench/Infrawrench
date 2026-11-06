@@ -21,9 +21,9 @@ export const AdminApiKeyResourceType = rt({
     f("redactedValue", "Key", { required: false }),
     f("ownerName", "Owner", { required: false }),
     f("ownerId", "Owner ID", { required: false }),
-    f("createdAt", "Created", { required: false }),
-    f("expiresAt", "Expires", { required: false }),
-    f("lastUsedAt", "Last Used", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false }),
+    f("lastUsedAt", "Last Used", { showcase: true, required: false }),
   ],
   outputs: [o("adminKeyId", "Admin Key ID"), o("redactedValue", "Redacted Value")],
   expiryFields: [

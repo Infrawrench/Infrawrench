@@ -434,7 +434,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             type="button"
             onClick={() => void saveQuery()}
             disabled={saveBusy || streams.length === 0 || queryName.trim().length === 0}
-            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-50"
+            className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors disabled:opacity-50"
           >
             {activeQueryId ? gt("Save") : gt("Save query")}
           </button>
@@ -444,7 +444,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                 type="button"
                 onClick={resetToNewQuery}
                 disabled={saveBusy}
-                className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
+                className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors"
                 title={gt("Keep the streams but save under a new name")}
               >
                 {gt("Save as new…")}
@@ -532,7 +532,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             setPaused((p) => !p);
           }}
           className={`px-3 py-1 text-xs border border-border-strong rounded-md transition-colors ${
-            paused ? "text-warning" : "text-on-surface-tertiary hover:text-white"
+            paused ? "text-warning" : "text-on-surface-tertiary hover:text-on-surface"
           }`}
         >
           {paused ? gt("Resume") : gt("Pause")}
@@ -540,7 +540,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         <button
           type="button"
           onClick={() => setView((v) => (v === "interleaved" ? "split" : "interleaved"))}
-          className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
+          className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors"
           title={gt("Toggle between one merged stream and stacked per-resource panes")}
         >
           {view === "interleaved" ? gt("Split view") : gt("Interleaved")}
@@ -552,7 +552,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             setMerged([]);
             queueMicrotask(pollAll);
           }}
-          className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
+          className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors"
         >
           {gt("Clear")}
         </button>
@@ -568,7 +568,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             return (
               <span
                 key={key}
-                className="flex items-center gap-1.5 text-xs bg-surface-overlay border border-border rounded-full pl-2 pr-1 py-0.5"
+                className="flex items-center gap-1.5 text-xs bg-surface-overlay border border-border rounded-md pl-2 pr-1 py-0.5"
               >
                 <button
                   type="button"
@@ -601,7 +601,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                 <button
                   type="button"
                   onClick={() => removeStream(key)}
-                  className="text-on-surface-faint hover:text-white px-1"
+                  className="text-on-surface-faint hover:text-on-surface px-1"
                   aria-label={gt("Remove {label}", { label: stream.label })}
                 >
                   <CloseIcon size={12} />

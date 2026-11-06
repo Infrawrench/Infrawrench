@@ -17,6 +17,7 @@ export const TranscriptResourceType = rt({
     "A speech-to-text job submitted to AssemblyAI. Transcripts are retained for 90 days and then purged, so this list is a rolling 90-day window rather than a complete inventory of everything the account has ever transcribed.",
   fields: [
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["queued", "processing", "completed", "error"],
       description: "Job state. The transcript text is only available once this is `completed`.",
@@ -39,7 +40,7 @@ export const TranscriptResourceType = rt({
       required: false,
       description: "Overall transcription confidence between 0 and 1.",
     }),
-    f("wordCount", "Words", { kind: "number", required: false }),
+    f("wordCount", "Words", { showcase: true, kind: "number", required: false }),
     f("speakerLabels", "Speaker Labels", {
       kind: "boolean",
       required: false,
@@ -52,7 +53,7 @@ export const TranscriptResourceType = rt({
     }),
     f("textPreview", "Transcript Preview", { required: false }),
     f("errorMessage", "Error", { required: false }),
-    f("created", "Created", { required: false }),
+    f("created", "Created", { showcase: true, required: false }),
     f("completed", "Completed", { required: false }),
   ],
   outputs: [

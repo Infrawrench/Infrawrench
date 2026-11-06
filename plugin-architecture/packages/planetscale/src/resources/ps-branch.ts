@@ -10,13 +10,14 @@ export const PsBranchResourceType = rt({
     f("name", "Name", { editable: false }),
     f("databaseName", "Database", { editable: false }),
     f("kind", "Engine", {
+      showcase: true,
       kind: "enum",
       enumValues: ["mysql", "postgresql", "neki"],
       required: false,
       editable: false,
     }),
     f("parentBranch", "Parent Branch", { required: false, editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("clusterName", "Cluster Size", { required: false, editable: false }),
     f("production", "Production", { kind: "boolean", required: false, editable: false }),
     f("ready", "Ready", { kind: "boolean", required: false, editable: false }),
@@ -26,7 +27,7 @@ export const PsBranchResourceType = rt({
       required: false,
       description: "Refuse deletion of this branch until protection is turned off again.",
     }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("branchName", "Branch Name"),
@@ -55,7 +56,7 @@ export const PsBranchResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
-  iconKey: "planetscale",
+  iconKey: "branch",
   attachTargets: [
     {
       pluginId: "planetscale",

@@ -262,13 +262,13 @@ export function MongoDocumentBrowser({
               }}
               aria-label={gt("Collection name")}
               placeholder={gt("collection name")}
-              className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+              className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
               ref={newCollectionInputRef}
             />
             <button
               type="button"
               onClick={() => void handleCreateCollection()}
-              className="px-2 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors flex-shrink-0"
+              className="px-2 py-1 rounded bg-accent text-xs text-on-accent hover:bg-accent-hover transition-colors flex-shrink-0"
             >
               {gt("Create")}
             </button>
@@ -325,7 +325,7 @@ export function MongoDocumentBrowser({
             }}
             aria-label={gt("Filter query")}
             placeholder='{ "field": "value" }'
-            className="flex-1 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+            className="flex-1 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
             spellCheck={false}
           />
           <button
@@ -347,7 +347,7 @@ export function MongoDocumentBrowser({
             <button
               type="button"
               onClick={() => setShowInsertDoc((v) => !v)}
-              className="px-2.5 py-1 rounded bg-blue-600/80 border border-blue-500/50 text-xs text-white hover:bg-blue-600 transition-colors"
+              className="px-2.5 py-1 rounded bg-accent/80 border border-accent/50 text-xs text-on-accent hover:bg-accent-hover transition-colors"
             >
               {gt("+ Insert")}
             </button>

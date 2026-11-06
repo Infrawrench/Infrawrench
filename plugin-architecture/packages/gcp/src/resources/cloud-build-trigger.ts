@@ -3,6 +3,7 @@ import { f, rt } from "@infrawrench/plugin-base";
 export const CloudBuildTriggerResourceType = rt({
   name: "Cloud Build Trigger",
   id: "cloud-build-trigger",
+  iconKey: "build",
   description: "A Google Cloud Build trigger for CI/CD pipelines",
   fields: [
     f("name", "Name"),

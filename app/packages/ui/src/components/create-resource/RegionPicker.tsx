@@ -92,7 +92,7 @@ export function RegionPicker({
             }`}
           >
             <span
-              className={`size-2 rounded-full flex-shrink-0 ${value === r.id ? "bg-blue-400" : "bg-surface-sunken"}`}
+              className={`size-2 rounded-full flex-shrink-0 ${value === r.id ? "bg-accent" : "bg-surface-sunken"}`}
             />
             {r.flag && <span className="text-base leading-none flex-shrink-0">{r.flag}</span>}
             <span className="min-w-0 flex-1">

@@ -9,7 +9,7 @@ export const ModelApiKeyResourceType = rt({
   fields: [
     f("name", "Name"),
     f("createdBy", "Created By", { required: false, editable: false }),
-    f("lastUsedAt", "Last Used", { required: false, editable: false }),
+    f("lastUsedAt", "Last Used", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
   // `lastUsedAt` is real; there is no creation date in the field bag, so the

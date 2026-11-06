@@ -31,15 +31,16 @@ export const ManagedDbResourceType = rt({
       description: "Engine version, e.g. 16 for PostgreSQL 16. Changing it upgrades the service",
     }),
     f("plan", "Plan", {
+      showcase: true,
       description:
         "Service plan, e.g. discovery, production, advanced. Changing it migrates the service",
     }),
-    f("region", "Region", { editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("flavor", "Flavor", {
       description: "Node flavor, e.g. b3-8. Changing it resizes every node",
     }),
-    f("nodeCount", "Node Count", { kind: "number", editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("nodeCount", "Node Count", { showcase: true, kind: "number", editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("storageSizeGb", "Storage (GB)", { kind: "number", required: false, editable: false }),
     f("deletionProtection", "Deletion Protection", { kind: "boolean", required: false }),
     f("backupTime", "Backup Time", {

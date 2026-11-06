@@ -12,7 +12,7 @@ import type { CostsClient } from "./types.js";
 
 const STATE_CLASS: Record<CommitmentState, string> = {
   active: "text-success bg-emerald-500/10",
-  queued: "text-info bg-sky-500/10",
+  queued: "text-info bg-accent/10",
   expired: "text-on-surface-tertiary bg-surface-overlay",
 };
 

@@ -7,7 +7,7 @@ export const CloudFrontDistributionResourceType = rt({
   fields: [
     f("distributionId", "Distribution ID"),
     f("domainName", "Domain Name"),
-    f("status", "Status"),
+    f("status", "Status", { showcase: true }),
     f("enabled", "Enabled", { kind: "boolean" }),
     f("comment", "Comment", { required: false }),
     f("priceClass", "Price Class", { required: false }),

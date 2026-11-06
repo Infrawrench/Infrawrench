@@ -326,7 +326,7 @@ function RequestRow({
       : r.status === "active"
         ? "bg-amber-500/15 text-warning"
         : r.status === "pending"
-          ? "bg-blue-500/15 text-info"
+          ? "bg-accent/15 text-info"
           : "bg-surface-overlay text-on-surface-tertiary";
   const confirmRevoke = () => {
     if (window.confirm(gt("End this grant now and remove the access from the provider?"))) {
@@ -336,7 +336,7 @@ function RequestRow({
   return (
     <li className="p-4 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tone}`}>
+        <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${tone}`}>
           {statusLabel(r.status)}
         </span>
         <span className="text-sm font-medium text-on-surface">

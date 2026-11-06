@@ -10,10 +10,10 @@ export const ManagedEndpointResourceType = rt({
     f("endpointId", "Endpoint ID"),
     f("projectId", "Project ID", { required: false }),
     f("endpointType", "Endpoint Type", { required: false }),
-    f("visibility", "Visibility", { required: false }),
-    f("deploymentCount", "Deployments", { kind: "number", required: false }),
+    f("visibility", "Visibility", { showcase: true, required: false }),
+    f("deploymentCount", "Deployments", { showcase: true, kind: "number", required: false }),
     f("etag", "ETag", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("updatedAt", "Updated", { required: false }),
   ],
   outputs: [

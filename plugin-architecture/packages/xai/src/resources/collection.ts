@@ -24,9 +24,14 @@ export const CollectionResourceType = rt({
     f("embeddingModel", "Embedding Model", { required: false, editable: false }),
     f("chunking", "Chunking", { required: false, editable: false }),
     f("collectionType", "Type", { required: false, editable: false }),
-    f("documentsCount", "Documents", { kind: "number", required: false, editable: false }),
+    f("documentsCount", "Documents", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("fieldDefinitions", "Metadata Fields", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("collectionId", "Collection ID", {

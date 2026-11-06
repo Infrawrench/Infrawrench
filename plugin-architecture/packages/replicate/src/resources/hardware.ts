@@ -5,7 +5,7 @@ export const HardwareResourceType = rt({
   id: "hardware",
   plural: "Hardware",
   description: "A hardware SKU a Replicate model or deployment can run on",
-  fields: [f("sku", "SKU"), f("name", "Name")],
+  fields: [f("sku", "SKU", { showcase: true }), f("name", "Name")],
   outputs: [o("sku", "Hardware SKU")],
   supportsDelete: false,
   pinnable: false,

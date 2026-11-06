@@ -209,7 +209,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                         ) : (
                           r.displayName
                         )}
-                        <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-xs font-normal text-on-surface-tertiary">
+                        <span className="ml-2 rounded-md border border-border px-2 py-0.5 text-xs font-normal text-on-surface-tertiary">
                           {r.resourceTypeName}
                         </span>
                       </td>

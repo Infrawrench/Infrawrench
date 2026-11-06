@@ -7,9 +7,9 @@ export const NetlifyFormResourceType = rt({
   description: "A Netlify form that collects submissions from static HTML forms",
   fields: [
     f("name", "Name"),
-    f("submissionCount", "Submissions", { kind: "number", required: false }),
+    f("submissionCount", "Submissions", { showcase: true, kind: "number", required: false }),
     f("paths", "Paths", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
     f("siteId", "Site", { required: false }),
   ],
   outputs: [o("formId", "Form ID"), o("formName", "Form Name")],

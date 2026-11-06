@@ -9,7 +9,7 @@ export const GlueDatabaseResourceType = rt({
     f("name", "Name"),
     f("description", "Description", { required: false }),
     f("locationUri", "Location URI", { required: false }),
-    f("createTime", "Created", { required: false }),
+    f("createTime", "Created", { showcase: true, required: false }),
     f("catalogId", "Catalog ID", { required: false }),
   ],
   outputs: [],

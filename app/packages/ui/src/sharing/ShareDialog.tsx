@@ -329,7 +329,7 @@ export function ShareDialog({
               {canEdit && (
                 <button
                   type="button"
-                  className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  className="rounded-lg bg-accent hover:bg-accent-hover px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
                   disabled={saving}
                   onClick={() => void save()}
                 >

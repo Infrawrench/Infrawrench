@@ -50,7 +50,7 @@ function PlanRow({ field }: { field: RevertFieldPlan }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs text-on-surface-secondary break-all">{field.field}</span>
         <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_CLASSES[field.status]}`}
+          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${STATUS_CLASSES[field.status]}`}
         >
           {gtData(STATUS_LABELS[field.status])}
         </span>
@@ -206,7 +206,7 @@ export function RevertChangeDialog({
               type="button"
               onClick={() => void apply()}
               disabled={applying || !plan?.revertible}
-              className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white disabled:opacity-40 hover:bg-blue-500"
+              className="px-3 py-1.5 text-sm rounded-lg bg-accent text-on-accent disabled:opacity-40 hover:bg-accent-hover"
             >
               {applying
                 ? gt("Reverting…")

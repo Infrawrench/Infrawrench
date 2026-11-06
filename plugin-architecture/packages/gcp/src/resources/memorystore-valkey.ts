@@ -24,11 +24,12 @@ export const MemorystoreValkeyResourceType = rt({
   name: "Memorystore Valkey",
   plural: "Memorystore Valkey Instances",
   id: "memorystore-valkey",
+  iconKey: "cache",
   description:
     "A Google Cloud Memorystore for Valkey instance, in cluster mode or cluster-mode-disabled",
   fields: [
     f("name", "Name", { editable: false }),
-    f("region", "Region", { editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("mode", "Mode", {
       kind: "enum",
       required: false,
@@ -48,11 +49,13 @@ export const MemorystoreValkeyResourceType = rt({
       description: "Valkey version. Upgrades are one-way; downgrades are rejected",
     }),
     f("shardCount", "Shards", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Number of shards. Cluster-mode-disabled instances always have one",
     }),
     f("replicaCount", "Replicas Per Shard", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Read replicas per shard, 0 to 5",
@@ -62,7 +65,7 @@ export const MemorystoreValkeyResourceType = rt({
       required: false,
       description: "While on, deleting the instance fails",
     }),
-    f("state", "State", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
     f("authorizationMode", "Authorization", { required: false, editable: false }),
     f("transitEncryptionMode", "In-transit Encryption", { required: false, editable: false }),
     f("persistenceMode", "Persistence", { required: false, editable: false }),

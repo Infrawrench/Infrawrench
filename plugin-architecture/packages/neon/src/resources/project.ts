@@ -6,7 +6,7 @@ export const NeonProjectResourceType = rt({
   description: "A Neon project, containing branches, endpoints and databases",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("pgVersion", "PostgreSQL Version", { required: false, editable: false }),
     f("orgId", "Organization", { required: false, editable: false }),
     f("proxyHost", "Proxy Host", { required: false, editable: false }),
@@ -17,7 +17,7 @@ export const NeonProjectResourceType = rt({
       description:
         "How far back branches can be restored, in seconds (0 to 2592000). Plan limits: Free 6 h, Launch 7 days, Scale 30 days.",
     }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("projectId", "Project ID"),
@@ -28,7 +28,7 @@ export const NeonProjectResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
-  iconKey: "neon",
+  iconKey: "project",
   peerIntegrations: [
     {
       pluginId: "postgres",

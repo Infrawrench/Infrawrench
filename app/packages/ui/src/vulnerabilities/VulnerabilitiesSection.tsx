@@ -196,7 +196,7 @@ function SeverityBadge({ severity, muted }: { severity: VulnerabilitySeverity; m
   const label = useSeverityLabel();
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${
         muted ? "border border-border text-on-surface-tertiary" : SEVERITY_BADGE_CLASSES[severity]
       }`}
     >
@@ -219,7 +219,7 @@ function KevBadge({ finding }: { finding: VulnerabilityFindingRow }) {
   return (
     <span
       title={title}
-      className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-danger"
+      className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-danger"
     >
       KEV
       {finding.kev.knownRansomware && (
@@ -256,7 +256,7 @@ function SeverityCards({
             } hover:bg-surface-raised`}
           >
             <span
-              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
+              className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
             >
               {label(severity)}
             </span>
@@ -351,7 +351,7 @@ function RunningList({
           ) : (
             <span className="font-medium text-on-surface">{r.displayName}</span>
           )}
-          <span className="rounded-full border border-border px-1.5 text-[11px] text-on-surface-tertiary">
+          <span className="rounded-md border border-border px-1.5 text-[11px] text-on-surface-tertiary">
             {gtData(r.resourceTypeName)}
           </span>
           <span className="text-on-surface-faint">{r.accountName}</span>
@@ -381,7 +381,7 @@ function ServiceChips({
     <span className="flex flex-wrap gap-1">
       {services.map((s) => {
         const className =
-          "inline-flex max-w-40 truncate rounded-full border border-border px-1.5 text-[11px] text-on-surface-secondary";
+          "inline-flex max-w-40 truncate rounded-md border border-border px-1.5 text-[11px] text-on-surface-secondary";
         const title = s.tier === null ? s.name : `${s.name} · ${tierLabel(s.tier)}`;
         return onOpenService ? (
           <button

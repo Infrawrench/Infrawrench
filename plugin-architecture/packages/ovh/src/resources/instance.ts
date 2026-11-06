@@ -19,6 +19,7 @@ export const InstanceResourceType = rt({
   fields: [
     f("name", "Name"),
     f("region", "Region", {
+      showcase: true,
       description: "OpenStack region, e.g. GRA11, EU-WEST-PAR",
       editable: false,
     }),
@@ -27,7 +28,7 @@ export const InstanceResourceType = rt({
         "Instance flavor name, e.g. b3-8. Changing it resizes the instance (OVH can only resize to a flavor with an equal or larger disk)",
     }),
     f("imageName", "Image", { description: "OS image name, e.g. Ubuntu 24.04", editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("monthlyBilling", "Monthly Billing", {
       kind: "boolean",
       required: false,

@@ -600,6 +600,16 @@ export {
 export type { DnsContentFieldOptions } from "./dns-helpers.js";
 
 export { jsonRestFetch, formatBytes, caCertCredentialField } from "./http.js";
+export {
+  buildResourceShowcase,
+  omitLiveShowcaseStats,
+  pickShowcaseValues,
+  showcaseFields,
+  showcaseLabel,
+  showcaseStatusTone,
+  SHOWCASE_MAX_STATS,
+} from "./showcase.js";
+export type { ResourceShowcase, ShowcaseField, ShowcaseStat, ShowcaseTone } from "./showcase.js";
 export { buildMultipartBody } from "./multipart.js";
 export type { MultipartBody, MultipartPart } from "./multipart.js";
 export type { JsonRestFetchOptions } from "./http.js";

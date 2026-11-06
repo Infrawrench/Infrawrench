@@ -11,6 +11,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { ResourceTypeIcon } from "../components/icons/ResourceTypeIcon.js";
 import type { DraggableResource, DraggableWorkflow } from "./types.js";
 
 export interface DndShellProps {
@@ -45,7 +46,7 @@ export function DndShell({
   onTunnelSshAttach,
   onTabDrop,
 }: DndShellProps) {
-  const [dragPreview, setDragPreview] = useState<string | null>(null);
+  const [dragPreview, setDragPreview] = useState<{ label: string; iconKey?: string } | null>(null);
   // Keyboard: dnd-kit's attributes/listeners spreads already make draggables
   // focusable buttons; the KeyboardSensor lets Space/Enter lift and arrow keys
   // move them. Activation constraints stay on the pointer sensor only.
@@ -57,7 +58,8 @@ export function DndShell({
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
     const label = (data?.dragLabel as string) ?? (data?.resource as DraggableResource)?.displayName;
-    setDragPreview(label ?? null);
+    const iconKey = (data?.resource as DraggableResource | undefined)?.iconKey;
+    setDragPreview(label ? { label, ...(iconKey ? { iconKey } : {}) } : null);
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -155,8 +157,14 @@ export function DndShell({
 
       <DragOverlay>
         {dragPreview && (
-          <div className="px-3 py-1.5 rounded-full border border-blue-500 bg-surface-raised text-sm font-medium text-on-surface-secondary shadow-lg cursor-grabbing opacity-90">
-            {dragPreview}
+          <div className="relative size-24 cursor-grabbing overflow-hidden rounded-xl border border-accent-subtle bg-surface-raised p-2.5 text-sm font-medium leading-snug text-on-surface shadow-lg">
+            <ResourceTypeIcon
+              iconKey={dragPreview.iconKey}
+              size={72}
+              strokeWidth={1.25}
+              className="pointer-events-none absolute -bottom-9 -right-9 text-on-surface opacity-[0.13]"
+            />
+            <span className="line-clamp-3 break-words">{dragPreview.label}</span>
           </div>
         )}
       </DragOverlay>

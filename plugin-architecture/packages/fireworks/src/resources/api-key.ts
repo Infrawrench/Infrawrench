@@ -13,8 +13,8 @@ export const ApiKeyResourceType = rt({
     f("prefix", "Prefix", { required: false }),
     f("secure", "Plaintext Unknown to Fireworks", { kind: "boolean", required: false }),
     f("lastUsed", "Last Used", { required: false }),
-    f("createTime", "Created", { required: false }),
-    f("expireTime", "Expires", { required: false }),
+    f("createTime", "Created", { showcase: true, required: false }),
+    f("expireTime", "Expires", { showcase: true, required: false }),
   ],
   outputs: [o("keyId", "Key ID"), o("prefix", "Key Prefix")],
   expiryFields: [

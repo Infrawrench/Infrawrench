@@ -10,7 +10,7 @@ export const FirewallRuleResourceType = rt({
     f("expression", "Expression"),
     f("action", "Action"),
     f("enabled", "Enabled", { kind: "boolean" }),
-    f("priority", "Priority", { kind: "number", required: false, editable: false }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false, editable: false }),
     f("zoneName", "Zone", { required: false, editable: false }),
   ],
   outputs: [],

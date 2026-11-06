@@ -7,8 +7,8 @@ export const ObjectStorageResourceType = rt({
   description: "An OVHcloud Public Cloud S3-compatible storage container",
   fields: [
     f("name", "Bucket Name"),
-    f("region", "Region"),
-    f("objectsCount", "Objects", { kind: "number", required: false }),
+    f("region", "Region", { showcase: true }),
+    f("objectsCount", "Objects", { showcase: true, kind: "number", required: false }),
     f("objectsSizeBytes", "Size (bytes)", { kind: "number", required: false }),
     f("virtualHost", "Virtual Host", { required: false }),
   ],

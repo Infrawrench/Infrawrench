@@ -74,7 +74,7 @@ function DeploymentsUpsell({ orgId }: { orgId: string }) {
   return (
     <div className="flex h-full min-h-0 items-center justify-center p-8 text-on-surface">
       <div className="max-w-md w-full border border-border rounded-xl p-6">
-        <span className="inline-block text-xs font-medium px-2 py-1 rounded-full bg-blue-500/10 text-info mb-4">
+        <span className="inline-block text-xs font-medium px-2 py-1 rounded-md bg-accent/10 text-info mb-4">
           {gt("Pro feature")}
         </span>
         <h1 className="text-lg font-semibold mb-2">{gt("Deploy from GitHub")}</h1>
@@ -91,7 +91,7 @@ function DeploymentsUpsell({ orgId }: { orgId: string }) {
         <Link
           to="/org/$orgId/settings/billing"
           params={{ orgId }}
-          className="inline-block px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+          className="inline-block px-4 py-2 text-sm font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors"
         >
           {gt("Upgrade to Pro")}
         </Link>

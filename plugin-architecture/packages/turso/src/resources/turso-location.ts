@@ -7,5 +7,5 @@ export const TursoLocationResourceType = rt({
   description: "A Turso platform location available for groups and database instances",
   fields: [f("code", "Code"), f("description", "Description", { required: false })],
   outputs: [o("locationCode", "Location Code")],
-  iconKey: "turso",
+  iconKey: "globe",
 });

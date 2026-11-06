@@ -25,7 +25,12 @@ export const AccountResourceType = rt({
       editable: false,
     }),
     f("utilizationDate", "Utilization As Of", { required: false, editable: false }),
-    f("bucketCount", "Buckets", { kind: "number", required: false, editable: false }),
+    f("bucketCount", "Buckets", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("subAccounts", "Account Control", { required: false, editable: false }),
   ],
   outputs: [o("s3Endpoint", "S3 Endpoint")],
@@ -41,8 +46,8 @@ export const BucketResourceType = rt({
     "A Wasabi bucket. Browse, upload and delete objects, edit its policy, versioning, Object Lock default retention and tags, manage lifecycle and CORS rules, mint bucket-scoped keys, and chart its daily storage.",
   fields: [
     f("name", "Name", { editable: false }),
-    f("region", "Region", { editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("versioning", "Versioning", {
       kind: "enum",
       enumValues: ["Enabled", "Suspended", "Unversioned"],
@@ -56,7 +61,11 @@ export const BucketResourceType = rt({
       required: false,
       description: "Only applies when the bucket was created with Object Lock.",
     }),
-    f("retentionDays", "Default Retention (days)", { kind: "number", required: false }),
+    f("retentionDays", "Default Retention (days)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+    }),
     f("tags", "Tags", { required: false, description: "Comma-separated key=value pairs." }),
     f("activeStorageGib", "Active Storage (GiB)", {
       kind: "number",
@@ -192,14 +201,19 @@ export const IamUserResourceType = rt({
     f("userName", "User Name", { editable: false }),
     f("userId", "User ID", { required: false, editable: false }),
     f("arn", "ARN", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("policies", "Attached Policies", {
       required: false,
       description: "Comma-separated policy ARNs.",
     }),
     f("inlinePolicies", "Inline Policies", { required: false, editable: false }),
     f("groups", "Groups", { required: false, editable: false }),
-    f("accessKeyCount", "Access Keys", { kind: "number", required: false, editable: false }),
+    f("accessKeyCount", "Access Keys", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("isAdmin", "Administrator", { kind: "boolean", required: false, editable: false }),
   ],
   outputs: [o("arn", "ARN")],
@@ -228,9 +242,9 @@ export const AccessKeyResourceType = rt({
   fields: [
     f("accessKeyId", "Access Key ID", { editable: false }),
     f("userName", "User", { editable: false }),
-    f("status", "Status", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("lastUsedAt", "Last Used", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("lastUsedAt", "Last Used", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("accessKeyId", "Access Key ID")],
   expiryFields: [
@@ -261,7 +275,7 @@ export const SubAccountResourceType = rt({
     f("enableFtp", "FTP/FTPS", { kind: "boolean", required: false }),
     f("allowAccountDelete", "Can Delete Itself", { kind: "boolean", required: false }),
     f("mfa", "MFA Enabled", { kind: "boolean", required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("accessKey", "Root Access Key", {

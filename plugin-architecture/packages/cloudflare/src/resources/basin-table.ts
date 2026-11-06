@@ -6,12 +6,12 @@ export const BasinTableResourceType = rt({
   description: "An Apache Iceberg table in a Cloudflare Basin Catalog, queryable with Basin SQL",
   fields: [
     f("name", "Name", { editable: false }),
-    f("namespace", "Namespace", { editable: false }),
+    f("namespace", "Namespace", { showcase: true, editable: false }),
     f("bucket", "R2 Bucket", { editable: false }),
     f("tableUuid", "Table UUID", { required: false, editable: false }),
-    f("location", "Location", { required: false, editable: false }),
+    f("location", "Location", { showcase: true, required: false, editable: false }),
     f("metadataLocation", "Metadata Location", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("updatedAt", "Updated", { required: false, editable: false }),
     f("compaction", "Compaction", {
       kind: "enum",

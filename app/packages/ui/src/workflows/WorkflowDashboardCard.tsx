@@ -106,7 +106,7 @@ export function WorkflowDashboardCard({
         <button
           type="button"
           onClick={onOpen}
-          className="text-base font-semibold text-on-surface leading-tight truncate text-left hover:text-white min-w-0 flex-1"
+          className="text-base font-semibold text-on-surface leading-tight truncate text-left hover:text-on-surface min-w-0 flex-1"
           title={data.name}
         >
           {data.name}
@@ -118,7 +118,7 @@ export function WorkflowDashboardCard({
             void run();
           }}
           disabled={running}
-          className="flex-shrink-0 text-[11px] px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors mr-6"
+          className="flex-shrink-0 text-[11px] px-2 py-1 rounded bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent transition-colors mr-6"
         >
           {running ? gt("Running…") : gt("Run")}
         </button>

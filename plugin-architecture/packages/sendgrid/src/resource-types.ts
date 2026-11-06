@@ -15,7 +15,7 @@ export const AccountResourceType = rt({
   fields: [
     f("username", "Username", { editable: false }),
     f("userId", "User ID", { required: false, editable: false }),
-    f("type", "Plan Type", { required: false, editable: false }),
+    f("type", "Plan Type", { showcase: true, required: false, editable: false }),
     f("reputation", "Sender Reputation", { kind: "number", required: false, editable: false }),
     f("creditsTotal", "Email Credits", { kind: "number", required: false, editable: false }),
     f("creditsUsed", "Credits Used", { kind: "number", required: false, editable: false }),
@@ -24,7 +24,7 @@ export const AccountResourceType = rt({
     f("creditsResetFrequency", "Credits Reset", { required: false, editable: false }),
     f("creditsNextReset", "Next Reset", { required: false, editable: false }),
     f("company", "Company", { required: false, editable: false }),
-    f("region", "API Region", { required: false, editable: false }),
+    f("region", "API Region", { showcase: true, required: false, editable: false }),
     f("onBehalfOf", "Acting As Subuser", { required: false, editable: false }),
   ],
   outputs: [o("username", "Username")],
@@ -48,7 +48,12 @@ export const ApiKeyResourceType = rt({
       description:
         "Comma-separated SendGrid scopes, such as mail.send. A key can only grant scopes the connected key holds.",
     }),
-    f("scopeCount", "Scope Count", { kind: "number", required: false, editable: false }),
+    f("scopeCount", "Scope Count", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("canCreateKeys", "Can Create API Keys", {
       kind: "boolean",
       required: false,
@@ -87,7 +92,7 @@ export const DomainResourceType = rt({
   description:
     "A domain authenticated for sending (DKIM and SPF through CNAME or TXT records). Validate its DNS, make it the default, or create and delete domains.",
   fields: [
-    f("domain", "Domain", { editable: false }),
+    f("domain", "Domain", { showcase: true, editable: false }),
     f("subdomain", "Return-Path Subdomain", { required: false, editable: false }),
     f("username", "Owner", { required: false, editable: false }),
     f("valid", "Valid", { kind: "boolean", required: false, editable: false }),
@@ -133,7 +138,7 @@ export const LinkBrandingResourceType = rt({
   description:
     "Branded tracking links: click and open tracking served from your own subdomain instead of sendgrid.net. Validate, make default, create or delete.",
   fields: [
-    f("domain", "Domain", { editable: false }),
+    f("domain", "Domain", { showcase: true, editable: false }),
     f("subdomain", "Subdomain", { required: false, editable: false }),
     f("username", "Owner", { required: false, editable: false }),
     f("valid", "Valid", { kind: "boolean", required: false, editable: false }),
@@ -157,7 +162,7 @@ export const ReverseDnsResourceType = rt({
   fields: [
     f("ip", "IP Address", { editable: false }),
     f("rdns", "Hostname", { required: false, editable: false }),
-    f("domain", "Domain", { required: false, editable: false }),
+    f("domain", "Domain", { showcase: true, required: false, editable: false }),
     f("subdomain", "Subdomain", { required: false, editable: false }),
     f("valid", "Valid", { kind: "boolean", required: false, editable: false }),
     f("rdnsId", "Reverse DNS ID", { required: false, editable: false }),
@@ -181,9 +186,9 @@ export const DnsRecordResourceType = rt({
     "A DNS record SendGrid needs at your DNS provider: domain authentication CNAMEs or TXT records, link branding CNAMEs, reverse DNS A records and inbound parse MX records, with whether SendGrid found it.",
   fields: [
     f("name", "Host"),
-    f("type", "Type"),
+    f("type", "Type", { showcase: true }),
     f("content", "Value"),
-    f("priority", "Priority", { kind: "number", required: false }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false }),
     f("purpose", "Purpose", { required: false }),
     f("valid", "Valid", { kind: "boolean", required: false }),
     f("ownerType", "For", { required: false }),
@@ -217,7 +222,7 @@ export const IpResourceType = rt({
   description:
     "A dedicated sending IP: its pools, warmup state, reverse DNS and the subusers that send from it. Start or stop automatic warmup.",
   fields: [
-    f("ip", "IP Address", { editable: false }),
+    f("ip", "IP Address", { showcase: true, editable: false }),
     f("pools", "IP Pools", { required: false, editable: false }),
     f("warmup", "Warming Up", { kind: "boolean", required: false, editable: false }),
     f("warmupStartedAt", "Warmup Started", { required: false, editable: false }),
@@ -244,7 +249,7 @@ export const IpPoolResourceType = rt({
   fields: [
     f("name", "Name", { description: "Up to 64 characters." }),
     f("ips", "IPs", { required: false, editable: false }),
-    f("ipCount", "IP Count", { kind: "number", required: false, editable: false }),
+    f("ipCount", "IP Count", { showcase: true, kind: "number", required: false, editable: false }),
   ],
   outputs: [o("name", "Name")],
   supportsCreate: true,
@@ -267,7 +272,7 @@ export const SubuserResourceType = rt({
       required: false,
       description: "A disabled subuser cannot send mail or sign in.",
     }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("reputation", "Sender Reputation", { kind: "number", required: false, editable: false }),
     f("creditType", "Credit Allocation", {
       kind: "enum",
@@ -331,8 +336,8 @@ export const EventWebhookResourceType = rt({
     }),
     f("oauth", "OAuth", { kind: "boolean", required: false, editable: false }),
     f("webhookId", "Webhook ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("url", "URL"), o("publicKey", "Verification Public Key")],
   supportsCreate: true,
@@ -348,7 +353,7 @@ export const InboundParseResourceType = rt({
   description:
     "An Inbound Parse hostname: mail to it is parsed and posted to your URL. Needs an MX record to mx.sendgrid.net.",
   fields: [
-    f("hostname", "Receiving Hostname", { editable: false }),
+    f("hostname", "Receiving Hostname", { showcase: true, editable: false }),
     f("url", "Destination URL"),
     f("spamCheck", "Check for Spam", { kind: "boolean", required: false }),
     f("sendRaw", "Post the Raw MIME", { kind: "boolean", required: false }),
@@ -376,8 +381,13 @@ export const TemplateResourceType = rt({
     }),
     f("activeVersion", "Active Version", { required: false, editable: false }),
     f("subject", "Active Subject", { required: false, editable: false }),
-    f("versionCount", "Versions", { kind: "number", required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("versionCount", "Versions", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
     f("templateId", "Template ID", { required: false, editable: false }),
   ],
   outputs: [o("templateId", "Template ID")],
@@ -422,10 +432,10 @@ export const VerifiedSenderResourceType = rt({
     f("fromName", "From Name", { required: false }),
     f("replyTo", "Reply-To"),
     f("replyToName", "Reply-To Name", { required: false }),
-    f("address", "Address"),
+    f("address", "Address", { showcase: true }),
     f("address2", "Address Line 2", { required: false }),
     f("city", "City"),
-    f("state", "State", { required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("zip", "ZIP", { required: false }),
     f("country", "Country"),
     f("verified", "Verified", { kind: "boolean", required: false, editable: false }),
@@ -447,6 +457,7 @@ export const AlertResourceType = rt({
     "A SendGrid email alert: a usage alert when a percentage of the plan's credits is used, or a periodic stats summary.",
   fields: [
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["usage_limit", "stats_notification"],
       editable: false,

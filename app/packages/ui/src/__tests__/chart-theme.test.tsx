@@ -9,7 +9,7 @@ afterEach(() => {
 describe("useChartTheme", () => {
   it("returns fallback colours when CSS variables are unset", () => {
     const { result } = renderHook(() => useChartTheme());
-    expect(result.current.colors).toContain("#60a5fa");
+    expect(result.current.colors).toContain("#34d399");
     expect(result.current.grid).toBeTruthy();
     expect(result.current.axis).toBeTruthy();
     expect(result.current.tick).toBeTruthy();

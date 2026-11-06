@@ -18,8 +18,8 @@ export const BatchResourceType = rt({
   fields: [
     f("batchId", "Batch ID"),
     f("name", "Name", { required: false }),
-    f("createTime", "Created", { required: false }),
-    f("expireTime", "Expires", { required: false }),
+    f("createTime", "Created", { showcase: true, required: false }),
+    f("expireTime", "Expires", { showcase: true, required: false }),
     f("cancelTime", "Cancelled", { required: false }),
     f("cancelMessage", "Cancellation Reason", { required: false }),
     f("createApiKeyId", "Created By API Key", { required: false }),

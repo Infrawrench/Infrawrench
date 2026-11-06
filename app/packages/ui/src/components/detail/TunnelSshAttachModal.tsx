@@ -58,7 +58,7 @@ export interface TunnelSshAttachModalProps {
 }
 
 const inputClass =
-  "w-full px-3 py-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500";
+  "w-full px-3 py-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-accent-subtle/40 focus:border-accent-subtle";
 
 /**
  * Confirm + run the "set up SSH over a Cloudflare Tunnel" flow: point the
@@ -375,7 +375,7 @@ export function TunnelSshAttachModal({
                 type="button"
                 onClick={() => void handleRun()}
                 disabled={!canRun}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg transition-colors"
               >
                 {running ? gt("Setting up…") : gt("Run")}
               </button>

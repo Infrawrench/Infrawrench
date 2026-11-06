@@ -168,7 +168,7 @@ export function CurrencySection() {
                     type="button"
                     onClick={() => void saveCurrency(normalizeCurrencyCode(draftCurrency))}
                     disabled={saving || normalizeCurrencyCode(draftCurrency) === null}
-                    className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                    className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
                   >
                     {saving ? gt("Saving…") : gt("Save")}
                   </button>
@@ -487,7 +487,7 @@ function NewRateForm({
         type="button"
         onClick={() => void submit()}
         disabled={submitting || !ready}
-        className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+        className="px-3 py-1.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
       >
         {submitting ? gt("Saving…") : editing ? gt("Save rate") : gt("Add rate")}
       </button>

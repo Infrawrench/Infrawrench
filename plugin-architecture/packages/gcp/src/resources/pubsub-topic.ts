@@ -4,6 +4,7 @@ export const PubSubTopicResourceType = rt({
   name: "Pub/Sub Topic",
   pinnable: false,
   id: "pubsub-topic",
+  iconKey: "topic",
   description: "A Google Cloud Pub/Sub topic",
   fields: [
     f("name", "Name"),

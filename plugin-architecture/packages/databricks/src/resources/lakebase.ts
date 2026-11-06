@@ -37,7 +37,12 @@ export const LakebaseProjectResourceType = rt({
       description: "How far back point-in-time restore and branching reach, 48 to 840 hours.",
     }),
     f("defaultBranch", "Default Branch", { required: false, editable: false }),
-    f("storageBytes", "Storage (bytes)", { kind: "number", required: false, editable: false }),
+    f("storageBytes", "Storage (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("lastActive", "Compute Last Active", { required: false, editable: false }),
     f("budgetPolicyId", "Budget Policy", { required: false, editable: false }),
   ],
@@ -57,6 +62,7 @@ export const LakebaseBranchResourceType = rt({
     f("branchId", "Branch ID"),
     f("projectId", "Project ID"),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["STATE_UNSPECIFIED", "INIT", "IMPORTING", "RESETTING", "READY", "ARCHIVED"],
       required: false,
@@ -65,8 +71,8 @@ export const LakebaseBranchResourceType = rt({
     f("isProtected", "Protected", { kind: "boolean", required: false }),
     f("sourceBranch", "Source Branch", { required: false }),
     f("logicalSizeBytes", "Size (bytes)", { kind: "number", required: false }),
-    f("expireTime", "Expires", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("expireTime", "Expires", { showcase: true, required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("branchName", "Resource Name")],
   dependsOn: [

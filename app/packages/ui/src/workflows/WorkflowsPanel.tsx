@@ -494,26 +494,26 @@ export function WorkflowsPanel({
   return (
     <div className="flex flex-1 min-h-0">
       {/* Workflow list */}
-      <div className="w-64 border-r border-white/10 flex flex-col min-h-0">
-        <div className="p-3 border-b border-white/10 flex items-center justify-between">
+      <div className="w-64 border-r border-on-surface/10 flex flex-col min-h-0">
+        <div className="p-3 border-b border-on-surface/10 flex items-center justify-between">
           <span className="font-semibold text-sm">{gt("Workflows")}</span>
           <button
             type="button"
             onClick={() => void createWorkflow()}
             disabled={busy}
-            className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50"
+            className="text-xs px-2 py-1 rounded bg-accent hover:bg-accent-hover disabled:opacity-50"
           >
             {gt("+ New")}
           </button>
         </div>
-        <div className="p-2 border-b border-white/10">
+        <div className="p-2 border-b border-on-surface/10">
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={gt("Search workflows…")}
             aria-label={gt("Search workflows")}
-            className="w-full bg-transparent border border-white/15 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
+            className="w-full bg-transparent border border-on-surface/15 rounded px-2 py-1 text-xs focus:outline-none focus:border-accent-subtle"
           />
         </div>
         <div className="flex-1 overflow-auto">
@@ -542,11 +542,11 @@ export function WorkflowsPanel({
       {/* Editor + config */}
       {draft ? (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="p-3 border-b border-white/10 flex items-center gap-2 flex-wrap">
+          <div className="p-3 border-b border-on-surface/10 flex items-center gap-2 flex-wrap">
             <input
               value={draft.name}
               onChange={(e) => patch({ name: e.target.value })}
-              className="bg-transparent border border-white/15 rounded px-2 py-1 text-sm flex-1 min-w-40"
+              className="bg-transparent border border-on-surface/15 rounded px-2 py-1 text-sm flex-1 min-w-40"
               placeholder={gt("Workflow name")}
               aria-label={gt("Workflow name")}
             />
@@ -562,7 +562,7 @@ export function WorkflowsPanel({
               type="button"
               onClick={() => void save()}
               disabled={busy}
-              className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
+              className="text-xs px-3 py-1 rounded bg-on-surface/10 hover:bg-on-surface/20 disabled:opacity-50"
             >
               {gt("Save")}
             </button>
@@ -591,7 +591,7 @@ export function WorkflowsPanel({
                 <button
                   type="button"
                   onClick={stepRun}
-                  className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20"
+                  className="text-xs px-3 py-1 rounded bg-on-surface/10 hover:bg-on-surface/20"
                   title={gt("Run the next line, then pause")}
                 >
                   {gt("Step")}
@@ -658,7 +658,9 @@ export function WorkflowsPanel({
           />
 
           {error && (
-            <div className="px-3 py-2 text-xs text-danger border-b border-white/10">{error}</div>
+            <div className="px-3 py-2 text-xs text-danger border-b border-on-surface/10">
+              {error}
+            </div>
           )}
 
           <div className="flex-1 min-h-0">
@@ -730,8 +732,8 @@ function WorkflowListRow({
         type="button"
         draggable={false}
         onClick={onClick}
-        className={`block w-full text-left px-3 py-2 text-sm border-b border-white/5 hover:bg-white/5 cursor-grab active:cursor-grabbing ${
-          selected ? "bg-white/10" : ""
+        className={`block w-full text-left px-3 py-2 text-sm border-b border-on-surface/5 hover:bg-on-surface/5 cursor-grab active:cursor-grabbing ${
+          selected ? "bg-on-surface/10" : ""
         }`}
       >
         <div className="truncate">{workflow.name}</div>

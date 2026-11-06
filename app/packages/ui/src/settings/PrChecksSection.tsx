@@ -616,7 +616,7 @@ function RunRow({ run, openExternal }: { run: PrCheckRun; openExternal: (url: st
         <button
           type="button"
           onClick={() => openExternal(run.checkRunUrl!)}
-          className="text-xs text-accent hover:underline"
+          className="text-xs text-accent underline underline-offset-2"
         >
           {gt("Check")}
         </button>
@@ -625,7 +625,7 @@ function RunRow({ run, openExternal }: { run: PrCheckRun; openExternal: (url: st
         <button
           type="button"
           onClick={() => openExternal(run.pullUrl!)}
-          className="text-xs text-accent hover:underline"
+          className="text-xs text-accent underline underline-offset-2"
         >
           {gt("Pull request")}
         </button>

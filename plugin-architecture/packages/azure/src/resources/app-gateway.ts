@@ -7,14 +7,14 @@ export const AppGatewayResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
+    f("location", "Location", { showcase: true }),
     f("sku", "SKU"),
     f("tier", "Tier"),
     f("capacity", "Capacity", { kind: "number", required: false }),
-    f("provisioningState", "Provisioning State"),
+    f("provisioningState", "Provisioning State", { showcase: true }),
     f("operationalState", "Operational State", { required: false }),
-    f("backendPoolCount", "Backend Pools", { kind: "number", required: false }),
-    f("httpListenerCount", "HTTP Listeners", { kind: "number", required: false }),
+    f("backendPoolCount", "Backend Pools", { showcase: true, kind: "number", required: false }),
+    f("httpListenerCount", "HTTP Listeners", { showcase: true, kind: "number", required: false }),
     f("publicIpNames", "Frontend Public IPs", { required: false }),
     f("subnetRefs", "Subnets", { required: false }),
     f("keyVaults", "Certificate Key Vaults", {

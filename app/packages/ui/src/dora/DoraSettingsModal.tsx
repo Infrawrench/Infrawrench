@@ -216,7 +216,7 @@ export function DoraSettingsModal({ client, onClose, onSaved }: DoraSettingsModa
               type="button"
               onClick={() => void save()}
               disabled={saving || loaded === null}
-              className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-60"
+              className="px-3 py-1.5 rounded-lg text-sm bg-accent hover:bg-accent-hover text-on-accent transition-colors disabled:opacity-60"
             >
               {saving ? gt("Saving…") : gt("Save")}
             </button>

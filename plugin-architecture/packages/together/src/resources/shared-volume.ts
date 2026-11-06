@@ -12,7 +12,7 @@ export const SharedVolumeResourceType = rt({
       kind: "number",
       description: "Whole tebibytes. Volumes can grow; Together does not document shrinking.",
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("volumeId", "Volume ID"), o("volumeName", "Volume Name")],
   supportsCreate: true,

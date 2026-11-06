@@ -21,23 +21,24 @@ export const STATUS_CATEGORIES = [
 export const IncidentResourceType = rt({
   name: "Incident",
   id: "incident-io-incident",
+  iconKey: "alert",
   description:
     "Incidents that are open, and those that changed in the last week. Declare one, rename it or edit its summary, post an update, change its status or severity.",
   fields: [
     f("name", "Name"),
     f("summary", "Summary", { required: false }),
     f("reference", "Reference", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("statusCategory", "Status Category", {
       kind: "enum",
       enumValues: STATUS_CATEGORIES,
       required: false,
       editable: false,
     }),
-    f("severity", "Severity", { required: false, editable: false }),
+    f("severity", "Severity", { showcase: true, required: false, editable: false }),
     f("incidentType", "Type", { required: false, editable: false }),
-    f("mode", "Mode", { required: false, editable: false }),
-    f("visibility", "Visibility", { required: false, editable: false }),
+    f("mode", "Mode", { showcase: true, required: false, editable: false }),
+    f("visibility", "Visibility", { showcase: true, required: false, editable: false }),
     f("lead", "Incident Lead", { required: false, editable: false }),
     f("slackChannelUrl", "Slack Channel", { required: false, editable: false }),
     f("createdAt", "Declared", { required: false, editable: false }),
@@ -52,15 +53,16 @@ export const IncidentResourceType = rt({
 export const EscalationResourceType = rt({
   name: "Escalation",
   id: "incident-io-escalation",
+  iconKey: "bell",
   description:
     "A page incident.io On-call sent down an escalation path. Acknowledge or cancel it from here.",
   fields: [
     f("title", "Title"),
-    f("status", "Status", { required: false }),
-    f("priority", "Priority", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
+    f("priority", "Priority", { showcase: true, required: false }),
     f("alerts", "Alerts", { required: false }),
     f("incidents", "Incidents", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   pinnable: false,
 });
@@ -69,6 +71,7 @@ export const EscalationResourceType = rt({
 export const AlertSourceResourceType = rt({
   name: "Alert Source",
   id: "incident-io-alert-source",
+  iconKey: "plug",
   description:
     "Where alerts come into incident.io. HTTP sources can receive Infrawrench alerts from an alert routing rule.",
   fields: [
@@ -93,6 +96,7 @@ export const AlertSourceResourceType = rt({
 export const AlertRouteResourceType = rt({
   name: "Alert Route",
   id: "incident-io-alert-route",
+  iconKey: "route",
   description: "How alerts become escalations and incidents. Edited in incident.io.",
   fields: [f("name", "Name"), f("enabled", "Enabled", { kind: "boolean", required: false })],
   pinnable: false,
@@ -102,6 +106,7 @@ export const AlertRouteResourceType = rt({
 export const ScheduleResourceType = rt({
   name: "Schedule",
   id: "incident-io-schedule",
+  iconKey: "calendar",
   description:
     "An on-call schedule. See who is on call now and for the next week, and add overrides.",
   fields: [
@@ -120,10 +125,11 @@ export const EscalationPathResourceType = rt({
   name: "Escalation Path",
   plural: "Escalation Paths",
   id: "incident-io-escalation-path",
+  iconKey: "route",
   description: "Who an alert pages, level by level. Shows who would be paged right now.",
   fields: [
     f("name", "Name"),
-    f("kind", "Kind", { required: false }),
+    f("kind", "Kind", { showcase: true, required: false }),
     f("currentResponders", "Would Page Now", { required: false }),
     f("levels", "Levels", { kind: "number", required: false }),
   ],
@@ -135,6 +141,7 @@ export const SeverityResourceType = rt({
   name: "Severity",
   plural: "Severities",
   id: "incident-io-severity",
+  iconKey: "flag",
   description: "The severities an incident can have, ranked. Edit names, descriptions and ranks.",
   fields: [
     f("name", "Name"),
@@ -155,10 +162,16 @@ export const StatusResourceType = rt({
   name: "Incident Status",
   plural: "Incident Statuses",
   id: "incident-io-status",
+  iconKey: "activity",
   description: "The statuses an incident moves through, by category.",
   fields: [
     f("name", "Name"),
-    f("category", "Category", { kind: "enum", enumValues: STATUS_CATEGORIES, required: false }),
+    f("category", "Category", {
+      showcase: true,
+      kind: "enum",
+      enumValues: STATUS_CATEGORIES,
+      required: false,
+    }),
     f("rank", "Rank", { kind: "number", required: false }),
     f("description", "Description", { required: false }),
   ],
@@ -169,6 +182,7 @@ export const StatusResourceType = rt({
 export const CatalogTypeResourceType = rt({
   name: "Catalog Type",
   id: "incident-io-catalog-type",
+  iconKey: "catalog",
   description: "A kind of thing in the incident.io catalog (services, teams, customers).",
   fields: [
     f("name", "Name"),
@@ -186,10 +200,12 @@ export const CatalogTypeResourceType = rt({
 export const WorkflowResourceType = rt({
   name: "Workflow",
   id: "incident-io-workflow",
+  iconKey: "workflow",
   description: "Automation that runs when incidents change. Edited in incident.io.",
   fields: [
     f("name", "Name"),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["active", "disabled", "draft", "error"],
       required: false,
@@ -205,6 +221,7 @@ export const WorkflowResourceType = rt({
 export const StatusPageResourceType = rt({
   name: "Status Page",
   id: "incident-io-status-page",
+  iconKey: "activity",
   description: "A public status page hosted by incident.io.",
   fields: [
     f("name", "Name"),
@@ -218,12 +235,14 @@ export const StatusPageResourceType = rt({
 export const MaintenanceWindowResourceType = rt({
   name: "Maintenance Window",
   id: "incident-io-maintenance-window",
+  iconKey: "clock",
   description: "A window during which matching alerts do not page. End one early from here.",
   fields: [
     f("name", "Name"),
     f("startAt", "Starts", { required: false }),
     f("endAt", "Ends", { required: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["upcoming", "active", "past"],
       required: false,
@@ -238,11 +257,12 @@ export const MaintenanceWindowResourceType = rt({
 export const UserResourceType = rt({
   name: "User",
   id: "incident-io-user",
+  iconKey: "user",
   description: "People in incident.io, matched to Infrawrench members by email for on-call.",
   fields: [
     f("name", "Name"),
     f("email", "Email", { required: false }),
-    f("role", "Role", { required: false }),
+    f("role", "Role", { showcase: true, required: false }),
     f("onCallSeat", "On-call Seat", { required: false }),
     f("responseSeat", "Response Seat", { required: false }),
     f("active", "Active", { kind: "boolean", required: false }),
@@ -254,8 +274,12 @@ export const UserResourceType = rt({
 export const TeamResourceType = rt({
   name: "Team",
   id: "incident-io-team",
+  iconKey: "team",
   description: "Teams that own incidents, schedules and escalation paths.",
-  fields: [f("name", "Name"), f("members", "Members", { kind: "number", required: false })],
+  fields: [
+    f("name", "Name"),
+    f("members", "Members", { showcase: true, kind: "number", required: false }),
+  ],
   pinnable: false,
 });
 

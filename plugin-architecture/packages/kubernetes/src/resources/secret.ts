@@ -4,17 +4,18 @@ export const SecretResourceType = rt({
   name: "Secret",
   pinnable: false,
   id: "k8s-secret",
+  iconKey: "secret",
   description: "A Kubernetes Secret that stores sensitive data like passwords and tokens",
   fields: [
     f("name", "Name"),
-    f("namespace", "Namespace"),
+    f("namespace", "Namespace", { showcase: true }),
     f("qualifiedName", "Qualified Name", {
       required: false,
       description: "namespace/name, as referenced by objects in this namespace",
     }),
-    f("type", "Type", { required: false }),
+    f("type", "Type", { showcase: true, required: false }),
     f("keys", "Keys", { required: false }),
-    f("dataCount", "Data Entries", { kind: "number", required: false }),
+    f("dataCount", "Data Entries", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [],
   dependsOn: [

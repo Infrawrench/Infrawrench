@@ -18,9 +18,9 @@ export const OpenSearchDomainResourceType = rt({
   description: "An Amazon OpenSearch Service domain",
   fields: [
     f("domainName", "Domain Name"),
-    f("engineVersion", "Engine Version"),
-    f("instanceType", "Instance Type", { required: false }),
-    f("instanceCount", "Instance Count", { kind: "number", required: false }),
+    f("engineVersion", "Engine Version", { showcase: true }),
+    f("instanceType", "Instance Type", { showcase: true, required: false }),
+    f("instanceCount", "Instance Count", { showcase: true, kind: "number", required: false }),
     f("normalizedInstanceUnits", "Normalized Instance Units", {
       kind: "number",
       required: false,

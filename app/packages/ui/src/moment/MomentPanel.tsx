@@ -156,7 +156,7 @@ export function MomentPanel({
         <span className="w-3 shrink-0 flex items-center justify-center">
           <SeverityIssue severity={event.severity} />
         </span>
-        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap shrink-0">
+        <span className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap shrink-0">
           {gtData(MOMENT_FEED_LABELS[event.feed] ?? event.feed)}
         </span>
         {onOpenEvent && event.link ? (
@@ -173,7 +173,7 @@ export function MomentPanel({
         )}
         {badge && (
           <span
-            className="rounded-full border border-amber-500/40 text-warning px-2 py-0.5 text-xs whitespace-nowrap shrink-0"
+            className="rounded-md border border-amber-500/40 text-warning px-2 py-0.5 text-xs whitespace-nowrap shrink-0"
             title={gt("This event falls inside a provider incident (correlation, not causation).")}
           >
             {badge}
@@ -250,7 +250,7 @@ export function MomentPanel({
           {unhealthyFeeds.map((feed) => (
             <span
               key={feed.feed}
-              className={`rounded-full border px-2 py-0.5 text-xs whitespace-nowrap ${
+              className={`rounded-md border px-2 py-0.5 text-xs whitespace-nowrap ${
                 feed.status === "error"
                   ? "border-amber-500/40 text-warning"
                   : "border-border text-on-surface-faint"
@@ -362,7 +362,7 @@ export function MomentPanel({
                       {describeIncidentBadge(
                         spansById(item.incidentIds, data?.incidents ?? []),
                       ) && (
-                        <span className="rounded-full border border-amber-500/40 text-warning px-2 py-0.5 text-xs whitespace-nowrap shrink-0">
+                        <span className="rounded-md border border-amber-500/40 text-warning px-2 py-0.5 text-xs whitespace-nowrap shrink-0">
                           {describeIncidentBadge(
                             spansById(item.incidentIds, data?.incidents ?? []),
                           )}

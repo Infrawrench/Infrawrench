@@ -52,12 +52,12 @@ export const NeonEndpointResourceType = rt({
   id: "neon-endpoint",
   description: "A Neon compute endpoint: the serverless Postgres connection point",
   fields: [
-    f("host", "Host", { editable: false }),
+    f("host", "Host", { showcase: true, editable: false }),
     f("name", "Name", { required: false }),
     f("projectId", "Project ID", { editable: false }),
     f("branchId", "Branch ID", { editable: false }),
     f("currentState", "State", { required: false, editable: false }),
-    f("type", "Type", { required: false, editable: false }),
+    f("type", "Type", { showcase: true, required: false, editable: false }),
     f("regionId", "Region", { required: false, editable: false }),
     f("lastActive", "Last Active", { required: false, editable: false }),
     // The Edit form writes these through `PATCH .../endpoints/{id}`.
@@ -96,5 +96,5 @@ export const NeonEndpointResourceType = rt({
   },
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "neon",
+  iconKey: "plug",
 });

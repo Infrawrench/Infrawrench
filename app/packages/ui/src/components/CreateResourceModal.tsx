@@ -215,7 +215,7 @@ export function CreateResourceModal({
                 disabled={
                   form.creating || form.loadingConfig || !!form.configError || !form.isValid
                 }
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg transition-colors"
               >
                 {form.creating ? gt("Creating...") : gt("Create {name}", { name: displayName })}
               </button>

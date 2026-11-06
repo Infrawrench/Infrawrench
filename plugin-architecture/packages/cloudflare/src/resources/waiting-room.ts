@@ -7,7 +7,7 @@ export const WaitingRoomResourceType = rt({
   description: "A Cloudflare Waiting Room for managing traffic surges",
   fields: [
     f("name", "Name"),
-    f("host", "Host"),
+    f("host", "Host", { showcase: true }),
     f("path", "Path", { required: false }),
     f("totalActiveUsers", "Total Active Users", { kind: "number", required: false }),
     f("newUsersPerMinute", "New Users/Minute", { kind: "number", required: false }),

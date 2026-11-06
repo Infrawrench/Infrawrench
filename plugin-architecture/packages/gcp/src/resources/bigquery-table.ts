@@ -4,6 +4,7 @@ export const BigQueryTableResourceType = rt({
   name: "BigQuery Table",
   plural: "Tables",
   id: "bigquery-table",
+  iconKey: "table",
   description: "A table, view, or materialized view inside a BigQuery dataset",
   fields: [
     f("name", "Table ID"),
@@ -12,8 +13,8 @@ export const BigQueryTableResourceType = rt({
       description: "Fully-qualified dataset this table lives in, as project:dataset",
     }),
     f("friendlyName", "Friendly Name", { required: false }),
-    f("type", "Type", { required: false }),
-    f("location", "Data location", { required: false }),
+    f("type", "Type", { showcase: true, required: false }),
+    f("location", "Data location", { showcase: true, required: false }),
     f("description", "Description", { required: false }),
     f("labels", "Labels", { required: false }),
     f("creationTime", "Created", { required: false }),

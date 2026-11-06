@@ -7,9 +7,9 @@ export const VercelTeamResourceType = rt({
   fields: [
     f("name", "Name"),
     f("slug", "Slug", { required: false }),
-    f("createdAt", "Created At", { required: false }),
-    f("updatedAt", "Updated At", { required: false }),
-    f("memberCount", "Members", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false }),
+    f("memberCount", "Members", { showcase: true, required: false }),
   ],
   outputs: [o("teamId", "Team ID"), o("teamSlug", "Team Slug")],
   supportsCreate: true,

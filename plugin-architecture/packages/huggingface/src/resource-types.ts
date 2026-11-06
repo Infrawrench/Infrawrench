@@ -14,7 +14,7 @@ export const InferenceEndpointType = rt({
     "A dedicated Hugging Face Inference Endpoint: a model served on reserved CPU, GPU or Inferentia compute with autoscaling",
   fields: [
     f("name", "Name", { editable: false }),
-    f("state", "State", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
     f("repository", "Model Repository", { required: false }),
     f("revision", "Revision", {
       required: false,
@@ -22,11 +22,11 @@ export const InferenceEndpointType = rt({
         "Commit SHA or branch to serve. Leave empty to follow the latest commit on main.",
     }),
     f("task", "Task", { required: false, editable: false }),
-    f("framework", "Framework", { required: false, editable: false }),
+    f("framework", "Framework", { showcase: true, required: false, editable: false }),
     f("vendor", "Cloud", { required: false, editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("accelerator", "Accelerator", { required: false, editable: false }),
-    f("instanceType", "Instance Type", { required: false, editable: false }),
+    f("instanceType", "Instance Type", { showcase: true, required: false, editable: false }),
     f("instanceSize", "Instance Size", { required: false, editable: false }),
     f("minReplica", "Min Replicas", {
       kind: "number",
@@ -91,6 +91,7 @@ export const ModelRepoType = rt({
   fields: [
     f("repoId", "Repository", { editable: false }),
     f("visibility", "Visibility", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["public", "private"],
@@ -108,7 +109,7 @@ export const ModelRepoType = rt({
     f("likes", "Likes", { kind: "number", required: false, editable: false }),
     f("usedStorage", "Storage (bytes)", { kind: "number", required: false, editable: false }),
     f("lastModified", "Last Modified", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("repoId", "Repository ID"), o("url", "Hub URL")],
   supportsCreate: true,
@@ -125,6 +126,7 @@ export const DatasetRepoType = rt({
   fields: [
     f("repoId", "Repository", { editable: false }),
     f("visibility", "Visibility", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["public", "private"],
@@ -140,7 +142,7 @@ export const DatasetRepoType = rt({
     f("likes", "Likes", { kind: "number", required: false, editable: false }),
     f("usedStorage", "Storage (bytes)", { kind: "number", required: false, editable: false }),
     f("lastModified", "Last Modified", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("repoId", "Repository ID"), o("url", "Hub URL")],
   supportsCreate: true,
@@ -157,6 +159,7 @@ export const SpaceType = rt({
   fields: [
     f("repoId", "Space", { editable: false }),
     f("visibility", "Visibility", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["public", "private", "protected"],
@@ -176,7 +179,7 @@ export const SpaceType = rt({
     f("subdomain", "Subdomain", { required: false, editable: false }),
     f("likes", "Likes", { kind: "number", required: false, editable: false }),
     f("lastModified", "Last Modified", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("repoId", "Space ID"),
@@ -218,7 +221,7 @@ export const JobType = rt({
     f("timeoutSeconds", "Timeout (seconds)", { kind: "number", required: false }),
     f("runningSecs", "Running Time (seconds)", { kind: "number", required: false }),
     f("createdBy", "Created By", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("startedAt", "Started", { required: false }),
     f("finishedAt", "Finished", { required: false }),
   ],
@@ -236,6 +239,7 @@ export const ScheduledJobType = rt({
   fields: [
     f("scheduledJobId", "Scheduled Job ID", { editable: false }),
     f("schedule", "Schedule", {
+      showcase: true,
       description: "Cron expression (UTC), or @hourly, @daily, @weekly, @monthly, @yearly.",
     }),
     f("suspended", "Suspended", { kind: "boolean", required: false, editable: false }),
@@ -251,7 +255,7 @@ export const ScheduledJobType = rt({
     f("lastJobId", "Last Run", { required: false, editable: false }),
     f("lastRunAt", "Last Run At", { required: false, editable: false }),
     f("nextRunAt", "Next Run", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("scheduledJobId", "Scheduled Job ID")],
   dependsOn: [{ fieldKey: "lastJobId", targetTypeId: "hf-job", label: "last ran" }],
@@ -283,7 +287,7 @@ export const ProviderModelType = rt({
     f("inputModalities", "Input", { required: false }),
     f("outputModalities", "Output", { required: false }),
     f("providers", "Providers", { required: false }),
-    f("providerCount", "Provider Count", { kind: "number", required: false }),
+    f("providerCount", "Provider Count", { showcase: true, kind: "number", required: false }),
     f("cheapestInput", "Cheapest Input (USD / 1M tokens)", { kind: "number", required: false }),
     f("cheapestOutput", "Cheapest Output (USD / 1M tokens)", { kind: "number", required: false }),
     f("maxContextLength", "Max Context Length", { kind: "number", required: false }),
@@ -308,8 +312,8 @@ export const ServiceAccountType = rt({
     f("username", "Username", { required: false }),
     f("description", "Description", { required: false }),
     f("email", "Email", { required: false }),
-    f("tokenCount", "Tokens", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("tokenCount", "Tokens", { showcase: true, kind: "number", required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("username", "Username")],
   credentialFormats: [
@@ -355,11 +359,11 @@ export const MemberTokenType = rt({
     f("tokenId", "Token ID"),
     f("displayName", "Name", { required: false }),
     f("owner", "Owner", { required: false }),
-    f("role", "Role", { required: false }),
+    f("role", "Role", { showcase: true, required: false }),
     f("last4", "Ends With", { required: false }),
-    f("status", "Approval", { required: false }),
-    f("createdAt", "Created", { required: false }),
-    f("lastUsedAt", "Last Used", { required: false }),
+    f("status", "Approval", { showcase: true, required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
+    f("lastUsedAt", "Last Used", { showcase: true, required: false }),
   ],
   outputs: [],
   expiryFields: [

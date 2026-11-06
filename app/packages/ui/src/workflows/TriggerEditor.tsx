@@ -113,7 +113,7 @@ export function TriggerEditor({
   const kind = trigger.kind;
   const triggerSelectId = useId();
   return (
-    <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-wrap text-xs">
+    <div className="px-3 py-2 border-b border-on-surface/10 flex items-center gap-2 flex-wrap text-xs">
       <label htmlFor={triggerSelectId} className="opacity-60">
         {gt("Trigger")}
       </label>
@@ -133,7 +133,7 @@ export function TriggerEditor({
             });
           else onChange({ kind: "git", events: ["push"] });
         }}
-        className="bg-transparent border border-white/15 rounded px-2 py-1"
+        className="bg-transparent border border-on-surface/15 rounded px-2 py-1"
       >
         <option value="manual">{gt("Manual")}</option>
         <option value="cron">{gt("Cron")}</option>
@@ -152,7 +152,7 @@ export function TriggerEditor({
               <button
                 type="button"
                 onClick={gitIntegration.onConnect}
-                className="px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+                className="px-2 py-1 rounded bg-on-surface/10 hover:bg-on-surface/20"
               >
                 {gt("Connect GitHub")}
               </button>
@@ -181,7 +181,7 @@ export function TriggerEditor({
                       : { kind: "git", events: trigger.events ?? ["push"] },
                   );
                 }}
-                className="bg-transparent border border-white/15 rounded px-2 py-1 max-w-56"
+                className="bg-transparent border border-on-surface/15 rounded px-2 py-1 max-w-56"
                 aria-label={gt("Repository")}
               >
                 <option value="">{gt("Select a repo…")}</option>
@@ -195,14 +195,14 @@ export function TriggerEditor({
                 value={trigger.branch ?? ""}
                 onChange={(e) => onChange({ ...trigger, branch: e.target.value })}
                 placeholder={gt("branch")}
-                className="bg-transparent border border-white/15 rounded px-2 py-1 w-28 font-mono"
+                className="bg-transparent border border-on-surface/15 rounded px-2 py-1 w-28 font-mono"
                 aria-label={gt("Branch")}
               />
               <button
                 type="button"
                 onClick={gitIntegration.onConnect}
                 title={gt("Add or remove repositories on GitHub")}
-                className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
+                className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-on-surface/10"
               >
                 {gt("+ repos")}
               </button>
@@ -291,7 +291,7 @@ function CronTriggerFields({
         onChange={(e) => {
           if (e.target.value !== "custom") onChange({ ...trigger, expression: e.target.value });
         }}
-        className="bg-transparent border border-white/15 rounded px-2 py-1"
+        className="bg-transparent border border-on-surface/15 rounded px-2 py-1"
         aria-label={gt("Schedule preset")}
       >
         {CRON_PRESETS.map((p) => (
@@ -308,7 +308,7 @@ function CronTriggerFields({
           placeholder="* * * * *"
           spellCheck={false}
           aria-label={gt("Cron expression")}
-          className="bg-surface-overlay border border-white/15 rounded px-2 py-1 font-mono w-36 text-center tracking-[0.3em]"
+          className="bg-surface-overlay border border-on-surface/15 rounded px-2 py-1 font-mono w-36 text-center tracking-[0.3em]"
         />
         <span className="mt-0.5 text-[9px] text-on-surface-faint tracking-tight">
           {gt("min")}
@@ -334,7 +334,7 @@ function CronTriggerFields({
         spellCheck={false}
         aria-label={gt("Timezone (IANA name, defaults to UTC)")}
         title={gt("IANA timezone the schedule runs in, e.g. Europe/London. Leave empty for UTC.")}
-        className="bg-transparent border border-white/15 rounded px-2 py-1 w-32 font-mono"
+        className="bg-transparent border border-on-surface/15 rounded px-2 py-1 w-32 font-mono"
       />
       {cronError || timezoneError ? (
         <span className="text-[11px] text-danger">{cronError ?? timezoneError}</span>
@@ -389,7 +389,7 @@ function BudgetTriggerFields({
       <select
         value={trigger.budgetId}
         onChange={(e) => onChange({ ...trigger, budgetId: e.target.value })}
-        className="bg-transparent border border-white/15 rounded px-2 py-1 max-w-56"
+        className="bg-transparent border border-on-surface/15 rounded px-2 py-1 max-w-56"
         aria-label={gt("Budget")}
       >
         <option value="">{gt("Select a budget…")}</option>
@@ -408,7 +408,7 @@ function BudgetTriggerFields({
           const next = Number(e.target.value);
           onChange({ ...trigger, percent: next > 0 ? next : DEFAULT_BUDGET_PERCENT });
         }}
-        className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-16 text-right font-mono"
+        className="bg-surface-overlay border border-on-surface/15 rounded px-2 py-1 w-16 text-right font-mono"
         aria-label={gt("Budget threshold percent")}
       />
       <span className="opacity-60">{gt("% of")}</span>
@@ -417,7 +417,7 @@ function BudgetTriggerFields({
         onChange={(e) =>
           onChange({ ...trigger, metric: e.target.value === "forecast" ? "forecast" : "actual" })
         }
-        className="bg-transparent border border-white/15 rounded px-2 py-1"
+        className="bg-transparent border border-on-surface/15 rounded px-2 py-1"
         aria-label={gt("Budget measure")}
       >
         <option value="actual">{gt("spend so far")}</option>
@@ -469,7 +469,7 @@ function WebhookSecretField({
         <button
           type="button"
           onClick={() => onChange("")}
-          className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
+          className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-on-surface/10"
         >
           {gt("Replace")}
         </button>
@@ -490,13 +490,13 @@ function WebhookSecretField({
         placeholder={gt("optional, but recommended")}
         autoComplete="off"
         spellCheck={false}
-        className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-44 font-mono"
+        className="bg-surface-overlay border border-on-surface/15 rounded px-2 py-1 w-44 font-mono"
       />
       {hasWebhookSecret && (
         <button
           type="button"
           onClick={() => onChange(null)}
-          className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
+          className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-on-surface/10"
         >
           {gt("Cancel")}
         </button>

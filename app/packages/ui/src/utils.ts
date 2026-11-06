@@ -2,6 +2,7 @@
 // client-core; re-exported here because web and desktop import it from `ui`,
 // and `getListableResourceTypes` below is its only in-package caller.
 import { getAccountRootType } from "@infrawrench/client-core";
+import type { ShowcaseField } from "@infrawrench/plugin-base";
 
 export { getAccountRootType };
 
@@ -352,18 +353,6 @@ export function getListableResourceTypes<T extends ResourceTypeInfo>(resourceTyp
   return resourceTypes.filter((typeDef) => !typeDef.parentTypeId || typeDef.showInSidebar);
 }
 
-/** Extract and truncate a display-friendly host from resource fields. */
-export function extractHostLabel(fields: Record<string, unknown>, maxLength = 28): string {
-  const rawHost = String(fields["host"] ?? fields["region"] ?? fields["engine"] ?? "");
-  if (!rawHost) return "";
-  try {
-    const h = rawHost.includes("://") ? new URL(rawHost).hostname : rawHost;
-    return h.length > maxLength ? h.slice(0, maxLength - 2) + "\u2026" : h;
-  } catch {
-    return rawHost.length > maxLength ? rawHost.slice(0, maxLength - 2) + "\u2026" : rawHost;
-  }
-}
-
 /** Minimal child resource info for building groups. */
 interface ChildResourceInput {
   id: string;
@@ -380,6 +369,8 @@ interface ChildTypeInput {
   id: string;
   displayName: string;
   pluralDisplayName: string;
+  iconKey?: string | undefined;
+  showcase?: ShowcaseField[] | undefined;
   supportsCreate?: boolean | undefined;
   fields?: unknown[] | undefined;
 }
@@ -395,6 +386,8 @@ export function buildChildResourceGroups(
   typeId: string;
   displayName: string;
   pluralDisplayName: string;
+  iconKey?: string | undefined;
+  showcase?: ShowcaseField[] | undefined;
   supportsCreate: boolean;
   resources: ChildResourceInput[];
   fields?: unknown[] | undefined;
@@ -404,6 +397,8 @@ export function buildChildResourceGroups(
       typeId: ct.id,
       displayName: ct.displayName,
       pluralDisplayName: ct.pluralDisplayName,
+      ...(ct.iconKey ? { iconKey: ct.iconKey } : {}),
+      ...(ct.showcase ? { showcase: ct.showcase } : {}),
       supportsCreate: !!ct.supportsCreate,
       resources: childResources.filter((r) => r.resourceTypeId === ct.id),
       ...(ct.fields ? { fields: ct.fields } : {}),

@@ -69,7 +69,7 @@ type Phase = "compose" | "confirm" | "running" | "results";
 const INPUT_CLASSES =
   "bg-surface border border-border rounded px-2 py-1 text-sm text-on-surface focus:outline-none focus:border-accent";
 const BTN_PRIMARY =
-  "px-3 py-1.5 rounded bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity";
+  "px-3 py-1.5 rounded bg-accent text-on-accent text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity";
 const BTN_SECONDARY =
   "px-3 py-1.5 rounded border border-border text-sm text-on-surface-secondary hover:bg-surface-overlay transition-colors";
 

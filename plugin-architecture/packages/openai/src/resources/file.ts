@@ -15,9 +15,9 @@ export const FileResourceType = rt({
   fields: [
     f("filename", "Filename"),
     f("purpose", "Purpose", { required: false }),
-    f("bytes", "Size (bytes)", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
-    f("expiresAt", "Expires", { required: false }),
+    f("bytes", "Size (bytes)", { showcase: true, kind: "number", required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false }),
   ],
   outputs: [o("fileId", "File ID"), o("filename", "Filename")],
   iconKey: "file",

@@ -14,10 +14,10 @@ export const OrganizationApiKeyResourceType = rt({
     f("name", "Name", { editable: false }),
     f("obfuscatedValue", "Key", { required: false, editable: false }),
     f("permissions", "Permissions", { required: false, editable: false }),
-    f("lastUsedAt", "Last used", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("lastUsedAt", "Last used", { showcase: true, required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("apiKeyId", "API Key ID"),

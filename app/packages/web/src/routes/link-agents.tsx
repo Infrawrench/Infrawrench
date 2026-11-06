@@ -160,7 +160,7 @@ function LinkAgentsPage() {
           type="button"
           disabled={busy || !code}
           onClick={() => void handleLookup(code)}
-          className="w-full px-4 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+          className="w-full px-4 py-3 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
         >
           {busy ? gt("Checking…") : gt("Continue")}
         </button>
@@ -227,7 +227,7 @@ function LinkAgentsPage() {
                 type="button"
                 disabled={busy}
                 onClick={() => setScopes(allSelected ? new Set() : new Set(allScopes))}
-                className="text-xs text-accent hover:underline whitespace-nowrap disabled:opacity-50"
+                className="text-xs text-accent underline underline-offset-2 whitespace-nowrap disabled:opacity-50"
               >
                 {allSelected ? gt("Clear all") : gt("Select all")}
               </button>
@@ -252,7 +252,7 @@ function LinkAgentsPage() {
             type="button"
             disabled={busy || !organizationId || scopes.size === 0}
             onClick={() => void decide("approve")}
-            className="flex-1 px-4 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+            className="flex-1 px-4 py-3 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-lg transition-colors"
           >
             {gt("Approve")}
           </button>

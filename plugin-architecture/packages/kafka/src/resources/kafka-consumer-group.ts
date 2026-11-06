@@ -9,11 +9,11 @@ export const KafkaConsumerGroupResourceType = rt({
   showInSidebar: true,
   fields: [
     f("groupId", "Group ID"),
-    f("state", "State", { required: false }),
-    f("protocol", "Protocol", { required: false }),
-    f("members", "Members", { kind: "number", required: false }),
+    f("state", "State", { showcase: true, required: false }),
+    f("protocol", "Protocol", { showcase: true, required: false }),
+    f("members", "Members", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [o("groupId", "Group ID")],
   supportsDelete: true,
-  iconKey: "kafka",
+  iconKey: "group",
 });

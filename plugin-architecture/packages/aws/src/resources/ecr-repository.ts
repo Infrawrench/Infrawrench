@@ -8,7 +8,7 @@ export const ECRRepositoryResourceType = rt({
   fields: [
     f("repositoryName", "Repository Name"),
     f("registryId", "Registry ID", { required: false }),
-    f("imageCount", "Image Count", { kind: "number", required: false }),
+    f("imageCount", "Image Count", { showcase: true, kind: "number", required: false }),
     f("imageScanOnPush", "Scan on Push", { kind: "boolean", required: false }),
     f("encryptionType", "Encryption", { required: false }),
   ],

@@ -16,6 +16,7 @@ export const RoleResourceType = rt({
     f("name", "Name", { required: false }),
     f("description", "Description", { required: false }),
     f("type", "Scope", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
@@ -27,7 +28,7 @@ export const RoleResourceType = rt({
       description: "Permission slugs assigned to the role, comma-separated.",
     }),
     f("resourceTypeSlug", "Resource type", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("roleSlug", "Role Slug")],
   // `permissions` is the joined slug list; `adminValues: ["*"]` matches the

@@ -44,7 +44,7 @@ export const ProjectResourceType = rt({
       description: "Cache entries unused for this many days are evicted. 0 keeps them.",
     }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("builds30d", "Builds (30 days)", { kind: "number", required: false, editable: false }),
     f("buildMinutes30d", "Build Minutes (30 days)", {
       kind: "number",
@@ -93,10 +93,11 @@ export const BuildResourceType = rt({
     f("buildId", "Build ID"),
     f("projectId", "Project", { required: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["running", "success", "failed", "error", "canceled", "unknown"],
     }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("startedAt", "Started", { required: false }),
     f("finishedAt", "Finished", { required: false }),
     f("durationSeconds", "Duration (s)", { kind: "number", required: false }),
@@ -164,6 +165,7 @@ export const TrustPolicyResourceType = rt({
   fields: [
     f("trustPolicyId", "Trust Policy ID"),
     f("provider", "CI Provider", {
+      showcase: true,
       kind: "enum",
       enumValues: ["github", "circleci", "buildkite", "gitlab"],
     }),
@@ -188,7 +190,7 @@ export const RegistryImageResourceType = rt({
     f("tag", "Tag"),
     f("digest", "Digest", { required: false }),
     f("pushedAt", "Pushed", { required: false }),
-    f("sizeBytes", "Size (bytes)", { kind: "number", required: false }),
+    f("sizeBytes", "Size (bytes)", { showcase: true, kind: "number", required: false }),
     f("projectId", "Project", { required: false }),
   ],
   outputs: [o("imageRef", "Image Reference"), o("digest", "Digest")],
@@ -218,5 +220,5 @@ export const ActionsRepoResourceType = rt({
   ],
   outputs: [o("repo", "Repository")],
   supportsMetrics: true,
-  iconKey: "github",
+  iconKey: "git-branch",
 });

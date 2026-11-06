@@ -48,11 +48,21 @@ export const ApplicationResourceType = rt({
   description: "The Algolia application this account connects to",
   fields: [
     f("appId", "Application ID", { editable: false }),
-    f("indexCount", "Indices", { kind: "number", required: false, editable: false }),
+    f("indexCount", "Indices", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("records", "Records", { kind: "number", required: false, editable: false }),
     f("dataSize", "Data Size (bytes)", { kind: "number", required: false, editable: false }),
-    f("apiKeyCount", "API Keys", { kind: "number", required: false, editable: false }),
-    f("region", "Clusters", { required: false, editable: false }),
+    f("apiKeyCount", "API Keys", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("region", "Clusters", { showcase: true, required: false, editable: false }),
     f("allowedSources", "Admin Key Allowed Sources", { required: false, editable: false }),
   ],
   outputs: [
@@ -84,6 +94,7 @@ export const IndexResourceType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       enumValues: ["primary", "replica", "virtual replica"],
       editable: false,
@@ -91,7 +102,12 @@ export const IndexResourceType = rt({
     f("primary", "Primary Index", { required: false, editable: false }),
     f("entries", "Records", { kind: "number", required: false, editable: false }),
     f("dataSize", "Data Size (bytes)", { kind: "number", required: false, editable: false }),
-    f("fileSize", "File Size (bytes)", { kind: "number", required: false, editable: false }),
+    f("fileSize", "File Size (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("lastBuildTimeS", "Last Build (s)", { kind: "number", required: false, editable: false }),
     f("synonymCount", "Synonyms", { kind: "number", required: false, editable: false }),
     f("ruleCount", "Rules", { kind: "number", required: false, editable: false }),
@@ -114,6 +130,7 @@ export const IndexResourceType = rt({
     }),
     f("unretrievableAttributes", "Unretrievable Attributes", { required: false }),
     f("replicas", "Replicas", {
+      showcase: true,
       required: false,
       description:
         "Comma-separated replica names; virtual(name) for a virtual replica. Removing one unlinks it.",
@@ -210,8 +227,8 @@ export const ApiKeyResourceType = rt({
       description: "Seconds until expiry from creation; 0 never expires",
     }),
     f("keyPrefix", "Key Starts With", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("apiKey", "API Key", { sensitive: true })],
   expiryFields: [
@@ -231,6 +248,7 @@ export const AbTestResourceType = rt({
     f("name", "Name", { editable: false }),
     f("abTestId", "Test ID", { kind: "number", editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["active", "stopped", "expired", "failed"],
       editable: false,
@@ -250,7 +268,7 @@ export const AbTestResourceType = rt({
       required: false,
       editable: false,
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
     f("endAt", "Ends", { required: false, editable: false }),
     f("stoppedAt", "Stopped", { required: false, editable: false }),
   ],
@@ -270,18 +288,19 @@ export const CrawlerResourceType = rt({
     f("name", "Name", { editable: false }),
     f("crawlerId", "Crawler ID", { editable: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["running", "reindexing", "paused", "blocked"],
       editable: false,
     }),
     f("blockingError", "Blocking Error", { required: false, editable: false }),
     f("indexPrefix", "Index Prefix", { required: false, editable: false }),
-    f("schedule", "Schedule", { required: false, editable: false }),
+    f("schedule", "Schedule", { showcase: true, required: false, editable: false }),
     f("startUrls", "Start URLs", { required: false, editable: false }),
     f("crawledUrls", "Crawled URLs", { kind: "number", required: false, editable: false }),
     f("lastReindexStartedAt", "Last Crawl Started", { required: false, editable: false }),
     f("lastReindexEndedAt", "Last Crawl Ended", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   iconKey: "spider",
   lifecycle: {

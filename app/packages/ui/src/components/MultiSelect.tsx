@@ -37,7 +37,7 @@ const MAX_VISIBLE_CHIPS = 4;
 
 const controlClass =
   "w-full min-w-0 rounded-lg border border-border bg-surface-sunken px-2 py-1.5 text-left text-sm " +
-  "text-on-surface focus:outline-none focus:border-blue-500";
+  "text-on-surface focus:outline-none focus:border-accent-subtle";
 
 /**
  * A filterable multi-select.
@@ -237,7 +237,7 @@ export function MultiSelect({
               : {})}
             aria-label={gt("Filter {label}", { label })}
             placeholder={gt("Type to filter…")}
-            className="w-full rounded border border-border bg-surface-sunken px-2 py-1 text-sm text-on-surface focus:outline-none focus:border-blue-500"
+            className="w-full rounded border border-border bg-surface-sunken px-2 py-1 text-sm text-on-surface focus:outline-none focus:border-accent-subtle"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
@@ -302,7 +302,7 @@ export function MultiSelect({
                   <span
                     aria-hidden="true"
                     className={`flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-sm border text-[10px] ${
-                      isSelected ? "border-blue-500 bg-blue-600 text-white" : "border-border"
+                      isSelected ? "border-accent bg-accent text-on-accent" : "border-border"
                     }`}
                   >
                     {isSelected ? "✓" : ""}

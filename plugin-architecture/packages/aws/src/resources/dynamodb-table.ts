@@ -6,9 +6,9 @@ export const DynamoDBTableResourceType = rt({
   description: "An Amazon DynamoDB NoSQL table",
   fields: [
     f("tableName", "Table Name"),
-    f("status", "Status"),
-    f("itemCount", "Item Count", { kind: "number", required: false }),
-    f("sizeBytes", "Size (Bytes)", { kind: "number", required: false }),
+    f("status", "Status", { showcase: true }),
+    f("itemCount", "Item Count", { showcase: true, kind: "number", required: false }),
+    f("sizeBytes", "Size (Bytes)", { showcase: true, kind: "number", required: false }),
     f("billingMode", "Billing Mode", { required: false }),
     f("partitionKey", "Partition Key", { required: false }),
     f("sortKey", "Sort Key", { required: false }),

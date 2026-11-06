@@ -20,10 +20,14 @@ export const ProjectServiceAccountResourceType = rt({
     "A non-human identity inside a project that owns its own API keys. Rename it, change its role, mint another key, or delete it (which revokes its keys). Requires an Admin API key.",
   fields: [
     f("name", "Name"),
-    f("role", "Project Role", { kind: "enum", enumValues: ["member", "owner", "none"] }),
+    f("role", "Project Role", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["member", "owner", "none"],
+    }),
     f("projectId", "Project ID", { editable: false }),
-    f("projectName", "Project", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("projectName", "Project", { showcase: true, required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("serviceAccountId", "Service Account ID"), o("projectId", "Project ID")],
   principalRole: {

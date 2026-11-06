@@ -197,7 +197,7 @@ export function DrillsPanel({
                   </span>
                 )}
                 <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${STANDING_CLASSES[row.standing]}`}
+                  className={`rounded-md px-2 py-0.5 text-xs ${STANDING_CLASSES[row.standing]}`}
                 >
                   {standingLabel(gt, row.standing)}
                 </span>

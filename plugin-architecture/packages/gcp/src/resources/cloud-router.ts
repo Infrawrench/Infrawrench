@@ -4,10 +4,11 @@ export const CloudRouterResourceType = rt({
   name: "Cloud Router",
   pinnable: false,
   id: "cloud-router",
+  iconKey: "router",
   description: "A Google Cloud Router for dynamic routing and Cloud NAT",
   fields: [
     f("name", "Name"),
-    f("region", "Region"),
+    f("region", "Region", { showcase: true }),
     f("network", "VPC Network", {
       kind: "association",
       description: "VPC network the router attaches to",
@@ -22,7 +23,7 @@ export const CloudRouterResourceType = rt({
       ],
     }),
     f("bgpAsn", "BGP ASN", { kind: "number", required: false }),
-    f("natCount", "NAT Configs", { kind: "number", required: false }),
+    f("natCount", "NAT Configs", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [o("selfLink", "Self Link")],
   dependsOn: [

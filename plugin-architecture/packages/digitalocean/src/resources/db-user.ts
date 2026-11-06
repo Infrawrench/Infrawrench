@@ -22,6 +22,7 @@ export const DatabaseUserResourceType = rt({
       description: "Letters, digits, and `_-` only. Must be unique within the cluster.",
     }),
     f("role", "Role", {
+      showcase: true,
       required: false,
       description: "DO-assigned role: `primary` for the bootstrap user, `normal` for the rest.",
     }),

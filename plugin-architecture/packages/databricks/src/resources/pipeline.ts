@@ -8,6 +8,7 @@ export const PipelineResourceType = rt({
     f("pipelineId", "Pipeline ID"),
     f("name", "Name"),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["IDLE", "RUNNING", "STOPPING", "FAILED", "DELETED", "RESETTING"],
     }),

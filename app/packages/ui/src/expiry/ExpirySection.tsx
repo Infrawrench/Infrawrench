@@ -47,7 +47,7 @@ const SEVERITY_BADGE_CLASSES: Record<ExpirySeverity, string> = {
   expired: "bg-red-500/10 text-danger",
   critical: "bg-orange-500/10 text-severe",
   warning: "bg-amber-500/10 text-warning",
-  upcoming: "bg-blue-500/10 text-info",
+  upcoming: "bg-accent/10 text-info",
   ok: "bg-surface-overlay text-on-surface-tertiary",
 };
 
@@ -189,7 +189,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
             {EXPIRY_SEVERITIES.map((severity) => (
               <span
                 key={severity}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
               >
                 <span className="tabular-nums">{data.counts[severity]}</span>
                 {severitySummaryLabel(severity, data.leadDays, gt, gtData)}
@@ -283,7 +283,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                                 )}
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap">
-                                <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
+                                <span className="rounded-md border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
                                   {item.resourceTypeName}
                                 </span>
                               </td>
@@ -295,7 +295,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                                 {gtData(item.label)}
                                 {item.leaseAutoDelete === true && (
                                   <span
-                                    className="ml-2 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-danger"
+                                    className="ml-2 rounded-md bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-danger"
                                     title={gt(
                                       "This lease opted into auto-delete: the resource is deleted at expiry, after two warnings (change freezes pause deletion).",
                                     )}
@@ -325,7 +325,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                               </td>
                               <td className="px-4 py-2.5 whitespace-nowrap text-right">
                                 <span
-                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[item.severity]}`}
+                                  className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[item.severity]}`}
                                 >
                                   {gtData(SEVERITY_LABELS[item.severity])}
                                 </span>

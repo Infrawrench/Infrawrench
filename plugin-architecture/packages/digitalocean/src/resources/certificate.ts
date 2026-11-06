@@ -13,18 +13,19 @@ export const CertificateResourceType = rt({
   fields: [
     f("name", "Name"),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["lets_encrypt", "custom"],
     }),
-    f("state", "State", { required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("dnsNames", "Domains", {
       required: false,
       description: "Comma-separated names the certificate covers.",
     }),
     f("notAfter", "Expires", { required: false }),
     f("sha1Fingerprint", "SHA-1 Fingerprint", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [o("certificateId", "Certificate ID")],
   showInSidebar: true,

@@ -8,16 +8,18 @@ export const VolumeResourceType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["created", "destroyed", "restoring"],
       editable: false,
     }),
     f("sizeGb", "Size (GB)", {
+      showcase: true,
       kind: "number",
       description:
         "Volumes can only grow. The attached machine may need a restart to see the new size.",
     }),
-    f("region", "Region", { description: "Fly.io region code", editable: false }),
+    f("region", "Region", { showcase: true, description: "Fly.io region code", editable: false }),
     f("zone", "Zone", { required: false, editable: false }),
     f("encrypted", "Encrypted", { kind: "boolean", required: false, editable: false }),
     f("autoBackupEnabled", "Automatic Snapshots", {

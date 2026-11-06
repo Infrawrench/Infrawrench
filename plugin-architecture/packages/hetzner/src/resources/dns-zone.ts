@@ -6,18 +6,30 @@ export const DnsZoneResourceType = rt({
   description: "A DNS zone hosted on Hetzner DNS (part of the Cloud API since November 2025)",
   fields: [
     f("name", "Domain", { editable: false }),
-    f("mode", "Mode", { kind: "enum", enumValues: ["primary", "secondary"], editable: false }),
+    f("mode", "Mode", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["primary", "secondary"],
+      editable: false,
+    }),
     f("ttl", "Default TTL", {
+      showcase: true,
       kind: "number",
       description: "Default TTL in seconds for records without their own (60 or more)",
     }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["ok", "updating", "error"],
       editable: false,
     }),
-    f("recordCount", "Records", { kind: "number", required: false, editable: false }),
+    f("recordCount", "Records", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("registrar", "Registrar", {
       kind: "enum",
       required: false,

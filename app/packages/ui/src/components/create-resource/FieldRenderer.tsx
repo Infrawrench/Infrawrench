@@ -126,7 +126,7 @@ export function FieldRenderer({
                 disabled={actionRunning}
                 onClick={() => void fieldActionProps.runAction(field.key, a.id)}
                 title={a.description ? gtData(a.description) : undefined}
-                className="px-3 py-1.5 rounded-md text-xs font-medium border border-border-strong bg-surface-overlay/50 hover:border-blue-500 hover:bg-accent-muted hover:text-accent-on-muted text-on-surface-tertiary transition-colors disabled:opacity-50 disabled:cursor-wait"
+                className="px-3 py-1.5 rounded-md text-xs font-medium border border-border-strong bg-surface-overlay/50 hover:border-accent hover:bg-accent-muted hover:text-accent-on-muted text-on-surface-tertiary transition-colors disabled:opacity-50 disabled:cursor-wait"
               >
                 {actionRunning ? gt("Working…") : gtData(a.label)}
               </button>
@@ -224,7 +224,7 @@ export function FieldRenderer({
             placeholder={gtData(field.placeholder ?? field.label)}
             rows={8}
             spellCheck={false}
-            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs font-mono text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 resize-y"
+            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs font-mono text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle resize-y"
           />
         ) : (
           <input
@@ -233,7 +233,7 @@ export function FieldRenderer({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={gtData(field.placeholder ?? field.label)}
-            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
           />
         ))}
 
@@ -257,7 +257,7 @@ export function FieldRenderer({
           placeholder={gtData(field.placeholder ?? field.label)}
           autoComplete="new-password"
           spellCheck={false}
-          className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+          className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
         />
       )}
 
@@ -281,7 +281,7 @@ export function FieldRenderer({
           min={field.minValue}
           max={field.maxValue}
           step={field.stepValue ?? 1}
-          className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+          className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
         />
       )}
 
@@ -296,7 +296,7 @@ export function FieldRenderer({
                 onClick={() => onChange(opt.id)}
                 className={`px-4 py-2 rounded-lg border text-sm transition-all ${
                   value === opt.id
-                    ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                    ? "border-accent bg-accent-muted text-accent-on-muted"
                     : "border-border-strong bg-surface-overlay/50 text-on-surface-tertiary hover:border-border-strong"
                 }`}
               >
@@ -376,7 +376,7 @@ export function FieldRenderer({
             onChange={(e) => onChange(e.target.value)}
             placeholder={gt("Paste SSH public key...")}
             rows={3}
-            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 font-mono resize-none"
+            className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle font-mono resize-none"
           />
         ))}
 
@@ -605,7 +605,7 @@ function ActionFormPanel({
         onClick={() => setOpen(true)}
         disabled={running}
         title={action.description ? gtData(action.description) : undefined}
-        className="px-3 py-1.5 rounded-md text-xs font-medium border border-border-strong bg-surface-overlay/50 hover:border-blue-500 hover:bg-accent-muted hover:text-accent-on-muted text-on-surface-tertiary transition-colors disabled:opacity-50 disabled:cursor-wait"
+        className="px-3 py-1.5 rounded-md text-xs font-medium border border-border-strong bg-surface-overlay/50 hover:border-accent hover:bg-accent-muted hover:text-accent-on-muted text-on-surface-tertiary transition-colors disabled:opacity-50 disabled:cursor-wait"
       >
         {gtData(action.label)}
       </button>
@@ -651,7 +651,7 @@ function ActionFormPanel({
           type="button"
           onClick={() => void submit()}
           disabled={running || !isValid}
-          className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-md transition-colors"
+          className="px-3 py-1.5 text-xs font-medium text-on-accent bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-md transition-colors"
         >
           {running
             ? gt("Working…")
@@ -709,7 +709,7 @@ function HostnameField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={gtData(placeholder ?? label)}
-        className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+        className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
       />
     );
   }
@@ -738,7 +738,7 @@ function HostnameField({
         value={sub}
         onChange={(e) => compose(e.target.value, path)}
         placeholder={placeholder ? gtData(placeholder) : gt("subdomain (blank = root)")}
-        className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-l-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+        className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-l-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle"
       />
       <span
         className={`flex items-center px-3 border border-l-0 border-border-strong bg-surface-sunken text-sm text-on-surface-faint font-mono whitespace-nowrap ${
@@ -754,7 +754,7 @@ function HostnameField({
           value={path}
           onChange={(e) => compose(sub, e.target.value)}
           placeholder="/*"
-          className="w-32 flex-shrink-0 bg-surface-overlay border border-l-0 border-border-strong rounded-r-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 font-mono"
+          className="w-32 flex-shrink-0 bg-surface-overlay border border-l-0 border-border-strong rounded-r-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-accent-subtle font-mono"
         />
       )}
     </div>

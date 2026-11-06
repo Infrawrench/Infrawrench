@@ -14,7 +14,12 @@ export const OrganizationUserResourceType = rt({
   fields: [
     f("name", "Name", { required: false }),
     f("email", "Email", { required: false }),
-    f("role", "Role", { kind: "enum", enumValues: ["owner", "reader"], required: false }),
+    f("role", "Role", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["owner", "reader"],
+      required: false,
+    }),
     f("addedAt", "Added", { required: false }),
     f("isServiceAccount", "Service Account", { kind: "boolean", required: false }),
     f("isScimManaged", "SCIM Managed", { kind: "boolean", required: false }),

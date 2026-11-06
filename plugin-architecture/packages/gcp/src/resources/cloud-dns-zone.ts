@@ -8,10 +8,10 @@ export const CloudDnsZoneResourceType = rt({
     f("name", "Name"),
     f("dnsName", "DNS Name"),
     f("description", "Description", { required: false }),
-    f("visibility", "Visibility", { required: false }),
+    f("visibility", "Visibility", { showcase: true, required: false }),
     f("nameservers", "Nameservers", { required: false }),
     f("dnssecState", "DNSSEC", { required: false }),
-    f("recordCount", "Record Count", { kind: "number", required: false }),
+    f("recordCount", "Record Count", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [
     o("nameservers", "Nameservers", { description: "Google Cloud DNS nameservers for this zone" }),

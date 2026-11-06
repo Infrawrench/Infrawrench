@@ -840,7 +840,7 @@ function ColumnPicker({
               onClick={() => toggleDimension(dimension)}
               className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
                 selected
-                  ? "border-blue-500 bg-blue-600/20 text-on-surface"
+                  ? "border-accent bg-accent/20 text-on-surface"
                   : "border-border text-on-surface-muted hover:bg-surface-overlay"
               }`}
             >
@@ -914,7 +914,7 @@ function ColumnPicker({
                   onClick={() => toggleVirtualTag(tag.value)}
                   className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
                     selected
-                      ? "border-blue-500 bg-blue-600/20 text-on-surface"
+                      ? "border-accent bg-accent/20 text-on-surface"
                       : "border-border text-on-surface-muted hover:bg-surface-overlay"
                   }`}
                 >

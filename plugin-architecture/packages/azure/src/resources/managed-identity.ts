@@ -5,7 +5,11 @@ export const ManagedIdentityResourceType = rt({
   plural: "Managed Identities",
   id: "azure-managed-identity",
   description: "An Azure user-assigned managed identity for secure, passwordless authentication",
-  fields: [f("name", "Name"), f("resourceGroup", "Resource Group"), f("location", "Location")],
+  fields: [
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group", { showcase: true }),
+    f("location", "Location", { showcase: true }),
+  ],
   outputs: [
     o("clientId", "Client ID"),
     o("principalId", "Principal ID"),

@@ -6,9 +6,9 @@ export const DocumentDBClusterResourceType = rt({
   description: "An Amazon DocumentDB MongoDB-compatible database cluster",
   fields: [
     f("clusterIdentifier", "Cluster ID"),
-    f("engine", "Engine"),
-    f("engineVersion", "Engine Version", { required: false }),
-    f("status", "Status"),
+    f("engine", "Engine", { showcase: true }),
+    f("engineVersion", "Engine Version", { showcase: true, required: false }),
+    f("status", "Status", { showcase: true }),
     f("storageEncrypted", "Encrypted", { kind: "boolean", required: false }),
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
     f("dbClusterMembers", "Members", { kind: "number", required: false }),

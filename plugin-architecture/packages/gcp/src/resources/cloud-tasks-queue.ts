@@ -3,11 +3,12 @@ import { f, rt } from "@infrawrench/plugin-base";
 export const CloudTasksQueueResourceType = rt({
   name: "Cloud Tasks Queue",
   id: "cloud-tasks-queue",
+  iconKey: "queue",
   description: "A Google Cloud Tasks queue for distributed task execution",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false }),
-    f("state", "State", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("maxDispatchesPerSecond", "Max Dispatches/s", { kind: "number", required: false }),
     f("maxConcurrentDispatches", "Max Concurrent", { kind: "number", required: false }),
     f("maxBurstSize", "Max Burst Size", { kind: "number", required: false }),

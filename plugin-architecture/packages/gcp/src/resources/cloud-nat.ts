@@ -4,14 +4,15 @@ export const CloudNatResourceType = rt({
   name: "Cloud NAT",
   pinnable: false,
   id: "cloud-nat",
+  iconKey: "route",
   description: "A Google Cloud NAT gateway configuration",
   fields: [
     f("name", "Name"),
-    f("region", "Region"),
+    f("region", "Region", { showcase: true }),
     f("router", "Router"),
     f("natIpAllocateOption", "IP Allocation", { required: false }),
     f("sourceSubnetworkIpRangesToNat", "Subnet IP Ranges", { required: false }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
   ],
   outputs: [],
   dependsOn: [

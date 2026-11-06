@@ -232,7 +232,7 @@ function RunCard({
           {run.runbookName}
         </button>
         <span
-          className={`rounded-full px-2 py-0.5 text-xs ${
+          className={`rounded-md px-2 py-0.5 text-xs ${
             live
               ? "bg-amber-500/10 text-warning"
               : run.status === "completed"
@@ -289,7 +289,7 @@ function RunCard({
                 <span className="text-xs tabular-nums text-on-surface-faint">{index + 1}</span>
                 <span className="text-sm text-on-surface">{step.title}</span>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${STEP_STATUS_CLASSES[step.status]}`}
+                  className={`rounded-md px-2 py-0.5 text-xs ${STEP_STATUS_CLASSES[step.status]}`}
                 >
                   {statusLabel(gt, step.status)}
                 </span>
@@ -418,7 +418,7 @@ function RunbookEditor({
                       : [...draft.resourceTypeIds, option.id],
                   })
                 }
-                className={`rounded-full border px-2.5 py-1 transition-colors ${
+                className={`rounded-md border px-2.5 py-1 transition-colors ${
                   on
                     ? "border-transparent bg-surface-overlay text-on-surface"
                     : "border-border text-on-surface-tertiary hover:text-on-surface-secondary"
@@ -804,7 +804,7 @@ export function RunbooksSection({
                           {runbook.name}
                         </button>
                         {!runbook.enabled && (
-                          <span className="rounded-full bg-surface-overlay px-2 py-0.5 text-xs text-on-surface-faint">
+                          <span className="rounded-md bg-surface-overlay px-2 py-0.5 text-xs text-on-surface-faint">
                             {gt("Not offered")}
                           </span>
                         )}

@@ -42,7 +42,7 @@ export const ClusterResourceType = rt({
     "A CoreWeave Kubernetes Service cluster. Create one in a VPC, change its Kubernetes version and API server visibility, and see workloads, per-namespace GPU cost and GPU utilization.",
   fields: [
     f("name", "Name", { editable: false }),
-    f("zone", "Zone", { editable: false }),
+    f("zone", "Zone", { showcase: true, editable: false }),
     f("version", "Kubernetes Version", {
       kind: "enum",
       enumValues: KUBERNETES_VERSIONS,
@@ -54,7 +54,7 @@ export const ClusterResourceType = rt({
       required: false,
       description: "Whether the Kubernetes API server is reachable from the Internet.",
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("vpcId", "VPC", { required: false, editable: false }),
     f("vpcName", "VPC Name", { required: false, editable: false }),
     f("apiServerEndpoint", "API Server Endpoint", { required: false, editable: false }),
@@ -71,8 +71,8 @@ export const ClusterResourceType = rt({
       editable: false,
     }),
     f("nodePoolCount", "Node Pools", { kind: "number", required: false, editable: false }),
-    f("nodeCount", "Nodes", { kind: "number", required: false, editable: false }),
-    f("gpuCount", "GPUs", { kind: "number", required: false, editable: false }),
+    f("nodeCount", "Nodes", { showcase: true, kind: "number", required: false, editable: false }),
+    f("gpuCount", "GPUs", { showcase: true, kind: "number", required: false, editable: false }),
     f("hourlyRunRate", "Estimated Run Rate (USD/hour)", {
       kind: "number",
       required: false,
@@ -145,7 +145,7 @@ export const NodePoolResourceType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("clusterName", "Cluster", { required: false, editable: false }),
-    f("instanceType", "Instance Type", { editable: false }),
+    f("instanceType", "Instance Type", { showcase: true, editable: false }),
     f("gpuModel", "GPU", { required: false, editable: false }),
     f("computeClass", "Compute Class", { required: false, editable: false }),
     f("targetNodes", "Target Nodes", {
@@ -171,7 +171,7 @@ export const NodePoolResourceType = rt({
     f("currentNodes", "Current Nodes", { kind: "number", required: false, editable: false }),
     f("queuedNodes", "Queued Nodes", { kind: "number", required: false, editable: false }),
     f("inProgressNodes", "Booting Nodes", { kind: "number", required: false, editable: false }),
-    f("gpuCount", "GPUs", { kind: "number", required: false, editable: false }),
+    f("gpuCount", "GPUs", { showcase: true, kind: "number", required: false, editable: false }),
     f("hourlyRate", "Instance Price (USD/hour)", {
       kind: "number",
       required: false,
@@ -183,6 +183,7 @@ export const NodePoolResourceType = rt({
       editable: false,
     }),
     f("state", "State", {
+      showcase: true,
       required: false,
       editable: false,
       description: "running, or scaled-to-zero after Scale to zero.",
@@ -191,7 +192,7 @@ export const NodePoolResourceType = rt({
     f("nodeProfile", "Node Configuration", { required: false, editable: false }),
     f("pendingConfiguration", "Pending Configuration", { required: false, editable: false }),
     f("gpuDriver", "GPU Driver", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("nodePoolName", "Node Pool Name")],
   dependsOn: [{ fieldKey: "instanceType", targetTypeId: "instance-type", label: "runs" }],
@@ -220,11 +221,11 @@ export const InstanceTypeResourceType = rt({
     f("name", "Name", { editable: false }),
     f("family", "Family", { editable: false }),
     f("gpuModel", "GPU", { required: false, editable: false }),
-    f("gpuCount", "GPUs", { kind: "number", required: false, editable: false }),
+    f("gpuCount", "GPUs", { showcase: true, kind: "number", required: false, editable: false }),
     f("gpuMemoryGb", "Memory per GPU (GB)", { kind: "number", required: false, editable: false }),
     f("cpuModel", "CPU", { required: false, editable: false }),
-    f("vcpus", "vCPUs", { kind: "number", required: false, editable: false }),
-    f("ramGb", "RAM (GB)", { kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
+    f("ramGb", "RAM (GB)", { showcase: true, kind: "number", required: false, editable: false }),
     f("storageTb", "Local Storage (TB)", { kind: "number", required: false, editable: false }),
     f("hourlyUsd", "Price (USD/instance-hour)", {
       kind: "number",
@@ -254,8 +255,8 @@ export const VpcResourceType = rt({
     "A CoreWeave Virtual Private Cloud. CKS clusters take their pod, service and internal load balancer ranges from its named prefixes. Add prefixes and toggle public ingress and egress.",
   fields: [
     f("name", "Name", { editable: false }),
-    f("zone", "Zone", { editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("zone", "Zone", { showcase: true, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("prefixes", "VPC Prefixes", {
       required: false,
       description:
@@ -264,7 +265,7 @@ export const VpcResourceType = rt({
     f("hostPrefixes", "Host Prefixes", { required: false, editable: false }),
     f("disablePublicServices", "Block Public Ingress", { kind: "boolean", required: false }),
     f("disablePublicAccess", "Block Internet Egress", { kind: "boolean", required: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("vpcId", "VPC ID")],
   supportsCreate: true,
@@ -281,8 +282,13 @@ export const BucketResourceType = rt({
     "A CoreWeave AI Object Storage bucket. Browse, upload and delete objects, see its size and estimated monthly cost, and change audit logging, archiving and its capacity cap.",
   fields: [
     f("name", "Name", { editable: false }),
-    f("zone", "Zone", { editable: false }),
-    f("sizeBytes", "Size (bytes)", { kind: "number", required: false, editable: false }),
+    f("zone", "Zone", { showcase: true, editable: false }),
+    f("sizeBytes", "Size (bytes)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("size", "Size", { required: false, editable: false }),
     f("estimatedMonthlyUsd", "Estimated Monthly Cost (USD, hot tier)", {
       kind: "number",
@@ -307,7 +313,7 @@ export const BucketResourceType = rt({
       description:
         "Refuse writes once the bucket holds this much. Leave empty for no cap. Your organization must be entitled to it.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("bucketName", "Bucket Name"), o("endpoint", "S3 Endpoint"), o("region", "S3 Region")],
   supportsCreate: true,
@@ -327,9 +333,9 @@ export const AccessKeyResourceType = rt({
   fields: [
     f("accessKeyId", "Access Key ID", { editable: false }),
     f("name", "Name", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("principal", "Owner", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
   ],
   expiryFields: [
     { fieldKey: "expiresAt", from: "expiry", kind: "access-key", label: "Access key expiry" },

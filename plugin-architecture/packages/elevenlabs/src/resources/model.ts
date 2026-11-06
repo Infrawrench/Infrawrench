@@ -19,7 +19,7 @@ export const ModelResourceType = rt({
     f("canUseStyle", "Supports Style", { kind: "boolean", required: false }),
     f("canUseSpeakerBoost", "Supports Speaker Boost", { kind: "boolean", required: false }),
     f("requiresAlphaAccess", "Requires Alpha Access", { kind: "boolean", required: false }),
-    f("languageCount", "Languages", { kind: "number", required: false }),
+    f("languageCount", "Languages", { showcase: true, kind: "number", required: false }),
     f("languages", "Language Codes", { required: false }),
   ],
   outputs: [

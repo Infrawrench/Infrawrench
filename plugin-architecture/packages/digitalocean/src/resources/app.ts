@@ -13,8 +13,9 @@ export const AppResourceType = rt({
   description: "A DigitalOcean App Platform application.",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { required: false }),
+    f("region", "Region", { showcase: true, required: false }),
     f("phase", "Deployment Phase", {
+      showcase: true,
       required: false,
       description: "Phase of the active (or in-progress) deployment, e.g. ACTIVE, BUILDING, ERROR.",
     }),
@@ -26,7 +27,7 @@ export const AppResourceType = rt({
     f("activeDeploymentId", "Active Deployment", { required: false }),
     f("lastDeployedAt", "Last Deployed", { required: false }),
     f("tierSlug", "Tier", { required: false }),
-    f("createdAt", "Created At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
   ],
   outputs: [o("liveUrl", "Live URL"), o("defaultIngress", "Default Ingress")],
   parentTypeId: "project",

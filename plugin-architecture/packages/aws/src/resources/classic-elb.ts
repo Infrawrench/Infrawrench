@@ -25,6 +25,7 @@ export const ClassicELBResourceType = rt({
     }),
     f("securityGroupIds", "Security Groups", { required: false }),
     f("instanceCount", "Registered Instances", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "EC2 instances registered with the load balancer",

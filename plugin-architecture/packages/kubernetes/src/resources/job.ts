@@ -4,13 +4,14 @@ export const JobResourceType = rt({
   name: "Job",
   pinnable: false,
   id: "k8s-job",
+  iconKey: "job",
   description: "A Kubernetes Job that runs a pod to completion",
   fields: [
     f("name", "Name"),
-    f("namespace", "Namespace"),
+    f("namespace", "Namespace", { showcase: true }),
     f("completions", "Completions", { required: false }),
-    f("status", "Status", { required: false }),
-    f("image", "Image", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
+    f("image", "Image", { showcase: true, required: false }),
     f("cronJob", "CronJob", {
       required: false,
       description: "The CronJob that scheduled this Job, from its owner reference",

@@ -13,6 +13,7 @@ export const TranscriptionResourceType = rt({
   description: "A pre-recorded Gladia transcription job and its result",
   fields: [
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["queued", "processing", "done", "error"],
     }),
@@ -22,11 +23,11 @@ export const TranscriptionResourceType = rt({
     f("transcriptionTime", "Processing Time (s)", { kind: "number", required: false }),
     f("languages", "Detected Languages", { required: false }),
     f("channels", "Channels", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("completedAt", "Completed", { required: false }),
     f("errorCode", "Error Code", { kind: "number", required: false }),
     f("requestId", "Request ID", { required: false }),
-    f("kind", "Kind", { required: false }),
+    f("kind", "Kind", { showcase: true, required: false }),
   ],
   outputs: [
     o("transcriptionId", "Transcription ID", {

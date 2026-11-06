@@ -6,9 +6,15 @@ export const PrimaryIpResourceType = rt({
   description: "A Hetzner Cloud primary IP address assignable to servers",
   fields: [
     f("name", "Name", { required: false }),
-    f("ip", "IP Address", { editable: false }),
-    f("type", "Type", { kind: "enum", enumValues: ["ipv4", "ipv6"], editable: false }),
+    f("ip", "IP Address", { showcase: true, editable: false }),
+    f("type", "Type", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["ipv4", "ipv6"],
+      editable: false,
+    }),
     f("location", "Location", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"],

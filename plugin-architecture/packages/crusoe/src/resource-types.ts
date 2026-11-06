@@ -27,8 +27,8 @@ export const ProjectResourceType = rt({
     f("name", "Name"),
     f("organizationName", "Organization", { required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("vmCount", "VMs", { kind: "number", required: false, editable: false }),
-    f("diskCount", "Disks", { kind: "number", required: false, editable: false }),
+    f("vmCount", "VMs", { showcase: true, kind: "number", required: false, editable: false }),
+    f("diskCount", "Disks", { showcase: true, kind: "number", required: false, editable: false }),
     f("networkCount", "VPC Networks", { kind: "number", required: false, editable: false }),
   ],
   iconKey: "folder",
@@ -44,12 +44,17 @@ export const VmResourceType = rt({
   description: "A Crusoe Cloud virtual machine (GPU or CPU)",
   fields: [
     f("name", "Name", { editable: false }),
-    f("state", "State", { kind: "enum", enumValues: [...VM_STATES], editable: false }),
+    f("state", "State", {
+      showcase: true,
+      kind: "enum",
+      enumValues: [...VM_STATES],
+      editable: false,
+    }),
     f("type", "Instance Type", {
       description:
         "Crusoe product name, e.g. h100-80gb-sxm-ib.8x or c1a.8x. Changing it resizes the VM; Crusoe requires the VM to be stopped first",
     }),
-    f("location", "Location", { editable: false }),
+    f("location", "Location", { showcase: true, editable: false }),
     f("projectId", "Project", { editable: false }),
     f("billingType", "Billing", {
       required: false,
@@ -58,8 +63,8 @@ export const VmResourceType = rt({
     }),
     f("reservationId", "Reservation", { required: false, editable: false }),
     f("gpuType", "GPU", { required: false, editable: false }),
-    f("gpuCount", "GPUs", { kind: "number", required: false, editable: false }),
-    f("vcpus", "vCPUs", { kind: "number", required: false, editable: false }),
+    f("gpuCount", "GPUs", { showcase: true, kind: "number", required: false, editable: false }),
+    f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
     f("memoryGb", "Memory (GB)", { kind: "number", required: false, editable: false }),
     f("diskIds", "Disks", {
       required: false,
@@ -138,11 +143,12 @@ export const DiskResourceType = rt({
       description: "Disk capacity. Crusoe can only grow a disk, never shrink it",
     }),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["persistent-ssd", "shared-volume"],
       editable: false,
     }),
-    f("location", "Location", { editable: false }),
+    f("location", "Location", { showcase: true, editable: false }),
     f("projectId", "Project", { editable: false }),
     f("attachedVmIds", "Attached VMs", {
       required: false,
@@ -156,7 +162,7 @@ export const DiskResourceType = rt({
     }),
     f("blockSize", "Block Size (bytes)", { kind: "number", required: false, editable: false }),
     f("serialNumber", "Serial Number", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("dnsName", "Mount DNS Name", { description: "Shared volumes only" })],
   dependsOn: [
@@ -193,7 +199,7 @@ export const SnapshotResourceType = rt({
     f("sizeGib", "Size (GiB)", { kind: "number", required: false }),
     f("sourceDiskId", "Source Disk", { required: false }),
     f("projectId", "Project"),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   dependsOn: [
     {
@@ -215,7 +221,7 @@ export const VpcNetworkResourceType = rt({
   description: "A Crusoe VPC network",
   fields: [
     f("name", "Name"),
-    f("cidr", "CIDR", { editable: false }),
+    f("cidr", "CIDR", { showcase: true, editable: false }),
     f("subnetIds", "Subnets", { required: false, editable: false }),
     f("gatewayId", "Gateway", { required: false, editable: false }),
     f("projectId", "Project", { editable: false }),
@@ -233,8 +239,8 @@ export const VpcSubnetResourceType = rt({
   description: "A subnet of a Crusoe VPC network in one location",
   fields: [
     f("name", "Name"),
-    f("cidr", "CIDR", { editable: false }),
-    f("location", "Location", { editable: false }),
+    f("cidr", "CIDR", { showcase: true, editable: false }),
+    f("location", "Location", { showcase: true, editable: false }),
     f("networkId", "VPC Network", { editable: false }),
     f("natGateway", "NAT Gateway", {
       kind: "boolean",
@@ -272,7 +278,7 @@ export const FirewallRuleResourceType = rt({
       editable: false,
     }),
     f("action", "Action", { kind: "enum", enumValues: ["allow", "deny"], editable: false }),
-    f("state", "State", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
     f("protocols", "Protocols", {
       description: "Comma-separated, e.g. tcp,udp,icmp",
     }),
@@ -330,7 +336,7 @@ export const SshKeyResourceType = rt({
     f("name", "Name"),
     f("fingerprint", "Fingerprint (SHA256)", { required: false }),
     f("publicKey", "Public Key", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   iconKey: "key",
   supportsCreate: true,
@@ -342,9 +348,9 @@ export const KubernetesClusterResourceType = rt({
   description: "A Crusoe Managed Kubernetes (CMK) cluster",
   fields: [
     f("name", "Name"),
-    f("state", "State", { required: false }),
-    f("version", "Version"),
-    f("location", "Location"),
+    f("state", "State", { showcase: true, required: false }),
+    f("version", "Version", { showcase: true }),
+    f("location", "Location", { showcase: true }),
     f("projectId", "Project"),
     f("nodePoolIds", "Node Pools", { required: false }),
     f("dnsName", "API Server DNS Name", { required: false }),
@@ -354,7 +360,7 @@ export const KubernetesClusterResourceType = rt({
     f("serviceCidr", "Service CIDR", { required: false }),
     f("routingMode", "Routing Mode", { required: false }),
     f("addOns", "Add-ons", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [
     o("kubeconfig", "Kubeconfig", {
@@ -407,12 +413,17 @@ export const NodePoolResourceType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("clusterId", "Cluster", { editable: false }),
-    f("type", "Instance Type", { editable: false }),
+    f("type", "Instance Type", { showcase: true, editable: false }),
     f("count", "Desired Nodes", {
       kind: "number",
       description: "How many nodes the pool should run. Lowering it drains and deletes nodes",
     }),
-    f("currentCount", "Ready Nodes", { kind: "number", required: false, editable: false }),
+    f("currentCount", "Ready Nodes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("autoscaling", "Autoscaling", {
       kind: "boolean",
       required: false,
@@ -420,7 +431,7 @@ export const NodePoolResourceType = rt({
     }),
     f("minNodes", "Autoscaling Minimum", { kind: "number", required: false }),
     f("maxNodes", "Autoscaling Maximum", { kind: "number", required: false }),
-    f("state", "State", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
     f("health", "Health", { required: false, editable: false }),
     f("subnetId", "Subnet", { required: false, editable: false }),
     f("reservationId", "Reservation", { required: false, editable: false }),
@@ -456,8 +467,8 @@ export const LoadBalancerResourceType = rt({
   description: "A Crusoe external load balancer",
   fields: [
     f("name", "Name"),
-    f("location", "Location"),
-    f("protocol", "Protocol", { required: false }),
+    f("location", "Location", { showcase: true }),
+    f("protocol", "Protocol", { showcase: true, required: false }),
     f("networkId", "VPC Network", { required: false }),
     f("listenPorts", "Listen Ports", { required: false }),
     f("backends", "Backends", { required: false }),

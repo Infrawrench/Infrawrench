@@ -12,13 +12,14 @@ export const InstanceResourceType = rt({
   description: "A Scaleway virtual machine",
   fields: [
     f("name", "Name"),
-    f("zone", "Zone", { kind: "enum", enumValues: ZONES, editable: false }),
+    f("zone", "Zone", { showcase: true, kind: "enum", enumValues: ZONES, editable: false }),
     f("commercialType", "Commercial Type", {
       description:
         "Instance type, e.g. DEV1-S, POP2-2C-8G, PRO2-S. Changing it requires the instance to be stopped",
     }),
-    f("image", "Image", { description: "Image ID or name", editable: false }),
+    f("image", "Image", { showcase: true, description: "Image ID or name", editable: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["running", "stopped", "stopped in place", "starting", "stopping", "locked"],

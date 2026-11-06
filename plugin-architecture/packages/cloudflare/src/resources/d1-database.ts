@@ -6,10 +6,10 @@ export const D1DatabaseResourceType = rt({
   description: "A Cloudflare D1 SQLite database at the edge",
   fields: [
     f("name", "Name"),
-    f("version", "Version", { required: false }),
+    f("version", "Version", { showcase: true, required: false }),
     f("numTables", "Tables", { kind: "number", required: false }),
     f("fileSize", "File Size", { required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("databaseId", "Database ID")],
   supportsCreate: true,

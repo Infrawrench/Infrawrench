@@ -21,14 +21,19 @@ export const MistralAgentResourceType = rt({
   fields: [
     f("agentId", "Agent ID", { editable: false }),
     f("name", "Name"),
-    f("model", "Model", { editable: false }),
+    f("model", "Model", { showcase: true, editable: false }),
     f("description", "Description", { required: false }),
     f("instructions", "Instructions", { required: false }),
     f("tools", "Tools", { required: false, editable: false }),
     f("libraries", "Libraries", { required: false, editable: false }),
     f("handoffs", "Handoffs", { required: false, editable: false }),
-    f("version", "Version", { kind: "number", required: false, editable: false }),
-    f("versionCount", "Versions", { kind: "number", required: false, editable: false }),
+    f("version", "Version", { showcase: true, kind: "number", required: false, editable: false }),
+    f("versionCount", "Versions", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("versionMessage", "Version Note", { required: false, editable: false }),
     f("deploymentChat", "Available in Le Chat", {
       kind: "boolean",

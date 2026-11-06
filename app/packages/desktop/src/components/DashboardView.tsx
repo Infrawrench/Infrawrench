@@ -1,3 +1,4 @@
+import { showcaseFields } from "@infrawrench/plugin-base";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ShareDialog, StarButton } from "@infrawrench/ui";
 import { createDesktopSharingClient } from "../lib/cost-reports-client";
@@ -340,6 +341,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           displayName: m.displayName,
           terminalResourceTypeIds: p.plugin.resourceTypes.flatMap((t) =>
             t.supportsTerminal ? [t.id] : [],
+          ),
+          iconKeys: Object.fromEntries(
+            p.plugin.resourceTypes.flatMap((t) => (t.iconKey ? [[t.id, t.iconKey]] : [])),
+          ),
+          showcases: Object.fromEntries(
+            p.plugin.resourceTypes.map((t) => [t.id, showcaseFields(t)]),
           ),
         };
       }
@@ -1227,12 +1234,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 if (e.key === "Enter") void saveName(e.currentTarget.value);
                 if (e.key === "Escape") setEditingName(false);
               }}
-              className="text-2xl font-semibold bg-transparent border-b border-blue-500 text-on-surface focus:outline-none"
+              className="text-2xl font-semibold bg-transparent border-b border-accent text-on-surface focus:outline-none"
             />
           ) : (
             <div className="flex items-center gap-2">
               <h1
-                className="text-2xl font-semibold text-on-surface cursor-default hover:text-white"
+                className="text-2xl font-semibold text-on-surface cursor-default hover:text-on-surface"
                 onDoubleClick={() => setEditingName(true)}
                 title={gt("Double-click to rename")}
               >
@@ -1301,7 +1308,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               onClick={() =>
                 activeCloudOrgId ? setAddMenuOpen((v) => !v) : setSpotlightMode("pin")
               }
-              className={`w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed transition-colors ${isOver ? "border-blue-500 text-accent" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
+              className={`w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed transition-colors ${isOver ? "border-accent text-accent" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
             >
               <span className="text-3xl mb-3">⊞</span>
               <p className="text-sm">
@@ -1472,7 +1479,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   onClick={() =>
                     activeCloudOrgId ? setAddMenuOpen((v) => !v) : setSpotlightMode("pin")
                   }
-                  className={`w-full h-full rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors ${isOver ? "border-blue-500 text-accent bg-accent-muted" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
+                  className={`w-full h-full rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors ${isOver ? "border-accent text-accent bg-accent-muted" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
                 >
                   <span className="text-2xl">+</span>
                   <span className="text-xs">

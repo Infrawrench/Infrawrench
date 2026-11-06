@@ -63,6 +63,8 @@ Click an account name to open its account page, the full list of everything Infr
 
 Each resource type gets its own tab, including nested types like DNS Records and DB Users that the sidebar leaves out. Tabs show their resource count in parentheses. Empty types are still listed if you can create one, so the create button is always there. Opening a tab fetches fresh data for that type from the provider.
 
+Each resource is a square tile you can drag. It shows the resource's status and a few key facts, such as CPU, memory, region or size. These come from the last sync, so opening the page costs no extra provider calls, and they aren't live metrics. Which facts appear depends on what the provider reports, and a tile with nothing useful to show just has its name.
+
 The search box narrows the tabs. It matches type names and also resource names, hosts, regions and engines. Type `d` and you keep every tab whose name or contents match. Type a Droplet's name and you jump to it. Search only hides tabs, it never shows hidden ones.
 
 The [mobile app](../features/mobile-app.md) has the same sections and search, shown as scrollable cards instead of tabs.

@@ -19,6 +19,7 @@ export const OrganizationUserResourceType = rt({
     f("email", "Email", { editable: false }),
     f("name", "Name", { required: false, editable: false }),
     f("role", "Role", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "user",

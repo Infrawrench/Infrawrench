@@ -538,7 +538,7 @@ export function KpiWidgetConfigModal({
             type="button"
             disabled={busy || !complete || Boolean(problem)}
             onClick={() => void submit()}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent disabled:opacity-50"
           >
             {gt("Save")}
           </button>

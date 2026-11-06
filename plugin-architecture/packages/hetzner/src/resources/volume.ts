@@ -7,15 +7,18 @@ export const VolumeResourceType = rt({
   fields: [
     f("name", "Name"),
     f("sizeGb", "Size (GB)", {
+      showcase: true,
       kind: "number",
       description: "Volume size. Hetzner can only grow a volume, never shrink it",
     }),
     f("location", "Location", {
+      showcase: true,
       kind: "enum",
       enumValues: ["fsn1", "nbg1", "hel1", "ash", "hil", "sin"],
       editable: false,
     }),
     f("format", "Filesystem", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["ext4", "xfs"],

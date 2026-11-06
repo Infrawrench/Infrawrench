@@ -198,7 +198,7 @@ export function ChatPanel({ capability, onStream }: Props) {
             <button
               type="button"
               onClick={stop}
-              className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
+              className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong hover:border-border-strong rounded-md transition-colors"
             >
               {gt("Stop")}
             </button>
@@ -207,7 +207,7 @@ export function ChatPanel({ capability, onStream }: Props) {
             <button
               type="button"
               onClick={reset}
-              className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
+              className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong hover:border-border-strong rounded-md transition-colors"
             >
               {gt("New chat")}
             </button>
@@ -251,7 +251,7 @@ export function ChatPanel({ capability, onStream }: Props) {
               type="button"
               onClick={() => void send()}
               disabled={!input.trim() || streaming}
-              className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-on-accent bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
             >
               {streaming ? "…" : gt("Send")}
             </button>
@@ -273,7 +273,7 @@ function ChatTurn({ turn }: { turn: Turn }) {
       <div
         className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
           isUser
-            ? "bg-accent text-white"
+            ? "bg-accent text-on-accent"
             : "bg-surface-overlay text-on-surface border border-border"
         }`}
       >

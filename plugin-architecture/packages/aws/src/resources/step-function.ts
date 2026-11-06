@@ -6,9 +6,9 @@ export const StepFunctionResourceType = rt({
   description: "An AWS Step Functions state machine",
   fields: [
     f("name", "Name"),
-    f("status", "Status", { kind: "enum", enumValues: ["ACTIVE", "DELETING"] }),
-    f("type", "Type", { kind: "enum", enumValues: ["STANDARD", "EXPRESS"] }),
-    f("creationDate", "Created", { required: false }),
+    f("status", "Status", { showcase: true, kind: "enum", enumValues: ["ACTIVE", "DELETING"] }),
+    f("type", "Type", { showcase: true, kind: "enum", enumValues: ["STANDARD", "EXPRESS"] }),
+    f("creationDate", "Created", { showcase: true, required: false }),
     f("roleArn", "Execution Role", { required: false }),
   ],
   outputs: [o("stateMachineArn", "State Machine ARN")],

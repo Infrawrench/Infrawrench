@@ -6,17 +6,23 @@ const associationSourceSchema = z.object({
   outputKey: z.string(),
 });
 
-export const fieldDefinitionSchema = z.object({
-  key: z.string().min(1),
-  label: z.string().min(1),
-  kind: z.enum(["string", "number", "boolean", "enum", "secret", "association", "password"]),
-  required: z.boolean(),
-  description: z.string().optional(),
-  enumValues: z.array(z.string()).optional(),
-  resolvableOutputKeys: z.array(z.string()).optional(),
-  resolvableFrom: z.array(associationSourceSchema).optional(),
-  allowLiteral: z.boolean().optional(),
-});
+export const fieldDefinitionSchema = z
+  .object({
+    key: z.string().min(1),
+    label: z.string().min(1),
+    kind: z.enum(["string", "number", "boolean", "enum", "secret", "association", "password"]),
+    required: z.boolean(),
+    description: z.string().optional(),
+    enumValues: z.array(z.string()).optional(),
+    resolvableOutputKeys: z.array(z.string()).optional(),
+    resolvableFrom: z.array(associationSourceSchema).optional(),
+    allowLiteral: z.boolean().optional(),
+    showcase: z.boolean().optional(),
+  })
+  .refine((f) => !f.showcase || (f.kind !== "secret" && f.kind !== "password"), {
+    message: "a secret or password field can't be shown on a tile",
+    path: ["showcase"],
+  });
 
 const resourceOutputSchema = z.object({
   key: z.string().min(1),

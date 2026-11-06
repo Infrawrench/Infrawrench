@@ -60,7 +60,7 @@ export interface PriceCatalogPanelProps {
 }
 
 const inputClass =
-  "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 const PAGE = 100;
 
@@ -230,7 +230,7 @@ function UseInEstimateButton({
     <div ref={ref} className="relative inline-block">
       <button
         type="button"
-        className="text-xs text-accent hover:underline whitespace-nowrap"
+        className="text-xs text-accent underline underline-offset-2 whitespace-nowrap"
         onClick={() => (candidates.length === 1 ? fire(candidates[0]!.id) : setOpen((v) => !v))}
       >
         {gt("Use in estimate")}
@@ -781,7 +781,7 @@ export function PriceCatalogPanel({
                             <div className="flex flex-col items-end gap-1">
                               <button
                                 type="button"
-                                className="text-xs text-accent hover:underline whitespace-nowrap"
+                                className="text-xs text-accent underline underline-offset-2 whitespace-nowrap"
                                 onClick={() => compareFrom(row)}
                               >
                                 {gt("Compare")}
@@ -798,7 +798,7 @@ export function PriceCatalogPanel({
               {data.total > data.rows.length && (
                 <button
                   type="button"
-                  className="mt-3 text-sm text-accent hover:underline"
+                  className="mt-3 text-sm text-accent underline underline-offset-2"
                   onClick={() => setLimit((l) => l + PAGE)}
                 >
                   {gt("Show more")}

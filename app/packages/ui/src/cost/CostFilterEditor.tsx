@@ -105,7 +105,7 @@ function TextValuesInput({
   return (
     <div className="min-w-0 flex-1 space-y-1">
       <div
-        className={`${selectBaseClass} flex flex-wrap items-center gap-1 px-1.5 py-1 focus-within:border-blue-500`}
+        className={`${selectBaseClass} flex flex-wrap items-center gap-1 px-1.5 py-1 focus-within:border-accent-subtle`}
       >
         {values.map((v) => (
           <span
@@ -538,7 +538,7 @@ function SavedFilterPicker({
       {savedFilterId && (
         <div className="flex items-center gap-2">
           <span
-            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-sunken px-2.5 py-1 text-xs text-on-surface"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-sunken px-2.5 py-1 text-xs text-on-surface"
             title={gt(
               "Combined (AND) with the rows below. Edit it in the Costs panel to update everything using it.",
             )}

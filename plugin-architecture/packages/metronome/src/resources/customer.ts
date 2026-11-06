@@ -20,8 +20,8 @@ export const CustomerResourceType = rt({
     f("salesforceAccountId", "Salesforce Account ID", { required: false, editable: false }),
     f("billableStatus", "Billable Status", { required: false, editable: false }),
     f("customFields", "Custom Fields", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("customerId", "Customer ID", {

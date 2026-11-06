@@ -320,7 +320,7 @@ export function ProviderOAuthConnectedChip({
       className="flex flex-wrap items-center gap-x-3 gap-y-1.5"
     >
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${
           broken
             ? "border-amber-500/40 bg-amber-500/10 text-warning"
             : "border-emerald-500/40 bg-emerald-500/10 text-success"
@@ -400,7 +400,7 @@ export function ProviderOAuthReconnectBanner({
           type="button"
           onClick={onReconnect}
           disabled={reconnecting}
-          className="flex-shrink-0 px-2.5 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors"
+          className="flex-shrink-0 px-2.5 py-1 text-xs font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent rounded-md transition-colors"
         >
           {reconnecting ? gt("Reconnecting…") : gt("Reconnect")}
         </button>

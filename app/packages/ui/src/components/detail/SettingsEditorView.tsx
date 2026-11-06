@@ -115,7 +115,7 @@ export function SettingsEditorView({
             type="button"
             onClick={() => void load()}
             disabled={loading || saving}
-            className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
+            className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface border border-border-strong rounded-md transition-colors disabled:opacity-40"
           >
             {gt("Reload")}
           </button>
@@ -124,7 +124,7 @@ export function SettingsEditorView({
               type="button"
               onClick={() => void handleApply()}
               disabled={changed.length === 0 || saving || loading}
-              className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors disabled:opacity-40"
+              className="px-3 py-1.5 text-xs font-medium bg-accent hover:bg-accent-hover text-on-accent rounded-md transition-colors disabled:opacity-40"
             >
               {saving
                 ? gt("Applying…")
@@ -148,7 +148,7 @@ export function SettingsEditorView({
               onChange={(e) => setQuery(e.target.value)}
               placeholder={gt("Search settings…")}
               aria-label={gt("Search settings")}
-              className="w-full px-3 py-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+              className="w-full px-3 py-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:ring-2 focus:ring-accent-subtle/40 focus:border-accent-subtle"
             />
           </div>
         )}
@@ -217,7 +217,7 @@ function SettingRow({
         <div className="text-sm text-on-surface-secondary flex items-center gap-2">
           {gtData(descriptor.label)}
           {dirty && (
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" aria-label={gt("changed")} />
+            <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-label={gt("changed")} />
           )}
         </div>
         {descriptor.description && (
@@ -245,7 +245,7 @@ function SettingControl({
   const gt = useGT();
   const gtData = useDataString();
   const fieldClass =
-    "px-2.5 py-1.5 text-sm bg-surface-overlay border border-border rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500";
+    "px-2.5 py-1.5 text-sm bg-surface-overlay border border-border rounded-md text-on-surface focus:outline-none focus:ring-2 focus:ring-accent-subtle/40 focus:border-accent-subtle";
 
   switch (descriptor.control) {
     case "toggle": {
@@ -258,12 +258,12 @@ function SettingControl({
           aria-label={gtData(descriptor.label)}
           onClick={() => onChange(on ? "off" : "on")}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-            on ? "bg-blue-600" : "bg-surface-sunken border border-border-strong"
+            on ? "bg-accent" : "bg-surface-sunken border border-border-strong"
           }`}
         >
           <span
-            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-              on ? "translate-x-4" : "translate-x-1"
+            className={`inline-block h-3.5 w-3.5 transform rounded-full transition-transform ${
+              on ? "translate-x-4 bg-on-accent" : "translate-x-1 bg-on-surface-muted"
             }`}
           />
         </button>

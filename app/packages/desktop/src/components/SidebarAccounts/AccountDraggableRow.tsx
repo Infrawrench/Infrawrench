@@ -78,7 +78,7 @@ export function AccountDraggableRow({
       {...attributes}
       className={`flex items-center w-full px-4 py-1.5 text-sm transition-colors group cursor-grab active:cursor-grabbing ${
         showDropHint
-          ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-blue-500"
+          ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-accent"
           : "text-on-surface-secondary hover:bg-surface-overlay hover:text-on-surface"
       } ${isDragging ? "opacity-40" : ""}`}
     >

@@ -8,8 +8,8 @@ export const PsBackupResourceType = rt({
     f("name", "Name", { editable: false }),
     f("databaseName", "Database", { editable: false }),
     f("branchName", "Branch", { editable: false }),
-    f("state", "State", { required: false, editable: false }),
-    f("size", "Size", { kind: "number", required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
+    f("size", "Size", { showcase: true, kind: "number", required: false, editable: false }),
     f("protected", "Protected", {
       kind: "boolean",
       required: false,
@@ -17,10 +17,10 @@ export const PsBackupResourceType = rt({
     }),
     f("required", "Required", { kind: "boolean", required: false, editable: false }),
     f("policyName", "Backup Policy", { required: false, editable: false }),
-    f("createdAt", "Created At", { required: false, editable: false }),
+    f("createdAt", "Created At", { showcase: true, required: false, editable: false }),
     f("startedAt", "Started At", { required: false, editable: false }),
     f("completedAt", "Completed At", { required: false, editable: false }),
-    f("expiresAt", "Expires At", { required: false, editable: false }),
+    f("expiresAt", "Expires At", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("backupName", "Backup Name"), o("backupId", "Backup ID")],
   // A branch's external id is `{database}/{branch}` while `branchName` is bare:
@@ -47,5 +47,5 @@ export const PsBackupResourceType = rt({
   parentTypeId: "ps-branch",
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "planetscale",
+  iconKey: "backup",
 });

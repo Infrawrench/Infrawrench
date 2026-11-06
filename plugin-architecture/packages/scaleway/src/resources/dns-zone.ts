@@ -6,9 +6,10 @@ export const DnsZoneResourceType = rt({
   description: "A Scaleway Domains and DNS zone",
   fields: [
     f("name", "Zone"),
-    f("domain", "Domain", { required: false }),
+    f("domain", "Domain", { showcase: true, required: false }),
     f("subdomain", "Subdomain", { required: false }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       enumValues: ["active", "pending", "error", "locked"],

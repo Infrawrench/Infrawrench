@@ -1149,6 +1149,8 @@ export interface PeerPaneResourceGroup {
   title: string;
   /** Resource type being listed: used by host to build DraggableResource */
   resourceTypeId: string;
+  /** The listed type's icon word; see `ResourceTypeDefinition.iconKey`. */
+  iconKey?: string;
   pluginId: string;
   items: PeerPaneResource[];
   /** If true, host shows a "Create" button for this group */

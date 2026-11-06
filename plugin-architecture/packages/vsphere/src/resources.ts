@@ -24,10 +24,11 @@ export const VcenterResourceType = rt({
   description: "The vCenter Server appliance: version, build and health",
   fields: [
     f("product", "Product", ro),
-    f("version", "Version", ro),
+    f("version", "Version", { ...ro, showcase: true }),
     f("build", "Build", ro),
     f("releaseDate", "Release Date", ro),
     f("health", "Overall Health", {
+      showcase: true,
       kind: "enum",
       enumValues: ["green", "yellow", "orange", "red", "gray", "unknown"],
       ...ro,
@@ -57,7 +58,7 @@ export const ClusterResourceType = rt({
     f("name", "Name", ro),
     f("haEnabled", "vSphere HA", { kind: "boolean", ...ro }),
     f("drsEnabled", "DRS", { kind: "boolean", ...ro }),
-    f("hostCount", "Hosts", { kind: "number", ...ro }),
+    f("hostCount", "Hosts", { showcase: true, kind: "number", ...ro }),
     f("datacenterId", "Datacenter", ro),
     f("resourcePoolId", "Root Resource Pool", ro),
   ],
@@ -89,13 +90,14 @@ export const HostResourceType = rt({
       ...ro,
     }),
     f("powerState", "Power", {
+      showcase: true,
       kind: "enum",
       enumValues: ["POWERED_ON", "POWERED_OFF", "STANDBY"],
       ...ro,
     }),
     f("clusterId", "Cluster", ro),
     f("datacenterId", "Datacenter", ro),
-    f("vmCount", "VMs", { kind: "number", ...ro }),
+    f("vmCount", "VMs", { showcase: true, kind: "number", ...ro }),
   ],
   outputs: [o("hostname", "Hostname"), o("hostId", "Host ID")],
   dependsOn: [
@@ -118,11 +120,13 @@ export const VmResourceType = rt({
   fields: [
     f("name", "Name", ro),
     f("powerState", "Power State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["POWERED_ON", "POWERED_OFF", "SUSPENDED"],
       ...ro,
     }),
     f("cpuCount", "vCPUs", {
+      showcase: true,
       kind: "number",
       required: false,
       description:
@@ -130,6 +134,7 @@ export const VmResourceType = rt({
     }),
     f("coresPerSocket", "Cores per Socket", { kind: "number", required: false }),
     f("memoryMb", "Memory (MiB)", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Changing it on a running VM needs memory hot add",
@@ -146,7 +151,7 @@ export const VmResourceType = rt({
     }),
     f("guestOs", "Guest OS", ro),
     f("hardwareVersion", "Hardware Version", ro),
-    f("diskGb", "Disk Capacity (GiB)", { kind: "number", ...ro }),
+    f("diskGb", "Disk Capacity (GiB)", { showcase: true, kind: "number", ...ro }),
     f("disks", "Disks", ro),
     f("datastores", "Datastores", ro),
     f("networkIds", "Networks", ro),
@@ -190,7 +195,7 @@ export const DatastoreResourceType = rt({
   description: "A datastore (VMFS, NFS, vSAN, vVol)",
   fields: [
     f("name", "Name", ro),
-    f("type", "Type", ro),
+    f("type", "Type", { ...ro, showcase: true }),
     f("capacityGb", "Capacity (GiB)", { kind: "number", ...ro }),
     f("accessible", "Accessible", { kind: "boolean", ...ro }),
     f("multipleHostAccess", "Shared", { kind: "boolean", ...ro }),
@@ -208,6 +213,7 @@ export const NetworkResourceType = rt({
   fields: [
     f("name", "Name", ro),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["STANDARD_PORTGROUP", "DISTRIBUTED_PORTGROUP", "OPAQUE_NETWORK"],
       ...ro,
@@ -250,7 +256,7 @@ export const ResourcePoolResourceType = rt({
       enumValues: ["LOW", "NORMAL", "HIGH"],
       required: false,
     }),
-    f("childCount", "Child Pools", { kind: "number", ...ro }),
+    f("childCount", "Child Pools", { showcase: true, kind: "number", ...ro }),
   ],
   outputs: [o("resourcePoolId", "Resource Pool ID")],
   dependsOn: [{ fieldKey: "parentId", targetTypeId: RESOURCE_POOL, label: "child of" }],
@@ -266,6 +272,7 @@ export const FolderResourceType = rt({
   fields: [
     f("name", "Name", ro),
     f("type", "Type", {
+      showcase: true,
       kind: "enum",
       enumValues: ["VIRTUAL_MACHINE", "HOST", "DATASTORE", "NETWORK", "DATACENTER"],
       ...ro,
@@ -285,11 +292,11 @@ export const LibraryResourceType = rt({
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    f("type", "Type", { kind: "enum", enumValues: ["LOCAL", "SUBSCRIBED"], ...ro }),
+    f("type", "Type", { showcase: true, kind: "enum", enumValues: ["LOCAL", "SUBSCRIBED"], ...ro }),
     f("datastoreIds", "Storage", ro),
     f("published", "Published", { kind: "boolean", ...ro }),
     f("subscriptionUrl", "Subscription URL", ro),
-    f("itemCount", "Items", { kind: "number", ...ro }),
+    f("itemCount", "Items", { showcase: true, kind: "number", ...ro }),
   ],
   outputs: [o("libraryId", "Library ID")],
   dependsOn: [{ fieldKey: "datastoreIds", targetTypeId: DATASTORE, label: "stored on" }],
@@ -308,11 +315,11 @@ export const LibraryItemResourceType = rt({
   fields: [
     f("name", "Name"),
     f("description", "Description", { required: false }),
-    f("type", "Type", ro),
-    f("sizeGb", "Size (GiB)", { kind: "number", ...ro }),
+    f("type", "Type", { ...ro, showcase: true }),
+    f("sizeGb", "Size (GiB)", { showcase: true, kind: "number", ...ro }),
     f("libraryId", "Library", ro),
     f("cached", "Cached", { kind: "boolean", ...ro }),
-    f("createdAt", "Created", ro),
+    f("createdAt", "Created", { ...ro, showcase: true }),
     f("modifiedAt", "Modified", ro),
   ],
   outputs: [o("itemId", "Item ID")],
@@ -373,7 +380,7 @@ export const CustomizationSpecResourceType = rt({
     f("name", "Name", ro),
     f("description", "Description", ro),
     f("osType", "OS Type", ro),
-    f("modifiedAt", "Modified", ro),
+    f("modifiedAt", "Modified", { ...ro, showcase: true }),
   ],
   outputs: [],
   pinnable: false,

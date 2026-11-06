@@ -16,6 +16,7 @@ export const ClickPipeResourceType = rt({
     f("serviceId", "Service ID", { editable: false }),
     f("name", "Name"),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       editable: false,
       enumValues: [
@@ -40,6 +41,7 @@ export const ClickPipeResourceType = rt({
     f("destinationDatabase", "Destination Database", { required: false, editable: false }),
     f("destinationTable", "Destination Table", { required: false, editable: false }),
     f("replicas", "Replicas", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Ingestion replicas. Applies to streaming pipes (Kafka, Kinesis, Pub/Sub).",
@@ -49,8 +51,8 @@ export const ClickPipeResourceType = rt({
       required: false,
       description: "Parallel file loads for object storage pipes. 0 auto-scales with the service.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("clickPipeId", "ClickPipe ID")],
   dependsOn: [{ fieldKey: "serviceId", targetTypeId: "ch-service", label: "ingests into" }],

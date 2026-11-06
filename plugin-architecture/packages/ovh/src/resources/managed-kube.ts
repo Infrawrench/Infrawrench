@@ -16,6 +16,7 @@ export const ManagedKubeResourceType = rt({
   fields: [
     f("name", "Name"),
     f("region", "Region", {
+      showcase: true,
       description: "OpenStack region, e.g. GRA11, EU-WEST-PAR",
       editable: false,
     }),
@@ -23,18 +24,24 @@ export const ManagedKubeResourceType = rt({
       description: "e.g. 1.33. Use the upgrade actions to move to a newer version",
       editable: false,
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("flavor", "Flavor", {
       required: false,
       description: "Flavor of the first node pool, e.g. b3-8",
       editable: false,
     }),
     f("nodeCount", "Node Count", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Total desired nodes. Editing it resizes the first node pool",
     }),
-    f("nodePoolCount", "Node Pools", { kind: "number", required: false, editable: false }),
+    f("nodePoolCount", "Node Pools", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("updatePolicy", "Update Policy", {
       kind: "enum",
       required: false,

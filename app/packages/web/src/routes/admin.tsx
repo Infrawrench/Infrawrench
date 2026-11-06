@@ -122,7 +122,7 @@ function AdminPage() {
                     <td className="px-4 py-3 text-on-surface-secondary">{org.memberCount}</td>
                     <td className="px-4 py-3">
                       {org.complimentary ? (
-                        <span className="text-xs font-medium px-2 py-1 rounded-full bg-purple-500/10 text-notice">
+                        <span className="text-xs font-medium px-2 py-1 rounded-md bg-purple-500/10 text-notice">
                           {gt("Complimentary")}
                         </span>
                       ) : (

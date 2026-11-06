@@ -4,6 +4,7 @@ import { EC2_SSH_WORLD_OPEN } from "../constants.js";
 export const EC2InstanceResourceType = rt({
   name: "EC2 Instance",
   id: "ec2-instance",
+  iconKey: "cpu",
   description: "An Amazon EC2 virtual machine instance",
   fields: [
     // EC2 "names" are tags the lister derives; the only editable field is
@@ -11,12 +12,14 @@ export const EC2InstanceResourceType = rt({
     f("name", "Name", { required: false, editable: false }),
     f("instanceId", "Instance ID", { editable: false }),
     f("instanceType", "Instance Type", {
+      showcase: true,
       description:
         "Instance type, e.g. t4g.small. Changing it resizes the instance (ModifyInstanceAttribute; only allowed while it is stopped)",
     }),
     f("availabilityZone", "Availability Zone", { editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("state", "State", {
+      showcase: true,
       editable: false,
       kind: "enum",
       enumValues: ["pending", "running", "shutting-down", "terminated", "stopping", "stopped"],

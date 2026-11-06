@@ -130,7 +130,7 @@ function DeployHotlink() {
                   replace: true,
                 })
               }
-              className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface"
+              className="text-xs px-3 py-1.5 rounded bg-on-surface/10 hover:bg-on-surface/20 text-on-surface"
             >
               {o.displayName}
             </button>

@@ -6,17 +6,23 @@ export const AppResourceType = rt({
   description: "A Fly.io application that groups machines, volumes, and networking",
   fields: [
     f("name", "Name"),
-    f("status", "Status", { kind: "enum", enumValues: ["deployed", "pending", "suspended"] }),
+    f("status", "Status", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["deployed", "pending", "suspended"],
+    }),
     f("organization", "Organization", {
       required: false,
       description: "Organization the app belongs to",
     }),
     f("machineCount", "Machines", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Number of machines in this app",
     }),
     f("volumeCount", "Volumes", {
+      showcase: true,
       kind: "number",
       required: false,
       description: "Number of volumes in this app",

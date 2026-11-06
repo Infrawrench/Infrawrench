@@ -688,7 +688,7 @@ function SavingsSettingsPanel({
           type="button"
           disabled={busy}
           onClick={() => void submit()}
-          className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent disabled:opacity-50"
         >
           {gt("Save")}
         </button>
@@ -1017,7 +1017,7 @@ function SavingsEntryModal({
             type="button"
             disabled={busy}
             onClick={() => void submit()}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent disabled:opacity-50"
           >
             {event ? gt("Save") : gt("Log saving")}
           </button>
@@ -1157,7 +1157,7 @@ function SavingsAnnotateModal({
             type="button"
             disabled={busy}
             onClick={() => void submit()}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent disabled:opacity-50"
           >
             {gt("Save")}
           </button>
@@ -1369,7 +1369,7 @@ export function RealizedSavingsWidgetConfigModal({
             type="button"
             disabled={busy}
             onClick={() => void submit()}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-on-accent disabled:opacity-50"
           >
             {gt("Save")}
           </button>

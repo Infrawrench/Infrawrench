@@ -4,13 +4,14 @@ export const GceDiskResourceType = rt({
   name: "Persistent Disk",
   pinnable: false,
   id: "gce-disk",
+  iconKey: "disk",
   description: "A Google Compute Engine persistent disk",
   fields: [
     f("name", "Name"),
-    f("zone", "Zone"),
-    f("sizeGb", "Size (GB)", { kind: "number" }),
-    f("type", "Disk Type", { required: false }),
-    f("status", "Status", { required: false }),
+    f("zone", "Zone", { showcase: true }),
+    f("sizeGb", "Size (GB)", { showcase: true, kind: "number" }),
+    f("type", "Disk Type", { showcase: true, required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("attachedTo", "Attached Instances", {
       required: false,
       description: "Comma-separated names of instances this disk is attached to",

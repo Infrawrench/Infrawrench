@@ -11,6 +11,7 @@ export const LambdaFunctionResourceType = rt({
   fields: [
     f("name", "Function Name", { editable: false }),
     f("runtime", "Runtime", {
+      showcase: true,
       required: false,
       kind: "enum",
       enumValues: LAMBDA_RUNTIME_IDS,
@@ -85,7 +86,7 @@ export const LambdaFunctionResourceType = rt({
       editable: false,
       description: "Whether the function is configured as a durable function",
     }),
-    f("state", "State", { required: false, editable: false }),
+    f("state", "State", { showcase: true, required: false, editable: false }),
     f("lastModified", "Last Modified", { required: false, editable: false }),
     f("roleArn", "Execution Role", { required: false, editable: false }),
     f("vpcId", "VPC ID", {

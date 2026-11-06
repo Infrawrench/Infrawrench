@@ -15,8 +15,9 @@ export const FineTuningJobResourceType = rt({
   description:
     "A fine-tuning run: a base model plus a training file, producing a private model snapshot. Can be cancelled, paused, and resumed.",
   fields: [
-    f("model", "Base Model"),
+    f("model", "Base Model", { showcase: true }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       enumValues: ["validating_files", "queued", "running", "succeeded", "failed", "cancelled"],
       required: false,
@@ -27,7 +28,7 @@ export const FineTuningJobResourceType = rt({
     f("trainedTokens", "Trained Tokens", { kind: "number", required: false }),
     f("method", "Method", { required: false }),
     f("seed", "Seed", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("finishedAt", "Finished", { required: false }),
     f("estimatedFinish", "Estimated Finish", { required: false }),
     f("errorMessage", "Error", { required: false }),

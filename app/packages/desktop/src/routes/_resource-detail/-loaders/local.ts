@@ -5,6 +5,7 @@ import type {
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
+import { showcaseFields } from "@infrawrench/plugin-base";
 import {
   buildChildResourceGroups,
   formatErrorMessage,
@@ -471,7 +472,10 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       );
       if (!isCancelled()) {
         setters.setChildResourceGroups(
-          buildChildResourceGroups(childTypes, allChildResources) as ChildResourceGroup[],
+          buildChildResourceGroups(
+            childTypes.map((t) => ({ ...t, showcase: showcaseFields(t) })),
+            allChildResources,
+          ) as ChildResourceGroup[],
         );
       }
     } else if (!isCancelled()) {

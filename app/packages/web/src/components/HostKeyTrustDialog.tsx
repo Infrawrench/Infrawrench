@@ -139,8 +139,10 @@ export function HostKeyTrustDialog({
             type="button"
             onClick={() => void onConfirm()}
             disabled={submitting}
-            className={`px-4 py-2 text-sm text-white rounded-lg transition-colors disabled:opacity-50 ${
-              isMismatch ? "bg-red-600 hover:bg-red-500" : "bg-blue-600 hover:bg-blue-500"
+            className={`px-4 py-2 text-sm rounded-lg transition-colors disabled:opacity-50 ${
+              isMismatch
+                ? "bg-red-600 hover:bg-red-500 text-white"
+                : "bg-accent hover:bg-accent-hover text-on-accent"
             }`}
           >
             {submitting

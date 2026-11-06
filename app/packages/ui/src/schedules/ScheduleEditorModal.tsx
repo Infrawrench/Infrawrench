@@ -12,7 +12,7 @@ import { useDataString } from "../i18n/data-strings.js";
 import type { SchedulePreview, SchedulesClient, SleepSchedule } from "./types.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 /** The resource the editor attaches a schedule to. */
@@ -200,7 +200,7 @@ export function ScheduleEditorModal({
                     onClick={() => toggleDay(day)}
                     className={`flex-1 rounded-lg border px-1 py-1.5 text-xs ${
                       active
-                        ? "border-blue-500 bg-blue-500/15 text-on-surface"
+                        ? "border-accent bg-accent/15 text-on-surface"
                         : "border-border bg-surface-sunken text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
@@ -333,7 +333,7 @@ export function ScheduleEditorModal({
               type="button"
               onClick={() => void save()}
               disabled={saving || timingError !== null}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
             >
               {saving ? gt("Saving…") : existing ? gt("Save changes") : gt("Create schedule")}
             </button>

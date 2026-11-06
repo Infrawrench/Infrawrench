@@ -8,13 +8,13 @@ export const DeploymentResourceType = rt({
   fields: [
     f("owner", "Owner"),
     f("name", "Name"),
-    f("model", "Model", { required: false }),
-    f("version", "Version", { required: false }),
+    f("model", "Model", { showcase: true, required: false }),
+    f("version", "Version", { showcase: true, required: false }),
     f("hardware", "Hardware", { required: false }),
     f("minInstances", "Min Instances", { kind: "number", required: false }),
     f("maxInstances", "Max Instances", { kind: "number", required: false }),
     f("releaseNumber", "Release", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("createdBy", "Created By", { required: false }),
   ],
   outputs: [

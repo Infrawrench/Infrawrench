@@ -11,7 +11,7 @@ export const QueueResourceType = rt({
     f("deliveryDelay", "Delivery Delay (s)", { kind: "number", required: false }),
     f("deliveryPaused", "Delivery Paused", { kind: "boolean", required: false }),
     f("messageRetentionPeriod", "Retention (s)", { kind: "number", required: false }),
-    f("createdOn", "Created", { required: false }),
+    f("createdOn", "Created", { showcase: true, required: false }),
     f("modifiedOn", "Modified", { required: false }),
   ],
   outputs: [o("queueId", "Queue ID"), o("queueName", "Queue Name")],

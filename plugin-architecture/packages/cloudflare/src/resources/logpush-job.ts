@@ -8,7 +8,7 @@ export const LogpushJobResourceType = rt({
   fields: [
     f("name", "Name", { required: false, editable: false }),
     f("enabled", "Enabled", { kind: "boolean" }),
-    f("dataset", "Dataset", { editable: false }),
+    f("dataset", "Dataset", { showcase: true, editable: false }),
     f("destinationType", "Destination Type", { required: false, editable: false }),
     f("frequency", "Frequency", { required: false }),
     f("logpullOptions", "Logpull Options", { required: false }),

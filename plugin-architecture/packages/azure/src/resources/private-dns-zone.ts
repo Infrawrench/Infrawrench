@@ -6,10 +6,14 @@ export const PrivateDNSZoneResourceType = rt({
   description: "An Azure Private DNS Zone",
   fields: [
     f("name", "Name"),
-    f("resourceGroup", "Resource Group"),
+    f("resourceGroup", "Resource Group", { showcase: true }),
     f("numberOfRecordSets", "Record Sets", { kind: "number", required: false }),
     f("maxNumberOfRecordSets", "Max Record Sets", { kind: "number", required: false }),
-    f("virtualNetworkLinkCount", "Virtual Network Links", { kind: "number", required: false }),
+    f("virtualNetworkLinkCount", "Virtual Network Links", {
+      showcase: true,
+      kind: "number",
+      required: false,
+    }),
   ],
   outputs: [o("resourceId", "Resource ID")],
   dependsOn: [

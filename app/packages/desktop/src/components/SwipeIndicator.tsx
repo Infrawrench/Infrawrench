@@ -59,7 +59,7 @@ function EdgePill({
     >
       <div
         className={`flex items-center justify-center rounded-full ${
-          triggered ? "bg-blue-500 shadow-lg shadow-blue-500/30" : "bg-surface-sunken/60"
+          triggered ? "bg-accent shadow-lg shadow-accent/30" : "bg-surface-sunken/60"
         }`}
         style={{
           width: size,

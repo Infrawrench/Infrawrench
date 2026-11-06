@@ -10,7 +10,7 @@ export const TursoGroupResourceType = rt({
     f("uuid", "UUID", { required: false, editable: false }),
     f("primaryLocation", "Primary Location", { required: false, editable: false }),
     f("locations", "Locations", { required: false, editable: false }),
-    f("version", "Version", { required: false, editable: false }),
+    f("version", "Version", { showcase: true, required: false, editable: false }),
     f("archived", "Archived", { kind: "boolean", required: false, editable: false }),
     f("deleteProtection", "Delete Protection", {
       kind: "boolean",
@@ -25,5 +25,5 @@ export const TursoGroupResourceType = rt({
   ],
   supportsCreate: true,
   supportsUpdate: true,
-  iconKey: "turso",
+  iconKey: "group",
 });

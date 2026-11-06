@@ -13,7 +13,7 @@ export const AiSearchResourceType = rt({
     f("aiSearchModel", "Generation Model", { required: false }),
     f("embeddingModel", "Embedding Model", { required: false }),
     f("vectorizeName", "Vectorize Index", { required: false }),
-    f("status", "Status", { required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("paused", "Paused", { kind: "boolean", required: false }),
     f("lastActivity", "Last Activity", { required: false }),
   ],

@@ -396,7 +396,7 @@ export function CostsPanel({
                           id={`${uid}-groupby`}
                           value={groupBy}
                           onChange={(e) => setGroupBy(e.target.value as CostDimensionId)}
-                          className="rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500"
+                          className="rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle"
                         >
                           {OVERVIEW_GROUP_BYS.map((dim) => (
                             <option key={dim} value={dim}>

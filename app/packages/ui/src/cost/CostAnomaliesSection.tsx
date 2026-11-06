@@ -320,18 +320,18 @@ export function CostAnomaliesSection({
                         {COST_ANOMALY_DIMENSION_LABELS[a.dimension]}
                       </span>
                       {isNew && (
-                        <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
+                        <span className="ml-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
                           {gt("New source")}
                         </span>
                       )}
                       {explained && (
-                        <span className="ml-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-success">
+                        <span className="ml-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-success">
                           {gt("Explained")}
                         </span>
                       )}
                       {a.feedback && (
                         <span
-                          className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                          className={`ml-2 rounded-md border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
                             a.feedback.verdict === "expected"
                               ? "border-border bg-surface-sunken text-on-surface-secondary"
                               : "border-red-500/40 bg-red-500/10 text-danger"
@@ -342,7 +342,7 @@ export function CostAnomaliesSection({
                       )}
                       {a.suppressionId && (
                         <span
-                          className="ml-2 rounded-full border border-border bg-surface-sunken px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-on-surface-faint"
+                          className="ml-2 rounded-md border border-border bg-surface-sunken px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-on-surface-faint"
                           title={gt(
                             "Matched an expected pattern, so it was recorded but not alerted on",
                           )}
@@ -706,7 +706,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             disabled={!canEdit || busy}
             value={draft.sigmas}
             onChange={(e) => set({ sigmas: Number(e.target.value) })}
-            className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
+            className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle disabled:opacity-60"
           />
           <span className="text-[11px] text-on-surface-faint">
             {gt(
@@ -730,7 +730,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             disabled={!canEdit || busy}
             value={toDollars(draft.minDeltaCents)}
             onChange={(e) => set({ minDeltaCents: Math.round(Number(e.target.value) * 100) })}
-            className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
+            className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle disabled:opacity-60"
           />
           <span className="text-[11px] text-on-surface-faint">
             {gt(
@@ -754,7 +754,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             disabled={!canEdit || busy}
             value={toDollars(draft.newSourceMinCents)}
             onChange={(e) => set({ newSourceMinCents: Math.round(Number(e.target.value) * 100) })}
-            className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
+            className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle disabled:opacity-60"
           />
           <span className="text-[11px] text-on-surface-faint">
             {gt(
@@ -779,7 +779,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
           disabled={!canEdit || busy}
           value={draft.smsAlerts}
           onChange={(e) => set({ smsAlerts: e.target.value as CostAnomalySmsMode })}
-          className="w-full rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60 sm:w-72"
+          className="w-full rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle disabled:opacity-60 sm:w-72"
         >
           {COST_ANOMALY_SMS_MODES.map((mode) => (
             <option key={mode} value={mode}>

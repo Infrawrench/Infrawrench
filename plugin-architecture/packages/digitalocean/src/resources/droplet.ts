@@ -6,7 +6,15 @@ export const DropletResourceType = rt({
   description: "A DigitalOcean virtual machine",
   fields: [
     f("name", "Name"),
+    f("vcpus", "vCPU", { showcase: true, kind: "number", required: false, editable: false }),
+    f("memoryMb", "Memory (MB)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("region", "Region", {
+      showcase: true,
       editable: false,
       kind: "enum",
       enumValues: [
@@ -40,7 +48,7 @@ export const DropletResourceType = rt({
       description: "UUID of the VPC network this Droplet is attached to",
       editable: false,
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("nextBackupStart", "Next Backup Window", {
       required: false,
       editable: false,

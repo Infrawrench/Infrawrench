@@ -16,6 +16,7 @@ export const ProjectResourceType = rt({
     f("slug", "Slug", { description: "URL-safe identifier, unique within the organization." }),
     f("description", "Description", { required: false }),
     f("type", "Product", {
+      showcase: true,
       kind: "enum",
       editable: false,
       enumValues: [
@@ -37,7 +38,7 @@ export const ProjectResourceType = rt({
       required: false,
       description: "How many versions of each secret Infisical keeps for point-in-time recovery.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("projectId", "Project ID", {
@@ -66,7 +67,7 @@ export const EnvironmentResourceType = rt({
     }),
     f("position", "Position", { kind: "number", required: false }),
     f("projectId", "Project ID", { required: false, editable: false }),
-    f("projectName", "Project", { required: false, editable: false }),
+    f("projectName", "Project", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("environmentSlug", "Environment Slug"), o("environmentId", "Environment ID")],
   dependsOn: [{ fieldKey: "projectId", targetTypeId: "project", label: "belongs to" }],
@@ -86,10 +87,10 @@ export const FolderResourceType = rt({
     f("name", "Name"),
     f("path", "Path", { required: false, editable: false }),
     f("description", "Description", { required: false }),
-    f("environment", "Environment", { required: false, editable: false }),
+    f("environment", "Environment", { showcase: true, required: false, editable: false }),
     f("projectId", "Project ID", { required: false, editable: false }),
     f("lastSecretModified", "Last Secret Change", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("path", "Folder Path", { description: "Pass as `--path` to the Infisical CLI." })],
   supportsCreate: true,
@@ -113,9 +114,9 @@ export const SecretResourceType = rt({
     }),
     f("comment", "Comment", { required: false }),
     f("path", "Folder Path", { required: false, editable: false }),
-    f("environment", "Environment", { required: false, editable: false }),
+    f("environment", "Environment", { showcase: true, required: false, editable: false }),
     f("projectId", "Project ID", { required: false, editable: false }),
-    f("version", "Version", { kind: "number", required: false, editable: false }),
+    f("version", "Version", { showcase: true, kind: "number", required: false, editable: false }),
     f("tags", "Tags", { required: false, editable: false }),
     f("reminderRepeatDays", "Rotation Reminder (days)", {
       kind: "number",
@@ -128,7 +129,7 @@ export const SecretResourceType = rt({
       required: false,
       editable: false,
     }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("value", "Value", { sensitive: true, description: "The secret's current value." }),
@@ -148,19 +149,19 @@ export const DynamicSecretResourceType = rt({
   parentTypeId: "environment",
   fields: [
     f("name", "Name"),
-    f("type", "Provider", { required: false, editable: false }),
+    f("type", "Provider", { showcase: true, required: false, editable: false }),
     f("defaultTTL", "Default TTL", {
       required: false,
       description: "Lease lifetime when none is requested, e.g. 1h or 30m.",
     }),
     f("maxTTL", "Max TTL", { required: false, description: "Longest lease allowed, e.g. 24h." }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("statusDetails", "Status Details", { required: false, editable: false }),
     f("path", "Folder Path", { required: false, editable: false }),
-    f("environment", "Environment", { required: false, editable: false }),
+    f("environment", "Environment", { showcase: true, required: false, editable: false }),
     f("projectId", "Project ID", { required: false, editable: false }),
     f("projectSlug", "Project Slug", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
   credentialFormats: [
@@ -189,6 +190,7 @@ export const SecretSyncResourceType = rt({
     f("destination", "Destination", { required: false, editable: false }),
     f("connectionName", "App Connection", { required: false, editable: false }),
     f("environment", "Source Environment", {
+      showcase: true,
       required: false,
       description: "Environment slug the sync reads from.",
     }),
@@ -219,7 +221,7 @@ export const IntegrationResourceType = rt({
   fields: [
     f("integration", "Integration", { editable: false }),
     f("app", "Target", { required: false, editable: false }),
-    f("environment", "Environment", { required: false, editable: false }),
+    f("environment", "Environment", { showcase: true, required: false, editable: false }),
     f("secretPath", "Source Path", { required: false, editable: false }),
     f("isActive", "Active", { kind: "boolean", required: false, editable: false }),
     f("isSynced", "Synced", { kind: "boolean", required: false, editable: false }),
@@ -240,6 +242,7 @@ export const MachineIdentityResourceType = rt({
   fields: [
     f("name", "Name"),
     f("role", "Organization Role", {
+      showcase: true,
       description: "admin, member, no-access, or a custom organization role slug.",
     }),
     f("identityId", "Identity ID", { required: false, editable: false }),
@@ -247,7 +250,7 @@ export const MachineIdentityResourceType = rt({
     f("lastLoginTime", "Last Login", { required: false, editable: false }),
     f("lastLoginAuthMethod", "Last Login Method", { required: false, editable: false }),
     f("hasDeleteProtection", "Delete Protection", { kind: "boolean", required: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("identityId", "Identity ID"),
@@ -282,7 +285,7 @@ export const CertificateAuthorityResourceType = rt({
     f("name", "Name", { editable: false }),
     f("friendlyName", "Friendly Name", { required: false, editable: false }),
     f("caType", "Type", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("commonName", "Common Name", { required: false, editable: false }),
     f("keyAlgorithm", "Key Algorithm", { required: false, editable: false }),
     f("serialNumber", "Serial Number", { required: false, editable: false }),
@@ -317,7 +320,7 @@ export const CertificateResourceType = rt({
     f("commonName", "Common Name", { editable: false }),
     f("friendlyName", "Friendly Name", { required: false, editable: false }),
     f("altNames", "Subject Alternative Names", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("serialNumber", "Serial Number", { required: false, editable: false }),
     f("notBefore", "Valid From", { required: false, editable: false }),
     f("notAfter", "Expires", { required: false, editable: false }),

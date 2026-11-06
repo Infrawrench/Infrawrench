@@ -15,9 +15,9 @@ export const AutoscalePoolResourceType = rt({
   description: "A DigitalOcean Droplet autoscale pool.",
   fields: [
     f("name", "Name", { editable: false, description: "Fixed at creation." }),
-    f("status", "Status", { required: false, editable: false }),
-    f("region", "Region", { required: false, editable: false }),
-    f("size", "Droplet Size", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
+    f("size", "Droplet Size", { showcase: true, required: false, editable: false }),
     f("image", "Image", { required: false, editable: false }),
     f("mode", "Scaling", {
       kind: "enum",
@@ -58,6 +58,7 @@ export const AutoscalePoolResourceType = rt({
       description: "Minutes between scaling events, 5-20.",
     }),
     f("activeResourcesCount", "Active Droplets", {
+      showcase: true,
       kind: "number",
       required: false,
       editable: false,

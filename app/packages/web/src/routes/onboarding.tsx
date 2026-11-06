@@ -114,10 +114,10 @@ function OnboardingPage() {
               </button>
             </div>
 
-            <div className="border border-blue-600 rounded-xl p-5 flex flex-col">
+            <div className="border border-accent rounded-xl p-5 flex flex-col">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-medium text-on-surface-secondary">{gt("Pro")}</h2>
-                <span className="text-xs font-medium px-2 py-1 rounded-full bg-blue-500/10 text-info">
+                <span className="text-xs font-medium px-2 py-1 rounded-md bg-accent/10 text-info">
                   {gt("Recommended")}
                 </span>
               </div>
@@ -137,7 +137,7 @@ function OnboardingPage() {
                 type="button"
                 onClick={() => void handleUpgrade()}
                 disabled={upgrading}
-                className="w-full px-4 py-2.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                className="w-full px-4 py-2.5 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-on-accent rounded-lg transition-colors"
               >
                 {upgrading ? gt("Redirecting...") : gt("Upgrade to Pro")}
               </button>
@@ -189,7 +189,7 @@ function OnboardingPage() {
           type="button"
           onClick={() => void handleCreate()}
           disabled={creating || !name.trim()}
-          className="w-full px-4 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          className="w-full px-4 py-3 text-sm font-medium bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-on-accent rounded-lg transition-colors"
         >
           {creating ? gt("Creating...") : gt("Create Organization")}
         </button>

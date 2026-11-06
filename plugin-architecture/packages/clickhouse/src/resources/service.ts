@@ -8,6 +8,7 @@ export const ServiceResourceType = rt({
     f("serviceId", "Service ID", { editable: false }),
     f("name", "Name", { description: "Up to 50 characters, letters, digits and spaces." }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       editable: false,
       enumValues: [
@@ -27,10 +28,10 @@ export const ServiceResourceType = rt({
         "softdeleted",
       ],
     }),
-    f("provider", "Cloud Provider", { required: false, editable: false }),
-    f("region", "Region", { required: false, editable: false }),
+    f("provider", "Cloud Provider", { showcase: true, required: false, editable: false }),
+    f("region", "Region", { showcase: true, required: false, editable: false }),
     f("clickhouseVersion", "ClickHouse Version", { required: false, editable: false }),
-    f("tier", "Tier", { required: false, editable: false }),
+    f("tier", "Tier", { showcase: true, required: false, editable: false }),
     f("releaseChannel", "Release Channel", {
       kind: "enum",
       enumValues: ["slow", "default", "fast"],

@@ -7,10 +7,10 @@ export const DnsRecordResourceType = rt({
   description: "A record in a Scaleway DNS zone",
   fields: [
     f("name", "Name", { description: "Relative to the zone; @ is the apex" }),
-    f("type", "Type", { editable: false }),
+    f("type", "Type", { showcase: true, editable: false }),
     f("content", "Value"),
-    f("ttl", "TTL", { kind: "number", required: false }),
-    f("priority", "Priority", { kind: "number", required: false }),
+    f("ttl", "TTL", { showcase: true, kind: "number", required: false }),
+    f("priority", "Priority", { showcase: true, kind: "number", required: false }),
     f("comment", "Comment", { required: false, editable: false }),
     f("zoneName", "Zone", { required: false, editable: false }),
   ],

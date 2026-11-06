@@ -237,7 +237,8 @@ export function UnitCostCard({
     const spendCurrency = spendSeries[0]?.currency ?? "USD";
 
     const formatValue = (v: number | null) => formatUnitCostValue(v, mode);
-    const color = (i: number) => chart.colors[i % chart.colors.length] ?? "#60a5fa";
+    const color = (i: number) =>
+      chart.colors[i % chart.colors.length] ?? "var(--color-chart-primary)";
 
     return (
       <ResponsiveContainer width="100%" height="100%">

@@ -12,6 +12,7 @@ export const MachineResourceType = rt({
   fields: [
     f("name", "Name", { required: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       enumValues: [
         "created",
@@ -24,7 +25,10 @@ export const MachineResourceType = rt({
         "replacing",
       ],
     }),
-    f("region", "Region", { description: "Fly.io region code (e.g. iad, cdg, nrt)" }),
+    f("region", "Region", {
+      showcase: true,
+      description: "Fly.io region code (e.g. iad, cdg, nrt)",
+    }),
     f("image", "Image", { required: false, description: "Container image used by this machine" }),
     f("appName", "App", { description: "Name of the parent app" }),
     f("instanceId", "Instance ID", {
@@ -32,8 +36,8 @@ export const MachineResourceType = rt({
       description: "Current instance version identifier",
     }),
     f("cpuKind", "CPU Kind", { required: false, description: "shared or performance" }),
-    f("cpus", "vCPUs", { kind: "number", required: false }),
-    f("memoryMb", "Memory (MB)", { kind: "number", required: false }),
+    f("cpus", "vCPUs", { showcase: true, kind: "number", required: false }),
+    f("memoryMb", "Memory (MB)", { showcase: true, kind: "number", required: false }),
     f("cordoned", "Cordoned", {
       kind: "boolean",
       required: false,

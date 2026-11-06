@@ -8,13 +8,13 @@ export const DeployedModelResourceType = rt({
   fields: [
     f("displayName", "Display Name"),
     f("deployedModelId", "Deployed Model ID"),
-    f("model", "Model", { required: false }),
+    f("model", "Model", { showcase: true, required: false }),
     f("deployment", "Deployment", { required: false }),
-    f("state", "State", { required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("isDefault", "Default", { kind: "boolean", required: false }),
     f("public", "Public", { kind: "boolean", required: false }),
     f("serverless", "Fireworks-managed", { kind: "boolean", required: false }),
-    f("createTime", "Created", { required: false }),
+    f("createTime", "Created", { showcase: true, required: false }),
   ],
   outputs: [
     o("deployedModelName", "Deployed Model Resource Name"),

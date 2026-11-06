@@ -365,7 +365,7 @@ export function SeatsSection({ client }: SeatsSectionProps) {
                       </td>
                       <td className="px-3 py-2 w-full text-xs text-on-surface-secondary">
                         <span
-                          className={`mr-2 rounded-full border px-2 py-0.5 ${STATUS_TONE[seat.status]}`}
+                          className={`mr-2 rounded-md border px-2 py-0.5 ${STATUS_TONE[seat.status]}`}
                         >
                           {statusLabel(seat.status)}
                         </span>

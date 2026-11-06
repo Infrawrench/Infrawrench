@@ -283,7 +283,7 @@ export function EditResourceModal({
               type="button"
               onClick={() => void handleSubmit()}
               disabled={saving || !hasChanges || !isValid}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+              className="flex-1 px-4 py-2 text-sm font-medium text-on-accent bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-lg transition-colors"
             >
               {saving ? gt("Saving...") : gt("Save changes")}
             </button>
@@ -315,7 +315,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
   ) : null;
 
   const inputClass =
-    "w-full px-3 py-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500";
+    "w-full px-3 py-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-accent-subtle/40 focus:border-accent-subtle";
 
   if (field.kind === "boolean") {
     const checked = value === "true";

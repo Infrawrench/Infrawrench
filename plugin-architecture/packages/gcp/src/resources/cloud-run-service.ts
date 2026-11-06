@@ -3,13 +3,15 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const CloudRunServiceResourceType = rt({
   name: "Cloud Run Service",
   id: "cloud-run-service",
+  iconKey: "container",
   description: "A Google Cloud Run managed service",
   fields: [
     f("name", "Name"),
-    f("region", "Region"),
+    f("region", "Region", { showcase: true }),
     f("latestRevision", "Latest Revision", { required: false }),
-    f("state", "State", { required: false }),
+    f("state", "State", { showcase: true, required: false }),
     f("image", "Container Image", {
+      showcase: true,
       required: false,
       editable: false,
       description: "Image of the service's main container, as deployed (tag or digest)",

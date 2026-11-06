@@ -3,17 +3,19 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 export const GceInstanceResourceType = rt({
   name: "VM Instance",
   id: "gce-instance",
+  iconKey: "cpu",
   description: "A Google Compute Engine virtual machine instance",
   fields: [
     // GCE instance names are immutable; the only editable field is
     // machineType (the right-sizing resize path).
     f("name", "Name", { editable: false }),
-    f("zone", "Zone", { editable: false }),
+    f("zone", "Zone", { showcase: true, editable: false }),
     f("machineType", "Machine Type", {
+      showcase: true,
       description:
         "Machine type name, e.g. e2-standard-2. Changing it resizes the instance (only allowed while it is stopped)",
     }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
     f("networkTier", "Network Tier", { required: false, editable: false }),
     f("network", "VPC Network", {
       kind: "association",

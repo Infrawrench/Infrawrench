@@ -15,6 +15,7 @@ export const OrganizationMembershipResourceType = rt({
     f("userId", "User ID", { required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
     f("role", "Role", {
+      showcase: true,
       required: false,
       description: "Role slug, e.g. `member` or `admin`. Edit to reassign the role.",
     }),
@@ -24,6 +25,7 @@ export const OrganizationMembershipResourceType = rt({
       description: "Every role slug the membership holds, comma-separated.",
     }),
     f("status", "Status", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
@@ -35,7 +37,7 @@ export const OrganizationMembershipResourceType = rt({
       editable: false,
       description: "True when Directory Sync owns this membership.",
     }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("membershipId", "Membership ID")],
   dependsOn: [{ fieldKey: "userId", targetTypeId: "user", label: "member" }],

@@ -309,7 +309,7 @@ describe("CostAnomaliesSection — explaining a finding", () => {
     fireEvent.change(await screen.findByLabelText("What happened"), {
       target: { value: "Migrated the API fleet to Graviton" },
     });
-    fireEvent.click(screen.getByText("Explain", { selector: "button.bg-blue-600" }));
+    fireEvent.click(screen.getByText("Explain", { selector: "button.bg-accent" }));
 
     await waitFor(() =>
       expect(acknowledgeAnomaly).toHaveBeenCalledWith("a1", "Migrated the API fleet to Graviton"),
@@ -371,7 +371,7 @@ describe("CostAnomaliesSection — explaining a finding", () => {
     fireEvent.click(await screen.findByText("Explain"));
 
     fireEvent.change(await screen.findByLabelText("What happened"), { target: { value: "   " } });
-    const submit = screen.getByText("Explain", { selector: "button.bg-blue-600" });
+    const submit = screen.getByText("Explain", { selector: "button.bg-accent" });
     fireEvent.click(submit);
     expect(acknowledgeAnomaly).not.toHaveBeenCalled();
   });

@@ -212,7 +212,7 @@ export function ExtendedSupportSection({
                   </td>
                   <td className="px-3 py-2.5 w-full text-on-surface-secondary">
                     <span
-                      className={`mr-2 rounded-full border px-2 py-0.5 text-xs ${STATUS_TONE[f.status]}`}
+                      className={`mr-2 rounded-md border px-2 py-0.5 text-xs ${STATUS_TONE[f.status]}`}
                     >
                       {statusLabel(f.status)}
                     </span>

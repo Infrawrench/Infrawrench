@@ -54,7 +54,7 @@ export interface SavingsFindingsSectionProps {
 }
 
 const SELECT =
-  "rounded-lg border border-border bg-surface-sunken px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "rounded-lg border border-border bg-surface-sunken px-2 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 const BUTTON =
   "rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50";
 
@@ -90,7 +90,7 @@ function useKindLabel(): (kind: SavingsFindingKind) => string {
 }
 
 const STATUS_BADGE: Record<SavingsFindingStatus, string> = {
-  ready: "border-blue-500/40 text-info",
+  ready: "border-accent/40 text-info",
   in_progress: "border-amber-500/40 text-warning",
   completed: "border-emerald-500/40 text-success",
   archived: "border-border text-on-surface-faint",
@@ -642,7 +642,7 @@ export function SavingsFindingsSection({ client, onOpenResource }: SavingsFindin
                 }}
                 className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${
                   status === t.id
-                    ? "border-blue-500 text-on-surface"
+                    ? "border-accent text-on-surface"
                     : "border-transparent text-on-surface-tertiary hover:text-on-surface"
                 }`}
               >
@@ -754,7 +754,7 @@ export function SavingsFindingsSection({ client, onOpenResource }: SavingsFindin
                           ) : (
                             <span className="font-medium text-on-surface">{f.title}</span>
                           )}
-                          <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-on-surface-tertiary">
+                          <span className="rounded-md border border-border px-2 py-0.5 text-[11px] text-on-surface-tertiary">
                             {kindLabel(f.kind)}
                           </span>
                         </div>
@@ -888,7 +888,7 @@ function StatusCell({
           value={finding.status}
           onChange={(e) => onChange(e.target.value as SavingsFindingStatus)}
           aria-label={gt("Status of {name}", { name: finding.resourceName })}
-          className={`rounded-full border bg-transparent px-2 py-0.5 text-xs ${STATUS_BADGE[finding.status]}`}
+          className={`rounded-md border bg-transparent px-2 py-0.5 text-xs ${STATUS_BADGE[finding.status]}`}
         >
           {SAVINGS_FINDING_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -898,7 +898,7 @@ function StatusCell({
         </select>
       ) : (
         <span
-          className={`w-fit rounded-full border px-2 py-0.5 text-xs ${STATUS_BADGE[finding.status]}`}
+          className={`w-fit rounded-md border px-2 py-0.5 text-xs ${STATUS_BADGE[finding.status]}`}
         >
           {label}
         </span>

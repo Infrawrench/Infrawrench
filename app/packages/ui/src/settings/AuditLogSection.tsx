@@ -296,9 +296,9 @@ function ActorCell({
         type="button"
         onClick={() => onFilterByKey(apiKeyId)}
         title={gt("Show only this API key")}
-        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border-strong bg-surface-overlay py-0.5 pr-2 pl-1.5 transition-colors hover:bg-surface-raised"
+        className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border-strong bg-surface-overlay py-0.5 pr-2 pl-1.5 transition-colors hover:bg-surface-raised"
       >
-        <span className="rounded-full bg-surface-raised px-1.5 py-px text-[10px] font-medium tracking-wide text-on-surface-muted uppercase">
+        <span className="rounded-md bg-surface-raised px-1.5 py-px text-[10px] font-medium tracking-wide text-on-surface-muted uppercase">
           {gt("API key")}
         </span>
         <span className="truncate text-xs text-on-surface-secondary">

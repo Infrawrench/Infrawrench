@@ -7,17 +7,17 @@ export const DedicatedInferenceResourceType = rt({
     "A DigitalOcean Dedicated Inference deployment: always-on, GPU-backed model serving. Billed per GPU.",
   fields: [
     f("name", "Name"),
-    f("region", "Region"),
+    f("region", "Region", { showcase: true }),
     f("vpcUuid", "VPC", { required: false, editable: false }),
     f("enablePublicEndpoint", "Public Endpoint", {
       required: false,
       description: "Whether the deployment exposes a public inference endpoint",
     }),
-    f("modelCount", "Models", { kind: "number", required: false, editable: false }),
+    f("modelCount", "Models", { showcase: true, kind: "number", required: false, editable: false }),
     f("modelSummary", "Deployed Models", { required: false, editable: false }),
     f("publicEndpoint", "Public FQDN", { required: false, editable: false }),
     f("privateEndpoint", "Private FQDN", { required: false, editable: false }),
-    f("status", "Status", { required: false, editable: false }),
+    f("status", "Status", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("publicEndpointUrl", "Public Endpoint URL", {

@@ -13,18 +13,19 @@ export const InvitationResourceType = rt({
   fields: [
     f("email", "Email", { editable: false }),
     f("state", "State", {
+      showcase: true,
       kind: "enum",
       required: false,
       editable: false,
       enumValues: ["pending", "accepted", "expired", "revoked"],
     }),
     f("roleSlug", "Role", { required: false, editable: false }),
-    f("expiresAt", "Expires", { required: false, editable: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false, editable: false }),
     f("acceptedAt", "Accepted", { required: false, editable: false }),
     f("revokedAt", "Revoked", { required: false, editable: false }),
     f("inviterUserId", "Invited By", { required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("invitationId", "Invitation ID"),

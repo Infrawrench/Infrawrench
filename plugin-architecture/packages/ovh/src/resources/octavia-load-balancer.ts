@@ -7,7 +7,7 @@ export const OctaviaLoadBalancerResourceType = rt({
     "An OVHcloud Public Cloud Load Balancer (OpenStack Octavia), the regional load balancer behind Managed Kubernetes services",
   fields: [
     f("name", "Name"),
-    f("region", "Region", { editable: false }),
+    f("region", "Region", { showcase: true, editable: false }),
     f("flavor", "Size", {
       description:
         "Flavor name, e.g. small, medium, large, xl. Changing it resizes the load balancer",

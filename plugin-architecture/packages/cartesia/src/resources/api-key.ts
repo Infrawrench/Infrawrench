@@ -17,7 +17,7 @@ export const ApiKeyResourceType = rt({
     f("description", "Description", { required: false }),
     f("creatorEmail", "Created By", { required: false }),
     f("creatorStillInOrg", "Creator Still in Org", { kind: "boolean", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
   ],
   outputs: [o("keyId", "Key ID")],
   principalRole: { role: "key", createdKey: "createdAt", parentKey: "creatorEmail" },

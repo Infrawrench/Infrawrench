@@ -12,11 +12,11 @@ export const PostgresFlexibleServerResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
-    f("state", "State"),
-    f("version", "PostgreSQL Version", { required: false }),
+    f("location", "Location", { showcase: true }),
+    f("state", "State", { showcase: true }),
+    f("version", "PostgreSQL Version", { showcase: true, required: false }),
     f("sku", "SKU", { required: false }),
-    f("tier", "Tier", { required: false }),
+    f("tier", "Tier", { showcase: true, required: false }),
     f("billableVCores", "Billable vCores", {
       kind: "number",
       required: false,

@@ -6,9 +6,9 @@ export const CodePipelinePipelineResourceType = rt({
   description: "An AWS CodePipeline CI/CD pipeline",
   fields: [
     f("name", "Name"),
-    f("stageCount", "Stages", { kind: "number", required: false }),
-    f("version", "Version", { kind: "number", required: false }),
-    f("createdAt", "Created", { required: false }),
+    f("stageCount", "Stages", { showcase: true, kind: "number", required: false }),
+    f("version", "Version", { showcase: true, kind: "number", required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
     f("updatedAt", "Updated", { required: false }),
     f("pipelineType", "Type", { required: false }),
   ],

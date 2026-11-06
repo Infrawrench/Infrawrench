@@ -28,13 +28,18 @@ export const AgentResourceType = rt({
     // so the voice is changed in the Cartesia playground.
     f("ttsVoice", "Voice ID", { required: false, editable: false }),
     f("phoneNumbers", "Phone Numbers", { required: false, editable: false }),
-    f("deploymentCount", "Deployments", { kind: "number", required: false, editable: false }),
+    f("deploymentCount", "Deployments", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("webhookId", "Webhook ID", { required: false, editable: false }),
     f("gitRepository", "Git Repository", { required: false, editable: false }),
     f("gitDeployBranch", "Deploy Branch", { required: false, editable: false }),
     f("selfHostedUrl", "Self-Hosted URL", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
-    f("updatedAt", "Updated", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
+    f("updatedAt", "Updated", { showcase: true, required: false, editable: false }),
   ],
   outputs: [
     o("agentId", "Agent ID", { description: "The agent_id used by the Agents WebSocket API" }),

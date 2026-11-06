@@ -40,7 +40,7 @@ import type { CostReportsClient } from "./types.js";
 const NAMED_FORECAST_COLORS = SERIES_COLORS.filter((c) => c !== FORECAST_COLOR);
 
 const selectClass =
-  "rounded-lg border border-border bg-surface-sunken px-2 py-1 text-xs text-on-surface focus:outline-none focus:border-blue-500";
+  "rounded-lg border border-border bg-surface-sunken px-2 py-1 text-xs text-on-surface focus:outline-none focus:border-accent-subtle";
 
 /** Horizons offered, in days past the last observed day. */
 const HORIZONS = [30, 90, 180, 365] as const;

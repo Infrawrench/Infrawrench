@@ -21,7 +21,7 @@ export const OrganizationRoleResourceType = rt({
     }),
     f("resourceTypeSlug", "Resource type", { required: false, editable: false }),
     f("organizationId", "Organization ID", { required: false, editable: false }),
-    f("createdAt", "Created", { required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [o("roleSlug", "Role Slug")],
   principalRole: {

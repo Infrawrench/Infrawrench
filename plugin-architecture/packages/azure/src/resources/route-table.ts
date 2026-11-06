@@ -7,10 +7,10 @@ export const RouteTableResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
-    f("provisioningState", "Provisioning State", { required: false }),
-    f("routeCount", "Routes", { kind: "number", required: false }),
-    f("subnetCount", "Associated Subnets", { kind: "number", required: false }),
+    f("location", "Location", { showcase: true }),
+    f("provisioningState", "Provisioning State", { showcase: true, required: false }),
+    f("routeCount", "Routes", { showcase: true, kind: "number", required: false }),
+    f("subnetCount", "Associated Subnets", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],
   dependsOn: [

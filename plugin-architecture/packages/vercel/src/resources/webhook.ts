@@ -12,8 +12,8 @@ export const VercelWebhookResourceType = rt({
       required: false,
       description: "Projects the webhook is limited to; empty means every project",
     }),
-    f("createdAt", "Created At", { required: false }),
-    f("updatedAt", "Updated At", { required: false }),
+    f("createdAt", "Created At", { showcase: true, required: false }),
+    f("updatedAt", "Updated At", { showcase: true, required: false }),
   ],
   outputs: [
     o("webhookId", "Webhook ID"),

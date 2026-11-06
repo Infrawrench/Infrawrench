@@ -8,10 +8,10 @@ export const FileResourceType = rt({
     f("fileId", "File ID"),
     f("name", "Name", { required: false }),
     f("contentType", "Content Type", { required: false }),
-    f("size", "Size (bytes)", { kind: "number", required: false }),
+    f("size", "Size (bytes)", { showcase: true, kind: "number", required: false }),
     f("sha256", "SHA-256", { required: false }),
-    f("createdAt", "Created", { required: false }),
-    f("expiresAt", "Expires", { required: false }),
+    f("createdAt", "Created", { showcase: true, required: false }),
+    f("expiresAt", "Expires", { showcase: true, required: false }),
   ],
   outputs: [
     o("fileId", "File ID"),

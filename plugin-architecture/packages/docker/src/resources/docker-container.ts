@@ -6,8 +6,8 @@ export const DockerContainerResourceType = rt({
   description: "A Docker container managed by the local or remote Docker daemon.",
   fields: [
     f("name", "Name", { required: false }),
-    f("image", "Image", { required: false }),
-    f("status", "Status", { required: false }),
+    f("image", "Image", { showcase: true, required: false }),
+    f("status", "Status", { showcase: true, required: false }),
     f("ports", "Ports", { required: false }),
     f("networks", "Networks", {
       required: false,

@@ -9,7 +9,7 @@ export const TursoDatabaseResourceType = rt({
     f("group", "Group", { required: false, editable: false }),
     f("primaryRegion", "Primary Region", { required: false, editable: false }),
     f("regions", "Regions", { required: false, editable: false }),
-    f("version", "Version", { required: false, editable: false }),
+    f("version", "Version", { showcase: true, required: false, editable: false }),
     f("isSchema", "Schema Database", { kind: "boolean", required: false, editable: false }),
     f("schema", "Parent Schema", { required: false, editable: false }),
     f("parent", "Branched From", { required: false, editable: false }),
@@ -58,7 +58,7 @@ export const TursoDatabaseResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
-  iconKey: "turso",
+  iconKey: "database",
   secretExportTemplates: [
     {
       id: "connection-url",

@@ -7,7 +7,7 @@ export const Route53HostedZoneResourceType = rt({
   fields: [
     f("name", "Domain Name"),
     f("hostedZoneId", "Hosted Zone ID"),
-    f("recordCount", "Record Count", { kind: "number", required: false }),
+    f("recordCount", "Record Count", { showcase: true, kind: "number", required: false }),
     f("isPrivate", "Private Zone", { kind: "boolean", required: false }),
     f("comment", "Comment", { required: false }),
   ],

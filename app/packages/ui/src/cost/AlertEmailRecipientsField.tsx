@@ -10,7 +10,7 @@ import {
 import { CloseIcon } from "../components/icons/ChromeIcons.js";
 
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle";
 
 /**
  * Load the picker's options once per mount. Null while loading, and stays
@@ -124,7 +124,7 @@ export function AlertEmailRecipientsField({
   };
 
   const chipClass =
-    "inline-flex items-center gap-1 rounded-full border border-border bg-surface-sunken px-2 py-0.5 text-xs text-on-surface";
+    "inline-flex items-center gap-1 rounded-md border border-border bg-surface-sunken px-2 py-0.5 text-xs text-on-surface";
 
   return (
     <div className="space-y-2">

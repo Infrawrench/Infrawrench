@@ -167,7 +167,7 @@ export function KubernetesEfficiencyPanel({
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+              className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent"
             >
               {gt("New report")}
             </button>
@@ -420,7 +420,7 @@ function ReportDetail({
                 type="checkbox"
                 checked={activeCategories.includes(c)}
                 onChange={() => toggleViewCategory(c)}
-                className="accent-blue-500"
+                className="accent-accent"
               />
               {labels.category(c)}
             </label>

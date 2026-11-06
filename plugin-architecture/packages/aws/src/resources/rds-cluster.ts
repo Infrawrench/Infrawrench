@@ -6,12 +6,16 @@ export const RDSClusterResourceType = rt({
   description: "An Amazon Aurora DB cluster",
   fields: [
     f("clusterIdentifier", "Cluster ID"),
-    f("engine", "Engine", { kind: "enum", enumValues: ["aurora-mysql", "aurora-postgresql"] }),
-    f("engineVersion", "Engine Version"),
-    f("status", "Status"),
+    f("engine", "Engine", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["aurora-mysql", "aurora-postgresql"],
+    }),
+    f("engineVersion", "Engine Version", { showcase: true }),
+    f("status", "Status", { showcase: true }),
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
     f("storageEncrypted", "Encrypted", { kind: "boolean", required: false }),
-    f("allocatedStorage", "Storage (GB)", { kind: "number", required: false }),
+    f("allocatedStorage", "Storage (GB)", { showcase: true, kind: "number", required: false }),
     f("dbClusterMembers", "Members", { kind: "number", required: false }),
     f("dbClusterMemberIds", "Member Instances", {
       required: false,

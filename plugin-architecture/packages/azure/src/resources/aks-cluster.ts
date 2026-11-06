@@ -17,15 +17,16 @@ export const AKSClusterResourceType = rt({
   fields: [
     f("name", "Name"),
     f("resourceGroup", "Resource Group"),
-    f("location", "Location"),
+    f("location", "Location", { showcase: true }),
     f("kubernetesVersion", "Kubernetes Version"),
     f("provisioningState", "Provisioning State", {
+      showcase: true,
       kind: "enum",
       enumValues: ["Succeeded", "Creating", "Updating", "Deleting", "Failed", "Upgrading"],
     }),
     f("powerState", "Power State", { required: false }),
-    f("nodeCount", "Node Count", { kind: "number", required: false }),
-    f("nodePoolCount", "Node Pool Count", { kind: "number", required: false }),
+    f("nodeCount", "Node Count", { showcase: true, kind: "number", required: false }),
+    f("nodePoolCount", "Node Pool Count", { showcase: true, kind: "number", required: false }),
     f("vmSize", "VM Size", { required: false, description: "VM size used by the first node pool" }),
     f("osDiskSizeGb", "OS Disk Size (GB)", {
       kind: "number",

@@ -235,7 +235,7 @@ export function SshEnvDeployModal({
                         onClick={() => handleTemplateChange(tpl.id)}
                         className={`w-full text-left rounded-lg border p-2 text-xs transition-colors ${
                           selectedTemplateId === tpl.id
-                            ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                            ? "border-accent bg-accent-muted text-accent-on-muted"
                             : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                         }`}
                       >
@@ -296,7 +296,7 @@ export function SshEnvDeployModal({
                     }}
                     className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${
                       format === "dotenv"
-                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                        ? "border-accent bg-accent-muted text-accent-on-muted"
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
@@ -312,7 +312,7 @@ export function SshEnvDeployModal({
                     }}
                     className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${
                       format === "profile"
-                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                        ? "border-accent bg-accent-muted text-accent-on-muted"
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
@@ -351,7 +351,7 @@ export function SshEnvDeployModal({
                     onClick={() => setAppend(true)}
                     className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
                       append
-                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                        ? "border-accent bg-accent-muted text-accent-on-muted"
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
@@ -362,7 +362,7 @@ export function SshEnvDeployModal({
                     onClick={() => setAppend(false)}
                     className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
                       !append
-                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                        ? "border-accent bg-accent-muted text-accent-on-muted"
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
@@ -396,7 +396,7 @@ export function SshEnvDeployModal({
               type="button"
               onClick={() => void handleDeploy()}
               disabled={deploying || !privateKey.trim() || !selectedTemplate || !filePath.trim()}
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm bg-accent hover:bg-accent-hover text-on-accent rounded-lg transition-colors disabled:opacity-50"
             >
               {resolving ? gt("Resolving...") : deploying ? gt("Deploying...") : gt("Deploy")}
             </button>

@@ -314,7 +314,7 @@ function NumberField({
           const next = parseNumericInputValue(e.target.value);
           if (next !== null) onChange(next);
         }}
-        className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
+        className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle disabled:opacity-60"
       />
       <span className="text-[11px] text-on-surface-faint">{hint}</span>
     </label>
@@ -492,7 +492,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
                   .filter((n): n is number => n !== null && Number.isInteger(n) && n > 0);
                 set({ commitmentExpiryHorizonDays: [...new Set(parsed)].sort((a, b) => b - a) });
               }}
-              className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
+              className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-accent-subtle disabled:opacity-60"
             />
             <span className="text-[11px] text-on-surface-faint">
               <T>
