@@ -57,10 +57,14 @@ function SettingsLayout() {
     // mounted (isRouteHostedTabPanel) so there is exactly one panel with this
     // id: the visible one. Without it the selected tab's aria-controls
     // pointed at an empty, display:none panel.
-    <div className="flex h-full" {...workspaceTabPanelProps(SETTINGS_TAB_ID)}>
-      <nav className="w-48 border-r border-border p-4 flex-shrink-0 flex flex-col">
-        <h2 className="text-sm font-semibold text-on-surface-secondary mb-4">{gt("Settings")}</h2>
-        <ul className="space-y-1">
+    <div className="flex h-full min-h-0" {...workspaceTabPanelProps(SETTINGS_TAB_ID)}>
+      <nav className="w-48 border-r border-border flex-shrink-0 flex flex-col min-h-0">
+        <h2 className="px-4 pt-4 mb-4 text-sm font-semibold text-on-surface-secondary">
+          {gt("Settings")}
+        </h2>
+        {/* Only the list scrolls, so Sign out stays reachable however many
+            sections there are. */}
+        <ul className="flex-1 min-h-0 overflow-y-auto px-4 space-y-1">
           {navItems.map((item) => {
             const isActive =
               item.to === `/org/${orgId}/settings`
@@ -82,7 +86,7 @@ function SettingsLayout() {
             );
           })}
         </ul>
-        <div className="mt-auto pt-4 flex flex-col">
+        <div className="p-4 flex flex-col">
           {analyticsEnabled() && (
             <button
               type="button"
