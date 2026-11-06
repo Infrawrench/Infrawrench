@@ -19,6 +19,8 @@
  * allowlisted tunnel. Without it we fall back to direct `fetch`, which is what
  * desktop uses today (no bastion surface yet).
  */
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -132,5 +134,13 @@ async function downloadFile(
 
 export const nodeDriver = {
   pluginId: "uploadthing",
-  downloadFile,
+  downloadFile: attemptFn(downloadFile),
 } satisfies StorageNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { storage: nodeDriver },
+  server: { storage: nodeDriver },
+});

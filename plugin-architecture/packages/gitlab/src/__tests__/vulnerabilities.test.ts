@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import type { GitLabContext } from "../api.js";
@@ -314,7 +315,7 @@ describe("fetchGitLabVulnerabilities", () => {
 describe("manifest", () => {
   it("declares the capability and the client implements it", () => {
     expect(plugin.manifest.vulnerabilities?.partial).toBe(true);
-    const client = plugin.createClient({ token: "t" });
+    const client = hostPlugin(plugin).createClient({ token: "t" });
     expect(typeof client.listVulnerabilityFindings).toBe("function");
   });
 });

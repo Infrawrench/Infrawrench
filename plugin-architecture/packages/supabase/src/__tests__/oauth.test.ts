@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { plugin } from "../plugin.js";
@@ -42,7 +43,7 @@ describe("completeOAuthConnection", () => {
       status: 200,
       body: [{ id: "abc", slug: "abc", name: "Acme" }],
     });
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "server",
       fetch: doFetch,
     });
@@ -58,7 +59,7 @@ describe("completeOAuthConnection", () => {
       new Error("offline"),
     ]) {
       const { doFetch } = fakeFetch(reply);
-      const result = await plugin.completeOAuthConnection!(tokens, {
+      const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
         client: "server",
         fetch: doFetch,
       });

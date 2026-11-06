@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -295,7 +298,7 @@ export class ReplicateClient implements PluginClient {
   private readonly services: HostServices | undefined;
   private accountCache: ReplicateAccount | null = null;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiToken = credentials["apiToken"];
     if (!apiToken) throw new Error("Replicate plugin: missing apiToken credential");
     this.apiToken = apiToken;
@@ -379,53 +382,58 @@ export class ReplicateClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "prediction": {
-        // https://replicate.com/docs/reference/http#predictions.list
-        const predictions = await this.paginate<ReplicatePrediction>("/predictions", MAX_PAGES_HOT);
-        return predictions.map((prediction) => this.mapPrediction(prediction, accountId));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "prediction": {
+          // https://replicate.com/docs/reference/http#predictions.list
+          const predictions = await this.paginate<ReplicatePrediction>(
+            "/predictions",
+            MAX_PAGES_HOT,
+          );
+          return predictions.map((prediction) => this.mapPrediction(prediction, accountId));
+        }
+        case "training": {
+          // https://replicate.com/docs/reference/http#trainings.list
+          const trainings = await this.paginate<ReplicateTraining>("/trainings", MAX_PAGES_HOT);
+          return trainings.map((training) => this.mapTraining(training, accountId));
+        }
+        case "deployment": {
+          // https://replicate.com/docs/reference/http#deployments.list
+          const deployments = await this.paginate<ReplicateDeployment>(
+            "/deployments",
+            MAX_PAGES_COLD,
+          );
+          return deployments.map((deployment) => this.mapDeployment(deployment, accountId));
+        }
+        case "collection": {
+          // https://replicate.com/docs/reference/http#collections.list
+          const collections = await this.paginate<ReplicateCollectionListItem>(
+            "/collections",
+            MAX_PAGES_COLD,
+          );
+          return collections.map((collection) => this.mapCollection(collection, accountId));
+        }
+        case "hardware": {
+          // https://replicate.com/docs/reference/http#hardware.list: a bare
+          // array, not a paginated envelope.
+          const hardware = await this.fetch<ReplicateHardware[]>("/hardware");
+          return (Array.isArray(hardware) ? hardware : []).map((entry) =>
+            this.mapHardware(entry, accountId),
+          );
+        }
+        case "file": {
+          const files = await this.paginate<ReplicateFile>("/files", MAX_PAGES_COLD);
+          return files.map((file) => this.mapFile(file, accountId));
+        }
+        case "model":
+          return this.listAccountModels(accountId);
+        case "model-version":
+          return this.listOwnedModelVersions(accountId);
+        default:
+          throw new Error(`Replicate plugin: unknown resource type "${typeId}"`);
       }
-      case "training": {
-        // https://replicate.com/docs/reference/http#trainings.list
-        const trainings = await this.paginate<ReplicateTraining>("/trainings", MAX_PAGES_HOT);
-        return trainings.map((training) => this.mapTraining(training, accountId));
-      }
-      case "deployment": {
-        // https://replicate.com/docs/reference/http#deployments.list
-        const deployments = await this.paginate<ReplicateDeployment>(
-          "/deployments",
-          MAX_PAGES_COLD,
-        );
-        return deployments.map((deployment) => this.mapDeployment(deployment, accountId));
-      }
-      case "collection": {
-        // https://replicate.com/docs/reference/http#collections.list
-        const collections = await this.paginate<ReplicateCollectionListItem>(
-          "/collections",
-          MAX_PAGES_COLD,
-        );
-        return collections.map((collection) => this.mapCollection(collection, accountId));
-      }
-      case "hardware": {
-        // https://replicate.com/docs/reference/http#hardware.list: a bare
-        // array, not a paginated envelope.
-        const hardware = await this.fetch<ReplicateHardware[]>("/hardware");
-        return (Array.isArray(hardware) ? hardware : []).map((entry) =>
-          this.mapHardware(entry, accountId),
-        );
-      }
-      case "file": {
-        const files = await this.paginate<ReplicateFile>("/files", MAX_PAGES_COLD);
-        return files.map((file) => this.mapFile(file, accountId));
-      }
-      case "model":
-        return this.listAccountModels(accountId);
-      case "model-version":
-        return this.listOwnedModelVersions(accountId);
-      default:
-        throw new Error(`Replicate plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   /**
@@ -809,75 +817,82 @@ export class ReplicateClient implements PluginClient {
   // Single resource
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    switch (typeId) {
-      case "prediction": {
-        // https://replicate.com/docs/reference/http#predictions.get
-        const prediction = await this.fetch<ReplicatePrediction>(
-          `/predictions/${encodeURIComponent(externalId)}`,
-        );
-        return this.mapPrediction(prediction, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      switch (typeId) {
+        case "prediction": {
+          // https://replicate.com/docs/reference/http#predictions.get
+          const prediction = await this.fetch<ReplicatePrediction>(
+            `/predictions/${encodeURIComponent(externalId)}`,
+          );
+          return this.mapPrediction(prediction, accountId);
+        }
+        case "training": {
+          const training = await this.fetch<ReplicateTraining>(
+            `/trainings/${encodeURIComponent(externalId)}`,
+          );
+          return this.mapTraining(training, accountId);
+        }
+        case "deployment": {
+          const deployment = await this.fetch<ReplicateDeployment>(
+            `/deployments/${encodePath(externalId)}`,
+          );
+          return this.mapDeployment(deployment, accountId);
+        }
+        case "model": {
+          // https://replicate.com/docs/reference/http#models.get
+          const model = await this.fetch<ReplicateModel>(`/models/${encodePath(externalId)}`);
+          return this.mapModel(model, accountId);
+        }
+        case "collection": {
+          // The detail response carries the model list the slim list item lacks.
+          const collection = await this.fetch<ReplicateCollection>(
+            `/collections/${encodeURIComponent(externalId)}`,
+          );
+          return this.mapCollection(collection, accountId);
+        }
+        case "file": {
+          const file = await this.fetch<ReplicateFile>(`/files/${encodeURIComponent(externalId)}`);
+          return this.mapFile(file, accountId);
+        }
+        case "model-version": {
+          // https://replicate.com/docs/reference/http#models.versions.get
+          const { modelRef, versionId } = splitVersionRef(externalId);
+          const version = await this.fetch<ReplicateVersion>(
+            `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(versionId)}`,
+          );
+          return this.mapVersion(modelRef, version, accountId);
+        }
+        default: {
+          const all = await runPluginEffect(this.listResources(typeId, accountId));
+          const found = all.find((resource) => resource.id === resourceId);
+          if (!found)
+            throw new Error(`Replicate plugin: resource ${typeId}/${externalId} not found`);
+          return found;
+        }
       }
-      case "training": {
-        const training = await this.fetch<ReplicateTraining>(
-          `/trainings/${encodeURIComponent(externalId)}`,
-        );
-        return this.mapTraining(training, accountId);
-      }
-      case "deployment": {
-        const deployment = await this.fetch<ReplicateDeployment>(
-          `/deployments/${encodePath(externalId)}`,
-        );
-        return this.mapDeployment(deployment, accountId);
-      }
-      case "model": {
-        // https://replicate.com/docs/reference/http#models.get
-        const model = await this.fetch<ReplicateModel>(`/models/${encodePath(externalId)}`);
-        return this.mapModel(model, accountId);
-      }
-      case "collection": {
-        // The detail response carries the model list the slim list item lacks.
-        const collection = await this.fetch<ReplicateCollection>(
-          `/collections/${encodeURIComponent(externalId)}`,
-        );
-        return this.mapCollection(collection, accountId);
-      }
-      case "file": {
-        const file = await this.fetch<ReplicateFile>(`/files/${encodeURIComponent(externalId)}`);
-        return this.mapFile(file, accountId);
-      }
-      case "model-version": {
-        // https://replicate.com/docs/reference/http#models.versions.get
-        const { modelRef, versionId } = splitVersionRef(externalId);
-        const version = await this.fetch<ReplicateVersion>(
-          `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(versionId)}`,
-        );
-        return this.mapVersion(modelRef, version, accountId);
-      }
-      default: {
-        const all = await this.listResources(typeId, accountId);
-        const found = all.find((resource) => resource.id === resourceId);
-        if (!found) throw new Error(`Replicate plugin: resource ${typeId}/${externalId} not found`);
-        return found;
-      }
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`Replicate plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(
+        `Replicate plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -899,17 +914,19 @@ export class ReplicateClient implements PluginClient {
    * API wants (hardware SKU, `owner/name` models) comes from a picker so the
    * user never has to know a SKU string like `gpu-a40-large`.
    */
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "deployment":
-        return this.deploymentCreateConfig();
-      case "model":
-        return this.modelCreateConfig();
-      case "training":
-        return this.trainingCreateConfig();
-      default:
-        throw new Error(`Replicate plugin: createResource not supported for type "${typeId}"`);
-    }
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "deployment":
+          return this.deploymentCreateConfig();
+        case "model":
+          return this.modelCreateConfig();
+        case "training":
+          return this.trainingCreateConfig();
+        default:
+          throw new Error(`Replicate plugin: createResource not supported for type "${typeId}"`);
+      }
+    });
   }
 
   private async deploymentCreateConfig(): Promise<CreateResourceConfig> {
@@ -1156,21 +1173,23 @@ export class ReplicateClient implements PluginClient {
     return version;
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "deployment":
-        return this.createDeployment(accountId, fields);
-      case "model":
-        return this.createModel(accountId, fields);
-      case "training":
-        return this.createTraining(accountId, fields);
-      default:
-        throw new Error(`Replicate plugin: createResource not supported for type "${typeId}"`);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "deployment":
+          return this.createDeployment(accountId, fields);
+        case "model":
+          return this.createModel(accountId, fields);
+        case "training":
+          return this.createTraining(accountId, fields);
+        default:
+          throw new Error(`Replicate plugin: createResource not supported for type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -1284,51 +1303,54 @@ export class ReplicateClient implements PluginClient {
    * markdown document.
    * https://replicate.com/docs/reference/http#models.update
    */
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const ref = externalIdOf(resourceId);
-    if (typeId === "model") {
-      const body: Record<string, string> = {};
-      for (const [fieldKey, apiKey] of [
-        ["description", "description"],
-        ["githubUrl", "github_url"],
-        ["paperUrl", "paper_url"],
-        ["licenseUrl", "license_url"],
-        ["weightsUrl", "weights_url"],
-      ] as const) {
-        if (fields[fieldKey] !== undefined) body[apiKey] = fields[fieldKey].trim();
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ref = externalIdOf(resourceId);
+      if (typeId === "model") {
+        const body: Record<string, string> = {};
+        for (const [fieldKey, apiKey] of [
+          ["description", "description"],
+          ["githubUrl", "github_url"],
+          ["paperUrl", "paper_url"],
+          ["licenseUrl", "license_url"],
+          ["weightsUrl", "weights_url"],
+        ] as const) {
+          if (fields[fieldKey] !== undefined) body[apiKey] = fields[fieldKey].trim();
+        }
+        if (Object.keys(body).length === 0)
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const updated = await this.fetch<ReplicateModel>(`/models/${encodePath(ref)}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
+        return this.mapModel(updated, accountId);
       }
-      if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
-      const updated = await this.fetch<ReplicateModel>(`/models/${encodePath(ref)}`, {
+      if (typeId !== "deployment") {
+        throw new Error(`Replicate plugin: updateResource not supported for type "${typeId}"`);
+      }
+      const body: Record<string, string | number> = {};
+      if (fields["version"]) body["version"] = fields["version"];
+      if (fields["hardware"]) body["hardware"] = fields["hardware"];
+      if (fields["minInstances"] !== undefined) {
+        body["min_instances"] = clampInt(fields["minInstances"], 0, 5, 0);
+      }
+      if (fields["maxInstances"] !== undefined) {
+        body["max_instances"] = clampInt(fields["maxInstances"], 0, 20, 1);
+      }
+      if (Object.keys(body).length === 0) {
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
+      const updated = await this.fetch<ReplicateDeployment>(`/deployments/${encodePath(ref)}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       });
-      return this.mapModel(updated, accountId);
-    }
-    if (typeId !== "deployment") {
-      throw new Error(`Replicate plugin: updateResource not supported for type "${typeId}"`);
-    }
-    const body: Record<string, string | number> = {};
-    if (fields["version"]) body["version"] = fields["version"];
-    if (fields["hardware"]) body["hardware"] = fields["hardware"];
-    if (fields["minInstances"] !== undefined) {
-      body["min_instances"] = clampInt(fields["minInstances"], 0, 5, 0);
-    }
-    if (fields["maxInstances"] !== undefined) {
-      body["max_instances"] = clampInt(fields["maxInstances"], 0, 20, 1);
-    }
-    if (Object.keys(body).length === 0) {
-      return this.getResource(typeId, resourceId, accountId);
-    }
-    const updated = await this.fetch<ReplicateDeployment>(`/deployments/${encodePath(ref)}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
+      return this.mapDeployment(updated, accountId);
     });
-    return this.mapDeployment(updated, accountId);
   }
 
   /**
@@ -1343,32 +1365,35 @@ export class ReplicateClient implements PluginClient {
    *   asynchronously): also removes every prediction and output file made
    *   with that version.
    */
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    if (!externalId) throw new Error(`Replicate plugin: cannot parse resource id "${resourceId}"`);
-    switch (typeId) {
-      case "deployment":
-        await this.fetch<unknown>(`/deployments/${encodePath(externalId)}`, { method: "DELETE" });
-        return;
-      case "file":
-        await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "model":
-        await this.fetch<unknown>(`/models/${encodePath(externalId)}`, { method: "DELETE" });
-        return;
-      case "model-version": {
-        const { modelRef, versionId } = splitVersionRef(externalId);
-        await this.requestText(
-          `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(versionId)}`,
-          "DELETE",
-        );
-        return;
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (!externalId)
+        throw new Error(`Replicate plugin: cannot parse resource id "${resourceId}"`);
+      switch (typeId) {
+        case "deployment":
+          await this.fetch<unknown>(`/deployments/${encodePath(externalId)}`, { method: "DELETE" });
+          return;
+        case "file":
+          await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "model":
+          await this.fetch<unknown>(`/models/${encodePath(externalId)}`, { method: "DELETE" });
+          return;
+        case "model-version": {
+          const { modelRef, versionId } = splitVersionRef(externalId);
+          await this.requestText(
+            `/models/${encodePath(modelRef)}/versions/${encodeURIComponent(versionId)}`,
+            "DELETE",
+          );
+          return;
+        }
+        default:
+          throw new Error(`Replicate plugin: deleteResource not supported for type "${typeId}"`);
       }
-      default:
-        throw new Error(`Replicate plugin: deleteResource not supported for type "${typeId}"`);
-    }
+    });
   }
 
   /**
@@ -1376,166 +1401,178 @@ export class ReplicateClient implements PluginClient {
    * there is no separate log endpoint. Logs are removed with the rest of the
    * data an hour after an API-created prediction finishes.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const externalId = encodeURIComponent(externalIdOf(resourceId));
-    let logs: string | null | undefined;
-    if (typeId === "prediction") {
-      logs = (await this.fetch<ReplicatePrediction>(`/predictions/${externalId}`)).logs;
-    } else if (typeId === "training") {
-      logs = (await this.fetch<ReplicateTraining>(`/trainings/${externalId}`)).logs;
-    } else {
-      throw new Error(`Replicate plugin: logs not supported for type "${typeId}"`);
-    }
-    let lines = (logs ?? "").split("\n");
-    if (lines.length && lines[lines.length - 1] === "") lines.pop();
-    if (params.tailLines && params.tailLines > 0) lines = lines.slice(-params.tailLines);
-    return {
-      text: lines.map((line) => `${line}\n`).join(""),
-      containers: [],
-      activeContainer: "",
-    };
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const externalId = encodeURIComponent(externalIdOf(resourceId));
+      let logs: string | null | undefined;
+      if (typeId === "prediction") {
+        logs = (await this.fetch<ReplicatePrediction>(`/predictions/${externalId}`)).logs;
+      } else if (typeId === "training") {
+        logs = (await this.fetch<ReplicateTraining>(`/trainings/${externalId}`)).logs;
+      } else {
+        throw new Error(`Replicate plugin: logs not supported for type "${typeId}"`);
+      }
+      let lines = (logs ?? "").split("\n");
+      if (lines.length && lines[lines.length - 1] === "") lines.pop();
+      if (params.tailLines && params.tailLines > 0) lines = lines.slice(-params.tailLines);
+      return {
+        text: lines.map((line) => `${line}\n`).join(""),
+        containers: [],
+        activeContainer: "",
+      };
+    });
   }
 
   /**
    * The model's README, `GET /v1/models/{owner}/{name}/readme`, which answers
    * plain-text markdown rather than JSON.
    */
-  async describeResource(typeId: string, resourceId: string, _accountId: string): Promise<string> {
-    if (typeId !== "model") {
-      throw new Error(`Replicate plugin: describe not supported for type "${typeId}"`);
-    }
-    const ref = externalIdOf(resourceId);
-    const readme = await this.requestText(`/models/${encodePath(ref)}/readme`);
-    return readme.trim() || "This model has no README.";
+  describeResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId !== "model") {
+        throw new Error(`Replicate plugin: describe not supported for type "${typeId}"`);
+      }
+      const ref = externalIdOf(resourceId);
+      const readme = await this.requestText(`/models/${encodePath(ref)}/readme`);
+      return readme.trim() || "This model has no README.";
+    });
   }
 
   /**
    * `POST /v1/predictions/{id}/cancel` and `POST /v1/trainings/{id}/cancel`.
    * Both return the refreshed object; the host re-reads the resource after.
    */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    if (actionId !== "cancel") {
-      throw new Error(`Replicate plugin: unknown action "${actionId}"`);
-    }
-    const externalId = externalIdOf(resourceId);
-    if (typeId === "prediction") {
-      await this.fetch<unknown>(`/predictions/${encodeURIComponent(externalId)}/cancel`, {
-        method: "POST",
-      });
-      return;
-    }
-    if (typeId === "training") {
-      await this.fetch<unknown>(`/trainings/${encodeURIComponent(externalId)}/cancel`, {
-        method: "POST",
-      });
-      return;
-    }
-    throw new Error(`Replicate plugin: cancel not supported for type "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (actionId !== "cancel") {
+        throw new Error(`Replicate plugin: unknown action "${actionId}"`);
+      }
+      const externalId = externalIdOf(resourceId);
+      if (typeId === "prediction") {
+        await this.fetch<unknown>(`/predictions/${encodeURIComponent(externalId)}/cancel`, {
+          method: "POST",
+        });
+        return;
+      }
+      if (typeId === "training") {
+        await this.fetch<unknown>(`/trainings/${encodeURIComponent(externalId)}/cancel`, {
+          method: "POST",
+        });
+        return;
+      }
+      throw new Error(`Replicate plugin: cancel not supported for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId).catch(
-      (): ResourceInstance | null => null,
-    );
-    if (!resource) return [];
-    const fields = resource.fields;
-    const stats: DashboardStat[] = [];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      ).catch((): ResourceInstance | null => null);
+      if (!resource) return [];
+      const fields = resource.fields;
+      const stats: DashboardStat[] = [];
 
-    switch (resourceTypeId) {
-      case "prediction":
-      case "training": {
-        const raw = String(fields["status"] ?? "");
-        const mapped = mapRunStatus(raw);
-        stats.push({
-          label: "Status",
-          value: mapped.label,
-          variant:
-            mapped.status === "healthy"
-              ? "status-healthy"
-              : mapped.status === "error"
-                ? "status-error"
-                : mapped.status === "degraded"
-                  ? "status-degraded"
-                  : "default",
-        });
-        if (fields["predictTime"] != null) {
+      switch (resourceTypeId) {
+        case "prediction":
+        case "training": {
+          const raw = String(fields["status"] ?? "");
+          const mapped = mapRunStatus(raw);
           stats.push({
-            label: resourceTypeId === "training" ? "Train Time" : "Predict Time",
-            value: `${Number(fields["predictTime"]).toFixed(2)}s`,
+            label: "Status",
+            value: mapped.label,
+            variant:
+              mapped.status === "healthy"
+                ? "status-healthy"
+                : mapped.status === "error"
+                  ? "status-error"
+                  : mapped.status === "degraded"
+                    ? "status-degraded"
+                    : "default",
           });
+          if (fields["predictTime"] != null) {
+            stats.push({
+              label: resourceTypeId === "training" ? "Train Time" : "Predict Time",
+              value: `${Number(fields["predictTime"]).toFixed(2)}s`,
+            });
+          }
+          if (fields["totalTime"] != null) {
+            stats.push({
+              label: "Total Time",
+              value: `${Number(fields["totalTime"]).toFixed(2)}s`,
+            });
+          }
+          if (fields["model"]) stats.push({ label: "Model", value: String(fields["model"]) });
+          break;
         }
-        if (fields["totalTime"] != null) {
-          stats.push({ label: "Total Time", value: `${Number(fields["totalTime"]).toFixed(2)}s` });
+        case "deployment": {
+          if (fields["hardware"]) {
+            stats.push({ label: "Hardware", value: String(fields["hardware"]) });
+          }
+          stats.push({
+            label: "Instances",
+            value: `${fields["minInstances"] ?? 0} – ${fields["maxInstances"] ?? 0}`,
+            variant: Number(fields["minInstances"] ?? 0) > 0 ? "status-healthy" : "default",
+          });
+          if (fields["releaseNumber"] != null) {
+            stats.push({ label: "Release", value: `#${fields["releaseNumber"]}` });
+          }
+          break;
         }
-        if (fields["model"]) stats.push({ label: "Model", value: String(fields["model"]) });
-        break;
+        case "model": {
+          if (fields["runCount"] != null) {
+            stats.push({ label: "Runs", value: formatNumber(Number(fields["runCount"])) });
+          }
+          if (fields["visibility"]) {
+            stats.push({ label: "Visibility", value: titleCase(String(fields["visibility"])) });
+          }
+          break;
+        }
+        case "file": {
+          if (fields["size"] != null) {
+            stats.push({ label: "Size", value: formatBytes(Number(fields["size"])) });
+          }
+          if (fields["expiresAt"]) {
+            stats.push({ label: "Expires", value: String(fields["expiresAt"]) });
+          }
+          break;
+        }
+        case "model-version": {
+          if (fields["cogVersion"])
+            stats.push({ label: "Cog", value: String(fields["cogVersion"]) });
+          if (fields["createdAt"])
+            stats.push({ label: "Created", value: String(fields["createdAt"]) });
+          break;
+        }
+        case "collection": {
+          if (fields["modelCount"] != null) {
+            stats.push({ label: "Models", value: String(fields["modelCount"]) });
+          }
+          break;
+        }
+        default:
+          break;
       }
-      case "deployment": {
-        if (fields["hardware"]) {
-          stats.push({ label: "Hardware", value: String(fields["hardware"]) });
-        }
-        stats.push({
-          label: "Instances",
-          value: `${fields["minInstances"] ?? 0} – ${fields["maxInstances"] ?? 0}`,
-          variant: Number(fields["minInstances"] ?? 0) > 0 ? "status-healthy" : "default",
-        });
-        if (fields["releaseNumber"] != null) {
-          stats.push({ label: "Release", value: `#${fields["releaseNumber"]}` });
-        }
-        break;
-      }
-      case "model": {
-        if (fields["runCount"] != null) {
-          stats.push({ label: "Runs", value: formatNumber(Number(fields["runCount"])) });
-        }
-        if (fields["visibility"]) {
-          stats.push({ label: "Visibility", value: titleCase(String(fields["visibility"])) });
-        }
-        break;
-      }
-      case "file": {
-        if (fields["size"] != null) {
-          stats.push({ label: "Size", value: formatBytes(Number(fields["size"])) });
-        }
-        if (fields["expiresAt"]) {
-          stats.push({ label: "Expires", value: String(fields["expiresAt"]) });
-        }
-        break;
-      }
-      case "model-version": {
-        if (fields["cogVersion"]) stats.push({ label: "Cog", value: String(fields["cogVersion"]) });
-        if (fields["createdAt"])
-          stats.push({ label: "Created", value: String(fields["createdAt"]) });
-        break;
-      }
-      case "collection": {
-        if (fields["modelCount"] != null) {
-          stats.push({ label: "Models", value: String(fields["modelCount"]) });
-        }
-        break;
-      }
-      default:
-        break;
-    }
-    return stats;
+      return stats;
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1549,112 +1586,115 @@ export class ReplicateClient implements PluginClient {
    * only as "the name of the deployment", so both the bare name and the
    * `owner/name` reference are accepted as a match.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "deployment" && resourceTypeId !== "model") return [];
-    const ref = externalIdOf(resourceId);
-    if (!ref) return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    let startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "deployment" && resourceTypeId !== "model") return [];
+      const ref = externalIdOf(resourceId);
+      if (!ref) return [];
+      const endMs = timeRange?.endMs ?? Date.now();
+      let startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
 
-    const qs = new URLSearchParams({
-      created_after: new Date(startMs).toISOString(),
-      created_before: new Date(endMs).toISOString(),
+      const qs = new URLSearchParams({
+        created_after: new Date(startMs).toISOString(),
+        created_before: new Date(endMs).toISOString(),
+      });
+      const predictions: ReplicatePrediction[] = [];
+      let url: string | undefined = `${API_BASE}/predictions?${qs.toString()}`;
+      let truncated = false;
+      for (let page = 0; url; page += 1) {
+        if (page >= MAX_PAGES_METRICS) {
+          truncated = true;
+          break;
+        }
+        const data: Page<ReplicatePrediction> = await this.request<Page<ReplicatePrediction>>(url);
+        predictions.push(...(data.results ?? []));
+        url = data.next ?? undefined;
+      }
+      if (truncated) {
+        // Newest first, so the last one read is the oldest the chart can vouch for.
+        const oldest = Date.parse(predictions[predictions.length - 1]?.created_at ?? "");
+        if (Number.isFinite(oldest) && oldest > startMs) startMs = oldest;
+      }
+
+      const name = ref.slice(ref.indexOf("/") + 1);
+      const matches = predictions.filter((p) =>
+        resourceTypeId === "model"
+          ? p.model === ref
+          : p.deployment != null && (p.deployment === ref || p.deployment === name),
+      );
+
+      const bucketMs = Math.max(5 * 60 * 1000, Math.ceil((endMs - startMs) / METRICS_BUCKETS));
+      const firstBucket = Math.floor(startMs / bucketMs) * bucketMs;
+      const buckets: Array<{
+        count: number;
+        failed: number;
+        predictSum: number;
+        predictN: number;
+        queueSum: number;
+        queueN: number;
+      }> = [];
+      for (let t = firstBucket; t < endMs; t += bucketMs) {
+        buckets.push({ count: 0, failed: 0, predictSum: 0, predictN: 0, queueSum: 0, queueN: 0 });
+      }
+      for (const p of matches) {
+        const created = Date.parse(p.created_at ?? "");
+        if (!Number.isFinite(created) || created < startMs || created >= endMs) continue;
+        const bucket = buckets[Math.floor((created - firstBucket) / bucketMs)];
+        if (!bucket) continue;
+        bucket.count += 1;
+        if (p.status === "failed") bucket.failed += 1;
+        const predictTime = p.metrics?.["predict_time"];
+        if (typeof predictTime === "number" && Number.isFinite(predictTime)) {
+          bucket.predictSum += predictTime;
+          bucket.predictN += 1;
+        }
+        const started = Date.parse(p.started_at ?? "");
+        if (Number.isFinite(started) && started >= created) {
+          bucket.queueSum += (started - created) / 1000;
+          bucket.queueN += 1;
+        }
+      }
+
+      const at = (index: number) => firstBucket + index * bucketMs;
+      const averaged = (
+        sum: (b: (typeof buckets)[number]) => number,
+        n: (b: (typeof buckets)[number]) => number,
+      ) =>
+        buckets.flatMap((b, i) => (n(b) > 0 ? [{ timestamp: at(i), value: sum(b) / n(b) }] : []));
+      return [
+        {
+          label: "Predictions",
+          unit: "count",
+          points: buckets.map((b, i) => ({ timestamp: at(i), value: b.count })),
+        },
+        {
+          label: "Failed predictions",
+          unit: "count",
+          points: buckets.map((b, i) => ({ timestamp: at(i), value: b.failed })),
+        },
+        {
+          label: "Avg predict time",
+          unit: "s",
+          points: averaged(
+            (b) => b.predictSum,
+            (b) => b.predictN,
+          ),
+        },
+        {
+          label: "Avg queue time",
+          unit: "s",
+          points: averaged(
+            (b) => b.queueSum,
+            (b) => b.queueN,
+          ),
+        },
+      ];
     });
-    const predictions: ReplicatePrediction[] = [];
-    let url: string | undefined = `${API_BASE}/predictions?${qs.toString()}`;
-    let truncated = false;
-    for (let page = 0; url; page += 1) {
-      if (page >= MAX_PAGES_METRICS) {
-        truncated = true;
-        break;
-      }
-      const data: Page<ReplicatePrediction> = await this.request<Page<ReplicatePrediction>>(url);
-      predictions.push(...(data.results ?? []));
-      url = data.next ?? undefined;
-    }
-    if (truncated) {
-      // Newest first, so the last one read is the oldest the chart can vouch for.
-      const oldest = Date.parse(predictions[predictions.length - 1]?.created_at ?? "");
-      if (Number.isFinite(oldest) && oldest > startMs) startMs = oldest;
-    }
-
-    const name = ref.slice(ref.indexOf("/") + 1);
-    const matches = predictions.filter((p) =>
-      resourceTypeId === "model"
-        ? p.model === ref
-        : p.deployment != null && (p.deployment === ref || p.deployment === name),
-    );
-
-    const bucketMs = Math.max(5 * 60 * 1000, Math.ceil((endMs - startMs) / METRICS_BUCKETS));
-    const firstBucket = Math.floor(startMs / bucketMs) * bucketMs;
-    const buckets: Array<{
-      count: number;
-      failed: number;
-      predictSum: number;
-      predictN: number;
-      queueSum: number;
-      queueN: number;
-    }> = [];
-    for (let t = firstBucket; t < endMs; t += bucketMs) {
-      buckets.push({ count: 0, failed: 0, predictSum: 0, predictN: 0, queueSum: 0, queueN: 0 });
-    }
-    for (const p of matches) {
-      const created = Date.parse(p.created_at ?? "");
-      if (!Number.isFinite(created) || created < startMs || created >= endMs) continue;
-      const bucket = buckets[Math.floor((created - firstBucket) / bucketMs)];
-      if (!bucket) continue;
-      bucket.count += 1;
-      if (p.status === "failed") bucket.failed += 1;
-      const predictTime = p.metrics?.["predict_time"];
-      if (typeof predictTime === "number" && Number.isFinite(predictTime)) {
-        bucket.predictSum += predictTime;
-        bucket.predictN += 1;
-      }
-      const started = Date.parse(p.started_at ?? "");
-      if (Number.isFinite(started) && started >= created) {
-        bucket.queueSum += (started - created) / 1000;
-        bucket.queueN += 1;
-      }
-    }
-
-    const at = (index: number) => firstBucket + index * bucketMs;
-    const averaged = (
-      sum: (b: (typeof buckets)[number]) => number,
-      n: (b: (typeof buckets)[number]) => number,
-    ) => buckets.flatMap((b, i) => (n(b) > 0 ? [{ timestamp: at(i), value: sum(b) / n(b) }] : []));
-    return [
-      {
-        label: "Predictions",
-        unit: "count",
-        points: buckets.map((b, i) => ({ timestamp: at(i), value: b.count })),
-      },
-      {
-        label: "Failed predictions",
-        unit: "count",
-        points: buckets.map((b, i) => ({ timestamp: at(i), value: b.failed })),
-      },
-      {
-        label: "Avg predict time",
-        unit: "s",
-        points: averaged(
-          (b) => b.predictSum,
-          (b) => b.predictN,
-        ),
-      },
-      {
-        label: "Avg queue time",
-        unit: "s",
-        points: averaged(
-          (b) => b.queueSum,
-          (b) => b.queueN,
-        ),
-      },
-    ];
   }
 
   // -------------------------------------------------------------------------

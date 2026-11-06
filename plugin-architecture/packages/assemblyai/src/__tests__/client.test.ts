@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AssemblyAIClient } from "../client.js";
 
@@ -37,8 +39,8 @@ function installFetch(handler: (url: string, init: RequestInit) => Response) {
   }) as unknown as typeof fetch);
 }
 
-function client(credentials: Record<string, string> = {}): AssemblyAIClient {
-  return new AssemblyAIClient({ apiKey: "test-key", ...credentials });
+function client(credentials: Record<string, string> = {}): HostedMethods<AssemblyAIClient> {
+  return hostClient(new AssemblyAIClient({ apiKey: "test-key", ...credentials }));
 }
 
 function completedTranscript(overrides: Record<string, unknown> = {}) {
@@ -100,7 +102,7 @@ describe("auth and host selection", () => {
   });
 
   it("throws without an API key", () => {
-    expect(() => new AssemblyAIClient({})).toThrow(/missing apiKey/);
+    expect(() => hostClient(new AssemblyAIClient({}))).toThrow(/missing apiKey/);
   });
 });
 

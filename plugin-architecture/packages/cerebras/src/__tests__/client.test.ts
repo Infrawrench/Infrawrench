@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { CerebrasClient, parseVersionName } from "../client.js";
@@ -65,7 +66,7 @@ describe("models", () => {
       }
       throw new Error(url);
     });
-    const [m] = await new CerebrasClient({ apiKey: "csk-x" }, { http }).listResources(
+    const [m] = await hostClient(new CerebrasClient({ apiKey: "csk-x" }, { http })).listResources(
       "cerebras-model",
       ACCOUNT,
     );
@@ -85,7 +86,7 @@ describe("batches and files", () => {
         return { body: { data: [{ id: "batch_1", status: "in_progress" }], has_more: true } };
       return { body: { data: [{ id: "batch_2", status: "completed" }], has_more: false } };
     });
-    const items = await new CerebrasClient({ apiKey: "csk-x" }, { http }).listResources(
+    const items = await hostClient(new CerebrasClient({ apiKey: "csk-x" }, { http })).listResources(
       "cerebras-batch",
       ACCOUNT,
     );
@@ -95,7 +96,7 @@ describe("batches and files", () => {
 
   it("reads a Private Preview 403 as an empty list and keeps the status elsewhere", async () => {
     const { http } = host(() => ({ status: 403, body: { message: "not enabled" } }));
-    const client = new CerebrasClient({ apiKey: "csk-x" }, { http });
+    const client = hostClient(new CerebrasClient({ apiKey: "csk-x" }, { http }));
     expect(await client.listResources("cerebras-file", ACCOUNT)).toEqual([]);
     await expect(client.listResources("cerebras-model", ACCOUNT)).rejects.toMatchObject({
       status: 403,
@@ -106,7 +107,7 @@ describe("batches and files", () => {
 describe("dedicated inference", () => {
   it("skips management listings without a management key", async () => {
     const { http, calls } = host(() => ({ body: {} }));
-    const client = new CerebrasClient({ apiKey: "csk-x" }, { http });
+    const client = hostClient(new CerebrasClient({ apiKey: "csk-x" }, { http }));
     expect(await client.listResources("cerebras-endpoint", ACCOUNT)).toEqual([]);
     expect(calls).toHaveLength(0);
   });
@@ -126,9 +127,8 @@ describe("dedicated inference", () => {
         },
       };
     });
-    const client = new CerebrasClient(
-      { apiKey: "csk-x", managementKey: "mk", orgName: "acme" },
-      { http },
+    const client = hostClient(
+      new CerebrasClient({ apiKey: "csk-x", managementKey: "mk", orgName: "acme" }, { http }),
     );
     const [v] = await client.listResources("cerebras-model-version", ACCOUNT);
     expect(v?.externalId).toBe("gpt-oss-120b/2");
@@ -145,7 +145,9 @@ describe("dedicated inference", () => {
       'requests_count_total{endpoint="acme-gpt",organization_id="org_1"} 12.0',
     ].join("\n");
     const { http, calls } = host(() => ({ body: text }));
-    const client = new CerebrasClient({ apiKey: "csk-x", organizationId: "org_1" }, { http });
+    const client = hostClient(
+      new CerebrasClient({ apiKey: "csk-x", organizationId: "org_1" }, { http }),
+    );
     const series = await client.fetchMetricSeries(
       "cerebras-endpoint",
       `${ACCOUNT}:cerebras-endpoint:acme-gpt`,

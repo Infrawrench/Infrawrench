@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CartesiaClient } from "../client.js";
 
@@ -42,7 +43,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client(extra: Record<string, string> = {}) {
-  return new CartesiaClient({ apiKey: "sk_car_test", ...extra });
+  return hostClient(new CartesiaClient({ apiKey: "sk_car_test", ...extra }));
 }
 
 function headerOf(init: RequestInit | undefined, name: string): string | undefined {

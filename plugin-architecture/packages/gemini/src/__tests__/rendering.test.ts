@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -10,7 +11,7 @@ runPluginRenderingTests(plugin);
 const ACCOUNT = "acct-1";
 
 function client() {
-  return new GeminiClient({ apiKey: "AIzaTest" });
+  return hostClient(new GeminiClient({ apiKey: "AIzaTest" }));
 }
 
 function resource(

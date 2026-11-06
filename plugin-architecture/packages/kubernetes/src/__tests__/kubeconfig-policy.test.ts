@@ -1,11 +1,15 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import {
   assertKubeconfigSafeForServer,
   findServerUnsafeKubeconfigFields,
   serverKubeconfigError,
 } from "../kubeconfig-policy.js";
-import { driver, serverDriver } from "../driver.js";
+import { driver as contractDriver, serverDriver as contractServerDriver } from "../driver.js";
 import { plugin } from "../plugin.js";
+
+const driver = hostDriver(contractDriver);
+const serverDriver = hostDriver(contractServerDriver);
 
 function kubeconfig(opts: { cluster?: string; user?: string; extraTop?: string } = {}): string {
   return [

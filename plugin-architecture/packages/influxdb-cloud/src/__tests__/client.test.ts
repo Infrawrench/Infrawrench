@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InfluxClient, isFlux } from "../client.js";
 import { InfluxApiError, parseAnnotatedCsv } from "../api.js";
@@ -21,14 +22,15 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("InfluxClient", () => {
   it("requires either Cloud or Dedicated credentials", () => {
-    expect(() => new InfluxClient({})).toThrow(/region and API token/);
-    expect(
-      () =>
+    expect(() => hostClient(new InfluxClient({}))).toThrow(/region and API token/);
+    expect(() =>
+      hostClient(
         new InfluxClient({
           dedicatedAccountId: "a",
           dedicatedClusterId: "c",
           dedicatedManagementToken: "m",
         }),
+      ),
     ).not.toThrow();
   });
 
@@ -49,7 +51,7 @@ describe("InfluxClient", () => {
       },
       "GET /api/v2/orgs/org1/usage": USAGE,
     });
-    const client = new InfluxClient(creds);
+    const client = hostClient(new InfluxClient(creds));
     const buckets = await client.listResources(T.bucket, "acc");
     expect(buckets.map((b) => b.externalId)).toEqual(["b1", "b3"]);
     expect(buckets[0]!.fields).toMatchObject({
@@ -63,11 +65,13 @@ describe("InfluxClient", () => {
   });
 
   it("returns nothing for Cloud types on a Dedicated-only account", async () => {
-    const client = new InfluxClient({
-      dedicatedAccountId: "a",
-      dedicatedClusterId: "c",
-      dedicatedManagementToken: "m",
-    });
+    const client = hostClient(
+      new InfluxClient({
+        dedicatedAccountId: "a",
+        dedicatedClusterId: "c",
+        dedicatedManagementToken: "m",
+      }),
+    );
     expect(await client.listResources(T.bucket, "acc")).toEqual([]);
   });
 
@@ -81,7 +85,7 @@ describe("InfluxClient", () => {
         permissions: [{ action: "read", resource: { type: "buckets", id: "b1" } }],
       },
     });
-    const client = new InfluxClient(creds);
+    const client = hostClient(new InfluxClient(creds));
     const res = await client.createResource(T.token, "acc", {
       description: "t",
       readBuckets: '["b1"]',
@@ -104,7 +108,7 @@ describe("InfluxClient", () => {
       "GET /api/v2/buckets": { buckets: [{ id: "b1", name: "metrics", retentionRules: [] }] },
       "GET /api/v2/orgs/org1/usage": "",
     });
-    const client = new InfluxClient(creds);
+    const client = hostClient(new InfluxClient(creds));
     await client.updateResource(T.bucket, "acc:influx-bucket:b1", "acc", {
       retentionDays: "0",
       description: "x",
@@ -133,7 +137,7 @@ describe("InfluxClient", () => {
         };
       },
     });
-    const client = new InfluxClient(creds);
+    const client = hostClient(new InfluxClient(creds));
     const res = await client.executeQuery("acc:influx-bucket:b1", "acc", "SELECT usage FROM cpu");
     expect(res.rows).toEqual([{ measurement: "cpu", host: "a", time: 1, usage: 0.5 }]);
   });
@@ -142,7 +146,7 @@ describe("InfluxClient", () => {
     const { calls } = mockFetch({
       "POST /api/v2/query": "#datatype,string,long,double\n,result,table,_value\n,_result,0,1.5\n",
     });
-    const client = new InfluxClient(creds);
+    const client = hostClient(new InfluxClient(creds));
     const res = await client.executeQuery(
       "acc:influx-bucket:b1",
       "acc",
@@ -164,7 +168,7 @@ describe("InfluxClient", () => {
       },
       "GET /api/v2/buckets": { buckets: [{ id: "b1", type: "user" }] },
     });
-    const client = new InfluxClient(creds);
+    const client = hostClient(new InfluxClient(creds));
     expect(await client.fetchQuotas("acc")).toEqual([
       {
         id: "buckets",
@@ -179,7 +183,7 @@ describe("InfluxClient", () => {
 
   it("charts bucket storage from the usage CSV", async () => {
     mockFetch({ "GET /api/v2/orgs/org1/usage": USAGE });
-    const client = new InfluxClient(creds);
+    const client = hostClient(new InfluxClient(creds));
     const series = await client.fetchMetricSeries(T.bucket, "acc:influx-bucket:b1", "acc");
     expect(series).toEqual([
       {
@@ -201,11 +205,13 @@ describe("InfluxClient", () => {
         maxTables: 500,
       },
     });
-    const client = new InfluxClient({
-      dedicatedAccountId: "a",
-      dedicatedClusterId: "c",
-      dedicatedManagementToken: "m",
-    });
+    const client = hostClient(
+      new InfluxClient({
+        dedicatedAccountId: "a",
+        dedicatedClusterId: "c",
+        dedicatedManagementToken: "m",
+      }),
+    );
     const r = await client.createResource(T.dedicatedDatabase, "acc", {
       name: "db1",
       retentionDays: "30",
@@ -227,7 +233,7 @@ describe("InfluxClient", () => {
         { status: 401 },
       ),
     });
-    const err = await new InfluxClient(creds)
+    const err = await hostClient(new InfluxClient(creds))
       .listResources(T.bucket, "acc")
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(InfluxApiError);
@@ -237,7 +243,10 @@ describe("InfluxClient", () => {
   it("lists organizations for the picker", async () => {
     mockFetch({ "GET /api/v2/orgs": { orgs: [{ id: "org1", name: "Acme" }] } });
     expect(
-      await plugin.listCredentialOptions!("orgId", { region: "us-east-1-1", token: "tok" }),
+      await hostPlugin(plugin).listCredentialOptions!("orgId", {
+        region: "us-east-1-1",
+        token: "tok",
+      }),
     ).toEqual([{ id: "org1", label: "Acme", description: "org1" }]);
   });
 });

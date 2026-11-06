@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -367,7 +370,7 @@ export class WorkosClient implements PluginClient {
    */
   private webhookEndpointsCache: WosWebhookEndpoint[] | null = null;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("WorkOS plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -496,118 +499,122 @@ export class WorkosClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "organization": {
-        const orgs = await this.fetchOrganizations();
-        return orgs.map((org) => this.mapOrganization(accountId, org));
-      }
-      case "user": {
-        const users = await this.paginate<WosUser>("/user_management/users");
-        return users.map((user) => this.mapUser(accountId, user));
-      }
-      case "organization-membership": {
-        // GET /user_management/organization_memberships requires user_id or
-        // organization_id, so fan out per org. Emails come from one users
-        // sweep rather than a lookup per membership.
-        const emails = await this.fetchUserEmailMap();
-        const memberships = await this.listForEachOrganization((orgId) =>
-          this.paginate<WosMembership>("/user_management/organization_memberships", {
-            organization_id: orgId,
-          }),
-        );
-        return memberships.map((m) => this.mapMembership(accountId, m, emails.get(str(m.user_id))));
-      }
-      case "invitation": {
-        const invitations = await this.listForEachOrganization((orgId) =>
-          this.paginate<WosInvitation>("/user_management/invitations", {
-            organization_id: orgId,
-          }),
-        );
-        return invitations.map((invitation) => this.mapInvitation(accountId, invitation));
-      }
-      case "connection": {
-        const connections = await this.paginate<WosConnection>("/connections");
-        return connections.map((connection) => this.mapConnection(accountId, connection));
-      }
-      case "directory": {
-        const directories = await this.paginate<WosDirectory>("/directories");
-        return directories.map((directory) => this.mapDirectory(accountId, directory));
-      }
-      case "directory-user": {
-        const users = await this.listForEachDirectory((directoryId) =>
-          this.paginate<WosDirectoryUser>("/directory_users", { directory: directoryId }),
-        );
-        return users.map((user) => this.mapDirectoryUser(accountId, user));
-      }
-      case "directory-group": {
-        const groups = await this.listForEachDirectory((directoryId) =>
-          this.paginate<WosDirectoryGroup>("/directory_groups", { directory: directoryId }),
-        );
-        return groups.map((group) => this.mapDirectoryGroup(accountId, group));
-      }
-      case "role": {
-        // GET /authorization/roles: plain {data} list, no pagination.
-        const body = await this.fetch<WosList<WosRole>>("/authorization/roles");
-        return (body.data ?? []).map((role) => this.mapRole(accountId, role));
-      }
-      case "webhook-endpoint": {
-        const endpoints = await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
-        this.webhookEndpointsCache = endpoints;
-        return endpoints.map((endpoint) => this.mapWebhookEndpoint(accountId, endpoint));
-      }
-      case "organization-domain": {
-        // There is no domain listing route: every organization carries its
-        // full domain objects, ids included.
-        const orgs = await this.fetchOrganizations();
-        return orgs.flatMap((org) =>
-          (org.domains ?? [])
-            .filter((domain) => domain.id)
-            .map((domain) =>
-              this.mapOrganizationDomain(accountId, {
-                ...domain,
-                organization_id: domain.organization_id ?? str(org.id),
-              }),
-            ),
-        );
-      }
-      case "organization-role": {
-        const roles = await this.listForEachOrganization(async (orgId) => {
-          const body = await this.fetch<WosList<WosRole>>(
-            `/authorization/organizations/${encodeURIComponent(orgId)}/roles`,
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "organization": {
+          const orgs = await this.fetchOrganizations();
+          return orgs.map((org) => this.mapOrganization(accountId, org));
+        }
+        case "user": {
+          const users = await this.paginate<WosUser>("/user_management/users");
+          return users.map((user) => this.mapUser(accountId, user));
+        }
+        case "organization-membership": {
+          // GET /user_management/organization_memberships requires user_id or
+          // organization_id, so fan out per org. Emails come from one users
+          // sweep rather than a lookup per membership.
+          const emails = await this.fetchUserEmailMap();
+          const memberships = await this.listForEachOrganization((orgId) =>
+            this.paginate<WosMembership>("/user_management/organization_memberships", {
+              organization_id: orgId,
+            }),
           );
-          // The org listing also returns the environment roles it inherits.
-          return (body.data ?? [])
-            .filter((role) => role.type === "OrganizationRole")
-            .map((role) => ({ role, orgId }));
-        });
-        return roles.map(({ role, orgId }) => this.mapOrganizationRole(accountId, orgId, role));
+          return memberships.map((m) =>
+            this.mapMembership(accountId, m, emails.get(str(m.user_id))),
+          );
+        }
+        case "invitation": {
+          const invitations = await this.listForEachOrganization((orgId) =>
+            this.paginate<WosInvitation>("/user_management/invitations", {
+              organization_id: orgId,
+            }),
+          );
+          return invitations.map((invitation) => this.mapInvitation(accountId, invitation));
+        }
+        case "connection": {
+          const connections = await this.paginate<WosConnection>("/connections");
+          return connections.map((connection) => this.mapConnection(accountId, connection));
+        }
+        case "directory": {
+          const directories = await this.paginate<WosDirectory>("/directories");
+          return directories.map((directory) => this.mapDirectory(accountId, directory));
+        }
+        case "directory-user": {
+          const users = await this.listForEachDirectory((directoryId) =>
+            this.paginate<WosDirectoryUser>("/directory_users", { directory: directoryId }),
+          );
+          return users.map((user) => this.mapDirectoryUser(accountId, user));
+        }
+        case "directory-group": {
+          const groups = await this.listForEachDirectory((directoryId) =>
+            this.paginate<WosDirectoryGroup>("/directory_groups", { directory: directoryId }),
+          );
+          return groups.map((group) => this.mapDirectoryGroup(accountId, group));
+        }
+        case "role": {
+          // GET /authorization/roles: plain {data} list, no pagination.
+          const body = await this.fetch<WosList<WosRole>>("/authorization/roles");
+          return (body.data ?? []).map((role) => this.mapRole(accountId, role));
+        }
+        case "webhook-endpoint": {
+          const endpoints = await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
+          this.webhookEndpointsCache = endpoints;
+          return endpoints.map((endpoint) => this.mapWebhookEndpoint(accountId, endpoint));
+        }
+        case "organization-domain": {
+          // There is no domain listing route: every organization carries its
+          // full domain objects, ids included.
+          const orgs = await this.fetchOrganizations();
+          return orgs.flatMap((org) =>
+            (org.domains ?? [])
+              .filter((domain) => domain.id)
+              .map((domain) =>
+                this.mapOrganizationDomain(accountId, {
+                  ...domain,
+                  organization_id: domain.organization_id ?? str(org.id),
+                }),
+              ),
+          );
+        }
+        case "organization-role": {
+          const roles = await this.listForEachOrganization(async (orgId) => {
+            const body = await this.fetch<WosList<WosRole>>(
+              `/authorization/organizations/${encodeURIComponent(orgId)}/roles`,
+            );
+            // The org listing also returns the environment roles it inherits.
+            return (body.data ?? [])
+              .filter((role) => role.type === "OrganizationRole")
+              .map((role) => ({ role, orgId }));
+          });
+          return roles.map(({ role, orgId }) => this.mapOrganizationRole(accountId, orgId, role));
+        }
+        case "permission": {
+          const permissions = await this.paginate<WosPermission>("/authorization/permissions");
+          return permissions.map((permission) => this.mapPermission(accountId, permission));
+        }
+        case "organization-api-key": {
+          const keys = await this.listForEachOrganization(async (orgId) =>
+            (
+              await this.paginate<WosApiKey>(`/organizations/${encodeURIComponent(orgId)}/api_keys`)
+            ).map((key) => ({ key, orgId })),
+          );
+          return keys.map(({ key, orgId }) => this.mapApiKey(accountId, orgId, key));
+        }
+        case "feature-flag": {
+          const flags = await this.paginate<WosFeatureFlag>("/feature-flags");
+          return flags.map((flag) => this.mapFeatureFlag(accountId, flag));
+        }
+        case "group": {
+          const groups = await this.listForEachOrganization((orgId) =>
+            this.paginate<WosGroup>(`/organizations/${encodeURIComponent(orgId)}/groups`),
+          );
+          return groups.map((group) => this.mapGroup(accountId, group));
+        }
+        default:
+          throw new Error(`WorkOS plugin: unknown resource type "${typeId}"`);
       }
-      case "permission": {
-        const permissions = await this.paginate<WosPermission>("/authorization/permissions");
-        return permissions.map((permission) => this.mapPermission(accountId, permission));
-      }
-      case "organization-api-key": {
-        const keys = await this.listForEachOrganization(async (orgId) =>
-          (
-            await this.paginate<WosApiKey>(`/organizations/${encodeURIComponent(orgId)}/api_keys`)
-          ).map((key) => ({ key, orgId })),
-        );
-        return keys.map(({ key, orgId }) => this.mapApiKey(accountId, orgId, key));
-      }
-      case "feature-flag": {
-        const flags = await this.paginate<WosFeatureFlag>("/feature-flags");
-        return flags.map((flag) => this.mapFeatureFlag(accountId, flag));
-      }
-      case "group": {
-        const groups = await this.listForEachOrganization((orgId) =>
-          this.paginate<WosGroup>(`/organizations/${encodeURIComponent(orgId)}/groups`),
-        );
-        return groups.map((group) => this.mapGroup(accountId, group));
-      }
-      default:
-        throw new Error(`WorkOS plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   private async listForEachDirectory<T>(load: (directoryId: string) => Promise<T[]>): Promise<T[]> {
@@ -626,114 +633,120 @@ export class WorkosClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "organization": {
-        const org = await this.fetch<WosOrganization>(`/organizations/${encodeURIComponent(id)}`);
-        return this.mapOrganization(accountId, org);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "organization": {
+          const org = await this.fetch<WosOrganization>(`/organizations/${encodeURIComponent(id)}`);
+          return this.mapOrganization(accountId, org);
+        }
+        case "user": {
+          const user = await this.fetch<WosUser>(
+            `/user_management/users/${encodeURIComponent(id)}`,
+          );
+          return this.mapUser(accountId, user);
+        }
+        case "organization-membership": {
+          const membership = await this.fetch<WosMembership>(
+            `/user_management/organization_memberships/${encodeURIComponent(id)}`,
+          );
+          const email = await this.fetchUserEmail(str(membership.user_id));
+          return this.mapMembership(accountId, membership, email);
+        }
+        case "invitation": {
+          const invitation = await this.fetch<WosInvitation>(
+            `/user_management/invitations/${encodeURIComponent(id)}`,
+          );
+          return this.mapInvitation(accountId, invitation);
+        }
+        case "connection": {
+          const connection = await this.fetch<WosConnection>(
+            `/connections/${encodeURIComponent(id)}`,
+          );
+          return this.mapConnection(accountId, connection);
+        }
+        case "directory": {
+          const directory = await this.fetch<WosDirectory>(
+            `/directories/${encodeURIComponent(id)}`,
+          );
+          return this.mapDirectory(accountId, directory);
+        }
+        case "directory-user": {
+          const user = await this.fetch<WosDirectoryUser>(
+            `/directory_users/${encodeURIComponent(id)}`,
+          );
+          return this.mapDirectoryUser(accountId, user);
+        }
+        case "directory-group": {
+          const group = await this.fetch<WosDirectoryGroup>(
+            `/directory_groups/${encodeURIComponent(id)}`,
+          );
+          return this.mapDirectoryGroup(accountId, group);
+        }
+        case "role": {
+          const role = await this.fetch<WosRole>(`/authorization/roles/${encodeURIComponent(id)}`);
+          return this.mapRole(accountId, role);
+        }
+        case "webhook-endpoint": {
+          // The spec documents PATCH/DELETE on /webhook_endpoints/{id} but no
+          // GET, so re-list and pick the endpoint out. The list is cached per
+          // client instance: resolveOutput funnels through here, and resolving
+          // several signingSecret references must not repeat the full sweep.
+          this.webhookEndpointsCache ??=
+            await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
+          const match = this.webhookEndpointsCache.find((endpoint) => endpoint.id === id);
+          if (!match) throw new Error(`WorkOS plugin: webhook endpoint "${id}" not found`);
+          return this.mapWebhookEndpoint(accountId, match);
+        }
+        case "organization-domain": {
+          const domain = await this.fetch<WosOrganizationDomain>(
+            `/organization_domains/${encodeURIComponent(id)}`,
+          );
+          return this.mapOrganizationDomain(accountId, domain);
+        }
+        case "organization-role": {
+          const [orgId, slug] = orgScoped(id);
+          const role = await this.fetch<WosRole>(
+            `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
+          );
+          return this.mapOrganizationRole(accountId, orgId, role);
+        }
+        case "permission": {
+          const permission = await this.fetch<WosPermission>(
+            `/authorization/permissions/${encodeURIComponent(id)}`,
+          );
+          return this.mapPermission(accountId, permission);
+        }
+        case "organization-api-key": {
+          // No single-key GET: list the owning organization's keys.
+          const [orgId, keyId] = orgScoped(id);
+          const keys = await this.paginate<WosApiKey>(
+            `/organizations/${encodeURIComponent(orgId)}/api_keys`,
+          );
+          const match = keys.find((key) => key.id === keyId);
+          if (!match) throw new Error(`WorkOS plugin: API key "${keyId}" not found`);
+          return this.mapApiKey(accountId, orgId, match);
+        }
+        case "feature-flag": {
+          const flag = await this.fetch<WosFeatureFlag>(`/feature-flags/${encodeURIComponent(id)}`);
+          return this.mapFeatureFlag(accountId, flag);
+        }
+        case "group": {
+          const [orgId, groupId] = orgScoped(id);
+          const group = await this.fetch<WosGroup>(
+            `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
+          );
+          return this.mapGroup(accountId, group);
+        }
+        default:
+          throw new Error(`WorkOS plugin: unknown resource type "${typeId}"`);
       }
-      case "user": {
-        const user = await this.fetch<WosUser>(`/user_management/users/${encodeURIComponent(id)}`);
-        return this.mapUser(accountId, user);
-      }
-      case "organization-membership": {
-        const membership = await this.fetch<WosMembership>(
-          `/user_management/organization_memberships/${encodeURIComponent(id)}`,
-        );
-        const email = await this.fetchUserEmail(str(membership.user_id));
-        return this.mapMembership(accountId, membership, email);
-      }
-      case "invitation": {
-        const invitation = await this.fetch<WosInvitation>(
-          `/user_management/invitations/${encodeURIComponent(id)}`,
-        );
-        return this.mapInvitation(accountId, invitation);
-      }
-      case "connection": {
-        const connection = await this.fetch<WosConnection>(
-          `/connections/${encodeURIComponent(id)}`,
-        );
-        return this.mapConnection(accountId, connection);
-      }
-      case "directory": {
-        const directory = await this.fetch<WosDirectory>(`/directories/${encodeURIComponent(id)}`);
-        return this.mapDirectory(accountId, directory);
-      }
-      case "directory-user": {
-        const user = await this.fetch<WosDirectoryUser>(
-          `/directory_users/${encodeURIComponent(id)}`,
-        );
-        return this.mapDirectoryUser(accountId, user);
-      }
-      case "directory-group": {
-        const group = await this.fetch<WosDirectoryGroup>(
-          `/directory_groups/${encodeURIComponent(id)}`,
-        );
-        return this.mapDirectoryGroup(accountId, group);
-      }
-      case "role": {
-        const role = await this.fetch<WosRole>(`/authorization/roles/${encodeURIComponent(id)}`);
-        return this.mapRole(accountId, role);
-      }
-      case "webhook-endpoint": {
-        // The spec documents PATCH/DELETE on /webhook_endpoints/{id} but no
-        // GET, so re-list and pick the endpoint out. The list is cached per
-        // client instance: resolveOutput funnels through here, and resolving
-        // several signingSecret references must not repeat the full sweep.
-        this.webhookEndpointsCache ??=
-          await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
-        const match = this.webhookEndpointsCache.find((endpoint) => endpoint.id === id);
-        if (!match) throw new Error(`WorkOS plugin: webhook endpoint "${id}" not found`);
-        return this.mapWebhookEndpoint(accountId, match);
-      }
-      case "organization-domain": {
-        const domain = await this.fetch<WosOrganizationDomain>(
-          `/organization_domains/${encodeURIComponent(id)}`,
-        );
-        return this.mapOrganizationDomain(accountId, domain);
-      }
-      case "organization-role": {
-        const [orgId, slug] = orgScoped(id);
-        const role = await this.fetch<WosRole>(
-          `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
-        );
-        return this.mapOrganizationRole(accountId, orgId, role);
-      }
-      case "permission": {
-        const permission = await this.fetch<WosPermission>(
-          `/authorization/permissions/${encodeURIComponent(id)}`,
-        );
-        return this.mapPermission(accountId, permission);
-      }
-      case "organization-api-key": {
-        // No single-key GET: list the owning organization's keys.
-        const [orgId, keyId] = orgScoped(id);
-        const keys = await this.paginate<WosApiKey>(
-          `/organizations/${encodeURIComponent(orgId)}/api_keys`,
-        );
-        const match = keys.find((key) => key.id === keyId);
-        if (!match) throw new Error(`WorkOS plugin: API key "${keyId}" not found`);
-        return this.mapApiKey(accountId, orgId, match);
-      }
-      case "feature-flag": {
-        const flag = await this.fetch<WosFeatureFlag>(`/feature-flags/${encodeURIComponent(id)}`);
-        return this.mapFeatureFlag(accountId, flag);
-      }
-      case "group": {
-        const [orgId, groupId] = orgScoped(id);
-        const group = await this.fetch<WosGroup>(
-          `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
-        );
-        return this.mapGroup(accountId, group);
-      }
-      default:
-        throw new Error(`WorkOS plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   private async fetchUserEmail(userId: string): Promise<string | undefined> {
@@ -748,16 +761,18 @@ export class WorkosClient implements PluginClient {
     }
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    throw new Error(`WorkOS plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      throw new Error(`WorkOS plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1273,70 +1288,72 @@ export class WorkosClient implements PluginClient {
    * are the record. The API answers at most 30 days per request (and keeps
    * 90), so a longer window is clamped to its latest 30 days.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "organization") return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = Math.max(
-      timeRange?.startMs ?? endMs - METRICS_DEFAULT_RANGE_MS,
-      endMs - EVENTS_MAX_RANGE_MS,
-    );
-    const query = new URLSearchParams({
-      organization_id: externalIdOf(resourceId),
-      range_start: new Date(startMs).toISOString(),
-      range_end: new Date(endMs).toISOString(),
-      order: "desc",
-      limit: String(PAGE_SIZE),
-    });
-    for (const series of ORGANIZATION_METRIC_SERIES) {
-      for (const event of series.events) query.append("events", event);
-    }
-
-    // Newest first, so a busy organization that outruns the page cap loses
-    // its oldest buckets rather than its most recent ones.
-    const events: WosEvent[] = [];
-    let after = "";
-    for (let page = 0; page < MAX_LIST_PAGES; page++) {
-      if (after) query.set("after", after);
-      const body = await this.fetch<WosList<WosEvent>>(`/events?${query.toString()}`);
-      const items = body.data ?? [];
-      events.push(...items);
-      after = str(body.list_metadata?.after);
-      if (!after || items.length === 0) break;
-    }
-
-    const timestamps = events
-      .map((event) => ({ name: str(event.event), at: Date.parse(str(event.created_at)) }))
-      .filter((event) => Number.isFinite(event.at));
-    // A cursor surviving the cap means everything before the oldest event
-    // fetched is unknown, not zero; start the chart where the data does.
-    const firstMs = after
-      ? Math.min(...timestamps.map((event) => event.at), endMs)
-      : Number.NEGATIVE_INFINITY;
-    const bucketMs = Math.max(
-      60_000,
-      Math.ceil((endMs - startMs) / METRIC_BUCKETS / 60_000) * 60_000,
-    );
-    const buckets: number[] = [];
-    for (let at = startMs; at < endMs; at += bucketMs) if (at >= firstMs) buckets.push(at);
-
-    return ORGANIZATION_METRIC_SERIES.map((series) => {
-      const counts = new Map<number, number>(buckets.map((at) => [at, 0]));
-      for (const event of timestamps) {
-        if (!series.events.includes(event.name)) continue;
-        const bucket = startMs + Math.floor((event.at - startMs) / bucketMs) * bucketMs;
-        const current = counts.get(bucket);
-        if (current !== undefined) counts.set(bucket, current + 1);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "organization") return [];
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = Math.max(
+        timeRange?.startMs ?? endMs - METRICS_DEFAULT_RANGE_MS,
+        endMs - EVENTS_MAX_RANGE_MS,
+      );
+      const query = new URLSearchParams({
+        organization_id: externalIdOf(resourceId),
+        range_start: new Date(startMs).toISOString(),
+        range_end: new Date(endMs).toISOString(),
+        order: "desc",
+        limit: String(PAGE_SIZE),
+      });
+      for (const series of ORGANIZATION_METRIC_SERIES) {
+        for (const event of series.events) query.append("events", event);
       }
-      return {
-        label: series.label,
-        unit: "count",
-        points: buckets.map((timestamp) => ({ timestamp, value: counts.get(timestamp) ?? 0 })),
-      };
+
+      // Newest first, so a busy organization that outruns the page cap loses
+      // its oldest buckets rather than its most recent ones.
+      const events: WosEvent[] = [];
+      let after = "";
+      for (let page = 0; page < MAX_LIST_PAGES; page++) {
+        if (after) query.set("after", after);
+        const body = await this.fetch<WosList<WosEvent>>(`/events?${query.toString()}`);
+        const items = body.data ?? [];
+        events.push(...items);
+        after = str(body.list_metadata?.after);
+        if (!after || items.length === 0) break;
+      }
+
+      const timestamps = events
+        .map((event) => ({ name: str(event.event), at: Date.parse(str(event.created_at)) }))
+        .filter((event) => Number.isFinite(event.at));
+      // A cursor surviving the cap means everything before the oldest event
+      // fetched is unknown, not zero; start the chart where the data does.
+      const firstMs = after
+        ? Math.min(...timestamps.map((event) => event.at), endMs)
+        : Number.NEGATIVE_INFINITY;
+      const bucketMs = Math.max(
+        60_000,
+        Math.ceil((endMs - startMs) / METRIC_BUCKETS / 60_000) * 60_000,
+      );
+      const buckets: number[] = [];
+      for (let at = startMs; at < endMs; at += bucketMs) if (at >= firstMs) buckets.push(at);
+
+      return ORGANIZATION_METRIC_SERIES.map((series) => {
+        const counts = new Map<number, number>(buckets.map((at) => [at, 0]));
+        for (const event of timestamps) {
+          if (!series.events.includes(event.name)) continue;
+          const bucket = startMs + Math.floor((event.at - startMs) / bucketMs) * bucketMs;
+          const current = counts.get(bucket);
+          if (current !== undefined) counts.set(bucket, current + 1);
+        }
+        return {
+          label: series.label,
+          unit: "count",
+          points: buckets.map((timestamp) => ({ timestamp, value: counts.get(timestamp) ?? 0 })),
+        };
+      });
     });
   }
 
@@ -1344,307 +1361,311 @@ export class WorkosClient implements PluginClient {
   // Dashboard stats
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
-  ): Promise<DashboardStat[]> {
-    const id = externalIdOf(resourceId);
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
 
-    if (resourceTypeId === "organization") {
-      const [memberships, invitations, connections, directories] = await Promise.all([
-        this.paginate<WosMembership>("/user_management/organization_memberships", {
-          organization_id: id,
-        }).catch(() => [] as WosMembership[]),
-        this.paginate<WosInvitation>("/user_management/invitations", {
-          organization_id: id,
-        }).catch(() => [] as WosInvitation[]),
-        this.paginate<WosConnection>("/connections", { organization_id: id }).catch(
-          () => [] as WosConnection[],
-        ),
-        this.paginate<WosDirectory>("/directories", { organization_id: id }).catch(
-          () => [] as WosDirectory[],
-        ),
-      ]);
-      const pending = invitations.filter((invitation) => invitation.state === "pending").length;
-      return [
-        { label: "Members", value: String(memberships.length) },
-        { label: "Pending Invites", value: String(pending) },
-        { label: "SSO Connections", value: String(connections.length) },
-        { label: "Directories", value: String(directories.length) },
-      ];
-    }
-
-    if (resourceTypeId === "directory") {
-      // The directory carries its own sync counts; page through users and
-      // groups only when an older response lacks them.
-      const directory = await this.fetch<WosDirectory>(
-        `/directories/${encodeURIComponent(id)}`,
-      ).catch(() => undefined);
-      if (directory?.metadata) {
+      if (resourceTypeId === "organization") {
+        const [memberships, invitations, connections, directories] = await Promise.all([
+          this.paginate<WosMembership>("/user_management/organization_memberships", {
+            organization_id: id,
+          }).catch(() => [] as WosMembership[]),
+          this.paginate<WosInvitation>("/user_management/invitations", {
+            organization_id: id,
+          }).catch(() => [] as WosInvitation[]),
+          this.paginate<WosConnection>("/connections", { organization_id: id }).catch(
+            () => [] as WosConnection[],
+          ),
+          this.paginate<WosDirectory>("/directories", { organization_id: id }).catch(
+            () => [] as WosDirectory[],
+          ),
+        ]);
+        const pending = invitations.filter((invitation) => invitation.state === "pending").length;
         return [
-          { label: "Active Users", value: String(directory.metadata.users?.active ?? 0) },
-          { label: "Inactive Users", value: String(directory.metadata.users?.inactive ?? 0) },
-          { label: "Synced Groups", value: String(directory.metadata.groups ?? 0) },
+          { label: "Members", value: String(memberships.length) },
+          { label: "Pending Invites", value: String(pending) },
+          { label: "SSO Connections", value: String(connections.length) },
+          { label: "Directories", value: String(directories.length) },
         ];
       }
-      const [users, groups] = await Promise.all([
-        this.paginate<WosDirectoryUser>("/directory_users", { directory: id }).catch(
-          () => [] as WosDirectoryUser[],
-        ),
-        this.paginate<WosDirectoryGroup>("/directory_groups", { directory: id }).catch(
-          () => [] as WosDirectoryGroup[],
-        ),
-      ]);
-      return [
-        { label: "Synced Users", value: String(users.length) },
-        { label: "Synced Groups", value: String(groups.length) },
-      ];
-    }
 
-    return [];
+      if (resourceTypeId === "directory") {
+        // The directory carries its own sync counts; page through users and
+        // groups only when an older response lacks them.
+        const directory = await this.fetch<WosDirectory>(
+          `/directories/${encodeURIComponent(id)}`,
+        ).catch(() => undefined);
+        if (directory?.metadata) {
+          return [
+            { label: "Active Users", value: String(directory.metadata.users?.active ?? 0) },
+            { label: "Inactive Users", value: String(directory.metadata.users?.inactive ?? 0) },
+            { label: "Synced Groups", value: String(directory.metadata.groups ?? 0) },
+          ];
+        }
+        const [users, groups] = await Promise.all([
+          this.paginate<WosDirectoryUser>("/directory_users", { directory: id }).catch(
+            () => [] as WosDirectoryUser[],
+          ),
+          this.paginate<WosDirectoryGroup>("/directory_groups", { directory: id }).catch(
+            () => [] as WosDirectoryGroup[],
+          ),
+        ]);
+        return [
+          { label: "Synced Users", value: String(users.length) },
+          { label: "Synced Groups", value: String(groups.length) },
+        ];
+      }
+
+      return [];
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "organization":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "domains",
-              label: "Domains",
-              kind: "string-list",
-              required: false,
-              addLabel: "+ Add domain",
-              description:
-                "Optional organization domains. Added as pending; verify them in the WorkOS dashboard.",
-            },
-          ],
-        };
-      case "user":
-        return {
-          fields: [
-            { key: "email", label: "Email", kind: "text", required: true },
-            { key: "firstName", label: "First Name", kind: "text", required: false },
-            { key: "lastName", label: "Last Name", kind: "text", required: false },
-            {
-              key: "password",
-              label: "Password",
-              kind: "password",
-              required: false,
-              description:
-                "Optional. Leave blank for users who will sign in through SSO, Magic Auth, or a password they set themselves.",
-            },
-            {
-              key: "emailVerified",
-              label: "Email Verified",
-              kind: "select",
-              required: false,
-              options: [
-                { id: "false", label: "No, WorkOS verifies on first sign-in" },
-                { id: "true", label: "Yes, mark as already verified" },
-              ],
-              defaultValue: "false",
-            },
-          ],
-        };
-      case "organization-membership": {
-        const fields: CreateFieldConfig[] = [
-          ...(await this.organizationPickerField(parentResourceId)),
-          {
-            key: "userId",
-            label: "User",
-            kind: "resource-picker",
-            required: true,
-            description: "The user to add to the organization.",
-            associationSources: [
-              { pluginId: "workos", resourceTypeId: "user", outputKey: "userId" },
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "organization":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "domains",
+                label: "Domains",
+                kind: "string-list",
+                required: false,
+                addLabel: "+ Add domain",
+                description:
+                  "Optional organization domains. Added as pending; verify them in the WorkOS dashboard.",
+              },
             ],
-          },
-          await this.rolePickerField(parentResourceId),
-        ];
-        return { fields };
+          };
+        case "user":
+          return {
+            fields: [
+              { key: "email", label: "Email", kind: "text", required: true },
+              { key: "firstName", label: "First Name", kind: "text", required: false },
+              { key: "lastName", label: "Last Name", kind: "text", required: false },
+              {
+                key: "password",
+                label: "Password",
+                kind: "password",
+                required: false,
+                description:
+                  "Optional. Leave blank for users who will sign in through SSO, Magic Auth, or a password they set themselves.",
+              },
+              {
+                key: "emailVerified",
+                label: "Email Verified",
+                kind: "select",
+                required: false,
+                options: [
+                  { id: "false", label: "No, WorkOS verifies on first sign-in" },
+                  { id: "true", label: "Yes, mark as already verified" },
+                ],
+                defaultValue: "false",
+              },
+            ],
+          };
+        case "organization-membership": {
+          const fields: CreateFieldConfig[] = [
+            ...(await this.organizationPickerField(parentResourceId)),
+            {
+              key: "userId",
+              label: "User",
+              kind: "resource-picker",
+              required: true,
+              description: "The user to add to the organization.",
+              associationSources: [
+                { pluginId: "workos", resourceTypeId: "user", outputKey: "userId" },
+              ],
+            },
+            await this.rolePickerField(parentResourceId),
+          ];
+          return { fields };
+        }
+        case "invitation": {
+          const fields: CreateFieldConfig[] = [
+            ...(await this.organizationPickerField(parentResourceId)),
+            { key: "email", label: "Email", kind: "text", required: true },
+            await this.rolePickerField(parentResourceId),
+            {
+              key: "expiresInDays",
+              label: "Expires In (days)",
+              kind: "number",
+              required: false,
+              minValue: 1,
+              maxValue: 30,
+              defaultValue: "7",
+              description: "WorkOS allows 1–30 days. Defaults to 7.",
+            },
+          ];
+          return { fields };
+        }
+        case "role":
+          return {
+            fields: [
+              {
+                key: "slug",
+                label: "Slug",
+                kind: "text",
+                required: true,
+                placeholder: "editor",
+                description: "Unique identifier used in role assignments. Max 48 characters.",
+              },
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "Editor" },
+              {
+                key: "description",
+                label: "Description",
+                kind: "text",
+                required: false,
+                description: "Optional, max 150 characters.",
+              },
+            ],
+          };
+        case "webhook-endpoint":
+          return {
+            fields: [
+              {
+                key: "endpointUrl",
+                label: "Endpoint URL",
+                kind: "text",
+                required: true,
+                placeholder: "https://example.com/webhooks",
+                description: "HTTPS URL WorkOS delivers events to.",
+              },
+              {
+                key: "events",
+                label: "Events",
+                kind: "policy-picker",
+                required: true,
+                policies: WEBHOOK_EVENTS.map((event) => ({
+                  id: event,
+                  label: event,
+                  category: event.split(".")[0] ?? event,
+                })),
+                description: "Event types WorkOS delivers to this endpoint.",
+              },
+            ],
+          };
+        case "organization-domain":
+          return {
+            fields: [
+              ...(await this.organizationPickerField(parentResourceId)),
+              {
+                key: "domain",
+                label: "Domain",
+                kind: "text",
+                required: true,
+                placeholder: "example.com",
+                description:
+                  "Added as pending. Publish the TXT record the domain page shows, then choose Verify.",
+              },
+            ],
+          };
+        case "organization-role":
+          return {
+            fields: [
+              ...(await this.organizationPickerField(parentResourceId)),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "Billing admin",
+              },
+              {
+                key: "slug",
+                label: "Slug",
+                kind: "text",
+                required: false,
+                placeholder: "org-billing-admin",
+                description:
+                  "Optional. Must start with org- and use lowercase letters, numbers, hyphens and underscores. Generated from the name when blank.",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "permissions",
+                label: "Permissions",
+                kind: "policy-picker",
+                required: false,
+                policies: await this.permissionOptions(),
+              },
+            ],
+          };
+        case "permission":
+          return {
+            fields: [
+              {
+                key: "slug",
+                label: "Slug",
+                kind: "text",
+                required: true,
+                placeholder: "invoices:read",
+                description:
+                  "Lowercase letters, numbers, hyphens, underscores, colons, periods and asterisks.",
+              },
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "Read invoices",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case "organization-api-key":
+          return {
+            fields: [
+              ...(await this.organizationPickerField(parentResourceId)),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "CI pipeline",
+              },
+              {
+                key: "permissions",
+                label: "Permissions",
+                kind: "policy-picker",
+                required: false,
+                policies: await this.permissionOptions(),
+              },
+              {
+                key: "expiresAt",
+                label: "Expires",
+                kind: "datetime",
+                required: false,
+                description: "Optional. Leave empty for a key that does not expire.",
+              },
+            ],
+          };
+        case "group":
+          return {
+            fields: [
+              ...(await this.organizationPickerField(parentResourceId)),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "Engineering",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        default:
+          throw new Error(`WorkOS plugin: cannot create resource type "${typeId}"`);
       }
-      case "invitation": {
-        const fields: CreateFieldConfig[] = [
-          ...(await this.organizationPickerField(parentResourceId)),
-          { key: "email", label: "Email", kind: "text", required: true },
-          await this.rolePickerField(parentResourceId),
-          {
-            key: "expiresInDays",
-            label: "Expires In (days)",
-            kind: "number",
-            required: false,
-            minValue: 1,
-            maxValue: 30,
-            defaultValue: "7",
-            description: "WorkOS allows 1–30 days. Defaults to 7.",
-          },
-        ];
-        return { fields };
-      }
-      case "role":
-        return {
-          fields: [
-            {
-              key: "slug",
-              label: "Slug",
-              kind: "text",
-              required: true,
-              placeholder: "editor",
-              description: "Unique identifier used in role assignments. Max 48 characters.",
-            },
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "Editor" },
-            {
-              key: "description",
-              label: "Description",
-              kind: "text",
-              required: false,
-              description: "Optional, max 150 characters.",
-            },
-          ],
-        };
-      case "webhook-endpoint":
-        return {
-          fields: [
-            {
-              key: "endpointUrl",
-              label: "Endpoint URL",
-              kind: "text",
-              required: true,
-              placeholder: "https://example.com/webhooks",
-              description: "HTTPS URL WorkOS delivers events to.",
-            },
-            {
-              key: "events",
-              label: "Events",
-              kind: "policy-picker",
-              required: true,
-              policies: WEBHOOK_EVENTS.map((event) => ({
-                id: event,
-                label: event,
-                category: event.split(".")[0] ?? event,
-              })),
-              description: "Event types WorkOS delivers to this endpoint.",
-            },
-          ],
-        };
-      case "organization-domain":
-        return {
-          fields: [
-            ...(await this.organizationPickerField(parentResourceId)),
-            {
-              key: "domain",
-              label: "Domain",
-              kind: "text",
-              required: true,
-              placeholder: "example.com",
-              description:
-                "Added as pending. Publish the TXT record the domain page shows, then choose Verify.",
-            },
-          ],
-        };
-      case "organization-role":
-        return {
-          fields: [
-            ...(await this.organizationPickerField(parentResourceId)),
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "Billing admin",
-            },
-            {
-              key: "slug",
-              label: "Slug",
-              kind: "text",
-              required: false,
-              placeholder: "org-billing-admin",
-              description:
-                "Optional. Must start with org- and use lowercase letters, numbers, hyphens and underscores. Generated from the name when blank.",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "permissions",
-              label: "Permissions",
-              kind: "policy-picker",
-              required: false,
-              policies: await this.permissionOptions(),
-            },
-          ],
-        };
-      case "permission":
-        return {
-          fields: [
-            {
-              key: "slug",
-              label: "Slug",
-              kind: "text",
-              required: true,
-              placeholder: "invoices:read",
-              description:
-                "Lowercase letters, numbers, hyphens, underscores, colons, periods and asterisks.",
-            },
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "Read invoices",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case "organization-api-key":
-        return {
-          fields: [
-            ...(await this.organizationPickerField(parentResourceId)),
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "CI pipeline",
-            },
-            {
-              key: "permissions",
-              label: "Permissions",
-              kind: "policy-picker",
-              required: false,
-              policies: await this.permissionOptions(),
-            },
-            {
-              key: "expiresAt",
-              label: "Expires",
-              kind: "datetime",
-              required: false,
-              description: "Optional. Leave empty for a key that does not expire.",
-            },
-          ],
-        };
-      case "group":
-        return {
-          fields: [
-            ...(await this.organizationPickerField(parentResourceId)),
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "Engineering",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      default:
-        throw new Error(`WorkOS plugin: cannot create resource type "${typeId}"`);
-    }
+    });
   }
 
   /**
@@ -1739,686 +1760,720 @@ export class WorkosClient implements PluginClient {
     return organizationId;
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "organization": {
-        // POST /organizations: domain_data entries need an explicit state;
-        // "pending" defers verification to the dashboard.
-        const domains = (fields["domains"] ?? "")
-          .split(",")
-          .map((domain) => domain.trim())
-          .filter(Boolean);
-        const org = await this.fetch<WosOrganization>("/organizations", {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"],
-            ...(domains.length > 0
-              ? { domain_data: domains.map((domain) => ({ domain, state: "pending" })) }
-              : {}),
-          }),
-        });
-        return this.mapOrganization(accountId, org);
-      }
-      case "user": {
-        const user = await this.fetch<WosUser>("/user_management/users", {
-          method: "POST",
-          body: JSON.stringify({
-            email: fields["email"],
-            ...(fields["firstName"] ? { first_name: fields["firstName"] } : {}),
-            ...(fields["lastName"] ? { last_name: fields["lastName"] } : {}),
-            ...(fields["password"] ? { password: fields["password"] } : {}),
-            ...(fields["emailVerified"] === "true" ? { email_verified: true } : {}),
-          }),
-        });
-        return this.mapUser(accountId, user);
-      }
-      case "organization-membership": {
-        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
-        const userId = fields["userId"];
-        if (!userId) throw new Error("WorkOS plugin: a user is required");
-        const membership = await this.fetch<WosMembership>(
-          "/user_management/organization_memberships",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              user_id: userId,
-              organization_id: organizationId,
-              ...(fields["roleSlug"] ? { role_slug: fields["roleSlug"] } : {}),
-            }),
-          },
-        );
-        const email = await this.fetchUserEmail(userId);
-        return this.mapMembership(accountId, membership, email);
-      }
-      case "invitation": {
-        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
-        const invitation = await this.fetch<WosInvitation>("/user_management/invitations", {
-          method: "POST",
-          body: JSON.stringify({
-            email: fields["email"],
-            organization_id: organizationId,
-            ...(fields["roleSlug"] ? { role_slug: fields["roleSlug"] } : {}),
-            ...(fields["expiresInDays"]
-              ? { expires_in_days: Number(fields["expiresInDays"]) }
-              : {}),
-          }),
-        });
-        return this.mapInvitation(accountId, invitation);
-      }
-      case "role": {
-        const role = await this.fetch<WosRole>("/authorization/roles", {
-          method: "POST",
-          body: JSON.stringify({
-            slug: fields["slug"],
-            name: fields["name"],
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-          }),
-        });
-        return this.mapRole(accountId, role);
-      }
-      case "webhook-endpoint": {
-        const events = pickedList(fields["events"]);
-        if (events.length === 0) {
-          throw new Error("WorkOS plugin: at least one event type is required");
-        }
-        const endpoint = await this.fetch<WosWebhookEndpoint>("/webhook_endpoints", {
-          method: "POST",
-          body: JSON.stringify({ endpoint_url: fields["endpointUrl"], events }),
-        });
-        return this.mapWebhookEndpoint(accountId, endpoint);
-      }
-      case "organization-domain": {
-        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
-        const domain = (fields["domain"] ?? "").trim().toLowerCase();
-        if (!domain) throw new Error("WorkOS plugin: a domain is required");
-        const created = await this.fetch<WosOrganizationDomain>("/organization_domains", {
-          method: "POST",
-          body: JSON.stringify({ domain, organization_id: organizationId }),
-        });
-        return this.mapOrganizationDomain(accountId, created);
-      }
-      case "organization-role": {
-        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
-        const slug = (fields["slug"] ?? "").trim();
-        if (slug && !/^org-[a-z0-9_-]+$/.test(slug)) {
-          throw new Error(
-            "WorkOS plugin: organization role slugs start with org- and use lowercase letters, numbers, hyphens and underscores",
-          );
-        }
-        const base = `/authorization/organizations/${encodeURIComponent(organizationId)}/roles`;
-        let role = await this.fetch<WosRole>(base, {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"],
-            ...(slug ? { slug } : {}),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-          }),
-        });
-        const permissions = pickedList(fields["permissions"]);
-        if (permissions.length > 0) {
-          role = await this.fetch<WosRole>(
-            `${base}/${encodeURIComponent(str(role.slug))}/permissions`,
-            { method: "PUT", body: JSON.stringify({ permissions }) },
-          );
-        }
-        return this.mapOrganizationRole(accountId, organizationId, role);
-      }
-      case "permission": {
-        const slug = (fields["slug"] ?? "").trim();
-        if (!/^[a-z0-9_.:*-]+$/.test(slug)) {
-          throw new Error(
-            "WorkOS plugin: permission slugs use lowercase letters, numbers, hyphens, underscores, colons, periods and asterisks",
-          );
-        }
-        const permission = await this.fetch<WosPermission>("/authorization/permissions", {
-          method: "POST",
-          body: JSON.stringify({
-            slug,
-            name: fields["name"],
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-          }),
-        });
-        return this.mapPermission(accountId, permission);
-      }
-      case "organization-api-key": {
-        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
-        const permissions = pickedList(fields["permissions"]);
-        const expiresAt = (fields["expiresAt"] ?? "").trim();
-        if (expiresAt && !(Date.parse(expiresAt) > Date.now())) {
-          throw new Error("WorkOS plugin: the expiry must be in the future");
-        }
-        const key = await this.fetch<WosApiKey>(
-          `/organizations/${encodeURIComponent(organizationId)}/api_keys`,
-          {
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "organization": {
+          // POST /organizations: domain_data entries need an explicit state;
+          // "pending" defers verification to the dashboard.
+          const domains = (fields["domains"] ?? "")
+            .split(",")
+            .map((domain) => domain.trim())
+            .filter(Boolean);
+          const org = await this.fetch<WosOrganization>("/organizations", {
             method: "POST",
             body: JSON.stringify({
               name: fields["name"],
-              ...(permissions.length > 0 ? { permissions } : {}),
-              ...(expiresAt ? { expires_at: new Date(expiresAt).toISOString() } : {}),
+              ...(domains.length > 0
+                ? { domain_data: domains.map((domain) => ({ domain, state: "pending" })) }
+                : {}),
             }),
-          },
-        );
-        const created = this.mapApiKey(accountId, organizationId, key);
-        // The full value is returned on this response only.
-        if (key.value) created.resolvedOutputs = { ...created.resolvedOutputs, apiKey: key.value };
-        return created;
-      }
-      case "group": {
-        const organizationId = this.resolveOrganizationId(fields, parentResourceId);
-        const group = await this.fetch<WosGroup>(
-          `/organizations/${encodeURIComponent(organizationId)}/groups`,
-          {
+          });
+          return this.mapOrganization(accountId, org);
+        }
+        case "user": {
+          const user = await this.fetch<WosUser>("/user_management/users", {
             method: "POST",
             body: JSON.stringify({
+              email: fields["email"],
+              ...(fields["firstName"] ? { first_name: fields["firstName"] } : {}),
+              ...(fields["lastName"] ? { last_name: fields["lastName"] } : {}),
+              ...(fields["password"] ? { password: fields["password"] } : {}),
+              ...(fields["emailVerified"] === "true" ? { email_verified: true } : {}),
+            }),
+          });
+          return this.mapUser(accountId, user);
+        }
+        case "organization-membership": {
+          const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+          const userId = fields["userId"];
+          if (!userId) throw new Error("WorkOS plugin: a user is required");
+          const membership = await this.fetch<WosMembership>(
+            "/user_management/organization_memberships",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                user_id: userId,
+                organization_id: organizationId,
+                ...(fields["roleSlug"] ? { role_slug: fields["roleSlug"] } : {}),
+              }),
+            },
+          );
+          const email = await this.fetchUserEmail(userId);
+          return this.mapMembership(accountId, membership, email);
+        }
+        case "invitation": {
+          const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+          const invitation = await this.fetch<WosInvitation>("/user_management/invitations", {
+            method: "POST",
+            body: JSON.stringify({
+              email: fields["email"],
+              organization_id: organizationId,
+              ...(fields["roleSlug"] ? { role_slug: fields["roleSlug"] } : {}),
+              ...(fields["expiresInDays"]
+                ? { expires_in_days: Number(fields["expiresInDays"]) }
+                : {}),
+            }),
+          });
+          return this.mapInvitation(accountId, invitation);
+        }
+        case "role": {
+          const role = await this.fetch<WosRole>("/authorization/roles", {
+            method: "POST",
+            body: JSON.stringify({
+              slug: fields["slug"],
               name: fields["name"],
               ...(fields["description"] ? { description: fields["description"] } : {}),
             }),
-          },
-        );
-        return this.mapGroup(accountId, { organization_id: organizationId, ...group });
+          });
+          return this.mapRole(accountId, role);
+        }
+        case "webhook-endpoint": {
+          const events = pickedList(fields["events"]);
+          if (events.length === 0) {
+            throw new Error("WorkOS plugin: at least one event type is required");
+          }
+          const endpoint = await this.fetch<WosWebhookEndpoint>("/webhook_endpoints", {
+            method: "POST",
+            body: JSON.stringify({ endpoint_url: fields["endpointUrl"], events }),
+          });
+          return this.mapWebhookEndpoint(accountId, endpoint);
+        }
+        case "organization-domain": {
+          const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+          const domain = (fields["domain"] ?? "").trim().toLowerCase();
+          if (!domain) throw new Error("WorkOS plugin: a domain is required");
+          const created = await this.fetch<WosOrganizationDomain>("/organization_domains", {
+            method: "POST",
+            body: JSON.stringify({ domain, organization_id: organizationId }),
+          });
+          return this.mapOrganizationDomain(accountId, created);
+        }
+        case "organization-role": {
+          const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+          const slug = (fields["slug"] ?? "").trim();
+          if (slug && !/^org-[a-z0-9_-]+$/.test(slug)) {
+            throw new Error(
+              "WorkOS plugin: organization role slugs start with org- and use lowercase letters, numbers, hyphens and underscores",
+            );
+          }
+          const base = `/authorization/organizations/${encodeURIComponent(organizationId)}/roles`;
+          let role = await this.fetch<WosRole>(base, {
+            method: "POST",
+            body: JSON.stringify({
+              name: fields["name"],
+              ...(slug ? { slug } : {}),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+            }),
+          });
+          const permissions = pickedList(fields["permissions"]);
+          if (permissions.length > 0) {
+            role = await this.fetch<WosRole>(
+              `${base}/${encodeURIComponent(str(role.slug))}/permissions`,
+              { method: "PUT", body: JSON.stringify({ permissions }) },
+            );
+          }
+          return this.mapOrganizationRole(accountId, organizationId, role);
+        }
+        case "permission": {
+          const slug = (fields["slug"] ?? "").trim();
+          if (!/^[a-z0-9_.:*-]+$/.test(slug)) {
+            throw new Error(
+              "WorkOS plugin: permission slugs use lowercase letters, numbers, hyphens, underscores, colons, periods and asterisks",
+            );
+          }
+          const permission = await this.fetch<WosPermission>("/authorization/permissions", {
+            method: "POST",
+            body: JSON.stringify({
+              slug,
+              name: fields["name"],
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+            }),
+          });
+          return this.mapPermission(accountId, permission);
+        }
+        case "organization-api-key": {
+          const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+          const permissions = pickedList(fields["permissions"]);
+          const expiresAt = (fields["expiresAt"] ?? "").trim();
+          if (expiresAt && !(Date.parse(expiresAt) > Date.now())) {
+            throw new Error("WorkOS plugin: the expiry must be in the future");
+          }
+          const key = await this.fetch<WosApiKey>(
+            `/organizations/${encodeURIComponent(organizationId)}/api_keys`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                name: fields["name"],
+                ...(permissions.length > 0 ? { permissions } : {}),
+                ...(expiresAt ? { expires_at: new Date(expiresAt).toISOString() } : {}),
+              }),
+            },
+          );
+          const created = this.mapApiKey(accountId, organizationId, key);
+          // The full value is returned on this response only.
+          if (key.value)
+            created.resolvedOutputs = { ...created.resolvedOutputs, apiKey: key.value };
+          return created;
+        }
+        case "group": {
+          const organizationId = this.resolveOrganizationId(fields, parentResourceId);
+          const group = await this.fetch<WosGroup>(
+            `/organizations/${encodeURIComponent(organizationId)}/groups`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                name: fields["name"],
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+              }),
+            },
+          );
+          return this.mapGroup(accountId, { organization_id: organizationId, ...group });
+        }
+        default:
+          throw new Error(`WorkOS plugin: cannot create resource type "${typeId}"`);
       }
-      default:
-        throw new Error(`WorkOS plugin: cannot create resource type "${typeId}"`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Update
   // -------------------------------------------------------------------------
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "organization": {
-        const org = await this.fetch<WosOrganization>(`/organizations/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            ...(fields["name"] ? { name: fields["name"] } : {}),
-            ...(fields["externalId"] !== undefined
-              ? { external_id: fields["externalId"].trim() || null }
-              : {}),
-          }),
-        });
-        return this.mapOrganization(accountId, org);
-      }
-      case "user": {
-        const body: Record<string, unknown> = {};
-        if (fields["email"]) body["email"] = fields["email"];
-        if (fields["firstName"] !== undefined) body["first_name"] = fields["firstName"];
-        if (fields["lastName"] !== undefined) body["last_name"] = fields["lastName"];
-        if (fields["emailVerified"] !== undefined) {
-          body["email_verified"] = fields["emailVerified"] === "true";
-        }
-        if (fields["externalId"] !== undefined) {
-          body["external_id"] = fields["externalId"].trim() || null;
-        }
-        if (fields["locale"] !== undefined) body["locale"] = fields["locale"].trim() || null;
-        const user = await this.fetch<WosUser>(`/user_management/users/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          body: JSON.stringify(body),
-        });
-        return this.mapUser(accountId, user);
-      }
-      case "organization-membership": {
-        const membership = await this.fetch<WosMembership>(
-          `/user_management/organization_memberships/${encodeURIComponent(id)}`,
-          { method: "PUT", body: JSON.stringify({ role_slug: fields["role"] }) },
-        );
-        const email = await this.fetchUserEmail(str(membership.user_id));
-        return this.mapMembership(accountId, membership, email);
-      }
-      case "role": {
-        const role = await this.fetch<WosRole>(`/authorization/roles/${encodeURIComponent(id)}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
-            ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
-          }),
-        });
-        return this.mapRole(accountId, role);
-      }
-      case "webhook-endpoint": {
-        const body: Record<string, unknown> = {};
-        if (fields["endpointUrl"] !== undefined) body["endpoint_url"] = fields["endpointUrl"];
-        if (fields["status"] !== undefined) body["status"] = fields["status"];
-        if (fields["events"] !== undefined) {
-          const events = pickedList(fields["events"]);
-          const unknown = events.filter((event) => !WEBHOOK_EVENTS.includes(event));
-          if (unknown.length > 0) {
-            throw new Error(`WorkOS plugin: unknown webhook events: ${unknown.join(", ")}`);
-          }
-          if (events.length === 0) {
-            throw new Error("WorkOS plugin: at least one event type is required");
-          }
-          body["events"] = events;
-        }
-        const endpoint = await this.fetch<WosWebhookEndpoint>(
-          `/webhook_endpoints/${encodeURIComponent(id)}`,
-          { method: "PATCH", body: JSON.stringify(body) },
-        );
-        return this.mapWebhookEndpoint(accountId, endpoint);
-      }
-      case "connection": {
-        const connection = await this.fetch<WosConnection>(
-          `/connections/${encodeURIComponent(id)}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify({ ...(fields["name"] ? { name: fields["name"] } : {}) }),
-          },
-        );
-        return this.mapConnection(accountId, connection);
-      }
-      case "organization-role": {
-        const [orgId, slug] = orgScoped(id);
-        const role = await this.fetch<WosRole>(
-          `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify({
-              ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
-              ...(fields["description"] !== undefined
-                ? { description: fields["description"] || null }
-                : {}),
-            }),
-          },
-        );
-        return this.mapOrganizationRole(accountId, orgId, role);
-      }
-      case "permission": {
-        const permission = await this.fetch<WosPermission>(
-          `/authorization/permissions/${encodeURIComponent(id)}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify({
-              ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
-              ...(fields["description"] !== undefined
-                ? { description: fields["description"] || null }
-                : {}),
-            }),
-          },
-        );
-        return this.mapPermission(accountId, permission);
-      }
-      case "feature-flag": {
-        if (fields["enabled"] !== undefined) {
-          const action = fields["enabled"] === "true" ? "enable" : "disable";
-          const flag = await this.fetch<WosFeatureFlag>(
-            `/feature-flags/${encodeURIComponent(id)}/${action}`,
-            { method: "PUT" },
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "organization": {
+          const org = await this.fetch<WosOrganization>(
+            `/organizations/${encodeURIComponent(id)}`,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                ...(fields["name"] ? { name: fields["name"] } : {}),
+                ...(fields["externalId"] !== undefined
+                  ? { external_id: fields["externalId"].trim() || null }
+                  : {}),
+              }),
+            },
           );
-          return this.mapFeatureFlag(accountId, flag);
+          return this.mapOrganization(accountId, org);
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "group": {
-        const [orgId, groupId] = orgScoped(id);
-        const group = await this.fetch<WosGroup>(
-          `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
-          {
+        case "user": {
+          const body: Record<string, unknown> = {};
+          if (fields["email"]) body["email"] = fields["email"];
+          if (fields["firstName"] !== undefined) body["first_name"] = fields["firstName"];
+          if (fields["lastName"] !== undefined) body["last_name"] = fields["lastName"];
+          if (fields["emailVerified"] !== undefined) {
+            body["email_verified"] = fields["emailVerified"] === "true";
+          }
+          if (fields["externalId"] !== undefined) {
+            body["external_id"] = fields["externalId"].trim() || null;
+          }
+          if (fields["locale"] !== undefined) body["locale"] = fields["locale"].trim() || null;
+          const user = await this.fetch<WosUser>(
+            `/user_management/users/${encodeURIComponent(id)}`,
+            {
+              method: "PUT",
+              body: JSON.stringify(body),
+            },
+          );
+          return this.mapUser(accountId, user);
+        }
+        case "organization-membership": {
+          const membership = await this.fetch<WosMembership>(
+            `/user_management/organization_memberships/${encodeURIComponent(id)}`,
+            { method: "PUT", body: JSON.stringify({ role_slug: fields["role"] }) },
+          );
+          const email = await this.fetchUserEmail(str(membership.user_id));
+          return this.mapMembership(accountId, membership, email);
+        }
+        case "role": {
+          const role = await this.fetch<WosRole>(`/authorization/roles/${encodeURIComponent(id)}`, {
             method: "PATCH",
             body: JSON.stringify({
               ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
               ...(fields["description"] !== undefined
-                ? { description: fields["description"] || null }
+                ? { description: fields["description"] }
                 : {}),
             }),
-          },
-        );
-        return this.mapGroup(accountId, group);
+          });
+          return this.mapRole(accountId, role);
+        }
+        case "webhook-endpoint": {
+          const body: Record<string, unknown> = {};
+          if (fields["endpointUrl"] !== undefined) body["endpoint_url"] = fields["endpointUrl"];
+          if (fields["status"] !== undefined) body["status"] = fields["status"];
+          if (fields["events"] !== undefined) {
+            const events = pickedList(fields["events"]);
+            const unknown = events.filter((event) => !WEBHOOK_EVENTS.includes(event));
+            if (unknown.length > 0) {
+              throw new Error(`WorkOS plugin: unknown webhook events: ${unknown.join(", ")}`);
+            }
+            if (events.length === 0) {
+              throw new Error("WorkOS plugin: at least one event type is required");
+            }
+            body["events"] = events;
+          }
+          const endpoint = await this.fetch<WosWebhookEndpoint>(
+            `/webhook_endpoints/${encodeURIComponent(id)}`,
+            { method: "PATCH", body: JSON.stringify(body) },
+          );
+          return this.mapWebhookEndpoint(accountId, endpoint);
+        }
+        case "connection": {
+          const connection = await this.fetch<WosConnection>(
+            `/connections/${encodeURIComponent(id)}`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({ ...(fields["name"] ? { name: fields["name"] } : {}) }),
+            },
+          );
+          return this.mapConnection(accountId, connection);
+        }
+        case "organization-role": {
+          const [orgId, slug] = orgScoped(id);
+          const role = await this.fetch<WosRole>(
+            `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+                ...(fields["description"] !== undefined
+                  ? { description: fields["description"] || null }
+                  : {}),
+              }),
+            },
+          );
+          return this.mapOrganizationRole(accountId, orgId, role);
+        }
+        case "permission": {
+          const permission = await this.fetch<WosPermission>(
+            `/authorization/permissions/${encodeURIComponent(id)}`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+                ...(fields["description"] !== undefined
+                  ? { description: fields["description"] || null }
+                  : {}),
+              }),
+            },
+          );
+          return this.mapPermission(accountId, permission);
+        }
+        case "feature-flag": {
+          if (fields["enabled"] !== undefined) {
+            const action = fields["enabled"] === "true" ? "enable" : "disable";
+            const flag = await this.fetch<WosFeatureFlag>(
+              `/feature-flags/${encodeURIComponent(id)}/${action}`,
+              { method: "PUT" },
+            );
+            return this.mapFeatureFlag(accountId, flag);
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "group": {
+          const [orgId, groupId] = orgScoped(id);
+          const group = await this.fetch<WosGroup>(
+            `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+                ...(fields["description"] !== undefined
+                  ? { description: fields["description"] || null }
+                  : {}),
+              }),
+            },
+          );
+          return this.mapGroup(accountId, group);
+        }
+        default:
+          throw new Error(`WorkOS plugin: cannot update resource type "${typeId}"`);
       }
-      default:
-        throw new Error(`WorkOS plugin: cannot update resource type "${typeId}"`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Delete + actions
   // -------------------------------------------------------------------------
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = encodeURIComponent(externalIdOf(resourceId));
-    switch (typeId) {
-      case "organization":
-        return this.requestVoid(`/organizations/${id}`, "DELETE");
-      case "user":
-        return this.requestVoid(`/user_management/users/${id}`, "DELETE");
-      case "organization-membership":
-        return this.requestVoid(`/user_management/organization_memberships/${id}`, "DELETE");
-      case "invitation":
-        // Invitations have no DELETE: revoking is the removal operation.
-        await this.fetch<WosInvitation>(`/user_management/invitations/${id}/revoke`, {
-          method: "POST",
-        });
-        return;
-      case "connection":
-        return this.requestVoid(`/connections/${id}`, "DELETE");
-      case "directory":
-        return this.requestVoid(`/directories/${id}`, "DELETE");
-      case "webhook-endpoint":
-        return this.requestVoid(`/webhook_endpoints/${id}`, "DELETE");
-      case "organization-domain":
-        return this.requestVoid(`/organization_domains/${id}`, "DELETE");
-      case "permission":
-        return this.requestVoid(`/authorization/permissions/${id}`, "DELETE");
-      case "organization-role": {
-        const [orgId, slug] = orgScoped(externalIdOf(resourceId));
-        return this.requestVoid(
-          `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
-          "DELETE",
-        );
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = encodeURIComponent(externalIdOf(resourceId));
+      switch (typeId) {
+        case "organization":
+          return this.requestVoid(`/organizations/${id}`, "DELETE");
+        case "user":
+          return this.requestVoid(`/user_management/users/${id}`, "DELETE");
+        case "organization-membership":
+          return this.requestVoid(`/user_management/organization_memberships/${id}`, "DELETE");
+        case "invitation":
+          // Invitations have no DELETE: revoking is the removal operation.
+          await this.fetch<WosInvitation>(`/user_management/invitations/${id}/revoke`, {
+            method: "POST",
+          });
+          return;
+        case "connection":
+          return this.requestVoid(`/connections/${id}`, "DELETE");
+        case "directory":
+          return this.requestVoid(`/directories/${id}`, "DELETE");
+        case "webhook-endpoint":
+          return this.requestVoid(`/webhook_endpoints/${id}`, "DELETE");
+        case "organization-domain":
+          return this.requestVoid(`/organization_domains/${id}`, "DELETE");
+        case "permission":
+          return this.requestVoid(`/authorization/permissions/${id}`, "DELETE");
+        case "organization-role": {
+          const [orgId, slug] = orgScoped(externalIdOf(resourceId));
+          return this.requestVoid(
+            `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
+            "DELETE",
+          );
+        }
+        case "organization-api-key": {
+          const [, keyId] = orgScoped(externalIdOf(resourceId));
+          return this.requestVoid(`/api_keys/${encodeURIComponent(keyId)}`, "DELETE");
+        }
+        case "group": {
+          const [orgId, groupId] = orgScoped(externalIdOf(resourceId));
+          return this.requestVoid(
+            `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
+            "DELETE",
+          );
+        }
+        default:
+          throw new Error(`WorkOS plugin: cannot delete resource type "${typeId}"`);
       }
-      case "organization-api-key": {
-        const [, keyId] = orgScoped(externalIdOf(resourceId));
-        return this.requestVoid(`/api_keys/${encodeURIComponent(keyId)}`, "DELETE");
-      }
-      case "group": {
-        const [orgId, groupId] = orgScoped(externalIdOf(resourceId));
-        return this.requestVoid(
-          `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
-          "DELETE",
-        );
-      }
-      default:
-        throw new Error(`WorkOS plugin: cannot delete resource type "${typeId}"`);
-    }
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = encodeURIComponent(externalIdOf(resourceId));
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = encodeURIComponent(externalIdOf(resourceId));
 
-    if (typeId === "organization-membership") {
-      if (actionId === "deactivate") {
-        await this.fetch<WosMembership>(
-          `/user_management/organization_memberships/${id}/deactivate`,
-          { method: "PUT" },
-        );
-        return;
-      }
-      if (actionId === "reactivate") {
-        await this.fetch<WosMembership>(
-          `/user_management/organization_memberships/${id}/reactivate`,
-          { method: "PUT" },
-        );
-        return;
-      }
-    }
-
-    if (typeId === "invitation") {
-      if (actionId === "resend") {
-        await this.fetch<WosInvitation>(`/user_management/invitations/${id}/resend`, {
-          method: "POST",
-        });
-        return;
-      }
-      if (actionId === "revoke") {
-        await this.fetch<WosInvitation>(`/user_management/invitations/${id}/revoke`, {
-          method: "POST",
-        });
-        return;
-      }
-    }
-
-    if (typeId === "directory" && actionId === "sync") {
-      // Queues an asynchronous sync; 202 means accepted, not finished.
-      await this.fetch<{ status?: string }>(`/directories/${id}/sync`, { method: "POST" });
-      return;
-    }
-
-    if (typeId === "organization-domain" && actionId === "verify") {
-      await this.fetch<WosOrganizationDomain>(`/organization_domains/${id}/verify`, {
-        method: "POST",
-      });
-      return;
-    }
-
-    if (typeId === "organization-api-key" && actionId === "expire") {
-      const [, keyId] = orgScoped(externalIdOf(resourceId));
-      // No `expires_at` expires the key immediately.
-      await this.fetch<WosApiKey>(`/api_keys/${encodeURIComponent(keyId)}/expire`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      return;
-    }
-
-    if (typeId === "feature-flag" && (actionId === "enable" || actionId === "disable")) {
-      await this.fetch<WosFeatureFlag>(`/feature-flags/${id}/${actionId}`, { method: "PUT" });
-      return;
-    }
-
-    if (typeId === "user") {
-      if (actionId === "send-verification-email") {
-        await this.fetch<unknown>(`/user_management/users/${id}/email_verification/send`, {
-          method: "POST",
-        });
-        return;
-      }
-      if (actionId === "revoke-sessions") {
-        const sessions = await this.paginate<WosSession>(`/user_management/users/${id}/sessions`);
-        const active = sessions.filter((session) => session.status === "active" && session.id);
-        for (const session of active) {
-          await this.fetch<unknown>("/user_management/sessions/revoke", {
-            method: "POST",
-            body: JSON.stringify({ session_id: session.id }),
-          });
+      if (typeId === "organization-membership") {
+        if (actionId === "deactivate") {
+          await this.fetch<WosMembership>(
+            `/user_management/organization_memberships/${id}/deactivate`,
+            { method: "PUT" },
+          );
+          return;
         }
+        if (actionId === "reactivate") {
+          await this.fetch<WosMembership>(
+            `/user_management/organization_memberships/${id}/reactivate`,
+            { method: "PUT" },
+          );
+          return;
+        }
+      }
+
+      if (typeId === "invitation") {
+        if (actionId === "resend") {
+          await this.fetch<WosInvitation>(`/user_management/invitations/${id}/resend`, {
+            method: "POST",
+          });
+          return;
+        }
+        if (actionId === "revoke") {
+          await this.fetch<WosInvitation>(`/user_management/invitations/${id}/revoke`, {
+            method: "POST",
+          });
+          return;
+        }
+      }
+
+      if (typeId === "directory" && actionId === "sync") {
+        // Queues an asynchronous sync; 202 means accepted, not finished.
+        await this.fetch<{ status?: string }>(`/directories/${id}/sync`, { method: "POST" });
         return;
       }
-    }
 
-    throw new Error(`WorkOS plugin: unknown action "${actionId}" for type "${typeId}"`);
+      if (typeId === "organization-domain" && actionId === "verify") {
+        await this.fetch<WosOrganizationDomain>(`/organization_domains/${id}/verify`, {
+          method: "POST",
+        });
+        return;
+      }
+
+      if (typeId === "organization-api-key" && actionId === "expire") {
+        const [, keyId] = orgScoped(externalIdOf(resourceId));
+        // No `expires_at` expires the key immediately.
+        await this.fetch<WosApiKey>(`/api_keys/${encodeURIComponent(keyId)}/expire`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        return;
+      }
+
+      if (typeId === "feature-flag" && (actionId === "enable" || actionId === "disable")) {
+        await this.fetch<WosFeatureFlag>(`/feature-flags/${id}/${actionId}`, { method: "PUT" });
+        return;
+      }
+
+      if (typeId === "user") {
+        if (actionId === "send-verification-email") {
+          await this.fetch<unknown>(`/user_management/users/${id}/email_verification/send`, {
+            method: "POST",
+          });
+          return;
+        }
+        if (actionId === "revoke-sessions") {
+          const sessions = await this.paginate<WosSession>(`/user_management/users/${id}/sessions`);
+          const active = sessions.filter((session) => session.status === "active" && session.id);
+          for (const session of active) {
+            await this.fetch<unknown>("/user_management/sessions/revoke", {
+              method: "POST",
+              body: JSON.stringify({ session_id: session.id }),
+            });
+          }
+          return;
+        }
+      }
+
+      throw new Error(`WorkOS plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
   /**
    * Form-driven actions: role permission sets, feature flag targets and group
    * membership. Form values arrive JSON-encoded in `args[0]`.
    */
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
-    const id = externalIdOf(resourceId);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      const id = externalIdOf(resourceId);
 
-    if (command === "set-permissions" && (typeId === "role" || typeId === "organization-role")) {
-      const permissions = pickedList(values["permissions"]);
-      const path =
-        typeId === "role"
-          ? `/authorization/roles/${encodeURIComponent(id)}/permissions`
-          : (() => {
-              const [orgId, slug] = orgScoped(id);
-              return `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}/permissions`;
-            })();
-      return this.fetch<WosRole>(path, { method: "PUT", body: JSON.stringify({ permissions }) });
-    }
-
-    if (typeId === "feature-flag" && (command === "add-target" || command === "remove-target")) {
-      const target = values["target"] ?? "";
-      // Targets are organizations or users, addressed by their own ids.
-      if (!/^(org|user)_[A-Za-z0-9]+$/.test(target)) {
-        throw new Error("WorkOS plugin: choose an organization or user to target");
+      if (command === "set-permissions" && (typeId === "role" || typeId === "organization-role")) {
+        const permissions = pickedList(values["permissions"]);
+        const path =
+          typeId === "role"
+            ? `/authorization/roles/${encodeURIComponent(id)}/permissions`
+            : (() => {
+                const [orgId, slug] = orgScoped(id);
+                return `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}/permissions`;
+              })();
+        return this.fetch<WosRole>(path, { method: "PUT", body: JSON.stringify({ permissions }) });
       }
-      const path = `/feature-flags/${encodeURIComponent(id)}/targets/${encodeURIComponent(target)}`;
-      if (command === "add-target") {
-        await this.requestVoid(path, "POST");
-      } else {
-        await this.requestVoid(path, "DELETE");
-      }
-      return { ok: true };
-    }
 
-    if (typeId === "group" && (command === "add-member" || command === "remove-member")) {
-      const [orgId, groupId] = orgScoped(id);
-      const membershipId = values["membershipId"] ?? "";
-      if (!membershipId) throw new Error("WorkOS plugin: choose a member");
-      const base = `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}/organization-memberships`;
-      if (command === "add-member") {
-        return this.fetch<WosGroup>(base, {
-          method: "POST",
-          body: JSON.stringify({ organization_membership_id: membershipId }),
-        });
+      if (typeId === "feature-flag" && (command === "add-target" || command === "remove-target")) {
+        const target = values["target"] ?? "";
+        // Targets are organizations or users, addressed by their own ids.
+        if (!/^(org|user)_[A-Za-z0-9]+$/.test(target)) {
+          throw new Error("WorkOS plugin: choose an organization or user to target");
+        }
+        const path = `/feature-flags/${encodeURIComponent(id)}/targets/${encodeURIComponent(target)}`;
+        if (command === "add-target") {
+          await this.requestVoid(path, "POST");
+        } else {
+          await this.requestVoid(path, "DELETE");
+        }
+        return { ok: true };
       }
-      await this.requestVoid(`${base}/${encodeURIComponent(membershipId)}`, "DELETE");
-      return { ok: true };
-    }
 
-    throw new Error(`WorkOS plugin: unknown command "${command}" for type "${typeId}"`);
+      if (typeId === "group" && (command === "add-member" || command === "remove-member")) {
+        const [orgId, groupId] = orgScoped(id);
+        const membershipId = values["membershipId"] ?? "";
+        if (!membershipId) throw new Error("WorkOS plugin: choose a member");
+        const base = `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}/organization-memberships`;
+        if (command === "add-member") {
+          return this.fetch<WosGroup>(base, {
+            method: "POST",
+            body: JSON.stringify({ organization_membership_id: membershipId }),
+          });
+        }
+        await this.requestVoid(`${base}/${encodeURIComponent(membershipId)}`, "DELETE");
+        return { ok: true };
+      }
+
+      throw new Error(`WorkOS plugin: unknown command "${command}" for type "${typeId}"`);
+    });
   }
 
   /** Admin Portal links for an organization, minted fresh and shown once. */
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     _accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    const intents = [
-      "sso",
-      "dsync",
-      "domain_verification",
-      "certificate_renewal",
-      "audit_logs",
-      "log_streams",
-      "bring_your_own_key",
-    ];
-    const intent = formatId.replace(/^portal-/, "");
-    if (typeId !== "organization" || !formatId.startsWith("portal-") || !intents.includes(intent)) {
-      throw new Error(`WorkOS plugin: unknown credential format "${formatId}"`);
-    }
-    const organization = externalIdOf(resourceId);
-    const body = await this.fetch<{ link?: string }>("/portal/generate_link", {
-      method: "POST",
-      body: JSON.stringify({ organization, intent }),
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      const intents = [
+        "sso",
+        "dsync",
+        "domain_verification",
+        "certificate_renewal",
+        "audit_logs",
+        "log_streams",
+        "bring_your_own_key",
+      ];
+      const intent = formatId.replace(/^portal-/, "");
+      if (
+        typeId !== "organization" ||
+        !formatId.startsWith("portal-") ||
+        !intents.includes(intent)
+      ) {
+        throw new Error(`WorkOS plugin: unknown credential format "${formatId}"`);
+      }
+      const organization = externalIdOf(resourceId);
+      const body = await this.fetch<{ link?: string }>("/portal/generate_link", {
+        method: "POST",
+        body: JSON.stringify({ organization, intent }),
+      });
+      const link = str(body.link);
+      if (!link) throw new Error("WorkOS plugin: WorkOS returned no Admin Portal link");
+      return {
+        content: link,
+        filename: `${organization}-admin-portal-${intent}.txt`,
+        mimeType: "text/plain",
+        fields: [
+          {
+            label: "Admin Portal link",
+            value: link,
+            sensitive: true,
+            hint: "Expires in 5 minutes",
+          },
+        ],
+        warning:
+          "Send this link to the organization's IT admin now. Anyone holding it can configure the organization until it expires five minutes after creation.",
+      };
     });
-    const link = str(body.link);
-    if (!link) throw new Error("WorkOS plugin: WorkOS returned no Admin Portal link");
-    return {
-      content: link,
-      filename: `${organization}-admin-portal-${intent}.txt`,
-      mimeType: "text/plain",
-      fields: [
-        { label: "Admin Portal link", value: link, sensitive: true, hint: "Expires in 5 minutes" },
-      ],
-      warning:
-        "Send this link to the organization's IT admin now. Anyone holding it can configure the organization until it expires five minutes after creation.",
-    };
   }
 
   /** Recent WorkOS events for an organization (the Events API). */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "organization") throw new Error("WorkOS plugin: only organizations have logs");
-    const organizationId = externalIdOf(resourceId);
-    const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 100);
-    const query = new URLSearchParams({
-      organization_id: organizationId,
-      limit: String(limit),
-      order: "desc",
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "organization") throw new Error("WorkOS plugin: only organizations have logs");
+      const organizationId = externalIdOf(resourceId);
+      const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 100);
+      const query = new URLSearchParams({
+        organization_id: organizationId,
+        limit: String(limit),
+        order: "desc",
+      });
+      // `events` is required and repeats per value.
+      for (const event of ORGANIZATION_LOG_EVENTS) query.append("events", event);
+      const body = await this.fetch<WosList<WosEvent>>(`/events?${query.toString()}`);
+      const lines = (body.data ?? []).reverse().map((event) => {
+        const data = event.data ?? {};
+        const subject =
+          str(data["email"]) || str(data["name"]) || str(data["domain"]) || str(data["id"]);
+        const actor = event.context?.actor;
+        const by = actor ? ` by ${str(actor.name) || str(actor.id)} (${str(actor.source)})` : "";
+        return `${str(event.created_at)} ${str(event.event)} ${subject}${by}`.trim();
+      });
+      return {
+        text: lines.map((line) => `${line}\n`).join(""),
+        containers: ["events"],
+        activeContainer: "events",
+      };
     });
-    // `events` is required and repeats per value.
-    for (const event of ORGANIZATION_LOG_EVENTS) query.append("events", event);
-    const body = await this.fetch<WosList<WosEvent>>(`/events?${query.toString()}`);
-    const lines = (body.data ?? []).reverse().map((event) => {
-      const data = event.data ?? {};
-      const subject =
-        str(data["email"]) || str(data["name"]) || str(data["domain"]) || str(data["id"]);
-      const actor = event.context?.actor;
-      const by = actor ? ` by ${str(actor.name) || str(actor.id)} (${str(actor.source)})` : "";
-      return `${str(event.created_at)} ${str(event.event)} ${subject}${by}`.trim();
-    });
-    return {
-      text: lines.map((line) => `${line}\n`).join(""),
-      containers: ["events"],
-      activeContainer: "events",
-    };
   }
 
   /**
    * Load what the synchronous detail views need beyond the synced record:
    * picker options for form actions and a user's sessions.
    */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const id = externalIdOf(resource.id);
-    const extra: Record<string, string> = {};
-    switch (resource.resourceTypeId) {
-      case "role":
-      case "organization-role":
-        extra["__permissionOptions__"] = JSON.stringify(await this.permissionOptions());
-        break;
-      case "feature-flag": {
-        const [orgs, users] = await Promise.all([
-          this.fetchOrganizations().catch(() => [] as WosOrganization[]),
-          this.paginate<WosUser>("/user_management/users").catch(() => [] as WosUser[]),
-        ]);
-        extra["__targets__"] = JSON.stringify([
-          ...orgs.map((org) => ({
-            id: str(org.id),
-            label: `Organization: ${str(org.name) || str(org.id)}`,
-          })),
-          ...users.map((user) => ({
-            id: str(user.id),
-            label: `User: ${str(user.email) || str(user.id)}`,
-          })),
-        ]);
-        break;
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resource.id);
+      const extra: Record<string, string> = {};
+      switch (resource.resourceTypeId) {
+        case "role":
+        case "organization-role":
+          extra["__permissionOptions__"] = JSON.stringify(await this.permissionOptions());
+          break;
+        case "feature-flag": {
+          const [orgs, users] = await Promise.all([
+            this.fetchOrganizations().catch(() => [] as WosOrganization[]),
+            this.paginate<WosUser>("/user_management/users").catch(() => [] as WosUser[]),
+          ]);
+          extra["__targets__"] = JSON.stringify([
+            ...orgs.map((org) => ({
+              id: str(org.id),
+              label: `Organization: ${str(org.name) || str(org.id)}`,
+            })),
+            ...users.map((user) => ({
+              id: str(user.id),
+              label: `User: ${str(user.email) || str(user.id)}`,
+            })),
+          ]);
+          break;
+        }
+        case "group": {
+          const [orgId, groupId] = orgScoped(id);
+          const [members, memberships, emails] = await Promise.all([
+            this.paginate<WosMembership>(
+              `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}/organization-memberships`,
+            ).catch(() => [] as WosMembership[]),
+            this.paginate<WosMembership>("/user_management/organization_memberships", {
+              organization_id: orgId,
+            }).catch(() => [] as WosMembership[]),
+            this.fetchUserEmailMap(),
+          ]);
+          const label = (m: WosMembership) =>
+            emails.get(str(m.user_id)) || str(m.user_id) || str(m.id);
+          const memberIds = new Set(members.map((m) => str(m.id)));
+          extra["__members__"] = JSON.stringify(
+            members.map((m) => ({ id: str(m.id), label: label(m), status: str(m.status) })),
+          );
+          extra["__candidates__"] = JSON.stringify(
+            memberships
+              .filter((m) => m.id && !memberIds.has(str(m.id)))
+              .map((m) => ({ id: str(m.id), label: label(m) })),
+          );
+          break;
+        }
+        case "user": {
+          const sessions = await this.paginate<WosSession>(
+            `/user_management/users/${encodeURIComponent(id)}/sessions`,
+          ).catch(() => [] as WosSession[]);
+          extra["__sessions__"] = JSON.stringify(sessions.slice(0, 50));
+          break;
+        }
+        default:
+          return resource;
       }
-      case "group": {
-        const [orgId, groupId] = orgScoped(id);
-        const [members, memberships, emails] = await Promise.all([
-          this.paginate<WosMembership>(
-            `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}/organization-memberships`,
-          ).catch(() => [] as WosMembership[]),
-          this.paginate<WosMembership>("/user_management/organization_memberships", {
-            organization_id: orgId,
-          }).catch(() => [] as WosMembership[]),
-          this.fetchUserEmailMap(),
-        ]);
-        const label = (m: WosMembership) =>
-          emails.get(str(m.user_id)) || str(m.user_id) || str(m.id);
-        const memberIds = new Set(members.map((m) => str(m.id)));
-        extra["__members__"] = JSON.stringify(
-          members.map((m) => ({ id: str(m.id), label: label(m), status: str(m.status) })),
-        );
-        extra["__candidates__"] = JSON.stringify(
-          memberships
-            .filter((m) => m.id && !memberIds.has(str(m.id)))
-            .map((m) => ({ id: str(m.id), label: label(m) })),
-        );
-        break;
-      }
-      case "user": {
-        const sessions = await this.paginate<WosSession>(
-          `/user_management/users/${encodeURIComponent(id)}/sessions`,
-        ).catch(() => [] as WosSession[]);
-        extra["__sessions__"] = JSON.stringify(sessions.slice(0, 50));
-        break;
-      }
-      default:
-        return resource;
-    }
-    return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
+      return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
+    });
   }
 
   // -------------------------------------------------------------------------

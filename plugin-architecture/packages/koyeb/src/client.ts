@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -108,7 +111,7 @@ export class KoyebClient implements PluginClient {
   private catalogCache: Cached<{ regions: KyRegion[]; instances: KyInstanceType[] }> | undefined;
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     resourceTypes: ResourceTypeDefinition[],
     services?: HostServices,
   ) {
@@ -173,72 +176,77 @@ export class KoyebClient implements PluginClient {
 
   // ── Listing ──────────────────────────────────────────────────────────
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "organization":
-        return [await this.organizationInstance(accountId)];
-      case "project":
-        return (await this.api.listAll<KyProject>("/v1/projects", "projects")).map((p) =>
-          mapProject(p, accountId),
-        );
-      case "app":
-        return (await this.apps()).map((a) => mapApp(a, accountId));
-      case "service": {
-        const [services, apps] = await Promise.all([this.services(), this.apps()]);
-        const latest = await this.latestDeployments(
-          services.map((s) => s.latest_deployment_id).filter((x): x is string => Boolean(x)),
-        );
-        const byId = new Map(apps.map((a) => [a.id, a]));
-        return services.map((s) =>
-          mapService(
-            s,
-            byId.get(s.app_id),
-            s.latest_deployment_id ? latest.get(s.latest_deployment_id) : undefined,
-            accountId,
-          ),
-        );
-      }
-      case "deployment": {
-        const services = await this.services();
-        const lists = await mapLimit(services, FAN_OUT, async (s) => {
-          const res = await this.api.request<{ deployments?: KyDeployment[] }>("/v1/deployments", {
-            query: { service_id: s.id, limit: String(DEPLOYMENTS_PER_SERVICE) },
-          });
-          return (res?.deployments ?? []).map((d) =>
-            mapDeployment(d, s.active_deployment_id ?? "", accountId),
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "organization":
+          return [await this.organizationInstance(accountId)];
+        case "project":
+          return (await this.api.listAll<KyProject>("/v1/projects", "projects")).map((p) =>
+            mapProject(p, accountId),
           );
-        });
-        return lists.flat();
+        case "app":
+          return (await this.apps()).map((a) => mapApp(a, accountId));
+        case "service": {
+          const [services, apps] = await Promise.all([this.services(), this.apps()]);
+          const latest = await this.latestDeployments(
+            services.map((s) => s.latest_deployment_id).filter((x): x is string => Boolean(x)),
+          );
+          const byId = new Map(apps.map((a) => [a.id, a]));
+          return services.map((s) =>
+            mapService(
+              s,
+              byId.get(s.app_id),
+              s.latest_deployment_id ? latest.get(s.latest_deployment_id) : undefined,
+              accountId,
+            ),
+          );
+        }
+        case "deployment": {
+          const services = await this.services();
+          const lists = await mapLimit(services, FAN_OUT, async (s) => {
+            const res = await this.api.request<{ deployments?: KyDeployment[] }>(
+              "/v1/deployments",
+              {
+                query: { service_id: s.id, limit: String(DEPLOYMENTS_PER_SERVICE) },
+              },
+            );
+            return (res?.deployments ?? []).map((d) =>
+              mapDeployment(d, s.active_deployment_id ?? "", accountId),
+            );
+          });
+          return lists.flat();
+        }
+        case "instance":
+          return (
+            await this.api.listAll<KyInstance>("/v1/instances", "instances", {
+              statuses: ["ALLOCATING", "STARTING", "HEALTHY", "UNHEALTHY", "SLEEPING"],
+            })
+          ).map((i) => mapInstance(i, accountId));
+        case "secret":
+          return (await this.api.listAll<KySecret>("/v1/secrets", "secrets")).map((s) =>
+            mapSecret(s, accountId),
+          );
+        case "domain": {
+          const [domains, apps] = await Promise.all([
+            this.api.listAll<KyDomain>("/v1/domains", "domains"),
+            this.apps().catch(() => [] as KyApp[]),
+          ]);
+          const names = new Map(apps.map((a) => [a.id, a.name]));
+          return domains.map((d) => mapDomain(d, names, accountId));
+        }
+        case "volume":
+          return (await this.api.listAll<KyVolume>("/v1/volumes", "volumes")).map((v) =>
+            mapVolume(v, accountId),
+          );
+        case "snapshot":
+          return (await this.api.listAll<KySnapshot>("/v1/snapshots", "snapshots")).map((s) =>
+            mapSnapshot(s, accountId),
+          );
+        default:
+          throw new Error(`Koyeb plugin: unknown resource type "${typeId}"`);
       }
-      case "instance":
-        return (
-          await this.api.listAll<KyInstance>("/v1/instances", "instances", {
-            statuses: ["ALLOCATING", "STARTING", "HEALTHY", "UNHEALTHY", "SLEEPING"],
-          })
-        ).map((i) => mapInstance(i, accountId));
-      case "secret":
-        return (await this.api.listAll<KySecret>("/v1/secrets", "secrets")).map((s) =>
-          mapSecret(s, accountId),
-        );
-      case "domain": {
-        const [domains, apps] = await Promise.all([
-          this.api.listAll<KyDomain>("/v1/domains", "domains"),
-          this.apps().catch(() => [] as KyApp[]),
-        ]);
-        const names = new Map(apps.map((a) => [a.id, a.name]));
-        return domains.map((d) => mapDomain(d, names, accountId));
-      }
-      case "volume":
-        return (await this.api.listAll<KyVolume>("/v1/volumes", "volumes")).map((v) =>
-          mapVolume(v, accountId),
-        );
-      case "snapshot":
-        return (await this.api.listAll<KySnapshot>("/v1/snapshots", "snapshots")).map((s) =>
-          mapSnapshot(s, accountId),
-        );
-      default:
-        throw new Error(`Koyeb plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   private async organizationInstance(accountId: string): Promise<ResourceInstance> {
@@ -276,72 +284,74 @@ export class KoyebClient implements PluginClient {
     );
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalOf(resourceId);
-    switch (typeId) {
-      case "app":
-        return mapApp(
-          (await this.api.request<{ app: KyApp }>(`/v1/apps/${enc(id)}`)).app,
-          accountId,
-        );
-      case "service": {
-        const s = (await this.api.request<{ service: KyService }>(`/v1/services/${enc(id)}`))
-          .service;
-        const [app, latest] = await Promise.all([
-          this.api
-            .request<{ app: KyApp }>(`/v1/apps/${enc(s.app_id)}`)
-            .then((r) => r.app)
-            .catch(() => undefined),
-          s.latest_deployment_id
-            ? this.deployment(s.latest_deployment_id).catch(() => undefined)
-            : undefined,
-        ]);
-        return mapService(s, app, latest, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      switch (typeId) {
+        case "app":
+          return mapApp(
+            (await this.api.request<{ app: KyApp }>(`/v1/apps/${enc(id)}`)).app,
+            accountId,
+          );
+        case "service": {
+          const s = (await this.api.request<{ service: KyService }>(`/v1/services/${enc(id)}`))
+            .service;
+          const [app, latest] = await Promise.all([
+            this.api
+              .request<{ app: KyApp }>(`/v1/apps/${enc(s.app_id)}`)
+              .then((r) => r.app)
+              .catch(() => undefined),
+            s.latest_deployment_id
+              ? this.deployment(s.latest_deployment_id).catch(() => undefined)
+              : undefined,
+          ]);
+          return mapService(s, app, latest, accountId);
+        }
+        case "deployment": {
+          const d = await this.deployment(id);
+          const s = d.service_id
+            ? await this.api
+                .request<{ service: KyService }>(`/v1/services/${enc(d.service_id)}`)
+                .then((r) => r.service)
+                .catch(() => null)
+            : null;
+          return mapDeployment(d, s?.active_deployment_id ?? "", accountId);
+        }
+        case "instance":
+          return mapInstance(
+            (await this.api.request<{ instance: KyInstance }>(`/v1/instances/${enc(id)}`)).instance,
+            accountId,
+          );
+        case "secret":
+          return mapSecret(
+            (await this.api.request<{ secret: KySecret }>(`/v1/secrets/${enc(id)}`)).secret,
+            accountId,
+          );
+        case "volume":
+          return mapVolume(
+            (await this.api.request<{ volume: KyVolume }>(`/v1/volumes/${enc(id)}`)).volume,
+            accountId,
+          );
+        case "project":
+          return mapProject(
+            (await this.api.request<{ project: KyProject }>(`/v1/projects/${enc(id)}`)).project,
+            accountId,
+          );
+        default: {
+          const all = await runPluginEffect(this.listResources(typeId, accountId));
+          const found = all.find((r) => r.id === resourceId || r.externalId === id);
+          if (!found)
+            throw Object.assign(new Error(`Koyeb plugin: ${typeId} ${id} not found`), {
+              status: 404,
+            });
+          return found;
+        }
       }
-      case "deployment": {
-        const d = await this.deployment(id);
-        const s = d.service_id
-          ? await this.api
-              .request<{ service: KyService }>(`/v1/services/${enc(d.service_id)}`)
-              .then((r) => r.service)
-              .catch(() => null)
-          : null;
-        return mapDeployment(d, s?.active_deployment_id ?? "", accountId);
-      }
-      case "instance":
-        return mapInstance(
-          (await this.api.request<{ instance: KyInstance }>(`/v1/instances/${enc(id)}`)).instance,
-          accountId,
-        );
-      case "secret":
-        return mapSecret(
-          (await this.api.request<{ secret: KySecret }>(`/v1/secrets/${enc(id)}`)).secret,
-          accountId,
-        );
-      case "volume":
-        return mapVolume(
-          (await this.api.request<{ volume: KyVolume }>(`/v1/volumes/${enc(id)}`)).volume,
-          accountId,
-        );
-      case "project":
-        return mapProject(
-          (await this.api.request<{ project: KyProject }>(`/v1/projects/${enc(id)}`)).project,
-          accountId,
-        );
-      default: {
-        const all = await this.listResources(typeId, accountId);
-        const found = all.find((r) => r.id === resourceId || r.externalId === id);
-        if (!found)
-          throw Object.assign(new Error(`Koyeb plugin: ${typeId} ${id} not found`), {
-            status: 404,
-          });
-        return found;
-      }
-    }
+    });
   }
 
   private async deployment(id: string): Promise<KyDeployment> {
@@ -358,71 +368,79 @@ export class KoyebClient implements PluginClient {
     )?.value;
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const id = externalOf(resourceId);
-    if (typeId === "secret" && outputKey === "value") {
-      const v = await this.reveal(id);
-      return typeof v === "string" ? v : JSON.stringify(v ?? "");
-    }
-    if (typeId === "service" && outputKey === "connectionString") {
-      const s = (await this.api.request<{ service: KyService }>(`/v1/services/${enc(id)}`)).service;
-      if (s.type !== "DATABASE" || !s.latest_deployment_id) return "";
-      const d = await this.deployment(s.latest_deployment_id);
-      const role = d.database_info?.neon_postgres?.roles?.[0];
-      if (!role?.name || !role.secret_id) return "";
-      const v = await this.reveal(role.secret_id);
-      const password =
-        typeof v === "string"
-          ? v
-          : typeof (v as { password?: unknown })?.password === "string"
-            ? (v as { password: string }).password
-            : "";
-      return connectionUrl(d, password ? { name: role.name, password } : null);
-    }
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return r.resolvedOutputs[outputKey] ?? String(r.fields[outputKey] ?? "");
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      if (typeId === "secret" && outputKey === "value") {
+        const v = await this.reveal(id);
+        return typeof v === "string" ? v : JSON.stringify(v ?? "");
+      }
+      if (typeId === "service" && outputKey === "connectionString") {
+        const s = (await this.api.request<{ service: KyService }>(`/v1/services/${enc(id)}`))
+          .service;
+        if (s.type !== "DATABASE" || !s.latest_deployment_id) return "";
+        const d = await this.deployment(s.latest_deployment_id);
+        const role = d.database_info?.neon_postgres?.roles?.[0];
+        if (!role?.name || !role.secret_id) return "";
+        const v = await this.reveal(role.secret_id);
+        const password =
+          typeof v === "string"
+            ? v
+            : typeof (v as { password?: unknown })?.password === "string"
+              ? (v as { password: string }).password
+              : "";
+        return connectionUrl(d, password ? { name: role.name, password } : null);
+      }
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return r.resolvedOutputs[outputKey] ?? String(r.fields[outputKey] ?? "");
+    });
   }
 
   // ── Detail ───────────────────────────────────────────────────────────
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const extra: Record<string, string> = {};
-    try {
-      if (resource.resourceTypeId === "organization") {
-        const [quotas, invoice] = await Promise.all([
-          this.fetchQuotas(resource.accountId).catch(() => [] as QuotaUsage[]),
-          this.api.request<KyNextInvoice>("/v1/billing/next_invoice").catch(() => null),
-        ]);
-        if (quotas.length) extra[ENRICH.quotas] = JSON.stringify(quotas);
-        const lines = (invoice?.lines ?? [])
-          .filter((l) => Number(l.amount_excluding_tax ?? 0) !== 0)
-          .map((l) => ({
-            label: l.plan_nickname ?? "Koyeb",
-            amount: Number(l.amount_excluding_tax) / 100,
-            ...(typeof l.quantity === "number" ? { quantity: l.quantity } : {}),
-          }));
-        if (lines.length) extra[ENRICH.invoice] = JSON.stringify(lines);
-      } else if (resource.resourceTypeId === "service" && resource.fields["type"] === "DATABASE") {
-        const latest = String(resource.fields["latestDeploymentId"] ?? "");
-        if (latest) {
-          const d = await this.deployment(latest);
-          const roles = (d.database_info?.neon_postgres?.roles ?? [])
-            .map((r) => r.name ?? "")
-            .filter(Boolean);
-          if (roles.length) extra[ENRICH.roles] = JSON.stringify(roles);
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const extra: Record<string, string> = {};
+      try {
+        if (resource.resourceTypeId === "organization") {
+          const [quotas, invoice] = await Promise.all([
+            runPluginEffect(this.fetchQuotas(resource.accountId)).catch(() => [] as QuotaUsage[]),
+            this.api.request<KyNextInvoice>("/v1/billing/next_invoice").catch(() => null),
+          ]);
+          if (quotas.length) extra[ENRICH.quotas] = JSON.stringify(quotas);
+          const lines = (invoice?.lines ?? [])
+            .filter((l) => Number(l.amount_excluding_tax ?? 0) !== 0)
+            .map((l) => ({
+              label: l.plan_nickname ?? "Koyeb",
+              amount: Number(l.amount_excluding_tax) / 100,
+              ...(typeof l.quantity === "number" ? { quantity: l.quantity } : {}),
+            }));
+          if (lines.length) extra[ENRICH.invoice] = JSON.stringify(lines);
+        } else if (
+          resource.resourceTypeId === "service" &&
+          resource.fields["type"] === "DATABASE"
+        ) {
+          const latest = String(resource.fields["latestDeploymentId"] ?? "");
+          if (latest) {
+            const d = await this.deployment(latest);
+            const roles = (d.database_info?.neon_postgres?.roles ?? [])
+              .map((r) => r.name ?? "")
+              .filter(Boolean);
+            if (roles.length) extra[ENRICH.roles] = JSON.stringify(roles);
+          }
+        } else {
+          return resource;
         }
-      } else {
+      } catch {
         return resource;
       }
-    } catch {
-      return resource;
-    }
-    return { ...resource, fields: { ...resource.fields, ...extra } };
+      return { ...resource, fields: { ...resource.fields, ...extra } };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -484,36 +502,241 @@ export class KoyebClient implements PluginClient {
     };
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "project":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case "app":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              description: "Also the start of the app's koyeb.app domain.",
-            },
-          ],
-        };
-      case "service": {
-        const fromApp = parentResourceId?.includes(":app:");
-        const [apps, p] = await Promise.all([
-          fromApp ? [] : this.apps().catch(() => [] as KyApp[]),
-          this.pickers(),
-        ]);
-        const appField: CreateFieldConfig[] = fromApp
-          ? []
-          : [
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "project":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case "app":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                description: "Also the start of the app's koyeb.app domain.",
+              },
+            ],
+          };
+        case "service": {
+          const fromApp = parentResourceId?.includes(":app:");
+          const [apps, p] = await Promise.all([
+            fromApp ? [] : this.apps().catch(() => [] as KyApp[]),
+            this.pickers(),
+          ]);
+          const appField: CreateFieldConfig[] = fromApp
+            ? []
+            : [
+                {
+                  key: "appId",
+                  label: "App",
+                  kind: "select",
+                  required: true,
+                  options: apps.map((a) => ({ id: a.id, label: a.name })),
+                  ...(apps[0] ? { defaultValue: apps[0].id } : {}),
+                },
+              ];
+          const runtime = { fieldKey: "type", fieldValuesNot: ["DATABASE"] };
+          return {
+            fields: [
+              ...appField,
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "type",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "WEB",
+                options: [
+                  { id: "WEB", label: "Web service" },
+                  { id: "WORKER", label: "Worker" },
+                  { id: "DATABASE", label: "Postgres database" },
+                ],
+              },
+              {
+                key: "source",
+                label: "Source",
+                kind: "select",
+                required: true,
+                defaultValue: "docker",
+                options: [
+                  { id: "docker", label: "Docker image" },
+                  { id: "git", label: "GitHub repository" },
+                ],
+                showWhen: runtime,
+              },
+              {
+                key: "image",
+                label: "Image",
+                kind: "text",
+                required: false,
+                placeholder: "docker.io/koyeb/demo:latest",
+                showWhen: { fieldKey: "source", fieldValue: "docker" },
+              },
+              {
+                key: "repository",
+                label: "Repository",
+                kind: "text",
+                required: false,
+                placeholder: "github.com/acme/api",
+                description: "A repository the Koyeb GitHub app can read.",
+                showWhen: { fieldKey: "source", fieldValue: "git" },
+              },
+              {
+                key: "branch",
+                label: "Branch",
+                kind: "text",
+                required: false,
+                placeholder: "main",
+                showWhen: { fieldKey: "source", fieldValue: "git" },
+              },
+              {
+                key: "buildCommand",
+                label: "Build Command",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "source", fieldValue: "git" },
+              },
+              {
+                key: "runCommand",
+                label: "Run Command",
+                kind: "text",
+                required: false,
+                showWhen: runtime,
+              },
+              {
+                key: "port",
+                label: "Port",
+                kind: "number",
+                required: false,
+                defaultValue: "8000",
+                minValue: 1,
+                maxValue: 65535,
+                showWhen: { fieldKey: "type", fieldValue: "WEB" },
+              },
+              {
+                key: "region",
+                label: "Region",
+                kind: "region-picker",
+                required: true,
+                regions: p.regions,
+                ...(p.regions[0]
+                  ? { defaultValue: p.regions.find((r) => r.id === "fra")?.id ?? p.regions[0].id }
+                  : {}),
+                showWhen: runtime,
+              },
+              {
+                key: "instanceType",
+                label: "Instance Type",
+                kind: "size-picker",
+                required: true,
+                defaultValue: "nano",
+                sizes: p.sizes,
+                filterByFieldKey: "region",
+                showWhen: runtime,
+              },
+              {
+                key: "minScale",
+                label: "Min Instances",
+                kind: "number",
+                required: false,
+                defaultValue: "1",
+                minValue: 0,
+                showWhen: runtime,
+              },
+              {
+                key: "maxScale",
+                label: "Max Instances",
+                kind: "number",
+                required: false,
+                defaultValue: "1",
+                minValue: 1,
+                showWhen: runtime,
+              },
+              {
+                key: "dbRegion",
+                label: "Database Region",
+                kind: "region-picker",
+                required: false,
+                regions: p.dbRegions,
+                ...(p.dbRegions[0] ? { defaultValue: p.dbRegions[0].id } : {}),
+                showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
+              },
+              {
+                key: "dbInstanceType",
+                label: "Database Size",
+                kind: "select",
+                required: false,
+                defaultValue: "free",
+                options: [
+                  { id: "free", label: "Free (0.25 vCPU, 1 GB, 5 compute hours a month)" },
+                  { id: "small", label: "Small (0.25 vCPU, 1 GB)" },
+                  { id: "medium", label: "Medium (0.5 vCPU, 2 GB)" },
+                  { id: "large", label: "Large (1 vCPU, 4 GB)" },
+                  { id: "xlarge", label: "XLarge (2 vCPU, 8 GB)" },
+                  { id: "2xlarge", label: "2XLarge (4 vCPU, 16 GB)" },
+                  { id: "3xlarge", label: "3XLarge (8 vCPU, 32 GB)" },
+                ],
+                showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
+              },
+              {
+                key: "pgVersion",
+                label: "Postgres Version",
+                kind: "select",
+                required: false,
+                defaultValue: "17",
+                options: ["17", "16", "15", "14"].map((v) => ({ id: v, label: v })),
+                showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
+              },
+              {
+                key: "dbName",
+                label: "Database Name",
+                kind: "text",
+                required: false,
+                defaultValue: "koyebdb",
+                showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
+              },
+              {
+                key: "dbOwner",
+                label: "Owner Role",
+                kind: "text",
+                required: false,
+                defaultValue: "koyeb-adm",
+                showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
+              },
+            ],
+          };
+        }
+        case "secret":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "DATABASE_PASSWORD",
+              },
+              { key: "value", label: "Value", kind: "password", required: true },
+            ],
+          };
+        case "domain": {
+          const apps = await this.apps().catch(() => [] as KyApp[]);
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Domain",
+                kind: "text",
+                required: true,
+                placeholder: "api.example.com",
+              },
               {
                 key: "appId",
                 label: "App",
@@ -522,565 +745,382 @@ export class KoyebClient implements PluginClient {
                 options: apps.map((a) => ({ id: a.id, label: a.name })),
                 ...(apps[0] ? { defaultValue: apps[0].id } : {}),
               },
-            ];
-        const runtime = { fieldKey: "type", fieldValuesNot: ["DATABASE"] };
-        return {
-          fields: [
-            ...appField,
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "type",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "WEB",
-              options: [
-                { id: "WEB", label: "Web service" },
-                { id: "WORKER", label: "Worker" },
-                { id: "DATABASE", label: "Postgres database" },
-              ],
-            },
-            {
-              key: "source",
-              label: "Source",
-              kind: "select",
-              required: true,
-              defaultValue: "docker",
-              options: [
-                { id: "docker", label: "Docker image" },
-                { id: "git", label: "GitHub repository" },
-              ],
-              showWhen: runtime,
-            },
-            {
-              key: "image",
-              label: "Image",
-              kind: "text",
-              required: false,
-              placeholder: "docker.io/koyeb/demo:latest",
-              showWhen: { fieldKey: "source", fieldValue: "docker" },
-            },
-            {
-              key: "repository",
-              label: "Repository",
-              kind: "text",
-              required: false,
-              placeholder: "github.com/acme/api",
-              description: "A repository the Koyeb GitHub app can read.",
-              showWhen: { fieldKey: "source", fieldValue: "git" },
-            },
-            {
-              key: "branch",
-              label: "Branch",
-              kind: "text",
-              required: false,
-              placeholder: "main",
-              showWhen: { fieldKey: "source", fieldValue: "git" },
-            },
-            {
-              key: "buildCommand",
-              label: "Build Command",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "source", fieldValue: "git" },
-            },
-            {
-              key: "runCommand",
-              label: "Run Command",
-              kind: "text",
-              required: false,
-              showWhen: runtime,
-            },
-            {
-              key: "port",
-              label: "Port",
-              kind: "number",
-              required: false,
-              defaultValue: "8000",
-              minValue: 1,
-              maxValue: 65535,
-              showWhen: { fieldKey: "type", fieldValue: "WEB" },
-            },
-            {
-              key: "region",
-              label: "Region",
-              kind: "region-picker",
-              required: true,
-              regions: p.regions,
-              ...(p.regions[0]
-                ? { defaultValue: p.regions.find((r) => r.id === "fra")?.id ?? p.regions[0].id }
-                : {}),
-              showWhen: runtime,
-            },
-            {
-              key: "instanceType",
-              label: "Instance Type",
-              kind: "size-picker",
-              required: true,
-              defaultValue: "nano",
-              sizes: p.sizes,
-              filterByFieldKey: "region",
-              showWhen: runtime,
-            },
-            {
-              key: "minScale",
-              label: "Min Instances",
-              kind: "number",
-              required: false,
-              defaultValue: "1",
-              minValue: 0,
-              showWhen: runtime,
-            },
-            {
-              key: "maxScale",
-              label: "Max Instances",
-              kind: "number",
-              required: false,
-              defaultValue: "1",
-              minValue: 1,
-              showWhen: runtime,
-            },
-            {
-              key: "dbRegion",
-              label: "Database Region",
-              kind: "region-picker",
-              required: false,
-              regions: p.dbRegions,
-              ...(p.dbRegions[0] ? { defaultValue: p.dbRegions[0].id } : {}),
-              showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
-            },
-            {
-              key: "dbInstanceType",
-              label: "Database Size",
-              kind: "select",
-              required: false,
-              defaultValue: "free",
-              options: [
-                { id: "free", label: "Free (0.25 vCPU, 1 GB, 5 compute hours a month)" },
-                { id: "small", label: "Small (0.25 vCPU, 1 GB)" },
-                { id: "medium", label: "Medium (0.5 vCPU, 2 GB)" },
-                { id: "large", label: "Large (1 vCPU, 4 GB)" },
-                { id: "xlarge", label: "XLarge (2 vCPU, 8 GB)" },
-                { id: "2xlarge", label: "2XLarge (4 vCPU, 16 GB)" },
-                { id: "3xlarge", label: "3XLarge (8 vCPU, 32 GB)" },
-              ],
-              showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
-            },
-            {
-              key: "pgVersion",
-              label: "Postgres Version",
-              kind: "select",
-              required: false,
-              defaultValue: "17",
-              options: ["17", "16", "15", "14"].map((v) => ({ id: v, label: v })),
-              showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
-            },
-            {
-              key: "dbName",
-              label: "Database Name",
-              kind: "text",
-              required: false,
-              defaultValue: "koyebdb",
-              showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
-            },
-            {
-              key: "dbOwner",
-              label: "Owner Role",
-              kind: "text",
-              required: false,
-              defaultValue: "koyeb-adm",
-              showWhen: { fieldKey: "type", fieldValue: "DATABASE" },
-            },
-          ],
-        };
+            ],
+          };
+        }
+        case "volume": {
+          const { regions } = await this.catalog();
+          const vr = regions
+            .filter((r) => r.volumes_enabled && r.status === "AVAILABLE")
+            .map((r) => ({
+              id: r.id,
+              label: r.name,
+              location: r.id.toUpperCase(),
+              ...(FLAGS[r.id] ? { flag: FLAGS[r.id] } : {}),
+            }));
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "region",
+                label: "Region",
+                kind: "region-picker",
+                required: true,
+                regions: vr,
+                ...(vr[0] ? { defaultValue: vr[0].id } : {}),
+              },
+              {
+                key: "sizeGb",
+                label: "Size (GB)",
+                kind: "number",
+                required: true,
+                defaultValue: "10",
+                minValue: 1,
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`Koyeb plugin: cannot create "${typeId}"`);
       }
-      case "secret":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "DATABASE_PASSWORD",
-            },
-            { key: "value", label: "Value", kind: "password", required: true },
-          ],
-        };
-      case "domain": {
-        const apps = await this.apps().catch(() => [] as KyApp[]);
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Domain",
-              kind: "text",
-              required: true,
-              placeholder: "api.example.com",
-            },
-            {
-              key: "appId",
-              label: "App",
-              kind: "select",
-              required: true,
-              options: apps.map((a) => ({ id: a.id, label: a.name })),
-              ...(apps[0] ? { defaultValue: apps[0].id } : {}),
-            },
-          ],
-        };
-      }
-      case "volume": {
-        const { regions } = await this.catalog();
-        const vr = regions
-          .filter((r) => r.volumes_enabled && r.status === "AVAILABLE")
-          .map((r) => ({
-            id: r.id,
-            label: r.name,
-            location: r.id.toUpperCase(),
-            ...(FLAGS[r.id] ? { flag: FLAGS[r.id] } : {}),
-          }));
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "region",
-              label: "Region",
-              kind: "region-picker",
-              required: true,
-              regions: vr,
-              ...(vr[0] ? { defaultValue: vr[0].id } : {}),
-            },
-            {
-              key: "sizeGb",
-              label: "Size (GB)",
-              kind: "number",
-              required: true,
-              defaultValue: "10",
-              minValue: 1,
-            },
-          ],
-        };
-      }
-      default:
-        throw new Error(`Koyeb plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "project": {
-        const r = await this.api.request<{ project: KyProject }>("/v1/projects", {
-          method: "POST",
-          body: { name: str(fields["name"]), description: str(fields["description"]) },
-        });
-        return mapProject(r.project, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "project": {
+          const r = await this.api.request<{ project: KyProject }>("/v1/projects", {
+            method: "POST",
+            body: { name: str(fields["name"]), description: str(fields["description"]) },
+          });
+          return mapProject(r.project, accountId);
+        }
+        case "app": {
+          const r = await this.api.request<{ app: KyApp }>("/v1/apps", {
+            method: "POST",
+            body: { name: str(fields["name"]) },
+          });
+          this.invalidate();
+          return mapApp(r.app, accountId);
+        }
+        case "service": {
+          const appId = parentResourceId?.includes(":app:")
+            ? externalOf(parentResourceId)
+            : str(fields["appId"]);
+          if (!appId) throw new Error("Koyeb plugin: choose an app");
+          const r = await this.api.request<{ service: KyService }>("/v1/services", {
+            method: "POST",
+            body: { app_id: appId, definition: buildDefinition(fields) },
+          });
+          return runPluginEffect(
+            this.getResource("service", `${accountId}:service:${r.service.id}`, accountId),
+          ).catch(() => mapService(r.service, undefined, undefined, accountId));
+        }
+        case "secret": {
+          const r = await this.api.request<{ secret: KySecret }>("/v1/secrets", {
+            method: "POST",
+            body: { name: str(fields["name"]), type: "SIMPLE", value: fields["value"] ?? "" },
+          });
+          return mapSecret(r.secret, accountId);
+        }
+        case "domain": {
+          const r = await this.api.request<{ domain: KyDomain }>("/v1/domains", {
+            method: "POST",
+            body: { name: str(fields["name"]), type: "CUSTOM", app_id: str(fields["appId"]) },
+          });
+          const apps = await this.apps().catch(() => [] as KyApp[]);
+          return mapDomain(r.domain, new Map(apps.map((a) => [a.id, a.name])), accountId);
+        }
+        case "volume": {
+          const r = await this.api.request<{ volume: KyVolume }>("/v1/volumes", {
+            method: "POST",
+            body: {
+              name: str(fields["name"]),
+              region: str(fields["region"]),
+              max_size: Number(fields["sizeGb"] || 10),
+              volume_type: "PERSISTENT_VOLUME_BACKING_STORE_LOCAL_BLK",
+            },
+          });
+          return mapVolume(r.volume, accountId);
+        }
+        default:
+          throw new Error(`Koyeb plugin: cannot create "${typeId}"`);
       }
-      case "app": {
-        const r = await this.api.request<{ app: KyApp }>("/v1/apps", {
-          method: "POST",
-          body: { name: str(fields["name"]) },
-        });
-        this.invalidate();
-        return mapApp(r.app, accountId);
-      }
-      case "service": {
-        const appId = parentResourceId?.includes(":app:")
-          ? externalOf(parentResourceId)
-          : str(fields["appId"]);
-        if (!appId) throw new Error("Koyeb plugin: choose an app");
-        const r = await this.api.request<{ service: KyService }>("/v1/services", {
-          method: "POST",
-          body: { app_id: appId, definition: buildDefinition(fields) },
-        });
-        return this.getResource("service", `${accountId}:service:${r.service.id}`, accountId).catch(
-          () => mapService(r.service, undefined, undefined, accountId),
-        );
-      }
-      case "secret": {
-        const r = await this.api.request<{ secret: KySecret }>("/v1/secrets", {
-          method: "POST",
-          body: { name: str(fields["name"]), type: "SIMPLE", value: fields["value"] ?? "" },
-        });
-        return mapSecret(r.secret, accountId);
-      }
-      case "domain": {
-        const r = await this.api.request<{ domain: KyDomain }>("/v1/domains", {
-          method: "POST",
-          body: { name: str(fields["name"]), type: "CUSTOM", app_id: str(fields["appId"]) },
-        });
-        const apps = await this.apps().catch(() => [] as KyApp[]);
-        return mapDomain(r.domain, new Map(apps.map((a) => [a.id, a.name])), accountId);
-      }
-      case "volume": {
-        const r = await this.api.request<{ volume: KyVolume }>("/v1/volumes", {
-          method: "POST",
-          body: {
-            name: str(fields["name"]),
-            region: str(fields["region"]),
-            max_size: Number(fields["sizeGb"] || 10),
-            volume_type: "PERSISTENT_VOLUME_BACKING_STORE_LOCAL_BLK",
-          },
-        });
-        return mapVolume(r.volume, accountId);
-      }
-      default:
-        throw new Error(`Koyeb plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
   // ── Update ───────────────────────────────────────────────────────────
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalOf(resourceId);
-    switch (typeId) {
-      case "organization": {
-        if (fields["spendingAlert"] !== undefined) {
-          const org = await this.organization();
-          const path = `/v1/organizations/${enc(org.id)}/budget`;
-          const dollars = str(fields["spendingAlert"]);
-          if (!dollars || Number(dollars) === 0) {
-            await this.api.request(path, { method: "DELETE" }).catch((e: unknown) => {
-              if (!isStatus(e, 404)) throw e;
-            });
-          } else {
-            if (!(Number(dollars) >= 5)) throw new Error("Koyeb spending alerts start at $5.");
-            const body = { amount: String(Math.round(Number(dollars) * 100)) };
-            await this.api.request(path, { method: "PUT", body }).catch(async (e: unknown) => {
-              if (!isStatus(e, 404)) throw e;
-              await this.api.request(path, { method: "POST", body });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      switch (typeId) {
+        case "organization": {
+          if (fields["spendingAlert"] !== undefined) {
+            const org = await this.organization();
+            const path = `/v1/organizations/${enc(org.id)}/budget`;
+            const dollars = str(fields["spendingAlert"]);
+            if (!dollars || Number(dollars) === 0) {
+              await this.api.request(path, { method: "DELETE" }).catch((e: unknown) => {
+                if (!isStatus(e, 404)) throw e;
+              });
+            } else {
+              if (!(Number(dollars) >= 5)) throw new Error("Koyeb spending alerts start at $5.");
+              const body = { amount: String(Math.round(Number(dollars) * 100)) };
+              await this.api.request(path, { method: "PUT", body }).catch(async (e: unknown) => {
+                if (!isStatus(e, 404)) throw e;
+                await this.api.request(path, { method: "POST", body });
+              });
+            }
+          }
+          return this.organizationInstance(accountId);
+        }
+        case "project": {
+          const body: Record<string, unknown> = {};
+          if (str(fields["name"])) body["name"] = str(fields["name"]);
+          if (fields["description"] !== undefined) body["description"] = str(fields["description"]);
+          if (Object.keys(body).length) {
+            await this.api.request(`/v1/projects/${enc(id)}`, {
+              method: "PATCH",
+              body,
+              query: { update_mask: Object.keys(body).join(",") },
             });
           }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.organizationInstance(accountId);
-      }
-      case "project": {
-        const body: Record<string, unknown> = {};
-        if (str(fields["name"])) body["name"] = str(fields["name"]);
-        if (fields["description"] !== undefined) body["description"] = str(fields["description"]);
-        if (Object.keys(body).length) {
-          await this.api.request(`/v1/projects/${enc(id)}`, {
-            method: "PATCH",
-            body,
-            query: { update_mask: Object.keys(body).join(",") },
-          });
+        case "app":
+          if (str(fields["name"])) {
+            await this.api.request(`/v1/apps/${enc(id)}`, {
+              method: "PATCH",
+              body: { name: str(fields["name"]) },
+              query: { update_mask: "name" },
+            });
+            this.invalidate();
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        case "service": {
+          const s = (await this.api.request<{ service: KyService }>(`/v1/services/${enc(id)}`))
+            .service;
+          if (!s.latest_deployment_id)
+            throw new Error("Koyeb plugin: the service has no deployment to update");
+          const current = (await this.deployment(s.latest_deployment_id)).definition ?? {};
+          const next = applyServiceEdits(current, fields);
+          if (next)
+            await this.api.request(`/v1/services/${enc(id)}`, {
+              method: "PATCH",
+              body: { definition: next },
+            });
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "app":
-        if (str(fields["name"])) {
-          await this.api.request(`/v1/apps/${enc(id)}`, {
-            method: "PATCH",
-            body: { name: str(fields["name"]) },
-            query: { update_mask: "name" },
-          });
-          this.invalidate();
+        case "secret":
+          if (fields["value"]) {
+            await this.api.request(`/v1/secrets/${enc(id)}`, {
+              method: "PATCH",
+              body: { value: fields["value"] },
+              query: { update_mask: "value" },
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        case "volume": {
+          const body: Record<string, unknown> = {};
+          if (str(fields["name"])) body["name"] = str(fields["name"]);
+          if (str(fields["sizeGb"])) body["max_size"] = Number(fields["sizeGb"]);
+          if (Object.keys(body).length)
+            await this.api.request(`/v1/volumes/${enc(id)}`, { method: "POST", body });
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      case "service": {
-        const s = (await this.api.request<{ service: KyService }>(`/v1/services/${enc(id)}`))
-          .service;
-        if (!s.latest_deployment_id)
-          throw new Error("Koyeb plugin: the service has no deployment to update");
-        const current = (await this.deployment(s.latest_deployment_id)).definition ?? {};
-        const next = applyServiceEdits(current, fields);
-        if (next)
-          await this.api.request(`/v1/services/${enc(id)}`, {
-            method: "PATCH",
-            body: { definition: next },
-          });
-        return this.getResource(typeId, resourceId, accountId);
+        default:
+          throw new Error(`Koyeb plugin: cannot update "${typeId}"`);
       }
-      case "secret":
-        if (fields["value"]) {
-          await this.api.request(`/v1/secrets/${enc(id)}`, {
-            method: "PATCH",
-            body: { value: fields["value"] },
-            query: { update_mask: "value" },
-          });
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      case "volume": {
-        const body: Record<string, unknown> = {};
-        if (str(fields["name"])) body["name"] = str(fields["name"]);
-        if (str(fields["sizeGb"])) body["max_size"] = Number(fields["sizeGb"]);
-        if (Object.keys(body).length)
-          await this.api.request(`/v1/volumes/${enc(id)}`, { method: "POST", body });
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      default:
-        throw new Error(`Koyeb plugin: cannot update "${typeId}"`);
-    }
+    });
   }
 
   // ── Delete ───────────────────────────────────────────────────────────
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = externalOf(resourceId);
-    const paths: Record<string, string> = {
-      project: "/v1/projects/",
-      app: "/v1/apps/",
-      service: "/v1/services/",
-      secret: "/v1/secrets/",
-      domain: "/v1/domains/",
-      volume: "/v1/volumes/",
-      snapshot: "/v1/snapshots/",
-    };
-    const base = paths[typeId];
-    if (!base) throw new Error(`Koyeb plugin: cannot delete "${typeId}"`);
-    await this.api.request(`${base}${enc(id)}`, { method: "DELETE" });
-    this.invalidate();
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      const paths: Record<string, string> = {
+        project: "/v1/projects/",
+        app: "/v1/apps/",
+        service: "/v1/services/",
+        secret: "/v1/secrets/",
+        domain: "/v1/domains/",
+        volume: "/v1/volumes/",
+        snapshot: "/v1/snapshots/",
+      };
+      const base = paths[typeId];
+      if (!base) throw new Error(`Koyeb plugin: cannot delete "${typeId}"`);
+      await this.api.request(`${base}${enc(id)}`, { method: "DELETE" });
+      this.invalidate();
+    });
   }
 
   // ── Actions ──────────────────────────────────────────────────────────
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalOf(resourceId);
-    if (
-      (typeId === "app" || typeId === "service") &&
-      (actionId === "pause" || actionId === "resume")
-    ) {
-      await this.api.request(`/v1/${typeId}s/${enc(id)}/${actionId}`, { method: "POST" });
-      this.invalidate();
-      return;
-    }
-    if (typeId === "service" && (actionId === "redeploy" || actionId === "redeploy-no-cache")) {
-      await this.api.request(`/v1/services/${enc(id)}/redeploy`, {
-        method: "POST",
-        body: { use_cache: actionId === "redeploy" },
-      });
-      return;
-    }
-    if (typeId === "deployment" && actionId === "cancel") {
-      await this.api.request(`/v1/deployments/${enc(id)}/cancel`, { method: "POST" });
-      return;
-    }
-    if (typeId === "deployment" && actionId === "rollback") {
-      const d = await this.deployment(id);
-      if (!d.service_id || !d.definition)
-        throw new Error("Koyeb plugin: this deployment has no definition to redeploy");
-      await this.api.request(`/v1/services/${enc(d.service_id)}`, {
-        method: "PATCH",
-        body: { definition: pinDefinition(d) },
-      });
-      return;
-    }
-    if (typeId === "domain" && actionId === "refresh") {
-      await this.api.request(`/v1/domains/${enc(id)}/refresh`, { method: "POST" });
-      return;
-    }
-    throw new Error(`Koyeb plugin: action "${actionId}" is not supported for "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      if (
+        (typeId === "app" || typeId === "service") &&
+        (actionId === "pause" || actionId === "resume")
+      ) {
+        await this.api.request(`/v1/${typeId}s/${enc(id)}/${actionId}`, { method: "POST" });
+        this.invalidate();
+        return;
+      }
+      if (typeId === "service" && (actionId === "redeploy" || actionId === "redeploy-no-cache")) {
+        await this.api.request(`/v1/services/${enc(id)}/redeploy`, {
+          method: "POST",
+          body: { use_cache: actionId === "redeploy" },
+        });
+        return;
+      }
+      if (typeId === "deployment" && actionId === "cancel") {
+        await this.api.request(`/v1/deployments/${enc(id)}/cancel`, { method: "POST" });
+        return;
+      }
+      if (typeId === "deployment" && actionId === "rollback") {
+        const d = await this.deployment(id);
+        if (!d.service_id || !d.definition)
+          throw new Error("Koyeb plugin: this deployment has no definition to redeploy");
+        await this.api.request(`/v1/services/${enc(d.service_id)}`, {
+          method: "PATCH",
+          body: { definition: pinDefinition(d) },
+        });
+        return;
+      }
+      if (typeId === "domain" && actionId === "refresh") {
+        await this.api.request(`/v1/domains/${enc(id)}/refresh`, { method: "POST" });
+        return;
+      }
+      throw new Error(`Koyeb plugin: action "${actionId}" is not supported for "${typeId}"`);
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const id = externalOf(resourceId);
-    const v = parseFormArg(args[0]);
-    if (typeId === "service" && command === "scale") {
-      const n = Number(v["instances"]);
-      if (!Number.isInteger(n) || n < 0) throw new Error("Enter a whole number of instances.");
-      await this.api.request(`/v1/services/${enc(id)}/scale`, {
-        method: "PUT",
-        body: { scalings: [{ instances: n }] },
-      });
-      return null;
-    }
-    if (typeId === "volume" && command === "snapshot") {
-      await this.api.request("/v1/snapshots", {
-        method: "POST",
-        body: { parent_volume_id: id, name: str(v["name"]) },
-      });
-      return null;
-    }
-    throw new Error(`Koyeb plugin: unknown command "${command}" for "${typeId}"`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      const v = parseFormArg(args[0]);
+      if (typeId === "service" && command === "scale") {
+        const n = Number(v["instances"]);
+        if (!Number.isInteger(n) || n < 0) throw new Error("Enter a whole number of instances.");
+        await this.api.request(`/v1/services/${enc(id)}/scale`, {
+          method: "PUT",
+          body: { scalings: [{ instances: n }] },
+        });
+        return null;
+      }
+      if (typeId === "volume" && command === "snapshot") {
+        await this.api.request("/v1/snapshots", {
+          method: "POST",
+          body: { parent_volume_id: id, name: str(v["name"]) },
+        });
+        return null;
+      }
+      throw new Error(`Koyeb plugin: unknown command "${command}" for "${typeId}"`);
+    });
   }
 
   // ── Logs and metrics ─────────────────────────────────────────────────
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const id = externalOf(resourceId);
-    const scope =
-      typeId === "service"
-        ? { service_id: id }
-        : typeId === "deployment"
-          ? { deployment_id: id }
-          : typeId === "instance"
-            ? { instance_ids: [id] }
-            : null;
-    if (!scope) throw new Error(`Koyeb plugin: no logs for "${typeId}"`);
-    return fetchKoyebLogs(this.api, scope, params.tailLines, params.container);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      const scope =
+        typeId === "service"
+          ? { service_id: id }
+          : typeId === "deployment"
+            ? { deployment_id: id }
+            : typeId === "instance"
+              ? { instance_ids: [id] }
+              : null;
+      if (!scope) throw new Error(`Koyeb plugin: no logs for "${typeId}"`);
+      return fetchKoyebLogs(this.api, scope, params.tailLines, params.container);
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "service") return [];
-    const s = await this.getResource(resourceTypeId, resourceId, accountId);
-    if (s.fields["type"] === "DATABASE") return [];
-    return fetchKoyebMetrics(
-      this.api,
-      externalOf(resourceId),
-      s.fields["type"] === "WEB",
-      timeRange,
-    );
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "service") return [];
+      const s = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      if (s.fields["type"] === "DATABASE") return [];
+      return fetchKoyebMetrics(
+        this.api,
+        externalOf(resourceId),
+        s.fields["type"] === "WEB",
+        timeRange,
+      );
+    });
   }
 
   // ── Costs and quotas ─────────────────────────────────────────────────
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    let inv: KyNextInvoice;
-    try {
-      inv = await this.api.request<KyNextInvoice>("/v1/billing/next_invoice");
-    } catch (e) {
-      // Hobby and trial organizations have no upcoming invoice.
-      if (isStatus(e, 400, 404, 412)) return [];
-      throw e;
-    }
-    return invoiceRows(inv, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      let inv: KyNextInvoice;
+      try {
+        inv = await this.api.request<KyNextInvoice>("/v1/billing/next_invoice");
+      } catch (e) {
+        // Hobby and trial organizations have no upcoming invoice.
+        if (isStatus(e, 400, 404, 412)) return [];
+        throw e;
+      }
+      return invoiceRows(inv, range);
+    });
   }
 
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    const org = await this.organization();
-    let u: KyQuotaUsage | undefined;
-    try {
-      u = (
-        await this.api.request<{ usage?: KyQuotaUsage }>(
-          `/v1/quotas/organizations/${enc(org.id)}/usage`,
-        )
-      ).usage;
-    } catch (e) {
-      if (isStatus(e, 401, 403))
-        throw new QuotaAccessError("Koyeb refused the organization's quota usage for this token.");
-      throw e;
-    }
-    return quotasFrom(u ?? {});
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      const org = await this.organization();
+      let u: KyQuotaUsage | undefined;
+      try {
+        u = (
+          await this.api.request<{ usage?: KyQuotaUsage }>(
+            `/v1/quotas/organizations/${enc(org.id)}/usage`,
+          )
+        ).usage;
+      } catch (e) {
+        if (isStatus(e, 401, 403))
+          throw new QuotaAccessError(
+            "Koyeb refused the organization's quota usage for this token.",
+          );
+        throw e;
+      }
+      return quotasFrom(u ?? {});
+    });
   }
 }
 

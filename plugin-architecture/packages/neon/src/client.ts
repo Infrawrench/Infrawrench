@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -147,227 +150,247 @@ export class NeonClient implements PluginClient {
   /** Maps bucket name → branch, since the host's storage browser passes only a name. */
   private readonly bucketLocator = new BucketLocator();
 
-  constructor(credentials: Record<string, string>, _services?: HostServices) {
+  constructor(credentials: Credentials, _services?: HostServices) {
     const key = credentials["apiKey"];
     if (!key) throw new Error("Neon plugin: missing apiKey credential");
     this.api = createApiClient({ apiKey: key });
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "neon-project":
-        return this.listProjects(accountId);
-      case "neon-branch":
-        return this.listAllBranches(accountId);
-      case "neon-endpoint":
-        return this.listAllEndpoints(accountId);
-      case "neon-database":
-        return this.listAllDatabases(accountId);
-      case "neon-role":
-        return this.listAllRoles(accountId);
-      case "neon-data-api":
-        return this.listAllDataApis(accountId);
-      case "neon-snapshot":
-        return listAllSnapshots(this.api, accountId, await this.fetchAllProjects());
-      case "neon-bucket":
-        return listAllBuckets(
-          this.api,
-          accountId,
-          await this.fetchAllProjects(),
-          this.bucketLocator,
-        );
-      case "neon-credential":
-        return listAllCredentials(this.api, accountId, await this.fetchAllProjects());
-      case "neon-function":
-        return listAllFunctions(this.api, accountId, await this.fetchAllProjects());
-      case "neon-ai-gateway":
-        return listAllAiGateways(this.api, accountId, await this.fetchAllProjects());
-      case "neon-auth":
-        return listAllAuth(this.api, accountId, await this.fetchAllProjects());
-      case "neon-auth-oauth-provider":
-        return listAllOauthProviders(this.api, accountId, await this.fetchAllProjects());
-      case "neon-auth-domain":
-        return listAllAuthDomains(this.api, accountId, await this.fetchAllProjects());
-      default:
-        throw new Error(`Neon plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "neon-project":
+          return this.listProjects(accountId);
+        case "neon-branch":
+          return this.listAllBranches(accountId);
+        case "neon-endpoint":
+          return this.listAllEndpoints(accountId);
+        case "neon-database":
+          return this.listAllDatabases(accountId);
+        case "neon-role":
+          return this.listAllRoles(accountId);
+        case "neon-data-api":
+          return this.listAllDataApis(accountId);
+        case "neon-snapshot":
+          return listAllSnapshots(this.api, accountId, await this.fetchAllProjects());
+        case "neon-bucket":
+          return listAllBuckets(
+            this.api,
+            accountId,
+            await this.fetchAllProjects(),
+            this.bucketLocator,
+          );
+        case "neon-credential":
+          return listAllCredentials(this.api, accountId, await this.fetchAllProjects());
+        case "neon-function":
+          return listAllFunctions(this.api, accountId, await this.fetchAllProjects());
+        case "neon-ai-gateway":
+          return listAllAiGateways(this.api, accountId, await this.fetchAllProjects());
+        case "neon-auth":
+          return listAllAuth(this.api, accountId, await this.fetchAllProjects());
+        case "neon-auth-oauth-provider":
+          return listAllOauthProviders(this.api, accountId, await this.fetchAllProjects());
+        case "neon-auth-domain":
+          return listAllAuthDomains(this.api, accountId, await this.fetchAllProjects());
+        default:
+          throw new Error(`Neon plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Neon plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Neon plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "neon-project") {
-      if (outputKey === "connectionString") {
-        return this.resolveProjectConnectionString(resourceId, accountId);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "neon-project") {
+        if (outputKey === "connectionString") {
+          return this.resolveProjectConnectionString(resourceId, accountId);
+        }
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "projectId") return String(resource.externalId ?? "");
+        if (outputKey === "region") return String(resource.fields["region"] ?? "");
+        if (outputKey === "pgVersion") return String(resource.fields["pgVersion"] ?? "");
       }
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "projectId") return String(resource.externalId ?? "");
-      if (outputKey === "region") return String(resource.fields["region"] ?? "");
-      if (outputKey === "pgVersion") return String(resource.fields["pgVersion"] ?? "");
-    }
 
-    if (typeId === "neon-branch") {
-      if (outputKey === "connectionString") {
-        return this.resolveBranchConnectionString(resourceId, accountId);
+      if (typeId === "neon-branch") {
+        if (outputKey === "connectionString") {
+          return this.resolveBranchConnectionString(resourceId, accountId);
+        }
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "branchId") return String(resource.externalId ?? "");
+        if (outputKey === "projectId") return String(resource.fields["projectId"] ?? "");
       }
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "branchId") return String(resource.externalId ?? "");
-      if (outputKey === "projectId") return String(resource.fields["projectId"] ?? "");
-    }
 
-    if (typeId === "neon-endpoint") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "host") return String(resource.fields["host"] ?? "");
-      if (outputKey === "endpointId") return String(resource.externalId ?? "");
-    }
-
-    if (typeId === "neon-database") {
-      if (outputKey === "connectionString") {
-        return this.resolveDatabaseConnectionString(resourceId, accountId);
+      if (typeId === "neon-endpoint") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "host") return String(resource.fields["host"] ?? "");
+        if (outputKey === "endpointId") return String(resource.externalId ?? "");
       }
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "host") return String(resource.fields["host"] ?? "");
-      if (outputKey === "database") return String(resource.fields["name"] ?? "");
-    }
 
-    if (typeId === "neon-role") {
-      if (outputKey === "password") {
-        return this.resolveRolePassword(resourceId, accountId);
+      if (typeId === "neon-database") {
+        if (outputKey === "connectionString") {
+          return this.resolveDatabaseConnectionString(resourceId, accountId);
+        }
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "host") return String(resource.fields["host"] ?? "");
+        if (outputKey === "database") return String(resource.fields["name"] ?? "");
       }
-    }
 
-    if (typeId === "neon-data-api") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "url") return String(resource.fields["url"] ?? "");
-    }
+      if (typeId === "neon-role") {
+        if (outputKey === "password") {
+          return this.resolveRolePassword(resourceId, accountId);
+        }
+      }
 
-    if (
-      typeId === "neon-credential" &&
-      (outputKey === "apiToken" || outputKey === "s3SecretAccessKey")
-    ) {
-      // Neon returns the token and S3 secret only in the create response and has
-      // no endpoint to read them back, so there is nothing to resolve later.
-      throw new Error(
-        "Neon plugin: credential secrets are shown only once, when the credential is created. Create a new credential to get fresh values.",
-      );
-    }
+      if (typeId === "neon-data-api") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "url") return String(resource.fields["url"] ?? "");
+      }
 
-    // The remaining new types resolve straight from values captured at list time.
-    if (
-      typeId === "neon-snapshot" ||
-      typeId === "neon-bucket" ||
-      typeId === "neon-credential" ||
-      typeId === "neon-function" ||
-      typeId === "neon-ai-gateway" ||
-      typeId === "neon-auth"
-    ) {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const value = resource.resolvedOutputs[outputKey];
-      if (typeof value === "string" && value) return value;
-    }
+      if (
+        typeId === "neon-credential" &&
+        (outputKey === "apiToken" || outputKey === "s3SecretAccessKey")
+      ) {
+        // Neon returns the token and S3 secret only in the create response and has
+        // no endpoint to read them back, so there is nothing to resolve later.
+        throw new Error(
+          "Neon plugin: credential secrets are shown only once, when the credential is created. Create a new credential to get fresh values.",
+        );
+      }
 
-    throw new Error(`Neon plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      // The remaining new types resolve straight from values captured at list time.
+      if (
+        typeId === "neon-snapshot" ||
+        typeId === "neon-bucket" ||
+        typeId === "neon-credential" ||
+        typeId === "neon-function" ||
+        typeId === "neon-ai-gateway" ||
+        typeId === "neon-auth"
+      ) {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const value = resource.resolvedOutputs[outputKey];
+        if (typeof value === "string" && value) return value;
+      }
+
+      throw new Error(`Neon plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
 
-    switch (resourceTypeId) {
-      case "neon-project": {
-        const regionInfo = NEON_REGIONS[String(f["region"] ?? "")];
-        return [
-          {
-            label: "Region",
-            value: regionInfo
-              ? `${regionInfo.flag} ${String(f["region"])}`
-              : String(f["region"] ?? ""),
-          },
-          { label: "PG Version", value: String(f["pgVersion"] ?? "") },
-        ];
+      switch (resourceTypeId) {
+        case "neon-project": {
+          const regionInfo = NEON_REGIONS[String(f["region"] ?? "")];
+          return [
+            {
+              label: "Region",
+              value: regionInfo
+                ? `${regionInfo.flag} ${String(f["region"])}`
+                : String(f["region"] ?? ""),
+            },
+            { label: "PG Version", value: String(f["pgVersion"] ?? "") },
+          ];
+        }
+        case "neon-endpoint": {
+          const state = String(f["currentState"] ?? "unknown");
+          const variant =
+            state === "active"
+              ? "status-healthy"
+              : state === "idle"
+                ? "status-degraded"
+                : "default";
+          return [
+            { label: "State", value: state, variant },
+            { label: "Type", value: String(f["type"] ?? "") },
+            {
+              label: "Compute",
+              value: `${String(f["autoscalingMinCu"])}–${String(f["autoscalingMaxCu"])} CU`,
+            },
+          ];
+        }
+        case "neon-branch": {
+          const state = String(f["currentState"] ?? "unknown");
+          const variant = state === "ready" ? "status-healthy" : "status-degraded";
+          return [
+            { label: "State", value: state, variant },
+            ...(f["primary"] ? [{ label: "Primary", value: "Yes" }] : []),
+          ];
+        }
+        default:
+          return [];
       }
-      case "neon-endpoint": {
-        const state = String(f["currentState"] ?? "unknown");
-        const variant =
-          state === "active" ? "status-healthy" : state === "idle" ? "status-degraded" : "default";
-        return [
-          { label: "State", value: state, variant },
-          { label: "Type", value: String(f["type"] ?? "") },
-          {
-            label: "Compute",
-            value: `${String(f["autoscalingMinCu"])}–${String(f["autoscalingMaxCu"])} CU`,
-          },
-        ];
-      }
-      case "neon-branch": {
-        const state = String(f["currentState"] ?? "unknown");
-        const variant = state === "ready" ? "status-healthy" : "status-degraded";
-        return [
-          { label: "State", value: state, variant },
-          ...(f["primary"] ? [{ label: "Primary", value: "Yes" }] : []),
-        ];
-      }
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    // Neon meters usage per project, and per branch on the v2 API. Both need
-    // the owning organization.
-    let projectId: string;
-    let branchId = "";
-    if (resourceTypeId === "neon-project") {
-      projectId = resourceId.split(":").pop() ?? "";
-    } else {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      projectId = String(resource.fields["projectId"] ?? resourceId.split(":")[2] ?? "");
-      if (resourceTypeId === "neon-branch") branchId = String(resource.externalId ?? "");
-    }
-    if (!projectId) return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      // Neon meters usage per project, and per branch on the v2 API. Both need
+      // the owning organization.
+      let projectId: string;
+      let branchId = "";
+      if (resourceTypeId === "neon-project") {
+        projectId = resourceId.split(":").pop() ?? "";
+      } else {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        projectId = String(resource.fields["projectId"] ?? resourceId.split(":")[2] ?? "");
+        if (resourceTypeId === "neon-branch") branchId = String(resource.externalId ?? "");
+      }
+      if (!projectId) return [];
 
-    const orgId = await this.resolveOrgId(projectId);
-    return branchId
-      ? fetchBranchUsageSeries(this.api, orgId, projectId, branchId, timeRange)
-      : fetchProjectUsageSeries(this.api, orgId, projectId, timeRange);
+      const orgId = await this.resolveOrgId(projectId);
+      return branchId
+        ? fetchBranchUsageSeries(this.api, orgId, projectId, branchId, timeRange)
+        : fetchProjectUsageSeries(this.api, orgId, projectId, timeRange);
+    });
   }
 
   /** Branch Logs tab: OpenTelemetry records from the branch's services. */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "neon-branch") return { text: "", containers: [], activeContainer: "" };
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const projectId = String(resource.fields["projectId"] ?? "");
-    const branchId = String(resource.externalId ?? "");
-    if (!projectId || !branchId) return { text: "", containers: [], activeContainer: "" };
-    return fetchBranchLogs(this.api, projectId, branchId, params);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "neon-branch") return { text: "", containers: [], activeContainer: "" };
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const projectId = String(resource.fields["projectId"] ?? "");
+      const branchId = String(resource.externalId ?? "");
+      if (!projectId || !branchId) return { text: "", containers: [], activeContainer: "" };
+      return fetchBranchLogs(this.api, projectId, branchId, params);
+    });
   }
 
   /** The organization a project belongs to; empty when it can't be read. */
@@ -380,8 +403,10 @@ export class NeonClient implements PluginClient {
     }
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchNeonCostData(this.api, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchNeonCostData(this.api, range);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -506,881 +531,890 @@ export class NeonClient implements PluginClient {
     return { projectId, branchId };
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    if (typeId === "neon-snapshot") {
-      const fields = await this.branchScopedCreateFields(parentResourceId);
-      fields.push({
-        key: "name",
-        label: "Snapshot Name",
-        kind: "text",
-        required: false,
-        placeholder: "Leave blank to let Neon name it",
-      });
-      return { fields };
-    }
-
-    if (typeId === "neon-bucket") {
-      const fields = await this.branchScopedCreateFields(parentResourceId);
-      fields.push(
-        { key: "name", label: "Bucket Name", kind: "text", required: true },
-        {
-          key: "accessLevel",
-          label: "Access Level",
-          kind: "select",
-          required: true,
-          options: [
-            { id: "private", label: "Private: all access requires credentials" },
-            { id: "public_read", label: "Public read: anyone can read objects" },
-          ],
-          defaultValue: "private",
-        },
-      );
-      return { fields };
-    }
-
-    if (typeId === "neon-credential") {
-      const fields = await this.branchScopedCreateFields(parentResourceId);
-      fields.push(
-        { key: "name", label: "Name", kind: "text", required: false },
-        {
-          key: "scopes",
-          label: "Grants",
-          kind: "select",
-          required: true,
-          description: "What this credential is allowed to do on the branch.",
-          options: SCOPE_BUNDLES.map((b) => ({ id: b.id, label: b.label })),
-          defaultValue: "storage-rw",
-        },
-      );
-      return { fields };
-    }
-
-    if (typeId === "neon-auth") {
-      const fields = await this.branchScopedCreateFields(parentResourceId);
-      fields.push({
-        key: "databaseName",
-        label: "Database",
-        kind: "text",
-        required: false,
-        description: "Database to hold the neon_auth schema. Defaults to the branch's own default.",
-      });
-      return { fields };
-    }
-
-    if (typeId === "neon-auth-oauth-provider") {
-      const fields = await this.branchScopedCreateFields(parentResourceId);
-      fields.push(
-        {
-          key: "providerId",
-          label: "Provider",
-          kind: "select",
-          required: true,
-          options: [
-            { id: "google", label: "Google" },
-            { id: "github", label: "GitHub" },
-            { id: "microsoft", label: "Microsoft" },
-            { id: "vercel", label: "Vercel" },
-          ],
-          defaultValue: "google",
-        },
-        {
-          key: "clientId",
-          label: "Client ID",
-          kind: "text",
-          required: false,
-          description: "Leave blank to use Neon's shared development credentials.",
-        },
-        { key: "clientSecret", label: "Client Secret", kind: "password", required: false },
-        {
-          key: "microsoftTenantId",
-          label: "Microsoft Tenant ID",
-          kind: "text",
-          required: false,
-          showWhen: { fieldKey: "providerId", fieldValue: "microsoft" },
-        },
-      );
-      return { fields };
-    }
-
-    if (typeId === "neon-auth-domain") {
-      const fields = await this.branchScopedCreateFields(parentResourceId);
-      fields.push({
-        key: "domain",
-        label: "Domain",
-        kind: "text",
-        required: true,
-        placeholder: "https://app.example.com",
-      });
-      return { fields };
-    }
-
-    if (typeId === "neon-project") {
-      const regions = await this.fetchRegionOptions();
-      const defaultRegion =
-        regions.find((r) => r.id === "aws-us-east-2")?.id ?? regions[0]?.id ?? "aws-us-east-2";
-
-      return {
-        fields: [
-          { key: "name", label: "Project Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions,
-            defaultValue: defaultRegion,
-          },
-          {
-            key: "pgVersion",
-            label: "PostgreSQL Version",
-            kind: "select",
-            required: true,
-            options: PG_VERSIONS.map((v) => ({ id: v, label: `PostgreSQL ${v}` })),
-            defaultValue: "18",
-          },
-          {
-            key: "historyRetentionSeconds",
-            label: "Restore Window",
-            kind: "select",
-            required: false,
-            description: "How far back branches can be restored. Your plan caps the maximum.",
-            options: [
-              { id: "", label: "Plan default" },
-              { id: "21600", label: "6 hours" },
-              { id: "86400", label: "1 day" },
-              { id: "604800", label: "7 days" },
-              { id: "1209600", label: "14 days" },
-              { id: "2592000", label: "30 days" },
-            ],
-            defaultValue: "",
-          },
-        ],
-      };
-    }
-
-    if (typeId === "neon-branch") {
-      const fields: CreateResourceConfig["fields"] = [];
-      let scopedProjectId = parentResourceId ? externalIdOf(parentResourceId) : "";
-      if (!parentResourceId) {
-        // List projects so the user can pick which one to branch from
-        const projects = await this.fetchAllProjects();
-        const projectOptions = projects.map((p) => ({
-          id: p.id,
-          label: p.name,
-        }));
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "neon-snapshot") {
+        const fields = await this.branchScopedCreateFields(parentResourceId);
         fields.push({
-          key: "projectId",
-          label: "Project",
-          kind: "select",
-          required: true,
-          options: projectOptions,
-          ...(projectOptions[0] ? { defaultValue: projectOptions[0].id } : {}),
+          key: "name",
+          label: "Snapshot Name",
+          kind: "text",
+          required: false,
+          placeholder: "Leave blank to let Neon name it",
         });
-        scopedProjectId = projectOptions[0]?.id ?? "";
+        return { fields };
       }
 
-      // Branch-from picker for the scoped project; the empty choice lets Neon
-      // use the project's default branch, which is right for any project.
-      let parentOptions: Array<{ id: string; label: string }> = [];
-      if (scopedProjectId) {
-        try {
-          const branches = await this.api.listProjectBranches({ projectId: scopedProjectId });
-          parentOptions = branches.data.branches.map((b) => ({
-            id: b.id,
-            label: `${b.name}${isDefaultBranch(b) ? " (default)" : ""}`,
-          }));
-        } catch {
-          /* the default-branch choice still works */
-        }
+      if (typeId === "neon-bucket") {
+        const fields = await this.branchScopedCreateFields(parentResourceId);
+        fields.push(
+          { key: "name", label: "Bucket Name", kind: "text", required: true },
+          {
+            key: "accessLevel",
+            label: "Access Level",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "private", label: "Private: all access requires credentials" },
+              { id: "public_read", label: "Public read: anyone can read objects" },
+            ],
+            defaultValue: "private",
+          },
+        );
+        return { fields };
       }
 
-      fields.push(
-        { key: "name", label: "Branch Name", kind: "text", required: true },
-        {
-          key: "parentId",
-          label: "Branch From",
-          kind: "select",
-          required: false,
-          options: [{ id: "", label: "Default branch" }, ...parentOptions],
-          defaultValue: "",
-        },
-        {
-          key: "initSource",
-          label: "Contents",
-          kind: "select",
-          required: false,
-          options: [
-            { id: "parent-data", label: "Schema and data" },
-            { id: "schema-only", label: "Schema only (no data)" },
-          ],
-          defaultValue: "parent-data",
-        },
-        {
-          key: "parentTimestamp",
-          label: "As Of",
-          kind: "datetime",
+      if (typeId === "neon-credential") {
+        const fields = await this.branchScopedCreateFields(parentResourceId);
+        fields.push(
+          { key: "name", label: "Name", kind: "text", required: false },
+          {
+            key: "scopes",
+            label: "Grants",
+            kind: "select",
+            required: true,
+            description: "What this credential is allowed to do on the branch.",
+            options: SCOPE_BUNDLES.map((b) => ({ id: b.id, label: b.label })),
+            defaultValue: "storage-rw",
+          },
+        );
+        return { fields };
+      }
+
+      if (typeId === "neon-auth") {
+        const fields = await this.branchScopedCreateFields(parentResourceId);
+        fields.push({
+          key: "databaseName",
+          label: "Database",
+          kind: "text",
           required: false,
           description:
-            "Branch from the parent's state at this moment instead of now. Must fall inside the project's restore window.",
-          showWhen: { fieldKey: "initSource", fieldValue: "parent-data" },
-        },
-        {
-          key: "expiresAt",
-          label: "Delete Automatically At",
-          kind: "datetime",
-          required: false,
-          description: "Neon deletes the branch at this time (at most 30 days ahead).",
-        },
-        {
-          key: "protected",
-          label: "Protected",
+            "Database to hold the neon_auth schema. Defaults to the branch's own default.",
+        });
+        return { fields };
+      }
+
+      if (typeId === "neon-auth-oauth-provider") {
+        const fields = await this.branchScopedCreateFields(parentResourceId);
+        fields.push(
+          {
+            key: "providerId",
+            label: "Provider",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "google", label: "Google" },
+              { id: "github", label: "GitHub" },
+              { id: "microsoft", label: "Microsoft" },
+              { id: "vercel", label: "Vercel" },
+            ],
+            defaultValue: "google",
+          },
+          {
+            key: "clientId",
+            label: "Client ID",
+            kind: "text",
+            required: false,
+            description: "Leave blank to use Neon's shared development credentials.",
+          },
+          { key: "clientSecret", label: "Client Secret", kind: "password", required: false },
+          {
+            key: "microsoftTenantId",
+            label: "Microsoft Tenant ID",
+            kind: "text",
+            required: false,
+            showWhen: { fieldKey: "providerId", fieldValue: "microsoft" },
+          },
+        );
+        return { fields };
+      }
+
+      if (typeId === "neon-auth-domain") {
+        const fields = await this.branchScopedCreateFields(parentResourceId);
+        fields.push({
+          key: "domain",
+          label: "Domain",
+          kind: "text",
+          required: true,
+          placeholder: "https://app.example.com",
+        });
+        return { fields };
+      }
+
+      if (typeId === "neon-project") {
+        const regions = await this.fetchRegionOptions();
+        const defaultRegion =
+          regions.find((r) => r.id === "aws-us-east-2")?.id ?? regions[0]?.id ?? "aws-us-east-2";
+
+        return {
+          fields: [
+            { key: "name", label: "Project Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions,
+              defaultValue: defaultRegion,
+            },
+            {
+              key: "pgVersion",
+              label: "PostgreSQL Version",
+              kind: "select",
+              required: true,
+              options: PG_VERSIONS.map((v) => ({ id: v, label: `PostgreSQL ${v}` })),
+              defaultValue: "18",
+            },
+            {
+              key: "historyRetentionSeconds",
+              label: "Restore Window",
+              kind: "select",
+              required: false,
+              description: "How far back branches can be restored. Your plan caps the maximum.",
+              options: [
+                { id: "", label: "Plan default" },
+                { id: "21600", label: "6 hours" },
+                { id: "86400", label: "1 day" },
+                { id: "604800", label: "7 days" },
+                { id: "1209600", label: "14 days" },
+                { id: "2592000", label: "30 days" },
+              ],
+              defaultValue: "",
+            },
+          ],
+        };
+      }
+
+      if (typeId === "neon-branch") {
+        const fields: CreateResourceConfig["fields"] = [];
+        let scopedProjectId = parentResourceId ? externalIdOf(parentResourceId) : "";
+        if (!parentResourceId) {
+          // List projects so the user can pick which one to branch from
+          const projects = await this.fetchAllProjects();
+          const projectOptions = projects.map((p) => ({
+            id: p.id,
+            label: p.name,
+          }));
+          fields.push({
+            key: "projectId",
+            label: "Project",
+            kind: "select",
+            required: true,
+            options: projectOptions,
+            ...(projectOptions[0] ? { defaultValue: projectOptions[0].id } : {}),
+          });
+          scopedProjectId = projectOptions[0]?.id ?? "";
+        }
+
+        // Branch-from picker for the scoped project; the empty choice lets Neon
+        // use the project's default branch, which is right for any project.
+        let parentOptions: Array<{ id: string; label: string }> = [];
+        if (scopedProjectId) {
+          try {
+            const branches = await this.api.listProjectBranches({ projectId: scopedProjectId });
+            parentOptions = branches.data.branches.map((b) => ({
+              id: b.id,
+              label: `${b.name}${isDefaultBranch(b) ? " (default)" : ""}`,
+            }));
+          } catch {
+            /* the default-branch choice still works */
+          }
+        }
+
+        fields.push(
+          { key: "name", label: "Branch Name", kind: "text", required: true },
+          {
+            key: "parentId",
+            label: "Branch From",
+            kind: "select",
+            required: false,
+            options: [{ id: "", label: "Default branch" }, ...parentOptions],
+            defaultValue: "",
+          },
+          {
+            key: "initSource",
+            label: "Contents",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "parent-data", label: "Schema and data" },
+              { id: "schema-only", label: "Schema only (no data)" },
+            ],
+            defaultValue: "parent-data",
+          },
+          {
+            key: "parentTimestamp",
+            label: "As Of",
+            kind: "datetime",
+            required: false,
+            description:
+              "Branch from the parent's state at this moment instead of now. Must fall inside the project's restore window.",
+            showWhen: { fieldKey: "initSource", fieldValue: "parent-data" },
+          },
+          {
+            key: "expiresAt",
+            label: "Delete Automatically At",
+            kind: "datetime",
+            required: false,
+            description: "Neon deletes the branch at this time (at most 30 days ahead).",
+          },
+          {
+            key: "protected",
+            label: "Protected",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "false", label: "No" },
+              { id: "true", label: "Yes (paid plans)" },
+            ],
+            defaultValue: "false",
+          },
+        );
+        return { fields };
+      }
+
+      if (typeId === "neon-database") {
+        // Parent is neon-branch; its resource ID is `{accountId}:neon-branch:{projectId}/{branchId}`.
+        const parentExternalId = parentResourceId
+          ? parentResourceId.split(":").slice(2).join(":")
+          : "";
+        const [parentProjectId, parentBranchId] = parentExternalId.split("/");
+
+        const fields: CreateResourceConfig["fields"] = [];
+        let scopedProjectId = parentProjectId ?? "";
+        let scopedBranchId = parentBranchId ?? "";
+
+        if (!parentResourceId) {
+          // List projects so the user can pick project → branch → create database
+          const projects = await this.fetchAllProjects();
+          const projectOptions = projects.map((p) => ({
+            id: p.id,
+            label: p.name,
+          }));
+
+          // Pre-fetch branches for the first project if available
+          let branchOptions: Array<{ id: string; label: string }> = [];
+          if (projectOptions[0]) {
+            const firstProjectId = projectOptions[0].id;
+            const branches = await this.api.listProjectBranches({ projectId: firstProjectId });
+            branchOptions = branches.data.branches.map((b) => ({
+              id: b.id,
+              label: `${b.name}${isDefaultBranch(b) ? " (primary)" : ""}`,
+            }));
+          }
+
+          fields.push({
+            key: "projectId",
+            label: "Project",
+            kind: "select",
+            required: true,
+            options: projectOptions,
+            ...(projectOptions[0] ? { defaultValue: projectOptions[0].id } : {}),
+          });
+          fields.push({
+            key: "branchId",
+            label: "Branch",
+            kind: "select",
+            required: true,
+            options: branchOptions,
+            ...(branchOptions[0] ? { defaultValue: branchOptions[0].id } : {}),
+          });
+
+          scopedProjectId = projectOptions[0]?.id ?? "";
+          scopedBranchId = branchOptions[0]?.id ?? "";
+        }
+
+        // List roles from the scoped project/branch for the owner field
+        let roleOptions: Array<{ id: string; label: string }> = [];
+        if (scopedProjectId && scopedBranchId) {
+          try {
+            const roles = await this.api.listProjectBranchRoles(scopedProjectId, scopedBranchId);
+            roleOptions = roles.data.roles.map((r) => ({ id: r.name, label: r.name }));
+          } catch {
+            /* some branches may not have roles accessible */
+          }
+        }
+
+        fields.push({ key: "name", label: "Database Name", kind: "text", required: true });
+        fields.push({
+          key: "ownerName",
+          label: "Owner Role",
+          kind: "select",
+          required: true,
+          options:
+            roleOptions.length > 0 ? roleOptions : [{ id: "neondb_owner", label: "neondb_owner" }],
+          defaultValue: roleOptions[0]?.id ?? "neondb_owner",
+        });
+
+        return { fields };
+      }
+
+      if (typeId === "neon-role") {
+        const fields: CreateResourceConfig["fields"] = [];
+        if (!parentResourceId) {
+          const projects = await this.fetchAllProjects();
+          const branchOptions: { id: string; label: string }[] = [];
+          for (const p of projects) {
+            try {
+              const branches = await this.api.listProjectBranches({ projectId: p.id });
+              for (const b of branches.data.branches) {
+                branchOptions.push({ id: `${p.id}/${b.id}`, label: `${p.name} / ${b.name}` });
+              }
+            } catch {
+              /* skip */
+            }
+          }
+          fields.push({
+            key: "projectBranch",
+            label: "Project / Branch",
+            kind: "select",
+            required: true,
+            options: branchOptions,
+            ...(branchOptions[0] ? { defaultValue: branchOptions[0].id } : {}),
+          });
+        }
+        fields.push({ key: "name", label: "Role Name", kind: "text", required: true });
+        return { fields };
+      }
+
+      if (typeId === "neon-endpoint") {
+        const fields: CreateResourceConfig["fields"] = [];
+        if (!parentResourceId) {
+          const projects = await this.fetchAllProjects();
+          const branchOptions: { id: string; label: string }[] = [];
+          for (const p of projects) {
+            try {
+              const branches = await this.api.listProjectBranches({ projectId: p.id });
+              for (const b of branches.data.branches) {
+                branchOptions.push({ id: `${p.id}/${b.id}`, label: `${p.name} / ${b.name}` });
+              }
+            } catch {
+              /* skip */
+            }
+          }
+          fields.push({
+            key: "projectBranch",
+            label: "Project / Branch",
+            kind: "select",
+            required: true,
+            options: branchOptions,
+            ...(branchOptions[0] ? { defaultValue: branchOptions[0].id } : {}),
+          });
+        }
+        fields.push({
+          key: "type",
+          label: "Endpoint Type",
+          kind: "select",
+          required: true,
+          options: [
+            { id: "read_write", label: "Read-Write" },
+            { id: "read_only", label: "Read-Only" },
+          ],
+          defaultValue: "read_write",
+        });
+        const cuOptions = COMPUTE_UNITS.map((cu) => ({ id: cu, label: `${cu} CU` }));
+        fields.push(
+          {
+            key: "autoscalingMinCu",
+            label: "Min Compute",
+            kind: "select",
+            required: false,
+            options: [{ id: "", label: "Project default" }, ...cuOptions],
+            defaultValue: "",
+          },
+          {
+            key: "autoscalingMaxCu",
+            label: "Max Compute",
+            kind: "select",
+            required: false,
+            description: "At most 8 CU above the minimum; sizes above 16 CU are fixed.",
+            options: [{ id: "", label: "Project default" }, ...cuOptions],
+            defaultValue: "",
+          },
+          {
+            key: "suspendTimeout",
+            label: "Scale to Zero After",
+            kind: "select",
+            required: false,
+            options: SUSPEND_OPTIONS,
+            defaultValue: "",
+          },
+        );
+        return { fields };
+      }
+
+      if (typeId === "neon-data-api") {
+        const fields: CreateResourceConfig["fields"] = [];
+        if (!parentResourceId) {
+          const databases = await this.listAllDatabases("create");
+          const options = databases.map((db) => ({
+            id: `${String(db.fields["projectId"])}/${String(db.fields["branchId"])}/${String(
+              db.fields["name"],
+            )}`,
+            label: `${String(db.fields["projectId"])} / ${String(
+              db.fields["branchId"],
+            )} / ${String(db.fields["name"])}`,
+          }));
+          fields.push({
+            key: "databaseRef",
+            label: "Database",
+            kind: "select",
+            required: true,
+            options,
+            ...(options[0] ? { defaultValue: options[0].id } : {}),
+          });
+        }
+        fields.push({
+          key: "authProvider",
+          label: "Auth Provider",
           kind: "select",
           required: false,
           options: [
-            { id: "false", label: "No" },
-            { id: "true", label: "Yes (paid plans)" },
+            { id: "", label: "Default" },
+            { id: "external", label: "External JWT" },
+            { id: "neon_auth", label: "Neon Auth" },
           ],
-          defaultValue: "false",
-        },
-      );
-      return { fields };
-    }
-
-    if (typeId === "neon-database") {
-      // Parent is neon-branch; its resource ID is `{accountId}:neon-branch:{projectId}/{branchId}`.
-      const parentExternalId = parentResourceId
-        ? parentResourceId.split(":").slice(2).join(":")
-        : "";
-      const [parentProjectId, parentBranchId] = parentExternalId.split("/");
-
-      const fields: CreateResourceConfig["fields"] = [];
-      let scopedProjectId = parentProjectId ?? "";
-      let scopedBranchId = parentBranchId ?? "";
-
-      if (!parentResourceId) {
-        // List projects so the user can pick project → branch → create database
-        const projects = await this.fetchAllProjects();
-        const projectOptions = projects.map((p) => ({
-          id: p.id,
-          label: p.name,
-        }));
-
-        // Pre-fetch branches for the first project if available
-        let branchOptions: Array<{ id: string; label: string }> = [];
-        if (projectOptions[0]) {
-          const firstProjectId = projectOptions[0].id;
-          const branches = await this.api.listProjectBranches({ projectId: firstProjectId });
-          branchOptions = branches.data.branches.map((b) => ({
-            id: b.id,
-            label: `${b.name}${isDefaultBranch(b) ? " (primary)" : ""}`,
-          }));
-        }
-
-        fields.push({
-          key: "projectId",
-          label: "Project",
-          kind: "select",
-          required: true,
-          options: projectOptions,
-          ...(projectOptions[0] ? { defaultValue: projectOptions[0].id } : {}),
-        });
-        fields.push({
-          key: "branchId",
-          label: "Branch",
-          kind: "select",
-          required: true,
-          options: branchOptions,
-          ...(branchOptions[0] ? { defaultValue: branchOptions[0].id } : {}),
-        });
-
-        scopedProjectId = projectOptions[0]?.id ?? "";
-        scopedBranchId = branchOptions[0]?.id ?? "";
-      }
-
-      // List roles from the scoped project/branch for the owner field
-      let roleOptions: Array<{ id: string; label: string }> = [];
-      if (scopedProjectId && scopedBranchId) {
-        try {
-          const roles = await this.api.listProjectBranchRoles(scopedProjectId, scopedBranchId);
-          roleOptions = roles.data.roles.map((r) => ({ id: r.name, label: r.name }));
-        } catch {
-          /* some branches may not have roles accessible */
-        }
-      }
-
-      fields.push({ key: "name", label: "Database Name", kind: "text", required: true });
-      fields.push({
-        key: "ownerName",
-        label: "Owner Role",
-        kind: "select",
-        required: true,
-        options:
-          roleOptions.length > 0 ? roleOptions : [{ id: "neondb_owner", label: "neondb_owner" }],
-        defaultValue: roleOptions[0]?.id ?? "neondb_owner",
-      });
-
-      return { fields };
-    }
-
-    if (typeId === "neon-role") {
-      const fields: CreateResourceConfig["fields"] = [];
-      if (!parentResourceId) {
-        const projects = await this.fetchAllProjects();
-        const branchOptions: { id: string; label: string }[] = [];
-        for (const p of projects) {
-          try {
-            const branches = await this.api.listProjectBranches({ projectId: p.id });
-            for (const b of branches.data.branches) {
-              branchOptions.push({ id: `${p.id}/${b.id}`, label: `${p.name} / ${b.name}` });
-            }
-          } catch {
-            /* skip */
-          }
-        }
-        fields.push({
-          key: "projectBranch",
-          label: "Project / Branch",
-          kind: "select",
-          required: true,
-          options: branchOptions,
-          ...(branchOptions[0] ? { defaultValue: branchOptions[0].id } : {}),
-        });
-      }
-      fields.push({ key: "name", label: "Role Name", kind: "text", required: true });
-      return { fields };
-    }
-
-    if (typeId === "neon-endpoint") {
-      const fields: CreateResourceConfig["fields"] = [];
-      if (!parentResourceId) {
-        const projects = await this.fetchAllProjects();
-        const branchOptions: { id: string; label: string }[] = [];
-        for (const p of projects) {
-          try {
-            const branches = await this.api.listProjectBranches({ projectId: p.id });
-            for (const b of branches.data.branches) {
-              branchOptions.push({ id: `${p.id}/${b.id}`, label: `${p.name} / ${b.name}` });
-            }
-          } catch {
-            /* skip */
-          }
-        }
-        fields.push({
-          key: "projectBranch",
-          label: "Project / Branch",
-          kind: "select",
-          required: true,
-          options: branchOptions,
-          ...(branchOptions[0] ? { defaultValue: branchOptions[0].id } : {}),
-        });
-      }
-      fields.push({
-        key: "type",
-        label: "Endpoint Type",
-        kind: "select",
-        required: true,
-        options: [
-          { id: "read_write", label: "Read-Write" },
-          { id: "read_only", label: "Read-Only" },
-        ],
-        defaultValue: "read_write",
-      });
-      const cuOptions = COMPUTE_UNITS.map((cu) => ({ id: cu, label: `${cu} CU` }));
-      fields.push(
-        {
-          key: "autoscalingMinCu",
-          label: "Min Compute",
-          kind: "select",
-          required: false,
-          options: [{ id: "", label: "Project default" }, ...cuOptions],
           defaultValue: "",
-        },
-        {
-          key: "autoscalingMaxCu",
-          label: "Max Compute",
-          kind: "select",
-          required: false,
-          description: "At most 8 CU above the minimum; sizes above 16 CU are fixed.",
-          options: [{ id: "", label: "Project default" }, ...cuOptions],
-          defaultValue: "",
-        },
-        {
-          key: "suspendTimeout",
-          label: "Scale to Zero After",
-          kind: "select",
-          required: false,
-          options: SUSPEND_OPTIONS,
-          defaultValue: "",
-        },
-      );
-      return { fields };
-    }
-
-    if (typeId === "neon-data-api") {
-      const fields: CreateResourceConfig["fields"] = [];
-      if (!parentResourceId) {
-        const databases = await this.listAllDatabases("create");
-        const options = databases.map((db) => ({
-          id: `${String(db.fields["projectId"])}/${String(db.fields["branchId"])}/${String(
-            db.fields["name"],
-          )}`,
-          label: `${String(db.fields["projectId"])} / ${String(
-            db.fields["branchId"],
-          )} / ${String(db.fields["name"])}`,
-        }));
-        fields.push({
-          key: "databaseRef",
-          label: "Database",
-          kind: "select",
-          required: true,
-          options,
-          ...(options[0] ? { defaultValue: options[0].id } : {}),
         });
+        fields.push({ key: "providerName", label: "Provider Name", kind: "text", required: false });
+        fields.push({ key: "jwksUrl", label: "JWKS URL", kind: "text", required: false });
+        fields.push({ key: "jwtAudience", label: "JWT Audience", kind: "text", required: false });
+        fields.push({
+          key: "anonymousRole",
+          label: "Anonymous Role",
+          kind: "text",
+          required: false,
+          defaultValue: "anonymous",
+        });
+        fields.push({
+          key: "schemas",
+          label: "Schemas",
+          kind: "string-list",
+          required: false,
+          defaultValue: "public",
+        });
+        fields.push({
+          key: "corsAllowedOrigins",
+          label: "CORS Allowed Origins",
+          kind: "text",
+          required: false,
+        });
+        return { fields };
       }
-      fields.push({
-        key: "authProvider",
-        label: "Auth Provider",
-        kind: "select",
-        required: false,
-        options: [
-          { id: "", label: "Default" },
-          { id: "external", label: "External JWT" },
-          { id: "neon_auth", label: "Neon Auth" },
-        ],
-        defaultValue: "",
-      });
-      fields.push({ key: "providerName", label: "Provider Name", kind: "text", required: false });
-      fields.push({ key: "jwksUrl", label: "JWKS URL", kind: "text", required: false });
-      fields.push({ key: "jwtAudience", label: "JWT Audience", kind: "text", required: false });
-      fields.push({
-        key: "anonymousRole",
-        label: "Anonymous Role",
-        kind: "text",
-        required: false,
-        defaultValue: "anonymous",
-      });
-      fields.push({
-        key: "schemas",
-        label: "Schemas",
-        kind: "string-list",
-        required: false,
-        defaultValue: "public",
-      });
-      fields.push({
-        key: "corsAllowedOrigins",
-        label: "CORS Allowed Origins",
-        kind: "text",
-        required: false,
-      });
-      return { fields };
-    }
 
-    throw new Error(`Neon plugin: no create config for type "${typeId}"`);
+      throw new Error(`Neon plugin: no create config for type "${typeId}"`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "neon-snapshot") {
-      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
-      return createSnapshotResource(this.api, accountId, ref, fields["name"] ?? "");
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "neon-snapshot") {
+        const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+        return createSnapshotResource(this.api, accountId, ref, fields["name"] ?? "");
+      }
 
-    if (typeId === "neon-bucket") {
-      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
-      const name = fields["name"] ?? "";
-      const accessLevel =
-        fields["accessLevel"] === "public_read"
-          ? BucketAccessLevel.PublicRead
-          : BucketAccessLevel.Private;
+      if (typeId === "neon-bucket") {
+        const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+        const name = fields["name"] ?? "";
+        const accessLevel =
+          fields["accessLevel"] === "public_read"
+            ? BucketAccessLevel.PublicRead
+            : BucketAccessLevel.Private;
 
-      const resp = await this.api.createProjectBranchBucket(ref.projectId, ref.branchId, {
-        name,
-        access_level: accessLevel,
-      });
-      const storage = await fetchBranchStorage(this.api, ref);
-      this.bucketLocator.remember(name, ref);
-      return buildBucketResource(accountId, ref, resp.data.bucket, storage);
-    }
+        const resp = await this.api.createProjectBranchBucket(ref.projectId, ref.branchId, {
+          name,
+          access_level: accessLevel,
+        });
+        const storage = await fetchBranchStorage(this.api, ref);
+        this.bucketLocator.remember(name, ref);
+        return buildBucketResource(accountId, ref, resp.data.bucket, storage);
+      }
 
-    if (typeId === "neon-credential") {
-      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
-      const bundle = SCOPE_BUNDLES.find((b) => b.id === fields["scopes"]) ?? SCOPE_BUNDLES[0]!;
-      const name = fields["name"] ?? "";
+      if (typeId === "neon-credential") {
+        const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+        const bundle = SCOPE_BUNDLES.find((b) => b.id === fields["scopes"]) ?? SCOPE_BUNDLES[0]!;
+        const name = fields["name"] ?? "";
 
-      const resp = await this.api.createCredential(ref.projectId, ref.branchId, {
-        ...(name ? { name } : {}),
-        scopes: bundle.scopes,
-        principal_type: "user",
-      });
+        const resp = await this.api.createCredential(ref.projectId, ref.branchId, {
+          ...(name ? { name } : {}),
+          scopes: bundle.scopes,
+          principal_type: "user",
+        });
 
-      // This is the only moment the token and S3 secret exist in a response;
-      // surface them as resolved outputs so the host can store them now.
-      const created = resp.data;
-      const resource = buildCredentialResource(accountId, ref, {
-        token_id: created.token_id,
-        token_id_short: created.token_id_short,
-        ...(created.name ? { name: created.name } : {}),
-        scopes: created.scopes,
-        principal_type: "user",
-        created_at: created.created_at,
-        ...(created.expires_at ? { expires_at: created.expires_at } : {}),
-      });
-      resource.resolvedOutputs = {
-        ...resource.resolvedOutputs,
-        apiToken: created.api_token,
-        s3SecretAccessKey: created.s3_secret_access_key,
-      };
-      return resource;
-    }
+        // This is the only moment the token and S3 secret exist in a response;
+        // surface them as resolved outputs so the host can store them now.
+        const created = resp.data;
+        const resource = buildCredentialResource(accountId, ref, {
+          token_id: created.token_id,
+          token_id_short: created.token_id_short,
+          ...(created.name ? { name: created.name } : {}),
+          scopes: created.scopes,
+          principal_type: "user",
+          created_at: created.created_at,
+          ...(created.expires_at ? { expires_at: created.expires_at } : {}),
+        });
+        resource.resolvedOutputs = {
+          ...resource.resolvedOutputs,
+          apiToken: created.api_token,
+          s3SecretAccessKey: created.s3_secret_access_key,
+        };
+        return resource;
+      }
 
-    if (typeId === "neon-auth") {
-      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
-      const databaseName = fields["databaseName"] ?? "";
-      await this.api.createNeonAuth(ref.projectId, ref.branchId, {
-        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
-        ...(databaseName ? { database_name: databaseName } : {}),
-      });
+      if (typeId === "neon-auth") {
+        const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+        const databaseName = fields["databaseName"] ?? "";
+        await this.api.createNeonAuth(ref.projectId, ref.branchId, {
+          auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+          ...(databaseName ? { database_name: databaseName } : {}),
+        });
 
-      // Re-read so the resource carries the same shape as a listed one.
-      const snapshot = await fetchAuthSnapshot(this.api, ref);
-      if (!snapshot) throw new Error("Neon plugin: auth was enabled but could not be read back");
-      return buildAuthResource(accountId, ref, snapshot);
-    }
+        // Re-read so the resource carries the same shape as a listed one.
+        const snapshot = await fetchAuthSnapshot(this.api, ref);
+        if (!snapshot) throw new Error("Neon plugin: auth was enabled but could not be read back");
+        return buildAuthResource(accountId, ref, snapshot);
+      }
 
-    if (typeId === "neon-auth-oauth-provider") {
-      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
-      const clientId = fields["clientId"] ?? "";
-      const clientSecret = fields["clientSecret"] ?? "";
-      const tenantId = fields["microsoftTenantId"] ?? "";
+      if (typeId === "neon-auth-oauth-provider") {
+        const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+        const clientId = fields["clientId"] ?? "";
+        const clientSecret = fields["clientSecret"] ?? "";
+        const tenantId = fields["microsoftTenantId"] ?? "";
 
-      const resp = await this.api.addBranchNeonAuthOauthProvider(ref.projectId, ref.branchId, {
-        id: (fields["providerId"] ?? "google") as NeonAuthOauthProviderId,
-        ...(clientId ? { client_id: clientId } : {}),
-        ...(clientSecret ? { client_secret: clientSecret } : {}),
-        ...(tenantId ? { microsoft_tenant_id: tenantId } : {}),
-      });
-      return buildOauthProviderResource(accountId, ref, resp.data);
-    }
+        const resp = await this.api.addBranchNeonAuthOauthProvider(ref.projectId, ref.branchId, {
+          id: (fields["providerId"] ?? "google") as NeonAuthOauthProviderId,
+          ...(clientId ? { client_id: clientId } : {}),
+          ...(clientSecret ? { client_secret: clientSecret } : {}),
+          ...(tenantId ? { microsoft_tenant_id: tenantId } : {}),
+        });
+        return buildOauthProviderResource(accountId, ref, resp.data);
+      }
 
-    if (typeId === "neon-auth-domain") {
-      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
-      const domain = fields["domain"] ?? "";
-      await this.api.addBranchNeonAuthTrustedDomain(ref.projectId, ref.branchId, {
-        domain,
-        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
-      });
-      return buildDomainResource(accountId, ref, {
-        domain,
-        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
-      });
-    }
+      if (typeId === "neon-auth-domain") {
+        const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+        const domain = fields["domain"] ?? "";
+        await this.api.addBranchNeonAuthTrustedDomain(ref.projectId, ref.branchId, {
+          domain,
+          auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+        });
+        return buildDomainResource(accountId, ref, {
+          domain,
+          auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+        });
+      }
 
-    // Parent resource IDs:
-    //   neon-project → `{accountId}:neon-project:{projectId}`
-    //   neon-branch  → `{accountId}:neon-branch:{projectId}/{branchId}`
-    const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
-    if (typeId === "neon-project") {
-      const pgVersion = Number(fields["pgVersion"] || 18);
-      const retention = fields["historyRetentionSeconds"];
-      const response = await this.api.createProject({
-        project: {
-          name: fields["name"] ?? "",
-          region_id: fields["region"] ?? "",
-          pg_version: pgVersion,
-          ...(retention ? { history_retention_seconds: Number(retention) } : {}),
-        },
-      });
-      return this.buildProjectResource(accountId, response.data.project);
-    }
+      // Parent resource IDs:
+      //   neon-project → `{accountId}:neon-project:{projectId}`
+      //   neon-branch  → `{accountId}:neon-branch:{projectId}/{branchId}`
+      const parentExternalId = parentResourceId
+        ? parentResourceId.split(":").slice(2).join(":")
+        : "";
+      if (typeId === "neon-project") {
+        const pgVersion = Number(fields["pgVersion"] || 18);
+        const retention = fields["historyRetentionSeconds"];
+        const response = await this.api.createProject({
+          project: {
+            name: fields["name"] ?? "",
+            region_id: fields["region"] ?? "",
+            pg_version: pgVersion,
+            ...(retention ? { history_retention_seconds: Number(retention) } : {}),
+          },
+        });
+        return this.buildProjectResource(accountId, response.data.project);
+      }
 
-    if (typeId === "neon-branch") {
-      // Parent is neon-project; recover its externalId (the projectId) when the
-      // form was opened from the project detail page.
-      const projectId = fields["projectId"] || parentExternalId;
-      if (!projectId) throw new Error("Neon plugin: projectId is required to create a branch");
+      if (typeId === "neon-branch") {
+        // Parent is neon-project; recover its externalId (the projectId) when the
+        // form was opened from the project detail page.
+        const projectId = fields["projectId"] || parentExternalId;
+        if (!projectId) throw new Error("Neon plugin: projectId is required to create a branch");
 
-      const schemaOnly = fields["initSource"] === "schema-only";
-      const parentTimestamp = schemaOnly ? "" : (fields["parentTimestamp"] ?? "");
-      const response = await this.api.createProjectBranch(projectId, {
-        branch: {
-          name: fields["name"] ?? "",
-          ...(fields["parentId"] ? { parent_id: fields["parentId"] } : {}),
-          ...(schemaOnly ? { init_source: "schema-only" } : {}),
-          ...(parentTimestamp ? { parent_timestamp: parentTimestamp } : {}),
-          ...(fields["expiresAt"] ? { expires_at: fields["expiresAt"] } : {}),
-          ...(fields["protected"] === "true" ? { protected: true } : {}),
-        },
-        endpoints: [{ type: EndpointType.ReadWrite }],
-      });
-      return this.buildBranchResource(accountId, projectId, response.data.branch);
-    }
+        const schemaOnly = fields["initSource"] === "schema-only";
+        const parentTimestamp = schemaOnly ? "" : (fields["parentTimestamp"] ?? "");
+        const response = await this.api.createProjectBranch(projectId, {
+          branch: {
+            name: fields["name"] ?? "",
+            ...(fields["parentId"] ? { parent_id: fields["parentId"] } : {}),
+            ...(schemaOnly ? { init_source: "schema-only" } : {}),
+            ...(parentTimestamp ? { parent_timestamp: parentTimestamp } : {}),
+            ...(fields["expiresAt"] ? { expires_at: fields["expiresAt"] } : {}),
+            ...(fields["protected"] === "true" ? { protected: true } : {}),
+          },
+          endpoints: [{ type: EndpointType.ReadWrite }],
+        });
+        return this.buildBranchResource(accountId, projectId, response.data.branch);
+      }
 
-    if (typeId === "neon-database") {
-      // Parent is neon-branch; its externalId is `{projectId}/{branchId}`.
-      const [parentProjectId, parentBranchId] = parentExternalId.split("/");
-      const projectId = fields["projectId"] || parentProjectId || "";
-      const branchId = fields["branchId"] || parentBranchId || "";
-      if (!projectId || !branchId)
-        throw new Error("Neon plugin: projectId and branchId are required to create a database");
+      if (typeId === "neon-database") {
+        // Parent is neon-branch; its externalId is `{projectId}/{branchId}`.
+        const [parentProjectId, parentBranchId] = parentExternalId.split("/");
+        const projectId = fields["projectId"] || parentProjectId || "";
+        const branchId = fields["branchId"] || parentBranchId || "";
+        if (!projectId || !branchId)
+          throw new Error("Neon plugin: projectId and branchId are required to create a database");
 
-      const response = await this.api.createProjectBranchDatabase(projectId, branchId, {
-        database: {
-          name: fields["name"] ?? "",
-          owner_name: fields["ownerName"] ?? "neondb_owner",
-        },
-      });
-      const db = response.data.database;
-      return {
-        id: `${accountId}:neon-database:${projectId}/${branchId}/${db.name}`,
-        pluginId: "neon",
-        resourceTypeId: "neon-database",
-        accountId,
-        displayName: db.name,
-        fields: {
-          name: db.name,
-          projectId,
-          branchId: db.branch_id,
-          ownerName: db.owner_name,
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: String(db.id),
-        parentResourceId: `${accountId}:neon-branch:${projectId}/${branchId}`,
-        createdAt: db.created_at,
-        updatedAt: db.updated_at,
-      };
-    }
+        const response = await this.api.createProjectBranchDatabase(projectId, branchId, {
+          database: {
+            name: fields["name"] ?? "",
+            owner_name: fields["ownerName"] ?? "neondb_owner",
+          },
+        });
+        const db = response.data.database;
+        return {
+          id: `${accountId}:neon-database:${projectId}/${branchId}/${db.name}`,
+          pluginId: "neon",
+          resourceTypeId: "neon-database",
+          accountId,
+          displayName: db.name,
+          fields: {
+            name: db.name,
+            projectId,
+            branchId: db.branch_id,
+            ownerName: db.owner_name,
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: String(db.id),
+          parentResourceId: `${accountId}:neon-branch:${projectId}/${branchId}`,
+          createdAt: db.created_at,
+          updatedAt: db.updated_at,
+        };
+      }
 
-    if (typeId === "neon-role") {
-      // Parent is neon-branch; its externalId is `{projectId}/{branchId}`.
-      const pb = (fields["projectBranch"] || parentExternalId).split("/");
-      const projectId = pb[0] ?? "";
-      const branchId = pb[1] ?? "";
-      if (!projectId || !branchId)
-        throw new Error("Neon plugin: projectBranch is required to create a role");
-      const response = await this.api.createProjectBranchRole(projectId, branchId, {
-        role: { name: fields["name"] ?? "" },
-      });
-      const r = response.data.role;
-      return {
-        id: `${accountId}:neon-role:${projectId}/${branchId}/${r.name}`,
-        pluginId: "neon",
-        resourceTypeId: "neon-role",
-        accountId,
-        displayName: r.name,
-        fields: {
-          name: r.name,
+      if (typeId === "neon-role") {
+        // Parent is neon-branch; its externalId is `{projectId}/{branchId}`.
+        const pb = (fields["projectBranch"] || parentExternalId).split("/");
+        const projectId = pb[0] ?? "";
+        const branchId = pb[1] ?? "";
+        if (!projectId || !branchId)
+          throw new Error("Neon plugin: projectBranch is required to create a role");
+        const response = await this.api.createProjectBranchRole(projectId, branchId, {
+          role: { name: fields["name"] ?? "" },
+        });
+        const r = response.data.role;
+        return {
+          id: `${accountId}:neon-role:${projectId}/${branchId}/${r.name}`,
+          pluginId: "neon",
+          resourceTypeId: "neon-role",
+          accountId,
+          displayName: r.name,
+          fields: {
+            name: r.name,
+            projectId,
+            branchId,
+            protected: r.protected ?? false,
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: r.name,
+          parentResourceId: `${accountId}:neon-branch:${projectId}/${branchId}`,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        };
+      }
+
+      if (typeId === "neon-endpoint") {
+        // Parent is neon-branch; its externalId is `{projectId}/{branchId}`.
+        const pb = (fields["projectBranch"] || parentExternalId).split("/");
+        const projectId = pb[0] ?? "";
+        const branchId = pb[1] ?? "";
+        if (!projectId || !branchId)
+          throw new Error("Neon plugin: projectBranch is required to create an endpoint");
+        const endpointType =
+          fields["type"] === "read_only" ? EndpointType.ReadOnly : EndpointType.ReadWrite;
+        const response = await this.api.createProjectEndpoint(projectId, {
+          endpoint: {
+            branch_id: branchId,
+            type: endpointType,
+            ...endpointSettings(fields),
+          },
+        });
+        return this.buildEndpointResource(accountId, projectId, response.data.endpoint);
+      }
+
+      if (typeId === "neon-data-api") {
+        const [parentProjectId, parentBranchId, ...parentDbParts] = parentExternalId.split("/");
+        const selected = fields["databaseRef"]?.split("/") ?? [];
+        const projectId = fields["projectId"] || parentProjectId || selected[0] || "";
+        const branchId = fields["branchId"] || parentBranchId || selected[1] || "";
+        const databaseName =
+          fields["databaseName"] || parentDbParts.join("/") || selected.slice(2).join("/") || "";
+        if (!projectId || !branchId || !databaseName) {
+          throw new Error("Neon plugin: project, branch, and database are required for Data API");
+        }
+
+        const schemas = parseCsv(fields["schemas"]);
+        const settings: NonNullable<
+          Parameters<typeof this.api.createProjectBranchDataApi>[3]
+        >["settings"] = {};
+        if (fields["anonymousRole"]) settings.db_anon_role = fields["anonymousRole"];
+        if (schemas.length > 0) settings.db_schemas = schemas;
+        if (fields["corsAllowedOrigins"]) {
+          settings.server_cors_allowed_origins = fields["corsAllowedOrigins"];
+        }
+
+        const body: Parameters<typeof this.api.createProjectBranchDataApi>[3] = {};
+        if (fields["authProvider"]) {
+          body.auth_provider = fields["authProvider"] === "neon_auth" ? "neon_auth" : "external";
+        }
+        if (fields["providerName"]) body.provider_name = fields["providerName"];
+        if (fields["jwksUrl"]) body.jwks_url = fields["jwksUrl"];
+        if (fields["jwtAudience"]) body.jwt_audience = fields["jwtAudience"];
+        if (Object.keys(settings).length > 0) body.settings = settings;
+
+        const response = await this.api.createProjectBranchDataApi(
           projectId,
           branchId,
-          protected: r.protected ?? false,
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: r.name,
-        parentResourceId: `${accountId}:neon-branch:${projectId}/${branchId}`,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      };
-    }
-
-    if (typeId === "neon-endpoint") {
-      // Parent is neon-branch; its externalId is `{projectId}/{branchId}`.
-      const pb = (fields["projectBranch"] || parentExternalId).split("/");
-      const projectId = pb[0] ?? "";
-      const branchId = pb[1] ?? "";
-      if (!projectId || !branchId)
-        throw new Error("Neon plugin: projectBranch is required to create an endpoint");
-      const endpointType =
-        fields["type"] === "read_only" ? EndpointType.ReadOnly : EndpointType.ReadWrite;
-      const response = await this.api.createProjectEndpoint(projectId, {
-        endpoint: {
-          branch_id: branchId,
-          type: endpointType,
-          ...endpointSettings(fields),
-        },
-      });
-      return this.buildEndpointResource(accountId, projectId, response.data.endpoint);
-    }
-
-    if (typeId === "neon-data-api") {
-      const [parentProjectId, parentBranchId, ...parentDbParts] = parentExternalId.split("/");
-      const selected = fields["databaseRef"]?.split("/") ?? [];
-      const projectId = fields["projectId"] || parentProjectId || selected[0] || "";
-      const branchId = fields["branchId"] || parentBranchId || selected[1] || "";
-      const databaseName =
-        fields["databaseName"] || parentDbParts.join("/") || selected.slice(2).join("/") || "";
-      if (!projectId || !branchId || !databaseName) {
-        throw new Error("Neon plugin: project, branch, and database are required for Data API");
+          databaseName,
+          body,
+        );
+        const dataApi = {
+          url: response.data.url,
+          status: "created",
+          settings: body.settings ?? null,
+        };
+        return this.buildDataApiResource(accountId, projectId, branchId, databaseName, dataApi);
       }
 
-      const schemas = parseCsv(fields["schemas"]);
-      const settings: NonNullable<
-        Parameters<typeof this.api.createProjectBranchDataApi>[3]
-      >["settings"] = {};
-      if (fields["anonymousRole"]) settings.db_anon_role = fields["anonymousRole"];
-      if (schemas.length > 0) settings.db_schemas = schemas;
-      if (fields["corsAllowedOrigins"]) {
-        settings.server_cors_allowed_origins = fields["corsAllowedOrigins"];
-      }
-
-      const body: Parameters<typeof this.api.createProjectBranchDataApi>[3] = {};
-      if (fields["authProvider"]) {
-        body.auth_provider = fields["authProvider"] === "neon_auth" ? "neon_auth" : "external";
-      }
-      if (fields["providerName"]) body.provider_name = fields["providerName"];
-      if (fields["jwksUrl"]) body.jwks_url = fields["jwksUrl"];
-      if (fields["jwtAudience"]) body.jwt_audience = fields["jwtAudience"];
-      if (Object.keys(settings).length > 0) body.settings = settings;
-
-      const response = await this.api.createProjectBranchDataApi(
-        projectId,
-        branchId,
-        databaseName,
-        body,
-      );
-      const dataApi = {
-        url: response.data.url,
-        status: "created",
-        settings: body.settings ?? null,
-      };
-      return this.buildDataApiResource(accountId, projectId, branchId, databaseName, dataApi);
-    }
-
-    throw new Error(`Neon plugin: createResource not supported for type "${typeId}"`);
+      throw new Error(`Neon plugin: createResource not supported for type "${typeId}"`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    if (typeId === "neon-snapshot") {
-      // externalId: {projectId}/{snapshotId}
-      const [projectId, snapshotId] = externalIdOf(resourceId).split("/");
-      if (!projectId || !snapshotId) throw new Error("Neon plugin: cannot parse snapshot ID");
-      await this.api.deleteSnapshot(projectId, snapshotId);
-      return;
-    }
-
-    if (typeId === "neon-bucket") {
-      const { ref, name } = this.parseBranchScoped(resourceId, "bucket");
-      await this.api.deleteProjectBranchBucket(ref.projectId, ref.branchId, name);
-      return;
-    }
-
-    if (typeId === "neon-credential") {
-      const { ref, name } = this.parseBranchScoped(resourceId, "credential");
-      await this.api.revokeCredential(ref.projectId, ref.branchId, name);
-      return;
-    }
-
-    if (typeId === "neon-function") {
-      const { ref, name } = this.parseBranchScoped(resourceId, "function");
-      await this.api.deleteProjectBranchFunction(ref.projectId, ref.branchId, name);
-      return;
-    }
-
-    if (typeId === "neon-auth") {
-      const ref = parseBranchExternalId(externalIdOf(resourceId));
-      if (!ref.projectId || !ref.branchId) throw new Error("Neon plugin: cannot parse auth ID");
-      // Leave the neon_auth schema in place: disabling the integration shouldn't
-      // drop the user's auth tables.
-      await this.api.disableNeonAuth(ref.projectId, ref.branchId, { delete_data: false });
-      return;
-    }
-
-    if (typeId === "neon-auth-oauth-provider") {
-      const { ref, name } = this.parseBranchScoped(resourceId, "OAuth provider");
-      await this.api.deleteBranchNeonAuthOauthProvider(
-        ref.projectId,
-        ref.branchId,
-        name as NeonAuthOauthProviderId,
-      );
-      return;
-    }
-
-    if (typeId === "neon-auth-domain") {
-      const { ref, name } = this.parseBranchScoped(resourceId, "trusted domain");
-      // Neon keys the delete by auth provider, which we captured when listing.
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const authProvider = String(
-        resource.fields["authProvider"] ?? NeonAuthSupportedAuthProvider.BetterAuth,
-      ) as NeonAuthSupportedAuthProvider;
-      await this.api.deleteBranchNeonAuthTrustedDomain(ref.projectId, ref.branchId, {
-        auth_provider: authProvider,
-        domains: [{ domain: name }],
-      });
-      return;
-    }
-
-    if (typeId === "neon-project") {
-      const projectId = resourceId.split(":").pop();
-      if (!projectId) throw new Error("Neon plugin: cannot parse project ID");
-      await this.api.deleteProject(projectId);
-      return;
-    }
-
-    if (typeId === "neon-branch") {
-      // externalId format: branchId, resource ID format: {accountId}:neon-branch:{projectId}/{branchId}
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Neon plugin: cannot parse branch ID");
-      const [projectId, branchId] = compound.split("/");
-      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
-      await this.api.deleteProjectBranch({ projectId, branchId });
-      return;
-    }
-
-    if (typeId === "neon-database") {
-      // resource ID format: {accountId}:neon-database:{projectId}/{branchId}/{dbName}
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Neon plugin: cannot parse database ID");
-      const parts = compound.split("/");
-      if (parts.length < 3) throw new Error("Neon plugin: cannot parse database ID");
-      const [projectId, branchId, ...dbParts] = parts;
-      const dbName = dbParts.join("/");
-      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse database ID");
-      await this.api.deleteProjectBranchDatabase(projectId, branchId, dbName);
-      return;
-    }
-
-    if (typeId === "neon-endpoint") {
-      // resource ID format: {accountId}:neon-endpoint:{projectId}/{endpointId}
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Neon plugin: cannot parse endpoint ID");
-      const [projectId, endpointId] = compound.split("/");
-      if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
-      await this.api.deleteProjectEndpoint(projectId, endpointId);
-      return;
-    }
-
-    if (typeId === "neon-role") {
-      // resource ID format: {accountId}:neon-role:{projectId}/{branchId}/{roleName}
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Neon plugin: cannot parse role ID");
-      const parts = compound.split("/");
-      if (parts.length < 3) throw new Error("Neon plugin: cannot parse role ID");
-      const [projectId, branchId, ...roleParts] = parts;
-      const roleName = roleParts.join("/");
-      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse role ID");
-      await this.api.deleteProjectBranchRole(projectId, branchId, roleName);
-      return;
-    }
-
-    if (typeId === "neon-data-api") {
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Neon plugin: cannot parse Data API ID");
-      const parts = compound.split("/");
-      if (parts.length < 3) throw new Error("Neon plugin: cannot parse Data API ID");
-      const [projectId, branchId, ...dbParts] = parts;
-      const databaseName = dbParts.join("/");
-      if (!projectId || !branchId || !databaseName) {
-        throw new Error("Neon plugin: cannot parse Data API ID");
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "neon-snapshot") {
+        // externalId: {projectId}/{snapshotId}
+        const [projectId, snapshotId] = externalIdOf(resourceId).split("/");
+        if (!projectId || !snapshotId) throw new Error("Neon plugin: cannot parse snapshot ID");
+        await this.api.deleteSnapshot(projectId, snapshotId);
+        return;
       }
-      await this.api.deleteProjectBranchDataApi(projectId, branchId, databaseName);
-      return;
-    }
 
-    throw new Error(`Neon plugin: deleteResource not supported for type "${typeId}"`);
+      if (typeId === "neon-bucket") {
+        const { ref, name } = this.parseBranchScoped(resourceId, "bucket");
+        await this.api.deleteProjectBranchBucket(ref.projectId, ref.branchId, name);
+        return;
+      }
+
+      if (typeId === "neon-credential") {
+        const { ref, name } = this.parseBranchScoped(resourceId, "credential");
+        await this.api.revokeCredential(ref.projectId, ref.branchId, name);
+        return;
+      }
+
+      if (typeId === "neon-function") {
+        const { ref, name } = this.parseBranchScoped(resourceId, "function");
+        await this.api.deleteProjectBranchFunction(ref.projectId, ref.branchId, name);
+        return;
+      }
+
+      if (typeId === "neon-auth") {
+        const ref = parseBranchExternalId(externalIdOf(resourceId));
+        if (!ref.projectId || !ref.branchId) throw new Error("Neon plugin: cannot parse auth ID");
+        // Leave the neon_auth schema in place: disabling the integration shouldn't
+        // drop the user's auth tables.
+        await this.api.disableNeonAuth(ref.projectId, ref.branchId, { delete_data: false });
+        return;
+      }
+
+      if (typeId === "neon-auth-oauth-provider") {
+        const { ref, name } = this.parseBranchScoped(resourceId, "OAuth provider");
+        await this.api.deleteBranchNeonAuthOauthProvider(
+          ref.projectId,
+          ref.branchId,
+          name as NeonAuthOauthProviderId,
+        );
+        return;
+      }
+
+      if (typeId === "neon-auth-domain") {
+        const { ref, name } = this.parseBranchScoped(resourceId, "trusted domain");
+        // Neon keys the delete by auth provider, which we captured when listing.
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const authProvider = String(
+          resource.fields["authProvider"] ?? NeonAuthSupportedAuthProvider.BetterAuth,
+        ) as NeonAuthSupportedAuthProvider;
+        await this.api.deleteBranchNeonAuthTrustedDomain(ref.projectId, ref.branchId, {
+          auth_provider: authProvider,
+          domains: [{ domain: name }],
+        });
+        return;
+      }
+
+      if (typeId === "neon-project") {
+        const projectId = resourceId.split(":").pop();
+        if (!projectId) throw new Error("Neon plugin: cannot parse project ID");
+        await this.api.deleteProject(projectId);
+        return;
+      }
+
+      if (typeId === "neon-branch") {
+        // externalId format: branchId, resource ID format: {accountId}:neon-branch:{projectId}/{branchId}
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Neon plugin: cannot parse branch ID");
+        const [projectId, branchId] = compound.split("/");
+        if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
+        await this.api.deleteProjectBranch({ projectId, branchId });
+        return;
+      }
+
+      if (typeId === "neon-database") {
+        // resource ID format: {accountId}:neon-database:{projectId}/{branchId}/{dbName}
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Neon plugin: cannot parse database ID");
+        const parts = compound.split("/");
+        if (parts.length < 3) throw new Error("Neon plugin: cannot parse database ID");
+        const [projectId, branchId, ...dbParts] = parts;
+        const dbName = dbParts.join("/");
+        if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse database ID");
+        await this.api.deleteProjectBranchDatabase(projectId, branchId, dbName);
+        return;
+      }
+
+      if (typeId === "neon-endpoint") {
+        // resource ID format: {accountId}:neon-endpoint:{projectId}/{endpointId}
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Neon plugin: cannot parse endpoint ID");
+        const [projectId, endpointId] = compound.split("/");
+        if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
+        await this.api.deleteProjectEndpoint(projectId, endpointId);
+        return;
+      }
+
+      if (typeId === "neon-role") {
+        // resource ID format: {accountId}:neon-role:{projectId}/{branchId}/{roleName}
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Neon plugin: cannot parse role ID");
+        const parts = compound.split("/");
+        if (parts.length < 3) throw new Error("Neon plugin: cannot parse role ID");
+        const [projectId, branchId, ...roleParts] = parts;
+        const roleName = roleParts.join("/");
+        if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse role ID");
+        await this.api.deleteProjectBranchRole(projectId, branchId, roleName);
+        return;
+      }
+
+      if (typeId === "neon-data-api") {
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Neon plugin: cannot parse Data API ID");
+        const parts = compound.split("/");
+        if (parts.length < 3) throw new Error("Neon plugin: cannot parse Data API ID");
+        const [projectId, branchId, ...dbParts] = parts;
+        const databaseName = dbParts.join("/");
+        if (!projectId || !branchId || !databaseName) {
+          throw new Error("Neon plugin: cannot parse Data API ID");
+        }
+        await this.api.deleteProjectBranchDataApi(projectId, branchId, databaseName);
+        return;
+      }
+
+      throw new Error(`Neon plugin: deleteResource not supported for type "${typeId}"`);
+    });
   }
 
   /**
@@ -1400,26 +1434,34 @@ export class NeonClient implements PluginClient {
     return { ref: { projectId, branchId }, name };
   }
 
-  async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    const ref = await this.resolveBucketRef(bucket);
-    return listBucketObjects(this.api, ref, bucket, prefix);
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      const ref = await this.resolveBucketRef(bucket);
+      return listBucketObjects(this.api, ref, bucket, prefix);
+    });
   }
 
-  async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
-    const ref = await this.resolveBucketRef(bucket);
-    await uploadBucketObject(this.api, ref, bucket, key, file, file.type || undefined);
+  uploadStorageObject(bucket: string, key: string, file: File): PluginEffect<void> {
+    return attempt(async () => {
+      const ref = await this.resolveBucketRef(bucket);
+      await uploadBucketObject(this.api, ref, bucket, key, file, file.type || undefined);
+    });
   }
 
-  async makeStorageFolder(bucket: string, key: string): Promise<void> {
-    const ref = await this.resolveBucketRef(bucket);
-    // S3 has no folders; a zero-byte object with a trailing slash is the marker.
-    const folderKey = key.endsWith("/") ? key : `${key}/`;
-    await uploadBucketObject(this.api, ref, bucket, folderKey, new Blob([]));
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      const ref = await this.resolveBucketRef(bucket);
+      // S3 has no folders; a zero-byte object with a trailing slash is the marker.
+      const folderKey = key.endsWith("/") ? key : `${key}/`;
+      await uploadBucketObject(this.api, ref, bucket, folderKey, new Blob([]));
+    });
   }
 
-  async deleteStorageObject(bucket: string, key: string): Promise<void> {
-    const ref = await this.resolveBucketRef(bucket);
-    await deleteBucketObject(this.api, ref, bucket, key);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      const ref = await this.resolveBucketRef(bucket);
+      await deleteBucketObject(this.api, ref, bucket, key);
+    });
   }
 
   /** The host's storage browser knows only a bucket name, so map it back to a branch. */
@@ -1433,101 +1475,105 @@ export class NeonClient implements PluginClient {
    * Parameterised branch actions, posted by `prompt-nosql-command` forms as a
    * single JSON-encoded record.
    */
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    if (typeId === "neon-branch" && command === "restore") {
-      const [projectId, branchId] = externalIdOf(resourceId).split("/");
-      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
-      const values = decodePromptArgs(args);
-      const timestamp = (values["timestamp"] ?? "").trim();
-      if (!timestamp) throw new Error("Neon plugin: pick the moment to restore to");
-      // Restoring a branch onto its own history requires keeping the current
-      // state as a backup branch.
-      const preserveName =
-        (values["preserveUnderName"] ?? "").trim() ||
-        `${branchId}-before-restore-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`;
-      await this.api.restoreProjectBranch(projectId, branchId, {
-        source_branch_id: branchId,
-        source_timestamp: timestamp,
-        preserve_under_name: preserveName,
-      });
-      return null;
-    }
-    throw new Error(`Neon plugin: unknown command "${command}" for type "${typeId}"`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      if (typeId === "neon-branch" && command === "restore") {
+        const [projectId, branchId] = externalIdOf(resourceId).split("/");
+        if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
+        const values = decodePromptArgs(args);
+        const timestamp = (values["timestamp"] ?? "").trim();
+        if (!timestamp) throw new Error("Neon plugin: pick the moment to restore to");
+        // Restoring a branch onto its own history requires keeping the current
+        // state as a backup branch.
+        const preserveName =
+          (values["preserveUnderName"] ?? "").trim() ||
+          `${branchId}-before-restore-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`;
+        await this.api.restoreProjectBranch(projectId, branchId, {
+          source_branch_id: branchId,
+          source_timestamp: timestamp,
+          preserve_under_name: preserveName,
+        });
+        return null;
+      }
+      throw new Error(`Neon plugin: unknown command "${command}" for type "${typeId}"`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "neon-project") {
-      const projectId = externalIdOf(resourceId);
-      const retention = fields["historyRetentionSeconds"];
-      const resp = await this.api.updateProject(projectId, {
-        project: {
-          ...(fields["name"] ? { name: fields["name"] } : {}),
-          ...(retention !== undefined && retention !== ""
-            ? { history_retention_seconds: Number(retention) }
-            : {}),
-        },
-      });
-      return this.buildProjectResource(accountId, resp.data.project);
-    }
-
-    if (typeId === "neon-branch") {
-      const [projectId, branchId] = externalIdOf(resourceId).split("/");
-      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
-      const branch: { name?: string; protected?: boolean; expires_at?: string | null } = {};
-      if (fields["name"]) branch.name = fields["name"];
-      if (fields["protected"] !== undefined && fields["protected"] !== "") {
-        branch.protected = fields["protected"] === "true";
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "neon-project") {
+        const projectId = externalIdOf(resourceId);
+        const retention = fields["historyRetentionSeconds"];
+        const resp = await this.api.updateProject(projectId, {
+          project: {
+            ...(fields["name"] ? { name: fields["name"] } : {}),
+            ...(retention !== undefined && retention !== ""
+              ? { history_retention_seconds: Number(retention) }
+              : {}),
+          },
+        });
+        return this.buildProjectResource(accountId, resp.data.project);
       }
-      if (fields["expiresAt"] !== undefined) {
-        // An emptied field removes the expiry.
-        branch.expires_at = fields["expiresAt"].trim() || null;
+
+      if (typeId === "neon-branch") {
+        const [projectId, branchId] = externalIdOf(resourceId).split("/");
+        if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
+        const branch: { name?: string; protected?: boolean; expires_at?: string | null } = {};
+        if (fields["name"]) branch.name = fields["name"];
+        if (fields["protected"] !== undefined && fields["protected"] !== "") {
+          branch.protected = fields["protected"] === "true";
+        }
+        if (fields["expiresAt"] !== undefined) {
+          // An emptied field removes the expiry.
+          branch.expires_at = fields["expiresAt"].trim() || null;
+        }
+        const resp = await this.api.updateProjectBranch(projectId, branchId, { branch });
+        return this.buildBranchResource(accountId, projectId, resp.data.branch);
       }
-      const resp = await this.api.updateProjectBranch(projectId, branchId, { branch });
-      return this.buildBranchResource(accountId, projectId, resp.data.branch);
-    }
 
-    if (typeId === "neon-endpoint") {
-      const [projectId, endpointId] = externalIdOf(resourceId).split("/");
-      if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
-      const settings = endpointSettings(fields);
-      const resp = await this.api.updateProjectEndpoint(projectId, endpointId, {
-        endpoint: {
-          ...settings,
-          ...(fields["name"] !== undefined && fields["name"] !== ""
-            ? { name: fields["name"] }
-            : {}),
-        },
-      });
-      return this.buildEndpointResource(accountId, projectId, resp.data.endpoint);
-    }
-
-    if (typeId === "neon-database") {
-      const parts = externalIdOf(resourceId).split("/");
-      const [projectId, branchId, ...dbParts] = parts;
-      const databaseName = dbParts.join("/");
-      if (!projectId || !branchId || !databaseName) {
-        throw new Error("Neon plugin: cannot parse database ID");
+      if (typeId === "neon-endpoint") {
+        const [projectId, endpointId] = externalIdOf(resourceId).split("/");
+        if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
+        const settings = endpointSettings(fields);
+        const resp = await this.api.updateProjectEndpoint(projectId, endpointId, {
+          endpoint: {
+            ...settings,
+            ...(fields["name"] !== undefined && fields["name"] !== ""
+              ? { name: fields["name"] }
+              : {}),
+          },
+        });
+        return this.buildEndpointResource(accountId, projectId, resp.data.endpoint);
       }
-      const owner = fields["ownerName"]?.trim();
-      if (!owner) throw new Error("Neon plugin: a database needs an owner role");
-      const resp = await this.api.updateProjectBranchDatabase(projectId, branchId, databaseName, {
-        database: { owner_name: owner },
-      });
-      return this.buildDatabaseResource(accountId, projectId, branchId, resp.data.database);
-    }
 
-    throw new Error(`Neon plugin: updateResource not supported for type "${typeId}"`);
+      if (typeId === "neon-database") {
+        const parts = externalIdOf(resourceId).split("/");
+        const [projectId, branchId, ...dbParts] = parts;
+        const databaseName = dbParts.join("/");
+        if (!projectId || !branchId || !databaseName) {
+          throw new Error("Neon plugin: cannot parse database ID");
+        }
+        const owner = fields["ownerName"]?.trim();
+        if (!owner) throw new Error("Neon plugin: a database needs an owner role");
+        const resp = await this.api.updateProjectBranchDatabase(projectId, branchId, databaseName, {
+          database: { owner_name: owner },
+        });
+        return this.buildDatabaseResource(accountId, projectId, branchId, resp.data.database);
+      }
+
+      throw new Error(`Neon plugin: updateResource not supported for type "${typeId}"`);
+    });
   }
 
   /** Active regions from Neon, falling back to the static table. */
@@ -1556,51 +1602,54 @@ export class NeonClient implements PluginClient {
     }));
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    if (typeId === "neon-snapshot" && actionId === "restore") {
-      const [projectId, snapshotId] = externalIdOf(resourceId).split("/");
-      if (!projectId || !snapshotId) throw new Error("Neon plugin: cannot parse snapshot ID");
-      await restoreSnapshot(this.api, projectId, snapshotId);
-      return;
-    }
-
-    if (
-      typeId === "neon-endpoint" &&
-      (actionId === "start" || actionId === "suspend" || actionId === "restart")
-    ) {
-      // resource ID format: {accountId}:neon-endpoint:{projectId}/{endpointId}
-      const [projectId, endpointId] = externalIdOf(resourceId).split("/");
-      if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
-      if (actionId === "start") await this.api.startProjectEndpoint(projectId, endpointId);
-      else if (actionId === "suspend") await this.api.suspendProjectEndpoint(projectId, endpointId);
-      else await this.api.restartProjectEndpoint(projectId, endpointId);
-      return;
-    }
-
-    if (typeId === "neon-branch") {
-      const [projectId, branchId] = externalIdOf(resourceId).split("/");
-      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
-      if (actionId === "set-default") {
-        await this.api.setDefaultProjectBranch(projectId, branchId);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "neon-snapshot" && actionId === "restore") {
+        const [projectId, snapshotId] = externalIdOf(resourceId).split("/");
+        if (!projectId || !snapshotId) throw new Error("Neon plugin: cannot parse snapshot ID");
+        await restoreSnapshot(this.api, projectId, snapshotId);
         return;
       }
-      if (actionId === "reset-from-parent") {
-        // Neon has no separate reset endpoint: restoring from the parent's
-        // head is the documented way to reset a branch to its parent.
-        const branch = await this.api.getProjectBranch(projectId, branchId);
-        const parentId = branch.data.branch.parent_id;
-        if (!parentId) throw new Error("Neon plugin: a root branch has no parent to reset from");
-        await this.api.restoreProjectBranch(projectId, branchId, { source_branch_id: parentId });
+
+      if (
+        typeId === "neon-endpoint" &&
+        (actionId === "start" || actionId === "suspend" || actionId === "restart")
+      ) {
+        // resource ID format: {accountId}:neon-endpoint:{projectId}/{endpointId}
+        const [projectId, endpointId] = externalIdOf(resourceId).split("/");
+        if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
+        if (actionId === "start") await this.api.startProjectEndpoint(projectId, endpointId);
+        else if (actionId === "suspend")
+          await this.api.suspendProjectEndpoint(projectId, endpointId);
+        else await this.api.restartProjectEndpoint(projectId, endpointId);
         return;
       }
-    }
 
-    throw new Error(`Neon plugin: unknown action "${actionId}" for type "${typeId}"`);
+      if (typeId === "neon-branch") {
+        const [projectId, branchId] = externalIdOf(resourceId).split("/");
+        if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
+        if (actionId === "set-default") {
+          await this.api.setDefaultProjectBranch(projectId, branchId);
+          return;
+        }
+        if (actionId === "reset-from-parent") {
+          // Neon has no separate reset endpoint: restoring from the parent's
+          // head is the documented way to reset a branch to its parent.
+          const branch = await this.api.getProjectBranch(projectId, branchId);
+          const parentId = branch.data.branch.parent_id;
+          if (!parentId) throw new Error("Neon plugin: a root branch has no parent to reset from");
+          await this.api.restoreProjectBranch(projectId, branchId, { source_branch_id: parentId });
+          return;
+        }
+      }
+
+      throw new Error(`Neon plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
   /**
@@ -1872,7 +1921,9 @@ export class NeonClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<string> {
-    const resource = await this.getResource("neon-database", resourceId, accountId);
+    const resource = await runPluginEffect(
+      this.getResource("neon-database", resourceId, accountId),
+    );
     const projectId = String(resource.fields["projectId"] ?? "");
     const branchId = String(resource.fields["branchId"] ?? "");
     const dbName = String(resource.fields["name"] ?? "");
@@ -1896,7 +1947,7 @@ export class NeonClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<string> {
-    const resource = await this.getResource("neon-project", resourceId, accountId);
+    const resource = await runPluginEffect(this.getResource("neon-project", resourceId, accountId));
     const projectId = String(resource.externalId ?? "");
 
     const branchResp = await this.api.listProjectBranches({ projectId });
@@ -1925,7 +1976,7 @@ export class NeonClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<string> {
-    const resource = await this.getResource("neon-branch", resourceId, accountId);
+    const resource = await runPluginEffect(this.getResource("neon-branch", resourceId, accountId));
     const projectId = String(resource.fields["projectId"] ?? "");
     const branchId = String(resource.externalId ?? "");
 
@@ -1943,7 +1994,7 @@ export class NeonClient implements PluginClient {
   }
 
   private async resolveRolePassword(resourceId: string, accountId: string): Promise<string> {
-    const resource = await this.getResource("neon-role", resourceId, accountId);
+    const resource = await runPluginEffect(this.getResource("neon-role", resourceId, accountId));
     const projectId = String(resource.fields["projectId"] ?? "");
     const branchId = String(resource.fields["branchId"] ?? "");
     const roleName = String(resource.fields["name"] ?? "");
@@ -1952,62 +2003,64 @@ export class NeonClient implements PluginClient {
     return resp.data.password;
   }
 
-  async rerollOutput(
+  rerollOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<void> {
-    if (outputKey !== "connectionString" && outputKey !== "password") {
-      throw new Error(`Neon plugin: cannot reroll output "${outputKey}" for type "${typeId}"`);
-    }
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (outputKey !== "connectionString" && outputKey !== "password") {
+        throw new Error(`Neon plugin: cannot reroll output "${outputKey}" for type "${typeId}"`);
+      }
 
-    // Resolve project/branch/role from the resource shape. neon-database and
-    // neon-branch both reset the owner of the first database; neon-role resets
-    // itself; neon-project resets the owner of the primary branch's default db.
-    let projectId: string;
-    let branchId: string;
-    let roleName: string;
+      // Resolve project/branch/role from the resource shape. neon-database and
+      // neon-branch both reset the owner of the first database; neon-role resets
+      // itself; neon-project resets the owner of the primary branch's default db.
+      let projectId: string;
+      let branchId: string;
+      let roleName: string;
 
-    if (typeId === "neon-role") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      projectId = String(resource.fields["projectId"] ?? "");
-      branchId = String(resource.fields["branchId"] ?? "");
-      roleName = String(resource.fields["name"] ?? "");
-    } else if (typeId === "neon-database") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      projectId = String(resource.fields["projectId"] ?? "");
-      branchId = String(resource.fields["branchId"] ?? "");
-      roleName = String(resource.fields["ownerName"] ?? "neondb_owner");
-    } else if (typeId === "neon-branch") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      projectId = String(resource.fields["projectId"] ?? "");
-      branchId = String(resource.externalId ?? "");
-      const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
-      const db = dbResp.data.databases[0];
-      if (!db) throw new Error("Neon plugin: no databases on branch to reroll");
-      roleName = db.owner_name;
-    } else if (typeId === "neon-project") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      projectId = String(resource.externalId ?? "");
-      const branchResp = await this.api.listProjectBranches({ projectId });
-      const primary =
-        branchResp.data.branches.find((b) => isDefaultBranch(b)) ?? branchResp.data.branches[0];
-      if (!primary) throw new Error("Neon plugin: no branches to reroll");
-      branchId = primary.id;
-      const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
-      const db = dbResp.data.databases[0];
-      if (!db) throw new Error("Neon plugin: no databases on primary branch to reroll");
-      roleName = db.owner_name;
-    } else {
-      throw new Error(`Neon plugin: rerollOutput not supported for type "${typeId}"`);
-    }
+      if (typeId === "neon-role") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        projectId = String(resource.fields["projectId"] ?? "");
+        branchId = String(resource.fields["branchId"] ?? "");
+        roleName = String(resource.fields["name"] ?? "");
+      } else if (typeId === "neon-database") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        projectId = String(resource.fields["projectId"] ?? "");
+        branchId = String(resource.fields["branchId"] ?? "");
+        roleName = String(resource.fields["ownerName"] ?? "neondb_owner");
+      } else if (typeId === "neon-branch") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        projectId = String(resource.fields["projectId"] ?? "");
+        branchId = String(resource.externalId ?? "");
+        const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
+        const db = dbResp.data.databases[0];
+        if (!db) throw new Error("Neon plugin: no databases on branch to reroll");
+        roleName = db.owner_name;
+      } else if (typeId === "neon-project") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        projectId = String(resource.externalId ?? "");
+        const branchResp = await this.api.listProjectBranches({ projectId });
+        const primary =
+          branchResp.data.branches.find((b) => isDefaultBranch(b)) ?? branchResp.data.branches[0];
+        if (!primary) throw new Error("Neon plugin: no branches to reroll");
+        branchId = primary.id;
+        const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
+        const db = dbResp.data.databases[0];
+        if (!db) throw new Error("Neon plugin: no databases on primary branch to reroll");
+        roleName = db.owner_name;
+      } else {
+        throw new Error(`Neon plugin: rerollOutput not supported for type "${typeId}"`);
+      }
 
-    if (!projectId || !branchId || !roleName) {
-      throw new Error("Neon plugin: project/branch/role required to reset password");
-    }
+      if (!projectId || !branchId || !roleName) {
+        throw new Error("Neon plugin: project/branch/role required to reset password");
+      }
 
-    await this.api.resetProjectBranchRolePassword(projectId, branchId, roleName);
+      await this.api.resetProjectBranchRolePassword(projectId, branchId, roleName);
+    });
   }
 
   private renderProjectDetail(resource: ResourceInstance): DetailViewSchema {

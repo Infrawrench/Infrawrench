@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { cleanTerraformLog, normaliseHostname, statusOf, tfList } from "../api.js";
 import { HcpTerraformClient, runAttributes, tailLines } from "../client.js";
@@ -29,9 +30,8 @@ function client(
         }
       : {}),
   };
-  const c = new HcpTerraformClient(
-    { apiToken: "tok", organization: "acme", ...creds },
-    services as never,
+  const c = hostClient(
+    new HcpTerraformClient({ apiToken: "tok", organization: "acme", ...creds }, services as never),
   );
   c.setSleep(async () => {});
   return { c, calls };

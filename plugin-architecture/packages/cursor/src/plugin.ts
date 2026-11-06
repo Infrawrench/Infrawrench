@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ADMIN_API_DOCS, DASHBOARD_URL } from "./api.js";
 import { CursorClient } from "./client.js";
@@ -9,16 +10,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { cursorSeatRemediationCommands } from "./remediation.js";
 import { SEAT_PRODUCT } from "./seats.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "cursor",
-  version: "0.1.0",
+  egressHosts: ["api.cursor.com"],
   displayName: "Cursor",
   description:
     "Cursor team administration: members and seats (with idle-seat detection), per-user spend limits, billing and member groups, repository blocklists, usage by model and member, and daily cost from usage-based spend plus seat estimates. Enterprise teams also get the Analytics and AI Code Tracking series.",
   logoSvg,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "Admin API Key",
@@ -58,7 +57,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Open the Cursor dashboard", url: DASHBOARD_URL },
     },
     caCertCredentialField,
-  ],
+  ]),
   // Usage-based spend is billed data from POST /teams/filtered-usage-events;
   // seat rows are member list × the seat price above, because no endpoint
   // reports the plan or the seat price. One derived component is enough to
@@ -104,12 +103,15 @@ const manifest: PluginManifest = {
       },
     ],
   },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new CursorClient(credentials, services),
+  testCredentials: { apiKey: "crsr_test" },
   parseStatusFeed,
   seatRemediationCommands: cursorSeatRemediationCommands,
-};
+});

@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, it, expect, vi } from "vitest";
 import type {
   BusinessMetricSourceRange,
@@ -25,8 +27,8 @@ function makeSql(rows: Record<string, unknown>[] = []) {
   };
 }
 
-function client(sql?: SqlHostServices): MySQLClient {
-  return new MySQLClient({ connectionString: CS }, { sql } as HostServices);
+function client(sql?: SqlHostServices): HostedMethods<MySQLClient> {
+  return hostClient(new MySQLClient({ connectionString: CS }, { sql } as HostServices));
 }
 
 describe("MySQL business-metric source", () => {

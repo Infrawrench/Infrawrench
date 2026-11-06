@@ -1,4 +1,10 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { OpenRouterClient } from "./client.js";
 import { OPENROUTER_OAUTH, buildOpenRouterAuthorizeUrl, exchangeOpenRouterCode } from "./oauth.js";
@@ -13,9 +19,9 @@ import { ByokCredentialResourceType } from "./resources/byok-credential.js";
 // OpenRouter's own mark, taken from the inline logo on openrouter.ai
 // (viewBox 19.82 17.199 365.556 258.298) and its favicon colours: near-black
 // #070C0E card, off-white glyph.
-const manifest: PluginManifest = {
+export const manifest = {
   id: "openrouter",
-  version: "0.1.0",
+  egressHosts: ["openrouter.ai"],
   displayName: "OpenRouter",
   description:
     "The OpenRouter model catalogue, per-provider endpoint pricing and uptime, API keys, guardrails, workspaces and budgets, BYOK credentials, credits and activity",
@@ -25,9 +31,7 @@ const manifest: PluginManifest = {
       <path d="M303.9475,17.19926c42.79734,0,77.48933,34.69327,77.48933,77.48933s-34.69199,77.48933-77.48933,77.48933l76.86166,76.86244c9.76367,9.76313,2.84903,26.45667-10.95697,26.45667h-220.88335c-71.32686,0-129.14889-57.82202-129.14889-129.14889S77.64197,17.19926,148.96884,17.19926h154.97866ZM148.96884,68.85881c-42.79607,0-77.48933,34.69327-77.48933,77.48933s34.69327,77.48933,77.48933,77.48933,77.48933-34.69327,77.48933-77.48933-34.69327-77.48933-77.48933-77.48933Z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "managementKey",
       label: "Management Key",
@@ -52,7 +56,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Create an API key", url: "https://openrouter.ai/settings/keys" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // GET /activity is daily and broken down by model + provider.
@@ -71,7 +75,9 @@ const manifest: PluginManifest = {
   },
   rateLimit: { capacity: 20, refillPerSecond: 4 },
   oauth: OPENROUTER_OAUTH,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ModelResourceType,
@@ -83,10 +89,11 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ByokCredentialResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new OpenRouterClient(credentials, services),
+  testCredentials: { managementKey: "sk-or-v1-test-management", apiKey: "sk-or-v1-test-inference" },
   buildOAuthAuthorizeUrl: buildOpenRouterAuthorizeUrl,
-  exchangeOAuthCode: exchangeOpenRouterCode,
-};
+  exchangeOAuthCode: attemptFn(exchangeOpenRouterCode),
+});

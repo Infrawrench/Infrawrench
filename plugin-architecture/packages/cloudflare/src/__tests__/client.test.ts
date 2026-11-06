@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, afterEach, type Mock } from "vitest";
 import { CloudflareClient } from "../client.js";
 import { asyncIter } from "./_helpers.js";
@@ -16,9 +17,9 @@ function iter<T>(items: T[]) {
 }
 
 function makeClient(apiOver: Record<string, unknown> = {}) {
-  const client = new CloudflareClient({ apiToken: "tok" }, [
-    { id: "zone", name: "Zone", fields: [] },
-  ] as never);
+  const client = hostClient(
+    new CloudflareClient({ apiToken: "tok" }, [{ id: "zone", name: "Zone", fields: [] }] as never),
+  );
   const fakeApi = {
     apiToken: "tok",
     baseUrl: "https://api.cloudflare.com/client/v4",
@@ -69,7 +70,7 @@ function makeClient(apiOver: Record<string, unknown> = {}) {
 
 describe("CloudflareClient constructor", () => {
   it("throws without an apiToken", () => {
-    expect(() => new CloudflareClient({})).toThrow(/missing apiToken/);
+    expect(() => hostClient(new CloudflareClient({}))).toThrow(/missing apiToken/);
   });
 });
 
@@ -975,7 +976,7 @@ describe("CloudflareClient.streamChatMessage", () => {
     globalThis.fetch = realFetch;
   });
 
-  async function collect(gen: AsyncGenerator<unknown>) {
+  async function collect(gen: AsyncIterable<unknown>) {
     const out: unknown[] = [];
     for await (const e of gen) out.push(e);
     return out;

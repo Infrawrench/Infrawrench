@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { createMockResource } from "@infrawrench/plugin-base/test-harness";
@@ -58,7 +59,7 @@ describe("CapellaClient", () => {
           ? page([{ id: "p1", name: "One" }], 2, 1)
           : page([{ id: "p2", name: "Two" }], 2, 2),
     });
-    const client = new CapellaClient({ apiKey: "k", organizationId: "org-1" });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
     const projects = await client.listResources(T.project, "acc");
     expect(projects.map((p) => p.externalId)).toEqual(["p1", "p2"]);
     expect(calls[0]!.headers["Authorization"]).toBe("Bearer k");
@@ -70,7 +71,7 @@ describe("CapellaClient", () => {
       [`GET ${O}/projects`]: page([{ id: "p1" }]),
       [`GET ${P}/clusters`]: page([CLUSTER, FREE]),
     });
-    const client = new CapellaClient({ apiKey: "k", organizationId: "org-1" });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
     const [prod, free] = await client.listResources(T.cluster, "acc");
     expect(prod!.fields).toMatchObject({
       compute: "4/16",
@@ -92,7 +93,7 @@ describe("CapellaClient", () => {
       },
       [`DELETE ${P}/clusters/freeTier/f1/activationState`]: null,
     });
-    const client = new CapellaClient({ apiKey: "k", organizationId: "org-1" });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
     const buckets = await client.listResources(T.bucket, "acc");
     expect(buckets[0]!.externalId).toBe("p1/f1/YjE%3D");
     expect(splitId(buckets[0]!.externalId!, 3)[2]).toBe("YjE=");
@@ -116,7 +117,9 @@ describe("CapellaClient", () => {
         { id: "u1", name: "app", access: [{ privileges: ["data_reader"] }] },
       ]),
     });
-    const client = new CapellaClient({ apiKey: "k", organizationId: "org-1" }, { secrets });
+    const client = hostClient(
+      new CapellaClient({ apiKey: "k", organizationId: "org-1" }, { secrets }),
+    );
     const r = await client.createResource(T.credential, "acc", {
       cluster: joinId("p1", "c1"),
       name: "app",
@@ -137,7 +140,7 @@ describe("CapellaClient", () => {
       }),
       [`POST ${P}/clusters/c1/onOffSchedule`]: null,
     });
-    const client = new CapellaClient({ apiKey: "k", organizationId: "org-1" });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
     await client.executeNoSqlCommand(T.cluster, `acc:${T.cluster}:p1/c1`, "acc", "set-schedule", [
       JSON.stringify({
         timezone: "US/Eastern",
@@ -188,7 +191,7 @@ describe("CapellaClient", () => {
         },
       },
     });
-    const client = new CapellaClient({ apiKey: "k", organizationId: "org-1" });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
     const rows = await client.fetchCostData("acc", {
       fromDate: "2026-09-01",
       toDate: "2026-09-01",
@@ -229,7 +232,7 @@ describe("CapellaClient", () => {
         ],
       },
     });
-    const client = new CapellaClient({ apiKey: "k", organizationId: "org-1" });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
     expect(await client.fetchCreditBalance("acc")).toEqual([
       {
         key: "cr1",
@@ -248,7 +251,7 @@ describe("CapellaClient", () => {
 
   it("maps 401 to a status-carrying error", async () => {
     mockFetch({ [`GET ${O}/projects`]: new Response('{"message":"bad key"}', { status: 401 }) });
-    const err = await new CapellaClient({ apiKey: "k", organizationId: "org-1" })
+    const err = await hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }))
       .listResources(T.project, "acc")
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CapellaApiError);
@@ -257,9 +260,9 @@ describe("CapellaClient", () => {
 
   it("lists organizations for the credential picker", async () => {
     mockFetch({ "GET /v4/organizations": { data: [{ id: "org-1", name: "Acme" }] } });
-    expect(await plugin.listCredentialOptions!("organizationId", { apiKey: "k" })).toEqual([
-      { id: "org-1", label: "Acme", description: "org-1" },
-    ]);
+    expect(
+      await hostPlugin(plugin).listCredentialOptions!("organizationId", { apiKey: "k" }),
+    ).toEqual([{ id: "org-1", label: "Acme", description: "org-1" }]);
   });
 });
 

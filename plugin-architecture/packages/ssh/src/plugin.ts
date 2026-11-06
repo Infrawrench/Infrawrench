@@ -1,18 +1,22 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { SshClient } from "./client.js";
 import { SshTargetResourceType } from "./resources/ssh-target.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "ssh",
-  version: "0.1.0",
+  egressHosts: [],
   displayName: "SSH",
+  jumpHost: true,
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#1a1a2e"/>
     <text x="50" y="62" font-size="34" text-anchor="middle" fill="#4ade80" font-family="monospace" font-weight="bold">&gt;_</text>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "host",
       label: "Host",
@@ -52,16 +56,24 @@ const manifest: PluginManifest = {
       optional: true,
       accountReference: { pluginId: "ssh" },
     },
-  ],
-};
+  ]),
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [SshTargetResourceType];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials) =>
     new SshClient(
       credentials as { host: string; port?: string; username?: string; privateKey?: string },
     ),
-};
+  testCredentials: {
+    host: "192.168.1.1",
+    port: "22",
+    username: "root",
+    privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----",
+  },
+});

@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ConfluentCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -8,16 +9,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { confluentTerraformExport } from "./terraform.js";
 import { confluentRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "confluent-cloud",
-  version: "0.1.0",
+  egressHosts: ["api.confluent.cloud", "api.telemetry.confluent.cloud"],
   displayName: "Confluent Cloud",
   description:
     "Managed Apache Kafka, Connect, Flink, ksqlDB and Schema Registry. Track spend, chart cluster throughput and consumer lag, resize clusters, manage connectors, Flink compute pools, service accounts and API keys.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "Cloud API Key",
@@ -37,7 +36,7 @@ const manifest: PluginManifest = {
       sensitive: true,
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Billing Costs API: product -> service, the billed resource's region
     // (joined from inventory), the provider resource id, and environment,
@@ -52,14 +51,17 @@ const manifest: PluginManifest = {
   preflight: CONFLUENT_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new ConfluentCloudClient(credentials, services),
+  testCredentials: { apiKey: "TESTCCLOUDKEY123", apiSecret: "test-confluent-secret" },
   parseStatusFeed,
   policyTemplate: confluentPolicyTemplate,
   terraformExport: confluentTerraformExport,
   remediationCommands: confluentRemediationCommands,
-};
+});

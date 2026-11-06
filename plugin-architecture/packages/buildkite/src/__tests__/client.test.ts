@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { bkFetch, bkPaged, cleanLog, nextLink, statusOf } from "../api.js";
 import { BuildkiteClient, pipelineBody, tailLines } from "../client.js";
@@ -27,7 +28,9 @@ function client(route: (call: Call) => unknown, secrets?: Map<string, string>) {
         }
       : {}),
   };
-  const c = new BuildkiteClient({ apiToken: "bkua_test", organization: "acme" }, services as never);
+  const c = hostClient(
+    new BuildkiteClient({ apiToken: "bkua_test", organization: "acme" }, services as never),
+  );
   c.setSleep(async () => {});
   return { c, calls };
 }
@@ -102,9 +105,13 @@ describe("organization picker", () => {
       { id: "1", name: "Zeta", slug: "zeta" },
       { id: "2", name: "Acme", slug: "acme" },
     ]);
-    const opts = await plugin.listCredentialOptions!("organization", { apiToken: "t" }, {
-      http,
-    } as never);
+    const opts = await hostPlugin(plugin).listCredentialOptions!(
+      "organization",
+      { apiToken: "t" },
+      {
+        http,
+      } as never,
+    );
     expect(opts).toEqual([
       { id: "acme", label: "Acme", description: "acme" },
       { id: "zeta", label: "Zeta", description: "zeta" },
@@ -114,7 +121,9 @@ describe("organization picker", () => {
   it("explains a rejected token", async () => {
     const { http } = makeHttp(() => ({ status: 401, body: { message: "Unauthorized" } }));
     await expect(
-      plugin.listCredentialOptions!("organization", { apiToken: "t" }, { http } as never),
+      hostPlugin(plugin).listCredentialOptions!("organization", { apiToken: "t" }, {
+        http,
+      } as never),
     ).rejects.toThrow(/read_organizations/);
   });
 });

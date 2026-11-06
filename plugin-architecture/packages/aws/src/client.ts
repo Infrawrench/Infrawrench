@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ExtendedSupportCharge,
   PluginClient,
@@ -208,7 +211,7 @@ export class AWSClient implements PluginClient {
   private readonly resourceTypes: ResourceTypeDefinition[];
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     resourceTypes: ResourceTypeDefinition[] = [],
     services?: HostServices,
   ) {
@@ -328,7 +331,7 @@ export class AWSClient implements PluginClient {
       listAllIAMPolicies: (scope) => listAllIAMPolicies(creds, scope),
       policiesToOptions: (raw, category) => policiesToOptions(raw, category),
       getResource: (typeId, resourceId, accountId) =>
-        this.getResource(typeId, resourceId, accountId),
+        runPluginEffect(this.getResource(typeId, resourceId, accountId)),
       withRegion: (r: string) => this.createCtxFor(r),
       instancePricing: this.instancePricing,
     };
@@ -443,83 +446,91 @@ export class AWSClient implements PluginClient {
     "backup-vault": listBackupVaults,
   };
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return runAwsPreflight(this.creds);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return runAwsPreflight(this.creds);
+    });
   }
 
-  async listResources(
+  listResources(
     typeId: string,
     accountId: string,
     opts?: { regionHint?: string },
-  ): Promise<ResourceInstance[]> {
-    const lister = AWSClient.LISTERS[typeId];
-    if (!lister) throw new Error(`AWS plugin: unknown resource type "${typeId}"`);
+  ): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      const lister = AWSClient.LISTERS[typeId];
+      if (!lister) throw new Error(`AWS plugin: unknown resource type "${typeId}"`);
 
-    // Global resources have no concept of region: list them once. Home-region
-    // types are regional but only meaningful where the playground runs.
-    if (AWSClient.GLOBAL_TYPES.has(typeId) || AWSClient.HOME_REGION_TYPES.has(typeId)) {
-      return lister(this.ctxFor(this.creds.region), accountId);
-    }
-
-    // When the host knows the caller only cares about one region (e.g. the
-    // create-form resource picker after the user has selected a region), skip
-    // the fan-out entirely. Spinning up DescribeVpcs/DescribeSecurityGroups in
-    // 30 regions to populate a picker for a single-region resource is the #1
-    // cause of "Loading resources..." spinning forever.
-    if (opts?.regionHint) {
-      return lister(this.ctxFor(opts.regionHint), accountId);
-    }
-
-    // Regional resources fan out across every enabled region. We process the
-    // regions in bounded-concurrency batches so a single refresh of a sparsely
-    // populated account doesn't open 30 sockets at once. Per-region failures
-    // are swallowed: an opt-in region with bad credentials should not make
-    // every other region's listing disappear.
-    const regions = await this.getEnabledRegions();
-    const results: ResourceInstance[] = [];
-    const concurrency = AWSClient.REGION_FANOUT_CONCURRENCY;
-    for (let i = 0; i < regions.length; i += concurrency) {
-      const batch = regions.slice(i, i + concurrency);
-      const settled = await Promise.allSettled(
-        batch.map((region) => lister(this.ctxFor(region), accountId)),
-      );
-      for (const s of settled) {
-        if (s.status === "fulfilled") results.push(...s.value);
+      // Global resources have no concept of region: list them once. Home-region
+      // types are regional but only meaningful where the playground runs.
+      if (AWSClient.GLOBAL_TYPES.has(typeId) || AWSClient.HOME_REGION_TYPES.has(typeId)) {
+        return lister(this.ctxFor(this.creds.region), accountId);
       }
-    }
-    return results;
+
+      // When the host knows the caller only cares about one region (e.g. the
+      // create-form resource picker after the user has selected a region), skip
+      // the fan-out entirely. Spinning up DescribeVpcs/DescribeSecurityGroups in
+      // 30 regions to populate a picker for a single-region resource is the #1
+      // cause of "Loading resources..." spinning forever.
+      if (opts?.regionHint) {
+        return lister(this.ctxFor(opts.regionHint), accountId);
+      }
+
+      // Regional resources fan out across every enabled region. We process the
+      // regions in bounded-concurrency batches so a single refresh of a sparsely
+      // populated account doesn't open 30 sockets at once. Per-region failures
+      // are swallowed: an opt-in region with bad credentials should not make
+      // every other region's listing disappear.
+      const regions = await this.getEnabledRegions();
+      const results: ResourceInstance[] = [];
+      const concurrency = AWSClient.REGION_FANOUT_CONCURRENCY;
+      for (let i = 0; i < regions.length; i += concurrency) {
+        const batch = regions.slice(i, i + concurrency);
+        const settled = await Promise.allSettled(
+          batch.map((region) => lister(this.ctxFor(region), accountId)),
+        );
+        for (const s of settled) {
+          if (s.status === "fulfilled") results.push(...s.value);
+        }
+      }
+      return results;
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`AWS plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`AWS plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async attachResource(
+  attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
     targetTypeId: string,
     targetResourceId: string,
     accountId: string,
-  ): Promise<void> {
-    return attachResourceImpl(
-      {
-        creds: this.creds,
-        credsFor: (region: string) => this.credsFor(region),
-        getResource: (t, r, a) => this.getResource(t, r, a),
-      },
-      sourceTypeId,
-      sourceResourceId,
-      targetTypeId,
-      targetResourceId,
-      accountId,
-    );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return attachResourceImpl(
+        {
+          creds: this.creds,
+          credsFor: (region: string) => this.credsFor(region),
+          getResource: (t, r, a) => runPluginEffect(this.getResource(t, r, a)),
+        },
+        sourceTypeId,
+        sourceResourceId,
+        targetTypeId,
+        targetResourceId,
+        accountId,
+      );
+    });
   }
 
   /**
@@ -536,7 +547,7 @@ export class AWSClient implements PluginClient {
    * Shape is the JSON that `kubernetes/src/node-rates.ts` parses.
    */
   private async eksNodeHourlyRates(resourceId: string, accountId: string): Promise<string> {
-    const cluster = await this.getResource("eks-cluster", resourceId, accountId);
+    const cluster = await runPluginEffect(this.getResource("eks-cluster", resourceId, accountId));
     const types = String(cluster.fields["instanceTypes"] ?? "")
       .split(",")
       .map((t) => t.trim())
@@ -559,72 +570,88 @@ export class AWSClient implements PluginClient {
     });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "nodeHourlyRates") {
-      if (typeId !== "eks-cluster") return "";
-      return this.eksNodeHourlyRates(resourceId, accountId).catch(() => "");
-    }
-    return resolveOutputImpl(
-      {
-        creds: this.creds,
-        credsFor: (region: string) => this.credsFor(region),
-        getResource: (t, r, a) => this.getResource(t, r, a),
-        exportCredential: (t, r, a, f) => this.exportCredential(t, r, a, f),
-      },
-      typeId,
-      resourceId,
-      outputKey,
-      accountId,
-    );
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "nodeHourlyRates") {
+        if (typeId !== "eks-cluster") return "";
+        return this.eksNodeHourlyRates(resourceId, accountId).catch(() => "");
+      }
+      return resolveOutputImpl(
+        {
+          creds: this.creds,
+          credsFor: (region: string) => this.credsFor(region),
+          getResource: (t, r, a) => runPluginEffect(this.getResource(t, r, a)),
+          exportCredential: (t, r, a, f) => runPluginEffect(this.exportCredential(t, r, a, f)),
+        },
+        typeId,
+        resourceId,
+        outputKey,
+        accountId,
+      );
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    return fetchDashboardStatsImpl(resource, resourceTypeId);
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      return fetchDashboardStatsImpl(resource, resourceTypeId);
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const region = String(resource.fields["region"] ?? this.creds.region);
-    return fetchMetricSeriesImpl(this.credsFor(region), resource, resourceTypeId, timeRange);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      return fetchMetricSeriesImpl(this.credsFor(region), resource, resourceTypeId, timeRange);
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
-    const result = await fetchAwsCostData(this.creds, range);
-    // Normalized AI dimensions on Bedrock lines, so invocation logs can be
-    // reconciled against them. See plugin-base `ai-requests.ts`.
-    return {
-      ...result,
-      rows: withAiCostTags(result.rows, (row) => classifyAwsCostRow(row.service)),
-    };
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostFetchResult> {
+    return attempt(async () => {
+      const result = await fetchAwsCostData(this.creds, range);
+      // Normalized AI dimensions on Bedrock lines, so invocation logs can be
+      // reconciled against them. See plugin-base `ai-requests.ts`.
+      return {
+        ...result,
+        rows: withAiCostTags(result.rows, (row) => classifyAwsCostRow(row.service)),
+      };
+    });
   }
 
-  async listAiRequestLogLocations(
+  listAiRequestLogLocations(
     _accountId: string,
     sourceKindId: string,
-  ): Promise<AiRequestLogLocation[]> {
-    return listAwsAiRequestLogLocations(this.creds, sourceKindId);
+  ): PluginEffect<AiRequestLogLocation[]> {
+    return attempt(async () => {
+      return listAwsAiRequestLogLocations(this.creds, sourceKindId);
+    });
   }
 
-  async fetchAiRequestLogs(
+  fetchAiRequestLogs(
     _accountId: string,
     range: AiRequestLogFetchRange,
-  ): Promise<AiRequestLogFetchResult> {
-    return fetchAwsAiRequestLogs(this.creds, range);
+  ): PluginEffect<AiRequestLogFetchResult> {
+    return attempt(async () => {
+      return fetchAwsAiRequestLogs(this.creds, range);
+    });
   }
 
   /**
@@ -637,56 +664,71 @@ export class AWSClient implements PluginClient {
    * number of regions they have ever touched. A second account on the same
    * credentials in another region collects that region.
    */
-  async fetchNetworkFlows(
+  fetchNetworkFlows(
     _accountId: string,
     range: NetworkFlowFetchRange,
-  ): Promise<NetworkFlowFetchResult> {
-    return fetchAwsNetworkFlows(
-      this.creds,
-      range.day,
-      AWS_NETWORK_FLOW_CAPABILITY.maxPairsPerDay,
-      range.signal,
-    );
+  ): PluginEffect<NetworkFlowFetchResult> {
+    return attempt(async () => {
+      return fetchAwsNetworkFlows(
+        this.creds,
+        range.day,
+        AWS_NETWORK_FLOW_CAPABILITY.maxPairsPerDay,
+        range.signal,
+      );
+    });
   }
 
-  async listBusinessMetricSourceOptions(
+  listBusinessMetricSourceOptions(
     _accountId: string,
     fieldKey: string,
     params: Record<string, string>,
-  ): Promise<BusinessMetricSourceOption[]> {
-    return listCloudWatchSourceOptions(
-      (region) => this.credsFor(region),
-      this.creds.region,
-      fieldKey,
-      params,
-    );
+  ): PluginEffect<BusinessMetricSourceOption[]> {
+    return attempt(async () => {
+      return listCloudWatchSourceOptions(
+        (region) => this.credsFor(region),
+        this.creds.region,
+        fieldKey,
+        params,
+      );
+    });
   }
 
-  async runBusinessMetricSource(
+  runBusinessMetricSource(
     _accountId: string,
     params: Record<string, string>,
     range: BusinessMetricSourceRange,
-  ): Promise<BusinessMetricSourceResult> {
-    return runCloudWatchSource((region) => this.credsFor(region), this.creds.region, params, range);
+  ): PluginEffect<BusinessMetricSourceResult> {
+    return attempt(async () => {
+      return runCloudWatchSource(
+        (region) => this.credsFor(region),
+        this.creds.region,
+        params,
+        range,
+      );
+    });
   }
 
   /**
    * Extended-support surcharges Cost Explorer billed over `range`; see
    * `extended-support.ts` for how usage types are placed on resource types.
    */
-  async fetchExtendedSupportCharges(
+  fetchExtendedSupportCharges(
     _accountId: string,
     range: { start: string; end: string },
-  ): Promise<ExtendedSupportCharge[]> {
-    return fetchAwsExtendedSupportCharges(this.creds, range);
+  ): PluginEffect<ExtendedSupportCharge[]> {
+    return attempt(async () => {
+      return fetchAwsExtendedSupportCharges(this.creds, range);
+    });
   }
 
-  async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
-    // EC2/RDS reservations are regional: fan out across every enabled region
-    // (commitments.ts bounds the concurrency). Savings Plans are global and
-    // fetched once inside.
-    const regions = await this.getEnabledRegions();
-    return fetchAwsCommitments(this.creds, regions);
+  fetchCommitments(_accountId: string): PluginEffect<CommitmentRecord[]> {
+    return attempt(async () => {
+      // EC2/RDS reservations are regional: fan out across every enabled region
+      // (commitments.ts bounds the concurrency). Savings Plans are global and
+      // fetched once inside.
+      const regions = await this.getEnabledRegions();
+      return fetchAwsCommitments(this.creds, regions);
+    });
   }
 
   /**
@@ -701,19 +743,21 @@ export class AWSClient implements PluginClient {
    * `ec2:DescribeSpotPriceHistory` in the requested region. See
    * `price-catalog.ts`.
    */
-  async fetchPriceCatalog(request: PriceCatalogRequest): Promise<PriceCatalogResult> {
-    return fetchAwsPriceCatalog(
-      {
-        getProducts: (body) => getProducts(this.creds, body),
-        describeSpotPriceHistory: (region, params) =>
-          ec2Call<Record<string, unknown>>(
-            this.credsFor(region),
-            "DescribeSpotPriceHistory",
-            params,
-          ),
-      },
-      request,
-    );
+  fetchPriceCatalog(request: PriceCatalogRequest): PluginEffect<PriceCatalogResult> {
+    return attempt(async () => {
+      return fetchAwsPriceCatalog(
+        {
+          getProducts: (body) => getProducts(this.creds, body),
+          describeSpotPriceHistory: (region, params) =>
+            ec2Call<Record<string, unknown>>(
+              this.credsFor(region),
+              "DescribeSpotPriceHistory",
+              params,
+            ),
+        },
+        request,
+      );
+    });
   }
 
   private jitCtx: AwsJitContext | null = null;
@@ -751,32 +795,46 @@ export class AWSClient implements PluginClient {
     return this.jitCtx;
   }
 
-  listJitScopes(): Promise<JitScope[]> {
-    return listAwsJitScopes(this.jit);
+  listJitScopes(): PluginEffect<JitScope[]> {
+    return attempt(async () => {
+      return listAwsJitScopes(this.jit);
+    });
   }
 
-  listJitRoles(scopeId: string): Promise<JitRole[]> {
-    return listAwsJitRoles(this.jit, scopeId);
+  listJitRoles(scopeId: string): PluginEffect<JitRole[]> {
+    return attempt(async () => {
+      return listAwsJitRoles(this.jit, scopeId);
+    });
   }
 
-  resolveJitPrincipal(identity: JitIdentity): Promise<JitPrincipal | null> {
-    return resolveAwsJitPrincipal(this.jit, identity);
+  resolveJitPrincipal(identity: JitIdentity): PluginEffect<JitPrincipal | null> {
+    return attempt(async () => {
+      return resolveAwsJitPrincipal(this.jit, identity);
+    });
   }
 
-  listJitPrincipals(query?: string): Promise<JitPrincipal[]> {
-    return listAwsJitPrincipals(this.jit, query);
+  listJitPrincipals(query?: string): PluginEffect<JitPrincipal[]> {
+    return attempt(async () => {
+      return listAwsJitPrincipals(this.jit, query);
+    });
   }
 
-  grantJitAccess(spec: JitGrantSpec): Promise<JitGrantResult> {
-    return grantAwsJitAccess(this.jit, spec);
+  grantJitAccess(spec: JitGrantSpec): PluginEffect<JitGrantResult> {
+    return attempt(async () => {
+      return grantAwsJitAccess(this.jit, spec);
+    });
   }
 
-  revokeJitAccess(spec: JitGrantSpec): Promise<void> {
-    return revokeAwsJitAccess(this.jit, spec);
+  revokeJitAccess(spec: JitGrantSpec): PluginEffect<void> {
+    return attempt(async () => {
+      return revokeAwsJitAccess(this.jit, spec);
+    });
   }
 
-  checkJitAccess(spec: JitGrantSpec): Promise<JitAccessPresence> {
-    return checkAwsJitAccess(this.jit, spec);
+  checkJitAccess(spec: JitGrantSpec): PluginEffect<JitAccessPresence> {
+    return attempt(async () => {
+      return checkAwsJitAccess(this.jit, spec);
+    });
   }
 
   /**
@@ -785,63 +843,69 @@ export class AWSClient implements PluginClient {
    * Inspector SDK client, so the request is signed directly; see
    * `vulnerabilities.ts` for the region and error handling.
    */
-  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
-    const regions = await this.getEnabledRegions();
-    return fetchAwsVulnerabilityFindings({
-      regions,
-      listFindings: async (region, body) => {
-        const host = region.startsWith("cn-")
-          ? `inspector2.${region}.amazonaws.com.cn`
-          : `inspector2.${region}.amazonaws.com`;
-        const res = await fetchSigned({
-          method: "POST",
-          url: `https://${host}/findings/list`,
-          headers: { Host: host, "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          service: "inspector2",
-          credentials: this.credsFor(region),
-        });
-        const text = await res.text();
-        return (text ? JSON.parse(text) : {}) as InspectorListFindingsResponse;
-      },
+  listVulnerabilityFindings(_accountId: string): PluginEffect<VulnerabilityFinding[]> {
+    return attempt(async () => {
+      const regions = await this.getEnabledRegions();
+      return fetchAwsVulnerabilityFindings({
+        regions,
+        listFindings: async (region, body) => {
+          const host = region.startsWith("cn-")
+            ? `inspector2.${region}.amazonaws.com.cn`
+            : `inspector2.${region}.amazonaws.com`;
+          const res = await fetchSigned({
+            method: "POST",
+            url: `https://${host}/findings/list`,
+            headers: { Host: host, "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            service: "inspector2",
+            credentials: this.credsFor(region),
+          });
+          const text = await res.text();
+          return (text ? JSON.parse(text) : {}) as InspectorListFindingsResponse;
+        },
+      });
     });
   }
 
-  async fetchIdleFindings(
+  fetchIdleFindings(
     _accountId: string,
     request: IdleScanRequest,
-  ): Promise<IdleFindingRecord[]> {
-    return fetchAwsIdleFindings(request, {
-      credsFor: (region) => this.credsFor(region),
-      homeRegion: this.creds.region,
+  ): PluginEffect<IdleFindingRecord[]> {
+    return attempt(async () => {
+      return fetchAwsIdleFindings(request, {
+        credsFor: (region) => this.credsFor(region),
+        homeRegion: this.creds.region,
+      });
     });
   }
 
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    const regions = await this.getEnabledRegions();
-    return fetchAwsQuotas({
-      regions,
-      listServiceQuotas: (region, serviceCode, quotaCode) =>
-        jsonCall<AwsListServiceQuotasResponse>(
-          this.credsFor(region),
-          "servicequotas",
-          "ServiceQuotasV20190624.ListServiceQuotas",
-          // `QuotaCode` narrows the listing to one quota, which is what keeps
-          // this a single unpaginated request: `ec2` alone publishes several
-          // hundred quotas and paging them all to find three is the version of
-          // this feature that shows up on a rate-limit graph.
-          { ServiceCode: serviceCode, QuotaCode: quotaCode, MaxResults: 100 },
-        ),
-      getDefaultServiceQuota: (region, serviceCode, quotaCode) =>
-        jsonCall<AwsGetDefaultServiceQuotaResponse>(
-          this.credsFor(region),
-          "servicequotas",
-          "ServiceQuotasV20190624.GetAWSDefaultServiceQuota",
-          { ServiceCode: serviceCode, QuotaCode: quotaCode },
-        ),
-      usageMetric: (region, usageClass) => this.readVcpuUsage(region, usageClass),
-      countAddresses: (region) => this.countEc2Items(region, "DescribeAddresses", "addressesSet"),
-      countVpcs: (region) => this.countEc2Items(region, "DescribeVpcs", "vpcSet"),
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      const regions = await this.getEnabledRegions();
+      return fetchAwsQuotas({
+        regions,
+        listServiceQuotas: (region, serviceCode, quotaCode) =>
+          jsonCall<AwsListServiceQuotasResponse>(
+            this.credsFor(region),
+            "servicequotas",
+            "ServiceQuotasV20190624.ListServiceQuotas",
+            // `QuotaCode` narrows the listing to one quota, which is what keeps
+            // this a single unpaginated request: `ec2` alone publishes several
+            // hundred quotas and paging them all to find three is the version of
+            // this feature that shows up on a rate-limit graph.
+            { ServiceCode: serviceCode, QuotaCode: quotaCode, MaxResults: 100 },
+          ),
+        getDefaultServiceQuota: (region, serviceCode, quotaCode) =>
+          jsonCall<AwsGetDefaultServiceQuotaResponse>(
+            this.credsFor(region),
+            "servicequotas",
+            "ServiceQuotasV20190624.GetAWSDefaultServiceQuota",
+            { ServiceCode: serviceCode, QuotaCode: quotaCode },
+          ),
+        usageMetric: (region, usageClass) => this.readVcpuUsage(region, usageClass),
+        countAddresses: (region) => this.countEc2Items(region, "DescribeAddresses", "addressesSet"),
+        countVpcs: (region) => this.countEc2Items(region, "DescribeVpcs", "vpcSet"),
+      });
     });
   }
 
@@ -908,219 +972,238 @@ export class AWSClient implements PluginClient {
     return detail;
   }
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const region = String(resource.fields["region"] ?? this.creds.region);
-    return getAwsLogs(this.credsFor(region), resource, typeId, params);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      return getAwsLogs(this.credsFor(region), resource, typeId, params);
+    });
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     return renderSidebarItemImpl(resource);
   }
 
-  async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
-    return uploadStorageObject(this.creds, bucket, key, file);
+  uploadStorageObject(bucket: string, key: string, file: File): PluginEffect<void> {
+    return attempt(async () => {
+      return uploadStorageObject(this.creds, bucket, key, file);
+    });
   }
 
-  async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    return listStorageObjects(this.creds, bucket, prefix);
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      return listStorageObjects(this.creds, bucket, prefix);
+    });
   }
 
-  async makeStorageFolder(bucket: string, key: string): Promise<void> {
-    return makeStorageFolder(this.creds, bucket, key);
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return makeStorageFolder(this.creds, bucket, key);
+    });
   }
 
-  async deleteStorageObject(bucket: string, key: string): Promise<void> {
-    return deleteStorageObject(this.creds, bucket, key);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return deleteStorageObject(this.creds, bucket, key);
+    });
   }
 
-  async listArtifacts(
+  listArtifacts(
     typeId: string,
     resourceId: string,
     accountId: string,
     params?: { pageToken?: string; prefix?: string },
-  ): Promise<{ items: ArtifactEntry[]; nextPageToken?: string }> {
-    if (typeId !== "ecr-repository") {
-      throw new Error(`listArtifacts not supported for type ${typeId}`);
-    }
-    const repositoryName = resourceId.split(":").pop() ?? resourceId;
-    const body: Record<string, unknown> = {
-      repositoryName,
-      maxResults: 50,
-    };
-    if (params?.pageToken) body["nextToken"] = params.pageToken;
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const region = String(resource.fields["region"] ?? this.creds.region);
-    const data = await jsonCall<{
-      imageDetails?: Array<Record<string, unknown>>;
-      nextToken?: string;
-    }>(this.credsFor(region), "ecr", "AmazonEC2ContainerRegistry_V20150921.DescribeImages", body);
-    const items: ArtifactEntry[] = (data.imageDetails ?? []).map((img) => {
-      const tags = Array.isArray(img["imageTags"]) ? (img["imageTags"] as string[]) : undefined;
-      const entry: ArtifactEntry = {
-        name: repositoryName,
-      };
-      const firstTag = tags?.[0];
-      if (tags && tags.length > 0) {
-        entry.tags = tags;
-        if (firstTag) entry.version = firstTag;
+  ): PluginEffect<{ items: ArtifactEntry[]; nextPageToken?: string }> {
+    return attempt(async () => {
+      if (typeId !== "ecr-repository") {
+        throw new Error(`listArtifacts not supported for type ${typeId}`);
       }
-      if (img["imageDigest"]) entry.digest = String(img["imageDigest"]);
-      if (img["imageSizeInBytes"] != null) entry.sizeBytes = Number(img["imageSizeInBytes"]);
-      if (img["imagePushedAt"]) entry.updatedAt = String(img["imagePushedAt"]);
-      if (img["artifactMediaType"]) entry.mediaType = String(img["artifactMediaType"]);
-      return entry;
+      const repositoryName = resourceId.split(":").pop() ?? resourceId;
+      const body: Record<string, unknown> = {
+        repositoryName,
+        maxResults: 50,
+      };
+      if (params?.pageToken) body["nextToken"] = params.pageToken;
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      const data = await jsonCall<{
+        imageDetails?: Array<Record<string, unknown>>;
+        nextToken?: string;
+      }>(this.credsFor(region), "ecr", "AmazonEC2ContainerRegistry_V20150921.DescribeImages", body);
+      const items: ArtifactEntry[] = (data.imageDetails ?? []).map((img) => {
+        const tags = Array.isArray(img["imageTags"]) ? (img["imageTags"] as string[]) : undefined;
+        const entry: ArtifactEntry = {
+          name: repositoryName,
+        };
+        const firstTag = tags?.[0];
+        if (tags && tags.length > 0) {
+          entry.tags = tags;
+          if (firstTag) entry.version = firstTag;
+        }
+        if (img["imageDigest"]) entry.digest = String(img["imageDigest"]);
+        if (img["imageSizeInBytes"] != null) entry.sizeBytes = Number(img["imageSizeInBytes"]);
+        if (img["imagePushedAt"]) entry.updatedAt = String(img["imagePushedAt"]);
+        if (img["artifactMediaType"]) entry.mediaType = String(img["artifactMediaType"]);
+        return entry;
+      });
+      const prefix = params?.prefix?.trim();
+      const filtered = prefix
+        ? items.filter(
+            (i) =>
+              i.name.includes(prefix) ||
+              (i.tags ?? []).some((t) => t.includes(prefix)) ||
+              (i.digest ?? "").includes(prefix),
+          )
+        : items;
+      const result: { items: ArtifactEntry[]; nextPageToken?: string } = { items: filtered };
+      if (data.nextToken) result.nextPageToken = data.nextToken;
+      return result;
     });
-    const prefix = params?.prefix?.trim();
-    const filtered = prefix
-      ? items.filter(
-          (i) =>
-            i.name.includes(prefix) ||
-            (i.tags ?? []).some((t) => t.includes(prefix)) ||
-            (i.digest ?? "").includes(prefix),
-        )
-      : items;
-    const result: { items: ArtifactEntry[]; nextPageToken?: string } = { items: filtered };
-    if (data.nextToken) result.nextPageToken = data.nextToken;
-    return result;
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    return awsGetCreateConfig(this.createCtx, typeId, parentResourceId);
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return awsGetCreateConfig(this.createCtx, typeId, parentResourceId);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    return awsCreateResource(this.createCtx, typeId, accountId, fields, parentResourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return awsCreateResource(this.createCtx, typeId, accountId, fields, parentResourceId);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "route53-record-set") {
-      // Merge the changed field(s) over the current record, then UPSERT the
-      // whole record set (Route 53 has no partial update). `value` is the
-      // create-form key; the stored resource field is `values`.
-      const current = await this.getResource(typeId, resourceId, accountId);
-      const cur = current.fields;
-      const hostedZoneId = String(cur["hostedZoneId"] ?? "");
-      const recordName = String(cur["name"] ?? "");
-      const recordType = String(cur["type"] ?? "A");
-      const ttl = String(cur["ttl"] ?? "300");
-      const value = fields["value"] ?? String(cur["values"] ?? "");
-      const host = hostForService(this.creds, "route53");
-      const url = `https://${host}/2013-04-01/hostedzone/${hostedZoneId}/rrset`;
-      const bodyXml = [
-        `<?xml version="1.0" encoding="UTF-8"?>`,
-        `<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/">`,
-        `<ChangeBatch><Changes><Change>`,
-        `<Action>UPSERT</Action>`,
-        `<ResourceRecordSet>`,
-        `<Name>${recordName}</Name>`,
-        `<Type>${recordType}</Type>`,
-        `<TTL>${ttl}</TTL>`,
-        `<ResourceRecords><ResourceRecord><Value>${value}</Value></ResourceRecord></ResourceRecords>`,
-        `</ResourceRecordSet>`,
-        `</Change></Changes></ChangeBatch>`,
-        `</ChangeResourceRecordSetsRequest>`,
-      ].join("");
-      await fetchSigned({
-        method: "POST",
-        url,
-        headers: { Host: host, "Content-Type": "application/xml" },
-        body: bodyXml,
-        service: "route53",
-        credentials: this.creds,
-      });
-      return {
-        ...current,
-        fields: { ...cur, values: value },
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    if (typeId === "ec2-instance") {
-      // Edit = change instance type (the right-sizing apply path).
-      // ModifyInstanceAttribute requires the instance to be fully stopped;
-      // a running one gets EC2's IncorrectInstanceState, surfaced as-is.
-      const instanceType = fields["instanceType"];
-      if (!instanceType) {
-        throw new Error("AWS plugin: instanceType is the only editable EC2 instance field");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "route53-record-set") {
+        // Merge the changed field(s) over the current record, then UPSERT the
+        // whole record set (Route 53 has no partial update). `value` is the
+        // create-form key; the stored resource field is `values`.
+        const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const cur = current.fields;
+        const hostedZoneId = String(cur["hostedZoneId"] ?? "");
+        const recordName = String(cur["name"] ?? "");
+        const recordType = String(cur["type"] ?? "A");
+        const ttl = String(cur["ttl"] ?? "300");
+        const value = fields["value"] ?? String(cur["values"] ?? "");
+        const host = hostForService(this.creds, "route53");
+        const url = `https://${host}/2013-04-01/hostedzone/${hostedZoneId}/rrset`;
+        const bodyXml = [
+          `<?xml version="1.0" encoding="UTF-8"?>`,
+          `<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/">`,
+          `<ChangeBatch><Changes><Change>`,
+          `<Action>UPSERT</Action>`,
+          `<ResourceRecordSet>`,
+          `<Name>${recordName}</Name>`,
+          `<Type>${recordType}</Type>`,
+          `<TTL>${ttl}</TTL>`,
+          `<ResourceRecords><ResourceRecord><Value>${value}</Value></ResourceRecord></ResourceRecords>`,
+          `</ResourceRecordSet>`,
+          `</Change></Changes></ChangeBatch>`,
+          `</ChangeResourceRecordSetsRequest>`,
+        ].join("");
+        await fetchSigned({
+          method: "POST",
+          url,
+          headers: { Host: host, "Content-Type": "application/xml" },
+          body: bodyXml,
+          service: "route53",
+          credentials: this.creds,
+        });
+        return {
+          ...current,
+          fields: { ...cur, values: value },
+          updatedAt: new Date().toISOString(),
+        };
       }
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const instanceId = String(resource.externalId ?? resource.fields["instanceId"] ?? "");
-      if (!instanceId) throw new Error("Cannot determine EC2 instance ID");
-      const region = String(resource.fields["region"] ?? this.creds.region);
-      await ec2Call(this.credsFor(region), "ModifyInstanceAttribute", {
-        InstanceId: instanceId,
-        "InstanceType.Value": instanceType,
-      });
-      // Return the resource already in hand with the new type overlaid rather
-      // than re-running the multi-region lookup: it halves the API fan-out,
-      // and EC2's eventual consistency means an immediate re-describe could
-      // still report the old type. The next sync reads the converged truth.
-      return {
-        ...resource,
-        fields: { ...resource.fields, instanceType },
-        updatedAt: new Date().toISOString(),
-      };
-    }
 
-    if (typeId === "lambda-function") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const name = String(resource.externalId ?? resource.fields["name"] ?? "");
-      if (!name) throw new Error("Cannot determine the Lambda function name");
-      const region = String(resource.fields["region"] ?? this.creds.region);
-      const updated = await updateLambdaFunction(this.credsFor(region), name, fields);
-      const logging = updated["LoggingConfig"] as Record<string, unknown> | undefined;
-      const ephemeral = updated["EphemeralStorage"] as Record<string, unknown> | undefined;
-      // Overlay what Lambda echoed back (it returns the full configuration),
-      // falling back to the submitted value for anything it left out.
-      const overlay: Record<string, string | number | boolean> = { ...fields };
-      if (typeof updated["MemorySize"] === "number") overlay["memorySize"] = updated["MemorySize"];
-      if (typeof updated["Timeout"] === "number") overlay["timeout"] = updated["Timeout"];
-      if (typeof updated["Runtime"] === "string") overlay["runtime"] = updated["Runtime"];
-      if (typeof ephemeral?.["Size"] === "number")
-        overlay["ephemeralStorageMb"] = ephemeral["Size"];
-      if (logging) {
-        overlay["logFormat"] = String(logging["LogFormat"] ?? "Text");
-        overlay["applicationLogLevel"] = String(logging["ApplicationLogLevel"] ?? "");
-        overlay["systemLogLevel"] = String(logging["SystemLogLevel"] ?? "");
+      if (typeId === "ec2-instance") {
+        // Edit = change instance type (the right-sizing apply path).
+        // ModifyInstanceAttribute requires the instance to be fully stopped;
+        // a running one gets EC2's IncorrectInstanceState, surfaced as-is.
+        const instanceType = fields["instanceType"];
+        if (!instanceType) {
+          throw new Error("AWS plugin: instanceType is the only editable EC2 instance field");
+        }
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const instanceId = String(resource.externalId ?? resource.fields["instanceId"] ?? "");
+        if (!instanceId) throw new Error("Cannot determine EC2 instance ID");
+        const region = String(resource.fields["region"] ?? this.creds.region);
+        await ec2Call(this.credsFor(region), "ModifyInstanceAttribute", {
+          InstanceId: instanceId,
+          "InstanceType.Value": instanceType,
+        });
+        // Return the resource already in hand with the new type overlaid rather
+        // than re-running the multi-region lookup: it halves the API fan-out,
+        // and EC2's eventual consistency means an immediate re-describe could
+        // still report the old type. The next sync reads the converged truth.
+        return {
+          ...resource,
+          fields: { ...resource.fields, instanceType },
+          updatedAt: new Date().toISOString(),
+        };
       }
-      return {
-        ...resource,
-        fields: { ...resource.fields, ...overlay },
-        updatedAt: new Date().toISOString(),
-      };
-    }
 
-    if (typeId === "elasticache-serverless-cache") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const name = String(resource.externalId ?? resource.fields["name"] ?? "");
-      if (!name) throw new Error("Cannot determine the serverless cache name");
-      const region = String(resource.fields["region"] ?? this.creds.region);
-      const params = buildServerlessCacheModifyParams(name, fields, resource.fields);
-      await modifyServerlessCache(this.credsFor(region), params);
-      return {
-        ...resource,
-        fields: { ...resource.fields, ...fields, status: "modifying" },
-        updatedAt: new Date().toISOString(),
-      };
-    }
+      if (typeId === "lambda-function") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const name = String(resource.externalId ?? resource.fields["name"] ?? "");
+        if (!name) throw new Error("Cannot determine the Lambda function name");
+        const region = String(resource.fields["region"] ?? this.creds.region);
+        const updated = await updateLambdaFunction(this.credsFor(region), name, fields);
+        const logging = updated["LoggingConfig"] as Record<string, unknown> | undefined;
+        const ephemeral = updated["EphemeralStorage"] as Record<string, unknown> | undefined;
+        // Overlay what Lambda echoed back (it returns the full configuration),
+        // falling back to the submitted value for anything it left out.
+        const overlay: Record<string, string | number | boolean> = { ...fields };
+        if (typeof updated["MemorySize"] === "number")
+          overlay["memorySize"] = updated["MemorySize"];
+        if (typeof updated["Timeout"] === "number") overlay["timeout"] = updated["Timeout"];
+        if (typeof updated["Runtime"] === "string") overlay["runtime"] = updated["Runtime"];
+        if (typeof ephemeral?.["Size"] === "number")
+          overlay["ephemeralStorageMb"] = ephemeral["Size"];
+        if (logging) {
+          overlay["logFormat"] = String(logging["LogFormat"] ?? "Text");
+          overlay["applicationLogLevel"] = String(logging["ApplicationLogLevel"] ?? "");
+          overlay["systemLogLevel"] = String(logging["SystemLogLevel"] ?? "");
+        }
+        return {
+          ...resource,
+          fields: { ...resource.fields, ...overlay },
+          updatedAt: new Date().toISOString(),
+        };
+      }
 
-    throw new Error(`AWS plugin: updateResource not supported for type "${typeId}"`);
+      if (typeId === "elasticache-serverless-cache") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const name = String(resource.externalId ?? resource.fields["name"] ?? "");
+        if (!name) throw new Error("Cannot determine the serverless cache name");
+        const region = String(resource.fields["region"] ?? this.creds.region);
+        const params = buildServerlessCacheModifyParams(name, fields, resource.fields);
+        await modifyServerlessCache(this.credsFor(region), params);
+        return {
+          ...resource,
+          fields: { ...resource.fields, ...fields, status: "modifying" },
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      throw new Error(`AWS plugin: updateResource not supported for type "${typeId}"`);
+    });
   }
 
   /**
@@ -1128,8 +1211,10 @@ export class AWSClient implements PluginClient {
    * Price List Query API. Requires `pricing:GetProducts`; without it every
    * rate resolves to null and no estimate is quoted at all.
    */
-  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
-    return estimateAwsCost(this.creds, typeId, fields, this.instancePricing);
+  estimateCost(typeId: string, fields: Record<string, string>): PluginEffect<CostEstimate | null> {
+    return attempt(async () => {
+      return estimateAwsCost(this.creds, typeId, fields, this.instancePricing);
+    });
   }
 
   /**
@@ -1138,221 +1223,239 @@ export class AWSClient implements PluginClient {
    * which needs the `pricing:GetProducts` permission (the picker shows no price
    * chips if it is missing), and the other types show none.
    */
-  async getCreateSizePricing(
+  getCreateSizePricing(
     typeId: string,
     request: { regionId?: string; sizes: Array<{ id: string }> },
-  ): Promise<Record<string, number>> {
-    const region = request.regionId ?? this.creds.region;
-    const sizes = request.sizes.map((s) => s.id);
-    if (typeId === "ec2-instance" || typeId === "eks-cluster") {
-      return fetchEc2MonthlyPrices(this.creds, region, sizes, this.instancePricing);
-    }
-    const picker = SIZE_PICKER_PRICING[typeId];
-    if (!picker) return {};
-    const rates = await fetchInstanceOnDemandRates(this.instancePricing, {
-      ...picker,
-      region,
-      instanceTypes: sizes,
+  ): PluginEffect<Record<string, number>> {
+    return attempt(async () => {
+      const region = request.regionId ?? this.creds.region;
+      const sizes = request.sizes.map((s) => s.id);
+      if (typeId === "ec2-instance" || typeId === "eks-cluster") {
+        return fetchEc2MonthlyPrices(this.creds, region, sizes, this.instancePricing);
+      }
+      const picker = SIZE_PICKER_PRICING[typeId];
+      if (!picker) return {};
+      const rates = await fetchInstanceOnDemandRates(this.instancePricing, {
+        ...picker,
+        region,
+        instanceTypes: sizes,
+      });
+      return Object.fromEntries(
+        Object.entries(rates ?? {}).map(([type, hourly]) => [
+          type,
+          Number((hourly * PRICING_HOURS_PER_MONTH).toFixed(2)),
+        ]),
+      );
     });
-    return Object.fromEntries(
-      Object.entries(rates ?? {}).map(([type, hourly]) => [
-        type,
-        Number((hourly * PRICING_HOURS_PER_MONTH).toFixed(2)),
-      ]),
-    );
   }
 
-  async executeFieldAction(
+  executeFieldAction(
     typeId: string,
     fieldKey: string,
     actionId: string,
     _accountId: string,
     fields: Record<string, string>,
     actionFields?: Record<string, string>,
-  ): Promise<{ value: string; option?: { id: string; label: string } }> {
-    return executeFieldActionImpl(
-      this.creds,
-      typeId,
-      fieldKey,
-      actionId,
-      fields,
-      actionFields ?? {},
-    );
+  ): PluginEffect<{ value: string; option?: { id: string; label: string } }> {
+    return attempt(async () => {
+      return executeFieldActionImpl(
+        this.creds,
+        typeId,
+        fieldKey,
+        actionId,
+        fields,
+        actionFields ?? {},
+      );
+    });
   }
 
-  async publishMessage(
+  publishMessage(
     typeId: string,
     resourceId: string,
     accountId: string,
     payload: PublishMessagePayload,
-  ): Promise<PublishMessageResult> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const ctx = {
-      credsFor: (region: string) => this.credsFor(region),
-      defaultRegion: this.creds.region,
-      resource: {
-        fields: resource.fields,
-        ...(resource.externalId !== undefined ? { externalId: resource.externalId } : {}),
-        displayName: resource.displayName,
-      },
-    };
-    switch (typeId) {
-      case "sqs-queue":
-        return publishSqs(ctx, payload);
-      case "sns-topic":
-        return publishSns(ctx, payload);
-      case "kinesis-stream":
-        return publishKinesis(ctx, payload);
-      case "eventbridge-rule":
-        return publishEventBridge(ctx, payload);
-      default:
-        throw new Error(`AWS plugin: publishMessage not supported for type "${typeId}"`);
-    }
-  }
-
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    return deleteResourceImpl(
-      {
-        creds: this.creds,
+  ): PluginEffect<PublishMessageResult> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const ctx = {
         credsFor: (region: string) => this.credsFor(region),
-        getResource: (t, r, a) => this.getResource(t, r, a),
-      },
-      typeId,
-      resourceId,
-      accountId,
-    );
+        defaultRegion: this.creds.region,
+        resource: {
+          fields: resource.fields,
+          ...(resource.externalId !== undefined ? { externalId: resource.externalId } : {}),
+          displayName: resource.displayName,
+        },
+      };
+      switch (typeId) {
+        case "sqs-queue":
+          return publishSqs(ctx, payload);
+        case "sns-topic":
+          return publishSns(ctx, payload);
+        case "kinesis-stream":
+          return publishKinesis(ctx, payload);
+        case "eventbridge-rule":
+          return publishEventBridge(ctx, payload);
+        default:
+          throw new Error(`AWS plugin: publishMessage not supported for type "${typeId}"`);
+      }
+    });
   }
 
-  async invokeAction(
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return deleteResourceImpl(
+        {
+          creds: this.creds,
+          credsFor: (region: string) => this.credsFor(region),
+          getResource: (t, r, a) => runPluginEffect(this.getResource(t, r, a)),
+        },
+        typeId,
+        resourceId,
+        accountId,
+      );
+    });
+  }
+
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    if (typeId === "ec2-instance" && (actionId === "start" || actionId === "stop")) {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const instanceId = String(resource.externalId ?? resource.fields["instanceId"] ?? "");
-      if (!instanceId) throw new Error("Cannot determine EC2 instance ID");
-      const region = String(resource.fields["region"] ?? this.creds.region);
-      await ec2Call(
-        this.credsFor(region),
-        actionId === "start" ? "StartInstances" : "StopInstances",
-        { "InstanceId.1": instanceId },
-      );
-      return;
-    }
-    if (typeId === "rds-instance" && (actionId === "start" || actionId === "stop")) {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const dbId = String(resource.externalId ?? resource.fields["dbInstanceId"] ?? "");
-      if (!dbId) throw new Error("Cannot determine RDS instance identifier");
-      const region = String(resource.fields["region"] ?? this.creds.region);
-      await queryPostCall(
-        this.credsFor(region),
-        "rds",
-        actionId === "start" ? "StartDBInstance" : "StopDBInstance",
-        "2014-10-31",
-        { DBInstanceIdentifier: dbId },
-      );
-      return;
-    }
-    throw new Error(`AWS plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "ec2-instance" && (actionId === "start" || actionId === "stop")) {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const instanceId = String(resource.externalId ?? resource.fields["instanceId"] ?? "");
+        if (!instanceId) throw new Error("Cannot determine EC2 instance ID");
+        const region = String(resource.fields["region"] ?? this.creds.region);
+        await ec2Call(
+          this.credsFor(region),
+          actionId === "start" ? "StartInstances" : "StopInstances",
+          { "InstanceId.1": instanceId },
+        );
+        return;
+      }
+      if (typeId === "rds-instance" && (actionId === "start" || actionId === "stop")) {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const dbId = String(resource.externalId ?? resource.fields["dbInstanceId"] ?? "");
+        if (!dbId) throw new Error("Cannot determine RDS instance identifier");
+        const region = String(resource.fields["region"] ?? this.creds.region);
+        await queryPostCall(
+          this.credsFor(region),
+          "rds",
+          actionId === "start" ? "StartDBInstance" : "StopDBInstance",
+          "2014-10-31",
+          { DBInstanceIdentifier: dbId },
+        );
+        return;
+      }
+      throw new Error(`AWS plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    if (typeId === "dynamodb-table") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const tableName = String(resource.fields["tableName"] ?? resource.externalId ?? "");
-      const region = String(resource.fields["region"] ?? this.creds.region);
-      return executeDynamoDbCommand(this.credsFor(region), tableName, command, args);
-    }
-    throw new Error(`AWS plugin: executeNoSqlCommand not supported for type "${typeId}"`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      if (typeId === "dynamodb-table") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const tableName = String(resource.fields["tableName"] ?? resource.externalId ?? "");
+        const region = String(resource.fields["region"] ?? this.creds.region);
+        return executeDynamoDbCommand(this.credsFor(region), tableName, command, args);
+      }
+      throw new Error(`AWS plugin: executeNoSqlCommand not supported for type "${typeId}"`);
+    });
   }
 
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId === "iam-user" && formatId === "access-key") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const userName = String(resource.externalId ?? resource.fields["userName"] ?? "");
-      if (!userName) throw new Error("Cannot determine IAM user name");
-      const data = await queryPostCall<Record<string, unknown>>(
-        this.creds,
-        "iam",
-        "CreateAccessKey",
-        "2010-05-08",
-        { UserName: userName },
-      );
-      const result = data["CreateAccessKeyResult"] as Record<string, unknown> | undefined;
-      const accessKey = (result?.["AccessKey"] as Record<string, unknown>) ?? {};
-      const id = String(accessKey["AccessKeyId"] ?? "");
-      const secret = String(accessKey["SecretAccessKey"] ?? "");
-      if (!id || !secret) throw new Error("AWS returned an empty access key");
-      const ini = `[default]\naws_access_key_id=${id}\naws_secret_access_key=${secret}\n`;
-      return {
-        content: ini,
-        filename: `${userName}.credentials`,
-        mimeType: "text/plain",
-        fields: [
-          { label: "Access Key ID", value: id },
-          { label: "Secret Access Key", value: secret, sensitive: true, hint: "Only shown once" },
-        ],
-        warning:
-          "Save this secret access key now. AWS will not show it again. If lost, delete this key and create a new one.",
-      };
-    }
-    throw new Error(
-      `AWS plugin: exportCredential not supported for type "${typeId}" / format "${formatId}"`,
-    );
-  }
-
-  async getManifest(resourceId: string, accountId: string): Promise<string> {
-    // Determine the type from the resourceId pattern (accountId:typeId:externalId)
-    const parts = resourceId.split(":");
-    const typeId = parts[1] ?? "";
-
-    if (typeId === "s3-bucket") {
-      const externalId = parts.slice(2).join(":");
-      const raw = await getBucketPolicy(this.creds, externalId);
-      if (!raw) return "";
-      // Pretty-print the JSON so the editor opens nicely formatted.
-      try {
-        return JSON.stringify(JSON.parse(raw), null, 2);
-      } catch {
-        return raw;
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId === "iam-user" && formatId === "access-key") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const userName = String(resource.externalId ?? resource.fields["userName"] ?? "");
+        if (!userName) throw new Error("Cannot determine IAM user name");
+        const data = await queryPostCall<Record<string, unknown>>(
+          this.creds,
+          "iam",
+          "CreateAccessKey",
+          "2010-05-08",
+          { UserName: userName },
+        );
+        const result = data["CreateAccessKeyResult"] as Record<string, unknown> | undefined;
+        const accessKey = (result?.["AccessKey"] as Record<string, unknown>) ?? {};
+        const id = String(accessKey["AccessKeyId"] ?? "");
+        const secret = String(accessKey["SecretAccessKey"] ?? "");
+        if (!id || !secret) throw new Error("AWS returned an empty access key");
+        const ini = `[default]\naws_access_key_id=${id}\naws_secret_access_key=${secret}\n`;
+        return {
+          content: ini,
+          filename: `${userName}.credentials`,
+          mimeType: "text/plain",
+          fields: [
+            { label: "Access Key ID", value: id },
+            { label: "Secret Access Key", value: secret, sensitive: true, hint: "Only shown once" },
+          ],
+          warning:
+            "Save this secret access key now. AWS will not show it again. If lost, delete this key and create a new one.",
+        };
       }
-    }
-
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    return JSON.stringify(
-      {
-        resourceTypeId: resource.resourceTypeId,
-        externalId: resource.externalId,
-        displayName: resource.displayName,
-        fields: resource.fields,
-        resolvedOutputs: resource.resolvedOutputs,
-      },
-      null,
-      2,
-    );
+      throw new Error(
+        `AWS plugin: exportCredential not supported for type "${typeId}" / format "${formatId}"`,
+      );
+    });
   }
 
-  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
-    const parts = resourceId.split(":");
-    const typeId = parts[1] ?? "";
-    if (typeId !== "s3-bucket") {
-      throw new Error(`AWS plugin: applyManifest not supported for type "${typeId}"`);
-    }
-    const externalId = parts.slice(2).join(":");
-    return putBucketPolicy(this.creds, externalId, manifest);
+  getManifest(resourceId: string, accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      // Determine the type from the resourceId pattern (accountId:typeId:externalId)
+      const parts = resourceId.split(":");
+      const typeId = parts[1] ?? "";
+
+      if (typeId === "s3-bucket") {
+        const externalId = parts.slice(2).join(":");
+        const raw = await getBucketPolicy(this.creds, externalId);
+        if (!raw) return "";
+        // Pretty-print the JSON so the editor opens nicely formatted.
+        try {
+          return JSON.stringify(JSON.parse(raw), null, 2);
+        } catch {
+          return raw;
+        }
+      }
+
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return JSON.stringify(
+        {
+          resourceTypeId: resource.resourceTypeId,
+          externalId: resource.externalId,
+          displayName: resource.displayName,
+          fields: resource.fields,
+          resolvedOutputs: resource.resolvedOutputs,
+        },
+        null,
+        2,
+      );
+    });
+  }
+
+  applyManifest(resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
+    return attempt(async () => {
+      const parts = resourceId.split(":");
+      const typeId = parts[1] ?? "";
+      if (typeId !== "s3-bucket") {
+        throw new Error(`AWS plugin: applyManifest not supported for type "${typeId}"`);
+      }
+      const externalId = parts.slice(2).join(":");
+      return putBucketPolicy(this.creds, externalId, manifest);
+    });
   }
 
   /**
@@ -1363,7 +1466,7 @@ export class AWSClient implements PluginClient {
    * `application/vnd.amazon.eventstream` framing, so we deliberately use the
    * plain-JSON non-streaming call and surface the whole reply as one delta.
    */
-  async *streamChatMessage(
+  private async *streamChatMessageIterable(
     typeId: string,
     resourceId: string,
     _accountId: string,
@@ -1443,5 +1546,16 @@ export class AWSClient implements PluginClient {
       message: { role: "assistant", content: text },
       ...(Object.keys(usage).length > 0 ? { usage } : {}),
     };
+  }
+
+  streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    messages: ChatMessage[],
+  ) {
+    return attemptStream(() =>
+      this.streamChatMessageIterable(typeId, resourceId, _accountId, messages),
+    );
   }
 }

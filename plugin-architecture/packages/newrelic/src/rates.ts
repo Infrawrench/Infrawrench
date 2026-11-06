@@ -51,7 +51,7 @@ export const RATE_KEYS = {
 } as const;
 
 function parseRate(
-  credentials: Record<string, string>,
+  credentials: Readonly<Record<string, string | undefined>>,
   key: string,
   label: string,
   fallback: string | undefined,
@@ -66,7 +66,9 @@ function parseRate(
   return n;
 }
 
-export function parseRates(credentials: Record<string, string>): NewRelicRates {
+export function parseRates(
+  credentials: Readonly<Record<string, string | undefined>>,
+): NewRelicRates {
   const coreCcu = parseRate(
     credentials,
     RATE_KEYS.coreCcu,

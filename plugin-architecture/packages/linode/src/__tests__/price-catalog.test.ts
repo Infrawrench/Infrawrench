@@ -1,5 +1,7 @@
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pluginManifestSchema, type HostServices } from "@infrawrench/plugin-base";
+import { type HostServices } from "@infrawrench/plugin-base";
 import {
   fetchLinodePriceCatalog,
   fetchLinodePriceCatalogWith,
@@ -116,7 +118,7 @@ describe("fetchLinodePriceCatalog", () => {
         status: 200,
       }),
     );
-    const result = await plugin.fetchPriceCatalog!({ serviceId: "linodes" });
+    const result = await hostPlugin(plugin).fetchPriceCatalog!({ serviceId: "linodes" });
     expect(spy).toHaveBeenCalledOnce();
     expect(result.products[0]!.sku).toBe("g6-nanode-1");
   });
@@ -136,6 +138,6 @@ describe("declaration", () => {
     expect(linodePriceCatalog.regions[0]!.id).toBe("us-east");
     expect(linodePriceCatalog.regions.find((r) => r.area === "europe")!.id).toBe("eu-central");
     expect(linodePriceCatalog.regions).toHaveLength(33);
-    expect(pluginManifestSchema.safeParse(plugin.manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, plugin.manifest).success).toBe(true);
   });
 });

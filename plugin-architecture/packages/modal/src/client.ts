@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -126,7 +129,7 @@ export class ModalClient implements PluginClient {
   private readonly ctx: ModalContext;
   private readonly cache = new Map<string, { at: number; value: Promise<unknown> }>();
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const tokenId = (credentials["tokenId"] ?? "").trim();
     const tokenSecret = (credentials["tokenSecret"] ?? "").trim();
     if (!tokenId) throw new Error("Modal plugin: missing tokenId credential");
@@ -213,50 +216,52 @@ export class ModalClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "workspace": {
-        const [name, envs, summary, url] = await Promise.all([
-          this.workspace(),
-          this.environments().catch(() => [] as ModalEnvironment[]),
-          billingSummary(this.ctx, monthStartMs()).catch(() => undefined),
-          dashboardUrl(this.ctx).catch(() => ""),
-        ]);
-        return [mapWorkspace(accountId, name, envs.length, summary, url)];
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "workspace": {
+          const [name, envs, summary, url] = await Promise.all([
+            this.workspace(),
+            this.environments().catch(() => [] as ModalEnvironment[]),
+            billingSummary(this.ctx, monthStartMs()).catch(() => undefined),
+            dashboardUrl(this.ctx).catch(() => ""),
+          ]);
+          return [mapWorkspace(accountId, name, envs.length, summary, url)];
+        }
+        case "environment":
+          return (await this.environments()).map((e) => mapEnvironment(accountId, e));
+        case "app":
+          return (await this.apps()).map((a) => mapApp(accountId, a));
+        case "function":
+          return (await this.deployedFunctions()).flatMap(({ app, info }) =>
+            info.functions.map((s) => mapFunction(accountId, "function", app, s)),
+          );
+        case "scheduled-function":
+          return (await this.deployedFunctions()).flatMap(({ app, info }) =>
+            info.functions
+              .filter((s) => s.schedule)
+              .map((s) => mapFunction(accountId, "scheduled-function", app, s)),
+          );
+        case "volume":
+          return (await this.perEnvironment("volumes", (env) => listVolumes(this.ctx, env))).map(
+            (v) => mapVolume(accountId, v),
+          );
+        case "secret":
+          return (await this.perEnvironment("secrets", (env) => listSecrets(this.ctx, env))).map(
+            (s) => mapSecret(accountId, s),
+          );
+        case "dict":
+          return (await this.perEnvironment("dicts", (env) => listDicts(this.ctx, env))).map((d) =>
+            mapDict(accountId, d),
+          );
+        case "queue":
+          return (await this.perEnvironment("queues", (env) => listQueues(this.ctx, env))).map(
+            (q) => mapQueue(accountId, q),
+          );
+        default:
+          throw new Error(`Modal plugin: unknown resource type "${typeId}"`);
       }
-      case "environment":
-        return (await this.environments()).map((e) => mapEnvironment(accountId, e));
-      case "app":
-        return (await this.apps()).map((a) => mapApp(accountId, a));
-      case "function":
-        return (await this.deployedFunctions()).flatMap(({ app, info }) =>
-          info.functions.map((s) => mapFunction(accountId, "function", app, s)),
-        );
-      case "scheduled-function":
-        return (await this.deployedFunctions()).flatMap(({ app, info }) =>
-          info.functions
-            .filter((s) => s.schedule)
-            .map((s) => mapFunction(accountId, "scheduled-function", app, s)),
-        );
-      case "volume":
-        return (await this.perEnvironment("volumes", (env) => listVolumes(this.ctx, env))).map(
-          (v) => mapVolume(accountId, v),
-        );
-      case "secret":
-        return (await this.perEnvironment("secrets", (env) => listSecrets(this.ctx, env))).map(
-          (s) => mapSecret(accountId, s),
-        );
-      case "dict":
-        return (await this.perEnvironment("dicts", (env) => listDicts(this.ctx, env))).map((d) =>
-          mapDict(accountId, d),
-        );
-      case "queue":
-        return (await this.perEnvironment("queues", (env) => listQueues(this.ctx, env))).map((q) =>
-          mapQueue(accountId, q),
-        );
-      default:
-        throw new Error(`Modal plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -269,63 +274,65 @@ export class ModalClient implements PluginClient {
     accountId: string,
   ): Promise<ResourceInstance> {
     const id = externalIdOf(resourceId);
-    const all = await this.listResources(typeId, accountId);
+    const all = await runPluginEffect(this.listResources(typeId, accountId));
     const found = all.find((r) => r.id === resourceId || r.externalId === id);
     if (!found) throw new Error(`Modal plugin: resource ${typeId}/${resourceId} not found`);
     return found;
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "function" || typeId === "scheduled-function") {
-      return this.getFunctionResource(typeId, resourceId, accountId);
-    }
-    const found = await this.findListed(typeId, resourceId, accountId);
-    const stash: Record<string, string> = {};
-    switch (typeId) {
-      case "workspace": {
-        const [summary, rates] = await Promise.all([
-          billingSummary(this.ctx, monthStartMs()).catch(
-            () => undefined as BillingSummary | undefined,
-          ),
-          billingRates(this.ctx).catch(() => undefined as BillingRates | undefined),
-        ]);
-        if (summary) stash[SUMMARY_KEY] = JSON.stringify(summary);
-        else stash[BILLING_NOTE_KEY] = BILLING_NOTE;
-        if (rates) stash[RATES_KEY] = JSON.stringify(rates);
-        break;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "function" || typeId === "scheduled-function") {
+        return this.getFunctionResource(typeId, resourceId, accountId);
       }
-      case "environment": {
-        const envId = String(found.fields["environmentId"] ?? "");
-        const [summary, url] = await Promise.all([
-          envId
-            ? environmentBillingSummary(this.ctx, monthStartMs(), envId).catch(() => undefined)
-            : Promise.resolve(undefined),
-          dashboardUrl(this.ctx, String(found.fields["name"] ?? "")).catch(() => ""),
-        ]);
-        if (summary) stash[SUMMARY_KEY] = JSON.stringify(summary);
-        if (url) stash["url"] = url;
-        break;
+      const found = await this.findListed(typeId, resourceId, accountId);
+      const stash: Record<string, string> = {};
+      switch (typeId) {
+        case "workspace": {
+          const [summary, rates] = await Promise.all([
+            billingSummary(this.ctx, monthStartMs()).catch(
+              () => undefined as BillingSummary | undefined,
+            ),
+            billingRates(this.ctx).catch(() => undefined as BillingRates | undefined),
+          ]);
+          if (summary) stash[SUMMARY_KEY] = JSON.stringify(summary);
+          else stash[BILLING_NOTE_KEY] = BILLING_NOTE;
+          if (rates) stash[RATES_KEY] = JSON.stringify(rates);
+          break;
+        }
+        case "environment": {
+          const envId = String(found.fields["environmentId"] ?? "");
+          const [summary, url] = await Promise.all([
+            envId
+              ? environmentBillingSummary(this.ctx, monthStartMs(), envId).catch(() => undefined)
+              : Promise.resolve(undefined),
+            dashboardUrl(this.ctx, String(found.fields["name"] ?? "")).catch(() => ""),
+          ]);
+          if (summary) stash[SUMMARY_KEY] = JSON.stringify(summary);
+          if (url) stash["url"] = url;
+          break;
+        }
+        case "app": {
+          const appId = found.externalId ?? "";
+          const [info, tags, history] = await Promise.all([
+            getAppInfo(this.ctx, appId).catch(() => undefined),
+            getAppTags(this.ctx, appId).catch(() => undefined),
+            getDeploymentHistory(this.ctx, appId).catch(() => undefined),
+          ]);
+          if (info) stash[APP_INFO_KEY] = JSON.stringify(info);
+          if (tags) stash[TAGS_KEY] = JSON.stringify(tags);
+          if (history) stash[DEPLOYMENTS_KEY] = JSON.stringify(history);
+          break;
+        }
+        default:
+          break;
       }
-      case "app": {
-        const appId = found.externalId ?? "";
-        const [info, tags, history] = await Promise.all([
-          getAppInfo(this.ctx, appId).catch(() => undefined),
-          getAppTags(this.ctx, appId).catch(() => undefined),
-          getDeploymentHistory(this.ctx, appId).catch(() => undefined),
-        ]);
-        if (info) stash[APP_INFO_KEY] = JSON.stringify(info);
-        if (tags) stash[TAGS_KEY] = JSON.stringify(tags);
-        if (history) stash[DEPLOYMENTS_KEY] = JSON.stringify(history);
-        break;
-      }
-      default:
-        break;
-    }
-    return { ...found, resolvedOutputs: { ...found.resolvedOutputs, ...stash } };
+      return { ...found, resolvedOutputs: { ...found.resolvedOutputs, ...stash } };
+    });
   }
 
   /**
@@ -365,123 +372,135 @@ export class ModalClient implements PluginClient {
     return { ...found, resolvedOutputs: { ...found.resolvedOutputs, ...stash } };
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`Modal plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(`Modal plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics, costs, quotas
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    switch (resourceTypeId) {
-      case "function":
-      case "scheduled-function": {
-        const stats = await getFunctionCurrentStats(this.ctx, externalIdOf(resourceId));
-        return [
-          { label: "Queued", value: String(stats.backlog) },
-          { label: "Running", value: String(stats.runningInputs) },
-          { label: "Containers", value: String(stats.totalTasks) },
-        ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      switch (resourceTypeId) {
+        case "function":
+        case "scheduled-function": {
+          const stats = await getFunctionCurrentStats(this.ctx, externalIdOf(resourceId));
+          return [
+            { label: "Queued", value: String(stats.backlog) },
+            { label: "Running", value: String(stats.runningInputs) },
+            { label: "Containers", value: String(stats.totalTasks) },
+          ];
+        }
+        default:
+          break;
       }
-      default:
-        break;
-    }
-    const r = await this.findListed(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    switch (resourceTypeId) {
-      case "workspace":
-        return [
-          { label: "Billed this month", value: usd(f["monthBilled"]) },
-          { label: "Metered this month", value: usd(f["monthMetered"]) },
-        ];
-      case "environment":
-        return [
-          { label: "Containers", value: String(f["currentConcurrentTasks"] ?? 0) },
-          { label: "GPUs", value: String(f["currentConcurrentGpus"] ?? 0) },
-          {
-            label: "Spend this cycle",
-            value: usd(f["cycleUsage"]),
-            ...(f["spendLimitReached"] === true ? { variant: "status-error" as const } : {}),
-          },
-        ];
-      case "app":
-        return [
-          {
-            label: "State",
-            value: String(f["state"] ?? "—"),
-            variant: f["state"] === "deployed" ? "status-healthy" : "default",
-          },
-          { label: "Containers", value: String(f["runningTasks"] ?? 0) },
-        ];
-      case "queue":
-        return [
-          { label: "Items", value: String(f["totalSize"] ?? 0) },
-          { label: "Partitions", value: String(f["partitions"] ?? 0) },
-        ];
-      default:
-        return [];
-    }
+      const r = await this.findListed(resourceTypeId, resourceId, accountId);
+      const f = r.fields;
+      switch (resourceTypeId) {
+        case "workspace":
+          return [
+            { label: "Billed this month", value: usd(f["monthBilled"]) },
+            { label: "Metered this month", value: usd(f["monthMetered"]) },
+          ];
+        case "environment":
+          return [
+            { label: "Containers", value: String(f["currentConcurrentTasks"] ?? 0) },
+            { label: "GPUs", value: String(f["currentConcurrentGpus"] ?? 0) },
+            {
+              label: "Spend this cycle",
+              value: usd(f["cycleUsage"]),
+              ...(f["spendLimitReached"] === true ? { variant: "status-error" as const } : {}),
+            },
+          ];
+        case "app":
+          return [
+            {
+              label: "State",
+              value: String(f["state"] ?? "—"),
+              variant: f["state"] === "deployed" ? "status-healthy" : "default",
+            },
+            { label: "Containers", value: String(f["runningTasks"] ?? 0) },
+          ];
+        case "queue":
+          return [
+            { label: "Items", value: String(f["totalSize"] ?? 0) },
+            { label: "Partitions", value: String(f["partitions"] ?? 0) },
+          ];
+        default:
+          return [];
+      }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const id = externalIdOf(resourceId);
-    const cost = async (filter: { environmentIds?: string[]; appIds?: string[] }) => {
-      const rates = await billingRates(this.ctx).catch(() => undefined);
-      try {
-        return await costSeries(
-          this.ctx,
-          rangeOrDefault(timeRange, COST_METRICS_WINDOW_MS),
-          filter,
-          rates,
-        );
-      } catch (err) {
-        const code = grpcCodeOf(err);
-        if (code === GrpcCode.PERMISSION_DENIED || code === GrpcCode.FAILED_PRECONDITION) {
-          throw new Error(BILLING_NOTE);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const cost = async (filter: { environmentIds?: string[]; appIds?: string[] }) => {
+        const rates = await billingRates(this.ctx).catch(() => undefined);
+        try {
+          return await costSeries(
+            this.ctx,
+            rangeOrDefault(timeRange, COST_METRICS_WINDOW_MS),
+            filter,
+            rates,
+          );
+        } catch (err) {
+          const code = grpcCodeOf(err);
+          if (code === GrpcCode.PERMISSION_DENIED || code === GrpcCode.FAILED_PRECONDITION) {
+            throw new Error(BILLING_NOTE);
+          }
+          throw err;
         }
-        throw err;
+      };
+      switch (resourceTypeId) {
+        case "workspace":
+          return cost({});
+        case "environment": {
+          const env = await this.findListed("environment", resourceId, accountId);
+          const envId = String(env.fields["environmentId"] ?? "");
+          return envId ? cost({ environmentIds: [envId] }) : [];
+        }
+        case "app":
+          return cost({ appIds: [id] });
+        case "function":
+        case "scheduled-function":
+          return functionSeries(
+            this.ctx,
+            id,
+            rangeOrDefault(timeRange, FUNCTION_METRICS_WINDOW_MS),
+          );
+        default:
+          return [];
       }
-    };
-    switch (resourceTypeId) {
-      case "workspace":
-        return cost({});
-      case "environment": {
-        const env = await this.findListed("environment", resourceId, accountId);
-        const envId = String(env.fields["environmentId"] ?? "");
-        return envId ? cost({ environmentIds: [envId] }) : [];
-      }
-      case "app":
-        return cost({ appIds: [id] });
-      case "function":
-      case "scheduled-function":
-        return functionSeries(this.ctx, id, rangeOrDefault(timeRange, FUNCTION_METRICS_WINDOW_MS));
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchModalCostData(this.ctx, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchModalCostData(this.ctx, range);
+    });
   }
 
   /**
@@ -489,101 +508,105 @@ export class ModalClient implements PluginClient {
    * `EnvironmentListItem`: concurrent containers and GPUs where a cap is set,
    * and spend this cycle against the environment's spend limit.
    */
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    let envs: ModalEnvironment[];
-    try {
-      envs = await listEnvironments(this.ctx);
-    } catch (err) {
-      if (grpcCodeOf(err) === GrpcCode.PERMISSION_DENIED) {
-        throw new QuotaAccessError(
-          "This Modal token cannot list environments, so their limits cannot be read.",
-          { label: "Modal environments", url: "https://modal.com/docs/guide/environments" },
-        );
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      let envs: ModalEnvironment[];
+      try {
+        envs = await listEnvironments(this.ctx);
+      } catch (err) {
+        if (grpcCodeOf(err) === GrpcCode.PERMISSION_DENIED) {
+          throw new QuotaAccessError(
+            "This Modal token cannot list environments, so their limits cannot be read.",
+            { label: "Modal environments", url: "https://modal.com/docs/guide/environments" },
+          );
+        }
+        throw err;
       }
-      throw err;
-    }
-    const out: QuotaUsage[] = [];
-    for (const e of envs) {
-      const key = e.id || e.name;
-      if (e.maxConcurrentTasks !== undefined && e.maxConcurrentTasks > 0) {
-        out.push({
-          id: `${key}:concurrent-containers`,
-          service: "Environments",
-          name: `Concurrent containers (${e.name})`,
-          limit: e.maxConcurrentTasks,
-          used: e.currentConcurrentTasks,
-          unit: "containers",
-          adjustable: true,
-        });
+      const out: QuotaUsage[] = [];
+      for (const e of envs) {
+        const key = e.id || e.name;
+        if (e.maxConcurrentTasks !== undefined && e.maxConcurrentTasks > 0) {
+          out.push({
+            id: `${key}:concurrent-containers`,
+            service: "Environments",
+            name: `Concurrent containers (${e.name})`,
+            limit: e.maxConcurrentTasks,
+            used: e.currentConcurrentTasks,
+            unit: "containers",
+            adjustable: true,
+          });
+        }
+        if (e.maxConcurrentGpus !== undefined && e.maxConcurrentGpus > 0) {
+          out.push({
+            id: `${key}:concurrent-gpus`,
+            service: "Environments",
+            name: `Concurrent GPUs (${e.name})`,
+            limit: e.maxConcurrentGpus,
+            used: e.currentConcurrentGpus,
+            unit: "GPUs",
+            adjustable: true,
+          });
+        }
+        if (e.effectiveSpendLimit > 0) {
+          out.push({
+            id: `${key}:cycle-spend`,
+            service: "Billing",
+            name: `Spend this cycle (${e.name})`,
+            limit: e.effectiveSpendLimit,
+            used: e.currentCycleUsage,
+            unit: "USD",
+            adjustable: true,
+          });
+        }
       }
-      if (e.maxConcurrentGpus !== undefined && e.maxConcurrentGpus > 0) {
-        out.push({
-          id: `${key}:concurrent-gpus`,
-          service: "Environments",
-          name: `Concurrent GPUs (${e.name})`,
-          limit: e.maxConcurrentGpus,
-          used: e.currentConcurrentGpus,
-          unit: "GPUs",
-          adjustable: true,
-        });
-      }
-      if (e.effectiveSpendLimit > 0) {
-        out.push({
-          id: `${key}:cycle-spend`,
-          service: "Billing",
-          name: `Spend this cycle (${e.name})`,
-          limit: e.effectiveSpendLimit,
-          used: e.currentCycleUsage,
-          unit: "USD",
-          adjustable: true,
-        });
-      }
-    }
-    return out;
+      return out;
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create / update / delete / actions
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "environment") {
-      throw new Error(`Modal plugin: cannot create "${typeId}" from Infrawrench`);
-    }
-    return {
-      fields: [
-        {
-          key: "name",
-          label: "Name",
-          kind: "text",
-          required: true,
-          placeholder: "staging",
-          description: "Letters, numbers, dashes and underscores.",
-        },
-        {
-          key: "webhookSuffix",
-          label: "Web Endpoint Suffix",
-          kind: "text",
-          required: false,
-          description:
-            "Optional. Added to the URLs of this environment's web endpoints; Modal picks one when left empty.",
-        },
-        {
-          key: "maxConcurrentTasks",
-          label: "Max Concurrent Containers",
-          kind: "number",
-          required: false,
-          description: "Optional cap on containers running at once.",
-        },
-        {
-          key: "maxConcurrentGpus",
-          label: "Max Concurrent GPUs",
-          kind: "number",
-          required: false,
-          description: "Optional cap on GPUs in use at once.",
-        },
-      ],
-    };
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId !== "environment") {
+        throw new Error(`Modal plugin: cannot create "${typeId}" from Infrawrench`);
+      }
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            placeholder: "staging",
+            description: "Letters, numbers, dashes and underscores.",
+          },
+          {
+            key: "webhookSuffix",
+            label: "Web Endpoint Suffix",
+            kind: "text",
+            required: false,
+            description:
+              "Optional. Added to the URLs of this environment's web endpoints; Modal picks one when left empty.",
+          },
+          {
+            key: "maxConcurrentTasks",
+            label: "Max Concurrent Containers",
+            kind: "number",
+            required: false,
+            description: "Optional cap on containers running at once.",
+          },
+          {
+            key: "maxConcurrentGpus",
+            label: "Max Concurrent GPUs",
+            kind: "number",
+            required: false,
+            description: "Optional cap on GPUs in use at once.",
+          },
+        ],
+      };
+    });
   }
 
   private limitsPatch(fields: Record<string, string>): {
@@ -617,77 +640,85 @@ export class ModalClient implements PluginClient {
     return mapEnvironment(accountId, env);
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "environment") {
-      throw new Error(`Modal plugin: cannot create "${typeId}" from Infrawrench`);
-    }
-    const name = (fields["name"] ?? "").trim();
-    if (!name) throw new Error("An environment needs a name.");
-    const patch = this.limitsPatch(fields);
-    await createEnvironment(this.ctx, name);
-    if (Object.keys(patch).length > 0) await updateEnvironment(this.ctx, name, patch);
-    return this.findEnvironment(accountId, name);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "environment") {
+        throw new Error(`Modal plugin: cannot create "${typeId}" from Infrawrench`);
+      }
+      const name = (fields["name"] ?? "").trim();
+      if (!name) throw new Error("An environment needs a name.");
+      const patch = this.limitsPatch(fields);
+      await createEnvironment(this.ctx, name);
+      if (Object.keys(patch).length > 0) await updateEnvironment(this.ctx, name, patch);
+      return this.findEnvironment(accountId, name);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "environment") {
-      throw new Error(`Modal plugin: "${typeId}" cannot be edited from Infrawrench`);
-    }
-    const current = await this.findListed("environment", resourceId, accountId);
-    const currentName = String(current.fields["name"] ?? "");
-    for (const key of ["maxConcurrentTasks", "maxConcurrentGpus"]) {
-      if (key in fields && !(fields[key] ?? "").trim() && current.fields[key] !== undefined) {
-        throw new Error(
-          "Modal's API cannot remove a concurrency cap once set. Enter a higher limit instead, or remove the cap in the Modal dashboard.",
-        );
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "environment") {
+        throw new Error(`Modal plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-    }
-    const patch = {
-      ...this.limitsPatch(fields),
-      ...("name" in fields &&
-      (fields["name"] ?? "").trim() &&
-      fields["name"]!.trim() !== currentName
-        ? { name: fields["name"]!.trim() }
-        : {}),
-    };
-    if (Object.keys(patch).length > 0) await updateEnvironment(this.ctx, currentName, patch);
-    return this.findEnvironment(accountId, patch.name ?? currentName);
+      const current = await this.findListed("environment", resourceId, accountId);
+      const currentName = String(current.fields["name"] ?? "");
+      for (const key of ["maxConcurrentTasks", "maxConcurrentGpus"]) {
+        if (key in fields && !(fields[key] ?? "").trim() && current.fields[key] !== undefined) {
+          throw new Error(
+            "Modal's API cannot remove a concurrency cap once set. Enter a higher limit instead, or remove the cap in the Modal dashboard.",
+          );
+        }
+      }
+      const patch = {
+        ...this.limitsPatch(fields),
+        ...("name" in fields &&
+        (fields["name"] ?? "").trim() &&
+        fields["name"]!.trim() !== currentName
+          ? { name: fields["name"]!.trim() }
+          : {}),
+      };
+      if (Object.keys(patch).length > 0) await updateEnvironment(this.ctx, currentName, patch);
+      return this.findEnvironment(accountId, patch.name ?? currentName);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    if (typeId === "environment") {
-      const env = await this.findListed("environment", resourceId, accountId);
-      await deleteEnvironment(this.ctx, String(env.fields["name"] ?? ""));
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "environment") {
+        const env = await this.findListed("environment", resourceId, accountId);
+        await deleteEnvironment(this.ctx, String(env.fields["name"] ?? ""));
+        this.invalidate();
+        return;
+      }
+      const kind = DELETABLE[typeId as keyof typeof DELETABLE];
+      if (!kind) throw new Error(`Modal plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      await deleteObject(this.ctx, kind, externalIdOf(resourceId));
       this.invalidate();
-      return;
-    }
-    const kind = DELETABLE[typeId as keyof typeof DELETABLE];
-    if (!kind) throw new Error(`Modal plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    await deleteObject(this.ctx, kind, externalIdOf(resourceId));
-    this.invalidate();
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    if (typeId === "app" && actionId === "stop") {
-      await stopApp(this.ctx, externalIdOf(resourceId));
-      this.invalidate();
-      return;
-    }
-    throw new Error(`Modal plugin: unknown action "${actionId}" for "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "app" && actionId === "stop") {
+        await stopApp(this.ctx, externalIdOf(resourceId));
+        this.invalidate();
+        return;
+      }
+      throw new Error(`Modal plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------

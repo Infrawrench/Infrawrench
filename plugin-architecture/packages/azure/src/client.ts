@@ -24,6 +24,9 @@
  *   - create-handlers.ts           per-type create flows
  *   - shared.ts                    common types/constants
  */
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CommitmentRecord,
   CostEstimate,
@@ -128,7 +131,7 @@ export class AzureClient implements PluginClient {
   private pricingRateInFlight = new Map<string, Promise<AzurePricingRates>>();
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     resourceTypes: ResourceTypeDefinition[] = [],
     services?: HostServices,
   ) {
@@ -380,32 +383,36 @@ export class AzureClient implements PluginClient {
     "azure-ai-services": listers.listAIServicesAccounts,
   };
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (typeId === "azure-app-registration") {
-      return listAppRegistrations(
-        {
-          graphClient: this.graphClient,
-          makeId: (a, t, e) => this.makeId(a, t, e),
-          now: () => new Date().toISOString(),
-          tenantId: this.creds.tenantId,
-        },
-        accountId,
-      );
-    }
-    const lister = AzureClient.LISTERS[typeId];
-    if (!lister) throw new Error(`Azure plugin: unknown resource type "${typeId}"`);
-    return lister(this.listerCtx, accountId);
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      if (typeId === "azure-app-registration") {
+        return listAppRegistrations(
+          {
+            graphClient: this.graphClient,
+            makeId: (a, t, e) => this.makeId(a, t, e),
+            now: () => new Date().toISOString(),
+            tenantId: this.creds.tenantId,
+          },
+          accountId,
+        );
+      }
+      const lister = AzureClient.LISTERS[typeId];
+      if (!lister) throw new Error(`Azure plugin: unknown resource type "${typeId}"`);
+      return lister(this.listerCtx, accountId);
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Azure plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Azure plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
   // ─── Delegations ───────────────────────────────────────────────────────
@@ -421,7 +428,9 @@ export class AzureClient implements PluginClient {
    * Shape is the JSON that `kubernetes/src/node-rates.ts` parses.
    */
   private async aksNodeHourlyRates(resourceId: string, accountId: string): Promise<string> {
-    const cluster = await this.getResource("azure-aks-cluster", resourceId, accountId);
+    const cluster = await runPluginEffect(
+      this.getResource("azure-aks-cluster", resourceId, accountId),
+    );
     // Every agent pool, not just the first: GPU node pools are almost always
     // separate user pools, and pricing only the system pool left them unpriced.
     const sizes = String(cluster.fields["vmSizes"] ?? cluster.fields["vmSize"] ?? "")
@@ -447,61 +456,73 @@ export class AzureClient implements PluginClient {
     });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "nodeHourlyRates") {
-      if (typeId !== "azure-aks-cluster") return "";
-      return this.aksNodeHourlyRates(resourceId, accountId).catch(() => "");
-    }
-    return resolveAzureOutput(
-      {
-        ctx: this.httpCtx,
-        getResource: (t, r, a) => this.getResource(t, r, a),
-        exportAppRegistrationSecret: async (t, r, a) => {
-          const exp = await this.exportCredential(t, r, a, "client-secret");
-          return exp.content;
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "nodeHourlyRates") {
+        if (typeId !== "azure-aks-cluster") return "";
+        return this.aksNodeHourlyRates(resourceId, accountId).catch(() => "");
+      }
+      return resolveAzureOutput(
+        {
+          ctx: this.httpCtx,
+          getResource: (t, r, a) => runPluginEffect(this.getResource(t, r, a)),
+          exportAppRegistrationSecret: async (t, r, a) => {
+            const exp = await runPluginEffect(this.exportCredential(t, r, a, "client-secret"));
+            return exp.content;
+          },
+          aksAccessToken: () => fetchAksAccessToken(this.creds, this.http),
         },
-        aksAccessToken: () => fetchAksAccessToken(this.creds, this.http),
-      },
-      typeId,
-      resourceId,
-      outputKey,
-      accountId,
-    );
-  }
-
-  async fetchDashboardStats(
-    resourceTypeId: string,
-    resourceId: string,
-    accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    return buildAzureDashboardStats(resource);
-  }
-
-  async fetchIdleFindings(
-    _accountId: string,
-    request: IdleScanRequest,
-  ): Promise<IdleFindingRecord[]> {
-    return fetchAzureIdleFindings(request, {
-      subscriptionId: this.creds.subscriptionId,
-      read: azureMonitorReader((url) => this.get(url)),
-      prices: retailPriceReader(this.http),
+        typeId,
+        resourceId,
+        outputKey,
+        accountId,
+      );
     });
   }
 
-  async fetchMetricSeries(
+  fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      return buildAzureDashboardStats(resource);
+    });
+  }
+
+  fetchIdleFindings(
+    _accountId: string,
+    request: IdleScanRequest,
+  ): PluginEffect<IdleFindingRecord[]> {
+    return attempt(async () => {
+      return fetchAzureIdleFindings(request, {
+        subscriptionId: this.creds.subscriptionId,
+        read: azureMonitorReader((url) => this.get(url)),
+        prices: retailPriceReader(this.http),
+      });
+    });
+  }
+
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    return fetchAzureMetricSeries(this.httpCtx, resourceTypeId, resource, timeRange);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      return fetchAzureMetricSeries(this.httpCtx, resourceTypeId, resource, timeRange);
+    });
   }
 
   getLogs(
@@ -509,26 +530,32 @@ export class AzureClient implements PluginClient {
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    return fetchAzureLogs(this.httpCtx, typeId, resourceId, params);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      return fetchAzureLogs(this.httpCtx, typeId, resourceId, params);
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
-    const result = await fetchAzureCostData(this.httpCtx, range);
-    // Normalized AI dimensions on Azure OpenAI lines (provider level), so
-    // request logs routed to Azure OpenAI can be reconciled against them.
-    return {
-      ...result,
-      rows: withAiCostTags(result.rows, (row) =>
-        row.service && /openai/i.test(row.service) ? { provider: "azure-openai" } : null,
-      ),
-    };
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostFetchResult> {
+    return attempt(async () => {
+      const result = await fetchAzureCostData(this.httpCtx, range);
+      // Normalized AI dimensions on Azure OpenAI lines (provider level), so
+      // request logs routed to Azure OpenAI can be reconciled against them.
+      return {
+        ...result,
+        rows: withAiCostTags(result.rows, (row) =>
+          row.service && /openai/i.test(row.service) ? { provider: "azure-openai" } : null,
+        ),
+      };
+    });
   }
 
-  async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
-    // `get` is itself host-routed now, so commitments no longer need their own
-    // copy of the host-HTTP shim.
-    return fetchAzureCommitments({ getJson: <T>(url: string) => this.get<T>(url) });
+  fetchCommitments(_accountId: string): PluginEffect<CommitmentRecord[]> {
+    return attempt(async () => {
+      // `get` is itself host-routed now, so commitments no longer need their own
+      // copy of the host-HTTP shim.
+      return fetchAzureCommitments({ getJson: <T>(url: string) => this.get<T>(url) });
+    });
   }
 
   /**
@@ -536,20 +563,22 @@ export class AzureClient implements PluginClient {
    * recommendations, read through Azure Resource Graph. See
    * `vulnerabilities.ts` for the data model, bounds and access errors.
    */
-  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
-    return fetchAzureVulnerabilityFindings({
-      subscriptionId: this.creds.subscriptionId,
-      request: async (method, url, body) => {
-        const tok = await this.token();
-        return azureRequest(this.http, url, {
-          method,
-          headers: {
-            Authorization: `Bearer ${tok}`,
-            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-          },
-          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-        });
-      },
+  listVulnerabilityFindings(_accountId: string): PluginEffect<VulnerabilityFinding[]> {
+    return attempt(async () => {
+      return fetchAzureVulnerabilityFindings({
+        subscriptionId: this.creds.subscriptionId,
+        request: async (method, url, body) => {
+          const tok = await this.token();
+          return azureRequest(this.http, url, {
+            method,
+            headers: {
+              Authorization: `Bearer ${tok}`,
+              ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+            },
+            ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+          });
+        },
+      });
     });
   }
 
@@ -576,24 +605,34 @@ export class AzureClient implements PluginClient {
     return { storageToken: () => this.storageToken(), http: this.http };
   }
 
-  listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    return listStorageObjects(this.storageCtx, bucket, prefix);
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      return listStorageObjects(this.storageCtx, bucket, prefix);
+    });
   }
 
-  uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
-    return uploadStorageObject(this.storageCtx, bucket, key, file);
+  uploadStorageObject(bucket: string, key: string, file: File): PluginEffect<void> {
+    return attempt(async () => {
+      return uploadStorageObject(this.storageCtx, bucket, key, file);
+    });
   }
 
-  makeStorageFolder(bucket: string, key: string): Promise<void> {
-    return makeStorageFolder(this.storageCtx, bucket, key);
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return makeStorageFolder(this.storageCtx, bucket, key);
+    });
   }
 
-  deleteStorageObject(bucket: string, key: string): Promise<void> {
-    return deleteStorageObject(this.storageCtx, bucket, key);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return deleteStorageObject(this.storageCtx, bucket, key);
+    });
   }
 
-  getStorageAccessToken(): Promise<string> {
-    return this.storageToken();
+  getStorageAccessToken(): PluginEffect<string> {
+    return attempt(async () => {
+      return this.storageToken();
+    });
   }
 
   // ─── Container Registry / artifacts ───────────────────────────────────
@@ -603,20 +642,24 @@ export class AzureClient implements PluginClient {
     resourceId: string,
     accountId: string,
     params?: { pageToken?: string; prefix?: string },
-  ): Promise<{ items: ArtifactEntry[]; nextPageToken?: string }> {
-    return listAcrArtifacts(this.httpCtx, this.creds, typeId, resourceId, accountId, params);
+  ): PluginEffect<{ items: ArtifactEntry[]; nextPageToken?: string }> {
+    return attempt(async () => {
+      return listAcrArtifacts(this.httpCtx, this.creds, typeId, resourceId, accountId, params);
+    });
   }
 
   // ─── Pricing ──────────────────────────────────────────────────────────
 
-  async getCreateSizePricing(
+  getCreateSizePricing(
     typeId: string,
     request: CreateSizePricingRequest,
-  ): Promise<Record<string, number>> {
-    if (!azureSupportsSizePricing(typeId)) return {};
-    const region = request.regionId ?? "eastus";
-    const rates = await this.getPricingRatesForRegion(region);
-    return getAzureCreateSizePricing(rates, request);
+  ): PluginEffect<Record<string, number>> {
+    return attempt(async () => {
+      if (!azureSupportsSizePricing(typeId)) return {};
+      const region = request.regionId ?? "eastus";
+      const rates = await this.getPricingRatesForRegion(region);
+      return getAzureCreateSizePricing(rates, request);
+    });
   }
 
   /**
@@ -624,24 +667,30 @@ export class AzureClient implements PluginClient {
    * rates. `location` is the lister's spelling of the form's `region`, so the
    * same call prices an existing resource from its stored fields.
    */
-  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
-    const region = fields["region"] || fields["location"] || "eastus";
-    const rates = await this.getPricingRatesForRegion(region);
-    return estimateAzureCost(typeId, fields, rates);
+  estimateCost(typeId: string, fields: Record<string, string>): PluginEffect<CostEstimate | null> {
+    return attempt(async () => {
+      const region = fields["region"] || fields["location"] || "eastus";
+      const rates = await this.getPricingRatesForRegion(region);
+      return estimateAzureCost(typeId, fields, rates);
+    });
   }
 
   // ─── Create / attach / delete / manifest / export ─────────────────────
 
-  getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    return getAzureCreateConfig(this.createCtx, typeId);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return getAzureCreateConfig(this.createCtx, typeId);
+    });
   }
 
   createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    return createAzureResource(this.createCtx, typeId, accountId, fields);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return createAzureResource(this.createCtx, typeId, accountId, fields);
+    });
   }
 
   attachResource(
@@ -650,43 +699,49 @@ export class AzureClient implements PluginClient {
     targetTypeId: string,
     targetResourceId: string,
     accountId: string,
-  ): Promise<void> {
-    return attachAzureResource(
-      { ...this.httpCtx, getResource: (t, r, a) => this.getResource(t, r, a) },
-      sourceTypeId,
-      sourceResourceId,
-      targetTypeId,
-      targetResourceId,
-      accountId,
-    );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return attachAzureResource(
+        { ...this.httpCtx, getResource: (t, r, a) => runPluginEffect(this.getResource(t, r, a)) },
+        sourceTypeId,
+        sourceResourceId,
+        targetTypeId,
+        targetResourceId,
+        accountId,
+      );
+    });
   }
 
-  deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    return deleteAzureResource(
-      {
-        ...this.httpCtx,
-        getResource: (t, r, a) => this.getResource(t, r, a),
-        graphClient: this.graphClient,
-      },
-      typeId,
-      resourceId,
-      accountId,
-    );
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return deleteAzureResource(
+        {
+          ...this.httpCtx,
+          getResource: (t, r, a) => runPluginEffect(this.getResource(t, r, a)),
+          graphClient: this.graphClient,
+        },
+        typeId,
+        resourceId,
+        accountId,
+      );
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    if (!supportsAzureAction(typeId, actionId)) {
-      throw new Error(
-        `Azure plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
-      );
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    await invokeAzureAction(this.httpCtx, resource, actionId);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (!supportsAzureAction(typeId, actionId)) {
+        throw new Error(
+          `Azure plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
+        );
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      await invokeAzureAction(this.httpCtx, resource, actionId);
+    });
   }
 
   /**
@@ -699,44 +754,48 @@ export class AzureClient implements PluginClient {
    * current hardware cluster (deallocate first to widen the choice). VM
    * names are immutable in Azure, so nothing else is editable.
    */
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "azure-container-app") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      await updateContainerApp(this.httpCtx, resource, fields);
-      return this.getResource(typeId, resourceId, accountId);
-    }
-    if (typeId !== "azure-vm") {
-      throw new Error(`Azure plugin: updateResource not supported for type "${typeId}"`);
-    }
-    const vmSize = fields["vmSize"];
-    if (!vmSize) throw new Error("Azure plugin: vmSize is the only editable VM field");
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    // externalId is rg/name: the same two-part form deleteResource splits.
-    const [rg, name] = String(resource.externalId ?? "").split("/");
-    if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
-    await this.patch(
-      `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${name}?api-version=2024-03-01`,
-      { properties: { hardwareProfile: { vmSize } } },
-    );
-    return this.getResource(typeId, resourceId, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "azure-container-app") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        await updateContainerApp(this.httpCtx, resource, fields);
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
+      if (typeId !== "azure-vm") {
+        throw new Error(`Azure plugin: updateResource not supported for type "${typeId}"`);
+      }
+      const vmSize = fields["vmSize"];
+      if (!vmSize) throw new Error("Azure plugin: vmSize is the only editable VM field");
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      // externalId is rg/name: the same two-part form deleteResource splits.
+      const [rg, name] = String(resource.externalId ?? "").split("/");
+      if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
+      await this.patch(
+        `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Compute/virtualMachines/${name}?api-version=2024-03-01`,
+        { properties: { hardwareProfile: { vmSize } } },
+      );
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 
-  async publishMessage(
+  publishMessage(
     typeId: string,
     resourceId: string,
     accountId: string,
     payload: PublishMessagePayload,
-  ): Promise<PublishMessageResult> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const ctx = { serviceBusToken: () => this.serviceBusToken(), http: this.http };
-    if (typeId === "azure-service-bus") return publishServiceBus(ctx, resource, payload);
-    if (typeId === "azure-event-hub") return publishEventHub(ctx, resource, payload);
-    throw new Error(`Azure plugin: publishMessage not supported for type "${typeId}"`);
+  ): PluginEffect<PublishMessageResult> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const ctx = { serviceBusToken: () => this.serviceBusToken(), http: this.http };
+      if (typeId === "azure-service-bus") return publishServiceBus(ctx, resource, payload);
+      if (typeId === "azure-event-hub") return publishEventHub(ctx, resource, payload);
+      throw new Error(`Azure plugin: publishMessage not supported for type "${typeId}"`);
+    });
   }
 
   exportCredential(
@@ -744,26 +803,32 @@ export class AzureClient implements PluginClient {
     resourceId: string,
     accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    return exportAzureCredential(
-      {
-        ...this.httpCtx,
-        getResource: (t, r, a) => this.getResource(t, r, a),
-        graphClient: this.graphClient,
-        creds: this.creds,
-      },
-      typeId,
-      resourceId,
-      accountId,
-      formatId,
-    );
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      return exportAzureCredential(
+        {
+          ...this.httpCtx,
+          getResource: (t, r, a) => runPluginEffect(this.getResource(t, r, a)),
+          graphClient: this.graphClient,
+          creds: this.creds,
+        },
+        typeId,
+        resourceId,
+        accountId,
+        formatId,
+      );
+    });
   }
 
-  getManifest(resourceId: string, _accountId: string): Promise<string> {
-    return getAzureManifest(this.httpCtx, resourceId);
+  getManifest(resourceId: string, _accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      return getAzureManifest(this.httpCtx, resourceId);
+    });
   }
 
-  applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
-    return applyAzureManifest(this.httpCtx, resourceId, manifest);
+  applyManifest(resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
+    return attempt(async () => {
+      return applyAzureManifest(this.httpCtx, resourceId, manifest);
+    });
   }
 }

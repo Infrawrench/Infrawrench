@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { CoralogixClient } from "../client.js";
 import { resolveRegion } from "../regions.js";
@@ -10,9 +11,11 @@ const ACCOUNT = "acct";
 
 function client(route: (url: URL, method: string, body: unknown) => Reply, region = "eu2") {
   const { http, calls } = makeHttp(route);
-  const c = new CoralogixClient({ apiKey: "test-key", region, unitPrice: "2" }, {
-    http,
-  } as unknown as ConstructorParameters<typeof CoralogixClient>[1]);
+  const c = hostClient(
+    new CoralogixClient({ apiKey: "test-key", region, unitPrice: "2" }, {
+      http,
+    } as unknown as ConstructorParameters<typeof CoralogixClient>[1]),
+  );
   return { c, calls };
 }
 

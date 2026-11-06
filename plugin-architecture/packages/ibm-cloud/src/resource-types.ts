@@ -102,7 +102,11 @@ export const InstanceResourceType = rt({
     resourceGroupField,
     createdField,
   ],
-  outputs: [o("publicIp", "Floating IP"), o("privateIp", "Private IP"), o("id", "Instance ID")],
+  outputs: [
+    o("publicIp", "Floating IP", { dnsValue: "ipv4" }),
+    o("privateIp", "Private IP"),
+    o("id", "Instance ID"),
+  ],
   dependsOn: [
     vpcDep,
     {
@@ -334,7 +338,7 @@ export const LoadBalancerResourceType = rt({
     resourceGroupField,
     createdField,
   ],
-  outputs: [o("hostname", "Hostname"), o("id", "Load Balancer ID")],
+  outputs: [o("hostname", "Hostname", { dnsValue: "hostname" }), o("id", "Load Balancer ID")],
   dependsOn: [
     {
       fieldKey: "subnetIds",

@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildOAuthAuthorizeUrl,
@@ -104,9 +105,11 @@ describe("workspace discovery for OAuth credentials", () => {
   it("reads me.workspaces instead of the apiToken query", async () => {
     const fetchMock = graphql({ data: { me: { workspaces: [{ id: "w9", name: "Granted" }] } } });
     vi.stubGlobal("fetch", fetchMock);
-    const client = new RailwayClient(
-      { apiToken: "rw-oauth-access", [OAUTH_CREDENTIAL_KEY]: GRANT },
-      RESOURCE_TYPES,
+    const client = hostClient(
+      new RailwayClient(
+        { apiToken: "rw-oauth-access", [OAUTH_CREDENTIAL_KEY]: GRANT },
+        RESOURCE_TYPES,
+      ),
     );
     expect(await client.workspaces()).toEqual([{ id: "w9", name: "Granted" }]);
     const body = String(fetchMock.mock.calls[0]![1].body);
@@ -120,7 +123,7 @@ describe("workspace discovery for OAuth credentials", () => {
       graphql({ data: { me: { workspaces: [{ id: "w9", name: "Granted" }] } } }),
     );
     expect(
-      await plugin.listCredentialOptions!("workspaceId", {
+      await hostPlugin(plugin).listCredentialOptions!("workspaceId", {
         apiToken: "rw-oauth-access",
         [OAUTH_CREDENTIAL_KEY]: GRANT,
       }),

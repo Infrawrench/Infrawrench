@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { clearInstanceRateCache, type HostServices } from "@infrawrench/plugin-base";
 import { AlibabaCloudClient } from "../client.js";
@@ -21,7 +22,7 @@ const services = (rows: [string, number][]): HostServices => ({
 });
 
 const client = (s: HostServices) =>
-  new AlibabaCloudClient({ accessKeyId: "id", accessKeySecret: "secret" }, s);
+  hostClient(new AlibabaCloudClient({ accessKeyId: "id", accessKeySecret: "secret" }, s));
 
 describe("Alibaba Cloud ECS pricing from the warehouse", () => {
   beforeEach(() => clearInstanceRateCache());

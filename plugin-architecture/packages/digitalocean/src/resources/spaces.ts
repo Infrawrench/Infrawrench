@@ -11,7 +11,7 @@ export const SpacesResourceType = rt({
     f("accessControl", "Access Control", { kind: "enum", enumValues: ["private", "public-read"] }),
   ],
   outputs: [
-    o("endpoint", "Endpoint URL"),
+    o("endpoint", "Endpoint URL", { dnsValue: "hostname" }),
     o("accessKeyId", "Access Key ID", { sensitive: true }),
     o("secretAccessKey", "Secret Access Key", { sensitive: true }),
   ],

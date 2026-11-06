@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   listWorkflows,
@@ -153,7 +154,7 @@ describe("CloudflareClient workflow wiring", () => {
   });
 
   function client() {
-    const c = new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes);
+    const c = hostClient(new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes));
     const api = wfApi();
     (c as unknown as { api: unknown }).api = api;
     return { c, api };

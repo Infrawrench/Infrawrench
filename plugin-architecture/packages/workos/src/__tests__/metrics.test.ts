@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkosClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -20,7 +21,7 @@ function respond(pages: unknown[]) {
       text: async () => text,
     } as unknown as Response;
   }) as unknown as typeof fetch);
-  return { urls, client: new WorkosClient({ apiKey: "sk_test_key" }) };
+  return { urls, client: hostClient(new WorkosClient({ apiKey: "sk_test_key" })) };
 }
 
 const event = (name: string, at: string) => ({ object: "event", event: name, created_at: at });

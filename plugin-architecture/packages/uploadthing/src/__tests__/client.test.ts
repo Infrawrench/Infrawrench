@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UploadThingClient, decodeApiKey } from "../client.js";
 
@@ -32,7 +33,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client(apiKey = "sk_live_test") {
-  return new UploadThingClient({ apiKey });
+  return hostClient(new UploadThingClient({ apiKey }));
 }
 
 const APP_INFO = { appId: APP_ID, defaultACL: "public-read", allowACLOverride: true };
@@ -114,9 +115,11 @@ describe("host services", () => {
     // no custom CA silently bypasses bastion routing: the common case, and
     // this plugin is in the egress allowlist precisely so it routes.
     const request = vi.fn(async () => ({ status: 200, body: JSON.stringify(APP_INFO) }));
-    const c = new UploadThingClient({ apiKey: "sk_live_test" }, {
-      http: { request },
-    } as unknown as ConstructorParameters<typeof UploadThingClient>[1]);
+    const c = hostClient(
+      new UploadThingClient({ apiKey: "sk_live_test" }, {
+        http: { request },
+      } as unknown as ConstructorParameters<typeof UploadThingClient>[1]),
+    );
     await c.resolveOutput("ut-app", `${ACCOUNT}:ut-app:${APP_ID}`, "appId", ACCOUNT);
     expect(request).toHaveBeenCalled();
   });
@@ -434,9 +437,11 @@ describe("createResource", () => {
       throw new Error(`unrouted host http: ${req.method} ${req.url}`);
     });
 
-    const c = new UploadThingClient({ apiKey: "sk_live_test" }, {
-      http: { request },
-    } as unknown as ConstructorParameters<typeof UploadThingClient>[1]);
+    const c = hostClient(
+      new UploadThingClient({ apiKey: "sk_live_test" }, {
+        http: { request },
+      } as unknown as ConstructorParameters<typeof UploadThingClient>[1]),
+    );
 
     const created = await c.createResource("ut-file", ACCOUNT, {
       sourceUrl: "https://example.com/pic.png",

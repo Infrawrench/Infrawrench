@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { gql, normaliseEndpoint, statusForErrors, statusOf } from "../api.js";
 import { SpaceliftClient, stackUpdateInput, vendorInput } from "../client.js";
@@ -29,9 +30,11 @@ function graph(route: (query: string, vars: Record<string, unknown>, call: Call)
 function client(route: (query: string, vars: Record<string, unknown>, call: Call) => unknown) {
   const { http, calls } = graph(route);
   return {
-    c: new SpaceliftClient({ endpoint: "acme", apiKeyId: "id", apiKeySecret: "sec" }, {
-      http,
-    } as never),
+    c: hostClient(
+      new SpaceliftClient({ endpoint: "acme", apiKeyId: "id", apiKeySecret: "sec" }, {
+        http,
+      } as never),
+    ),
     calls,
   };
 }
@@ -314,9 +317,11 @@ describe("quotas and state", () => {
       req.url.startsWith("https://bucket")
         ? { status: 200, headers: {}, body: '{"version":4}' }
         : original(req);
-    const c = new SpaceliftClient({ endpoint: "acme", apiKeyId: "id", apiKeySecret: "sec" }, {
-      http,
-    } as never);
+    const c = hostClient(
+      new SpaceliftClient({ endpoint: "acme", apiKeyId: "id", apiKeySecret: "sec" }, {
+        http,
+      } as never),
+    );
     const out = await c.exportCredential("stack", `${ACC}:stack:net`, ACC, "state");
     expect(out.content).toBe('{"version":4}');
     expect(calls.some((x) => x.url.host === "bucket.s3.amazonaws.com")).toBe(false);

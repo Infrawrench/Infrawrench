@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   KoyebClient,
@@ -54,7 +55,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const client = () => new KoyebClient({ apiToken: "tok" }, RESOURCE_TYPES);
+const client = () => hostClient(new KoyebClient({ apiToken: "tok" }, RESOURCE_TYPES));
 
 const APP = {
   id: "app1",

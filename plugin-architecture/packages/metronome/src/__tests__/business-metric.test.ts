@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BusinessMetricSourceRange } from "@infrawrench/plugin-base";
 import { MetronomeClient } from "../client.js";
@@ -14,7 +15,7 @@ const C2 = "617e39d8-68f4-4592-b8d2-c2bf26a76989";
 const C3 = "aaaaaaaa-0000-0000-0000-000000000003";
 
 function client() {
-  return new MetronomeClient({ apiToken: "mtr-test" });
+  return hostClient(new MetronomeClient({ apiToken: "mtr-test" }));
 }
 
 function range(overrides: Partial<BusinessMetricSourceRange> = {}): BusinessMetricSourceRange {

@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { VsphereClient } from "./client.js";
 import { vsphereRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resources.js";
@@ -12,16 +13,15 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     </g>
   </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "vsphere",
-  version: "0.1.0",
+  // vCenter Server is self-hosted: the API URL is user-supplied, so there is no fixed egress host (same as kubernetes).
+  egressHosts: [],
   displayName: "VMware vSphere",
   description:
     "vCenter Server: VMs, hosts, clusters, datastores, networks, resource pools, content libraries and tags",
   logoSvg,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "url",
       label: "vCenter Server URL",
@@ -56,14 +56,21 @@ const manifest: PluginManifest = {
       multiline: true,
       placeholder: "-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----",
     },
-  ],
+  ]),
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new VsphereClient(credentials, services),
+  testCredentials: {
+    url: "https://vcenter.example.com",
+    username: "svc-infrawrench@vsphere.local",
+    password: "test-password",
+  },
   terraformExport: vsphereTerraformExport,
   remediationCommands: vsphereRemediationCommands,
-};
+});

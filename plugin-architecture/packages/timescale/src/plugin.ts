@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { TimescaleClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { timescaleRemediationCommands } from "./remediation.js";
@@ -6,16 +7,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { timescaleTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "timescale",
-  version: "0.1.0",
+  // Tiger Cloud (Timescale) REST API; the timescale.com host is the legacy alias
+  egressHosts: ["console.cloud.tigerdata.com", "console.cloud.timescale.com"],
   displayName: "Tiger Cloud",
   description:
     "Manage Tiger Data's Tiger Cloud (formerly Timescale Cloud): PostgreSQL and TimescaleDB services, HA and read replicas, forks, pause and resume, resizing, VPCs and peering, IP allow lists, exporters and backups, with metrics, logs and a PostgreSQL console.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accessKey",
       label: "Public Key",
@@ -36,15 +36,18 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "Secret key",
     },
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new TimescaleClient(credentials, services),
+  testCredentials: { accessKey: "tskey_test", secretKey: "test-secret" },
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: timescaleTerraformExport,
   remediationCommands: timescaleRemediationCommands,
-};
+});

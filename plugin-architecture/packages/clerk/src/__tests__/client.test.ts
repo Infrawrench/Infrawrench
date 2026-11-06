@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { ClerkClient } from "../client.js";
@@ -15,7 +17,9 @@ interface Call {
 
 let calls: Call[] = [];
 
-function client(handler: (call: Call) => { status?: number; body?: unknown }): ClerkClient {
+function client(
+  handler: (call: Call) => { status?: number; body?: unknown },
+): HostedMethods<ClerkClient> {
   const services: HostServices = {
     http: {
       request: async (req) => {
@@ -35,7 +39,7 @@ function client(handler: (call: Call) => { status?: number; body?: unknown }): C
       },
     },
   };
-  return new ClerkClient({ secretKey: "sk_live_abc" }, services);
+  return hostClient(new ClerkClient({ secretKey: "sk_live_abc" }, services));
 }
 
 beforeEach(() => {
@@ -44,8 +48,8 @@ beforeEach(() => {
 
 describe("credentials", () => {
   it("rejects publishable keys", () => {
-    expect(() => new ClerkClient({ secretKey: "pk_live_abc" })).toThrow(/sk_live_/);
-    expect(() => new ClerkClient({})).toThrow(/secretKey/);
+    expect(() => hostClient(new ClerkClient({ secretKey: "pk_live_abc" }))).toThrow(/sk_live_/);
+    expect(() => hostClient(new ClerkClient({}))).toThrow(/secretKey/);
   });
 });
 

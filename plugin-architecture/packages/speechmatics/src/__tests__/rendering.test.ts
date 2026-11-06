@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
@@ -7,7 +8,7 @@ import { SpeechmaticsClient } from "../client.js";
 runPluginRenderingTests(plugin);
 
 function client(overrides: Record<string, string> = {}) {
-  return new SpeechmaticsClient({ apiKey: "key", region: "eu1", ...overrides });
+  return hostClient(new SpeechmaticsClient({ apiKey: "key", region: "eu1", ...overrides }));
 }
 
 function job(

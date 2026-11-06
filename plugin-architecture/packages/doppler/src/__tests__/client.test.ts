@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { DopplerApiError, tokenKind } from "../api.js";
 import { DopplerClient } from "../client.js";
@@ -11,13 +12,15 @@ const ACCOUNT = "acct";
 
 function client(route: (call: Call) => unknown) {
   const { http, calls } = makeHttp(route);
-  return { c: new DopplerClient({ token: "dp.pt.x" }, { http } as never), calls };
+  return { c: hostClient(new DopplerClient({ token: "dp.pt.x" }, { http } as never)), calls };
 }
 
 describe("helpers", () => {
   it("recognises token formats and refuses service tokens", () => {
     expect(tokenKind("dp.sa.abc")).toBe("service-account");
-    expect(() => new DopplerClient({ token: "dp.st.dev.abc" })).toThrow(/service token/);
+    expect(() => hostClient(new DopplerClient({ token: "dp.st.dev.abc" }))).toThrow(
+      /service token/,
+    );
   });
 
   it("splits nested ids", () => {

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VercelClient } from "../client.js";
 
@@ -38,12 +39,12 @@ afterEach(() => {
 });
 
 function client(creds: Record<string, string> = { accessToken: "tok" }, services?: unknown) {
-  return new VercelClient(creds, services as never);
+  return hostClient(new VercelClient(creds, services as never));
 }
 
 describe("constructor", () => {
   it("throws without accessToken", () => {
-    expect(() => new VercelClient({})).toThrow(/missing accessToken/);
+    expect(() => hostClient(new VercelClient({}))).toThrow(/missing accessToken/);
   });
 
   it("sends Authorization header and base url", async () => {

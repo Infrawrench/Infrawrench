@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -172,7 +175,7 @@ export class CohereClient implements PluginClient {
   private readonly apiKey: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Cohere plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -221,53 +224,57 @@ export class CohereClient implements PluginClient {
   // Resource listing
   // ---------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "model":
-        return this.listModels(accountId);
-      case "dataset":
-        return this.listDatasets(accountId);
-      case "finetuned-model":
-        return this.listFinetunedModels(accountId);
-      case "embed-job":
-        return this.listEmbedJobs(accountId);
-      case "batch":
-        return this.listBatches(accountId);
-      default:
-        throw new Error(`Cohere plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "model":
+          return this.listModels(accountId);
+        case "dataset":
+          return this.listDatasets(accountId);
+        case "finetuned-model":
+          return this.listFinetunedModels(accountId);
+        case "embed-job":
+          return this.listEmbedJobs(accountId);
+        case "batch":
+          return this.listBatches(accountId);
+        default:
+          throw new Error(`Cohere plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const resource = await this.findResource(typeId, resourceId, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const resource = await this.findResource(typeId, resourceId, accountId);
 
-    // `renderDetail` is synchronous, so anything needing an extra API call is
-    // fetched here and stashed in resolvedOutputs as JSON under a
-    // __double-underscore__ key.
-    if (typeId === "model") {
-      const speechModels = await this.safely(() => this.fetchTranscriptionModelOptions(), []);
-      return withStash(resource, { __speechModels__: speechModels });
-    }
+      // `renderDetail` is synchronous, so anything needing an extra API call is
+      // fetched here and stashed in resolvedOutputs as JSON under a
+      // __double-underscore__ key.
+      if (typeId === "model") {
+        const speechModels = await this.safely(() => this.fetchTranscriptionModelOptions(), []);
+        return withStash(resource, { __speechModels__: speechModels });
+      }
 
-    if (typeId === "dataset") {
-      const usage = await this.safely(() => this.fetchDatasetUsage(), null);
-      return withStash(resource, { __datasetUsage__: usage });
-    }
+      if (typeId === "dataset") {
+        const usage = await this.safely(() => this.fetchDatasetUsage(), null);
+        return withStash(resource, { __datasetUsage__: usage });
+      }
 
-    if (typeId === "finetuned-model") {
-      const id = resource.externalId ?? "";
-      const [events, stepMetrics] = await Promise.all([
-        this.safely(() => this.fetchFinetuneEvents(id), []),
-        this.safely(() => this.fetchTrainingStepMetrics(id), []),
-      ]);
-      return withStash(resource, { __events__: events, __stepMetrics__: stepMetrics });
-    }
+      if (typeId === "finetuned-model") {
+        const id = resource.externalId ?? "";
+        const [events, stepMetrics] = await Promise.all([
+          this.safely(() => this.fetchFinetuneEvents(id), []),
+          this.safely(() => this.fetchTrainingStepMetrics(id), []),
+        ]);
+        return withStash(resource, { __events__: events, __stepMetrics__: stepMetrics });
+      }
 
-    return resource;
+      return resource;
+    });
   }
 
   private async findResource(
@@ -275,7 +282,7 @@ export class CohereClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
+    const all = await runPluginEffect(this.listResources(typeId, accountId));
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`Cohere plugin: resource ${typeId}/${resourceId} not found`);
     return found;
@@ -630,46 +637,48 @@ export class CohereClient implements PluginClient {
   // Outputs
   // ---------------------------------------------------------------------------
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "model" && outputKey === "endpoint") return BASE_URL;
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "model" && outputKey === "endpoint") return BASE_URL;
 
-    const resource = await this.findResource(typeId, resourceId, accountId);
-    const fields = resource.fields;
+      const resource = await this.findResource(typeId, resourceId, accountId);
+      const fields = resource.fields;
 
-    if (typeId === "model") {
-      if (outputKey === "modelName") return String(fields["name"] ?? "");
-      if (outputKey === "contextLength") return String(fields["contextLength"] ?? "");
-    }
+      if (typeId === "model") {
+        if (outputKey === "modelName") return String(fields["name"] ?? "");
+        if (outputKey === "contextLength") return String(fields["contextLength"] ?? "");
+      }
 
-    if (typeId === "dataset") {
-      if (outputKey === "datasetId") return resource.externalId ?? "";
-      if (outputKey === "datasetName") return String(fields["name"] ?? "");
-    }
+      if (typeId === "dataset") {
+        if (outputKey === "datasetId") return resource.externalId ?? "";
+        if (outputKey === "datasetName") return String(fields["name"] ?? "");
+      }
 
-    if (typeId === "finetuned-model") {
-      if (outputKey === "finetunedModelId") return resource.externalId ?? "";
-      if (outputKey === "modelName") return String(fields["name"] ?? "");
-      if (outputKey === "status") return String(fields["status"] ?? "");
-    }
+      if (typeId === "finetuned-model") {
+        if (outputKey === "finetunedModelId") return resource.externalId ?? "";
+        if (outputKey === "modelName") return String(fields["name"] ?? "");
+        if (outputKey === "status") return String(fields["status"] ?? "");
+      }
 
-    if (typeId === "embed-job") {
-      if (outputKey === "jobId") return resource.externalId ?? "";
-      if (outputKey === "outputDatasetId") return String(fields["outputDatasetId"] ?? "");
-      if (outputKey === "status") return String(fields["status"] ?? "");
-    }
+      if (typeId === "embed-job") {
+        if (outputKey === "jobId") return resource.externalId ?? "";
+        if (outputKey === "outputDatasetId") return String(fields["outputDatasetId"] ?? "");
+        if (outputKey === "status") return String(fields["status"] ?? "");
+      }
 
-    if (typeId === "batch") {
-      if (outputKey === "batchId") return resource.externalId ?? "";
-      if (outputKey === "outputDatasetId") return String(fields["outputDatasetId"] ?? "");
-      if (outputKey === "status") return String(fields["status"] ?? "");
-    }
+      if (typeId === "batch") {
+        if (outputKey === "batchId") return resource.externalId ?? "";
+        if (outputKey === "outputDatasetId") return String(fields["outputDatasetId"] ?? "");
+        if (outputKey === "status") return String(fields["status"] ?? "");
+      }
 
-    throw new Error(`Cohere plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      throw new Error(`Cohere plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -682,89 +691,91 @@ export class CohereClient implements PluginClient {
    * models are left out, and only datasets of the right type that passed
    * validation are offered.
    */
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "batch") {
-      const [models, datasets] = await Promise.all([
-        this.safely(() => this.fetchModels(), [] as CohereModel[]),
-        this.safely(() => this.fetchDatasets(), [] as CohereDataset[]),
-      ]);
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "inputDatasetId",
-            label: "Input dataset",
-            kind: "select",
-            required: true,
-            options: datasetOptions(datasets, BATCH_INPUT_DATASET_TYPES),
-            description: "A validated batch input dataset. Upload one in the Cohere dashboard.",
-          },
-          {
-            key: "model",
-            label: "Model",
-            kind: "select",
-            required: true,
-            options: modelOptions(models, ["chat", "embed"]),
-          },
-        ],
-      };
-    }
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "batch") {
+        const [models, datasets] = await Promise.all([
+          this.safely(() => this.fetchModels(), [] as CohereModel[]),
+          this.safely(() => this.fetchDatasets(), [] as CohereDataset[]),
+        ]);
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "inputDatasetId",
+              label: "Input dataset",
+              kind: "select",
+              required: true,
+              options: datasetOptions(datasets, BATCH_INPUT_DATASET_TYPES),
+              description: "A validated batch input dataset. Upload one in the Cohere dashboard.",
+            },
+            {
+              key: "model",
+              label: "Model",
+              kind: "select",
+              required: true,
+              options: modelOptions(models, ["chat", "embed"]),
+            },
+          ],
+        };
+      }
 
-    if (typeId === "embed-job") {
-      const [models, datasets] = await Promise.all([
-        this.safely(() => this.fetchModels(), [] as CohereModel[]),
-        this.safely(() => this.fetchDatasets(), [] as CohereDataset[]),
-      ]);
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: false },
-          {
-            key: "datasetId",
-            label: "Input dataset",
-            kind: "select",
-            required: true,
-            options: datasetOptions(datasets, ["embed-input"]),
-            description: "A validated embed-input dataset.",
-          },
-          {
-            key: "model",
-            label: "Embedding model",
-            kind: "select",
-            required: true,
-            options: modelOptions(models, ["embed"]),
-          },
-          {
-            key: "inputType",
-            label: "Input type",
-            kind: "select",
-            required: true,
-            options: EMBED_INPUT_TYPES,
-            defaultValue: "search_document",
-          },
-          {
-            key: "embeddingType",
-            label: "Embedding type",
-            kind: "select",
-            required: false,
-            options: EMBEDDING_TYPES,
-            defaultValue: "float",
-          },
-          {
-            key: "truncate",
-            label: "Truncate long inputs from",
-            kind: "select",
-            required: false,
-            options: [
-              { id: "END", label: "End", description: "Discard the end of the input" },
-              { id: "START", label: "Start", description: "Discard the start of the input" },
-            ],
-            defaultValue: "END",
-          },
-        ],
-      };
-    }
+      if (typeId === "embed-job") {
+        const [models, datasets] = await Promise.all([
+          this.safely(() => this.fetchModels(), [] as CohereModel[]),
+          this.safely(() => this.fetchDatasets(), [] as CohereDataset[]),
+        ]);
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: false },
+            {
+              key: "datasetId",
+              label: "Input dataset",
+              kind: "select",
+              required: true,
+              options: datasetOptions(datasets, ["embed-input"]),
+              description: "A validated embed-input dataset.",
+            },
+            {
+              key: "model",
+              label: "Embedding model",
+              kind: "select",
+              required: true,
+              options: modelOptions(models, ["embed"]),
+            },
+            {
+              key: "inputType",
+              label: "Input type",
+              kind: "select",
+              required: true,
+              options: EMBED_INPUT_TYPES,
+              defaultValue: "search_document",
+            },
+            {
+              key: "embeddingType",
+              label: "Embedding type",
+              kind: "select",
+              required: false,
+              options: EMBEDDING_TYPES,
+              defaultValue: "float",
+            },
+            {
+              key: "truncate",
+              label: "Truncate long inputs from",
+              kind: "select",
+              required: false,
+              options: [
+                { id: "END", label: "End", description: "Discard the end of the input" },
+                { id: "START", label: "Start", description: "Discard the start of the input" },
+              ],
+              defaultValue: "END",
+            },
+          ],
+        };
+      }
 
-    throw new Error(`Cohere plugin: no create config for type "${typeId}"`);
+      throw new Error(`Cohere plugin: no create config for type "${typeId}"`);
+    });
   }
 
   /**
@@ -774,58 +785,61 @@ export class CohereClient implements PluginClient {
    * `GET /v1/embed-jobs/{id}` for the full row;
    * https://docs.cohere.com/reference/create-embed-job
    */
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const now = new Date().toISOString();
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const now = new Date().toISOString();
 
-    if (typeId === "batch") {
-      const name = fields["name"]?.trim();
-      const inputDatasetId = fields["inputDatasetId"];
-      const model = fields["model"];
-      if (!name || !inputDatasetId || !model) {
-        throw new Error("Cohere plugin: a batch needs a name, an input dataset and a model");
+      if (typeId === "batch") {
+        const name = fields["name"]?.trim();
+        const inputDatasetId = fields["inputDatasetId"];
+        const model = fields["model"];
+        if (!name || !inputDatasetId || !model) {
+          throw new Error("Cohere plugin: a batch needs a name, an input dataset and a model");
+        }
+        const created = await this.fetch<{ batch?: CohereBatch }>("/v2/batches", {
+          method: "POST",
+          body: JSON.stringify({ name, input_dataset_id: inputDatasetId, model }),
+        });
+        if (!created.batch?.id)
+          throw new Error("Cohere plugin: POST /v2/batches returned no batch");
+        return this.mapBatch(accountId, created.batch, now);
       }
-      const created = await this.fetch<{ batch?: CohereBatch }>("/v2/batches", {
-        method: "POST",
-        body: JSON.stringify({ name, input_dataset_id: inputDatasetId, model }),
-      });
-      if (!created.batch?.id) throw new Error("Cohere plugin: POST /v2/batches returned no batch");
-      return this.mapBatch(accountId, created.batch, now);
-    }
 
-    if (typeId === "embed-job") {
-      const datasetId = fields["datasetId"];
-      const model = fields["model"];
-      const inputType = fields["inputType"] || "search_document";
-      if (!datasetId || !model) {
-        throw new Error("Cohere plugin: an embed job needs an input dataset and a model");
+      if (typeId === "embed-job") {
+        const datasetId = fields["datasetId"];
+        const model = fields["model"];
+        const inputType = fields["inputType"] || "search_document";
+        if (!datasetId || !model) {
+          throw new Error("Cohere plugin: an embed job needs an input dataset and a model");
+        }
+        const body: Record<string, unknown> = {
+          model,
+          dataset_id: datasetId,
+          input_type: inputType,
+        };
+        if (fields["name"]?.trim()) body["name"] = fields["name"].trim();
+        if (fields["embeddingType"]) body["embedding_types"] = [fields["embeddingType"]];
+        if (fields["truncate"]) body["truncate"] = fields["truncate"];
+
+        const created = await this.fetch<{ job_id?: string }>("/v1/embed-jobs", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        const jobId = created.job_id;
+        if (!jobId) throw new Error("Cohere plugin: POST /v1/embed-jobs returned no job_id");
+        const job = await this.safely(
+          () => this.fetch<CohereEmbedJob>(`/v1/embed-jobs/${encodeURIComponent(jobId)}`),
+          { job_id: jobId, name: String(body["name"] ?? ""), model, input_dataset_id: datasetId },
+        );
+        return this.mapEmbedJob(accountId, { ...job, job_id: job.job_id ?? jobId }, now);
       }
-      const body: Record<string, unknown> = {
-        model,
-        dataset_id: datasetId,
-        input_type: inputType,
-      };
-      if (fields["name"]?.trim()) body["name"] = fields["name"].trim();
-      if (fields["embeddingType"]) body["embedding_types"] = [fields["embeddingType"]];
-      if (fields["truncate"]) body["truncate"] = fields["truncate"];
 
-      const created = await this.fetch<{ job_id?: string }>("/v1/embed-jobs", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      const jobId = created.job_id;
-      if (!jobId) throw new Error("Cohere plugin: POST /v1/embed-jobs returned no job_id");
-      const job = await this.safely(
-        () => this.fetch<CohereEmbedJob>(`/v1/embed-jobs/${encodeURIComponent(jobId)}`),
-        { job_id: jobId, name: String(body["name"] ?? ""), model, input_dataset_id: datasetId },
-      );
-      return this.mapEmbedJob(accountId, { ...job, job_id: job.job_id ?? jobId }, now);
-    }
-
-    throw new Error(`Cohere plugin: cannot create type "${typeId}"`);
+      throw new Error(`Cohere plugin: cannot create type "${typeId}"`);
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -841,19 +855,21 @@ export class CohereClient implements PluginClient {
    * Base models belong to Cohere and jobs are cancelled rather than removed,
    * so those types declare `supportsDelete: false`.
    */
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    if (typeId === "dataset") {
-      await this.fetch(`/v1/datasets/${encodeURIComponent(externalId)}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "finetuned-model") {
-      await this.fetch(`/v1/finetuning/finetuned-models/${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    throw new Error(`Cohere plugin: cannot delete type "${typeId}"`);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (typeId === "dataset") {
+        await this.fetch(`/v1/datasets/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+        return;
+      }
+      if (typeId === "finetuned-model") {
+        await this.fetch(`/v1/finetuning/finetuned-models/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      throw new Error(`Cohere plugin: cannot delete type "${typeId}"`);
+    });
   }
 
   /**
@@ -863,88 +879,94 @@ export class CohereClient implements PluginClient {
    * https://docs.cohere.com/reference/cancel-batch (note the colon verb, and
    * that this one lives on `/v2/`).
    */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "embed-job" && actionId === "cancel") {
-      await this.fetch(`/v1/embed-jobs/${encodeURIComponent(externalId)}/cancel`, {
-        method: "POST",
-      });
-      return;
-    }
+      if (typeId === "embed-job" && actionId === "cancel") {
+        await this.fetch(`/v1/embed-jobs/${encodeURIComponent(externalId)}/cancel`, {
+          method: "POST",
+        });
+        return;
+      }
 
-    if (typeId === "batch" && actionId === "cancel") {
-      await this.fetch(`/v2/batches/${encodeURIComponent(externalId)}:cancel`, { method: "POST" });
-      return;
-    }
+      if (typeId === "batch" && actionId === "cancel") {
+        await this.fetch(`/v2/batches/${encodeURIComponent(externalId)}:cancel`, {
+          method: "POST",
+        });
+        return;
+      }
 
-    throw new Error(`Cohere plugin: unknown action "${actionId}" for type "${typeId}"`);
+      throw new Error(`Cohere plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Dashboard stats
   // ---------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.findResource(resourceTypeId, resourceId, accountId);
-    const fields = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await this.findResource(resourceTypeId, resourceId, accountId);
+      const fields = resource.fields;
 
-    if (resourceTypeId === "model") {
-      return [
-        { label: "Context", value: formatTokens(Number(fields["contextLength"] ?? 0)) },
-        { label: "Endpoints", value: String(fields["endpoints"] || "—") },
-        ...(fields["isDeprecated"] === true
-          ? [{ label: "Status", value: "deprecated", variant: "status-degraded" as const }]
-          : []),
-      ];
-    }
+      if (resourceTypeId === "model") {
+        return [
+          { label: "Context", value: formatTokens(Number(fields["contextLength"] ?? 0)) },
+          { label: "Endpoints", value: String(fields["endpoints"] || "—") },
+          ...(fields["isDeprecated"] === true
+            ? [{ label: "Status", value: "deprecated", variant: "status-degraded" as const }]
+            : []),
+        ];
+      }
 
-    if (resourceTypeId === "dataset") {
-      return [
-        { label: "Type", value: String(fields["datasetType"] || "—") },
-        { label: "Rows", value: String(fields["numRows"] ?? 0) },
-        { label: "Size", value: formatBytes(Number(fields["sizeBytes"] ?? 0)) },
-      ];
-    }
+      if (resourceTypeId === "dataset") {
+        return [
+          { label: "Type", value: String(fields["datasetType"] || "—") },
+          { label: "Rows", value: String(fields["numRows"] ?? 0) },
+          { label: "Size", value: formatBytes(Number(fields["sizeBytes"] ?? 0)) },
+        ];
+      }
 
-    if (resourceTypeId === "finetuned-model") {
-      return [
-        { label: "Status", value: prettyEnum(String(fields["status"] || "")) },
-        { label: "Base", value: prettyEnum(String(fields["baseType"] || "")) },
-      ];
-    }
+      if (resourceTypeId === "finetuned-model") {
+        return [
+          { label: "Status", value: prettyEnum(String(fields["status"] || "")) },
+          { label: "Base", value: prettyEnum(String(fields["baseType"] || "")) },
+        ];
+      }
 
-    if (resourceTypeId === "embed-job") {
-      return [
-        { label: "Status", value: String(fields["status"] || "—") },
-        { label: "Model", value: String(fields["model"] || "—") },
-      ];
-    }
+      if (resourceTypeId === "embed-job") {
+        return [
+          { label: "Status", value: String(fields["status"] || "—") },
+          { label: "Model", value: String(fields["model"] || "—") },
+        ];
+      }
 
-    if (resourceTypeId === "batch") {
-      return [
-        { label: "Status", value: prettyEnum(String(fields["status"] || "")) },
-        {
-          label: "Records",
-          value: `${Number(fields["numSuccessfulRecords"] ?? 0)}/${Number(fields["numRecords"] ?? 0)}`,
-        },
-        {
-          label: "Tokens",
-          value: String(Number(fields["inputTokens"] ?? 0) + Number(fields["outputTokens"] ?? 0)),
-        },
-      ];
-    }
+      if (resourceTypeId === "batch") {
+        return [
+          { label: "Status", value: prettyEnum(String(fields["status"] || "")) },
+          {
+            label: "Records",
+            value: `${Number(fields["numSuccessfulRecords"] ?? 0)}/${Number(fields["numRecords"] ?? 0)}`,
+          },
+          {
+            label: "Tokens",
+            value: String(Number(fields["inputTokens"] ?? 0) + Number(fields["outputTokens"] ?? 0)),
+          },
+        ];
+      }
 
-    return [];
+      return [];
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1612,64 +1634,66 @@ export class CohereClient implements PluginClient {
    * required), plus an optional `temperature`. There is no `response_format`
    * and no `prompt`.
    */
-  async transcribeAudio(
+  transcribeAudio(
     _typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    const audio = base64ToBytes(payload.audioBase64);
-    if (audio.byteLength === 0) throw new Error("Cohere plugin: the audio clip was empty");
-    if (audio.byteLength > MAX_AUDIO_BYTES) {
-      throw new Error(
-        `Cohere plugin: the clip is ${formatBytes(audio.byteLength)}, over the 25 MB transcription limit`,
-      );
-    }
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      const audio = base64ToBytes(payload.audioBase64);
+      if (audio.byteLength === 0) throw new Error("Cohere plugin: the audio clip was empty");
+      if (audio.byteLength > MAX_AUDIO_BYTES) {
+        throw new Error(
+          `Cohere plugin: the clip is ${formatBytes(audio.byteLength)}, over the 25 MB transcription limit`,
+        );
+      }
 
-    const extension = extensionForMime(payload.mimeType, payload.fileName);
-    if (!extension) {
-      throw new Error(
-        `Cohere plugin: ${payload.mimeType || "this clip"} is not a container Cohere transcribes. ` +
-          "Supported formats are FLAC, MP3, MPEG, MPGA, OGG and WAV; browser recordings " +
-          "(WebM, MP4) must be converted first.",
-      );
-    }
+      const extension = extensionForMime(payload.mimeType, payload.fileName);
+      if (!extension) {
+        throw new Error(
+          `Cohere plugin: ${payload.mimeType || "this clip"} is not a container Cohere transcribes. ` +
+            "Supported formats are FLAC, MP3, MPEG, MPGA, OGG and WAV; browser recordings " +
+            "(WebM, MP4) must be converted first.",
+        );
+      }
 
-    // `language` is a required form field on this endpoint (there is no
-    // auto-detect mode) so fall back to English rather than omitting it.
-    const language = payload.language || "en";
-    const model = payload.modelId || TRANSCRIBE_MODEL;
+      // `language` is a required form field on this endpoint (there is no
+      // auto-detect mode) so fall back to English rather than omitting it.
+      const language = payload.language || "en";
+      const model = payload.modelId || TRANSCRIBE_MODEL;
 
-    const parts: MultipartPart[] = [
-      { kind: "field", name: "model", value: model },
-      { kind: "field", name: "language", value: language },
-      {
-        kind: "file",
-        name: "file",
-        fileName: payload.fileName || `audio.${extension}`,
-        contentType: payload.mimeType || `audio/${extension}`,
-        data: audio,
-      },
-    ];
+      const parts: MultipartPart[] = [
+        { kind: "field", name: "model", value: model },
+        { kind: "field", name: "language", value: language },
+        {
+          kind: "file",
+          name: "file",
+          fileName: payload.fileName || `audio.${extension}`,
+          contentType: payload.mimeType || `audio/${extension}`,
+          data: audio,
+        },
+      ];
 
-    const { contentType, body } = buildMultipartBody(parts);
-    const response = await this.fetch<TranscriptionResponse>("/v2/audio/transcriptions", {
-      method: "POST",
-      headers: { "Content-Type": contentType },
-      // An `ArrayBuffer`-backed byte array: global `fetch` takes it as a
-      // BufferSource, and the host HTTP bridge passes `Uint8Array` straight
-      // through.
-      body,
+      const { contentType, body } = buildMultipartBody(parts);
+      const response = await this.fetch<TranscriptionResponse>("/v2/audio/transcriptions", {
+        method: "POST",
+        headers: { "Content-Type": contentType },
+        // An `ArrayBuffer`-backed byte array: global `fetch` takes it as a
+        // BufferSource, and the host HTTP bridge passes `Uint8Array` straight
+        // through.
+        body,
+      });
+
+      return {
+        text: response.text ?? "",
+        summary: `${model} · ${language} · ${formatBytes(audio.byteLength)} of ${extension.toUpperCase()}`,
+        language,
+        // Cohere's documented response is exactly `{ text }` (no duration, no
+        // confidence, no word or segment timings) so those stay unset rather
+        // than being invented from the transcript.
+      };
     });
-
-    return {
-      text: response.text ?? "",
-      summary: `${model} · ${language} · ${formatBytes(audio.byteLength)} of ${extension.toUpperCase()}`,
-      language,
-      // Cohere's documented response is exactly `{ text }` (no duration, no
-      // confidence, no word or segment timings) so those stay unset rather
-      // than being invented from the transcript.
-    };
   }
 }
 

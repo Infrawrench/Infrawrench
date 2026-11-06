@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { RABBIT_PREFLIGHT, RabbitClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,15 @@ import { rabbitmqRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { rabbitTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "rabbitmq",
-  version: "0.1.0",
+  // RabbitMQ is self-hosted: the management URL is user-supplied, so there is no fixed egress host (same as kubernetes).
+  egressHosts: [],
   displayName: "RabbitMQ",
   description:
     "Self-hosted RabbitMQ through the management API: virtual hosts, exchanges, queues with purge and message peek, bindings, editable policies, users and permissions, connections and channels, shovels and federation, node metrics, and publishing test messages.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "url",
       label: "Management API URL",
@@ -51,16 +51,23 @@ const manifest: PluginManifest = {
       placeholder: "eyJhbGciOi…",
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: RABBIT_PREFLIGHT,
   quotas: { label: "Limits", partial: true },
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new RabbitClient(credentials, services),
+  testCredentials: {
+    url: "https://mq.example.com:15671",
+    username: "infrawrench",
+    password: "test",
+  },
   terraformExport: rabbitTerraformExport,
   remediationCommands: rabbitmqRemediationCommands,
-};
+});

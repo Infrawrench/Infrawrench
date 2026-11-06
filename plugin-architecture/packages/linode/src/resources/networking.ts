@@ -42,7 +42,11 @@ export const NodeBalancerResourceType = rt({
     f("firewallIds", "Firewalls", { required: false, editable: false }),
     f("tags", "Tags", { required: false }),
   ],
-  outputs: [o("ipv4", "IPv4"), o("ipv6", "IPv6"), o("hostname", "Hostname")],
+  outputs: [
+    o("ipv4", "IPv4", { dnsValue: "ipv4" }),
+    o("ipv6", "IPv6", { dnsValue: "ipv6" }),
+    o("hostname", "Hostname", { dnsValue: "hostname" }),
+  ],
   dependsOn: [
     { fieldKey: "lkeClusterId", targetTypeId: "lke-cluster", label: "serves" },
     { fieldKey: "firewallIds", targetTypeId: "firewall", label: "protected by" },
@@ -194,7 +198,7 @@ export const ReservedIpResourceType = rt({
     f("rdns", "Reverse DNS", { required: false, editable: false }),
     f("tags", "Tags", { required: false }),
   ],
-  outputs: [o("ip", "IP Address")],
+  outputs: [o("ip", "IP Address", { dnsValue: "ipv4" })],
   dependsOn: [{ fieldKey: "assignedEntityId", targetTypeId: "linode", label: "assigned to" }],
   iconKey: "ip",
   supportsCreate: true,

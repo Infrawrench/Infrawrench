@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -8,8 +10,8 @@ runPluginRenderingTests(plugin);
 
 const ACCOUNT = "acct-1";
 
-function client(): DeepSeekClient {
-  return new DeepSeekClient({ apiKey: "sk-test" });
+function client(): HostedMethods<DeepSeekClient> {
+  return hostClient(new DeepSeekClient({ apiKey: "sk-test" }));
 }
 
 function resource(

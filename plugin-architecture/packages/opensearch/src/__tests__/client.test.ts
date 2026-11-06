@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { DetailViewSchema, HostServices, ResourceInstance } from "@infrawrench/plugin-base";
 import { OpenSearchClient } from "../client.js";
@@ -9,13 +10,15 @@ function hostHttp() {
 }
 
 function client(services?: HostServices) {
-  return new OpenSearchClient(
-    {
-      endpoint: "https://search.example.com:9200",
-      username: "admin",
-      password: "secret",
-    },
-    services,
+  return hostClient(
+    new OpenSearchClient(
+      {
+        endpoint: "https://search.example.com:9200",
+        username: "admin",
+        password: "secret",
+      },
+      services,
+    ),
   );
 }
 

@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CoralogixClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,24 @@ import { DEFAULT_REGION_ID, REGION_PICKER } from "./regions.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "coralogix",
-  version: "0.1.0",
+  egressHosts: [
+    "api.eu1.coralogix.com",
+    "api.eu2.coralogix.com",
+    "api.us1.coralogix.com",
+    "api.us2.coralogix.com",
+    "api.us3.coralogix.com",
+    "api.ap1.coralogix.com",
+    "api.ap2.coralogix.com",
+    "api.ap3.coralogix.com",
+    "api.gov1.coralogixgov.us",
+  ],
   displayName: "Coralogix",
   description:
     "Observability platform for logs, metrics and traces. Track usage and estimated cost by pillar and TCO priority, watch the daily quota, and manage alerts, dashboards, TCO policies, parsing rules, enrichments, webhooks and Events2Metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "region",
       label: "Coralogix Region",
@@ -57,7 +66,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Daily units per pillar and TCO priority, priced at the account's unit
     // price: pillar → service, the Coralogix region → region, and the raw
@@ -81,12 +90,15 @@ const manifest: PluginManifest = {
   preflight: CORALOGIX_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CoralogixClient(credentials, services),
+  testCredentials: { region: "eu2", apiKey: "test-coralogix-key", unitPrice: "1.50" },
   parseStatusFeed,
   policyTemplate: coralogixPolicyTemplate,
-};
+});

@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { VAULT_PREFLIGHT, VaultClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,15 +7,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { vaultTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "hashicorp-vault",
-  version: "0.1.0",
+  // Vault address is user-supplied (self-hosted or HCP Vault); v1 doesn't bastion-route Vault
+  egressHosts: [],
   displayName: "HashiCorp Vault",
   description:
     "Self-hosted or HCP Vault: secrets engines, a KV v2 browser with versions, auth methods, editable ACL policies, PKI roles and certificates with expiry, leases, tokens, audit devices, and seal, health and client-count metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -32,7 +32,7 @@ const manifest: PluginManifest = {
       credentialFields: ["token"],
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "address",
       label: "Vault Address",
@@ -90,16 +90,19 @@ const manifest: PluginManifest = {
       placeholder: "approle",
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: VAULT_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new VaultClient(credentials, services),
+  testCredentials: { address: "https://vault.example.com:8200", token: "hvs.test" },
   parseStatusFeed,
   terraformExport: vaultTerraformExport,
-};
+});

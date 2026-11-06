@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   CredentialExport,
@@ -89,7 +92,7 @@ export class CivoClient implements PluginClient {
   private readonly storage: ObjectStoreBrowser;
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     private readonly resourceTypes: ResourceTypeDefinition[],
     services?: HostServices,
   ) {
@@ -104,104 +107,114 @@ export class CivoClient implements PluginClient {
     this.storage = new ObjectStoreBrowser(this.api);
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    const lister = LISTERS[typeId];
-    if (!lister) throw new Error(`Civo plugin: unknown resource type "${typeId}"`);
-    return lister(this.ctx, accountId);
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      const lister = LISTERS[typeId];
+      if (!lister) throw new Error(`Civo plugin: unknown resource type "${typeId}"`);
+      return lister(this.ctx, accountId);
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const { region, id } = regional(resourceId);
-    if (typeId === "instance")
-      return listers.mapInstance(
-        await this.api.get<CivoInstance>(`/instances/${id}`, { region }),
-        region,
-        accountId,
-      );
-    if (typeId === "kubernetes-cluster") {
-      return listers.mapCluster(
-        await this.api.get<CivoCluster>(`/kubernetes/clusters/${id}`, { region }),
-        region,
-        accountId,
-      );
-    }
-    if (typeId === "database")
-      return listers.mapDatabase(
-        await this.api.get<CivoDatabase>(`/databases/${id}`, { region }),
-        region,
-        accountId,
-      );
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) {
-      const err = new Error(`Civo plugin: ${typeId} ${id} not found`) as Error & { status: number };
-      err.status = 404;
-      throw err;
-    }
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const { region, id } = regional(resourceId);
+      if (typeId === "instance")
+        return listers.mapInstance(
+          await this.api.get<CivoInstance>(`/instances/${id}`, { region }),
+          region,
+          accountId,
+        );
+      if (typeId === "kubernetes-cluster") {
+        return listers.mapCluster(
+          await this.api.get<CivoCluster>(`/kubernetes/clusters/${id}`, { region }),
+          region,
+          accountId,
+        );
+      }
+      if (typeId === "database")
+        return listers.mapDatabase(
+          await this.api.get<CivoDatabase>(`/databases/${id}`, { region }),
+          region,
+          accountId,
+        );
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) {
+        const err = new Error(`Civo plugin: ${typeId} ${id} not found`) as Error & {
+          status: number;
+        };
+        err.status = 404;
+        throw err;
+      }
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const { region, id } = regional(resourceId);
-    if (
-      typeId === "kubernetes-cluster" &&
-      (outputKey === "kubeconfig" || outputKey === "apiEndpoint")
-    ) {
-      const c = await this.api.get<CivoCluster>(`/kubernetes/clusters/${id}`, { region });
-      return (outputKey === "kubeconfig" ? c.kubeconfig : c.api_endpoint) ?? "";
-    }
-    if (typeId === "instance" && outputKey === "initialPassword") {
-      return (
-        (await this.api.get<CivoInstance>(`/instances/${id}`, { region })).initial_password ?? ""
-      );
-    }
-    if (typeId === "database") {
-      const db = await this.api.get<CivoDatabase>(`/databases/${id}`, { region });
-      switch (outputKey) {
-        case "connectionString":
-          return connectionString(db);
-        case "host":
-          return db.dns_entry || db.public_ipv4 || "";
-        case "port":
-          return String(db.port ?? "");
-        case "username":
-          return db.username ?? "";
-        case "password":
-          return db.password ?? "";
-        case "database":
-          return (db.software ?? "").toLowerCase().startsWith("postgres") ? "postgres" : "mysql";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const { region, id } = regional(resourceId);
+      if (
+        typeId === "kubernetes-cluster" &&
+        (outputKey === "kubeconfig" || outputKey === "apiEndpoint")
+      ) {
+        const c = await this.api.get<CivoCluster>(`/kubernetes/clusters/${id}`, { region });
+        return (outputKey === "kubeconfig" ? c.kubeconfig : c.api_endpoint) ?? "";
       }
-    }
-    if (
-      typeId === "object-store-credential" &&
-      (outputKey === "secretKey" || outputKey === "accessKey")
-    ) {
-      const c = await this.api.get<CivoObjectStoreCredential>(`/objectstore/credentials/${id}`, {
-        region,
-      });
-      return (outputKey === "secretKey" ? c.secret_access_key_id : c.access_key_id) ?? "";
-    }
-    if (typeId === "object-store" && (outputKey === "secretKey" || outputKey === "accessKey")) {
-      const access = await this.storage.access(`${region}/${id}`);
-      return outputKey === "secretKey" ? access.config.secretKey : access.config.accessKey;
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`Civo plugin: cannot resolve output "${outputKey}" for ${typeId}`);
+      if (typeId === "instance" && outputKey === "initialPassword") {
+        return (
+          (await this.api.get<CivoInstance>(`/instances/${id}`, { region })).initial_password ?? ""
+        );
+      }
+      if (typeId === "database") {
+        const db = await this.api.get<CivoDatabase>(`/databases/${id}`, { region });
+        switch (outputKey) {
+          case "connectionString":
+            return connectionString(db);
+          case "host":
+            return db.dns_entry || db.public_ipv4 || "";
+          case "port":
+            return String(db.port ?? "");
+          case "username":
+            return db.username ?? "";
+          case "password":
+            return db.password ?? "";
+          case "database":
+            return (db.software ?? "").toLowerCase().startsWith("postgres") ? "postgres" : "mysql";
+        }
+      }
+      if (
+        typeId === "object-store-credential" &&
+        (outputKey === "secretKey" || outputKey === "accessKey")
+      ) {
+        const c = await this.api.get<CivoObjectStoreCredential>(`/objectstore/credentials/${id}`, {
+          region,
+        });
+        return (outputKey === "secretKey" ? c.secret_access_key_id : c.access_key_id) ?? "";
+      }
+      if (typeId === "object-store" && (outputKey === "secretKey" || outputKey === "accessKey")) {
+        const access = await this.storage.access(`${region}/${id}`);
+        return outputKey === "secretKey" ? access.config.secretKey : access.config.accessKey;
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(`Civo plugin: cannot resolve output "${outputKey}" for ${typeId}`);
+    });
   }
 
-  enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    return enrichDetail(this.api, resource);
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return enrichDetail(this.api, resource);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -216,16 +229,20 @@ export class CivoClient implements PluginClient {
     return renderSidebarItem(resource);
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    return dashboardStats(await this.getResource(typeId, resourceId, accountId));
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      return dashboardStats(await runPluginEffect(this.getResource(typeId, resourceId, accountId)));
+    });
   }
 
-  getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    return getCreateConfig(this.ctx, typeId, parentResourceId);
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return getCreateConfig(this.ctx, typeId, parentResourceId);
+    });
   }
 
   createResource(
@@ -233,22 +250,28 @@ export class CivoClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    return createResource(this.ctx, typeId, accountId, fields, parentResourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return createResource(this.ctx, typeId, accountId, fields, parentResourceId);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    await applyUpdate(this.api, typeId, resourceId, fields);
-    return this.getResource(typeId, resourceId, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      await applyUpdate(this.api, typeId, resourceId, fields);
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 
-  deleteResource(typeId: string, resourceId: string): Promise<void> {
-    return actions.deleteResource(this.api, typeId, resourceId);
+  deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.deleteResource(this.api, typeId, resourceId);
+    });
   }
 
   attachResource(
@@ -256,18 +279,22 @@ export class CivoClient implements PluginClient {
     sourceResourceId: string,
     targetTypeId: string,
     targetResourceId: string,
-  ): Promise<void> {
-    return actions.attachResource(
-      this.api,
-      sourceTypeId,
-      sourceResourceId,
-      targetTypeId,
-      targetResourceId,
-    );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.attachResource(
+        this.api,
+        sourceTypeId,
+        sourceResourceId,
+        targetTypeId,
+        targetResourceId,
+      );
+    });
   }
 
-  invokeAction(typeId: string, resourceId: string, actionId: string): Promise<void> {
-    return actions.invokeAction(this.api, typeId, resourceId, actionId);
+  invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.invokeAction(this.api, typeId, resourceId, actionId);
+    });
   }
 
   executeNoSqlCommand(
@@ -276,74 +303,84 @@ export class CivoClient implements PluginClient {
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    return actions.executeCommand(this.api, typeId, resourceId, command, args);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      return actions.executeCommand(this.api, typeId, resourceId, command, args);
+    });
   }
 
-  fetchQuotas(): Promise<QuotaUsage[]> {
-    return fetchQuotas(this.api);
+  fetchQuotas(): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      return fetchQuotas(this.api);
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    const region = (await this.ctx.regions.codes())[0];
-    const checks = await Promise.all(
-      PROBES.map(async (p) => {
-        try {
-          await this.api.get(
-            p.path,
-            region && p.id !== "dns" && p.id !== "quota" ? { region } : undefined,
-          );
-          return { capabilityId: p.id, status: "ok" as const };
-        } catch (err) {
-          const status = statusOf(err);
-          if (status === 401 || status === 403) {
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      const region = (await this.ctx.regions.codes())[0];
+      const checks = await Promise.all(
+        PROBES.map(async (p) => {
+          try {
+            await this.api.get(
+              p.path,
+              region && p.id !== "dns" && p.id !== "quota" ? { region } : undefined,
+            );
+            return { capabilityId: p.id, status: "ok" as const };
+          } catch (err) {
+            const status = statusOf(err);
+            if (status === 401 || status === 403) {
+              return {
+                capabilityId: p.id,
+                status: "missing" as const,
+                missingPermissions: [{ id: "api-key", label: "Account API key" }],
+                message: "Civo rejected the key. Copy a key from Profile, Security, API Keys.",
+                helpLink: {
+                  label: "Open Civo security settings",
+                  url: "https://dashboard.civo.com/security",
+                },
+              };
+            }
             return {
               capabilityId: p.id,
-              status: "missing" as const,
-              missingPermissions: [{ id: "api-key", label: "Account API key" }],
-              message: "Civo rejected the key. Copy a key from Profile, Security, API Keys.",
-              helpLink: {
-                label: "Open Civo security settings",
-                url: "https://dashboard.civo.com/security",
-              },
+              status: "unknown" as const,
+              message: err instanceof Error ? err.message : String(err),
             };
           }
-          return {
-            capabilityId: p.id,
-            status: "unknown" as const,
-            message: err instanceof Error ? err.message : String(err),
-          };
-        }
-      }),
-    );
-    return { checks };
+        }),
+      );
+      return { checks };
+    });
   }
 
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     _accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId !== "kubernetes-cluster" || formatId !== "kubeconfig") {
-      throw new Error(`Civo plugin: no credential format "${formatId}" for ${typeId}`);
-    }
-    const { region, id } = regional(resourceId);
-    const c = await this.api.get<CivoCluster>(`/kubernetes/clusters/${id}`, { region });
-    if (!c.kubeconfig)
-      throw new Error(
-        "Civo has not issued a kubeconfig for this cluster yet; try again once it is ready.",
-      );
-    return {
-      content: c.kubeconfig,
-      filename: `${c.name ?? id}-kubeconfig.yaml`,
-      mimeType: "application/yaml",
-      warning: "This file grants full administrative access to the cluster.",
-    };
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId !== "kubernetes-cluster" || formatId !== "kubeconfig") {
+        throw new Error(`Civo plugin: no credential format "${formatId}" for ${typeId}`);
+      }
+      const { region, id } = regional(resourceId);
+      const c = await this.api.get<CivoCluster>(`/kubernetes/clusters/${id}`, { region });
+      if (!c.kubeconfig)
+        throw new Error(
+          "Civo has not issued a kubeconfig for this cluster yet; try again once it is ready.",
+        );
+      return {
+        content: c.kubeconfig,
+        filename: `${c.name ?? id}-kubeconfig.yaml`,
+        mimeType: "application/yaml",
+        warning: "This file grants full administrative access to the cluster.",
+      };
+    });
   }
 
-  listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    return this.storage.list(bucket, prefix);
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      return this.storage.list(bucket, prefix);
+    });
   }
 
   uploadStorageObject(
@@ -351,15 +388,21 @@ export class CivoClient implements PluginClient {
     key: string,
     file: File,
     onProgress?: (pct: number) => void,
-  ): Promise<void> {
-    return this.storage.upload(bucket, key, file, onProgress);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return this.storage.upload(bucket, key, file, onProgress);
+    });
   }
 
-  makeStorageFolder(bucket: string, key: string): Promise<void> {
-    return this.storage.makeFolder(bucket, key);
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return this.storage.makeFolder(bucket, key);
+    });
   }
 
-  deleteStorageObject(bucket: string, key: string): Promise<void> {
-    return this.storage.remove(bucket, key);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return this.storage.remove(bucket, key);
+    });
   }
 }

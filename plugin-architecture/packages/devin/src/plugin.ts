@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DevinClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,14 @@ import { ACU_PRICE_KEY, DEFAULT_ACU_PRICE } from "./pricing.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "devin",
-  version: "0.1.0",
+  egressHosts: ["api.devin.ai"],
   displayName: "Devin",
   description:
     "Cognition's AI software engineer. Track Devin ACU spend by product, user, playbook and session tag, and manage sessions (terminate, archive, tag), playbooks, knowledge, secrets, automations and members with their usage metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -36,7 +35,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Devin billing", url: "https://docs.devin.ai/admin/billing" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // ACUs from the daily consumption endpoints, priced at the rate above:
     // product -> service, session -> resource, and organization, user,
@@ -49,11 +48,14 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new DevinClient(credentials, services),
+  testCredentials: { apiKey: "cog_test_devin_key" },
   parseStatusFeed,
-};
+});

@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   JitAccessPresence,
   JitGrantResult,
@@ -128,7 +131,7 @@ export class KubernetesClient implements PluginClient {
    */
   private lastCostIndex: CostIndex | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const kubeconfig = credentials["kubeconfig"];
     if (!kubeconfig) throw new Error("Kubernetes plugin: missing kubeconfig credential");
     // Node prices arrive from the parent cloud plugin through the peer
@@ -230,87 +233,97 @@ export class KubernetesClient implements PluginClient {
     }
   }
 
-  async listResources(
+  listResources(
     typeId: string,
     accountId: string,
     opts?: { regionHint?: string },
-  ): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "k8s-cluster":
-        return listers.listClusters(this.listerCtx, accountId);
-      case "k8s-namespace":
-        return listers.listNamespaces(this.listerCtx, accountId);
-      case "k8s-node":
-        return listers.listNodes(this.listerCtx, accountId);
-      case "k8s-pod":
-        return listers.listPods(this.listerCtx, accountId);
-      case "k8s-deployment":
-        return listers.listDeployments(this.listerCtx, accountId);
-      case "k8s-service":
-        // The host passes the create-form `namespace` field as a region hint;
-        // services are namespace-scoped, so use it to scope the picker.
-        return listers.listServices(this.listerCtx, accountId, opts?.regionHint);
-      case "k8s-statefulset":
-        return listers.listStatefulSets(this.listerCtx, accountId);
-      case "k8s-daemonset":
-        return listers.listDaemonSets(this.listerCtx, accountId);
-      case "k8s-job":
-        return listers.listJobs(this.listerCtx, accountId);
-      case "k8s-cronjob":
-        return listers.listCronJobs(this.listerCtx, accountId);
-      case "k8s-ingress":
-        return listers.listIngresses(this.listerCtx, accountId);
-      case "k8s-configmap":
-        return listers.listConfigMaps(this.listerCtx, accountId);
-      case "k8s-secret":
-        return listers.listSecrets(this.listerCtx, accountId);
-      default:
-        throw new Error(`Kubernetes plugin: unknown resource type "${typeId}"`);
-    }
+  ): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "k8s-cluster":
+          return listers.listClusters(this.listerCtx, accountId);
+        case "k8s-namespace":
+          return listers.listNamespaces(this.listerCtx, accountId);
+        case "k8s-node":
+          return listers.listNodes(this.listerCtx, accountId);
+        case "k8s-pod":
+          return listers.listPods(this.listerCtx, accountId);
+        case "k8s-deployment":
+          return listers.listDeployments(this.listerCtx, accountId);
+        case "k8s-service":
+          // The host passes the create-form `namespace` field as a region hint;
+          // services are namespace-scoped, so use it to scope the picker.
+          return listers.listServices(this.listerCtx, accountId, opts?.regionHint);
+        case "k8s-statefulset":
+          return listers.listStatefulSets(this.listerCtx, accountId);
+        case "k8s-daemonset":
+          return listers.listDaemonSets(this.listerCtx, accountId);
+        case "k8s-job":
+          return listers.listJobs(this.listerCtx, accountId);
+        case "k8s-cronjob":
+          return listers.listCronJobs(this.listerCtx, accountId);
+        case "k8s-ingress":
+          return listers.listIngresses(this.listerCtx, accountId);
+        case "k8s-configmap":
+          return listers.listConfigMaps(this.listerCtx, accountId);
+        case "k8s-secret":
+          return listers.listSecrets(this.listerCtx, accountId);
+        default:
+          throw new Error(`Kubernetes plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Kubernetes plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Kubernetes plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<string> {
-    if (typeId === "k8s-cluster" && outputKey === "serverVersion") {
-      try {
-        const data = await this.k8sFetch<{ gitVersion: string }>("/version");
-        return data.gitVersion;
-      } catch {
-        return "unknown";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "k8s-cluster" && outputKey === "serverVersion") {
+        try {
+          const data = await this.k8sFetch<{ gitVersion: string }>("/version");
+          return data.gitVersion;
+        } catch {
+          return "unknown";
+        }
       }
-    }
-    if (typeId === "k8s-service" && outputKey === "serviceName") {
-      // Resource id is `${accountId}:k8s-service:${namespace}:${name}`.
-      return resourceId.split(":").pop() ?? "";
-    }
-    throw new Error(`Kubernetes plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      if (typeId === "k8s-service" && outputKey === "serviceName") {
+        // Resource id is `${accountId}:k8s-service:${namespace}:${name}`.
+        return resourceId.split(":").pop() ?? "";
+      }
+      throw new Error(
+        `Kubernetes plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const [resource, costs] = await Promise.all([
-      this.getResource(resourceTypeId, resourceId, accountId),
-      this.costIndex(),
-    ]);
-    return fetchDashboardStats(resource, this.k8sFetch, costs);
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const [resource, costs] = await Promise.all([
+        runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId)),
+        this.costIndex(),
+      ]);
+      return fetchDashboardStats(resource, this.k8sFetch, costs);
+    });
   }
 
   /**
@@ -320,56 +333,60 @@ export class KubernetesClient implements PluginClient {
    * host calls this with the peer's credentials and merges the result into the
    * parent's chart.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const costs = await this.costIndex();
-    if (!costs) return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const costs = await this.costIndex();
+      if (!costs) return [];
 
-    // The parent cloud cluster asks with its own resource type id, which is
-    // not one of ours (doks-cluster, gke-cluster, …). Treat anything we don't
-    // recognise as "the whole cluster": that is what the parent is.
-    const known = new Set([
-      "k8s-cluster",
-      "k8s-namespace",
-      "k8s-pod",
-      "k8s-deployment",
-      "k8s-statefulset",
-      "k8s-daemonset",
-    ]);
-    if (!known.has(resourceTypeId)) {
-      return buildCostMetricSeries("k8s-cluster", {}, "cluster", costs, timeRange);
-    }
+      // The parent cloud cluster asks with its own resource type id, which is
+      // not one of ours (doks-cluster, gke-cluster, …). Treat anything we don't
+      // recognise as "the whole cluster": that is what the parent is.
+      const known = new Set([
+        "k8s-cluster",
+        "k8s-namespace",
+        "k8s-pod",
+        "k8s-deployment",
+        "k8s-statefulset",
+        "k8s-daemonset",
+      ]);
+      if (!known.has(resourceTypeId)) {
+        return buildCostMetricSeries("k8s-cluster", {}, "cluster", costs, timeRange);
+      }
 
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId).catch(
-      () => null,
-    );
-    if (!resource) return [];
-    return buildCostMetricSeries(
-      resourceTypeId,
-      resource.fields,
-      resource.displayName,
-      costs,
-      timeRange,
-    );
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      ).catch(() => null);
+      if (!resource) return [];
+      return buildCostMetricSeries(
+        resourceTypeId,
+        resource.fields,
+        resource.displayName,
+        costs,
+        timeRange,
+      );
+    });
   }
 
   /**
    * Derived per-namespace / per-workload allocation, written as daily cost
    * rows. Not billed amounts: see `cost-data.ts`.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    const result = await this.clusterCost();
-    return allocationToCostRows(result.allocation, range, {
-      nodeLabels: result.nodeLabels,
-      claimLabels: result.claimLabels,
-      podLabels: result.podLabels,
-      nodeLabelKeys: this.nodeLabelKeys,
-      pvcLabelKeys: this.pvcLabelKeys,
-      podLabelKeys: this.podLabelKeys,
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      const result = await this.clusterCost();
+      return allocationToCostRows(result.allocation, range, {
+        nodeLabels: result.nodeLabels,
+        claimLabels: result.claimLabels,
+        podLabels: result.podLabels,
+        nodeLabelKeys: this.nodeLabelKeys,
+        pvcLabelKeys: this.pvcLabelKeys,
+        podLabelKeys: this.podLabelKeys,
+      });
     });
   }
 
@@ -378,18 +395,20 @@ export class KubernetesClient implements PluginClient {
    * network-flow pipeline. See `network-flows.ts` for the three sources and
    * the order they are trusted in.
    */
-  async fetchNetworkFlows(
+  fetchNetworkFlows(
     _accountId: string,
     range: NetworkFlowFetchRange,
-  ): Promise<NetworkFlowFetchResult> {
-    return fetchKubernetesNetworkFlows(
-      {
-        fetch: this.k8sFetch,
-        fetchText: (path) => this.fetcher.fetchText(path),
-        ratesField: this.ratesField,
-      },
-      range,
-    );
+  ): PluginEffect<NetworkFlowFetchResult> {
+    return attempt(async () => {
+      return fetchKubernetesNetworkFlows(
+        {
+          fetch: this.k8sFetch,
+          fetchText: (path) => this.fetcher.fetchText(path),
+          ratesField: this.ratesField,
+        },
+        range,
+      );
+    });
   }
 
   /**
@@ -401,36 +420,52 @@ export class KubernetesClient implements PluginClient {
     return { fetch: this.k8sFetch };
   }
 
-  listJitScopes(): Promise<JitScope[]> {
-    return listK8sJitScopes(this.jitCtx);
+  listJitScopes(): PluginEffect<JitScope[]> {
+    return attempt(async () => {
+      return listK8sJitScopes(this.jitCtx);
+    });
   }
 
-  listJitRoles(scopeId: string): Promise<JitRole[]> {
-    return listK8sJitRoles(this.jitCtx, scopeId);
+  listJitRoles(scopeId: string): PluginEffect<JitRole[]> {
+    return attempt(async () => {
+      return listK8sJitRoles(this.jitCtx, scopeId);
+    });
   }
 
-  resolveJitPrincipal(identity: JitIdentity): Promise<JitPrincipal | null> {
-    return resolveK8sJitPrincipal(this.jitCtx, identity);
+  resolveJitPrincipal(identity: JitIdentity): PluginEffect<JitPrincipal | null> {
+    return attempt(async () => {
+      return resolveK8sJitPrincipal(this.jitCtx, identity);
+    });
   }
 
-  listJitPrincipals(query?: string): Promise<JitPrincipal[]> {
-    return listK8sJitPrincipals(this.jitCtx, query);
+  listJitPrincipals(query?: string): PluginEffect<JitPrincipal[]> {
+    return attempt(async () => {
+      return listK8sJitPrincipals(this.jitCtx, query);
+    });
   }
 
-  grantJitAccess(spec: JitGrantSpec): Promise<JitGrantResult> {
-    return grantK8sJitAccess(this.jitCtx, spec);
+  grantJitAccess(spec: JitGrantSpec): PluginEffect<JitGrantResult> {
+    return attempt(async () => {
+      return grantK8sJitAccess(this.jitCtx, spec);
+    });
   }
 
-  revokeJitAccess(spec: JitGrantSpec): Promise<void> {
-    return revokeK8sJitAccess(this.jitCtx, spec);
+  revokeJitAccess(spec: JitGrantSpec): PluginEffect<void> {
+    return attempt(async () => {
+      return revokeK8sJitAccess(this.jitCtx, spec);
+    });
   }
 
-  checkJitAccess(spec: JitGrantSpec): Promise<JitAccessPresence> {
-    return checkK8sJitAccess(this.jitCtx, spec);
+  checkJitAccess(spec: JitGrantSpec): PluginEffect<JitAccessPresence> {
+    return attempt(async () => {
+      return checkK8sJitAccess(this.jitCtx, spec);
+    });
   }
 
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    return fetchK8sQuotas({ fetch: this.k8sFetch });
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      return fetchK8sQuotas({ fetch: this.k8sFetch });
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -465,83 +500,105 @@ export class KubernetesClient implements PluginClient {
     }
   }
 
-  async listNamespacesForImport(_accountId: string): Promise<string[]> {
-    const data = await this.k8sFetch<K8sList<K8sNamespace>>("/api/v1/namespaces");
-    return data.items.map((ns) => ns.metadata.name).sort();
-  }
-
-  async importSecret(
-    _accountId: string,
-    config: { namespace: string; secretName: string; data: Record<string, string> },
-  ): Promise<void> {
-    const encoded: Record<string, string> = {};
-    for (const [key, value] of Object.entries(config.data)) {
-      encoded[key] = btoa(value);
-    }
-
-    await this.k8sFetch(`/api/v1/namespaces/${encodeURIComponent(config.namespace)}/secrets`, {
-      method: "POST",
-      body: JSON.stringify({
-        apiVersion: "v1",
-        kind: "Secret",
-        metadata: {
-          name: config.secretName,
-          namespace: config.namespace,
-          labels: { "app.kubernetes.io/managed-by": "infrawrench" },
-        },
-        type: "Opaque",
-        data: encoded,
-      }),
+  listNamespacesForImport(_accountId: string): PluginEffect<string[]> {
+    return attempt(async () => {
+      const data = await this.k8sFetch<K8sList<K8sNamespace>>("/api/v1/namespaces");
+      return data.items.map((ns) => ns.metadata.name).sort();
     });
   }
 
-  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    // The peer pane shares the client's cost cache rather than recomputing:
-    // one render touches the allocation from several places.
-    return renderPeerPane(context, this.listerCtx, () => this.costIndex());
+  importSecret(
+    _accountId: string,
+    config: { namespace: string; secretName: string; data: Record<string, string> },
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const encoded: Record<string, string> = {};
+      for (const [key, value] of Object.entries(config.data)) {
+        encoded[key] = btoa(value);
+      }
+
+      await this.k8sFetch(`/api/v1/namespaces/${encodeURIComponent(config.namespace)}/secrets`, {
+        method: "POST",
+        body: JSON.stringify({
+          apiVersion: "v1",
+          kind: "Secret",
+          metadata: {
+            name: config.secretName,
+            namespace: config.namespace,
+            labels: { "app.kubernetes.io/managed-by": "infrawrench" },
+          },
+          type: "Opaque",
+          data: encoded,
+        }),
+      });
+    });
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    return getCreateConfig(typeId, parentResourceId, this.k8sFetch);
+  renderPeerPane(context: PeerPaneContext): PluginEffect<PeerPaneSchema> {
+    return attempt(async () => {
+      // The peer pane shares the client's cost cache rather than recomputing:
+      // one render touches the allocation from several places.
+      return renderPeerPane(context, this.listerCtx, () => this.costIndex());
+    });
   }
 
-  async createResource(
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return getCreateConfig(typeId, parentResourceId, this.k8sFetch);
+    });
+  }
+
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    return createResource(typeId, accountId, fields, parentResourceId, this.k8sFetch);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return createResource(typeId, accountId, fields, parentResourceId, this.k8sFetch);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const path = buildResourcePath(resourceId);
-    await this.k8sFetch(path, { method: "DELETE" });
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const path = buildResourcePath(resourceId);
+      await this.k8sFetch(path, { method: "DELETE" });
+    });
   }
 
-  async getManifest(resourceId: string, _accountId: string): Promise<string> {
-    return getManifest(resourceId, this.k8sFetch);
+  getManifest(resourceId: string, _accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      return getManifest(resourceId, this.k8sFetch);
+    });
   }
 
-  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
-    return applyManifest(resourceId, manifest, this.k8sFetch);
+  applyManifest(resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
+    return attempt(async () => {
+      return applyManifest(resourceId, manifest, this.k8sFetch);
+    });
   }
 
-  async importYaml(_accountId: string, yamlText: string): Promise<{ applied: number }> {
-    return importYaml(yamlText, this.k8sFetch);
+  importYaml(_accountId: string, yamlText: string): PluginEffect<{ applied: number }> {
+    return attempt(async () => {
+      return importYaml(yamlText, this.k8sFetch);
+    });
   }
 
-  async describeResource(typeId: string, resourceId: string, _accountId: string): Promise<string> {
-    return describeResource(typeId, resourceId, this.k8sFetch);
+  describeResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      return describeResource(typeId, resourceId, this.k8sFetch);
+    });
   }
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    return getLogs(typeId, resourceId, params, this.fetcher);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      return getLogs(typeId, resourceId, params, this.fetcher);
+    });
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

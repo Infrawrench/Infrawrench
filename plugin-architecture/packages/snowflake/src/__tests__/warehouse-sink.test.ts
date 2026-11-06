@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WarehouseCell, WarehouseColumn } from "@infrawrench/plugin-base";
 import { SnowflakeClient } from "../client.js";
@@ -41,7 +42,10 @@ describe("loadWarehouseRows", () => {
       if (s.startsWith("SHOW COLUMNS")) return sqlError("002003", "Table does not exist");
       return ok();
     });
-    const result = await new SnowflakeClient(CREDS).loadWarehouseRows("acc", request(3));
+    const result = await hostClient(new SnowflakeClient(CREDS)).loadWarehouseRows(
+      "acc",
+      request(3),
+    );
 
     expect(result).toEqual({ rowCount: 3, table: "ANALYTICS.FINOPS.COSTS" });
     expect(statements[0]).toBe('SHOW COLUMNS IN TABLE "ANALYTICS"."FINOPS"."COSTS"');
@@ -85,7 +89,7 @@ describe("loadWarehouseRows", () => {
       }
       return ok();
     });
-    await new SnowflakeClient(CREDS).loadWarehouseRows("acc", request(1));
+    await hostClient(new SnowflakeClient(CREDS)).loadWarehouseRows("acc", request(1));
     expect(statements.filter((s) => s.startsWith("ALTER TABLE"))).toEqual([
       'ALTER TABLE "ANALYTICS"."FINOPS"."COSTS" ADD COLUMN IF NOT EXISTS "PROVIDER" VARCHAR',
     ]);
@@ -96,7 +100,10 @@ describe("loadWarehouseRows", () => {
     const { statements } = mockSnowflake((s) =>
       s.startsWith("SHOW COLUMNS") ? sqlError("002003", "missing") : ok(),
     );
-    const result = await new SnowflakeClient(CREDS).loadWarehouseRows("acc", request(2_500));
+    const result = await hostClient(new SnowflakeClient(CREDS)).loadWarehouseRows(
+      "acc",
+      request(2_500),
+    );
     expect(result.rowCount).toBe(2_500);
     expect(
       statements.filter((s) => s.startsWith("INSERT INTO") && s.includes("VALUES")),
@@ -111,9 +118,9 @@ describe("loadWarehouseRows", () => {
       }
       return ok();
     });
-    await expect(new SnowflakeClient(CREDS).loadWarehouseRows("acc", request(2))).rejects.toThrow(
-      /SELECT, INSERT and DELETE/,
-    );
+    await expect(
+      hostClient(new SnowflakeClient(CREDS)).loadWarehouseRows("acc", request(2)),
+    ).rejects.toThrow(/SELECT, INSERT and DELETE/);
     expect(statements.some((s) => s.startsWith("BEGIN"))).toBe(false);
     expect(statements.at(-1)).toMatch(/^DROP TABLE IF EXISTS .*__IW_STAGE_/);
   });
@@ -121,7 +128,7 @@ describe("loadWarehouseRows", () => {
   it("refuses an incomplete target before touching Snowflake", async () => {
     const { statements } = mockSnowflake(() => ok());
     await expect(
-      new SnowflakeClient(CREDS).loadWarehouseRows("acc", {
+      hostClient(new SnowflakeClient(CREDS)).loadWarehouseRows("acc", {
         ...request(1),
         target: { database: "ANALYTICS" },
       }),
@@ -144,9 +151,13 @@ describe("pickers and setup", () => {
     const { statements } = mockSnowflake(() =>
       jsonResponse(200, resultSet([{ name: "name" }], [["FINOPS"], ["INFORMATION_SCHEMA"]])),
     );
-    const options = await new SnowflakeClient(CREDS).listWarehouseTargetOptions("acc", "schema", {
-      database: "ANALYTICS",
-    });
+    const options = await hostClient(new SnowflakeClient(CREDS)).listWarehouseTargetOptions(
+      "acc",
+      "schema",
+      {
+        database: "ANALYTICS",
+      },
+    );
     expect(statements).toEqual(['SHOW SCHEMAS IN DATABASE "ANALYTICS"']);
     expect(options).toEqual([{ id: "FINOPS", label: "FINOPS" }]);
   });

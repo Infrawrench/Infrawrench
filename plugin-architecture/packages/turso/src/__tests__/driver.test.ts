@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockExecute = vi.fn();
@@ -19,8 +20,10 @@ vi.mock("@libsql/client", () => ({
   })),
 }));
 
-import { driver } from "../driver.js";
+import { driver as contractDriver } from "../driver.js";
 import { createClient } from "@libsql/client";
+
+const driver = hostDriver(contractDriver);
 
 describe("turso driver", () => {
   beforeEach(() => {

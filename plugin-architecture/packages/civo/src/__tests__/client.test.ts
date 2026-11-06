@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { evaluateOrphanRule, exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { describe, expect, it, vi } from "vitest";
@@ -160,7 +161,7 @@ describe("client", () => {
         return { body: { id: "i1", hostname: "web", status: "BUILDING" } };
       return { body: [] };
     });
-    const client = new CivoClient({ apiKey: "K" }, plugin.resourceTypes, services);
+    const client = hostClient(new CivoClient({ apiKey: "K" }, plugin.resourceTypes, services));
     const created = await client.createResource("instance", "acct", {
       hostname: "web",
       region: "LON1",

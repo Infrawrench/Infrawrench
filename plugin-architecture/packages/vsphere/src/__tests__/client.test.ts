@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import {
@@ -185,7 +186,7 @@ describe("client", () => {
 
   it("lists VMs with placement (deepest pool), datastores, networks and tags", async () => {
     const { http } = mockHttp(routes);
-    const client = new VsphereClient(CREDS, { http });
+    const client = hostClient(new VsphereClient(CREDS, { http }));
     const [vm] = await client.listResources("vsphere-vm", "acct");
     expect(vm!.id).toBe("acct:vsphere-vm:vm-1");
     expect(vm!.fields).toMatchObject({
@@ -206,7 +207,7 @@ describe("client", () => {
 
   it("resolves the VM IP from VMware Tools", async () => {
     const { http } = mockHttp(routes);
-    const client = new VsphereClient(CREDS, { http });
+    const client = hostClient(new VsphereClient(CREDS, { http }));
     expect(
       await client.resolveOutput("vsphere-vm", "acct:vsphere-vm:vm-1", "ipAddress", "acct"),
     ).toBe("10.0.0.5");
@@ -218,7 +219,7 @@ describe("client", () => {
       "POST /api/vcenter/vm/vm-1/power": () => ({ status: 204 }),
       "POST /api/vcenter/vm/vm-1/guest/power": () => ({ status: 204 }),
     });
-    const client = new VsphereClient(CREDS, { http });
+    const client = hostClient(new VsphereClient(CREDS, { http }));
     await client.invokeAction("vsphere-vm", "acct:vsphere-vm:vm-1", "stop", "acct");
     await client.invokeAction("vsphere-vm", "acct:vsphere-vm:vm-1", "guest-shutdown", "acct");
     expect(calls.map((c) => c.url)).toContain(
@@ -240,7 +241,7 @@ describe("client", () => {
       "PATCH /api/vcenter/vm/vm-1/hardware/cpu": record("cpu"),
       "PATCH /api/vcenter/vm/vm-1/hardware/memory": record("mem"),
     });
-    const client = new VsphereClient(CREDS, { http });
+    const client = hostClient(new VsphereClient(CREDS, { http }));
     await client.updateResource("vsphere-vm", "acct:vsphere-vm:vm-1", "acct", {
       cpuCount: "4",
       memoryMb: "8192",
@@ -251,7 +252,7 @@ describe("client", () => {
 
   it("refuses to delete a powered-on VM", async () => {
     const { http } = mockHttp(routes);
-    const client = new VsphereClient(CREDS, { http });
+    const client = hostClient(new VsphereClient(CREDS, { http }));
     await expect(
       client.deleteResource("vsphere-vm", "acct:vsphere-vm:vm-1", "acct"),
     ).rejects.toMatchObject({ status: 409 });
@@ -266,7 +267,7 @@ describe("client", () => {
         return { status: 200, body: "vm-9" };
       },
     });
-    const client = new VsphereClient(CREDS, { http });
+    const client = hostClient(new VsphereClient(CREDS, { http }));
     const r = await client.executeNoSqlCommand(
       "vsphere-vm",
       "acct:vsphere-vm:vm-1",

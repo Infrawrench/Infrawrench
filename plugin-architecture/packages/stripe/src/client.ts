@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -275,7 +278,7 @@ export class StripeClient implements PluginClient {
   private readonly ctx: StripeContext;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Stripe plugin: missing apiKey credential");
     if (apiKey.startsWith("pk_")) {
@@ -310,93 +313,100 @@ export class StripeClient implements PluginClient {
    * One cheap read per capability. A restricted key without the permission
    * gets a 403 naming it; anything else that fails is "unknown".
    */
-  async verifyCredentials(): Promise<PreflightResult> {
-    let identity: string | undefined;
-    const checks: PreflightCapabilityCheck[] = [];
-    for (const cap of PREFLIGHT_CAPABILITIES) {
-      try {
-        const isAccount = cap.probe === "/v1/account";
-        const res = await this.get<StripeAccount>(cap.probe, isAccount ? undefined : { limit: 1 });
-        if (isAccount) identity = res?.id;
-        checks.push({ capabilityId: cap.id, status: "ok" });
-      } catch (err) {
-        if (statusOf(err) === 403) {
-          checks.push({
-            capabilityId: cap.id,
-            status: "missing",
-            missingPermissions: cap.requiredPermissions,
-            message: err instanceof Error ? err.message : String(err),
-            helpLink: { label: "Edit the restricted key", url: this.dash("/apikeys") },
-          });
-        } else if (cap.optionalFeature && isFeatureUnavailable(err)) {
-          checks.push({
-            capabilityId: cap.id,
-            status: "unknown",
-            message: "This account does not use the feature, so there is nothing to read.",
-          });
-        } else {
-          checks.push({
-            capabilityId: cap.id,
-            status: "unknown",
-            message: err instanceof Error ? err.message : String(err),
-          });
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      let identity: string | undefined;
+      const checks: PreflightCapabilityCheck[] = [];
+      for (const cap of PREFLIGHT_CAPABILITIES) {
+        try {
+          const isAccount = cap.probe === "/v1/account";
+          const res = await this.get<StripeAccount>(
+            cap.probe,
+            isAccount ? undefined : { limit: 1 },
+          );
+          if (isAccount) identity = res?.id;
+          checks.push({ capabilityId: cap.id, status: "ok" });
+        } catch (err) {
+          if (statusOf(err) === 403) {
+            checks.push({
+              capabilityId: cap.id,
+              status: "missing",
+              missingPermissions: cap.requiredPermissions,
+              message: err instanceof Error ? err.message : String(err),
+              helpLink: { label: "Edit the restricted key", url: this.dash("/apikeys") },
+            });
+          } else if (cap.optionalFeature && isFeatureUnavailable(err)) {
+            checks.push({
+              capabilityId: cap.id,
+              status: "unknown",
+              message: "This account does not use the feature, so there is nothing to read.",
+            });
+          } else {
+            checks.push({
+              capabilityId: cap.id,
+              status: "unknown",
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       }
-    }
-    return { checks, ...(identity ? { identity } : {}) };
+      return { checks, ...(identity ? { identity } : {}) };
+    });
   }
 
   // ---------------------------------------------------------------- listing
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case ACCOUNT:
-        return [await this.fetchAccount(accountId)];
-      case CONNECTED_ACCOUNT:
-        return this.optional(async () =>
-          (await listV1<StripeAccount>(this.ctx, "/v1/accounts")).map((a) =>
-            mapConnectedAccount(accountId, this.ctx.apiKey, a),
-          ),
-        );
-      case WEBHOOK_ENDPOINT:
-        return (await listV1<StripeWebhookEndpoint>(this.ctx, "/v1/webhook_endpoints")).map((e) =>
-          mapWebhookEndpoint(accountId, e),
-        );
-      case EVENT_DESTINATION:
-        return this.listEventDestinations(accountId);
-      case PRODUCT:
-        return (await listV1<StripeProduct>(this.ctx, "/v1/products")).map((p) =>
-          mapProduct(accountId, this.ctx.apiKey, p),
-        );
-      case PRICE:
-        return (await listV1<StripePrice>(this.ctx, "/v1/prices", {}, 20)).map((p) =>
-          mapPrice(accountId, p),
-        );
-      case METER:
-        return this.optional(async () =>
-          (await listV1<StripeMeter>(this.ctx, "/v1/billing/meters")).map((m) =>
-            mapMeter(accountId, m),
-          ),
-        );
-      case PAYOUT:
-        return (await listV1<StripePayout>(this.ctx, "/v1/payouts", {}, 1)).map((p) =>
-          mapPayout(accountId, p),
-        );
-      case REPORT_RUN:
-        return this.optional(async () =>
-          (await listV1<StripeReportRun>(this.ctx, "/v1/reporting/report_runs", {}, 1)).map((r) =>
-            mapReportRun(accountId, r),
-          ),
-        );
-      case SIGMA_RUN:
-        return this.optional(async () =>
-          (await listV1<StripeSigmaRun>(this.ctx, "/v1/sigma/scheduled_query_runs", {}, 1)).map(
-            (r) => mapSigmaRun(accountId, r),
-          ),
-        );
-      default:
-        throw new Error(`Stripe plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case ACCOUNT:
+          return [await this.fetchAccount(accountId)];
+        case CONNECTED_ACCOUNT:
+          return this.optional(async () =>
+            (await listV1<StripeAccount>(this.ctx, "/v1/accounts")).map((a) =>
+              mapConnectedAccount(accountId, this.ctx.apiKey, a),
+            ),
+          );
+        case WEBHOOK_ENDPOINT:
+          return (await listV1<StripeWebhookEndpoint>(this.ctx, "/v1/webhook_endpoints")).map((e) =>
+            mapWebhookEndpoint(accountId, e),
+          );
+        case EVENT_DESTINATION:
+          return this.listEventDestinations(accountId);
+        case PRODUCT:
+          return (await listV1<StripeProduct>(this.ctx, "/v1/products")).map((p) =>
+            mapProduct(accountId, this.ctx.apiKey, p),
+          );
+        case PRICE:
+          return (await listV1<StripePrice>(this.ctx, "/v1/prices", {}, 20)).map((p) =>
+            mapPrice(accountId, p),
+          );
+        case METER:
+          return this.optional(async () =>
+            (await listV1<StripeMeter>(this.ctx, "/v1/billing/meters")).map((m) =>
+              mapMeter(accountId, m),
+            ),
+          );
+        case PAYOUT:
+          return (await listV1<StripePayout>(this.ctx, "/v1/payouts", {}, 1)).map((p) =>
+            mapPayout(accountId, p),
+          );
+        case REPORT_RUN:
+          return this.optional(async () =>
+            (await listV1<StripeReportRun>(this.ctx, "/v1/reporting/report_runs", {}, 1)).map((r) =>
+              mapReportRun(accountId, r),
+            ),
+          );
+        case SIGMA_RUN:
+          return this.optional(async () =>
+            (await listV1<StripeSigmaRun>(this.ctx, "/v1/sigma/scheduled_query_runs", {}, 1)).map(
+              (r) => mapSigmaRun(accountId, r),
+            ),
+          );
+        default:
+          throw new Error(`Stripe plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -437,86 +447,92 @@ export class StripeClient implements PluginClient {
     return dests.map((d) => mapEventDestination(accountId, d));
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    const enc = encodeURIComponent(id);
-    switch (typeId) {
-      case ACCOUNT:
-        return this.fetchAccount(accountId);
-      case CONNECTED_ACCOUNT:
-        return mapConnectedAccount(
-          accountId,
-          this.ctx.apiKey,
-          await this.get(`/v1/accounts/${enc}`),
-        );
-      case WEBHOOK_ENDPOINT:
-        return mapWebhookEndpoint(accountId, await this.get(`/v1/webhook_endpoints/${enc}`));
-      case EVENT_DESTINATION:
-        return mapEventDestination(
-          accountId,
-          await stripeFetch<StripeEventDestination>(
-            this.ctx,
-            `/v2/core/event_destinations/${enc}`,
-            { query: { include: ["webhook_endpoint.url"] } },
-          ),
-        );
-      case PRODUCT:
-        return mapProduct(accountId, this.ctx.apiKey, await this.get(`/v1/products/${enc}`));
-      case PRICE:
-        return mapPrice(accountId, await this.get(`/v1/prices/${enc}`));
-      case METER:
-        return mapMeter(accountId, await this.get(`/v1/billing/meters/${enc}`));
-      case PAYOUT:
-        return mapPayout(accountId, await this.get(`/v1/payouts/${enc}`));
-      case REPORT_RUN:
-        return mapReportRun(accountId, await this.get(`/v1/reporting/report_runs/${enc}`));
-      case SIGMA_RUN:
-        return mapSigmaRun(accountId, await this.get(`/v1/sigma/scheduled_query_runs/${enc}`));
-      default:
-        throw new Error(`Stripe plugin: unknown resource type "${typeId}"`);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const enc = encodeURIComponent(id);
+      switch (typeId) {
+        case ACCOUNT:
+          return this.fetchAccount(accountId);
+        case CONNECTED_ACCOUNT:
+          return mapConnectedAccount(
+            accountId,
+            this.ctx.apiKey,
+            await this.get(`/v1/accounts/${enc}`),
+          );
+        case WEBHOOK_ENDPOINT:
+          return mapWebhookEndpoint(accountId, await this.get(`/v1/webhook_endpoints/${enc}`));
+        case EVENT_DESTINATION:
+          return mapEventDestination(
+            accountId,
+            await stripeFetch<StripeEventDestination>(
+              this.ctx,
+              `/v2/core/event_destinations/${enc}`,
+              { query: { include: ["webhook_endpoint.url"] } },
+            ),
+          );
+        case PRODUCT:
+          return mapProduct(accountId, this.ctx.apiKey, await this.get(`/v1/products/${enc}`));
+        case PRICE:
+          return mapPrice(accountId, await this.get(`/v1/prices/${enc}`));
+        case METER:
+          return mapMeter(accountId, await this.get(`/v1/billing/meters/${enc}`));
+        case PAYOUT:
+          return mapPayout(accountId, await this.get(`/v1/payouts/${enc}`));
+        case REPORT_RUN:
+          return mapReportRun(accountId, await this.get(`/v1/reporting/report_runs/${enc}`));
+        case SIGMA_RUN:
+          return mapSigmaRun(accountId, await this.get(`/v1/sigma/scheduled_query_runs/${enc}`));
+        default:
+          throw new Error(`Stripe plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "signingSecret") {
-      const secret = await this.services?.secrets?.getPlaintext(resourceId, "signingSecret");
-      if (secret) return secret;
-      throw new Error(
-        "Stripe only returns a signing secret when the endpoint is created. This one was created outside Infrawrench, so reveal or roll its secret in the Stripe Dashboard.",
-      );
-    }
-    if (outputKey === "apiVersion") return STRIPE_API_VERSION;
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey] ?? resource.fields[outputKey];
-    return value === undefined || value === null ? "" : String(value);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "signingSecret") {
+        const secret = await this.services?.secrets?.getPlaintext(resourceId, "signingSecret");
+        if (secret) return secret;
+        throw new Error(
+          "Stripe only returns a signing secret when the endpoint is created. This one was created outside Infrawrench, so reveal or roll its secret in the Stripe Dashboard.",
+        );
+      }
+      if (outputKey === "apiVersion") return STRIPE_API_VERSION;
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey] ?? resource.fields[outputKey];
+      return value === undefined || value === null ? "" : String(value);
+    });
   }
 
   // ------------------------------------------------------------- enrichment
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (resource.resourceTypeId === ACCOUNT) return this.enrichAccount(resource);
-    if (resource.resourceTypeId === WEBHOOK_ENDPOINT) {
-      const enabled = parseEventList(String(resource.fields["enabledEvents"] ?? ""));
-      const failed = await this.failedEvents().catch(() => null);
-      if (!failed) return resource;
-      return {
-        ...resource,
-        resolvedOutputs: {
-          ...resource.resolvedOutputs,
-          [STASH.failedEvents]: JSON.stringify(failed.filter((e) => subscribes(enabled, e.type))),
-        },
-      };
-    }
-    return resource;
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (resource.resourceTypeId === ACCOUNT) return this.enrichAccount(resource);
+      if (resource.resourceTypeId === WEBHOOK_ENDPOINT) {
+        const enabled = parseEventList(String(resource.fields["enabledEvents"] ?? ""));
+        const failed = await this.failedEvents().catch(() => null);
+        if (!failed) return resource;
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            [STASH.failedEvents]: JSON.stringify(failed.filter((e) => subscribes(enabled, e.type))),
+          },
+        };
+      }
+      return resource;
+    });
   }
 
   /** Events from the last 30 days that at least one endpoint failed to take. */
@@ -577,23 +593,25 @@ export class StripeClient implements PluginClient {
 
   // --------------------------------------------------------------- create
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case WEBHOOK_ENDPOINT:
-        return { fields: this.webhookCreateFields() };
-      case EVENT_DESTINATION:
-        return { fields: this.destinationCreateFields() };
-      case PRODUCT:
-        return { fields: await this.productCreateFields() };
-      case PRICE:
-        return { fields: await this.priceCreateFields(parentResourceId) };
-      case METER:
-        return { fields: this.meterCreateFields() };
-      case REPORT_RUN:
-        return { fields: await this.reportRunCreateFields() };
-      default:
-        throw new Error(`Stripe plugin: ${typeId} cannot be created`);
-    }
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case WEBHOOK_ENDPOINT:
+          return { fields: this.webhookCreateFields() };
+        case EVENT_DESTINATION:
+          return { fields: this.destinationCreateFields() };
+        case PRODUCT:
+          return { fields: await this.productCreateFields() };
+        case PRICE:
+          return { fields: await this.priceCreateFields(parentResourceId) };
+        case METER:
+          return { fields: this.meterCreateFields() };
+        case REPORT_RUN:
+          return { fields: await this.reportRunCreateFields() };
+        default:
+          throw new Error(`Stripe plugin: ${typeId} cannot be created`);
+      }
+    });
   }
 
   private webhookCreateFields(): CreateFieldConfig[] {
@@ -1155,28 +1173,30 @@ export class StripeClient implements PluginClient {
     ];
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceCreateReturn> {
-    switch (typeId) {
-      case WEBHOOK_ENDPOINT:
-        return this.createWebhookEndpoint(accountId, fields);
-      case EVENT_DESTINATION:
-        return this.createEventDestination(accountId, fields);
-      case PRODUCT:
-        return this.createProduct(accountId, fields);
-      case PRICE:
-        return this.createPrice(accountId, fields, parentResourceId);
-      case METER:
-        return this.createMeter(accountId, fields);
-      case REPORT_RUN:
-        return this.createReportRun(accountId, fields);
-      default:
-        throw new Error(`Stripe plugin: ${typeId} cannot be created`);
-    }
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      switch (typeId) {
+        case WEBHOOK_ENDPOINT:
+          return this.createWebhookEndpoint(accountId, fields);
+        case EVENT_DESTINATION:
+          return this.createEventDestination(accountId, fields);
+        case PRODUCT:
+          return this.createProduct(accountId, fields);
+        case PRICE:
+          return this.createPrice(accountId, fields, parentResourceId);
+        case METER:
+          return this.createMeter(accountId, fields);
+        case REPORT_RUN:
+          return this.createReportRun(accountId, fields);
+        default:
+          throw new Error(`Stripe plugin: ${typeId} cannot be created`);
+      }
+    });
   }
 
   /** `POST /v1/webhook_endpoints`: the response is the only time `secret` is sent. */
@@ -1419,243 +1439,265 @@ export class StripeClient implements PluginClient {
 
   // --------------------------------------------------------------- update
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const enc = encodeURIComponent(externalIdOf(resourceId));
-    const has = (key: string) => Object.prototype.hasOwnProperty.call(fields, key);
-    switch (typeId) {
-      case WEBHOOK_ENDPOINT: {
-        const form: Record<string, FormValue> = {};
-        if (has("url")) form["url"] = fields["url"];
-        if (has("description")) form["description"] = fields["description"] ?? "";
-        if (has("enabledEvents")) {
-          const events = parseEventList(fields["enabledEvents"]);
-          if (events.length === 0)
-            throw new Error("Stripe plugin: an endpoint needs at least one event");
-          form["enabled_events"] = events;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const enc = encodeURIComponent(externalIdOf(resourceId));
+      const has = (key: string) => Object.prototype.hasOwnProperty.call(fields, key);
+      switch (typeId) {
+        case WEBHOOK_ENDPOINT: {
+          const form: Record<string, FormValue> = {};
+          if (has("url")) form["url"] = fields["url"];
+          if (has("description")) form["description"] = fields["description"] ?? "";
+          if (has("enabledEvents")) {
+            const events = parseEventList(fields["enabledEvents"]);
+            if (events.length === 0)
+              throw new Error("Stripe plugin: an endpoint needs at least one event");
+            form["enabled_events"] = events;
+          }
+          if (has("status")) form["disabled"] = fields["status"] === "disabled";
+          return mapWebhookEndpoint(
+            accountId,
+            await this.post(`/v1/webhook_endpoints/${enc}`, form),
+          );
         }
-        if (has("status")) form["disabled"] = fields["status"] === "disabled";
-        return mapWebhookEndpoint(accountId, await this.post(`/v1/webhook_endpoints/${enc}`, form));
-      }
-      case EVENT_DESTINATION: {
-        const body: Record<string, unknown> = {};
-        if (has("name")) body["name"] = fields["name"];
-        if (has("description")) body["description"] = fields["description"] ?? "";
-        if (has("enabledEvents")) {
-          const events = parseEventList(fields["enabledEvents"]);
-          if (events.length === 0)
-            throw new Error("Stripe plugin: a destination needs at least one event");
-          body["enabled_events"] = events;
+        case EVENT_DESTINATION: {
+          const body: Record<string, unknown> = {};
+          if (has("name")) body["name"] = fields["name"];
+          if (has("description")) body["description"] = fields["description"] ?? "";
+          if (has("enabledEvents")) {
+            const events = parseEventList(fields["enabledEvents"]);
+            if (events.length === 0)
+              throw new Error("Stripe plugin: a destination needs at least one event");
+            body["enabled_events"] = events;
+          }
+          if (has("url") && fields["url"]) body["webhook_endpoint"] = { url: fields["url"] };
+          body["include"] = ["webhook_endpoint.url"];
+          const updated = await stripeFetch<StripeEventDestination>(
+            this.ctx,
+            `/v2/core/event_destinations/${enc}`,
+            { method: "POST", json: body },
+          );
+          return mapEventDestination(accountId, updated);
         }
-        if (has("url") && fields["url"]) body["webhook_endpoint"] = { url: fields["url"] };
-        body["include"] = ["webhook_endpoint.url"];
-        const updated = await stripeFetch<StripeEventDestination>(
-          this.ctx,
-          `/v2/core/event_destinations/${enc}`,
-          { method: "POST", json: body },
-        );
-        return mapEventDestination(accountId, updated);
-      }
-      case PRODUCT: {
-        const form: Record<string, FormValue> = {};
-        const map: Record<string, string> = {
-          name: "name",
-          description: "description",
-          unitLabel: "unit_label",
-          statementDescriptor: "statement_descriptor",
-          taxCode: "tax_code",
-          url: "url",
-        };
-        for (const [key, param] of Object.entries(map))
-          if (has(key)) form[param] = fields[key] ?? "";
-        if (has("active")) form["active"] = fields["active"] === "true";
-        return mapProduct(accountId, this.ctx.apiKey, await this.post(`/v1/products/${enc}`, form));
-      }
-      case PRICE: {
-        const form: Record<string, FormValue> = {};
-        if (has("nickname")) form["nickname"] = fields["nickname"] ?? "";
-        if (has("lookupKey")) {
-          form["lookup_key"] = fields["lookupKey"] ?? "";
-          // Moving a lookup key from another price is what users mean by setting it.
-          if (fields["lookupKey"]) form["transfer_lookup_key"] = true;
+        case PRODUCT: {
+          const form: Record<string, FormValue> = {};
+          const map: Record<string, string> = {
+            name: "name",
+            description: "description",
+            unitLabel: "unit_label",
+            statementDescriptor: "statement_descriptor",
+            taxCode: "tax_code",
+            url: "url",
+          };
+          for (const [key, param] of Object.entries(map))
+            if (has(key)) form[param] = fields[key] ?? "";
+          if (has("active")) form["active"] = fields["active"] === "true";
+          return mapProduct(
+            accountId,
+            this.ctx.apiKey,
+            await this.post(`/v1/products/${enc}`, form),
+          );
         }
-        if (
-          has("taxBehavior") &&
-          fields["taxBehavior"] &&
-          fields["taxBehavior"] !== "unspecified"
-        ) {
-          form["tax_behavior"] = fields["taxBehavior"];
+        case PRICE: {
+          const form: Record<string, FormValue> = {};
+          if (has("nickname")) form["nickname"] = fields["nickname"] ?? "";
+          if (has("lookupKey")) {
+            form["lookup_key"] = fields["lookupKey"] ?? "";
+            // Moving a lookup key from another price is what users mean by setting it.
+            if (fields["lookupKey"]) form["transfer_lookup_key"] = true;
+          }
+          if (
+            has("taxBehavior") &&
+            fields["taxBehavior"] &&
+            fields["taxBehavior"] !== "unspecified"
+          ) {
+            form["tax_behavior"] = fields["taxBehavior"];
+          }
+          if (has("active")) form["active"] = fields["active"] === "true";
+          return mapPrice(accountId, await this.post(`/v1/prices/${enc}`, form));
         }
-        if (has("active")) form["active"] = fields["active"] === "true";
-        return mapPrice(accountId, await this.post(`/v1/prices/${enc}`, form));
+        case METER: {
+          if (!has("displayName"))
+            return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          return mapMeter(
+            accountId,
+            await this.post(`/v1/billing/meters/${enc}`, { display_name: fields["displayName"] }),
+          );
+        }
+        default:
+          throw new Error(`Stripe plugin: ${typeId} cannot be edited`);
       }
-      case METER: {
-        if (!has("displayName")) return this.getResource(typeId, resourceId, accountId);
-        return mapMeter(
-          accountId,
-          await this.post(`/v1/billing/meters/${enc}`, { display_name: fields["displayName"] }),
-        );
-      }
-      default:
-        throw new Error(`Stripe plugin: ${typeId} cannot be edited`);
-    }
+    });
   }
 
   // --------------------------------------------------------------- delete
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const enc = encodeURIComponent(externalIdOf(resourceId));
-    const del = (path: string) => stripeFetch<unknown>(this.ctx, path, { method: "DELETE" });
-    switch (typeId) {
-      case WEBHOOK_ENDPOINT:
-        await del(`/v1/webhook_endpoints/${enc}`);
-        return;
-      case EVENT_DESTINATION:
-        await del(`/v2/core/event_destinations/${enc}`);
-        return;
-      case CONNECTED_ACCOUNT:
-        await del(`/v1/accounts/${enc}`);
-        return;
-      case PRODUCT:
-        try {
-          await del(`/v1/products/${enc}`);
-        } catch (err) {
-          if (err instanceof StripeApiError && err.status === 400) {
-            throw new StripeApiError(
-              400,
-              "Stripe only deletes products that have no prices. Archive it instead: it stays on existing subscriptions but cannot be sold.",
-              err.type,
-              err.code,
-            );
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const enc = encodeURIComponent(externalIdOf(resourceId));
+      const del = (path: string) => stripeFetch<unknown>(this.ctx, path, { method: "DELETE" });
+      switch (typeId) {
+        case WEBHOOK_ENDPOINT:
+          await del(`/v1/webhook_endpoints/${enc}`);
+          return;
+        case EVENT_DESTINATION:
+          await del(`/v2/core/event_destinations/${enc}`);
+          return;
+        case CONNECTED_ACCOUNT:
+          await del(`/v1/accounts/${enc}`);
+          return;
+        case PRODUCT:
+          try {
+            await del(`/v1/products/${enc}`);
+          } catch (err) {
+            if (err instanceof StripeApiError && err.status === 400) {
+              throw new StripeApiError(
+                400,
+                "Stripe only deletes products that have no prices. Archive it instead: it stays on existing subscriptions but cannot be sold.",
+                err.type,
+                err.code,
+              );
+            }
+            throw err;
           }
-          throw err;
-        }
-        return;
-      default:
-        throw new Error(`Stripe plugin: ${typeId} cannot be deleted`);
-    }
+          return;
+        default:
+          throw new Error(`Stripe plugin: ${typeId} cannot be deleted`);
+      }
+    });
   }
 
   // --------------------------------------------------------------- actions
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const enc = encodeURIComponent(externalIdOf(resourceId));
-    const key = `${typeId}:${actionId}`;
-    switch (key) {
-      case `${WEBHOOK_ENDPOINT}:enable`:
-      case `${WEBHOOK_ENDPOINT}:disable`:
-        await this.post(`/v1/webhook_endpoints/${enc}`, { disabled: actionId === "disable" });
-        return;
-      case `${EVENT_DESTINATION}:enable`:
-      case `${EVENT_DESTINATION}:disable`:
-      case `${EVENT_DESTINATION}:ping`:
-        await stripeFetch(this.ctx, `/v2/core/event_destinations/${enc}/${actionId}`, {
-          method: "POST",
-          json: {},
-        });
-        return;
-      case `${PRODUCT}:archive`:
-      case `${PRODUCT}:unarchive`:
-        await this.post(`/v1/products/${enc}`, { active: actionId === "unarchive" });
-        return;
-      case `${PRICE}:archive`:
-      case `${PRICE}:unarchive`:
-        await this.post(`/v1/prices/${enc}`, { active: actionId === "unarchive" });
-        return;
-      case `${METER}:deactivate`:
-      case `${METER}:reactivate`:
-        await this.post(`/v1/billing/meters/${enc}/${actionId}`);
-        return;
-      case `${PAYOUT}:cancel`:
-        await this.post(`/v1/payouts/${enc}/cancel`);
-        return;
-      case `${CONNECTED_ACCOUNT}:reject`:
-        await this.post(`/v1/accounts/${enc}/reject`, { reason: "other" });
-        return;
-      case `${CONNECTED_ACCOUNT}:unreject`:
-        await this.post(`/v1/accounts/${enc}/unreject`);
-        return;
-      default:
-        throw new Error(`Stripe plugin: unknown action "${actionId}" for ${typeId}`);
-    }
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const enc = encodeURIComponent(externalIdOf(resourceId));
+      const key = `${typeId}:${actionId}`;
+      switch (key) {
+        case `${WEBHOOK_ENDPOINT}:enable`:
+        case `${WEBHOOK_ENDPOINT}:disable`:
+          await this.post(`/v1/webhook_endpoints/${enc}`, { disabled: actionId === "disable" });
+          return;
+        case `${EVENT_DESTINATION}:enable`:
+        case `${EVENT_DESTINATION}:disable`:
+        case `${EVENT_DESTINATION}:ping`:
+          await stripeFetch(this.ctx, `/v2/core/event_destinations/${enc}/${actionId}`, {
+            method: "POST",
+            json: {},
+          });
+          return;
+        case `${PRODUCT}:archive`:
+        case `${PRODUCT}:unarchive`:
+          await this.post(`/v1/products/${enc}`, { active: actionId === "unarchive" });
+          return;
+        case `${PRICE}:archive`:
+        case `${PRICE}:unarchive`:
+          await this.post(`/v1/prices/${enc}`, { active: actionId === "unarchive" });
+          return;
+        case `${METER}:deactivate`:
+        case `${METER}:reactivate`:
+          await this.post(`/v1/billing/meters/${enc}/${actionId}`);
+          return;
+        case `${PAYOUT}:cancel`:
+          await this.post(`/v1/payouts/${enc}/cancel`);
+          return;
+        case `${CONNECTED_ACCOUNT}:reject`:
+          await this.post(`/v1/accounts/${enc}/reject`, { reason: "other" });
+          return;
+        case `${CONNECTED_ACCOUNT}:unreject`:
+          await this.post(`/v1/accounts/${enc}/unreject`);
+          return;
+        default:
+          throw new Error(`Stripe plugin: unknown action "${actionId}" for ${typeId}`);
+      }
+    });
   }
 
   // ------------------------------------------------------------- telemetry
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchFeeCostRows(this.ctx, range.fromDate, range.toDate);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchFeeCostRows(this.ctx, range.fromDate, range.toDate);
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 30 * 86_400_000;
-    if (resourceTypeId === ACCOUNT) return accountMetrics(this.ctx, startMs, endMs);
-    if (resourceTypeId === METER)
-      return meterMetrics(this.ctx, externalIdOf(resourceId), startMs, endMs);
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 30 * 86_400_000;
+      if (resourceTypeId === ACCOUNT) return accountMetrics(this.ctx, startMs, endMs);
+      if (resourceTypeId === METER)
+        return meterMetrics(this.ctx, externalIdOf(resourceId), startMs, endMs);
+      return [];
+    });
   }
 
   /**
    * The account's event stream as logs: v1 snapshot events, the subset whose
    * webhook deliveries failed, or v2 thin events.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== ACCOUNT) throw new Error(`Stripe plugin: no logs for ${typeId}`);
-    const containers = ["Events", "Failed webhook deliveries", "Thin events (v2)"];
-    const active =
-      params.container && containers.includes(params.container) ? params.container : containers[0]!;
-    const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 500);
-    const pages = Math.ceil(limit / 100);
-    let lines: string[];
-    if (active === "Thin events (v2)") {
-      const events = await listV2<{
-        id?: string;
-        type?: string;
-        created?: string;
-        related_object?: { id?: string };
-      }>(this.ctx, "/v2/core/events", {}, pages);
-      lines = events
-        .slice(0, limit)
-        .map(
-          (e) =>
-            `${e.created ?? ""}  ${e.type ?? ""}  ${e.related_object?.id ?? ""}  ${e.id ?? ""}`,
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== ACCOUNT) throw new Error(`Stripe plugin: no logs for ${typeId}`);
+      const containers = ["Events", "Failed webhook deliveries", "Thin events (v2)"];
+      const active =
+        params.container && containers.includes(params.container)
+          ? params.container
+          : containers[0]!;
+      const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 500);
+      const pages = Math.ceil(limit / 100);
+      let lines: string[];
+      if (active === "Thin events (v2)") {
+        const events = await listV2<{
+          id?: string;
+          type?: string;
+          created?: string;
+          related_object?: { id?: string };
+        }>(this.ctx, "/v2/core/events", {}, pages);
+        lines = events
+          .slice(0, limit)
+          .map(
+            (e) =>
+              `${e.created ?? ""}  ${e.type ?? ""}  ${e.related_object?.id ?? ""}  ${e.id ?? ""}`,
+          );
+      } else {
+        const events = await listV1<StripeEvent>(
+          this.ctx,
+          "/v1/events",
+          active === "Failed webhook deliveries" ? { delivery_success: false } : {},
+          pages,
         );
-    } else {
-      const events = await listV1<StripeEvent>(
-        this.ctx,
-        "/v1/events",
-        active === "Failed webhook deliveries" ? { delivery_success: false } : {},
-        pages,
-      );
-      lines = events.slice(0, limit).map((e) => {
-        const obj = e.data?.object;
-        const pending = e.pending_webhooks ? `  pending_webhooks=${e.pending_webhooks}` : "";
-        const acct = e.account ? `  account=${e.account}` : "";
-        return `${epochToIso(e.created)}  ${e.type ?? ""}  ${obj?.id ?? ""}  ${e.id ?? ""}${pending}${acct}`;
-      });
-    }
-    // Stripe lists newest first; logs read oldest first.
-    lines.reverse();
-    return { text: lines.map((l) => `${l}\n`).join(""), containers, activeContainer: active };
+        lines = events.slice(0, limit).map((e) => {
+          const obj = e.data?.object;
+          const pending = e.pending_webhooks ? `  pending_webhooks=${e.pending_webhooks}` : "";
+          const acct = e.account ? `  account=${e.account}` : "";
+          return `${epochToIso(e.created)}  ${e.type ?? ""}  ${obj?.id ?? ""}  ${e.id ?? ""}${pending}${acct}`;
+        });
+      }
+      // Stripe lists newest first; logs read oldest first.
+      lines.reverse();
+      return { text: lines.map((l) => `${l}\n`).join(""), containers, activeContainer: active };
+    });
   }
 
   // ----------------------------------------------------------------- render

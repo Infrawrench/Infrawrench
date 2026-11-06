@@ -1,3 +1,5 @@
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   ResourceInstance,
@@ -22,60 +24,68 @@ function shellQuote(value: string): string {
 export class SshClient implements PluginClient {
   constructor(private readonly creds: SshCredentials) {}
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (typeId !== "ssh-target") return [];
-    const { host, port = "22", username = "root" } = this.creds;
-    return [
-      {
-        id: `${accountId}:ssh-target:${host}`,
-        pluginId: "ssh",
-        resourceTypeId: "ssh-target",
-        accountId,
-        displayName: host,
-        externalId: host,
-        fields: { host, port, username },
-        resolvedOutputs: {},
-        secretStates: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ];
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      if (typeId !== "ssh-target") return [];
+      const { host, port = "22", username = "root" } = this.creds;
+      return [
+        {
+          id: `${accountId}:ssh-target:${host}`,
+          pluginId: "ssh",
+          resourceTypeId: "ssh-target",
+          accountId,
+          displayName: host,
+          externalId: host,
+          fields: { host, port, username },
+          resolvedOutputs: {},
+          secretStates: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const resources = await this.listResources(typeId, accountId);
-    const found = resources.find((r) => r.id === resourceId) ?? resources[0];
-    if (!found) throw new Error("Resource not found");
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const resources = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = resources.find((r) => r.id === resourceId) ?? resources[0];
+      if (!found) throw new Error("Resource not found");
+      return found;
+    });
   }
 
-  async resolveOutput(typeId: string, _resourceId: string, outputKey: string): Promise<string> {
-    if (typeId !== "ssh-target") return "";
-    const { host, port = "22", username = "root" } = this.creds;
-    switch (outputKey) {
-      case "host":
-        return host;
-      case "port":
-        return String(port);
-      case "username":
-        return username;
-      case "sshCommand":
-        return `ssh -p ${shellQuote(String(port))} ${shellQuote(`${username}@${host}`)}`;
-      default:
-        return "";
-    }
+  resolveOutput(typeId: string, _resourceId: string, outputKey: string): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId !== "ssh-target") return "";
+      const { host, port = "22", username = "root" } = this.creds;
+      switch (outputKey) {
+        case "host":
+          return host;
+        case "port":
+          return String(port);
+        case "username":
+          return username;
+        case "sshCommand":
+          return `ssh -p ${shellQuote(String(port))} ${shellQuote(`${username}@${host}`)}`;
+        default:
+          return "";
+      }
+    });
   }
 
-  async fetchDashboardStats(): Promise<DashboardStat[]> {
-    const { host, port = "22", username = "root" } = this.creds;
-    return [
-      { label: "Host", value: `${host}:${port}` },
-      { label: "User", value: String(username) },
-    ];
+  fetchDashboardStats(): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const { host, port = "22", username = "root" } = this.creds;
+      return [
+        { label: "Host", value: `${host}:${port}` },
+        { label: "User", value: String(username) },
+      ];
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl, desktopOAuthRedirectUri } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { plugin } from "../plugin.js";
@@ -42,7 +43,7 @@ describe("registerOAuthClient", () => {
       status: 201,
       body: { client_id: "dyn-1", token_endpoint_auth_method: "none" },
     }));
-    const client = await plugin.registerOAuthClient!({
+    const client = await hostPlugin(plugin).registerOAuthClient!({
       redirectUri: "http://127.0.0.1:43118/oauth/callback",
       fetch: doFetch,
     });
@@ -62,7 +63,7 @@ describe("registerOAuthClient", () => {
       body: { error: "invalid_redirect_uri", error_description: "must be loopback" },
     }));
     await expect(
-      plugin.registerOAuthClient!({ redirectUri: "https://x", fetch: doFetch }),
+      hostPlugin(plugin).registerOAuthClient!({ redirectUri: "https://x", fetch: doFetch }),
     ).rejects.toThrow(/HTTP 400.*must be loopback/);
   });
 });
@@ -76,7 +77,7 @@ describe("completeOAuthConnection", () => {
         ? { status: 200, body: { login: "ada", name: "Ada" } }
         : { status: 200, body: [{ id: "org-1", name: "Acme", slug: "gh/acme" }] },
     );
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "desktop",
       fetch: doFetch,
     });
@@ -100,7 +101,10 @@ describe("completeOAuthConnection", () => {
           },
     );
     expect(
-      await plugin.completeOAuthConnection!(tokens, { client: "desktop", fetch: doFetch }),
+      await hostPlugin(plugin).completeOAuthConnection!(tokens, {
+        client: "desktop",
+        fetch: doFetch,
+      }),
     ).toEqual({});
   });
 });

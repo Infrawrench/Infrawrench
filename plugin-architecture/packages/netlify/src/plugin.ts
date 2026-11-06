@@ -1,4 +1,10 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { NetlifyClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -16,9 +22,9 @@ import { netlifyTerraformExport } from "./terraform.js";
 import { completeNetlifyOAuth, netlifyOAuth } from "./oauth.js";
 import { netlifyDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "netlify",
-  version: "0.1.0",
+  egressHosts: ["api.netlify.com"],
   displayName: "Netlify",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#0E1E25"/>
@@ -27,9 +33,7 @@ const manifest: PluginManifest = {
       <path d="M50.434 48.06c-.352-.212-.705-.282-1.058-.282-.494 0-.988.141-1.34.423L33.727 62.226l1.27 1.27L49.953 48.68l-.565.423.211-.211c.494-.212.705-.494.835-.832z" fill="#4DC8C4"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accessToken",
       label: "Personal Access Token",
@@ -39,11 +43,13 @@ const manifest: PluginManifest = {
       placeholder: "nfp_...",
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
   // "Connect with Netlify" (server only). Pasted tokens keep working; see oauth.ts.
   oauth: netlifyOAuth,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   NetlifySiteResourceType,
@@ -58,12 +64,13 @@ const resourceTypes: ResourceTypeDefinition[] = [
   NetlifyDatabaseResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: netlifyDeployEvents,
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new NetlifyClient(credentials, services),
+  testCredentials: { accessToken: "nfp_test_token" },
   parseStatusFeed,
   terraformExport: netlifyTerraformExport,
-  completeOAuthConnection: completeNetlifyOAuth,
-};
+  completeOAuthConnection: attemptFn(completeNetlifyOAuth),
+});

@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { RenderApi } from "./api.js";
@@ -16,16 +18,14 @@ import { renderTerraformExport } from "./terraform.js";
 import type { RenderOwner } from "./types.js";
 import { renderDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "render",
-  version: "0.1.0",
+  egressHosts: ["api.render.com"],
   displayName: "Render",
   description:
     "Cloud application platform. Manage web services, private services, workers, cron jobs and static sites with deploys, rollbacks, scaling and logs, plus Render Postgres, Key Value, disks, environment groups, custom domains, projects and Blueprints.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -48,11 +48,13 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiKey"], emptyLabel: "All workspaces" },
     },
     caCertCredentialField,
-  ],
+  ]),
   // 400 GETs a minute per user; the poller fans out per service.
   rateLimit: { capacity: 40, refillPerSecond: 5 },
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -76,13 +78,14 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: renderDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new RenderClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "rnd_test" },
   parseStatusFeed,
   terraformExport: renderTerraformExport,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   remediationCommands: renderRemediationCommands,
-};
+});

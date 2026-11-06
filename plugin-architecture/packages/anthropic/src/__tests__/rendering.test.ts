@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -8,8 +10,10 @@ runPluginRenderingTests(plugin);
 
 const ACCOUNT = "acct-1";
 
-function client(): AnthropicClient {
-  return new AnthropicClient({ apiKey: "sk-ant-api03-test", adminApiKey: "sk-ant-admin01-test" });
+function client(): HostedMethods<AnthropicClient> {
+  return hostClient(
+    new AnthropicClient({ apiKey: "sk-ant-api03-test", adminApiKey: "sk-ant-admin01-test" }),
+  );
 }
 
 function resource(

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { DigitalOceanClient } from "../client.js";
@@ -28,7 +29,7 @@ function installFetch(route: (path: string, method: string) => unknown | undefin
 }
 
 const ACC = "acc1";
-const client = new DigitalOceanClient({ apiToken: "tok" });
+const client = hostClient(new DigitalOceanClient({ apiToken: "tok" }));
 
 function res(
   typeId: string,

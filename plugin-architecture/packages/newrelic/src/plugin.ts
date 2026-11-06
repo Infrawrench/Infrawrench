@@ -1,9 +1,11 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialField,
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import type { NewRelicContext } from "./api.js";
@@ -35,15 +37,13 @@ function rateField(
   };
 }
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "newrelic",
-  version: "0.1.0",
+  egressHosts: ["api.newrelic.com", "api.eu.newrelic.com", "api.jp.newrelic.com"],
   displayName: "New Relic",
   description:
     "Observability platform. Track New Relic spend by product and account, and manage APM and browser applications, hosts, synthetic monitors, dashboards, workloads, alert policies and NRQL conditions with their metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -57,7 +57,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://one.newrelic.com/api-keys",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "region",
       label: "Region",
@@ -127,7 +127,7 @@ const manifest: PluginManifest = {
       DEFAULT_RATES.syntheticCheck,
     ),
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Usage from NrConsumption / NrMTDConsumption in the usage account,
     // priced at the rates above: product -> service, the region -> region,
@@ -143,7 +143,9 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /**
  * Options for the usage account picker: every account the user key can see in
@@ -183,11 +185,12 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new NewRelicClient(credentials, services),
+  testCredentials: { region: "us", apiKey: "NRAK-TEST", accountId: "1234567" },
   parseStatusFeed,
   terraformExport: newRelicTerraformExport,
-  listCredentialOptions,
-};
+  listCredentialOptions: attemptFn(listCredentialOptions),
+});

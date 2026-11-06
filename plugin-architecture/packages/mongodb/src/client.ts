@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -29,116 +32,128 @@ export class MongoDBClient implements PluginClient {
   private readonly connectionString: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const cs = credentials["connectionString"];
     if (!cs) throw new Error("MongoDB plugin: missing connectionString credential");
     this.connectionString = cs;
     this.services = services;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "mongodb-database":
-        return this.listDatabases(accountId);
-      default:
-        throw new Error(`MongoDB plugin: unknown resource type "${typeId}"`);
-    }
-  }
-
-  async getResource(
-    typeId: string,
-    resourceId: string,
-    accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`MongoDB plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
-  }
-
-  async resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string> {
-    if (typeId === "mongodb-database" && outputKey === "connectionString") {
-      return this.connectionString;
-    }
-    if (typeId === "mongodb-database" && outputKey === "serverVersion") {
-      const kv = this.services?.kv;
-      if (!kv) throw new Error("MongoDB KV service not available");
-      const dbName = resourceId.split(":").pop() ?? this.parseDatabaseName();
-      return String(await kv.command("serverVersion", dbName));
-    }
-    throw new Error(`MongoDB plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
-  }
-
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId !== "mongodb-database") {
-      throw new Error(`MongoDB plugin: deleteResource not supported for type "${typeId}"`);
-    }
-    const kv = this.services?.kv;
-    if (!kv) throw new Error("MongoDB KV service not available");
-    const dbName = resourceId.split(":").pop();
-    if (!dbName) throw new Error("Cannot parse database name");
-    await kv.command("dropDatabase", dbName);
-  }
-
-  getCreateConfig(_typeId: string): Promise<CreateResourceConfig> {
-    // Mongo has no "create database" call: a database springs into existence
-    // when its first collection is created. So we ask for both and create the
-    // collection.
-    return Promise.resolve({
-      fields: [
-        {
-          key: "database",
-          label: "Database name",
-          kind: "text",
-          required: true,
-          description: "New database to create. Materialised by its first collection.",
-        },
-        {
-          key: "collection",
-          label: "First collection",
-          kind: "text",
-          required: true,
-          defaultValue: "documents",
-          description: "MongoDB needs at least one collection for the database to exist.",
-        },
-      ],
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "mongodb-database":
+          return this.listDatabases(accountId);
+        default:
+          throw new Error(`MongoDB plugin: unknown resource type "${typeId}"`);
+      }
     });
   }
 
-  async createResource(
+  getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`MongoDB plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
+  }
+
+  resolveOutput(typeId: string, resourceId: string, outputKey: string): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "mongodb-database" && outputKey === "connectionString") {
+        return this.connectionString;
+      }
+      if (typeId === "mongodb-database" && outputKey === "serverVersion") {
+        const kv = this.services?.kv;
+        if (!kv) throw new Error("MongoDB KV service not available");
+        const dbName = resourceId.split(":").pop() ?? this.parseDatabaseName();
+        return String(await kv.command("serverVersion", dbName));
+      }
+      throw new Error(`MongoDB plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
+  }
+
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId !== "mongodb-database") {
+        throw new Error(`MongoDB plugin: deleteResource not supported for type "${typeId}"`);
+      }
+      const kv = this.services?.kv;
+      if (!kv) throw new Error("MongoDB KV service not available");
+      const dbName = resourceId.split(":").pop();
+      if (!dbName) throw new Error("Cannot parse database name");
+      await kv.command("dropDatabase", dbName);
+    });
+  }
+
+  getCreateConfig(_typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      // Mongo has no "create database" call: a database springs into existence
+      // when its first collection is created. So we ask for both and create the
+      // collection.
+      return Promise.resolve({
+        fields: [
+          {
+            key: "database",
+            label: "Database name",
+            kind: "text",
+            required: true,
+            description: "New database to create. Materialised by its first collection.",
+          },
+          {
+            key: "collection",
+            label: "First collection",
+            kind: "text",
+            required: true,
+            defaultValue: "documents",
+            description: "MongoDB needs at least one collection for the database to exist.",
+          },
+        ],
+      });
+    });
+  }
+
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "mongodb-database") {
-      throw new Error(`MongoDB plugin: createResource not supported for type "${typeId}"`);
-    }
-    const kv = this.services?.kv;
-    if (!kv) throw new Error("MongoDB KV service not available");
-    const dbName = String(fields["database"] ?? "").trim();
-    const collection = String(fields["collection"] ?? "").trim() || "documents";
-    if (!dbName) throw new Error("Database name is required");
-    await kv.command("createCollection", dbName, collection);
-    let host = "";
-    try {
-      host = new URL(this.connectionString).hostname;
-    } catch {
-      /* connectionString may not be parseable */
-    }
-    const now = new Date().toISOString();
-    return {
-      id: `${accountId}:mongodb-database:${dbName}`,
-      pluginId: "mongodb",
-      resourceTypeId: "mongodb-database",
-      accountId,
-      displayName: dbName,
-      fields: { host, database: dbName },
-      resolvedOutputs: { connectionString: this.connectionString },
-      secretStates: [],
-      externalId: dbName,
-      createdAt: now,
-      updatedAt: now,
-    };
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "mongodb-database") {
+        throw new Error(`MongoDB plugin: createResource not supported for type "${typeId}"`);
+      }
+      const kv = this.services?.kv;
+      if (!kv) throw new Error("MongoDB KV service not available");
+      const dbName = String(fields["database"] ?? "").trim();
+      const collection = String(fields["collection"] ?? "").trim() || "documents";
+      if (!dbName) throw new Error("Database name is required");
+      await kv.command("createCollection", dbName, collection);
+      let host = "";
+      try {
+        host = new URL(this.connectionString).hostname;
+      } catch {
+        /* connectionString may not be parseable */
+      }
+      const now = new Date().toISOString();
+      return {
+        id: `${accountId}:mongodb-database:${dbName}`,
+        pluginId: "mongodb",
+        resourceTypeId: "mongodb-database",
+        accountId,
+        displayName: dbName,
+        fields: { host, database: dbName },
+        resolvedOutputs: { connectionString: this.connectionString },
+        secretStates: [],
+        externalId: dbName,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -181,123 +196,133 @@ export class MongoDBClient implements PluginClient {
     };
   }
 
-  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    let host = "";
-    try {
-      host = new URL(this.connectionString).hostname;
-    } catch {
-      /* connectionString may not be a parseable URI */
-    }
-
-    const databases: PeerPaneResource[] = [];
-    const kv = this.services?.kv;
-    if (kv) {
-      const raw = await kv.command("listDatabases", "admin");
-      const result = raw as { databases?: Array<{ name: string }> };
-      for (const db of result.databases ?? []) {
-        if (["admin", "local", "config"].includes(db.name)) continue;
-        databases.push({
-          id: `${context.accountId}:mongodb-database:${db.name}`,
-          pluginId: "mongodb",
-          resourceTypeId: "mongodb-database",
-          displayName: db.name,
-          subtitle: host,
-          status: "healthy",
-          fields: { host, database: db.name },
-        });
+  renderPeerPane(context: PeerPaneContext): PluginEffect<PeerPaneSchema> {
+    return attempt(async () => {
+      let host = "";
+      try {
+        host = new URL(this.connectionString).hostname;
+      } catch {
+        /* connectionString may not be a parseable URI */
       }
-    }
 
-    return {
-      resourceGroups: [
-        {
-          title: `Databases (${databases.length})`,
-          resourceTypeId: "mongodb-database",
-          pluginId: "mongodb",
-          items: databases,
-          // Surface a "+ Create" button (incl. when empty) so users can mint a
-          // database + first collection right here instead of hitting a
-          // dead-end on a fresh cluster.
-          supportsCreate: true,
-        },
-      ],
-    };
+      const databases: PeerPaneResource[] = [];
+      const kv = this.services?.kv;
+      if (kv) {
+        const raw = await kv.command("listDatabases", "admin");
+        const result = raw as { databases?: Array<{ name: string }> };
+        for (const db of result.databases ?? []) {
+          if (["admin", "local", "config"].includes(db.name)) continue;
+          databases.push({
+            id: `${context.accountId}:mongodb-database:${db.name}`,
+            pluginId: "mongodb",
+            resourceTypeId: "mongodb-database",
+            displayName: db.name,
+            subtitle: host,
+            status: "healthy",
+            fields: { host, database: db.name },
+          });
+        }
+      }
+
+      return {
+        resourceGroups: [
+          {
+            title: `Databases (${databases.length})`,
+            resourceTypeId: "mongodb-database",
+            pluginId: "mongodb",
+            items: databases,
+            // Surface a "+ Create" button (incl. when empty) so users can mint a
+            // database + first collection right here instead of hitting a
+            // dead-end on a fresh cluster.
+            supportsCreate: true,
+          },
+        ],
+      };
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     _resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
-  ): Promise<DashboardStat[]> {
-    const kv = this.services?.kv;
-    if (!kv) {
-      return [
-        { label: "Version", value: "" },
-        { label: "Size", value: "" },
-        { label: "Collections", value: "0" },
-      ];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const kv = this.services?.kv;
+      if (!kv) {
+        return [
+          { label: "Version", value: "" },
+          { label: "Size", value: "" },
+          { label: "Collections", value: "0" },
+        ];
+      }
 
-    const dbName = this.parseDatabaseName();
-    try {
-      const raw = await kv.command("dbStats", dbName);
-      const stats = raw as {
-        db: string;
-        collections: number;
-        dataSize: number;
-        storageSize: number;
-        ok: number;
-      };
-      const sizeMb = ((stats.storageSize ?? stats.dataSize ?? 0) / 1024 / 1024).toFixed(1);
+      const dbName = this.parseDatabaseName();
+      try {
+        const raw = await kv.command("dbStats", dbName);
+        const stats = raw as {
+          db: string;
+          collections: number;
+          dataSize: number;
+          storageSize: number;
+          ok: number;
+        };
+        const sizeMb = ((stats.storageSize ?? stats.dataSize ?? 0) / 1024 / 1024).toFixed(1);
 
-      const versionRaw = await kv.command("serverVersion", dbName);
-      const version = String(versionRaw ?? "");
+        const versionRaw = await kv.command("serverVersion", dbName);
+        const version = String(versionRaw ?? "");
 
-      return [
-        { label: "Version", value: version },
-        { label: "Size", value: `${sizeMb} MB` },
-        { label: "Collections", value: String(stats.collections ?? 0) },
-      ];
-    } catch {
-      return [
-        { label: "Version", value: "" },
-        { label: "Size", value: "" },
-        { label: "Collections", value: "0" },
-      ];
-    }
+        return [
+          { label: "Version", value: version },
+          { label: "Size", value: `${sizeMb} MB` },
+          { label: "Collections", value: String(stats.collections ?? 0) },
+        ];
+      } catch {
+        return [
+          { label: "Version", value: "" },
+          { label: "Size", value: "" },
+          { label: "Collections", value: "0" },
+        ];
+      }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     _resourceTypeId: string,
     resourceId: string,
     _accountId: string,
-  ): Promise<MetricSeries[]> {
-    const kv = this.services?.kv;
-    if (!kv) return [];
-    const dbName = resourceId.split(":").pop() ?? this.parseDatabaseName();
-    const raw = await kv.command("dbStats", dbName);
-    const stats = raw as {
-      collections?: number;
-      objects?: number;
-      indexes?: number;
-      dataSize?: number;
-      storageSize?: number;
-      indexSize?: number;
-    };
-    const ts = Date.now();
-    const mb = (b: number | undefined) => Number((((b ?? 0) / 1024 / 1024) as number).toFixed(3));
-    return [
-      {
-        label: "Storage size",
-        unit: "MB",
-        points: [{ timestamp: ts, value: mb(stats.storageSize) }],
-      },
-      { label: "Data size", unit: "MB", points: [{ timestamp: ts, value: mb(stats.dataSize) }] },
-      { label: "Index size", unit: "MB", points: [{ timestamp: ts, value: mb(stats.indexSize) }] },
-      { label: "Collections", points: [{ timestamp: ts, value: stats.collections ?? 0 }] },
-      { label: "Objects", points: [{ timestamp: ts, value: stats.objects ?? 0 }] },
-      { label: "Indexes", points: [{ timestamp: ts, value: stats.indexes ?? 0 }] },
-    ];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const kv = this.services?.kv;
+      if (!kv) return [];
+      const dbName = resourceId.split(":").pop() ?? this.parseDatabaseName();
+      const raw = await kv.command("dbStats", dbName);
+      const stats = raw as {
+        collections?: number;
+        objects?: number;
+        indexes?: number;
+        dataSize?: number;
+        storageSize?: number;
+        indexSize?: number;
+      };
+      const ts = Date.now();
+      const mb = (b: number | undefined) => Number((((b ?? 0) / 1024 / 1024) as number).toFixed(3));
+      return [
+        {
+          label: "Storage size",
+          unit: "MB",
+          points: [{ timestamp: ts, value: mb(stats.storageSize) }],
+        },
+        { label: "Data size", unit: "MB", points: [{ timestamp: ts, value: mb(stats.dataSize) }] },
+        {
+          label: "Index size",
+          unit: "MB",
+          points: [{ timestamp: ts, value: mb(stats.indexSize) }],
+        },
+        { label: "Collections", points: [{ timestamp: ts, value: stats.collections ?? 0 }] },
+        { label: "Objects", points: [{ timestamp: ts, value: stats.objects ?? 0 }] },
+        { label: "Indexes", points: [{ timestamp: ts, value: stats.indexes ?? 0 }] },
+      ];
+    });
   }
 
   private async listDatabases(accountId: string): Promise<ResourceInstance[]> {

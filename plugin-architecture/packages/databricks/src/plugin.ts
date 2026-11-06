@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DatabricksClient } from "./client.js";
 import { ClusterResourceType } from "./resources/cluster.js";
@@ -30,9 +35,9 @@ import { databricksTerraformExport } from "./terraform.js";
 import { DATABRICKS_WAREHOUSE_SINK } from "./warehouse-sink.js";
 import { databricksRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "databricks",
-  version: "0.1.0",
+  egressHosts: ["*.cloud.databricks.com", "*.azuredatabricks.net", "*.gcp.databricks.com"],
   displayName: "Databricks",
   description:
     "Manage Databricks workspaces: compute, workflows, SQL, AI/BI, apps, workspace assets, model serving, vector search, Lakebase Postgres, and Unity Catalog.",
@@ -42,8 +47,6 @@ const manifest: PluginManifest = {
       <path d="M.95 14.184L12 20.403l9.919-5.55v2.21L12 22.662l-10.484-5.96-.565.308v.77L12 24l11.05-6.218v-4.317l-.515-.309L12 19.118l-9.867-5.653v-2.21L12 16.805l11.05-6.218V6.32l-.515-.308L12 11.974 2.647 6.681 12 1.388l7.76 4.368.668-.411v-.566L12 0 .95 6.27v.72L12 13.207l9.919-5.55v2.26L12 15.52 1.516 9.56l-.565.308Z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -56,7 +59,7 @@ const manifest: PluginManifest = {
       credentialFields: ["token"],
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "host",
       label: "Workspace URL",
@@ -73,7 +76,7 @@ const manifest: PluginManifest = {
       placeholder: "dapi...",
     },
     caCertCredentialField,
-  ],
+  ]),
   // Billed usage read from the system.billing tables via a SQL warehouse.
   // Dollars are DBUs × current *list* price (discounts not reflected). The
   // querying principal needs USE CATALOG system + SELECT on system.billing;
@@ -84,7 +87,9 @@ const manifest: PluginManifest = {
     maxHistoryDays: 365,
   },
   warehouseSink: DATABRICKS_WAREHOUSE_SINK,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ClusterResourceType,
@@ -113,11 +118,12 @@ const resourceTypes: ResourceTypeDefinition[] = [
   LakebaseBranchResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) =>
     new DatabricksClient(credentials, resourceTypes, services),
+  testCredentials: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
   terraformExport: databricksTerraformExport,
   remediationCommands: databricksRemediationCommands,
-};
+});

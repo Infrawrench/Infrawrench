@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { PlanetScaleClient } from "../client.js";
 import { PsPasswordResourceType } from "../resources/ps-password.js";
@@ -10,7 +11,7 @@ const creds = {
 };
 
 function makeClient(extra: Record<string, string> = {}) {
-  return new PlanetScaleClient({ ...creds, ...extra });
+  return hostClient(new PlanetScaleClient({ ...creds, ...extra }));
 }
 
 interface FetchExpectation {
@@ -103,19 +104,19 @@ const passwordRecord = (over: Record<string, unknown> = {}) => ({
 
 describe("constructor", () => {
   it("throws missing serviceTokenId", () => {
-    expect(() => new PlanetScaleClient({ serviceTokenSecret: "s", organizationName: "o" })).toThrow(
-      /missing serviceTokenId/,
-    );
+    expect(() =>
+      hostClient(new PlanetScaleClient({ serviceTokenSecret: "s", organizationName: "o" })),
+    ).toThrow(/missing serviceTokenId/);
   });
   it("throws missing serviceTokenSecret", () => {
-    expect(() => new PlanetScaleClient({ serviceTokenId: "i", organizationName: "o" })).toThrow(
-      /missing serviceTokenSecret/,
-    );
+    expect(() =>
+      hostClient(new PlanetScaleClient({ serviceTokenId: "i", organizationName: "o" })),
+    ).toThrow(/missing serviceTokenSecret/);
   });
   it("throws missing organizationName", () => {
-    expect(() => new PlanetScaleClient({ serviceTokenId: "i", serviceTokenSecret: "s" })).toThrow(
-      /missing organizationName/,
-    );
+    expect(() =>
+      hostClient(new PlanetScaleClient({ serviceTokenId: "i", serviceTokenSecret: "s" })),
+    ).toThrow(/missing organizationName/);
   });
   it("constructs with all creds", () => {
     expect(() => makeClient()).not.toThrow();
@@ -905,9 +906,11 @@ describe("caCert + host http path", () => {
     }));
     const client = makeClient({ caCert: "PEMCERT" });
     // inject services via second constructor arg
-    const client2 = new PlanetScaleClient({ ...creds, caCert: "PEMCERT" }, {
-      http: { request },
-    } as never);
+    const client2 = hostClient(
+      new PlanetScaleClient({ ...creds, caCert: "PEMCERT" }, {
+        http: { request },
+      } as never),
+    );
     const res = await client2.listResources("ps-database", ACCOUNT);
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({ caCert: "PEMCERT", method: "GET" }),

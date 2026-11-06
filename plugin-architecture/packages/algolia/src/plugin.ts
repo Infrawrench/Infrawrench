@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AlgoliaClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -12,16 +13,24 @@ import { algoliaTerraformExport } from "./terraform.js";
  * reports operations and records, not money, and plans price them
  * differently, so no rate would make a cost series correct.
  */
-const manifest: PluginManifest = {
+export const manifest = {
   id: "algolia",
-  version: "0.1.0",
+  // search hosts are per-application ({appId}-dsn.algolia.net plus algolianet.com fallbacks); analytics, usage, monitoring and crawler APIs each have their own host
+  egressHosts: [
+    "*.algolia.net",
+    "*.algolianet.com",
+    "analytics.algolia.com",
+    "analytics.us.algolia.com",
+    "analytics.de.algolia.com",
+    "usage.algolia.com",
+    "status.algolia.com",
+    "crawler.algolia.com",
+  ],
   displayName: "Algolia",
   description:
     "Hosted search. Manage indices and their settings (searchable attributes, ranking, facets, typos, languages, replicas, full settings JSON), copy, move and clear indices, API keys with ACL pickers, A/B tests and crawlers. Synonym and rule counts, API logs, usage, search analytics and cluster latency as metrics, and Algolia's cluster status.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "appId",
       label: "Application ID",
@@ -88,15 +97,18 @@ const manifest: PluginManifest = {
       advanced: true,
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new AlgoliaClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { appId: "TESTAPP123", apiKey: "test-algolia-admin-key" },
   parseStatusFeed: (body) => parseStatusFeed(body),
   terraformExport: algoliaTerraformExport,
   remediationCommands: algoliaRemediationCommands,
-};
+});

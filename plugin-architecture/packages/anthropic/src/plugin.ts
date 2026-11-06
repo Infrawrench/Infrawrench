@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AnthropicClient } from "./client.js";
 import { anthropicModelRates } from "./ai-rates.js";
@@ -20,9 +25,9 @@ import { SEAT_PRODUCT } from "./seats.js";
 // (native viewBox "0 0 24 24", path unmodified) and rescaled onto the 100×100
 // rounded-rect card the host renders. Background is Anthropic's brand terra
 // cotta #D97757, the mark in the companion ivory #F0EEE6.
-const manifest: PluginManifest = {
+export const manifest = {
   id: "anthropic",
-  version: "0.1.0",
+  egressHosts: ["api.anthropic.com"],
   displayName: "Anthropic",
   description:
     "Claude models, Message Batches, Files and Skills, plus (with an Admin API key) workspaces and their members, organization members, invites, API keys, rate limits, usage, Claude Code analytics and cost reporting.",
@@ -32,8 +37,6 @@ const manifest: PluginManifest = {
       <path d="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017l-1.344 3.46H0L6.57 3.522zm4.132 9.959L8.453 7.687 6.205 13.48H10.7z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -47,7 +50,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://console.anthropic.com/settings/keys",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -87,7 +90,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   // Cost data comes from GET /v1/organizations/cost_report, which is
   // daily-granularity only and admin-key only. Grouping is limited to
   // `description` (→ service) and `workspace_id` (→ resource).
@@ -102,7 +105,9 @@ const manifest: PluginManifest = {
   // Claude Enterprise members are paid seats; Console organizations have no
   // per-seat charge and report none. Removal is DELETE /v1/organizations/users/{id}.
   seats: { products: [SEAT_PRODUCT], removal: true },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ModelResourceType,
@@ -117,10 +122,11 @@ const resourceTypes: ResourceTypeDefinition[] = [
   RateLimitResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new AnthropicClient(credentials, services),
+  testCredentials: { apiKey: "sk-ant-api03-test-key", adminApiKey: "sk-ant-admin01-test-key" },
   parseStatusFeed,
   seatRemediationCommands: anthropicSeatRemediationCommands,
-};
+});

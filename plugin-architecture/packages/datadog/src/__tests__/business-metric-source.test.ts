@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { BusinessMetricSourceRange } from "@infrawrench/plugin-base";
 import {
@@ -66,7 +67,10 @@ describe("manifest", () => {
       "valueMode",
       "rollup",
     ]);
-    const client = plugin.createClient({ site: "us1", apiKey: "a", appKey: "b" }, {} as never);
+    const client = hostPlugin(plugin).createClient(
+      { site: "us1", apiKey: "a", appKey: "b" },
+      {} as never,
+    );
     expect(typeof client.listBusinessMetricSourceOptions).toBe("function");
     expect(typeof client.runBusinessMetricSource).toBe("function");
   });

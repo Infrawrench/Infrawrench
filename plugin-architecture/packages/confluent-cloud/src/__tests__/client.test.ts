@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { ConfluentCloudClient, KAFKA_KEY_FIELD, KAFKA_SECRET_FIELD } from "../client.js";
@@ -85,10 +86,12 @@ function client(
   extra: Partial<HostServices> = {},
 ) {
   const { http, calls } = makeHttp(route);
-  const c = new ConfluentCloudClient({ apiKey: "CLOUDKEY", apiSecret: "s3cr3t" }, {
-    http,
-    ...extra,
-  } as unknown as HostServices);
+  const c = hostClient(
+    new ConfluentCloudClient({ apiKey: "CLOUDKEY", apiSecret: "s3cr3t" }, {
+      http,
+      ...extra,
+    } as unknown as HostServices),
+  );
   return { c, calls };
 }
 

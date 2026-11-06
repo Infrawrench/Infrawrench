@@ -1,8 +1,10 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { SshClient, type SshCredentials } from "../client.js";
 
-function makeClient(overrides: Partial<SshCredentials> = {}): SshClient {
-  return new SshClient({ host: "example.com", ...overrides });
+function makeClient(overrides: Partial<SshCredentials> = {}): HostedMethods<SshClient> {
+  return hostClient(new SshClient({ host: "example.com", ...overrides }));
 }
 
 describe("SshClient.listResources", () => {

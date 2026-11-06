@@ -20,6 +20,9 @@
  * that would run a command, read a local file or reroute traffic before
  * the SDK ever sees it (see `./kubeconfig-policy.ts`).
  */
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import * as https from "node:https";
 import * as http from "node:http";
 import { URL } from "node:url";
@@ -118,172 +121,174 @@ export const driver = {
   id: "kubernetes",
   dialTargets,
 
-  async command(
+  command(
     kubeconfig: string,
     op: string,
     params: Record<string, unknown> = {},
-  ): Promise<unknown> {
-    const c = getConfig(kubeconfig);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const c = getConfig(kubeconfig);
 
-    switch (op) {
-      case "getVersion":
-        return c.version.getCode();
+      switch (op) {
+        case "getVersion":
+          return c.version.getCode();
 
-      case "listNamespaces":
-        return c.core.listNamespace();
+        case "listNamespaces":
+          return c.core.listNamespace();
 
-      case "listPods": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.core.listNamespacedPod({ namespace });
-        return c.core.listPodForAllNamespaces();
-      }
-      case "listServices": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.core.listNamespacedService({ namespace });
-        return c.core.listServiceForAllNamespaces();
-      }
-      case "listConfigMaps": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.core.listNamespacedConfigMap({ namespace });
-        return c.core.listConfigMapForAllNamespaces();
-      }
-      case "listSecrets": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.core.listNamespacedSecret({ namespace });
-        return c.core.listSecretForAllNamespaces();
-      }
-      case "listDeployments": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.apps.listNamespacedDeployment({ namespace });
-        return c.apps.listDeploymentForAllNamespaces();
-      }
-      case "listStatefulSets": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.apps.listNamespacedStatefulSet({ namespace });
-        return c.apps.listStatefulSetForAllNamespaces();
-      }
-      case "listDaemonSets": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.apps.listNamespacedDaemonSet({ namespace });
-        return c.apps.listDaemonSetForAllNamespaces();
-      }
-      case "listJobs": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.batch.listNamespacedJob({ namespace });
-        return c.batch.listJobForAllNamespaces();
-      }
-      case "listCronJobs": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.batch.listNamespacedCronJob({ namespace });
-        return c.batch.listCronJobForAllNamespaces();
-      }
-      case "listIngresses": {
-        const namespace = str(params, "namespace");
-        if (namespace) return c.networking.listNamespacedIngress({ namespace });
-        return c.networking.listIngressForAllNamespaces();
-      }
+        case "listPods": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.core.listNamespacedPod({ namespace });
+          return c.core.listPodForAllNamespaces();
+        }
+        case "listServices": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.core.listNamespacedService({ namespace });
+          return c.core.listServiceForAllNamespaces();
+        }
+        case "listConfigMaps": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.core.listNamespacedConfigMap({ namespace });
+          return c.core.listConfigMapForAllNamespaces();
+        }
+        case "listSecrets": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.core.listNamespacedSecret({ namespace });
+          return c.core.listSecretForAllNamespaces();
+        }
+        case "listDeployments": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.apps.listNamespacedDeployment({ namespace });
+          return c.apps.listDeploymentForAllNamespaces();
+        }
+        case "listStatefulSets": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.apps.listNamespacedStatefulSet({ namespace });
+          return c.apps.listStatefulSetForAllNamespaces();
+        }
+        case "listDaemonSets": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.apps.listNamespacedDaemonSet({ namespace });
+          return c.apps.listDaemonSetForAllNamespaces();
+        }
+        case "listJobs": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.batch.listNamespacedJob({ namespace });
+          return c.batch.listJobForAllNamespaces();
+        }
+        case "listCronJobs": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.batch.listNamespacedCronJob({ namespace });
+          return c.batch.listCronJobForAllNamespaces();
+        }
+        case "listIngresses": {
+          const namespace = str(params, "namespace");
+          if (namespace) return c.networking.listNamespacedIngress({ namespace });
+          return c.networking.listIngressForAllNamespaces();
+        }
 
-      case "getPodLog": {
-        const name = str(params, "name");
-        const namespace = str(params, "namespace");
-        if (!name || !namespace) throw new Error("getPodLog: name and namespace required");
-        const container = str(params, "container");
-        const tailLines = num(params, "tailLines");
-        const previous = bool(params, "previous");
-        const timestamps = bool(params, "timestamps");
-        return c.core.readNamespacedPodLog({
-          name,
-          namespace,
-          ...(container !== undefined ? { container } : {}),
-          ...(tailLines !== undefined ? { tailLines } : {}),
-          ...(previous !== undefined ? { previous } : {}),
-          ...(timestamps !== undefined ? { timestamps } : {}),
-        });
-      }
-
-      case "getEvents": {
-        const namespace = str(params, "namespace");
-        const fieldSelector = str(params, "fieldSelector");
-        if (namespace) {
-          return c.core.listNamespacedEvent({
+        case "getPodLog": {
+          const name = str(params, "name");
+          const namespace = str(params, "namespace");
+          if (!name || !namespace) throw new Error("getPodLog: name and namespace required");
+          const container = str(params, "container");
+          const tailLines = num(params, "tailLines");
+          const previous = bool(params, "previous");
+          const timestamps = bool(params, "timestamps");
+          return c.core.readNamespacedPodLog({
+            name,
             namespace,
-            ...(fieldSelector ? { fieldSelector } : {}),
+            ...(container !== undefined ? { container } : {}),
+            ...(tailLines !== undefined ? { tailLines } : {}),
+            ...(previous !== undefined ? { previous } : {}),
+            ...(timestamps !== undefined ? { timestamps } : {}),
           });
         }
-        return c.core.listEventForAllNamespaces(fieldSelector ? { fieldSelector } : {});
-      }
 
-      case "applyManifest": {
-        // Server-side apply via PATCH application/apply-patch+yaml.
-        const manifest = params["manifest"];
-        if (!manifest || typeof manifest !== "object") {
-          throw new Error("applyManifest: manifest object required");
+        case "getEvents": {
+          const namespace = str(params, "namespace");
+          const fieldSelector = str(params, "fieldSelector");
+          if (namespace) {
+            return c.core.listNamespacedEvent({
+              namespace,
+              ...(fieldSelector ? { fieldSelector } : {}),
+            });
+          }
+          return c.core.listEventForAllNamespaces(fieldSelector ? { fieldSelector } : {});
         }
-        const m = manifest as {
-          apiVersion?: string;
-          kind?: string;
-          metadata?: { name?: string; namespace?: string };
-        };
-        const name = m.metadata?.name;
-        const namespace = m.metadata?.namespace ?? "default";
-        const kind = m.kind;
-        if (!name || !kind) throw new Error("applyManifest: kind and metadata.name required");
 
-        // Use the generic raw fetch path the SDK exposes so we don't have to
-        // hand-roll a switch over every kind. SSA via PATCH is uniform.
-        const apiVersion = m.apiVersion ?? "v1";
-        const plural = pluralForKind(kind);
-        const prefix = apiVersion.includes("/") ? `/apis/${apiVersion}` : `/api/${apiVersion}`;
-        const isNamespaced = isKindNamespaced(kind);
-        const path = isNamespaced
-          ? `${prefix}/namespaces/${encodeURIComponent(namespace)}/${plural}/${encodeURIComponent(name)}`
-          : `${prefix}/${plural}/${encodeURIComponent(name)}`;
-        return rawRequest(c.kc, `${path}?fieldManager=infrawrench&force=true`, {
-          method: "PATCH",
-          headers: { "Content-Type": PatchStrategy.ServerSideApply },
-          body: JSON.stringify(manifest),
-        });
-      }
+        case "applyManifest": {
+          // Server-side apply via PATCH application/apply-patch+yaml.
+          const manifest = params["manifest"];
+          if (!manifest || typeof manifest !== "object") {
+            throw new Error("applyManifest: manifest object required");
+          }
+          const m = manifest as {
+            apiVersion?: string;
+            kind?: string;
+            metadata?: { name?: string; namespace?: string };
+          };
+          const name = m.metadata?.name;
+          const namespace = m.metadata?.namespace ?? "default";
+          const kind = m.kind;
+          if (!name || !kind) throw new Error("applyManifest: kind and metadata.name required");
 
-      case "replaceManifest": {
-        // PUT-style replace: used by the manifest editor.
-        const manifest = params["manifest"];
-        const resourcePath = str(params, "path");
-        if (!manifest || !resourcePath) {
-          throw new Error("replaceManifest: manifest and path required");
+          // Use the generic raw fetch path the SDK exposes so we don't have to
+          // hand-roll a switch over every kind. SSA via PATCH is uniform.
+          const apiVersion = m.apiVersion ?? "v1";
+          const plural = pluralForKind(kind);
+          const prefix = apiVersion.includes("/") ? `/apis/${apiVersion}` : `/api/${apiVersion}`;
+          const isNamespaced = isKindNamespaced(kind);
+          const path = isNamespaced
+            ? `${prefix}/namespaces/${encodeURIComponent(namespace)}/${plural}/${encodeURIComponent(name)}`
+            : `${prefix}/${plural}/${encodeURIComponent(name)}`;
+          return rawRequest(c.kc, `${path}?fieldManager=infrawrench&force=true`, {
+            method: "PATCH",
+            headers: { "Content-Type": PatchStrategy.ServerSideApply },
+            body: JSON.stringify(manifest),
+          });
         }
-        return rawRequest(c.kc, resourcePath, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(manifest),
-        });
-      }
 
-      case "deleteResource": {
-        const resourcePath = str(params, "path");
-        if (!resourcePath) throw new Error("deleteResource: path required");
-        return rawRequest(c.kc, resourcePath, { method: "DELETE" });
-      }
+        case "replaceManifest": {
+          // PUT-style replace: used by the manifest editor.
+          const manifest = params["manifest"];
+          const resourcePath = str(params, "path");
+          if (!manifest || !resourcePath) {
+            throw new Error("replaceManifest: manifest and path required");
+          }
+          return rawRequest(c.kc, resourcePath, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(manifest),
+          });
+        }
 
-      case "request": {
-        // Generic fallback used by the K8sFetcher → driver shim so the
-        // existing path-based call sites (manifest fetch, custom create
-        // POSTs, etc.) keep working without per-op duplication.
-        const path = str(params, "path");
-        if (!path) throw new Error("request: path required");
-        const method = str(params, "method") ?? "GET";
-        const headers = (params["headers"] as Record<string, string> | undefined) ?? {};
-        const body = str(params, "body");
-        return rawRequest(c.kc, path, {
-          method,
-          headers,
-          ...(body !== undefined ? { body } : {}),
-        });
-      }
+        case "deleteResource": {
+          const resourcePath = str(params, "path");
+          if (!resourcePath) throw new Error("deleteResource: path required");
+          return rawRequest(c.kc, resourcePath, { method: "DELETE" });
+        }
 
-      default:
-        throw new Error(`Kubernetes driver: unknown op "${op}"`);
-    }
+        case "request": {
+          // Generic fallback used by the K8sFetcher → driver shim so the
+          // existing path-based call sites (manifest fetch, custom create
+          // POSTs, etc.) keep working without per-op duplication.
+          const path = str(params, "path");
+          if (!path) throw new Error("request: path required");
+          const method = str(params, "method") ?? "GET";
+          const headers = (params["headers"] as Record<string, string> | undefined) ?? {};
+          const body = str(params, "body");
+          return rawRequest(c.kc, path, {
+            method,
+            headers,
+            ...(body !== undefined ? { body } : {}),
+          });
+        }
+
+        default:
+          throw new Error(`Kubernetes driver: unknown op "${op}"`);
+      }
+    });
   },
 } satisfies K8sNodeDriver;
 
@@ -304,13 +309,11 @@ export const serverDriver = {
     assertKubeconfigSafeForServer(kubeconfig);
     return dialTargets(kubeconfig);
   },
-  async command(
-    kubeconfig: string,
-    op: string,
-    params?: Record<string, unknown>,
-  ): Promise<unknown> {
-    assertKubeconfigSafeForServer(kubeconfig);
-    return driver.command(kubeconfig, op, params);
+  command(kubeconfig: string, op: string, params?: Record<string, unknown>): PluginEffect<unknown> {
+    return attempt(async () => {
+      assertKubeconfigSafeForServer(kubeconfig);
+      return runPluginEffect(driver.command(kubeconfig, op, params));
+    });
   },
 } satisfies K8sNodeDriver;
 
@@ -433,3 +436,11 @@ function isKindNamespaced(kind: string): boolean {
       return true;
   }
 }
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { k8s: driver },
+  server: { k8s: serverDriver },
+});

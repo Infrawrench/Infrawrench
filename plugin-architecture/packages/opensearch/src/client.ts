@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   DashboardStat,
@@ -143,131 +146,139 @@ export class OpenSearchClient implements PluginClient {
   private readonly config: OpenSearchConfig;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     this.config = parseConfig(credentials);
     this.services = services;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (typeId !== "opensearch-cluster") {
-      throw new Error(`OpenSearch plugin: unknown resource type "${typeId}"`);
-    }
-    const now = new Date().toISOString();
-    const id = clusterResourceId(accountId, this.config.endpoint);
-    let root: ClusterRoot | undefined;
-    let health: ClusterHealth | undefined;
-    try {
-      const rootResp = await osRequest<ClusterRoot>(this.config, this.services?.http, "/");
-      root = rootResp.body;
-    } catch {
-      /* listing should not throw: surface as unknown */
-    }
-    try {
-      const healthResp = await osRequest<ClusterHealth>(
-        this.config,
-        this.services?.http,
-        "/_cluster/health",
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      if (typeId !== "opensearch-cluster") {
+        throw new Error(`OpenSearch plugin: unknown resource type "${typeId}"`);
+      }
+      const now = new Date().toISOString();
+      const id = clusterResourceId(accountId, this.config.endpoint);
+      let root: ClusterRoot | undefined;
+      let health: ClusterHealth | undefined;
+      try {
+        const rootResp = await osRequest<ClusterRoot>(this.config, this.services?.http, "/");
+        root = rootResp.body;
+      } catch {
+        /* listing should not throw: surface as unknown */
+      }
+      try {
+        const healthResp = await osRequest<ClusterHealth>(
+          this.config,
+          this.services?.http,
+          "/_cluster/health",
+        );
+        health = healthResp.body;
+      } catch {
+        /* same */
+      }
+      const displayName = root?.cluster_name ?? health?.cluster_name ?? this.endpointHost();
+      return [
+        {
+          id,
+          pluginId: "opensearch",
+          resourceTypeId: "opensearch-cluster",
+          accountId,
+          displayName,
+          fields: {
+            endpoint: this.config.endpoint,
+            ...(root?.version?.number ? { version: root.version.number } : {}),
+            ...(root?.cluster_name ? { clusterName: root.cluster_name } : {}),
+            ...(root?.version?.distribution ? { distribution: root.version.distribution } : {}),
+            ...(health?.status ? { status: health.status } : {}),
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
+    });
+  }
+
+  getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId) ?? all[0];
+      if (!found) throw new Error(`OpenSearch plugin: cluster not found for ${resourceId}`);
+      return found;
+    });
+  }
+
+  resolveOutput(_typeId: string, _resourceId: string, outputKey: string): PluginEffect<string> {
+    return attempt(async () => {
+      switch (outputKey) {
+        case "endpoint":
+          return this.config.endpoint;
+        case "clusterName": {
+          const r = await osRequest<ClusterRoot>(this.config, this.services?.http, "/");
+          return r.body?.cluster_name ?? "";
+        }
+        case "version": {
+          const r = await osRequest<ClusterRoot>(this.config, this.services?.http, "/");
+          return r.body?.version?.number ?? "";
+        }
+        default:
+          throw new Error(`OpenSearch plugin: cannot resolve output "${outputKey}"`);
+      }
+    });
+  }
+
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const http = this.services?.http;
+      const [rootR, healthR, statsR, nodesR, indicesR, reposR] = await Promise.allSettled([
+        osRequest<ClusterRoot>(this.config, http, "/"),
+        osRequest<ClusterHealth>(this.config, http, "/_cluster/health"),
+        osRequest<ClusterStats>(this.config, http, "/_cluster/stats"),
+        osRequest<{ nodes: Record<string, NodeInfo> }>(this.config, http, "/_nodes"),
+        osRequest<CatIndex[]>(this.config, http, "/_cat/indices", {
+          query: {
+            format: "json",
+            bytes: "b",
+            h: "index,health,status,pri,rep,docs.count,docs.deleted,store.size,pri.store.size,uuid",
+          },
+        }),
+        osRequest<Record<string, unknown>>(this.config, http, "/_snapshot/_all"),
+      ]);
+      const extras = await this.fetchAdminExtras(
+        reposR.status === "fulfilled" ? Object.keys(reposR.value.body ?? {}) : [],
       );
-      health = healthResp.body;
-    } catch {
-      /* same */
-    }
-    const displayName = root?.cluster_name ?? health?.cluster_name ?? this.endpointHost();
-    return [
-      {
-        id,
-        pluginId: "opensearch",
-        resourceTypeId: "opensearch-cluster",
-        accountId,
-        displayName,
+
+      const root = rootR.status === "fulfilled" ? rootR.value.body : undefined;
+      const health = healthR.status === "fulfilled" ? healthR.value.body : undefined;
+      const stats = statsR.status === "fulfilled" ? statsR.value.body : undefined;
+      const nodes =
+        nodesR.status === "fulfilled" ? Object.values(nodesR.value.body?.nodes ?? {}) : [];
+      const indices = indicesR.status === "fulfilled" ? (indicesR.value.body ?? []) : [];
+      const repos = reposR.status === "fulfilled" ? (reposR.value.body ?? {}) : {};
+
+      // Stash JSON-encoded results in fields so renderDetail (sync) can read them.
+      return {
+        ...resource,
         fields: {
-          endpoint: this.config.endpoint,
+          ...resource.fields,
           ...(root?.version?.number ? { version: root.version.number } : {}),
           ...(root?.cluster_name ? { clusterName: root.cluster_name } : {}),
           ...(root?.version?.distribution ? { distribution: root.version.distribution } : {}),
           ...(health?.status ? { status: health.status } : {}),
+          __health: health ? JSON.stringify(health) : "",
+          __stats: stats ? JSON.stringify(stats) : "",
+          __nodes: JSON.stringify(nodes),
+          __indices: JSON.stringify(indices),
+          __repos: JSON.stringify(repos),
+          ...extras,
         },
-        resolvedOutputs: {},
-        secretStates: [],
-        createdAt: now,
-        updatedAt: now,
-      },
-    ];
-  }
-
-  async getResource(
-    typeId: string,
-    resourceId: string,
-    accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId) ?? all[0];
-    if (!found) throw new Error(`OpenSearch plugin: cluster not found for ${resourceId}`);
-    return found;
-  }
-
-  async resolveOutput(_typeId: string, _resourceId: string, outputKey: string): Promise<string> {
-    switch (outputKey) {
-      case "endpoint":
-        return this.config.endpoint;
-      case "clusterName": {
-        const r = await osRequest<ClusterRoot>(this.config, this.services?.http, "/");
-        return r.body?.cluster_name ?? "";
-      }
-      case "version": {
-        const r = await osRequest<ClusterRoot>(this.config, this.services?.http, "/");
-        return r.body?.version?.number ?? "";
-      }
-      default:
-        throw new Error(`OpenSearch plugin: cannot resolve output "${outputKey}"`);
-    }
-  }
-
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const http = this.services?.http;
-    const [rootR, healthR, statsR, nodesR, indicesR, reposR] = await Promise.allSettled([
-      osRequest<ClusterRoot>(this.config, http, "/"),
-      osRequest<ClusterHealth>(this.config, http, "/_cluster/health"),
-      osRequest<ClusterStats>(this.config, http, "/_cluster/stats"),
-      osRequest<{ nodes: Record<string, NodeInfo> }>(this.config, http, "/_nodes"),
-      osRequest<CatIndex[]>(this.config, http, "/_cat/indices", {
-        query: {
-          format: "json",
-          bytes: "b",
-          h: "index,health,status,pri,rep,docs.count,docs.deleted,store.size,pri.store.size,uuid",
-        },
-      }),
-      osRequest<Record<string, unknown>>(this.config, http, "/_snapshot/_all"),
-    ]);
-    const extras = await this.fetchAdminExtras(
-      reposR.status === "fulfilled" ? Object.keys(reposR.value.body ?? {}) : [],
-    );
-
-    const root = rootR.status === "fulfilled" ? rootR.value.body : undefined;
-    const health = healthR.status === "fulfilled" ? healthR.value.body : undefined;
-    const stats = statsR.status === "fulfilled" ? statsR.value.body : undefined;
-    const nodes =
-      nodesR.status === "fulfilled" ? Object.values(nodesR.value.body?.nodes ?? {}) : [];
-    const indices = indicesR.status === "fulfilled" ? (indicesR.value.body ?? []) : [];
-    const repos = reposR.status === "fulfilled" ? (reposR.value.body ?? {}) : {};
-
-    // Stash JSON-encoded results in fields so renderDetail (sync) can read them.
-    return {
-      ...resource,
-      fields: {
-        ...resource.fields,
-        ...(root?.version?.number ? { version: root.version.number } : {}),
-        ...(root?.cluster_name ? { clusterName: root.cluster_name } : {}),
-        ...(root?.version?.distribution ? { distribution: root.version.distribution } : {}),
-        ...(health?.status ? { status: health.status } : {}),
-        __health: health ? JSON.stringify(health) : "",
-        __stats: stats ? JSON.stringify(stats) : "",
-        __nodes: JSON.stringify(nodes),
-        __indices: JSON.stringify(indices),
-        __repos: JSON.stringify(repos),
-        ...extras,
-      },
-    };
+      };
+    });
   }
 
   /**
@@ -798,528 +809,557 @@ export class OpenSearchClient implements PluginClient {
   // Embedded as a tab inside a managed-DB cluster (e.g. DigitalOcean OpenSearch).
   // OpenSearch exposes a single cluster: surface it as one pill that navigates
   // into the cluster detail (indices, nodes, snapshots).
-  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    const clusters = await this.listResources("opensearch-cluster", context.accountId);
-    const items: PeerPaneResource[] = clusters.map((c) => ({
-      id: c.id,
-      pluginId: c.pluginId,
-      resourceTypeId: c.resourceTypeId,
-      displayName: c.displayName,
-      subtitle: this.endpointHost(),
-      status: healthToStatus(c.fields["status"] as ClusterHealth["status"] | undefined),
-      fields: c.fields,
-    }));
-    return {
-      resourceGroups: [
-        {
-          title: `OpenSearch (${items.length})`,
-          resourceTypeId: "opensearch-cluster",
-          pluginId: "opensearch",
-          items,
-        },
-      ],
-    };
+  renderPeerPane(context: PeerPaneContext): PluginEffect<PeerPaneSchema> {
+    return attempt(async () => {
+      const clusters = await runPluginEffect(
+        this.listResources("opensearch-cluster", context.accountId),
+      );
+      const items: PeerPaneResource[] = clusters.map((c) => ({
+        id: c.id,
+        pluginId: c.pluginId,
+        resourceTypeId: c.resourceTypeId,
+        displayName: c.displayName,
+        subtitle: this.endpointHost(),
+        status: healthToStatus(c.fields["status"] as ClusterHealth["status"] | undefined),
+        fields: c.fields,
+      }));
+      return {
+        resourceGroups: [
+          {
+            title: `OpenSearch (${items.length})`,
+            resourceTypeId: "opensearch-cluster",
+            pluginId: "opensearch",
+            items,
+          },
+        ],
+      };
+    });
   }
 
-  async fetchDashboardStats(): Promise<DashboardStat[]> {
-    try {
-      const [healthResp, statsResp] = await Promise.all([
-        osRequest<ClusterHealth>(this.config, this.services?.http, "/_cluster/health"),
-        osRequest<ClusterStats>(this.config, this.services?.http, "/_cluster/stats"),
-      ]);
-      const health = healthResp.body;
-      const stats = statsResp.body;
-      const variant =
-        health?.status === "green"
-          ? "status-healthy"
-          : health?.status === "yellow"
-            ? "status-degraded"
-            : health?.status === "red"
-              ? "status-error"
-              : "default";
-      return [
-        { label: "Status", value: health?.status ?? "unknown", variant },
-        {
-          label: "Nodes",
-          value: String(stats?.nodes?.count?.total ?? health?.number_of_nodes ?? 0),
-        },
-        { label: "Indices", value: String(stats?.indices?.count ?? 0) },
-        {
-          label: "Docs",
-          value: formatCount(stats?.indices?.docs?.count ?? 0),
-        },
-      ];
-    } catch {
-      return [
-        { label: "Status", value: "unknown" },
-        { label: "Nodes", value: "—" },
-        { label: "Indices", value: "—" },
-        { label: "Docs", value: "—" },
-      ];
-    }
+  fetchDashboardStats(): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      try {
+        const [healthResp, statsResp] = await Promise.all([
+          osRequest<ClusterHealth>(this.config, this.services?.http, "/_cluster/health"),
+          osRequest<ClusterStats>(this.config, this.services?.http, "/_cluster/stats"),
+        ]);
+        const health = healthResp.body;
+        const stats = statsResp.body;
+        const variant =
+          health?.status === "green"
+            ? "status-healthy"
+            : health?.status === "yellow"
+              ? "status-degraded"
+              : health?.status === "red"
+                ? "status-error"
+                : "default";
+        return [
+          { label: "Status", value: health?.status ?? "unknown", variant },
+          {
+            label: "Nodes",
+            value: String(stats?.nodes?.count?.total ?? health?.number_of_nodes ?? 0),
+          },
+          { label: "Indices", value: String(stats?.indices?.count ?? 0) },
+          {
+            label: "Docs",
+            value: formatCount(stats?.indices?.docs?.count ?? 0),
+          },
+        ];
+      } catch {
+        return [
+          { label: "Status", value: "unknown" },
+          { label: "Nodes", value: "—" },
+          { label: "Indices", value: "—" },
+          { label: "Docs", value: "—" },
+        ];
+      }
+    });
   }
 
-  async fetchMetricSeries(): Promise<MetricSeries[]> {
-    const ts = Date.now();
-    try {
-      const [healthResp, statsResp, nodesResp] = await Promise.all([
-        osRequest<ClusterHealth>(this.config, this.services?.http, "/_cluster/health"),
-        osRequest<ClusterStats>(this.config, this.services?.http, "/_cluster/stats"),
-        osRequest<{ nodes: Record<string, NodeInfo> }>(
-          this.config,
-          this.services?.http,
-          "/_nodes/stats/jvm,fs,os,indices,thread_pool,http,breaker,transport",
-        ),
-      ]);
-      const health = healthResp.body;
-      const stats = statsResp.body;
-      const nodes = Object.values(nodesResp.body?.nodes ?? {});
-      const heapPctValues = nodes
-        .map((n) => n.jvm?.mem?.heap_used_percent)
-        .filter((v): v is number => typeof v === "number");
-      const avgHeapPct =
-        heapPctValues.length > 0
-          ? heapPctValues.reduce((a, b) => a + b, 0) / heapPctValues.length
-          : 0;
-      const fsUsedPctValues = nodes
-        .map((n) => {
-          const total = n.fs?.total?.total_in_bytes ?? 0;
-          const avail = n.fs?.total?.available_in_bytes ?? 0;
-          if (!total) return undefined;
-          return ((total - avail) / total) * 100;
-        })
-        .filter((v): v is number => typeof v === "number");
-      const avgFsUsedPct =
-        fsUsedPctValues.length > 0
-          ? fsUsedPctValues.reduce((a, b) => a + b, 0) / fsUsedPctValues.length
-          : 0;
+  fetchMetricSeries(): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const ts = Date.now();
+      try {
+        const [healthResp, statsResp, nodesResp] = await Promise.all([
+          osRequest<ClusterHealth>(this.config, this.services?.http, "/_cluster/health"),
+          osRequest<ClusterStats>(this.config, this.services?.http, "/_cluster/stats"),
+          osRequest<{ nodes: Record<string, NodeInfo> }>(
+            this.config,
+            this.services?.http,
+            "/_nodes/stats/jvm,fs,os,indices,thread_pool,http,breaker,transport",
+          ),
+        ]);
+        const health = healthResp.body;
+        const stats = statsResp.body;
+        const nodes = Object.values(nodesResp.body?.nodes ?? {});
+        const heapPctValues = nodes
+          .map((n) => n.jvm?.mem?.heap_used_percent)
+          .filter((v): v is number => typeof v === "number");
+        const avgHeapPct =
+          heapPctValues.length > 0
+            ? heapPctValues.reduce((a, b) => a + b, 0) / heapPctValues.length
+            : 0;
+        const fsUsedPctValues = nodes
+          .map((n) => {
+            const total = n.fs?.total?.total_in_bytes ?? 0;
+            const avail = n.fs?.total?.available_in_bytes ?? 0;
+            if (!total) return undefined;
+            return ((total - avail) / total) * 100;
+          })
+          .filter((v): v is number => typeof v === "number");
+        const avgFsUsedPct =
+          fsUsedPctValues.length > 0
+            ? fsUsedPctValues.reduce((a, b) => a + b, 0) / fsUsedPctValues.length
+            : 0;
 
-      const cpuValues = nodes
-        .map((n) => n.os?.cpu?.percent)
-        .filter((v): v is number => typeof v === "number");
-      const avgCpu =
-        cpuValues.length > 0 ? cpuValues.reduce((a, b) => a + b, 0) / cpuValues.length : 0;
-      const sum = (pick: (n: NodeInfo) => number | undefined) =>
-        nodes.reduce((total, n) => total + (pick(n) ?? 0), 0);
+        const cpuValues = nodes
+          .map((n) => n.os?.cpu?.percent)
+          .filter((v): v is number => typeof v === "number");
+        const avgCpu =
+          cpuValues.length > 0 ? cpuValues.reduce((a, b) => a + b, 0) / cpuValues.length : 0;
+        const sum = (pick: (n: NodeInfo) => number | undefined) =>
+          nodes.reduce((total, n) => total + (pick(n) ?? 0), 0);
 
-      return [
-        {
-          label: "Avg CPU %",
-          unit: "%",
-          points: [{ timestamp: ts, value: Math.round(avgCpu) }],
-        },
-        {
-          label: "Pending tasks",
-          points: [{ timestamp: ts, value: health?.number_of_pending_tasks ?? 0 }],
-        },
-        {
-          label: "Search queries (cumulative)",
-          points: [{ timestamp: ts, value: sum((n) => n.indices?.search?.query_total) }],
-        },
-        {
-          label: "Indexing operations (cumulative)",
-          points: [{ timestamp: ts, value: sum((n) => n.indices?.indexing?.index_total) }],
-        },
-        {
-          label: "Active shards %",
-          unit: "%",
-          points: [
-            { timestamp: ts, value: Math.round(health?.active_shards_percent_as_number ?? 0) },
-          ],
-        },
-        {
-          label: "Unassigned shards",
-          points: [{ timestamp: ts, value: health?.unassigned_shards ?? 0 }],
-        },
-        {
-          label: "Avg JVM heap %",
-          unit: "%",
-          points: [{ timestamp: ts, value: Math.round(avgHeapPct) }],
-        },
-        {
-          label: "Avg disk used %",
-          unit: "%",
-          points: [{ timestamp: ts, value: Math.round(avgFsUsedPct) }],
-        },
-        {
-          label: "Total docs",
-          points: [{ timestamp: ts, value: stats?.indices?.docs?.count ?? 0 }],
-        },
-        {
-          label: "Store size",
-          unit: "bytes",
-          points: [{ timestamp: ts, value: stats?.indices?.store?.size_in_bytes ?? 0 }],
-        },
-        ...nodeStatsSeries(nodes, ts),
-      ];
-    } catch {
-      return [];
-    }
+        return [
+          {
+            label: "Avg CPU %",
+            unit: "%",
+            points: [{ timestamp: ts, value: Math.round(avgCpu) }],
+          },
+          {
+            label: "Pending tasks",
+            points: [{ timestamp: ts, value: health?.number_of_pending_tasks ?? 0 }],
+          },
+          {
+            label: "Search queries (cumulative)",
+            points: [{ timestamp: ts, value: sum((n) => n.indices?.search?.query_total) }],
+          },
+          {
+            label: "Indexing operations (cumulative)",
+            points: [{ timestamp: ts, value: sum((n) => n.indices?.indexing?.index_total) }],
+          },
+          {
+            label: "Active shards %",
+            unit: "%",
+            points: [
+              { timestamp: ts, value: Math.round(health?.active_shards_percent_as_number ?? 0) },
+            ],
+          },
+          {
+            label: "Unassigned shards",
+            points: [{ timestamp: ts, value: health?.unassigned_shards ?? 0 }],
+          },
+          {
+            label: "Avg JVM heap %",
+            unit: "%",
+            points: [{ timestamp: ts, value: Math.round(avgHeapPct) }],
+          },
+          {
+            label: "Avg disk used %",
+            unit: "%",
+            points: [{ timestamp: ts, value: Math.round(avgFsUsedPct) }],
+          },
+          {
+            label: "Total docs",
+            points: [{ timestamp: ts, value: stats?.indices?.docs?.count ?? 0 }],
+          },
+          {
+            label: "Store size",
+            unit: "bytes",
+            points: [{ timestamp: ts, value: stats?.indices?.store?.size_in_bytes ?? 0 }],
+          },
+          ...nodeStatsSeries(nodes, ts),
+        ];
+      } catch {
+        return [];
+      }
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Actions (per-row buttons in the indices table + header buttons)
   // ─────────────────────────────────────────────────────────────────────────
 
-  async invokeAction(
+  invokeAction(
     _typeId: string,
     _resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const [verb, ...rest] = actionId.split(":");
-    const arg = rest.join(":");
-    switch (verb) {
-      case "delete-index":
-        await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "refresh-index":
-        await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_refresh`, {
-          method: "POST",
-        });
-        return;
-      case "open-index":
-        await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_open`, {
-          method: "POST",
-        });
-        return;
-      case "close-index":
-        await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_close`, {
-          method: "POST",
-        });
-        return;
-      case "force-merge":
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/${encodeURIComponent(arg)}/_forcemerge`,
-          { method: "POST" },
-        );
-        return;
-      case "clear-cache":
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/${encodeURIComponent(arg)}/_cache/clear`,
-          { method: "POST" },
-        );
-        return;
-      case "delete-snapshot": {
-        const [repo, snap] = arg.split("/");
-        if (!repo || !snap) throw new Error(`delete-snapshot: expected repo/snapshot, got ${arg}`);
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_snapshot/${encodeURIComponent(repo)}/${encodeURIComponent(snap)}`,
-          { method: "DELETE" },
-        );
-        return;
-      }
-      case "restore-snapshot": {
-        const [repo, snap] = arg.split("/");
-        if (!repo || !snap) throw new Error(`restore-snapshot: expected repo/snapshot, got ${arg}`);
-        // A plain restore fails on any index that still exists, which is
-        // nearly always the case; restore beside the originals instead.
-        // System (dot) indices and global state are left alone.
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_snapshot/${encodeURIComponent(repo)}/${encodeURIComponent(snap)}/_restore`,
-          {
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const [verb, ...rest] = actionId.split(":");
+      const arg = rest.join(":");
+      switch (verb) {
+        case "delete-index":
+          await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "refresh-index":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/${encodeURIComponent(arg)}/_refresh`,
+            {
+              method: "POST",
+            },
+          );
+          return;
+        case "open-index":
+          await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_open`, {
+            method: "POST",
+          });
+          return;
+        case "close-index":
+          await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_close`, {
+            method: "POST",
+          });
+          return;
+        case "force-merge":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/${encodeURIComponent(arg)}/_forcemerge`,
+            { method: "POST" },
+          );
+          return;
+        case "clear-cache":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/${encodeURIComponent(arg)}/_cache/clear`,
+            { method: "POST" },
+          );
+          return;
+        case "delete-snapshot": {
+          const [repo, snap] = arg.split("/");
+          if (!repo || !snap)
+            throw new Error(`delete-snapshot: expected repo/snapshot, got ${arg}`);
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_snapshot/${encodeURIComponent(repo)}/${encodeURIComponent(snap)}`,
+            { method: "DELETE" },
+          );
+          return;
+        }
+        case "restore-snapshot": {
+          const [repo, snap] = arg.split("/");
+          if (!repo || !snap)
+            throw new Error(`restore-snapshot: expected repo/snapshot, got ${arg}`);
+          // A plain restore fails on any index that still exists, which is
+          // nearly always the case; restore beside the originals instead.
+          // System (dot) indices and global state are left alone.
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_snapshot/${encodeURIComponent(repo)}/${encodeURIComponent(snap)}/_restore`,
+            {
+              method: "POST",
+              body: {
+                indices: "*,-.*",
+                include_global_state: false,
+                rename_pattern: "(.+)",
+                rename_replacement: "restored-$1",
+              },
+            },
+          );
+          return;
+        }
+        case "delete-repo":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_snapshot/${encodeURIComponent(arg)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        case "create-snapshot": {
+          // arg = repo. Snapshot name = snap-<unix>.
+          const name = `snap-${Date.now()}`;
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_snapshot/${encodeURIComponent(arg)}/${name}`,
+            { method: "PUT", body: { ignore_unavailable: true, include_global_state: false } },
+          );
+          return;
+        }
+        case "remove-alias": {
+          const slash = arg.indexOf("/");
+          if (slash <= 0) throw new Error(`remove-alias: expected index/alias, got ${arg}`);
+          await osRequest(this.config, this.services?.http, "/_aliases", {
             method: "POST",
             body: {
-              indices: "*,-.*",
-              include_global_state: false,
-              rename_pattern: "(.+)",
-              rename_replacement: "restored-$1",
+              actions: [{ remove: { index: arg.slice(0, slash), alias: arg.slice(slash + 1) } }],
             },
-          },
-        );
-        return;
+          });
+          return;
+        }
+        case "rollover":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/${encodeURIComponent(arg)}/_rollover`,
+            {
+              method: "POST",
+            },
+          );
+          return;
+        case "delete-data-stream":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_data_stream/${encodeURIComponent(arg)}`,
+            { method: "DELETE" },
+          );
+          return;
+        case "delete-ism-policy":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_plugins/_ism/policies/${encodeURIComponent(arg)}`,
+            { method: "DELETE" },
+          );
+          return;
+        case "start-sm-policy":
+        case "stop-sm-policy":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_plugins/_sm/policies/${encodeURIComponent(arg)}/${verb === "start-sm-policy" ? "_start" : "_stop"}`,
+            { method: "POST" },
+          );
+          return;
+        case "delete-sm-policy":
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_plugins/_sm/policies/${encodeURIComponent(arg)}`,
+            { method: "DELETE" },
+          );
+          return;
+        case "retry-allocation":
+          await osRequest(this.config, this.services?.http, "/_cluster/reroute", {
+            method: "POST",
+            query: { retry_failed: true },
+          });
+          return;
+        default:
+          throw new Error(`OpenSearch plugin: unknown action "${actionId}"`);
       }
-      case "delete-repo":
-        await osRequest(this.config, this.services?.http, `/_snapshot/${encodeURIComponent(arg)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "create-snapshot": {
-        // arg = repo. Snapshot name = snap-<unix>.
-        const name = `snap-${Date.now()}`;
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_snapshot/${encodeURIComponent(arg)}/${name}`,
-          { method: "PUT", body: { ignore_unavailable: true, include_global_state: false } },
-        );
-        return;
-      }
-      case "remove-alias": {
-        const slash = arg.indexOf("/");
-        if (slash <= 0) throw new Error(`remove-alias: expected index/alias, got ${arg}`);
-        await osRequest(this.config, this.services?.http, "/_aliases", {
-          method: "POST",
-          body: {
-            actions: [{ remove: { index: arg.slice(0, slash), alias: arg.slice(slash + 1) } }],
-          },
-        });
-        return;
-      }
-      case "rollover":
-        await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_rollover`, {
-          method: "POST",
-        });
-        return;
-      case "delete-data-stream":
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_data_stream/${encodeURIComponent(arg)}`,
-          { method: "DELETE" },
-        );
-        return;
-      case "delete-ism-policy":
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_plugins/_ism/policies/${encodeURIComponent(arg)}`,
-          { method: "DELETE" },
-        );
-        return;
-      case "start-sm-policy":
-      case "stop-sm-policy":
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_plugins/_sm/policies/${encodeURIComponent(arg)}/${verb === "start-sm-policy" ? "_start" : "_stop"}`,
-          { method: "POST" },
-        );
-        return;
-      case "delete-sm-policy":
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_plugins/_sm/policies/${encodeURIComponent(arg)}`,
-          { method: "DELETE" },
-        );
-        return;
-      case "retry-allocation":
-        await osRequest(this.config, this.services?.http, "/_cluster/reroute", {
-          method: "POST",
-          query: { retry_failed: true },
-        });
-        return;
-      default:
-        throw new Error(`OpenSearch plugin: unknown action "${actionId}"`);
-    }
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Forms (prompt-nosql-command targets)
   // ─────────────────────────────────────────────────────────────────────────
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     _typeId: string,
     _resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    // The host wraps the prompt-modal form values as args = [JSON.stringify(record)]
-    // (see app/packages/{desktop,web}/.../onSubmitPromptModal). Decode once.
-    const form = decodePromptArgs(args);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      // The host wraps the prompt-modal form values as args = [JSON.stringify(record)]
+      // (see app/packages/{desktop,web}/.../onSubmitPromptModal). Decode once.
+      const form = decodePromptArgs(args);
 
-    switch (command) {
-      case "create-index": {
-        const name = required(form["name"], "name");
-        const body: Record<string, unknown> = {
-          settings: {
-            number_of_shards: Number(form["shards"] || 1),
-            number_of_replicas: Number(form["replicas"] || 1),
-          },
-        };
-        if (form["mapping"]?.trim()) {
-          try {
-            body["mappings"] = JSON.parse(form["mapping"]);
-          } catch (err) {
-            throw new Error(`mapping must be valid JSON: ${(err as Error).message}`);
+      switch (command) {
+        case "create-index": {
+          const name = required(form["name"], "name");
+          const body: Record<string, unknown> = {
+            settings: {
+              number_of_shards: Number(form["shards"] || 1),
+              number_of_replicas: Number(form["replicas"] || 1),
+            },
+          };
+          if (form["mapping"]?.trim()) {
+            try {
+              body["mappings"] = JSON.parse(form["mapping"]);
+            } catch (err) {
+              throw new Error(`mapping must be valid JSON: ${(err as Error).message}`);
+            }
           }
+          const r = await osRequest(
+            this.config,
+            this.services?.http,
+            `/${encodeURIComponent(name)}`,
+            { method: "PUT", body },
+          );
+          return { ok: true, status: r.status };
         }
-        const r = await osRequest(
-          this.config,
-          this.services?.http,
-          `/${encodeURIComponent(name)}`,
-          { method: "PUT", body },
-        );
-        return { ok: true, status: r.status };
-      }
-      case "register-snapshot-repo": {
-        const name = required(form["name"], "name");
-        const bucket = required(form["bucket"], "bucket");
-        const body: Record<string, unknown> = {
-          type: "s3",
-          settings: {
-            bucket,
-            ...(form["region"] ? { region: form["region"] } : {}),
-            ...(form["basePath"] ? { base_path: form["basePath"] } : {}),
-          },
-        };
-        const r = await osRequest(
-          this.config,
-          this.services?.http,
-          `/_snapshot/${encodeURIComponent(name)}`,
-          { method: "PUT", body },
-        );
-        return { ok: true, status: r.status };
-      }
-      case "reindex": {
-        const source = required(form["source"], "source");
-        const dest = required(form["dest"], "dest");
-        // Asynchronous: a large reindex outlives the request timeout. The
-        // response carries the task id to follow in the Tasks API.
-        const r = await osRequest<{ task?: string }>(
-          this.config,
-          this.services?.http,
-          `/_reindex`,
-          {
+        case "register-snapshot-repo": {
+          const name = required(form["name"], "name");
+          const bucket = required(form["bucket"], "bucket");
+          const body: Record<string, unknown> = {
+            type: "s3",
+            settings: {
+              bucket,
+              ...(form["region"] ? { region: form["region"] } : {}),
+              ...(form["basePath"] ? { base_path: form["basePath"] } : {}),
+            },
+          };
+          const r = await osRequest(
+            this.config,
+            this.services?.http,
+            `/_snapshot/${encodeURIComponent(name)}`,
+            { method: "PUT", body },
+          );
+          return { ok: true, status: r.status };
+        }
+        case "reindex": {
+          const source = required(form["source"], "source");
+          const dest = required(form["dest"], "dest");
+          // Asynchronous: a large reindex outlives the request timeout. The
+          // response carries the task id to follow in the Tasks API.
+          const r = await osRequest<{ task?: string }>(
+            this.config,
+            this.services?.http,
+            `/_reindex`,
+            {
+              method: "POST",
+              query: { wait_for_completion: false },
+              body: { source: { index: source }, dest: { index: dest } },
+            },
+          );
+          return { ok: true, task: r.body?.task };
+        }
+        case "add-alias": {
+          const index = required(form["index"], "index");
+          const alias = required(form["alias"], "alias");
+          const add: Record<string, unknown> = { index, alias };
+          if (form["writeIndex"] === "true" || form["writeIndex"] === "false") {
+            add["is_write_index"] = form["writeIndex"] === "true";
+          }
+          await osRequest(this.config, this.services?.http, "/_aliases", {
             method: "POST",
-            query: { wait_for_completion: false },
-            body: { source: { index: source }, dest: { index: dest } },
-          },
-        );
-        return { ok: true, task: r.body?.task };
-      }
-      case "add-alias": {
-        const index = required(form["index"], "index");
-        const alias = required(form["alias"], "alias");
-        const add: Record<string, unknown> = { index, alias };
-        if (form["writeIndex"] === "true" || form["writeIndex"] === "false") {
-          add["is_write_index"] = form["writeIndex"] === "true";
+            body: { actions: [{ add }] },
+          });
+          return { ok: true };
         }
-        await osRequest(this.config, this.services?.http, "/_aliases", {
-          method: "POST",
-          body: { actions: [{ add }] },
-        });
-        return { ok: true };
-      }
-      case "attach-ism-policy": {
-        const index = required(form["index"], "index");
-        const policyId = required(form["policyId"], "policyId");
-        const r = await osRequest<{
-          failures?: boolean;
-          failed_indices?: Array<{ reason?: string }>;
-        }>(this.config, this.services?.http, `/_plugins/_ism/add/${encodeURIComponent(index)}`, {
-          method: "POST",
-          body: { policy_id: policyId },
-        });
-        // A 200 can still carry per-index failures (e.g. the index already
-        // has a policy); surface those instead of reporting success.
-        if (r.body?.failures) {
-          throw new Error(r.body.failed_indices?.[0]?.reason ?? "The policy was not applied");
+        case "attach-ism-policy": {
+          const index = required(form["index"], "index");
+          const policyId = required(form["policyId"], "policyId");
+          const r = await osRequest<{
+            failures?: boolean;
+            failed_indices?: Array<{ reason?: string }>;
+          }>(this.config, this.services?.http, `/_plugins/_ism/add/${encodeURIComponent(index)}`, {
+            method: "POST",
+            body: { policy_id: policyId },
+          });
+          // A 200 can still carry per-index failures (e.g. the index already
+          // has a policy); surface those instead of reporting success.
+          if (r.body?.failures) {
+            throw new Error(r.body.failed_indices?.[0]?.reason ?? "The policy was not applied");
+          }
+          return { ok: true };
         }
-        return { ok: true };
-      }
-      case "detach-ism-policy": {
-        const index = required(form["index"], "index");
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_plugins/_ism/remove/${encodeURIComponent(index)}`,
-          { method: "POST" },
-        );
-        return { ok: true };
-      }
-      case "create-ism-policy": {
-        const policyId = required(form["policyId"], "policyId");
-        const pattern = required(form["pattern"], "pattern");
-        if (pattern === "*") {
-          throw new Error("Use a narrower pattern than * so system indices are not deleted");
+        case "detach-ism-policy": {
+          const index = required(form["index"], "index");
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_plugins/_ism/remove/${encodeURIComponent(index)}`,
+            { method: "POST" },
+          );
+          return { ok: true };
         }
-        const deleteAfter = required(form["deleteAfter"], "deleteAfter");
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_plugins/_ism/policies/${encodeURIComponent(policyId)}`,
-          {
-            method: "PUT",
-            body: {
-              policy: {
-                description: `Delete ${pattern} indices older than ${deleteAfter}`,
-                default_state: "hot",
-                states: [
-                  {
-                    name: "hot",
-                    actions: [],
-                    transitions: [
-                      { state_name: "delete", conditions: { min_index_age: deleteAfter } },
-                    ],
-                  },
-                  { name: "delete", actions: [{ delete: {} }], transitions: [] },
-                ],
-                ism_template: [{ index_patterns: [pattern], priority: 100 }],
+        case "create-ism-policy": {
+          const policyId = required(form["policyId"], "policyId");
+          const pattern = required(form["pattern"], "pattern");
+          if (pattern === "*") {
+            throw new Error("Use a narrower pattern than * so system indices are not deleted");
+          }
+          const deleteAfter = required(form["deleteAfter"], "deleteAfter");
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_plugins/_ism/policies/${encodeURIComponent(policyId)}`,
+            {
+              method: "PUT",
+              body: {
+                policy: {
+                  description: `Delete ${pattern} indices older than ${deleteAfter}`,
+                  default_state: "hot",
+                  states: [
+                    {
+                      name: "hot",
+                      actions: [],
+                      transitions: [
+                        { state_name: "delete", conditions: { min_index_age: deleteAfter } },
+                      ],
+                    },
+                    { name: "delete", actions: [{ delete: {} }], transitions: [] },
+                  ],
+                  ism_template: [{ index_patterns: [pattern], priority: 100 }],
+                },
               },
             },
-          },
-        );
-        return { ok: true };
-      }
-      case "create-sm-policy": {
-        const name = required(form["name"], "name");
-        const repository = required(form["repository"], "repository");
-        const cron = required(form["schedule"], "schedule");
-        const condition: Record<string, unknown> = {};
-        if (form["maxAge"]) condition["max_age"] = form["maxAge"];
-        if (form["minCount"]) condition["min_count"] = Number(form["minCount"]);
-        const body: Record<string, unknown> = {
-          description: `Snapshots to ${repository}`,
-          creation: { schedule: { cron: { expression: cron, timezone: "UTC" } } },
-          snapshot_config: {
-            repository,
-            indices: form["indices"]?.trim() || "*",
-            include_global_state: "false",
-          },
-        };
-        if (Object.keys(condition).length > 0 && condition["max_age"]) {
-          body["deletion"] = {
-            schedule: { cron: { expression: "0 3 * * *", timezone: "UTC" } },
-            condition,
+          );
+          return { ok: true };
+        }
+        case "create-sm-policy": {
+          const name = required(form["name"], "name");
+          const repository = required(form["repository"], "repository");
+          const cron = required(form["schedule"], "schedule");
+          const condition: Record<string, unknown> = {};
+          if (form["maxAge"]) condition["max_age"] = form["maxAge"];
+          if (form["minCount"]) condition["min_count"] = Number(form["minCount"]);
+          const body: Record<string, unknown> = {
+            description: `Snapshots to ${repository}`,
+            creation: { schedule: { cron: { expression: cron, timezone: "UTC" } } },
+            snapshot_config: {
+              repository,
+              indices: form["indices"]?.trim() || "*",
+              include_global_state: "false",
+            },
+          };
+          if (Object.keys(condition).length > 0 && condition["max_age"]) {
+            body["deletion"] = {
+              schedule: { cron: { expression: "0 3 * * *", timezone: "UTC" } },
+              condition,
+            };
+          }
+          await osRequest(
+            this.config,
+            this.services?.http,
+            `/_plugins/_sm/policies/${encodeURIComponent(name)}`,
+            { method: "POST", body },
+          );
+          return { ok: true };
+        }
+        case "search": {
+          const index = required(form["index"], "index");
+          let query: unknown;
+          try {
+            query = JSON.parse(form["query"] || '{"query":{"match_all":{}}}');
+          } catch (err) {
+            throw new Error(`query must be valid JSON: ${(err as Error).message}`);
+          }
+          const size = Number(form["size"] || 10);
+          const r = await osRequest<{
+            took: number;
+            hits: { total?: { value: number }; hits: Array<{ _id: string; _source?: unknown }> };
+          }>(this.config, this.services?.http, `/${encodeURIComponent(index)}/_search`, {
+            method: "POST",
+            body: { ...(query as object), size },
+          });
+          return {
+            ok: true,
+            took: r.body?.took,
+            total: r.body?.hits?.total?.value ?? 0,
+            hits: (r.body?.hits?.hits ?? []).slice(0, size),
           };
         }
-        await osRequest(
-          this.config,
-          this.services?.http,
-          `/_plugins/_sm/policies/${encodeURIComponent(name)}`,
-          { method: "POST", body },
-        );
-        return { ok: true };
+        default:
+          throw new Error(`OpenSearch plugin: unknown command "${command}"`);
       }
-      case "search": {
-        const index = required(form["index"], "index");
-        let query: unknown;
-        try {
-          query = JSON.parse(form["query"] || '{"query":{"match_all":{}}}');
-        } catch (err) {
-          throw new Error(`query must be valid JSON: ${(err as Error).message}`);
-        }
-        const size = Number(form["size"] || 10);
-        const r = await osRequest<{
-          took: number;
-          hits: { total?: { value: number }; hits: Array<{ _id: string; _source?: unknown }> };
-        }>(this.config, this.services?.http, `/${encodeURIComponent(index)}/_search`, {
-          method: "POST",
-          body: { ...(query as object), size },
-        });
-        return {
-          ok: true,
-          took: r.body?.took,
-          total: r.body?.hits?.total?.value ?? 0,
-          hits: (r.body?.hits?.hits ?? []).slice(0, size),
-        };
-      }
-      default:
-        throw new Error(`OpenSearch plugin: unknown command "${command}"`);
-    }
+    });
   }
 
   private endpointHost(): string {

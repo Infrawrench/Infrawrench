@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ElevenLabsClient } from "./client.js";
 import { VoiceResourceType } from "./resources/voice.js";
@@ -14,18 +19,22 @@ import { KnowledgeBaseDocumentResourceType } from "./resources/knowledge-base-do
 // The icon.svg geometry (500×500, rx 100, bars 43×210) is scaled ÷5 onto the
 // 100×100 plugin canvas; the brand ships black/white only, so the card uses the
 // black container with the bars knocked out in white.
-const manifest: PluginManifest = {
+export const manifest = {
   id: "elevenlabs",
-  version: "0.1.0",
+  egressHosts: [
+    "api.elevenlabs.io",
+    "api.us.elevenlabs.io",
+    "api.eu.residency.elevenlabs.io",
+    "api.in.residency.elevenlabs.io",
+    "api.sg.residency.elevenlabs.io",
+  ],
   displayName: "ElevenLabs",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="20" fill="#000000"/>
     <path d="M62.8 71H54.2V29H62.8V71Z" fill="#FFFFFF"/>
     <path d="M45.8 71H37.2V29H45.8V71Z" fill="#FFFFFF"/>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -35,7 +44,7 @@ const manifest: PluginManifest = {
       placeholder: "sk_0123456789abcdef0123456789abcdef0123456789abcdef",
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Spend comes from `POST /v1/workspace/analytics/query/usage-by-product-over-time`,
    * asked for in 86,400-second (daily) buckets grouped by `product_type`,
@@ -60,7 +69,9 @@ const manifest: PluginManifest = {
     maxHistoryDays: 365,
     restatementDays: 3,
   },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   VoiceResourceType,
@@ -72,8 +83,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   KnowledgeBaseDocumentResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new ElevenLabsClient(credentials, services),
-};
+  testCredentials: { apiKey: "sk_test_elevenlabs_key" },
+});

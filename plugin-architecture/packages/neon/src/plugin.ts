@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { NeonClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { NeonProjectResourceType } from "./resources/project.js";
@@ -18,9 +23,9 @@ import { NeonAuthDomainResourceType } from "./resources/auth-domain.js";
 import { neonTerraformExport } from "./terraform.js";
 import { neonRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "neon",
-  version: "0.1.0",
+  egressHosts: ["console.neon.tech"],
   displayName: "Neon",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#0A0A0A"/>
@@ -28,9 +33,7 @@ const manifest: PluginManifest = {
       <path d="M63 0.018V63.553L38.418 42.25V63.553H0V0L63 0.018ZM7.723 55.839H30.695V25.324L55.278 47.048V7.729L7.723 7.716V55.839Z" fill="#00E599"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -39,7 +42,7 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "neon_...",
     },
-  ],
+  ]),
   // Usage units from the consumption-history API converted to dollars with
   // Neon's published rates (estimate: plan allowances/discounts not
   // modeled). Daily granularity; Neon keeps 60 days of daily history.
@@ -49,7 +52,9 @@ const manifest: PluginManifest = {
     maxHistoryDays: 60,
   },
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   NeonProjectResourceType,
@@ -68,11 +73,12 @@ const resourceTypes: ResourceTypeDefinition[] = [
   NeonAuthDomainResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new NeonClient(credentials, services),
+  testCredentials: { apiKey: "neon_test_key" },
   parseStatusFeed,
   terraformExport: neonTerraformExport,
   remediationCommands: neonRemediationCommands,
-};
+});

@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ChronosphereClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,15 @@ import { CHRONO_PREFLIGHT } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { chronosphereTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "chronosphere",
-  version: "0.1.0",
+  // Each tenant is <org>.chronosphere.io (config API and Prometheus API on the same host).
+  egressHosts: ["*.chronosphere.io"],
   displayName: "Chronosphere",
   description:
     "Cloud-native observability platform, now Cortex XCOR. Manage monitors, notification policies, notifiers, collections, buckets, teams, dashboards, SLOs, rollup, drop and recording rules, muting rules and service accounts, and chart or run PromQL against your tenant.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "org",
       label: "Organization",
@@ -33,14 +33,17 @@ const manifest: PluginManifest = {
       placeholder: "chronosphere token",
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: CHRONO_PREFLIGHT,
   rateLimit: { capacity: 10, refillPerSecond: 3 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new ChronosphereClient(credentials, services),
+  testCredentials: { org: "acme", apiToken: "chrono-test-token" },
   terraformExport: chronosphereTerraformExport,
-};
+});

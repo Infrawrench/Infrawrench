@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -890,7 +893,7 @@ export class TogetherClient implements PluginClient {
   private readonly services: HostServices | undefined;
   private whoamiCache: WhoAmI | null = null;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Together plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -931,62 +934,64 @@ export class TogetherClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "model": {
-        const models = await this.fetchModels();
-        return models.map((model) => this.mapModel(model, accountId));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "model": {
+          const models = await this.fetchModels();
+          return models.map((model) => this.mapModel(model, accountId));
+        }
+        case "fine-tune": {
+          // `{ data: [...] }`. No pagination params documented on this route.
+          const data = await this.fetch<{ data?: FineTuneJob[] }>("/fine-tunes");
+          return (data.data ?? []).map((job) => this.mapFineTune(job, accountId));
+        }
+        case "file": {
+          const data = await this.fetch<{ data?: TogetherFile[] }>("/files");
+          return (data.data ?? []).map((file) => this.mapFile(file, accountId));
+        }
+        case "endpoint": {
+          // v1 lists are a flat `{ object, data }` with NO pagination params at all.
+          const data = await this.fetch<{ data?: ListEndpoint[] }>("/endpoints");
+          return (data.data ?? []).map((endpoint) => this.mapEndpoint(endpoint, accountId));
+        }
+        case "managed-endpoint":
+          return this.listManagedEndpoints(accountId);
+        case "hardware": {
+          const data = await this.fetch<{ data?: TogetherHardware[] }>("/hardware");
+          return (data.data ?? []).map((hardware) => this.mapHardware(hardware, accountId));
+        }
+        case "batch": {
+          // Bare array, not a `{ data }` envelope: the one v1 list that differs.
+          const batches = await this.fetch<BatchJob[]>("/batches");
+          return (Array.isArray(batches) ? batches : []).map((batch) =>
+            this.mapBatch(batch, accountId),
+          );
+        }
+        case "gpu-cluster": {
+          // `{ clusters: [...] }`, no pagination params.
+          // https://docs.together.ai/reference/clusters-list
+          const data = await this.fetch<{ clusters?: GpuCluster[] }>("/compute/clusters");
+          return (data.clusters ?? []).map((cluster) => this.mapCluster(cluster, accountId));
+        }
+        case "shared-volume": {
+          // `{ volumes: [...] }`. https://docs.together.ai/reference/clusters_storages-list
+          const data = await this.fetch<{ volumes?: SharedVolume[] }>(
+            "/compute/clusters/storage/volumes",
+          );
+          return (data.volumes ?? []).map((volume) => this.mapVolume(volume, accountId));
+        }
+        case "evaluation": {
+          // Path is `/evaluation`, singular. Also a bare array.
+          const evaluations = await this.fetch<EvaluationJob[]>("/evaluation?limit=100");
+          return (Array.isArray(evaluations) ? evaluations : []).map((evaluation) =>
+            this.mapEvaluation(evaluation, accountId),
+          );
+        }
+        default:
+          throw new Error(`Together plugin: unknown resource type "${typeId}"`);
       }
-      case "fine-tune": {
-        // `{ data: [...] }`. No pagination params documented on this route.
-        const data = await this.fetch<{ data?: FineTuneJob[] }>("/fine-tunes");
-        return (data.data ?? []).map((job) => this.mapFineTune(job, accountId));
-      }
-      case "file": {
-        const data = await this.fetch<{ data?: TogetherFile[] }>("/files");
-        return (data.data ?? []).map((file) => this.mapFile(file, accountId));
-      }
-      case "endpoint": {
-        // v1 lists are a flat `{ object, data }` with NO pagination params at all.
-        const data = await this.fetch<{ data?: ListEndpoint[] }>("/endpoints");
-        return (data.data ?? []).map((endpoint) => this.mapEndpoint(endpoint, accountId));
-      }
-      case "managed-endpoint":
-        return this.listManagedEndpoints(accountId);
-      case "hardware": {
-        const data = await this.fetch<{ data?: TogetherHardware[] }>("/hardware");
-        return (data.data ?? []).map((hardware) => this.mapHardware(hardware, accountId));
-      }
-      case "batch": {
-        // Bare array, not a `{ data }` envelope: the one v1 list that differs.
-        const batches = await this.fetch<BatchJob[]>("/batches");
-        return (Array.isArray(batches) ? batches : []).map((batch) =>
-          this.mapBatch(batch, accountId),
-        );
-      }
-      case "gpu-cluster": {
-        // `{ clusters: [...] }`, no pagination params.
-        // https://docs.together.ai/reference/clusters-list
-        const data = await this.fetch<{ clusters?: GpuCluster[] }>("/compute/clusters");
-        return (data.clusters ?? []).map((cluster) => this.mapCluster(cluster, accountId));
-      }
-      case "shared-volume": {
-        // `{ volumes: [...] }`. https://docs.together.ai/reference/clusters_storages-list
-        const data = await this.fetch<{ volumes?: SharedVolume[] }>(
-          "/compute/clusters/storage/volumes",
-        );
-        return (data.volumes ?? []).map((volume) => this.mapVolume(volume, accountId));
-      }
-      case "evaluation": {
-        // Path is `/evaluation`, singular. Also a bare array.
-        const evaluations = await this.fetch<EvaluationJob[]>("/evaluation?limit=100");
-        return (Array.isArray(evaluations) ? evaluations : []).map((evaluation) =>
-          this.mapEvaluation(evaluation, accountId),
-        );
-      }
-      default:
-        throw new Error(`Together plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   /**
@@ -1412,288 +1417,298 @@ export class TogetherClient implements PluginClient {
   // Single resource
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    switch (typeId) {
-      case "endpoint": {
-        // The by-id response is richer than the list item: it adds
-        // display_name, hardware and autoscaling.
-        const endpoint = await this.fetch<DedicatedEndpoint>(
-          `/endpoints/${encodeURIComponent(externalId)}`,
-        );
-        return this.mapEndpoint(endpoint, accountId);
-      }
-      case "fine-tune": {
-        const job = await this.fetch<FineTuneJob>(`/fine-tunes/${encodeURIComponent(externalId)}`);
-        return this.mapFineTune(job, accountId);
-      }
-      case "file": {
-        const file = await this.fetch<TogetherFile>(`/files/${encodeURIComponent(externalId)}`);
-        return this.mapFile(file, accountId);
-      }
-      case "batch": {
-        const batch = await this.fetch<BatchJob>(`/batches/${encodeURIComponent(externalId)}`);
-        return this.mapBatch(batch, accountId);
-      }
-      case "evaluation": {
-        const evaluation = await this.fetch<EvaluationJob>(
-          `/evaluation/${encodeURIComponent(externalId)}`,
-        );
-        return this.mapEvaluation(evaluation, accountId);
-      }
-      case "gpu-cluster": {
-        // https://docs.together.ai/reference/clusters-get
-        const cluster = await this.fetch<GpuCluster>(
-          `/compute/clusters/${encodeURIComponent(externalId)}`,
-        );
-        return this.mapCluster(cluster, accountId);
-      }
-      case "shared-volume": {
-        // https://docs.together.ai/reference/clusters_storages-get
-        const volume = await this.fetch<SharedVolume>(
-          `/compute/clusters/storage/volumes/${encodeURIComponent(externalId)}`,
-        );
-        return this.mapVolume(volume, accountId);
-      }
-      case "model": {
-        // There is no `GET /v1/models/{id}`: pick the entry out of the list.
-        const models = await this.fetchModels();
-        const raw = models.find((model) => model.id === externalId);
-        if (!raw) throw new Error(`Together plugin: model ${externalId} not found`);
-        const instance = this.mapModel(raw, accountId);
-        // `renderDetail` is synchronous, so the Speech tab's voice picker is
-        // fetched here and stashed under a `__`-prefixed resolved output.
-        if (SPEECH_MODEL_IDS.has(externalId)) {
-          const voices = await this.fetchVoices().catch((): StashedVoice[] => []);
-          instance.resolvedOutputs["__voices__"] = JSON.stringify(voices);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      switch (typeId) {
+        case "endpoint": {
+          // The by-id response is richer than the list item: it adds
+          // display_name, hardware and autoscaling.
+          const endpoint = await this.fetch<DedicatedEndpoint>(
+            `/endpoints/${encodeURIComponent(externalId)}`,
+          );
+          return this.mapEndpoint(endpoint, accountId);
         }
-        return instance;
+        case "fine-tune": {
+          const job = await this.fetch<FineTuneJob>(
+            `/fine-tunes/${encodeURIComponent(externalId)}`,
+          );
+          return this.mapFineTune(job, accountId);
+        }
+        case "file": {
+          const file = await this.fetch<TogetherFile>(`/files/${encodeURIComponent(externalId)}`);
+          return this.mapFile(file, accountId);
+        }
+        case "batch": {
+          const batch = await this.fetch<BatchJob>(`/batches/${encodeURIComponent(externalId)}`);
+          return this.mapBatch(batch, accountId);
+        }
+        case "evaluation": {
+          const evaluation = await this.fetch<EvaluationJob>(
+            `/evaluation/${encodeURIComponent(externalId)}`,
+          );
+          return this.mapEvaluation(evaluation, accountId);
+        }
+        case "gpu-cluster": {
+          // https://docs.together.ai/reference/clusters-get
+          const cluster = await this.fetch<GpuCluster>(
+            `/compute/clusters/${encodeURIComponent(externalId)}`,
+          );
+          return this.mapCluster(cluster, accountId);
+        }
+        case "shared-volume": {
+          // https://docs.together.ai/reference/clusters_storages-get
+          const volume = await this.fetch<SharedVolume>(
+            `/compute/clusters/storage/volumes/${encodeURIComponent(externalId)}`,
+          );
+          return this.mapVolume(volume, accountId);
+        }
+        case "model": {
+          // There is no `GET /v1/models/{id}`: pick the entry out of the list.
+          const models = await this.fetchModels();
+          const raw = models.find((model) => model.id === externalId);
+          if (!raw) throw new Error(`Together plugin: model ${externalId} not found`);
+          const instance = this.mapModel(raw, accountId);
+          // `renderDetail` is synchronous, so the Speech tab's voice picker is
+          // fetched here and stashed under a `__`-prefixed resolved output.
+          if (SPEECH_MODEL_IDS.has(externalId)) {
+            const voices = await this.fetchVoices().catch((): StashedVoice[] => []);
+            instance.resolvedOutputs["__voices__"] = JSON.stringify(voices);
+          }
+          return instance;
+        }
+        default: {
+          const all = await runPluginEffect(this.listResources(typeId, accountId));
+          const found = all.find((resource) => resource.id === resourceId);
+          if (!found)
+            throw new Error(`Together plugin: resource ${typeId}/${externalId} not found`);
+          return found;
+        }
       }
-      default: {
-        const all = await this.listResources(typeId, accountId);
-        const found = all.find((resource) => resource.id === resourceId);
-        if (!found) throw new Error(`Together plugin: resource ${typeId}/${externalId} not found`);
-        return found;
-      }
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "gpu-cluster" && outputKey === "kubeconfig") {
-      const cluster = await this.fetch<GpuCluster>(
-        `/compute/clusters/${encodeURIComponent(externalIdOf(resourceId))}`,
-      );
-      if (!cluster.kube_config) {
-        throw new Error(
-          "Together plugin: this cluster has no kubeconfig yet; it is issued once the control plane is ready",
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "gpu-cluster" && outputKey === "kubeconfig") {
+        const cluster = await this.fetch<GpuCluster>(
+          `/compute/clusters/${encodeURIComponent(externalIdOf(resourceId))}`,
         );
+        if (!cluster.kube_config) {
+          throw new Error(
+            "Together plugin: this cluster has no kubeconfig yet; it is issued once the control plane is ready",
+          );
+        }
+        return cluster.kube_config;
       }
-      return cluster.kube_config;
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`Together plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(`Together plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Mutations
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "endpoint") {
-      // `?dedicated=true` narrows the catalogue to models that can actually be
-      // pinned to reserved hardware, so the picker can't offer an invalid one.
-      const [models, hardware] = await Promise.all([
-        this.fetch<TogetherModel[]>("/models?dedicated=true").catch((): TogetherModel[] => []),
-        this.fetch<{ data?: TogetherHardware[] }>("/hardware").catch(
-          (): { data?: TogetherHardware[] } => ({}),
-        ),
-      ]);
-      const modelOptions = (Array.isArray(models) ? models : []).map((model) => ({
-        id: model.id,
-        label: model.display_name ? `${model.display_name} (${model.id})` : model.id,
-      }));
-      const hardwareOptions = (hardware.data ?? [])
-        .filter((entry) => Boolean(entry.id))
-        .map((entry) => {
-          const specs = entry.specs ?? {};
-          const price = entry.pricing?.cents_per_minute;
-          const detail = [
-            specs.gpu_count && specs.gpu_type ? `${specs.gpu_count}× ${specs.gpu_type}` : "",
-            price != null ? `${price}¢/min` : "",
-          ]
-            .filter(Boolean)
-            .join(" · ");
-          return {
-            id: entry.id ?? "",
-            label: detail ? `${entry.id} (${detail})` : (entry.id ?? ""),
-          };
-        });
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "endpoint") {
+        // `?dedicated=true` narrows the catalogue to models that can actually be
+        // pinned to reserved hardware, so the picker can't offer an invalid one.
+        const [models, hardware] = await Promise.all([
+          this.fetch<TogetherModel[]>("/models?dedicated=true").catch((): TogetherModel[] => []),
+          this.fetch<{ data?: TogetherHardware[] }>("/hardware").catch(
+            (): { data?: TogetherHardware[] } => ({}),
+          ),
+        ]);
+        const modelOptions = (Array.isArray(models) ? models : []).map((model) => ({
+          id: model.id,
+          label: model.display_name ? `${model.display_name} (${model.id})` : model.id,
+        }));
+        const hardwareOptions = (hardware.data ?? [])
+          .filter((entry) => Boolean(entry.id))
+          .map((entry) => {
+            const specs = entry.specs ?? {};
+            const price = entry.pricing?.cents_per_minute;
+            const detail = [
+              specs.gpu_count && specs.gpu_type ? `${specs.gpu_count}× ${specs.gpu_type}` : "",
+              price != null ? `${price}¢/min` : "",
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return {
+              id: entry.id ?? "",
+              label: detail ? `${entry.id} (${detail})` : (entry.id ?? ""),
+            };
+          });
 
-      return {
-        fields: [
-          {
-            key: "display_name",
-            label: "Display Name",
-            kind: "text",
-            required: true,
-            description: "Human-readable name shown in the Together dashboard.",
-            placeholder: "prod-llama-70b",
-          },
-          {
-            key: "model",
-            label: "Model",
-            kind: "select",
-            required: true,
-            description: "Model served by this endpoint. Only dedicated-capable models are listed.",
-            options: modelOptions,
-            ...(modelOptions[0] ? { defaultValue: modelOptions[0].id } : {}),
-          },
-          {
-            key: "hardware",
-            label: "Hardware",
-            kind: "select",
-            required: true,
-            description:
-              "GPU configuration each replica runs on. Not every model fits every configuration.",
-            options: hardwareOptions,
-            ...(hardwareOptions[0] ? { defaultValue: hardwareOptions[0].id } : {}),
-          },
-          {
-            key: "min_replicas",
-            label: "Minimum Replicas",
-            kind: "number",
-            required: true,
-            description:
-              "Replicas kept running at all times. You pay for these whether idle or not.",
-            defaultValue: "1",
-            minValue: 0,
-            stepValue: 1,
-          },
-          {
-            key: "max_replicas",
-            label: "Maximum Replicas",
-            kind: "number",
-            required: true,
-            description: "Upper bound on autoscaling.",
-            defaultValue: "1",
-            minValue: 1,
-            stepValue: 1,
-          },
-          {
-            key: "inactive_timeout",
-            label: "Idle Timeout (minutes)",
-            kind: "number",
-            required: false,
-            description:
-              "Stop the endpoint after this many minutes with no traffic. Leave blank or 0 to keep it running indefinitely.",
-            minValue: 0,
-            stepValue: 1,
-          },
-          {
-            key: "state",
-            label: "Start immediately",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "STARTED", label: "Yes, start now" },
-              { id: "STOPPED", label: "No, create stopped" },
-            ],
-            defaultValue: "STARTED",
-          },
-        ],
-      };
-    }
+        return {
+          fields: [
+            {
+              key: "display_name",
+              label: "Display Name",
+              kind: "text",
+              required: true,
+              description: "Human-readable name shown in the Together dashboard.",
+              placeholder: "prod-llama-70b",
+            },
+            {
+              key: "model",
+              label: "Model",
+              kind: "select",
+              required: true,
+              description:
+                "Model served by this endpoint. Only dedicated-capable models are listed.",
+              options: modelOptions,
+              ...(modelOptions[0] ? { defaultValue: modelOptions[0].id } : {}),
+            },
+            {
+              key: "hardware",
+              label: "Hardware",
+              kind: "select",
+              required: true,
+              description:
+                "GPU configuration each replica runs on. Not every model fits every configuration.",
+              options: hardwareOptions,
+              ...(hardwareOptions[0] ? { defaultValue: hardwareOptions[0].id } : {}),
+            },
+            {
+              key: "min_replicas",
+              label: "Minimum Replicas",
+              kind: "number",
+              required: true,
+              description:
+                "Replicas kept running at all times. You pay for these whether idle or not.",
+              defaultValue: "1",
+              minValue: 0,
+              stepValue: 1,
+            },
+            {
+              key: "max_replicas",
+              label: "Maximum Replicas",
+              kind: "number",
+              required: true,
+              description: "Upper bound on autoscaling.",
+              defaultValue: "1",
+              minValue: 1,
+              stepValue: 1,
+            },
+            {
+              key: "inactive_timeout",
+              label: "Idle Timeout (minutes)",
+              kind: "number",
+              required: false,
+              description:
+                "Stop the endpoint after this many minutes with no traffic. Leave blank or 0 to keep it running indefinitely.",
+              minValue: 0,
+              stepValue: 1,
+            },
+            {
+              key: "state",
+              label: "Start immediately",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "STARTED", label: "Yes, start now" },
+                { id: "STOPPED", label: "No, create stopped" },
+              ],
+              defaultValue: "STARTED",
+            },
+          ],
+        };
+      }
 
-    if (typeId === "batch") {
-      const [files, models] = await Promise.all([
-        this.fetch<{ data?: TogetherFile[] }>("/files").catch(
-          (): { data?: TogetherFile[] } => ({}),
-        ),
-        this.fetch<TogetherModel[]>("/models").catch((): TogetherModel[] => []),
-      ]);
-      const fileOptions = (files.data ?? [])
-        .filter((file) => file.purpose === "batch-api" || !file.purpose)
-        .map((file) => ({ id: file.id ?? "", label: file.filename ?? file.id ?? "" }));
-      const modelOptions = (Array.isArray(models) ? models : [])
-        .filter((model) => model.type === "chat" || model.type === "language")
-        .map((model) => ({ id: model.id, label: model.display_name ?? model.id }));
+      if (typeId === "batch") {
+        const [files, models] = await Promise.all([
+          this.fetch<{ data?: TogetherFile[] }>("/files").catch(
+            (): { data?: TogetherFile[] } => ({}),
+          ),
+          this.fetch<TogetherModel[]>("/models").catch((): TogetherModel[] => []),
+        ]);
+        const fileOptions = (files.data ?? [])
+          .filter((file) => file.purpose === "batch-api" || !file.purpose)
+          .map((file) => ({ id: file.id ?? "", label: file.filename ?? file.id ?? "" }));
+        const modelOptions = (Array.isArray(models) ? models : [])
+          .filter((model) => model.type === "chat" || model.type === "language")
+          .map((model) => ({ id: model.id, label: model.display_name ?? model.id }));
 
-      return {
-        fields: [
-          {
-            key: "endpoint",
-            label: "Endpoint",
-            kind: "select",
-            required: true,
-            description: "Which inference route the batched requests target.",
-            options: [
-              { id: "/v1/chat/completions", label: "Chat completions" },
-              { id: "/v1/audio/transcriptions", label: "Audio transcriptions" },
-              { id: "/v1/audio/translations", label: "Audio translations" },
-            ],
-            defaultValue: "/v1/chat/completions",
-          },
-          {
-            key: "input_file_id",
-            label: "Input File",
-            kind: "select",
-            required: true,
-            description: "An uploaded JSONL file, one request per line.",
-            options: fileOptions,
-            ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
-          },
-          {
-            key: "model_id",
-            label: "Model",
-            kind: "select",
-            required: false,
-            description: "Overrides the model named inside the JSONL, when set.",
-            options: modelOptions,
-          },
-        ],
-      };
-    }
+        return {
+          fields: [
+            {
+              key: "endpoint",
+              label: "Endpoint",
+              kind: "select",
+              required: true,
+              description: "Which inference route the batched requests target.",
+              options: [
+                { id: "/v1/chat/completions", label: "Chat completions" },
+                { id: "/v1/audio/transcriptions", label: "Audio transcriptions" },
+                { id: "/v1/audio/translations", label: "Audio translations" },
+              ],
+              defaultValue: "/v1/chat/completions",
+            },
+            {
+              key: "input_file_id",
+              label: "Input File",
+              kind: "select",
+              required: true,
+              description: "An uploaded JSONL file, one request per line.",
+              options: fileOptions,
+              ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
+            },
+            {
+              key: "model_id",
+              label: "Model",
+              kind: "select",
+              required: false,
+              description: "Overrides the model named inside the JSONL, when set.",
+              options: modelOptions,
+            },
+          ],
+        };
+      }
 
-    if (typeId === "gpu-cluster") return this.clusterCreateConfig();
+      if (typeId === "gpu-cluster") return this.clusterCreateConfig();
 
-    if (typeId === "shared-volume") {
-      const regions = await this.fetchRegions().catch((): ComputeRegion[] => []);
-      return {
-        fields: [
-          {
-            key: "volume_name",
-            label: "Name",
-            kind: "text",
-            required: true,
-            placeholder: "training-data",
-          },
-          this.regionField(regions, false),
-          {
-            key: "size_tib",
-            label: "Size (TiB)",
-            kind: "number",
-            required: true,
-            description: "Whole tebibytes. You can grow the volume later.",
-            defaultValue: "1",
-            minValue: 1,
-            stepValue: 1,
-          },
-        ],
-      };
-    }
+      if (typeId === "shared-volume") {
+        const regions = await this.fetchRegions().catch((): ComputeRegion[] => []);
+        return {
+          fields: [
+            {
+              key: "volume_name",
+              label: "Name",
+              kind: "text",
+              required: true,
+              placeholder: "training-data",
+            },
+            this.regionField(regions, false),
+            {
+              key: "size_tib",
+              label: "Size (TiB)",
+              kind: "number",
+              required: true,
+              description: "Whole tebibytes. You can grow the volume later.",
+              defaultValue: "1",
+              minValue: 1,
+              stepValue: 1,
+            },
+          ],
+        };
+      }
 
-    throw new Error(`Together plugin: createResource not supported for type "${typeId}"`);
+      throw new Error(`Together plugin: createResource not supported for type "${typeId}"`);
+    });
   }
 
   /**
@@ -1963,118 +1978,122 @@ export class TogetherClient implements PluginClient {
     };
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "endpoint") {
-      // https://docs.together.ai/reference/createendpoint
-      const timeout = Number.parseInt(fields["inactive_timeout"] ?? "", 10);
-      const body: Record<string, unknown> = {
-        model: fields["model"] ?? "",
-        hardware: fields["hardware"] ?? "",
-        autoscaling: {
-          min_replicas: toInt(fields["min_replicas"], 1),
-          max_replicas: toInt(fields["max_replicas"], 1),
-        },
-        ...(fields["display_name"] ? { display_name: fields["display_name"] } : {}),
-        state: fields["state"] === "STOPPED" ? "STOPPED" : "STARTED",
-        ...(Number.isFinite(timeout) && timeout > 0 ? { inactive_timeout: timeout } : {}),
-      };
-      const created = await this.fetch<DedicatedEndpoint>("/endpoints", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      return this.mapEndpoint(created, accountId);
-    }
-
-    if (typeId === "batch") {
-      // 201, and the body wraps the job: `{ job, warning }`.
-      const body: Record<string, unknown> = {
-        endpoint: fields["endpoint"] ?? "/v1/chat/completions",
-        input_file_id: fields["input_file_id"] ?? "",
-        ...(fields["model_id"] ? { model_id: fields["model_id"] } : {}),
-      };
-      // Typed as either shape: the wrapper, or (tolerated) the bare job.
-      const created = await this.fetch<BatchJob & { job?: BatchJob; warning?: string }>(
-        "/batches",
-        {
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "endpoint") {
+        // https://docs.together.ai/reference/createendpoint
+        const timeout = Number.parseInt(fields["inactive_timeout"] ?? "", 10);
+        const body: Record<string, unknown> = {
+          model: fields["model"] ?? "",
+          hardware: fields["hardware"] ?? "",
+          autoscaling: {
+            min_replicas: toInt(fields["min_replicas"], 1),
+            max_replicas: toInt(fields["max_replicas"], 1),
+          },
+          ...(fields["display_name"] ? { display_name: fields["display_name"] } : {}),
+          state: fields["state"] === "STOPPED" ? "STOPPED" : "STARTED",
+          ...(Number.isFinite(timeout) && timeout > 0 ? { inactive_timeout: timeout } : {}),
+        };
+        const created = await this.fetch<DedicatedEndpoint>("/endpoints", {
           method: "POST",
           body: JSON.stringify(body),
-        },
-      );
-      const job: BatchJob = created.job ?? created;
-      return this.mapBatch(job, accountId);
-    }
+        });
+        return this.mapEndpoint(created, accountId);
+      }
 
-    if (typeId === "gpu-cluster") {
-      const created = await this.fetch<GpuCluster>("/compute/clusters", {
-        method: "POST",
-        body: JSON.stringify(buildClusterCreateBody(fields)),
-      });
-      return this.mapCluster(created, accountId);
-    }
+      if (typeId === "batch") {
+        // 201, and the body wraps the job: `{ job, warning }`.
+        const body: Record<string, unknown> = {
+          endpoint: fields["endpoint"] ?? "/v1/chat/completions",
+          input_file_id: fields["input_file_id"] ?? "",
+          ...(fields["model_id"] ? { model_id: fields["model_id"] } : {}),
+        };
+        // Typed as either shape: the wrapper, or (tolerated) the bare job.
+        const created = await this.fetch<BatchJob & { job?: BatchJob; warning?: string }>(
+          "/batches",
+          {
+            method: "POST",
+            body: JSON.stringify(body),
+          },
+        );
+        const job: BatchJob = created.job ?? created;
+        return this.mapBatch(job, accountId);
+      }
 
-    if (typeId === "shared-volume") {
-      // https://docs.together.ai/reference/clusters_storages-create
-      const size = toInt(fields["size_tib"], 0);
-      if (size < 1) throw new Error("Together plugin: a shared volume needs at least 1 TiB");
-      const created = await this.fetch<SharedVolume>("/compute/clusters/storage/volumes", {
-        method: "POST",
-        body: JSON.stringify({
-          volume_name: fields["volume_name"] ?? "",
-          size_tib: size,
-          region: fields["region"] ?? "",
-        }),
-      });
-      return this.mapVolume(created, accountId);
-    }
+      if (typeId === "gpu-cluster") {
+        const created = await this.fetch<GpuCluster>("/compute/clusters", {
+          method: "POST",
+          body: JSON.stringify(buildClusterCreateBody(fields)),
+        });
+        return this.mapCluster(created, accountId);
+      }
 
-    throw new Error(`Together plugin: createResource not supported for type "${typeId}"`);
+      if (typeId === "shared-volume") {
+        // https://docs.together.ai/reference/clusters_storages-create
+        const size = toInt(fields["size_tib"], 0);
+        if (size < 1) throw new Error("Together plugin: a shared volume needs at least 1 TiB");
+        const created = await this.fetch<SharedVolume>("/compute/clusters/storage/volumes", {
+          method: "POST",
+          body: JSON.stringify({
+            volume_name: fields["volume_name"] ?? "",
+            size_tib: size,
+            region: fields["region"] ?? "",
+          }),
+        });
+        return this.mapVolume(created, accountId);
+      }
+
+      throw new Error(`Together plugin: createResource not supported for type "${typeId}"`);
+    });
   }
 
   /**
    * `PATCH /v1/endpoints/{id}` accepts display_name, state, autoscaling and
    * inactive_timeout. Model and hardware cannot change after creation.
    */
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "gpu-cluster") return this.updateCluster(resourceId, accountId, fields);
-    if (typeId === "shared-volume") return this.updateVolume(resourceId, accountId, fields);
-    if (typeId !== "endpoint") {
-      throw new Error(`Together plugin: updateResource not supported for type "${typeId}"`);
-    }
-    const id = externalIdOf(resourceId);
-    const current = await this.fetch<DedicatedEndpoint>(`/endpoints/${encodeURIComponent(id)}`);
-    const body: Record<string, unknown> = {};
-    if (fields["displayName"]) body["display_name"] = fields["displayName"];
-    if (fields["state"]) {
-      const wanted = fields["state"].toUpperCase();
-      if (wanted !== "STARTED" && wanted !== "STOPPED") {
-        throw new Error(
-          `Together plugin: endpoint state can only be set to STARTED or STOPPED (got "${fields["state"]}")`,
-        );
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "gpu-cluster") return this.updateCluster(resourceId, accountId, fields);
+      if (typeId === "shared-volume") return this.updateVolume(resourceId, accountId, fields);
+      if (typeId !== "endpoint") {
+        throw new Error(`Together plugin: updateResource not supported for type "${typeId}"`);
       }
-      body["state"] = wanted;
-    }
-    if (fields["minReplicas"] !== undefined || fields["maxReplicas"] !== undefined) {
-      const existing = current.autoscaling ?? {};
-      body["autoscaling"] = {
-        min_replicas: toInt(fields["minReplicas"], existing.min_replicas ?? 1),
-        max_replicas: toInt(fields["maxReplicas"], existing.max_replicas ?? 1),
-      };
-    }
-    if (Object.keys(body).length === 0) return this.mapEndpoint(current, accountId);
-    const updated = await this.fetch<DedicatedEndpoint>(`/endpoints/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
+      const id = externalIdOf(resourceId);
+      const current = await this.fetch<DedicatedEndpoint>(`/endpoints/${encodeURIComponent(id)}`);
+      const body: Record<string, unknown> = {};
+      if (fields["displayName"]) body["display_name"] = fields["displayName"];
+      if (fields["state"]) {
+        const wanted = fields["state"].toUpperCase();
+        if (wanted !== "STARTED" && wanted !== "STOPPED") {
+          throw new Error(
+            `Together plugin: endpoint state can only be set to STARTED or STOPPED (got "${fields["state"]}")`,
+          );
+        }
+        body["state"] = wanted;
+      }
+      if (fields["minReplicas"] !== undefined || fields["maxReplicas"] !== undefined) {
+        const existing = current.autoscaling ?? {};
+        body["autoscaling"] = {
+          min_replicas: toInt(fields["minReplicas"], existing.min_replicas ?? 1),
+          max_replicas: toInt(fields["maxReplicas"], existing.max_replicas ?? 1),
+        };
+      }
+      if (Object.keys(body).length === 0) return this.mapEndpoint(current, accountId);
+      const updated = await this.fetch<DedicatedEndpoint>(`/endpoints/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      return this.mapEndpoint(updated, accountId);
     });
-    return this.mapEndpoint(updated, accountId);
   }
 
   /**
@@ -2158,7 +2177,7 @@ export class TogetherClient implements PluginClient {
     const id = externalIdOf(resourceId);
     const raw = fields["sizeTib"];
     if (raw === undefined || raw === "") {
-      return this.getResource("shared-volume", resourceId, accountId);
+      return runPluginEffect(this.getResource("shared-volume", resourceId, accountId));
     }
     const size = toInt(raw, 0);
     if (size < 1) throw new Error("Together plugin: a shared volume needs at least 1 TiB");
@@ -2169,45 +2188,49 @@ export class TogetherClient implements PluginClient {
     return this.mapVolume(updated, accountId);
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    if (!externalId) throw new Error(`Together plugin: cannot parse resource id "${resourceId}"`);
-    switch (typeId) {
-      case "endpoint":
-        // 204, no body.
-        await this.fetch<unknown>(`/endpoints/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "file":
-        await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, { method: "DELETE" });
-        return;
-      case "fine-tune":
-        await this.fetch<unknown>(`/fine-tunes/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "managed-endpoint":
-        await this.deleteManagedEndpoint(externalId);
-        return;
-      case "gpu-cluster":
-        // https://docs.together.ai/reference/clusters-delete
-        await this.fetch<unknown>(`/compute/clusters/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "shared-volume":
-        // Fails while the volume is attached to a cluster; Together's error
-        // says so and is surfaced as-is.
-        // https://docs.together.ai/reference/clusters_storages-delete
-        await this.fetch<unknown>(
-          `/compute/clusters/storage/volumes/${encodeURIComponent(externalId)}`,
-          { method: "DELETE" },
-        );
-        return;
-      default:
-        throw new Error(`Together plugin: deleteResource not supported for type "${typeId}"`);
-    }
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (!externalId) throw new Error(`Together plugin: cannot parse resource id "${resourceId}"`);
+      switch (typeId) {
+        case "endpoint":
+          // 204, no body.
+          await this.fetch<unknown>(`/endpoints/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "file":
+          await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "fine-tune":
+          await this.fetch<unknown>(`/fine-tunes/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "managed-endpoint":
+          await this.deleteManagedEndpoint(externalId);
+          return;
+        case "gpu-cluster":
+          // https://docs.together.ai/reference/clusters-delete
+          await this.fetch<unknown>(`/compute/clusters/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "shared-volume":
+          // Fails while the volume is attached to a cluster; Together's error
+          // says so and is surfaced as-is.
+          // https://docs.together.ai/reference/clusters_storages-delete
+          await this.fetch<unknown>(
+            `/compute/clusters/storage/volumes/${encodeURIComponent(externalId)}`,
+            { method: "DELETE" },
+          );
+          return;
+        default:
+          throw new Error(`Together plugin: deleteResource not supported for type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -2238,35 +2261,39 @@ export class TogetherClient implements PluginClient {
    * `POST /v1/fine-tunes/{id}/cancel` and `POST /v1/batches/{id}/cancel`.
    * Endpoints "start"/"stop" go through PATCH rather than a cancel route.
    */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    if (actionId === "cancel") {
-      if (typeId === "fine-tune") {
-        await this.fetch<unknown>(`/fine-tunes/${encodeURIComponent(externalId)}/cancel`, {
-          method: "POST",
-        });
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (actionId === "cancel") {
+        if (typeId === "fine-tune") {
+          await this.fetch<unknown>(`/fine-tunes/${encodeURIComponent(externalId)}/cancel`, {
+            method: "POST",
+          });
+          return;
+        }
+        if (typeId === "batch") {
+          await this.fetch<unknown>(`/batches/${encodeURIComponent(externalId)}/cancel`, {
+            method: "POST",
+          });
+          return;
+        }
+        throw new Error(`Together plugin: cancel not supported for type "${typeId}"`);
+      }
+      if ((actionId === "start" || actionId === "stop") && typeId === "endpoint") {
+        await runPluginEffect(
+          this.updateResource(typeId, resourceId, accountId, {
+            state: actionId === "start" ? "STARTED" : "STOPPED",
+          }),
+        );
         return;
       }
-      if (typeId === "batch") {
-        await this.fetch<unknown>(`/batches/${encodeURIComponent(externalId)}/cancel`, {
-          method: "POST",
-        });
-        return;
-      }
-      throw new Error(`Together plugin: cancel not supported for type "${typeId}"`);
-    }
-    if ((actionId === "start" || actionId === "stop") && typeId === "endpoint") {
-      await this.updateResource(typeId, resourceId, accountId, {
-        state: actionId === "start" ? "STARTED" : "STOPPED",
-      });
-      return;
-    }
-    throw new Error(`Together plugin: unknown action "${actionId}"`);
+      throw new Error(`Together plugin: unknown action "${actionId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -2280,13 +2307,15 @@ export class TogetherClient implements PluginClient {
    * for the user rather than a failure to retry.
    * https://docs.together.ai/reference/billing-usage
    */
-  async fetchCostData(accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    // Normalized AI dimensions (`ai:provider`, and `ai:model` /
-    // `ai:token_type` where the billing API says), so request logs can be
-    // reconciled against this bill. See plugin-base `ai-requests.ts`.
-    return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), () => ({
-      provider: "together",
-    }));
+  fetchCostData(accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      // Normalized AI dimensions (`ai:provider`, and `ai:model` /
+      // `ai:token_type` where the billing API says), so request logs can be
+      // reconciled against this bill. See plugin-base `ai-requests.ts`.
+      return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), () => ({
+        provider: "together",
+      }));
+    });
   }
 
   private async fetchUntaggedCostRows(
@@ -2351,34 +2380,36 @@ export class TogetherClient implements PluginClient {
    * Managed endpoint analytics as time series: one series per metric name in
    * the buckets. https://docs.together.ai/reference/dmi/endpoints-analytics
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "managed-endpoint") return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 24 * 60 * 60 * 1000;
-    const analytics = await this.fetchAnalytics(externalIdOf(resourceId), startMs, endMs, true);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "managed-endpoint") return [];
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 24 * 60 * 60 * 1000;
+      const analytics = await this.fetchAnalytics(externalIdOf(resourceId), startMs, endMs, true);
 
-    const byKey = new Map<string, MetricSeries>();
-    for (const bucket of analytics.timeSeries ?? []) {
-      const timestamp = Date.parse(bucket.timestamp ?? "");
-      if (!Number.isFinite(timestamp)) continue;
-      for (const [key, value] of Object.entries(bucket.values ?? {})) {
-        if (typeof value !== "number" || !Number.isFinite(value)) continue;
-        let series = byKey.get(key);
-        if (!series) {
-          const meta = analyticsSeriesMeta(key);
-          series = { label: meta.label, ...(meta.unit ? { unit: meta.unit } : {}), points: [] };
-          byKey.set(key, series);
+      const byKey = new Map<string, MetricSeries>();
+      for (const bucket of analytics.timeSeries ?? []) {
+        const timestamp = Date.parse(bucket.timestamp ?? "");
+        if (!Number.isFinite(timestamp)) continue;
+        for (const [key, value] of Object.entries(bucket.values ?? {})) {
+          if (typeof value !== "number" || !Number.isFinite(value)) continue;
+          let series = byKey.get(key);
+          if (!series) {
+            const meta = analyticsSeriesMeta(key);
+            series = { label: meta.label, ...(meta.unit ? { unit: meta.unit } : {}), points: [] };
+            byKey.set(key, series);
+          }
+          series.points.push({ timestamp, value });
         }
-        series.points.push({ timestamp, value });
       }
-    }
-    for (const series of byKey.values()) series.points.sort((a, b) => a.timestamp - b.timestamp);
-    return [...byKey.values()];
+      for (const series of byKey.values()) series.points.sort((a, b) => a.timestamp - b.timestamp);
+      return [...byKey.values()];
+    });
   }
 
   /**
@@ -2388,30 +2419,32 @@ export class TogetherClient implements PluginClient {
    * newest first, so the page is reversed into reading order.
    * https://docs.together.ai/reference/dmi/endpoints-list-events
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "managed-endpoint") {
-      throw new Error(`Together plugin: logs not supported for type "${typeId}"`);
-    }
-    const { project_id: projectId } = await this.whoami();
-    if (!projectId) {
-      throw new Error("Together plugin: could not resolve project id from /v1/whoami");
-    }
-    // The API caps a page at 10000 events and defaults to 50.
-    const limit = Math.min(Math.max(params.tailLines ?? 500, 1), 10000);
-    const page = await this.request<DmiListResponse<DmiEndpointEvent>>(
-      `${API_BASE_V2}/projects/${encodeURIComponent(projectId)}/endpoints/${encodeURIComponent(externalIdOf(resourceId))}/events?limit=${limit}`,
-    );
-    const lines = (page.data ?? []).map(formatEndpointEvent).reverse();
-    return {
-      text: lines.map((line) => `${line}\n`).join(""),
-      containers: [],
-      activeContainer: "",
-    };
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "managed-endpoint") {
+        throw new Error(`Together plugin: logs not supported for type "${typeId}"`);
+      }
+      const { project_id: projectId } = await this.whoami();
+      if (!projectId) {
+        throw new Error("Together plugin: could not resolve project id from /v1/whoami");
+      }
+      // The API caps a page at 10000 events and defaults to 50.
+      const limit = Math.min(Math.max(params.tailLines ?? 500, 1), 10000);
+      const page = await this.request<DmiListResponse<DmiEndpointEvent>>(
+        `${API_BASE_V2}/projects/${encodeURIComponent(projectId)}/endpoints/${encodeURIComponent(externalIdOf(resourceId))}/events?limit=${limit}`,
+      );
+      const lines = (page.data ?? []).map(formatEndpointEvent).reverse();
+      return {
+        text: lines.map((line) => `${line}\n`).join(""),
+        containers: [],
+        activeContainer: "",
+      };
+    });
   }
 
   /** `GET /v2/projects/{projectId}/endpoints/{id}/analytics`. */
@@ -2443,229 +2476,235 @@ export class TogetherClient implements PluginClient {
    * managed endpoint, and the event log and checkpoints of a fine-tune. Each
    * is stashed under a `__`-prefixed resolved output for `renderDetail`.
    */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const externalId = resource.externalId ?? externalIdOf(resource.id);
-    if (resource.resourceTypeId === "managed-endpoint") {
-      const endMs = Date.now();
-      const analytics = await this.fetchAnalytics(
-        externalId,
-        endMs - 24 * 60 * 60 * 1000,
-        endMs,
-        false,
-      ).catch((): DmiAnalytics | null => null);
-      if (!analytics?.metrics) return resource;
-      return {
-        ...resource,
-        resolvedOutputs: {
-          ...resource.resolvedOutputs,
-          __analytics__: JSON.stringify(analytics.metrics),
-        },
-      };
-    }
-    if (resource.resourceTypeId === "fine-tune") {
-      // https://docs.together.ai/reference/get-fine-tunes-id-events
-      // https://docs.together.ai/reference/get-fine-tunes-id-checkpoint
-      const id = encodeURIComponent(externalId);
-      const [events, checkpoints] = await Promise.all([
-        this.fetch<{ data?: FineTuneEvent[] }>(`/fine-tunes/${id}/events`).catch(
-          (): { data?: FineTuneEvent[] } => ({}),
-        ),
-        this.fetch<{ data?: FineTuneCheckpoint[] }>(`/fine-tunes/${id}/checkpoints`).catch(
-          (): { data?: FineTuneCheckpoint[] } => ({}),
-        ),
-      ]);
-      return {
-        ...resource,
-        resolvedOutputs: {
-          ...resource.resolvedOutputs,
-          __events__: JSON.stringify(events.data ?? []),
-          __checkpoints__: JSON.stringify(checkpoints.data ?? []),
-        },
-      };
-    }
-    return resource;
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = resource.externalId ?? externalIdOf(resource.id);
+      if (resource.resourceTypeId === "managed-endpoint") {
+        const endMs = Date.now();
+        const analytics = await this.fetchAnalytics(
+          externalId,
+          endMs - 24 * 60 * 60 * 1000,
+          endMs,
+          false,
+        ).catch((): DmiAnalytics | null => null);
+        if (!analytics?.metrics) return resource;
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            __analytics__: JSON.stringify(analytics.metrics),
+          },
+        };
+      }
+      if (resource.resourceTypeId === "fine-tune") {
+        // https://docs.together.ai/reference/get-fine-tunes-id-events
+        // https://docs.together.ai/reference/get-fine-tunes-id-checkpoint
+        const id = encodeURIComponent(externalId);
+        const [events, checkpoints] = await Promise.all([
+          this.fetch<{ data?: FineTuneEvent[] }>(`/fine-tunes/${id}/events`).catch(
+            (): { data?: FineTuneEvent[] } => ({}),
+          ),
+          this.fetch<{ data?: FineTuneCheckpoint[] }>(`/fine-tunes/${id}/checkpoints`).catch(
+            (): { data?: FineTuneCheckpoint[] } => ({}),
+          ),
+        ]);
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            __events__: JSON.stringify(events.data ?? []),
+            __checkpoints__: JSON.stringify(checkpoints.data ?? []),
+          },
+        };
+      }
+      return resource;
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId).catch(
-      (): ResourceInstance | null => null,
-    );
-    if (!resource) return [];
-    const fields = resource.fields;
-    const stats: DashboardStat[] = [];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      ).catch((): ResourceInstance | null => null);
+      if (!resource) return [];
+      const fields = resource.fields;
+      const stats: DashboardStat[] = [];
 
-    switch (resourceTypeId) {
-      case "endpoint": {
-        const mapped = mapEndpointState(String(fields["state"] ?? ""));
-        stats.push({
-          label: "State",
-          value: mapped.label,
-          variant:
-            mapped.status === "healthy"
-              ? "status-healthy"
-              : mapped.status === "error"
-                ? "status-error"
-                : "default",
-        });
-        stats.push({
-          label: "Replicas",
-          value: `${fields["minReplicas"] ?? 0} – ${fields["maxReplicas"] ?? 0}`,
-        });
-        if (fields["hardware"]) {
-          stats.push({ label: "Hardware", value: String(fields["hardware"]) });
-        }
-        break;
-      }
-      case "fine-tune": {
-        const mapped = mapFineTuneStatus(String(fields["status"] ?? ""));
-        stats.push({
-          label: "Status",
-          value: mapped.label,
-          variant:
-            mapped.status === "healthy"
-              ? "status-healthy"
-              : mapped.status === "error"
-                ? "status-error"
-                : "default",
-        });
-        if (fields["tokenCount"] != null) {
-          stats.push({ label: "Tokens", value: formatNumber(Number(fields["tokenCount"])) });
-        }
-        if (fields["totalPrice"] != null) {
-          stats.push({ label: "Price", value: `$${Number(fields["totalPrice"]).toFixed(2)}` });
-        }
-        break;
-      }
-      case "batch": {
-        const mapped = mapBatchStatus(String(fields["status"] ?? ""));
-        stats.push({
-          label: "Status",
-          value: mapped.label,
-          variant:
-            mapped.status === "healthy"
-              ? "status-healthy"
-              : mapped.status === "error"
-                ? "status-error"
-                : "default",
-        });
-        if (fields["progress"] != null) {
-          stats.push({ label: "Progress", value: `${Number(fields["progress"]).toFixed(0)}%` });
-        }
-        break;
-      }
-      case "file": {
-        if (fields["bytes"] != null) {
-          stats.push({ label: "Size", value: formatBytes(Number(fields["bytes"])) });
-        }
-        if (fields["lineCount"] != null) {
-          stats.push({ label: "Lines", value: formatNumber(Number(fields["lineCount"])) });
-        }
-        break;
-      }
-      case "model": {
-        if (fields["contextLength"] != null) {
+      switch (resourceTypeId) {
+        case "endpoint": {
+          const mapped = mapEndpointState(String(fields["state"] ?? ""));
           stats.push({
-            label: "Context",
-            value: `${formatNumber(Number(fields["contextLength"]))} tokens`,
-          });
-        }
-        if (fields["inputPrice"] != null) {
-          stats.push({ label: "Input", value: `$${fields["inputPrice"]}/1M` });
-        }
-        if (fields["outputPrice"] != null) {
-          stats.push({ label: "Output", value: `$${fields["outputPrice"]}/1M` });
-        }
-        break;
-      }
-      case "hardware": {
-        if (fields["gpuType"]) {
-          stats.push({
-            label: "GPU",
-            value: `${fields["gpuCount"] ?? 1}× ${String(fields["gpuType"])}`,
-          });
-        }
-        if (fields["availability"]) {
-          const availability = String(fields["availability"]);
-          stats.push({
-            label: "Availability",
-            value: titleCase(availability),
-            variant: availability === "available" ? "status-healthy" : "status-degraded",
-          });
-        }
-        break;
-      }
-      case "evaluation": {
-        const mapped = mapEvaluationStatus(String(fields["status"] ?? ""));
-        stats.push({ label: "Status", value: mapped.label });
-        if (fields["type"]) stats.push({ label: "Type", value: titleCase(String(fields["type"])) });
-        break;
-      }
-      case "managed-endpoint": {
-        stats.push({ label: "Deployments", value: String(fields["deploymentCount"] ?? 0) });
-        const endMs = Date.now();
-        const analytics = await this.fetchAnalytics(
-          resource.externalId ?? externalIdOf(resourceId),
-          endMs - 24 * 60 * 60 * 1000,
-          endMs,
-          false,
-        ).catch((): DmiAnalytics | null => null);
-        const metrics = analytics?.metrics;
-        const total = decimal(metrics?.requestMetrics?.totalRequests);
-        if (total != null) stats.push({ label: "Requests (24h)", value: formatNumber(total) });
-        const errorRate = metrics?.errorMetrics?.errorRate;
-        if (errorRate != null) {
-          stats.push({
-            label: "Error Rate",
-            value: formatPercent(errorRate),
+            label: "State",
+            value: mapped.label,
             variant:
-              errorRate >= 5 ? "status-error" : errorRate > 0 ? "status-degraded" : "default",
+              mapped.status === "healthy"
+                ? "status-healthy"
+                : mapped.status === "error"
+                  ? "status-error"
+                  : "default",
           });
-        }
-        const p50 = metrics?.latencyMetrics?.latencyP50Ms;
-        if (p50 != null) stats.push({ label: "Latency p50", value: formatMs(p50) });
-        break;
-      }
-      case "gpu-cluster": {
-        const mapped = mapClusterStatus(String(fields["status"] ?? ""));
-        stats.push({
-          label: "Status",
-          value: mapped.label,
-          variant:
-            mapped.status === "healthy"
-              ? "status-healthy"
-              : mapped.status === "error" || mapped.status === "degraded"
-                ? "status-degraded"
-                : "default",
-        });
-        if (fields["numGpus"] != null) {
           stats.push({
-            label: "GPUs",
-            value: `${fields["numGpus"]}× ${gpuTypeLabel(String(fields["gpuType"] ?? ""))}`.trim(),
+            label: "Replicas",
+            value: `${fields["minReplicas"] ?? 0} – ${fields["maxReplicas"] ?? 0}`,
           });
+          if (fields["hardware"]) {
+            stats.push({ label: "Hardware", value: String(fields["hardware"]) });
+          }
+          break;
         }
-        if (fields["region"]) stats.push({ label: "Region", value: String(fields["region"]) });
-        break;
-      }
-      case "shared-volume": {
-        const mapped = mapVolumeStatus(String(fields["status"] ?? ""));
-        stats.push({ label: "Status", value: mapped.label });
-        if (fields["sizeTib"] != null) {
-          stats.push({ label: "Size", value: `${fields["sizeTib"]} TiB` });
+        case "fine-tune": {
+          const mapped = mapFineTuneStatus(String(fields["status"] ?? ""));
+          stats.push({
+            label: "Status",
+            value: mapped.label,
+            variant:
+              mapped.status === "healthy"
+                ? "status-healthy"
+                : mapped.status === "error"
+                  ? "status-error"
+                  : "default",
+          });
+          if (fields["tokenCount"] != null) {
+            stats.push({ label: "Tokens", value: formatNumber(Number(fields["tokenCount"])) });
+          }
+          if (fields["totalPrice"] != null) {
+            stats.push({ label: "Price", value: `$${Number(fields["totalPrice"]).toFixed(2)}` });
+          }
+          break;
         }
-        break;
+        case "batch": {
+          const mapped = mapBatchStatus(String(fields["status"] ?? ""));
+          stats.push({
+            label: "Status",
+            value: mapped.label,
+            variant:
+              mapped.status === "healthy"
+                ? "status-healthy"
+                : mapped.status === "error"
+                  ? "status-error"
+                  : "default",
+          });
+          if (fields["progress"] != null) {
+            stats.push({ label: "Progress", value: `${Number(fields["progress"]).toFixed(0)}%` });
+          }
+          break;
+        }
+        case "file": {
+          if (fields["bytes"] != null) {
+            stats.push({ label: "Size", value: formatBytes(Number(fields["bytes"])) });
+          }
+          if (fields["lineCount"] != null) {
+            stats.push({ label: "Lines", value: formatNumber(Number(fields["lineCount"])) });
+          }
+          break;
+        }
+        case "model": {
+          if (fields["contextLength"] != null) {
+            stats.push({
+              label: "Context",
+              value: `${formatNumber(Number(fields["contextLength"]))} tokens`,
+            });
+          }
+          if (fields["inputPrice"] != null) {
+            stats.push({ label: "Input", value: `$${fields["inputPrice"]}/1M` });
+          }
+          if (fields["outputPrice"] != null) {
+            stats.push({ label: "Output", value: `$${fields["outputPrice"]}/1M` });
+          }
+          break;
+        }
+        case "hardware": {
+          if (fields["gpuType"]) {
+            stats.push({
+              label: "GPU",
+              value: `${fields["gpuCount"] ?? 1}× ${String(fields["gpuType"])}`,
+            });
+          }
+          if (fields["availability"]) {
+            const availability = String(fields["availability"]);
+            stats.push({
+              label: "Availability",
+              value: titleCase(availability),
+              variant: availability === "available" ? "status-healthy" : "status-degraded",
+            });
+          }
+          break;
+        }
+        case "evaluation": {
+          const mapped = mapEvaluationStatus(String(fields["status"] ?? ""));
+          stats.push({ label: "Status", value: mapped.label });
+          if (fields["type"])
+            stats.push({ label: "Type", value: titleCase(String(fields["type"])) });
+          break;
+        }
+        case "managed-endpoint": {
+          stats.push({ label: "Deployments", value: String(fields["deploymentCount"] ?? 0) });
+          const endMs = Date.now();
+          const analytics = await this.fetchAnalytics(
+            resource.externalId ?? externalIdOf(resourceId),
+            endMs - 24 * 60 * 60 * 1000,
+            endMs,
+            false,
+          ).catch((): DmiAnalytics | null => null);
+          const metrics = analytics?.metrics;
+          const total = decimal(metrics?.requestMetrics?.totalRequests);
+          if (total != null) stats.push({ label: "Requests (24h)", value: formatNumber(total) });
+          const errorRate = metrics?.errorMetrics?.errorRate;
+          if (errorRate != null) {
+            stats.push({
+              label: "Error Rate",
+              value: formatPercent(errorRate),
+              variant:
+                errorRate >= 5 ? "status-error" : errorRate > 0 ? "status-degraded" : "default",
+            });
+          }
+          const p50 = metrics?.latencyMetrics?.latencyP50Ms;
+          if (p50 != null) stats.push({ label: "Latency p50", value: formatMs(p50) });
+          break;
+        }
+        case "gpu-cluster": {
+          const mapped = mapClusterStatus(String(fields["status"] ?? ""));
+          stats.push({
+            label: "Status",
+            value: mapped.label,
+            variant:
+              mapped.status === "healthy"
+                ? "status-healthy"
+                : mapped.status === "error" || mapped.status === "degraded"
+                  ? "status-degraded"
+                  : "default",
+          });
+          if (fields["numGpus"] != null) {
+            stats.push({
+              label: "GPUs",
+              value:
+                `${fields["numGpus"]}× ${gpuTypeLabel(String(fields["gpuType"] ?? ""))}`.trim(),
+            });
+          }
+          if (fields["region"]) stats.push({ label: "Region", value: String(fields["region"]) });
+          break;
+        }
+        case "shared-volume": {
+          const mapped = mapVolumeStatus(String(fields["status"] ?? ""));
+          stats.push({ label: "Status", value: mapped.label });
+          if (fields["sizeTib"] != null) {
+            stats.push({ label: "Size", value: `${fields["sizeTib"]} TiB` });
+          }
+          break;
+        }
+        default:
+          break;
       }
-      default:
-        break;
-    }
-    return stats;
+      return stats;
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -2711,62 +2750,64 @@ export class TogetherClient implements PluginClient {
    * bastion egress routing and the custom CA credential; every control-plane
    * call in this plugin still goes through the host and keeps both.
    */
-  async synthesizeSpeech(
+  synthesizeSpeech(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    if (typeId !== "model") {
-      throw new Error(`Together plugin: synthesizeSpeech not supported for type "${typeId}"`);
-    }
-    const requested = payload.modelId || externalIdOf(resourceId);
-    // The Speech tab shares one model picker between both halves, so a Whisper
-    // selection can arrive here. Fall back to a real TTS model rather than
-    // posting a transcription model to the synthesis route.
-    const modelId = TTS_MODELS.some((model) => model.id === requested)
-      ? requested
-      : DEFAULT_TTS_MODEL;
-    const voice = payload.voiceId || DEFAULT_TTS_VOICE;
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      if (typeId !== "model") {
+        throw new Error(`Together plugin: synthesizeSpeech not supported for type "${typeId}"`);
+      }
+      const requested = payload.modelId || externalIdOf(resourceId);
+      // The Speech tab shares one model picker between both halves, so a Whisper
+      // selection can arrive here. Fall back to a real TTS model rather than
+      // posting a transcription model to the synthesis route.
+      const modelId = TTS_MODELS.some((model) => model.id === requested)
+        ? requested
+        : DEFAULT_TTS_MODEL;
+      const voice = payload.voiceId || DEFAULT_TTS_VOICE;
 
-    const started = Date.now();
-    const response = await fetch(`${API_BASE}/audio/speech`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        input: payload.text,
-        voice,
-        response_format: "mp3",
-      }),
+      const started = Date.now();
+      const response = await fetch(`${API_BASE}/audio/speech`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          input: payload.text,
+          voice,
+          response_format: "mp3",
+        }),
+      });
+      // Branch on status BEFORE touching the body: errors come back as JSON
+      // where the success path is binary.
+      if (!response.ok) {
+        throw new Error(
+          `Together API error ${response.status} for /audio/speech: ${await response.text()}`,
+        );
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const elapsedMs = Date.now() - started;
+
+      return {
+        audioBase64: bytesToBase64(bytes),
+        mimeType: "audio/mpeg",
+        fileName: `together-${voice}-${Date.now()}.mp3`,
+        summary: [
+          `${formatNumber(payload.text.length)} characters`,
+          modelId,
+          voice,
+          `${(elapsedMs / 1000).toFixed(1)}s`,
+          `${(bytes.byteLength / 1024).toFixed(0)} KB mp3`,
+        ].join(" · "),
+        characters: payload.text.length,
+      };
     });
-    // Branch on status BEFORE touching the body: errors come back as JSON
-    // where the success path is binary.
-    if (!response.ok) {
-      throw new Error(
-        `Together API error ${response.status} for /audio/speech: ${await response.text()}`,
-      );
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const elapsedMs = Date.now() - started;
-
-    return {
-      audioBase64: bytesToBase64(bytes),
-      mimeType: "audio/mpeg",
-      fileName: `together-${voice}-${Date.now()}.mp3`,
-      summary: [
-        `${formatNumber(payload.text.length)} characters`,
-        modelId,
-        voice,
-        `${(elapsedMs / 1000).toFixed(1)}s`,
-        `${(bytes.byteLength / 1024).toFixed(0)} KB mp3`,
-      ].join(" · "),
-      characters: payload.text.length,
-    };
   }
 
   /**
@@ -2779,75 +2820,77 @@ export class TogetherClient implements PluginClient {
    * stringify it (`bodyForHostHttp` has no FormData branch). Same bastion/CA
    * caveat as the synthesis path above.
    */
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    if (typeId !== "model") {
-      throw new Error(`Together plugin: transcribeAudio not supported for type "${typeId}"`);
-    }
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      if (typeId !== "model") {
+        throw new Error(`Together plugin: transcribeAudio not supported for type "${typeId}"`);
+      }
 
-    // `payload.mimeType` is whatever MediaRecorder produced:
-    // `audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari. Forward it
-    // verbatim; Whisper accepts both and we must not transcode.
-    const bytes = base64ToBytes(payload.audioBase64);
-    const fileName = payload.fileName ?? `clip.${extensionForMime(payload.mimeType)}`;
+      // `payload.mimeType` is whatever MediaRecorder produced:
+      // `audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari. Forward it
+      // verbatim; Whisper accepts both and we must not transcode.
+      const bytes = base64ToBytes(payload.audioBase64);
+      const fileName = payload.fileName ?? `clip.${extensionForMime(payload.mimeType)}`;
 
-    const form = new FormData();
-    form.append("file", new Blob([bytes], { type: payload.mimeType }), fileName);
-    form.append("model", STT_MODEL);
-    form.append("response_format", "verbose_json");
-    form.append("timestamp_granularities", "word");
-    form.append("diarize", "true");
-    form.append(
-      "language",
-      payload.language && payload.language !== "auto" ? payload.language : "auto",
-    );
-
-    const started = Date.now();
-    const response = await fetch(`${API_BASE}/audio/transcriptions`, {
-      method: "POST",
-      // No Content-Type: `fetch` sets it along with the multipart boundary.
-      headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
-      body: form,
-    });
-    if (!response.ok) {
-      // A 413 comes back as text/html, not JSON, so read it as text either way.
-      throw new Error(
-        `Together API error ${response.status} for /audio/transcriptions: ${await response.text()}`,
+      const form = new FormData();
+      form.append("file", new Blob([bytes], { type: payload.mimeType }), fileName);
+      form.append("model", STT_MODEL);
+      form.append("response_format", "verbose_json");
+      form.append("timestamp_granularities", "word");
+      form.append("diarize", "true");
+      form.append(
+        "language",
+        payload.language && payload.language !== "auto" ? payload.language : "auto",
       );
-    }
-    const elapsedMs = Date.now() - started;
-    const data = (await response.json()) as TranscriptionResponse;
 
-    const words: TranscriptWord[] = (data.words ?? [])
-      .filter((word) => Boolean(word.word))
-      .map((word) => ({
-        text: word.word ?? "",
-        ...(word.start != null ? { start: word.start } : {}),
-        ...(word.end != null ? { end: word.end } : {}),
-        ...(word.speaker_id ? { speaker: word.speaker_id } : {}),
-      }));
+      const started = Date.now();
+      const response = await fetch(`${API_BASE}/audio/transcriptions`, {
+        method: "POST",
+        // No Content-Type: `fetch` sets it along with the multipart boundary.
+        headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
+        body: form,
+      });
+      if (!response.ok) {
+        // A 413 comes back as text/html, not JSON, so read it as text either way.
+        throw new Error(
+          `Together API error ${response.status} for /audio/transcriptions: ${await response.text()}`,
+        );
+      }
+      const elapsedMs = Date.now() - started;
+      const data = (await response.json()) as TranscriptionResponse;
 
-    const speakers = new Set(
-      (data.speaker_segments ?? []).map((segment) => segment.speaker_id ?? "").filter(Boolean),
-    );
-    const summaryParts = [STT_MODEL];
-    if (data.duration != null) summaryParts.push(`${data.duration.toFixed(1)}s audio`);
-    if (data.language) summaryParts.push(data.language);
-    if (speakers.size)
-      summaryParts.push(`${speakers.size} speaker${speakers.size === 1 ? "" : "s"}`);
-    summaryParts.push(`${(elapsedMs / 1000).toFixed(1)}s round-trip`);
+      const words: TranscriptWord[] = (data.words ?? [])
+        .filter((word) => Boolean(word.word))
+        .map((word) => ({
+          text: word.word ?? "",
+          ...(word.start != null ? { start: word.start } : {}),
+          ...(word.end != null ? { end: word.end } : {}),
+          ...(word.speaker_id ? { speaker: word.speaker_id } : {}),
+        }));
 
-    return {
-      text: data.text ?? "",
-      summary: summaryParts.join(" · "),
-      ...(data.language ? { language: data.language } : {}),
-      ...(data.duration != null ? { durationSeconds: data.duration } : {}),
-      ...(words.length ? { words } : {}),
-    };
+      const speakers = new Set(
+        (data.speaker_segments ?? []).map((segment) => segment.speaker_id ?? "").filter(Boolean),
+      );
+      const summaryParts = [STT_MODEL];
+      if (data.duration != null) summaryParts.push(`${data.duration.toFixed(1)}s audio`);
+      if (data.language) summaryParts.push(data.language);
+      if (speakers.size)
+        summaryParts.push(`${speakers.size} speaker${speakers.size === 1 ? "" : "s"}`);
+      summaryParts.push(`${(elapsedMs / 1000).toFixed(1)}s round-trip`);
+
+      return {
+        text: data.text ?? "",
+        summary: summaryParts.join(" · "),
+        ...(data.language ? { language: data.language } : {}),
+        ...(data.duration != null ? { durationSeconds: data.duration } : {}),
+        ...(words.length ? { words } : {}),
+      };
+    });
   }
 
   // -------------------------------------------------------------------------

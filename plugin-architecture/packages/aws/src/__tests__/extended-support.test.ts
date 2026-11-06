@@ -1,5 +1,5 @@
+import { resourceTypeDefinitionSchema, validate } from "@infrawrench/plugin-base/validation";
 import { describe, expect, it } from "vitest";
-import { resourceTypeDefinitionSchema } from "@infrawrench/plugin-base";
 import {
   EKS_EXTENDED_SUPPORT,
   RDS_EXTENDED_SUPPORT,
@@ -98,8 +98,8 @@ describe("declarations", () => {
       ElastiCacheClusterResourceType,
       OpenSearchDomainResourceType,
     ]) {
-      const result = resourceTypeDefinitionSchema.safeParse(type);
-      expect(result.success, `${type.id}: ${JSON.stringify(result.error?.issues)}`).toBe(true);
+      const result = validate(resourceTypeDefinitionSchema, type);
+      expect(result.success ? [] : result.issues, type.id).toEqual([]);
     }
   });
 

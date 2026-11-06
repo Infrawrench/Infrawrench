@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -140,7 +143,7 @@ export class ElasticCloudClient implements PluginClient {
   private readonly ctx: EcContext;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Elastic Cloud plugin: missing apiKey credential");
     const caCert = credentials["caCert"] ?? "";
@@ -172,39 +175,41 @@ export class ElasticCloudClient implements PluginClient {
     }
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "organization":
-        return this.listOrganizationRows(accountId);
-      case "deployment":
-        return this.scoped(async () =>
-          (await this.fetchDeployments()).map((d) => mapDeployment(accountId, d)),
-        );
-      case "project":
-        return this.listProjects(accountId);
-      case "traffic-filter":
-        return this.scoped(async () =>
-          (await this.fetchRulesets()).map((r) => mapTrafficFilter(accountId, r)),
-        );
-      case "serverless-traffic-filter":
-        return this.scoped(async () =>
-          (await this.fetchServerlessFilters()).map((t) =>
-            mapServerlessTrafficFilter(accountId, t),
-          ),
-        );
-      case "extension":
-        return this.scoped(async () => {
-          const res = await cloudApi<{ extensions?: EcExtension[] }>(
-            this.ctx,
-            "/api/v1/deployments/extensions",
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "organization":
+          return this.listOrganizationRows(accountId);
+        case "deployment":
+          return this.scoped(async () =>
+            (await this.fetchDeployments()).map((d) => mapDeployment(accountId, d)),
           );
-          return (res.extensions ?? []).map((e) => mapExtension(accountId, e));
-        });
-      case "budget":
-        return this.listBudgets(accountId);
-      default:
-        throw new Error(`Elastic Cloud plugin: unknown resource type "${typeId}"`);
-    }
+        case "project":
+          return this.listProjects(accountId);
+        case "traffic-filter":
+          return this.scoped(async () =>
+            (await this.fetchRulesets()).map((r) => mapTrafficFilter(accountId, r)),
+          );
+        case "serverless-traffic-filter":
+          return this.scoped(async () =>
+            (await this.fetchServerlessFilters()).map((t) =>
+              mapServerlessTrafficFilter(accountId, t),
+            ),
+          );
+        case "extension":
+          return this.scoped(async () => {
+            const res = await cloudApi<{ extensions?: EcExtension[] }>(
+              this.ctx,
+              "/api/v1/deployments/extensions",
+            );
+            return (res.extensions ?? []).map((e) => mapExtension(accountId, e));
+          });
+        case "budget":
+          return this.listBudgets(accountId);
+        default:
+          throw new Error(`Elastic Cloud plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private async listOrganizationRows(accountId: string): Promise<ResourceInstance[]> {
@@ -335,62 +340,64 @@ export class ElasticCloudClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "organization":
-        return this.getOrganization(accountId, id);
-      case "deployment":
-        return this.getDeployment(accountId, id);
-      case "project":
-        return this.getProject(accountId, id);
-      case "traffic-filter": {
-        const r = await cloudApi<EcTrafficRuleset>(
-          this.ctx,
-          `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`,
-          { query: { include_associations: true } },
-        );
-        const mapped = mapTrafficFilter(accountId, r);
-        const names = await this.instanceNames().catch(() => new Map<string, string>());
-        return {
-          ...mapped,
-          resolvedOutputs: {
-            ...mapped.resolvedOutputs,
-            [DEPLOYMENT_NAMES_KEY]: JSON.stringify(Object.fromEntries(names)),
-          },
-        };
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "organization":
+          return this.getOrganization(accountId, id);
+        case "deployment":
+          return this.getDeployment(accountId, id);
+        case "project":
+          return this.getProject(accountId, id);
+        case "traffic-filter": {
+          const r = await cloudApi<EcTrafficRuleset>(
+            this.ctx,
+            `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`,
+            { query: { include_associations: true } },
+          );
+          const mapped = mapTrafficFilter(accountId, r);
+          const names = await this.instanceNames().catch(() => new Map<string, string>());
+          return {
+            ...mapped,
+            resolvedOutputs: {
+              ...mapped.resolvedOutputs,
+              [DEPLOYMENT_NAMES_KEY]: JSON.stringify(Object.fromEntries(names)),
+            },
+          };
+        }
+        case "serverless-traffic-filter": {
+          const t = await cloudApi<EcServerlessTrafficFilter>(
+            this.ctx,
+            `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`,
+          );
+          return mapServerlessTrafficFilter(accountId, t);
+        }
+        case "extension": {
+          const e = await cloudApi<EcExtension>(
+            this.ctx,
+            `/api/v1/deployments/extensions/${encodeURIComponent(id)}`,
+            { query: { include_deployments: true } },
+          );
+          return mapExtension(accountId, e);
+        }
+        case "budget": {
+          const { orgId, budgetId } = parseBudgetExternalId(id);
+          const b = await billingApi<EcBudget>(
+            this.ctx,
+            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
+          );
+          const names = await this.instanceNames().catch(() => new Map<string, string>());
+          return mapBudget(accountId, orgId, b, names);
+        }
+        default:
+          throw new Error(`Elastic Cloud plugin: unknown resource type "${typeId}"`);
       }
-      case "serverless-traffic-filter": {
-        const t = await cloudApi<EcServerlessTrafficFilter>(
-          this.ctx,
-          `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`,
-        );
-        return mapServerlessTrafficFilter(accountId, t);
-      }
-      case "extension": {
-        const e = await cloudApi<EcExtension>(
-          this.ctx,
-          `/api/v1/deployments/extensions/${encodeURIComponent(id)}`,
-          { query: { include_deployments: true } },
-        );
-        return mapExtension(accountId, e);
-      }
-      case "budget": {
-        const { orgId, budgetId } = parseBudgetExternalId(id);
-        const b = await billingApi<EcBudget>(
-          this.ctx,
-          `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
-        );
-        const names = await this.instanceNames().catch(() => new Map<string, string>());
-        return mapBudget(accountId, orgId, b, names);
-      }
-      default:
-        throw new Error(`Elastic Cloud plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   private async getOrganization(accountId: string, orgId: string): Promise<ResourceInstance> {
@@ -453,102 +460,106 @@ export class ElasticCloudClient implements PluginClient {
     return mapProject(accountId, type, p, status?.phase);
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "project" && outputKey === "password") {
-      const stored = await this.services?.secrets?.getPlaintext(resourceId, "password");
-      if (stored) return stored;
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "project" && outputKey === "password") {
+        const stored = await this.services?.secrets?.getPlaintext(resourceId, "password");
+        if (stored) return stored;
+        throw new Error(
+          "Elastic Cloud only shows a project's admin password when the project is created or its credentials are reset. Use Reset credentials to issue a new one.",
+        );
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
       throw new Error(
-        "Elastic Cloud only shows a project's admin password when the project is created or its credentials are reset. Use Reset credentials to issue a new one.",
+        `Elastic Cloud plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
       );
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(
-      `Elastic Cloud plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics, costs, credits
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    switch (resourceTypeId) {
-      case "organization":
-        return [
-          { label: "Month to Date", value: usd(f["monthToDate"]) || "—" },
-          { label: "Hourly Rate", value: usd(f["hourlyRate"]) || "—" },
-        ];
-      case "deployment": {
-        const instances =
-          parseJson<
-            Array<{ memoryPressure?: number; diskUsedMb?: number; diskAvailableMb?: number }>
-          >(f["instancesJson"]) ?? [];
-        const pressure = Math.max(
-          -1,
-          ...instances.map((i) => (typeof i.memoryPressure === "number" ? i.memoryPressure : -1)),
-        );
-        const disk = Math.max(
-          -1,
-          ...instances.map((i) =>
-            i.diskAvailableMb && typeof i.diskUsedMb === "number"
-              ? Math.round((i.diskUsedMb / i.diskAvailableMb) * 100)
-              : -1,
-          ),
-        );
-        const healthy = f["healthy"] !== false;
-        return [
-          {
-            label: "Health",
-            value: healthy ? "Healthy" : "Unhealthy",
-            variant: healthy ? "status-healthy" : "status-error",
-          },
-          {
-            label: "JVM Memory Pressure",
-            value: pressure >= 0 ? `${pressure}%` : "—",
-            ...(pressure >= 75
-              ? { variant: "status-error" as const }
-              : pressure >= 60
-                ? { variant: "status-degraded" as const }
-                : {}),
-          },
-          { label: "Disk Used", value: disk >= 0 ? `${disk}%` : "—" },
-          { label: "Version", value: String(f["version"] ?? "—") },
-        ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      switch (resourceTypeId) {
+        case "organization":
+          return [
+            { label: "Month to Date", value: usd(f["monthToDate"]) || "—" },
+            { label: "Hourly Rate", value: usd(f["hourlyRate"]) || "—" },
+          ];
+        case "deployment": {
+          const instances =
+            parseJson<
+              Array<{ memoryPressure?: number; diskUsedMb?: number; diskAvailableMb?: number }>
+            >(f["instancesJson"]) ?? [];
+          const pressure = Math.max(
+            -1,
+            ...instances.map((i) => (typeof i.memoryPressure === "number" ? i.memoryPressure : -1)),
+          );
+          const disk = Math.max(
+            -1,
+            ...instances.map((i) =>
+              i.diskAvailableMb && typeof i.diskUsedMb === "number"
+                ? Math.round((i.diskUsedMb / i.diskAvailableMb) * 100)
+                : -1,
+            ),
+          );
+          const healthy = f["healthy"] !== false;
+          return [
+            {
+              label: "Health",
+              value: healthy ? "Healthy" : "Unhealthy",
+              variant: healthy ? "status-healthy" : "status-error",
+            },
+            {
+              label: "JVM Memory Pressure",
+              value: pressure >= 0 ? `${pressure}%` : "—",
+              ...(pressure >= 75
+                ? { variant: "status-error" as const }
+                : pressure >= 60
+                  ? { variant: "status-degraded" as const }
+                  : {}),
+            },
+            { label: "Disk Used", value: disk >= 0 ? `${disk}%` : "—" },
+            { label: "Version", value: String(f["version"] ?? "—") },
+          ];
+        }
+        case "project":
+          return [
+            { label: "Status", value: String(f["phase"] ?? "—") },
+            { label: "Type", value: String(f["projectType"] ?? "—") },
+            ...(f["searchPower"] !== undefined
+              ? [{ label: "Search Power", value: String(f["searchPower"]) }]
+              : []),
+          ];
+        case "budget":
+          return [
+            {
+              label: "Monthly",
+              value: f["amount"] !== undefined ? `${String(f["amount"])} ECU` : "—",
+            },
+            { label: "Active", value: f["active"] === false ? "No" : "Yes" },
+          ];
+        default:
+          return [];
       }
-      case "project":
-        return [
-          { label: "Status", value: String(f["phase"] ?? "—") },
-          { label: "Type", value: String(f["projectType"] ?? "—") },
-          ...(f["searchPower"] !== undefined
-            ? [{ label: "Search Power", value: String(f["searchPower"]) }]
-            : []),
-        ];
-      case "budget":
-        return [
-          {
-            label: "Monthly",
-            value: f["amount"] !== undefined ? `${String(f["amount"])} ECU` : "—",
-          },
-          { label: "Active", value: f["active"] === false ? "No" : "Yes" },
-        ];
-      default:
-        return [];
-    }
+    });
   }
 
   /** Organization for an instance: the one the project names, else the first that answers. */
@@ -571,38 +582,44 @@ export class ElasticCloudClient implements PluginClient {
     return [];
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const id = externalIdOf(resourceId);
-    const range = rangeOrDefault(timeRange, COST_METRICS_WINDOW_MS);
-    switch (resourceTypeId) {
-      case "organization":
-        return organizationCostSeries(this.ctx, id, range);
-      case "deployment":
-        return this.instanceCharts(id, "deployments", undefined, range);
-      case "project": {
-        const { type, id: projectId } = parseProjectExternalId(id);
-        const p = await cloudApi<EcProject>(
-          this.ctx,
-          `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`,
-        ).catch(() => undefined);
-        return this.instanceCharts(projectId, "projects", p?.metadata?.organization_id, range);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const range = rangeOrDefault(timeRange, COST_METRICS_WINDOW_MS);
+      switch (resourceTypeId) {
+        case "organization":
+          return organizationCostSeries(this.ctx, id, range);
+        case "deployment":
+          return this.instanceCharts(id, "deployments", undefined, range);
+        case "project": {
+          const { type, id: projectId } = parseProjectExternalId(id);
+          const p = await cloudApi<EcProject>(
+            this.ctx,
+            `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`,
+          ).catch(() => undefined);
+          return this.instanceCharts(projectId, "projects", p?.metadata?.organization_id, range);
+        }
+        default:
+          return [];
       }
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchElasticCostData(this.ctx, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchElasticCostData(this.ctx, range);
+    });
   }
 
-  async fetchCreditBalance(): Promise<CreditBalance[]> {
-    return fetchElasticCreditBalance(this.ctx);
+  fetchCreditBalance(): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      return fetchElasticCreditBalance(this.ctx);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -650,580 +667,611 @@ export class ElasticCloudClient implements PluginClient {
     return [...regions].sort();
   }
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "project": {
-        const regions = await this.serverlessRegions();
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "my-project" },
-            {
-              key: "projectType",
-              label: "Project type",
-              kind: "select",
-              required: true,
-              defaultValue: "elasticsearch",
-              options: PROJECT_TYPES.map((t) => ({
-                id: t,
-                label: PROJECT_TYPE_LABELS[t] ?? t,
-              })),
-            },
-            this.regionField(regions, "Where the project runs. It cannot be moved later."),
-            {
-              key: "optimizedFor",
-              label: "Optimized for",
-              kind: "select",
-              required: false,
-              defaultValue: "general_purpose",
-              showWhen: { fieldKey: "projectType", fieldValue: "elasticsearch" },
-              options: [
-                {
-                  id: "general_purpose",
-                  label: "General purpose",
-                  description: "Full-text search, sparse vectors and compressed dense vectors",
-                },
-                {
-                  id: "vector",
-                  label: "Vector",
-                  description: "Uncompressed, high-dimensional dense vectors",
-                },
-              ],
-            },
-            {
-              key: "productTier",
-              label: "Product tier",
-              kind: "select",
-              required: false,
-              defaultValue: "complete",
-              showWhen: { fieldKey: "projectType", fieldValue: "observability" },
-              options: [
-                { id: "complete", label: "Complete" },
-                { id: "logs_essentials", label: "Logs Essentials" },
-              ],
-            },
-          ],
-        };
-      }
-      case "traffic-filter": {
-        const [regions, deployments] = await Promise.all([
-          this.hostedRegions(),
-          cloudApi<{ deployments?: EcDeploymentListing[] }>(this.ctx, "/api/v1/deployments")
-            .then((r) => r.deployments ?? [])
-            .catch(() => [] as EcDeploymentListing[]),
-        ]);
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "office-ips" },
-            {
-              key: "region",
-              label: "Region",
-              kind: "select",
-              required: true,
-              description:
-                "A ruleset only applies to deployments in its own region. The list shows the regions your deployments run in.",
-              options: regions.map((r) => ({ id: r, label: r })),
-            },
-            {
-              key: "sources",
-              label: "Allowed IP addresses or CIDR ranges",
-              kind: "string-list",
-              required: true,
-              placeholder: "203.0.113.0/24",
-              addLabel: "Add source",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "includeByDefault",
-              label: "Apply to new deployments",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "No" },
-                {
-                  id: "true",
-                  label: "Yes",
-                  description: "New deployments in this region get it automatically",
-                },
-              ],
-            },
-            {
-              key: "deploymentIds",
-              label: "Apply to deployments",
-              kind: "policy-picker",
-              required: false,
-              description: "Only deployments in the selected region can use the filter.",
-              policies: deployments
-                .filter((d) => d.id)
-                .map((d) => ({
-                  id: d.id!,
-                  label: d.name ?? d.id!,
-                  category: d.resources?.find((r) => r.region)?.region ?? "Deployments",
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "project": {
+          const regions = await this.serverlessRegions();
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "my-project",
+              },
+              {
+                key: "projectType",
+                label: "Project type",
+                kind: "select",
+                required: true,
+                defaultValue: "elasticsearch",
+                options: PROJECT_TYPES.map((t) => ({
+                  id: t,
+                  label: PROJECT_TYPE_LABELS[t] ?? t,
                 })),
-            },
-          ],
-        };
-      }
-      case "serverless-traffic-filter": {
-        const regions = await this.serverlessRegions();
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "office-ips" },
-            this.regionField(regions, "A filter only applies to projects in its own region."),
-            {
-              key: "sources",
-              label: "Allowed IP addresses or CIDR ranges",
-              kind: "string-list",
-              required: true,
-              placeholder: "203.0.113.0/24",
-              addLabel: "Add source",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "includeByDefault",
-              label: "Apply to new projects",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "No" },
-                { id: "true", label: "Yes" },
-              ],
-            },
-          ],
-        };
-      }
-      case "extension":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "my-synonyms",
-              description: "Letters, digits, dots, dashes and underscores only.",
-            },
-            {
-              key: "extensionType",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "bundle",
-              options: [
-                {
-                  id: "bundle",
-                  label: "Bundle",
-                  description: "Scripts, dictionaries or synonym files",
-                },
-                { id: "plugin", label: "Plugin", description: "A compiled Elasticsearch plugin" },
-              ],
-            },
-            {
-              key: "version",
-              label: "Elasticsearch version",
-              kind: "text",
-              required: true,
-              placeholder: "8.*",
-              description:
-                "The exact version for plugins (8.15.0); bundles accept a wildcard (8.*).",
-            },
-            {
-              key: "downloadUrl",
-              label: "Download URL",
-              kind: "text",
-              required: true,
-              placeholder: "https://example.com/my-bundle.zip",
-              description: "A public URL Elastic Cloud downloads the ZIP archive from.",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case "budget": {
-        const [orgs, names] = await Promise.all([
-          listOrganizations(this.ctx),
-          this.instanceNames().catch(() => new Map<string, string>()),
-        ]);
-        return {
-          fields: [
-            ...(orgs.length > 1
-              ? [
+              },
+              this.regionField(regions, "Where the project runs. It cannot be moved later."),
+              {
+                key: "optimizedFor",
+                label: "Optimized for",
+                kind: "select",
+                required: false,
+                defaultValue: "general_purpose",
+                showWhen: { fieldKey: "projectType", fieldValue: "elasticsearch" },
+                options: [
                   {
-                    key: "organizationId",
-                    label: "Organization",
-                    kind: "select" as const,
-                    required: true,
-                    defaultValue: orgs[0]?.id ?? "",
-                    options: orgs.map((o) => ({ id: o.id!, label: o.name ?? o.id! })),
+                    id: "general_purpose",
+                    label: "General purpose",
+                    description: "Full-text search, sparse vectors and compressed dense vectors",
                   },
-                ]
-              : [
                   {
-                    key: "organizationId",
-                    label: "Organization",
-                    kind: "text" as const,
-                    required: true,
-                    hidden: true,
-                    defaultValue: orgs[0]?.id ?? "",
+                    id: "vector",
+                    label: "Vector",
+                    description: "Uncompressed, high-dimensional dense vectors",
                   },
-                ]),
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: false,
-              placeholder: "Production",
-            },
-            {
-              key: "amount",
-              label: "Monthly amount (ECU)",
-              kind: "number",
-              required: true,
-              minValue: 1,
-              description: "One ECU has a nominal value of $1.00.",
-            },
-            {
-              key: "scope",
-              label: "Applies to",
-              kind: "select",
-              required: true,
-              defaultValue: "organization",
-              options: [
-                { id: "organization", label: "The whole organization" },
-                ...[...names.entries()]
-                  .sort((a, b) => a[1].localeCompare(b[1]))
-                  .map(([id, name]) => ({ id, label: name })),
-              ],
-            },
-            {
-              key: "alertThresholds",
-              label: "Alert at (% of budget)",
-              kind: "string-list",
-              required: false,
-              defaultValue: "50,80,100",
-              addLabel: "Add threshold",
-            },
-            {
-              key: "recipients",
-              label: "Who gets alerts",
-              kind: "policy-picker",
-              required: false,
-              description:
-                "Organization and billing admins are notified when nothing is picked. Resource roles only apply to deployment and project budgets.",
-              policies: RECIPIENT_GROUPS,
-            },
-          ],
-        };
+                ],
+              },
+              {
+                key: "productTier",
+                label: "Product tier",
+                kind: "select",
+                required: false,
+                defaultValue: "complete",
+                showWhen: { fieldKey: "projectType", fieldValue: "observability" },
+                options: [
+                  { id: "complete", label: "Complete" },
+                  { id: "logs_essentials", label: "Logs Essentials" },
+                ],
+              },
+            ],
+          };
+        }
+        case "traffic-filter": {
+          const [regions, deployments] = await Promise.all([
+            this.hostedRegions(),
+            cloudApi<{ deployments?: EcDeploymentListing[] }>(this.ctx, "/api/v1/deployments")
+              .then((r) => r.deployments ?? [])
+              .catch(() => [] as EcDeploymentListing[]),
+          ]);
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "office-ips",
+              },
+              {
+                key: "region",
+                label: "Region",
+                kind: "select",
+                required: true,
+                description:
+                  "A ruleset only applies to deployments in its own region. The list shows the regions your deployments run in.",
+                options: regions.map((r) => ({ id: r, label: r })),
+              },
+              {
+                key: "sources",
+                label: "Allowed IP addresses or CIDR ranges",
+                kind: "string-list",
+                required: true,
+                placeholder: "203.0.113.0/24",
+                addLabel: "Add source",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "includeByDefault",
+                label: "Apply to new deployments",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "No" },
+                  {
+                    id: "true",
+                    label: "Yes",
+                    description: "New deployments in this region get it automatically",
+                  },
+                ],
+              },
+              {
+                key: "deploymentIds",
+                label: "Apply to deployments",
+                kind: "policy-picker",
+                required: false,
+                description: "Only deployments in the selected region can use the filter.",
+                policies: deployments
+                  .filter((d) => d.id)
+                  .map((d) => ({
+                    id: d.id!,
+                    label: d.name ?? d.id!,
+                    category: d.resources?.find((r) => r.region)?.region ?? "Deployments",
+                  })),
+              },
+            ],
+          };
+        }
+        case "serverless-traffic-filter": {
+          const regions = await this.serverlessRegions();
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "office-ips",
+              },
+              this.regionField(regions, "A filter only applies to projects in its own region."),
+              {
+                key: "sources",
+                label: "Allowed IP addresses or CIDR ranges",
+                kind: "string-list",
+                required: true,
+                placeholder: "203.0.113.0/24",
+                addLabel: "Add source",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "includeByDefault",
+                label: "Apply to new projects",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "No" },
+                  { id: "true", label: "Yes" },
+                ],
+              },
+            ],
+          };
+        }
+        case "extension":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "my-synonyms",
+                description: "Letters, digits, dots, dashes and underscores only.",
+              },
+              {
+                key: "extensionType",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "bundle",
+                options: [
+                  {
+                    id: "bundle",
+                    label: "Bundle",
+                    description: "Scripts, dictionaries or synonym files",
+                  },
+                  { id: "plugin", label: "Plugin", description: "A compiled Elasticsearch plugin" },
+                ],
+              },
+              {
+                key: "version",
+                label: "Elasticsearch version",
+                kind: "text",
+                required: true,
+                placeholder: "8.*",
+                description:
+                  "The exact version for plugins (8.15.0); bundles accept a wildcard (8.*).",
+              },
+              {
+                key: "downloadUrl",
+                label: "Download URL",
+                kind: "text",
+                required: true,
+                placeholder: "https://example.com/my-bundle.zip",
+                description: "A public URL Elastic Cloud downloads the ZIP archive from.",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case "budget": {
+          const [orgs, names] = await Promise.all([
+            listOrganizations(this.ctx),
+            this.instanceNames().catch(() => new Map<string, string>()),
+          ]);
+          return {
+            fields: [
+              ...(orgs.length > 1
+                ? [
+                    {
+                      key: "organizationId",
+                      label: "Organization",
+                      kind: "select" as const,
+                      required: true,
+                      defaultValue: orgs[0]?.id ?? "",
+                      options: orgs.map((o) => ({ id: o.id!, label: o.name ?? o.id! })),
+                    },
+                  ]
+                : [
+                    {
+                      key: "organizationId",
+                      label: "Organization",
+                      kind: "text" as const,
+                      required: true,
+                      hidden: true,
+                      defaultValue: orgs[0]?.id ?? "",
+                    },
+                  ]),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: false,
+                placeholder: "Production",
+              },
+              {
+                key: "amount",
+                label: "Monthly amount (ECU)",
+                kind: "number",
+                required: true,
+                minValue: 1,
+                description: "One ECU has a nominal value of $1.00.",
+              },
+              {
+                key: "scope",
+                label: "Applies to",
+                kind: "select",
+                required: true,
+                defaultValue: "organization",
+                options: [
+                  { id: "organization", label: "The whole organization" },
+                  ...[...names.entries()]
+                    .sort((a, b) => a[1].localeCompare(b[1]))
+                    .map(([id, name]) => ({ id, label: name })),
+                ],
+              },
+              {
+                key: "alertThresholds",
+                label: "Alert at (% of budget)",
+                kind: "string-list",
+                required: false,
+                defaultValue: "50,80,100",
+                addLabel: "Add threshold",
+              },
+              {
+                key: "recipients",
+                label: "Who gets alerts",
+                kind: "policy-picker",
+                required: false,
+                description:
+                  "Organization and billing admins are notified when nothing is picked. Resource roles only apply to deployment and project budgets.",
+                policies: RECIPIENT_GROUPS,
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`Elastic Cloud plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      default:
-        throw new Error(`Elastic Cloud plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "project": {
-        const type = (fields["projectType"] || "elasticsearch") as ProjectType;
-        if (!PROJECT_TYPES.includes(type)) throw new Error(`Unknown project type "${type}"`);
-        const body: Record<string, unknown> = {
-          name: (fields["name"] ?? "").trim(),
-          region_id: fields["region"],
-        };
-        if (type === "elasticsearch" && fields["optimizedFor"]) {
-          body["optimized_for"] = fields["optimizedFor"];
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "project": {
+          const type = (fields["projectType"] || "elasticsearch") as ProjectType;
+          if (!PROJECT_TYPES.includes(type)) throw new Error(`Unknown project type "${type}"`);
+          const body: Record<string, unknown> = {
+            name: (fields["name"] ?? "").trim(),
+            region_id: fields["region"],
+          };
+          if (type === "elasticsearch" && fields["optimizedFor"]) {
+            body["optimized_for"] = fields["optimizedFor"];
+          }
+          if (type === "observability" && fields["productTier"]) {
+            body["product_tier"] = fields["productTier"];
+          }
+          const created = await cloudApi<
+            EcProject & { credentials?: { username?: string; password?: string } }
+          >(this.ctx, `/api/v1/serverless/projects/${type}`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+          const resource = mapProject(accountId, type, created, "initializing");
+          if (created.credentials?.password) {
+            await this.services?.secrets?.setPlaintext?.(
+              resource.id,
+              "password",
+              created.credentials.password,
+            );
+          }
+          return resource;
         }
-        if (type === "observability" && fields["productTier"]) {
-          body["product_tier"] = fields["productTier"];
-        }
-        const created = await cloudApi<
-          EcProject & { credentials?: { username?: string; password?: string } }
-        >(this.ctx, `/api/v1/serverless/projects/${type}`, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        const resource = mapProject(accountId, type, created, "initializing");
-        if (created.credentials?.password) {
-          await this.services?.secrets?.setPlaintext?.(
-            resource.id,
-            "password",
-            created.credentials.password,
+        case "traffic-filter": {
+          const sources = splitList(fields["sources"]);
+          const res = await cloudApi<{ id?: string }>(
+            this.ctx,
+            "/api/v1/deployments/traffic-filter/rulesets",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                name: (fields["name"] ?? "").trim(),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+                type: "ip",
+                region: fields["region"],
+                include_by_default: fields["includeByDefault"] === "true",
+                rules: sourcesToRules(sources),
+              }),
+            },
+          );
+          const rulesetId = res.id ?? "";
+          const deploymentIds = parseJson<string[]>(fields["deploymentIds"]) ?? [];
+          for (const d of deploymentIds) {
+            await this.associate(rulesetId, d);
+          }
+          return runPluginEffect(
+            this.getResource(
+              "traffic-filter",
+              `${accountId}:traffic-filter:${rulesetId}`,
+              accountId,
+            ),
           );
         }
-        return resource;
-      }
-      case "traffic-filter": {
-        const sources = splitList(fields["sources"]);
-        const res = await cloudApi<{ id?: string }>(
-          this.ctx,
-          "/api/v1/deployments/traffic-filter/rulesets",
-          {
+        case "serverless-traffic-filter": {
+          const created = await cloudApi<EcServerlessTrafficFilter>(
+            this.ctx,
+            "/api/v1/serverless/traffic-filters",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                name: (fields["name"] ?? "").trim(),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+                type: "ip",
+                region: fields["region"],
+                include_by_default: fields["includeByDefault"] === "true",
+                rules: sourcesToRules(splitList(fields["sources"])),
+              }),
+            },
+          );
+          return mapServerlessTrafficFilter(accountId, created);
+        }
+        case "extension": {
+          const e = await cloudApi<EcExtension>(this.ctx, "/api/v1/deployments/extensions", {
             method: "POST",
             body: JSON.stringify({
               name: (fields["name"] ?? "").trim(),
+              extension_type: fields["extensionType"] || "bundle",
+              version: (fields["version"] ?? "").trim(),
+              download_url: (fields["downloadUrl"] ?? "").trim(),
               ...(fields["description"] ? { description: fields["description"] } : {}),
-              type: "ip",
-              region: fields["region"],
-              include_by_default: fields["includeByDefault"] === "true",
-              rules: sourcesToRules(sources),
             }),
-          },
-        );
-        const rulesetId = res.id ?? "";
-        const deploymentIds = parseJson<string[]>(fields["deploymentIds"]) ?? [];
-        for (const d of deploymentIds) {
-          await this.associate(rulesetId, d);
+          });
+          return mapExtension(accountId, e);
         }
-        return this.getResource(
-          "traffic-filter",
-          `${accountId}:traffic-filter:${rulesetId}`,
-          accountId,
-        );
-      }
-      case "serverless-traffic-filter": {
-        const created = await cloudApi<EcServerlessTrafficFilter>(
-          this.ctx,
-          "/api/v1/serverless/traffic-filters",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              name: (fields["name"] ?? "").trim(),
-              ...(fields["description"] ? { description: fields["description"] } : {}),
-              type: "ip",
-              region: fields["region"],
-              include_by_default: fields["includeByDefault"] === "true",
-              rules: sourcesToRules(splitList(fields["sources"])),
-            }),
-          },
-        );
-        return mapServerlessTrafficFilter(accountId, created);
-      }
-      case "extension": {
-        const e = await cloudApi<EcExtension>(this.ctx, "/api/v1/deployments/extensions", {
-          method: "POST",
-          body: JSON.stringify({
-            name: (fields["name"] ?? "").trim(),
-            extension_type: fields["extensionType"] || "bundle",
-            version: (fields["version"] ?? "").trim(),
-            download_url: (fields["downloadUrl"] ?? "").trim(),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-          }),
-        });
-        return mapExtension(accountId, e);
-      }
-      case "budget": {
-        const orgId = fields["organizationId"] || (await listOrganizations(this.ctx))[0]?.id;
-        if (!orgId) throw new Error("This API key cannot see an Elastic Cloud organization.");
-        const scope = fields["scope"] || "organization";
-        const recipients = parseJson<string[]>(fields["recipients"]) ?? [];
-        const body = {
-          ...(fields["name"] ? { name: fields["name"].trim() } : {}),
-          amount: Math.round(Number(fields["amount"])),
-          period: "monthly",
-          active: true,
-          scope_type: scope === "organization" ? "organization" : "cloud_resource",
-          scope_values: scope === "organization" ? [orgId] : [scope],
-          alerts: thresholdsToAlerts(fields["alertThresholds"]),
-          ...(recipients.length > 0 ? { recipient_group: recipients } : {}),
-        };
-        if (!Number.isFinite(body.amount) || body.amount <= 0) {
-          throw new Error("Enter a monthly amount greater than zero.");
+        case "budget": {
+          const orgId = fields["organizationId"] || (await listOrganizations(this.ctx))[0]?.id;
+          if (!orgId) throw new Error("This API key cannot see an Elastic Cloud organization.");
+          const scope = fields["scope"] || "organization";
+          const recipients = parseJson<string[]>(fields["recipients"]) ?? [];
+          const body = {
+            ...(fields["name"] ? { name: fields["name"].trim() } : {}),
+            amount: Math.round(Number(fields["amount"])),
+            period: "monthly",
+            active: true,
+            scope_type: scope === "organization" ? "organization" : "cloud_resource",
+            scope_values: scope === "organization" ? [orgId] : [scope],
+            alerts: thresholdsToAlerts(fields["alertThresholds"]),
+            ...(recipients.length > 0 ? { recipient_group: recipients } : {}),
+          };
+          if (!Number.isFinite(body.amount) || body.amount <= 0) {
+            throw new Error("Enter a monthly amount greater than zero.");
+          }
+          const res = await billingApi<{ id?: number }>(
+            this.ctx,
+            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budget`,
+            { method: "POST", body: JSON.stringify(body) },
+          );
+          return runPluginEffect(
+            this.getResource(
+              "budget",
+              `${accountId}:budget:${orgId}/${String(res.id ?? "")}`,
+              accountId,
+            ),
+          );
         }
-        const res = await billingApi<{ id?: number }>(
-          this.ctx,
-          `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budget`,
-          { method: "POST", body: JSON.stringify(body) },
-        );
-        return this.getResource(
-          "budget",
-          `${accountId}:budget:${orgId}/${String(res.id ?? "")}`,
-          accountId,
-        );
+        default:
+          throw new Error(`Elastic Cloud plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      default:
-        throw new Error(`Elastic Cloud plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Update
   // -------------------------------------------------------------------------
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "deployment":
-        await this.updateDeployment(id, fields);
-        return this.getResource("deployment", resourceId, accountId);
-      case "project": {
-        const { type, id: projectId } = parseProjectExternalId(id);
-        const path = `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`;
-        const body: Record<string, unknown> = {};
-        if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
-        if ("searchPower" in fields && fields["searchPower"] !== "") {
-          if (type !== "elasticsearch" && type !== "vectordb") {
-            throw new Error(
-              "Search power only applies to Elasticsearch and Vector Database projects.",
-            );
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "deployment":
+          await this.updateDeployment(id, fields);
+          return runPluginEffect(this.getResource("deployment", resourceId, accountId));
+        case "project": {
+          const { type, id: projectId } = parseProjectExternalId(id);
+          const path = `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`;
+          const body: Record<string, unknown> = {};
+          if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
+          if ("searchPower" in fields && fields["searchPower"] !== "") {
+            if (type !== "elasticsearch" && type !== "vectordb") {
+              throw new Error(
+                "Search power only applies to Elasticsearch and Vector Database projects.",
+              );
+            }
+            const power = Math.round(Number(fields["searchPower"]));
+            if (!Number.isFinite(power) || power < 28 || power > 3000) {
+              throw new Error("Search power must be between 28 and 3000.");
+            }
+            body["search_lake"] = { search_power: power };
           }
-          const power = Math.round(Number(fields["searchPower"]));
-          if (!Number.isFinite(power) || power < 28 || power > 3000) {
-            throw new Error("Search power must be between 28 and 3000.");
+          if ("tags" in fields) {
+            const current = await cloudApi<EcProject>(this.ctx, path);
+            const next = new Map(parseTags(fields["tags"]).map((t) => [t.key, t.value]));
+            const patch: Record<string, string | null> = {};
+            for (const key of Object.keys(current.metadata?.tags ?? {})) {
+              if (!next.has(key)) patch[key] = null;
+            }
+            for (const [k, v] of next) patch[k] = v || null;
+            if (Object.keys(patch).length > 0) body["metadata"] = { tags: patch };
           }
-          body["search_lake"] = { search_power: power };
-        }
-        if ("tags" in fields) {
-          const current = await cloudApi<EcProject>(this.ctx, path);
-          const next = new Map(parseTags(fields["tags"]).map((t) => [t.key, t.value]));
-          const patch: Record<string, string | null> = {};
-          for (const key of Object.keys(current.metadata?.tags ?? {})) {
-            if (!next.has(key)) patch[key] = null;
+          if (Object.keys(body).length > 0) {
+            await cloudApi<unknown>(this.ctx, path, {
+              method: "PATCH",
+              body: JSON.stringify(body),
+            });
           }
-          for (const [k, v] of next) patch[k] = v || null;
-          if (Object.keys(patch).length > 0) body["metadata"] = { tags: patch };
+          return runPluginEffect(this.getResource("project", resourceId, accountId));
         }
-        if (Object.keys(body).length > 0) {
-          await cloudApi<unknown>(this.ctx, path, { method: "PATCH", body: JSON.stringify(body) });
-        }
-        return this.getResource("project", resourceId, accountId);
-      }
-      case "traffic-filter": {
-        const path = `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`;
-        const current = await cloudApi<EcTrafficRuleset>(this.ctx, path);
-        let rules = current.rules ?? [];
-        if ("sources" in fields) {
-          if (!SOURCE_TYPES.has(current.type ?? "ip")) {
-            throw new Error(
-              "This filter's rules are private endpoint or remote cluster rules; change them in the Elastic Cloud console.",
-            );
+        case "traffic-filter": {
+          const path = `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`;
+          const current = await cloudApi<EcTrafficRuleset>(this.ctx, path);
+          let rules = current.rules ?? [];
+          if ("sources" in fields) {
+            if (!SOURCE_TYPES.has(current.type ?? "ip")) {
+              throw new Error(
+                "This filter's rules are private endpoint or remote cluster rules; change them in the Elastic Cloud console.",
+              );
+            }
+            rules = sourcesToRules(splitList(fields["sources"]), rules).map((r) => ({
+              ...r,
+            }));
           }
-          rules = sourcesToRules(splitList(fields["sources"]), rules).map((r) => ({
-            ...r,
-          }));
+          await cloudApi<unknown>(this.ctx, path, {
+            method: "PUT",
+            body: JSON.stringify({
+              name: "name" in fields ? (fields["name"] ?? "").trim() : current.name,
+              description: "description" in fields ? fields["description"] : current.description,
+              type: current.type,
+              region: current.region,
+              include_by_default:
+                "includeByDefault" in fields
+                  ? fields["includeByDefault"] === "true"
+                  : (current.include_by_default ?? false),
+              rules: rules.map(({ id: _id, ...rest }) => rest),
+            }),
+          });
+          return runPluginEffect(this.getResource("traffic-filter", resourceId, accountId));
         }
-        await cloudApi<unknown>(this.ctx, path, {
-          method: "PUT",
-          body: JSON.stringify({
-            name: "name" in fields ? (fields["name"] ?? "").trim() : current.name,
-            description: "description" in fields ? fields["description"] : current.description,
-            type: current.type,
-            region: current.region,
-            include_by_default:
-              "includeByDefault" in fields
-                ? fields["includeByDefault"] === "true"
-                : (current.include_by_default ?? false),
-            rules: rules.map(({ id: _id, ...rest }) => rest),
-          }),
-        });
-        return this.getResource("traffic-filter", resourceId, accountId);
-      }
-      case "serverless-traffic-filter": {
-        const path = `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`;
-        const body: Record<string, unknown> = {};
-        if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
-        if ("description" in fields) body["description"] = fields["description"] ?? "";
-        if ("includeByDefault" in fields)
-          body["include_by_default"] = fields["includeByDefault"] === "true";
-        if ("sources" in fields) {
-          const current = await cloudApi<EcServerlessTrafficFilter>(this.ctx, path);
-          if (current.type === "private_endpoint") {
-            throw new Error(
-              "Azure Private Link rules are not source lists; change them in the Elastic Cloud console.",
-            );
+        case "serverless-traffic-filter": {
+          const path = `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`;
+          const body: Record<string, unknown> = {};
+          if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
+          if ("description" in fields) body["description"] = fields["description"] ?? "";
+          if ("includeByDefault" in fields)
+            body["include_by_default"] = fields["includeByDefault"] === "true";
+          if ("sources" in fields) {
+            const current = await cloudApi<EcServerlessTrafficFilter>(this.ctx, path);
+            if (current.type === "private_endpoint") {
+              throw new Error(
+                "Azure Private Link rules are not source lists; change them in the Elastic Cloud console.",
+              );
+            }
+            body["rules"] = sourcesToRules(splitList(fields["sources"]), current.rules ?? []);
           }
-          body["rules"] = sourcesToRules(splitList(fields["sources"]), current.rules ?? []);
+          const t = await cloudApi<EcServerlessTrafficFilter>(this.ctx, path, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+          return t?.id
+            ? mapServerlessTrafficFilter(accountId, t)
+            : runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        const t = await cloudApi<EcServerlessTrafficFilter>(this.ctx, path, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-        });
-        return t?.id
-          ? mapServerlessTrafficFilter(accountId, t)
-          : this.getResource(typeId, resourceId, accountId);
-      }
-      case "extension": {
-        const path = `/api/v1/deployments/extensions/${encodeURIComponent(id)}`;
-        const current = await cloudApi<EcExtension>(this.ctx, path);
-        const e = await cloudApi<EcExtension>(this.ctx, path, {
-          method: "POST",
-          body: JSON.stringify({
-            name: "name" in fields ? (fields["name"] ?? "").trim() : current.name,
-            description: "description" in fields ? fields["description"] : current.description,
-            version: "version" in fields ? (fields["version"] ?? "").trim() : current.version,
-            extension_type: current.extension_type,
-            ...(("downloadUrl" in fields ? fields["downloadUrl"] : current.download_url)
-              ? {
-                  download_url:
-                    "downloadUrl" in fields ? fields["downloadUrl"] : current.download_url,
-                }
-              : {}),
-          }),
-        });
-        return mapExtension(accountId, e);
-      }
-      case "budget": {
-        const { orgId, budgetId } = parseBudgetExternalId(id);
-        const current = await billingApi<EcBudget>(
-          this.ctx,
-          `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
-        );
-        const amount = "amount" in fields ? Math.round(Number(fields["amount"])) : current.amount;
-        if (!Number.isFinite(amount) || (amount ?? 0) <= 0) {
-          throw new Error("Enter a monthly amount greater than zero.");
-        }
-        const keptAmountAlerts = (current.alerts ?? [])
-          .filter((a) => a.threshold_type === "amount")
-          .map((a) => ({
-            operator: a.operator,
-            threshold: a.threshold,
-            threshold_type: a.threshold_type,
-          }));
-        const alerts =
-          "alertThresholds" in fields
-            ? [...thresholdsToAlerts(fields["alertThresholds"]), ...keptAmountAlerts]
-            : (current.alerts ?? []).map((a) => ({
-                operator: a.operator,
-                threshold: a.threshold,
-                threshold_type: a.threshold_type,
-              }));
-        await billingApi<unknown>(
-          this.ctx,
-          `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budget/${encodeURIComponent(budgetId)}`,
-          {
+        case "extension": {
+          const path = `/api/v1/deployments/extensions/${encodeURIComponent(id)}`;
+          const current = await cloudApi<EcExtension>(this.ctx, path);
+          const e = await cloudApi<EcExtension>(this.ctx, path, {
             method: "POST",
             body: JSON.stringify({
-              ...("name" in fields
-                ? fields["name"]
-                  ? { name: fields["name"].trim() }
-                  : {}
-                : current.name
-                  ? { name: current.name }
-                  : {}),
-              amount,
-              period: current.period ?? "monthly",
-              active: "active" in fields ? fields["active"] === "true" : (current.active ?? true),
-              scope_type: current.scope_type ?? "organization",
-              scope_values: current.scope_values ?? [orgId],
-              alerts,
-              ...(current.recipient_group?.length
-                ? { recipient_group: current.recipient_group }
+              name: "name" in fields ? (fields["name"] ?? "").trim() : current.name,
+              description: "description" in fields ? fields["description"] : current.description,
+              version: "version" in fields ? (fields["version"] ?? "").trim() : current.version,
+              extension_type: current.extension_type,
+              ...(("downloadUrl" in fields ? fields["downloadUrl"] : current.download_url)
+                ? {
+                    download_url:
+                      "downloadUrl" in fields ? fields["downloadUrl"] : current.download_url,
+                  }
                 : {}),
             }),
-          },
-        );
-        return this.getResource("budget", resourceId, accountId);
+          });
+          return mapExtension(accountId, e);
+        }
+        case "budget": {
+          const { orgId, budgetId } = parseBudgetExternalId(id);
+          const current = await billingApi<EcBudget>(
+            this.ctx,
+            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
+          );
+          const amount = "amount" in fields ? Math.round(Number(fields["amount"])) : current.amount;
+          if (!Number.isFinite(amount) || (amount ?? 0) <= 0) {
+            throw new Error("Enter a monthly amount greater than zero.");
+          }
+          const keptAmountAlerts = (current.alerts ?? [])
+            .filter((a) => a.threshold_type === "amount")
+            .map((a) => ({
+              operator: a.operator,
+              threshold: a.threshold,
+              threshold_type: a.threshold_type,
+            }));
+          const alerts =
+            "alertThresholds" in fields
+              ? [...thresholdsToAlerts(fields["alertThresholds"]), ...keptAmountAlerts]
+              : (current.alerts ?? []).map((a) => ({
+                  operator: a.operator,
+                  threshold: a.threshold,
+                  threshold_type: a.threshold_type,
+                }));
+          await billingApi<unknown>(
+            this.ctx,
+            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budget/${encodeURIComponent(budgetId)}`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                ...("name" in fields
+                  ? fields["name"]
+                    ? { name: fields["name"].trim() }
+                    : {}
+                  : current.name
+                    ? { name: current.name }
+                    : {}),
+                amount,
+                period: current.period ?? "monthly",
+                active: "active" in fields ? fields["active"] === "true" : (current.active ?? true),
+                scope_type: current.scope_type ?? "organization",
+                scope_values: current.scope_values ?? [orgId],
+                alerts,
+                ...(current.recipient_group?.length
+                  ? { recipient_group: current.recipient_group }
+                  : {}),
+              }),
+            },
+          );
+          return runPluginEffect(this.getResource("budget", resourceId, accountId));
+        }
+        default:
+          throw new Error(`Elastic Cloud plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-      default:
-        throw new Error(`Elastic Cloud plugin: "${typeId}" cannot be edited from Infrawrench`);
-    }
+    });
   }
 
   private async updateDeployment(id: string, fields: Record<string, string>): Promise<void> {
@@ -1284,66 +1332,68 @@ export class ElasticCloudClient implements PluginClient {
   // Delete
   // -------------------------------------------------------------------------
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "deployment":
-        // Elastic Cloud has no hard delete for deployments: shutting one down
-        // stops it and its billing, and it is removed after the retention period.
-        await cloudApi<unknown>(
-          this.ctx,
-          `/api/v1/deployments/${encodeURIComponent(id)}/_shutdown`,
-          {
-            method: "POST",
-          },
-        );
-        return;
-      case "project": {
-        const { type, id: projectId } = parseProjectExternalId(id);
-        await cloudApi<unknown>(
-          this.ctx,
-          `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`,
-          { method: "DELETE" },
-        );
-        return;
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "deployment":
+          // Elastic Cloud has no hard delete for deployments: shutting one down
+          // stops it and its billing, and it is removed after the retention period.
+          await cloudApi<unknown>(
+            this.ctx,
+            `/api/v1/deployments/${encodeURIComponent(id)}/_shutdown`,
+            {
+              method: "POST",
+            },
+          );
+          return;
+        case "project": {
+          const { type, id: projectId } = parseProjectExternalId(id);
+          await cloudApi<unknown>(
+            this.ctx,
+            `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`,
+            { method: "DELETE" },
+          );
+          return;
+        }
+        case "traffic-filter":
+          await cloudApi<unknown>(
+            this.ctx,
+            `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`,
+            { method: "DELETE", query: { ignore_associations: true } },
+          );
+          return;
+        case "serverless-traffic-filter":
+          await cloudApi<unknown>(
+            this.ctx,
+            `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        case "extension":
+          await cloudApi<unknown>(
+            this.ctx,
+            `/api/v1/deployments/extensions/${encodeURIComponent(id)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        case "budget": {
+          const { orgId, budgetId } = parseBudgetExternalId(id);
+          await billingApi<unknown>(
+            this.ctx,
+            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
+            { method: "DELETE" },
+          );
+          return;
+        }
+        default:
+          throw new Error(`Elastic Cloud plugin: "${typeId}" cannot be deleted from Infrawrench`);
       }
-      case "traffic-filter":
-        await cloudApi<unknown>(
-          this.ctx,
-          `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`,
-          { method: "DELETE", query: { ignore_associations: true } },
-        );
-        return;
-      case "serverless-traffic-filter":
-        await cloudApi<unknown>(
-          this.ctx,
-          `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`,
-          {
-            method: "DELETE",
-          },
-        );
-        return;
-      case "extension":
-        await cloudApi<unknown>(
-          this.ctx,
-          `/api/v1/deployments/extensions/${encodeURIComponent(id)}`,
-          {
-            method: "DELETE",
-          },
-        );
-        return;
-      case "budget": {
-        const { orgId, budgetId } = parseBudgetExternalId(id);
-        await billingApi<unknown>(
-          this.ctx,
-          `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
-          { method: "DELETE" },
-        );
-        return;
-      }
-      default:
-        throw new Error(`Elastic Cloud plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1366,67 +1416,69 @@ export class ElasticCloudClient implements PluginClient {
     );
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "deployment") {
-      if (actionId === "restart-elasticsearch" || actionId === "restart-kibana") {
-        const kind = actionId === "restart-kibana" ? "kibana" : "elasticsearch";
-        const d = await this.fetchDeployment(id);
-        const ref = d.resources?.[kind]?.[0]?.ref_id;
-        if (!ref)
-          throw new Error(
-            `This deployment has no ${kind === "kibana" ? "Kibana" : "Elasticsearch"} resource.`,
-          );
-        await cloudApi<unknown>(
-          this.ctx,
-          `/api/v1/deployments/${encodeURIComponent(id)}/${kind}/${encodeURIComponent(ref)}/_restart`,
-          { method: "POST" },
-        );
-        return;
-      }
-      if (actionId.startsWith("attach-filter:")) {
-        await this.associate(actionId.slice("attach-filter:".length), id);
-        return;
-      }
-      if (actionId.startsWith("detach-filter:")) {
-        await this.dissociate(actionId.slice("detach-filter:".length), id);
-        return;
-      }
-    }
-    if (typeId === "traffic-filter" && actionId.startsWith("detach-deployment:")) {
-      await this.dissociate(id, actionId.slice("detach-deployment:".length));
-      return;
-    }
-    if (typeId === "project") {
-      const { type, id: projectId } = parseProjectExternalId(id);
-      const base = `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`;
-      if (actionId === "resume") {
-        await cloudApi<unknown>(this.ctx, `${base}/_resume`, { method: "POST" });
-        return;
-      }
-      if (actionId === "reset-credentials") {
-        const creds = await cloudApi<{ username?: string; password?: string }>(
-          this.ctx,
-          `${base}/_reset-credentials`,
-          { method: "POST" },
-        );
-        if (creds?.password) {
-          if (!this.services?.secrets?.setPlaintext) {
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "deployment") {
+        if (actionId === "restart-elasticsearch" || actionId === "restart-kibana") {
+          const kind = actionId === "restart-kibana" ? "kibana" : "elasticsearch";
+          const d = await this.fetchDeployment(id);
+          const ref = d.resources?.[kind]?.[0]?.ref_id;
+          if (!ref)
             throw new Error(
-              "The credentials were reset, but this host cannot store the new password. Reset them again from the Elastic Cloud console to see it.",
+              `This deployment has no ${kind === "kibana" ? "Kibana" : "Elasticsearch"} resource.`,
             );
-          }
-          await this.services.secrets.setPlaintext(resourceId, "password", creds.password);
+          await cloudApi<unknown>(
+            this.ctx,
+            `/api/v1/deployments/${encodeURIComponent(id)}/${kind}/${encodeURIComponent(ref)}/_restart`,
+            { method: "POST" },
+          );
+          return;
         }
+        if (actionId.startsWith("attach-filter:")) {
+          await this.associate(actionId.slice("attach-filter:".length), id);
+          return;
+        }
+        if (actionId.startsWith("detach-filter:")) {
+          await this.dissociate(actionId.slice("detach-filter:".length), id);
+          return;
+        }
+      }
+      if (typeId === "traffic-filter" && actionId.startsWith("detach-deployment:")) {
+        await this.dissociate(id, actionId.slice("detach-deployment:".length));
         return;
       }
-    }
-    throw new Error(`Elastic Cloud plugin: unknown action "${actionId}" for "${typeId}"`);
+      if (typeId === "project") {
+        const { type, id: projectId } = parseProjectExternalId(id);
+        const base = `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`;
+        if (actionId === "resume") {
+          await cloudApi<unknown>(this.ctx, `${base}/_resume`, { method: "POST" });
+          return;
+        }
+        if (actionId === "reset-credentials") {
+          const creds = await cloudApi<{ username?: string; password?: string }>(
+            this.ctx,
+            `${base}/_reset-credentials`,
+            { method: "POST" },
+          );
+          if (creds?.password) {
+            if (!this.services?.secrets?.setPlaintext) {
+              throw new Error(
+                "The credentials were reset, but this host cannot store the new password. Reset them again from the Elastic Cloud console to see it.",
+              );
+            }
+            await this.services.secrets.setPlaintext(resourceId, "password", creds.password);
+          }
+          return;
+        }
+      }
+      throw new Error(`Elastic Cloud plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------

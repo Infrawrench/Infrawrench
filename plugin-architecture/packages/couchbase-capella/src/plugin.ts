@@ -1,8 +1,11 @@
+import type { PluginEffect } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { capellaFetch } from "./api.js";
 import { CapellaClient } from "./client.js";
@@ -12,16 +15,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { capellaTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "couchbase-capella",
-  version: "0.1.0",
+  egressHosts: ["cloudapi.cloud.couchbase.com"],
   displayName: "Couchbase Capella",
   description:
     "Manage Couchbase Capella projects, operational and free-tier clusters, App Services, buckets, scopes and collections, database credentials, allowed CIDRs, backups and schedules, XDCR, users and API keys, with billed cost and prepaid credits.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key Token",
@@ -42,7 +43,7 @@ const manifest: PluginManifest = {
       placeholder: "ffffffff-aaaa-1414-eeee-000000000000",
       providerOptions: { dependsOn: ["apiKey"] },
     },
-  ],
+  ]),
   costs: {
     // Categorized billing per cluster (resource) with the organization total's
     // remainder unattributed; daily within a month, so chunks are monthly.
@@ -54,28 +55,33 @@ const manifest: PluginManifest = {
   statusFeed,
   // Documented: 100 requests per minute per API key.
   rateLimit: { capacity: 10, refillPerSecond: 1.5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CapellaClient(credentials, services),
+  testCredentials: { apiKey: "test-capella-key", organizationId: "org-1" },
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: capellaTerraformExport,
   remediationCommands: capellaRemediationCommands,
-  async listCredentialOptions(
+  listCredentialOptions(
     fieldKey: string,
     credentials: Record<string, string>,
     services?: HostServices,
-  ): Promise<CredentialFieldOption[]> {
-    if (fieldKey !== "organizationId") return [];
-    const apiKey = (credentials["apiKey"] ?? "").trim();
-    if (!apiKey) throw new Error("Enter the API key first.");
-    const res = await capellaFetch<{ data?: Array<{ id: string; name?: string }> }>(
-      { apiKey, ...(services?.http ? { http: services.http } : {}) },
-      "GET",
-      "/v4/organizations",
-    );
-    return (res?.data ?? []).map((o) => ({ id: o.id, label: o.name ?? o.id, description: o.id }));
+  ): PluginEffect<CredentialFieldOption[]> {
+    return attempt(async () => {
+      if (fieldKey !== "organizationId") return [];
+      const apiKey = (credentials["apiKey"] ?? "").trim();
+      if (!apiKey) throw new Error("Enter the API key first.");
+      const res = await capellaFetch<{ data?: Array<{ id: string; name?: string }> }>(
+        { apiKey, ...(services?.http ? { http: services.http } : {}) },
+        "GET",
+        "/v4/organizations",
+      );
+      return (res?.data ?? []).map((o) => ({ id: o.id, label: o.name ?? o.id, description: o.id }));
+    });
   },
-};
+});

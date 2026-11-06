@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { evaluateOrphanRule, exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { describe, expect, it, vi } from "vitest";
@@ -232,7 +233,7 @@ describe("client", () => {
         };
       return { body: {} };
     });
-    const client = new UpCloudClient({ apiToken: "t" }, plugin.resourceTypes, services);
+    const client = hostClient(new UpCloudClient({ apiToken: "t" }, plugin.resourceTypes, services));
     const created = await client.createResource("server", "acct", {
       hostname: "web",
       zone: "fi-hel1",

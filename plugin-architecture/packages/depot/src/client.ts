@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   CostFetchRange,
@@ -163,7 +166,7 @@ export class DepotClient implements PluginClient {
   private readonly pricing: ResolvedRates;
   private projectCache: Promise<WireProject[]> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["token"] ?? "").trim();
     if (!token) throw new Error("Depot plugin: missing organization token");
     this.transport = {
@@ -215,54 +218,64 @@ export class DepotClient implements PluginClient {
     return results.flat();
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case PROJECT_TYPE: {
-        const [projects, usage] = await Promise.all([this.projects(), this.projectUsage()]);
-        return projects.map((p) => this.mapProject(p, accountId, usage.get(p.projectId ?? "")));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case PROJECT_TYPE: {
+          const [projects, usage] = await Promise.all([this.projects(), this.projectUsage()]);
+          return projects.map((p) => this.mapProject(p, accountId, usage.get(p.projectId ?? "")));
+        }
+        case BUILD_TYPE:
+          return this.perProject(async (p) => {
+            const res = await connectCall<{ builds?: WireBuild[] }>(
+              this.transport,
+              RPC.listBuilds,
+              {
+                projectId: p.projectId,
+                pageSize: RECENT_BUILDS,
+              },
+            );
+            return (res.builds ?? []).map((b) => this.mapBuild(b, p.projectId ?? "", accountId));
+          });
+        case TOKEN_TYPE:
+          return this.perProject(async (p) => {
+            const res = await connectCall<{ tokens?: WireToken[] }>(
+              this.transport,
+              RPC.listTokens,
+              {
+                projectId: p.projectId,
+              },
+            );
+            return (res.tokens ?? []).map((t) => this.mapToken(t, p.projectId ?? "", accountId));
+          });
+        case TRUST_POLICY_TYPE:
+          return this.perProject(async (p) => {
+            const res = await connectCall<{ trustPolicies?: WireTrustPolicy[] }>(
+              this.transport,
+              RPC.listTrustPolicies,
+              { projectId: p.projectId },
+            );
+            return (res.trustPolicies ?? []).map((t) =>
+              this.mapTrustPolicy(t, p.projectId ?? "", accountId),
+            );
+          });
+        case IMAGE_TYPE:
+          return this.perProject(async (p) => {
+            const images = await listAllPages<
+              WireImage,
+              { images?: WireImage[]; nextPageToken?: string }
+            >(this.transport, RPC.listImages, { projectId: p.projectId }, (r) => r.images, {
+              pageSize: 100,
+              maxPages: Math.ceil(MAX_IMAGES / 100),
+            }).catch(() => [] as WireImage[]);
+            return images.map((i) => this.mapImage(i, p.projectId ?? "", accountId));
+          });
+        case ACTIONS_REPO_TYPE:
+          return this.listActionsRepos(accountId);
+        default:
+          throw new Error(`Depot plugin: unknown resource type "${typeId}"`);
       }
-      case BUILD_TYPE:
-        return this.perProject(async (p) => {
-          const res = await connectCall<{ builds?: WireBuild[] }>(this.transport, RPC.listBuilds, {
-            projectId: p.projectId,
-            pageSize: RECENT_BUILDS,
-          });
-          return (res.builds ?? []).map((b) => this.mapBuild(b, p.projectId ?? "", accountId));
-        });
-      case TOKEN_TYPE:
-        return this.perProject(async (p) => {
-          const res = await connectCall<{ tokens?: WireToken[] }>(this.transport, RPC.listTokens, {
-            projectId: p.projectId,
-          });
-          return (res.tokens ?? []).map((t) => this.mapToken(t, p.projectId ?? "", accountId));
-        });
-      case TRUST_POLICY_TYPE:
-        return this.perProject(async (p) => {
-          const res = await connectCall<{ trustPolicies?: WireTrustPolicy[] }>(
-            this.transport,
-            RPC.listTrustPolicies,
-            { projectId: p.projectId },
-          );
-          return (res.trustPolicies ?? []).map((t) =>
-            this.mapTrustPolicy(t, p.projectId ?? "", accountId),
-          );
-        });
-      case IMAGE_TYPE:
-        return this.perProject(async (p) => {
-          const images = await listAllPages<
-            WireImage,
-            { images?: WireImage[]; nextPageToken?: string }
-          >(this.transport, RPC.listImages, { projectId: p.projectId }, (r) => r.images, {
-            pageSize: 100,
-            maxPages: Math.ceil(MAX_IMAGES / 100),
-          }).catch(() => [] as WireImage[]);
-          return images.map((i) => this.mapImage(i, p.projectId ?? "", accountId));
-        });
-      case ACTIONS_REPO_TYPE:
-        return this.listActionsRepos(accountId);
-      default:
-        throw new Error(`Depot plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   /** The current billing cycle's usage, from its first day to now. */
@@ -286,56 +299,60 @@ export class DepotClient implements PluginClient {
     );
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    if (typeId === PROJECT_TYPE) {
-      const [res, usage] = await Promise.all([
-        connectCall<{ project?: WireProject }>(this.transport, RPC.getProject, {
-          projectId: externalId,
-        }),
-        this.projectUsage(),
-      ]);
-      if (!res.project) throw new Error(`Depot plugin: project ${externalId} not found`);
-      return this.mapProject(res.project, accountId, usage.get(externalId));
-    }
-    if (typeId === BUILD_TYPE) {
-      const { projectId, id } = splitChildId(externalId);
-      const res = await connectCall<{ build?: WireBuild }>(this.transport, RPC.getBuild, {
-        buildId: id,
-      });
-      if (!res.build) throw new Error(`Depot plugin: build ${id} not found`);
-      return this.mapBuild(res.build, projectId, accountId);
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Depot plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (typeId === PROJECT_TYPE) {
+        const [res, usage] = await Promise.all([
+          connectCall<{ project?: WireProject }>(this.transport, RPC.getProject, {
+            projectId: externalId,
+          }),
+          this.projectUsage(),
+        ]);
+        if (!res.project) throw new Error(`Depot plugin: project ${externalId} not found`);
+        return this.mapProject(res.project, accountId, usage.get(externalId));
+      }
+      if (typeId === BUILD_TYPE) {
+        const { projectId, id } = splitChildId(externalId);
+        const res = await connectCall<{ build?: WireBuild }>(this.transport, RPC.getBuild, {
+          buildId: id,
+        });
+        if (!res.build) throw new Error(`Depot plugin: build ${id} not found`);
+        return this.mapBuild(res.build, projectId, accountId);
+      }
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Depot plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const externalId = externalIdOf(resourceId);
-    if (typeId === PROJECT_TYPE) {
-      if (outputKey === "projectId") return externalId;
-      if (outputKey === "registryRepository") return `registry.depot.dev/${externalId}`;
-    }
-    if (typeId === BUILD_TYPE && outputKey === "buildId") return splitChildId(externalId).id;
-    if (typeId === TOKEN_TYPE && outputKey === "tokenId") return splitChildId(externalId).id;
-    if (typeId === TRUST_POLICY_TYPE && outputKey === "trustPolicyId") {
-      return splitChildId(externalId).id;
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`Depot plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (typeId === PROJECT_TYPE) {
+        if (outputKey === "projectId") return externalId;
+        if (outputKey === "registryRepository") return `registry.depot.dev/${externalId}`;
+      }
+      if (typeId === BUILD_TYPE && outputKey === "buildId") return splitChildId(externalId).id;
+      if (typeId === TOKEN_TYPE && outputKey === "tokenId") return splitChildId(externalId).id;
+      if (typeId === TRUST_POLICY_TYPE && outputKey === "trustPolicyId") {
+        return splitChildId(externalId).id;
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(`Depot plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -513,78 +530,86 @@ export class DepotClient implements PluginClient {
   /* Dashboard, metrics, cost, quotas                                         */
   /* ---------------------------------------------------------------------- */
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    switch (resourceTypeId) {
-      case PROJECT_TYPE:
-        return [
-          { label: "Region", value: String(f["regionId"] || "-") },
-          { label: "Builds (30d)", value: String(f["builds30d"] ?? 0) },
-          { label: "Build minutes (30d)", value: String(f["buildMinutes30d"] ?? 0) },
-          { label: "Cache used", value: `${String(f["layerCacheGb"] ?? 0)} GB` },
-        ];
-      case BUILD_TYPE: {
-        const status = String(f["status"] ?? "");
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant:
-              status === "success"
-                ? "status-healthy"
-                : status === "failed" || status === "error"
-                  ? "status-error"
-                  : "default",
-          },
-          { label: "Duration", value: formatDuration(Number(f["durationSeconds"] ?? 0)) },
-          { label: "Cache hit rate", value: `${String(f["cacheHitRate"] ?? 0)}%` },
-        ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      switch (resourceTypeId) {
+        case PROJECT_TYPE:
+          return [
+            { label: "Region", value: String(f["regionId"] || "-") },
+            { label: "Builds (30d)", value: String(f["builds30d"] ?? 0) },
+            { label: "Build minutes (30d)", value: String(f["buildMinutes30d"] ?? 0) },
+            { label: "Cache used", value: `${String(f["layerCacheGb"] ?? 0)} GB` },
+          ];
+        case BUILD_TYPE: {
+          const status = String(f["status"] ?? "");
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "success"
+                  ? "status-healthy"
+                  : status === "failed" || status === "error"
+                    ? "status-error"
+                    : "default",
+            },
+            { label: "Duration", value: formatDuration(Number(f["durationSeconds"] ?? 0)) },
+            { label: "Cache hit rate", value: `${String(f["cacheHitRate"] ?? 0)}%` },
+          ];
+        }
+        case ACTIONS_REPO_TYPE:
+          return [
+            { label: "Jobs", value: String(f["jobs"] ?? 0) },
+            { label: "Billed minutes", value: String(f["minutesBilled"] ?? 0) },
+          ];
+        default:
+          return [];
       }
-      case ACTIONS_REPO_TYPE:
-        return [
-          { label: "Jobs", value: String(f["jobs"] ?? 0) },
-          { label: "Billed minutes", value: String(f["minutesBilled"] ?? 0) },
-        ];
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const externalId = externalIdOf(resourceId);
-    if (resourceTypeId === PROJECT_TYPE) {
-      return fetchProjectMetrics(this.transport, externalId, timeRange);
-    }
-    if (resourceTypeId === ACTIONS_REPO_TYPE) {
-      return fetchRepoMetrics(this.transport, externalId, timeRange);
-    }
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (resourceTypeId === PROJECT_TYPE) {
+        return fetchProjectMetrics(this.transport, externalId, timeRange);
+      }
+      if (resourceTypeId === ACTIONS_REPO_TYPE) {
+        return fetchRepoMetrics(this.transport, externalId, timeRange);
+      }
+      return [];
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchDepotCostData(
-      {
-        transport: this.transport,
-        rates: this.pricing.rates,
-        projectIdsByName: async () =>
-          new Map((await this.projects()).map((p) => [p.name ?? "", p.projectId ?? ""])),
-      },
-      range,
-    );
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchDepotCostData(
+        {
+          transport: this.transport,
+          rates: this.pricing.rates,
+          projectIdsByName: async () =>
+            new Map((await this.projects()).map((p) => [p.name ?? "", p.projectId ?? ""])),
+        },
+        range,
+      );
+    });
   }
 
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    return fetchDepotQuotas(this.transport, this.pricing.rates);
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      return fetchDepotQuotas(this.transport, this.pricing.rates);
+    });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -596,157 +621,160 @@ export class DepotClient implements PluginClient {
     return projects.map((p) => ({ id: p.projectId ?? "", label: p.name || (p.projectId ?? "") }));
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    const projectPicker = async (): Promise<CreateResourceConfig["fields"]> => {
-      if (parentResourceId) return [];
-      const options = await this.projectOptions();
-      return [
-        {
-          key: "projectId",
-          label: "Project",
-          kind: "select",
-          required: true,
-          options,
-          ...(options[0] ? { defaultValue: options[0].id } : {}),
-        },
-      ];
-    };
-
-    if (typeId === PROJECT_TYPE) {
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const projectPicker = async (): Promise<CreateResourceConfig["fields"]> => {
+        if (parentResourceId) return [];
+        const options = await this.projectOptions();
+        return [
           {
-            key: "regionId",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions: DEPOT_REGIONS,
-            defaultValue: "us-east-1",
-          },
-          {
-            key: "hardware",
-            label: "Builder size",
-            kind: "select",
-            required: false,
-            options: HARDWARE_OPTIONS.map((h) => ({ id: h.value, label: h.label })),
-            defaultValue: "default",
-            description: "Larger builders are billed at a higher rate on some plans.",
-          },
-          {
-            key: "cacheKeepGb",
-            label: "Cache size limit (GB)",
-            kind: "number",
-            required: false,
-            defaultValue: "50",
-            minValue: 1,
-            description: "Layer cache kept per architecture before the oldest entries are evicted.",
-          },
-          {
-            key: "cacheKeepDays",
-            label: "Cache retention (days)",
-            kind: "number",
-            required: false,
-            defaultValue: "14",
-            minValue: 0,
-            description: "Entries unused for this many days are evicted. 0 keeps them.",
-          },
-        ],
-      };
-    }
-
-    if (typeId === TOKEN_TYPE) {
-      return {
-        fields: [
-          ...(await projectPicker()),
-          {
-            key: "description",
-            label: "Description",
-            kind: "text",
-            required: true,
-            placeholder: "GitHub Actions deploy",
-          },
-        ],
-      };
-    }
-
-    if (typeId === TRUST_POLICY_TYPE) {
-      const when = (provider: string) => ({ fieldKey: "provider", fieldValue: provider });
-      return {
-        fields: [
-          ...(await projectPicker()),
-          {
-            key: "provider",
-            label: "CI provider",
+            key: "projectId",
+            label: "Project",
             kind: "select",
             required: true,
-            options: TRUST_PROVIDERS.map((p) => ({ id: p.id, label: p.label })),
-            defaultValue: "github",
+            options,
+            ...(options[0] ? { defaultValue: options[0].id } : {}),
           },
-          {
-            key: "repositoryOwner",
-            label: "Repository owner",
-            kind: "text",
-            required: true,
-            description: "The GitHub user or organization that owns the repository.",
-            showWhen: when("github"),
-          },
-          {
-            key: "repository",
-            label: "Repository name",
-            kind: "text",
-            required: true,
-            showWhen: when("github"),
-          },
-          {
-            key: "organizationUuid",
-            label: "CircleCI organization ID",
-            kind: "text",
-            required: true,
-            description: "Organization Settings, Overview, Organization ID in CircleCI.",
-            showWhen: when("circleci"),
-          },
-          {
-            key: "projectUuid",
-            label: "CircleCI project ID",
-            kind: "text",
-            required: true,
-            description: "Project Settings, Overview, Project ID in CircleCI.",
-            showWhen: when("circleci"),
-          },
-          {
-            key: "organizationSlug",
-            label: "Buildkite organization slug",
-            kind: "text",
-            required: true,
-            showWhen: when("buildkite"),
-          },
-          {
-            key: "pipelineSlug",
-            label: "Buildkite pipeline slug",
-            kind: "text",
-            required: true,
-            showWhen: when("buildkite"),
-          },
-          {
-            key: "namespaceId",
-            label: "GitLab group or user",
-            kind: "text",
-            required: true,
-            showWhen: when("gitlab"),
-          },
-          {
-            key: "gitlabProject",
-            label: "GitLab project",
-            kind: "text",
-            required: true,
-            showWhen: when("gitlab"),
-          },
-        ],
+        ];
       };
-    }
 
-    throw new Error(`Depot plugin: no create config for type "${typeId}"`);
+      if (typeId === PROJECT_TYPE) {
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "regionId",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions: DEPOT_REGIONS,
+              defaultValue: "us-east-1",
+            },
+            {
+              key: "hardware",
+              label: "Builder size",
+              kind: "select",
+              required: false,
+              options: HARDWARE_OPTIONS.map((h) => ({ id: h.value, label: h.label })),
+              defaultValue: "default",
+              description: "Larger builders are billed at a higher rate on some plans.",
+            },
+            {
+              key: "cacheKeepGb",
+              label: "Cache size limit (GB)",
+              kind: "number",
+              required: false,
+              defaultValue: "50",
+              minValue: 1,
+              description:
+                "Layer cache kept per architecture before the oldest entries are evicted.",
+            },
+            {
+              key: "cacheKeepDays",
+              label: "Cache retention (days)",
+              kind: "number",
+              required: false,
+              defaultValue: "14",
+              minValue: 0,
+              description: "Entries unused for this many days are evicted. 0 keeps them.",
+            },
+          ],
+        };
+      }
+
+      if (typeId === TOKEN_TYPE) {
+        return {
+          fields: [
+            ...(await projectPicker()),
+            {
+              key: "description",
+              label: "Description",
+              kind: "text",
+              required: true,
+              placeholder: "GitHub Actions deploy",
+            },
+          ],
+        };
+      }
+
+      if (typeId === TRUST_POLICY_TYPE) {
+        const when = (provider: string) => ({ fieldKey: "provider", fieldValue: provider });
+        return {
+          fields: [
+            ...(await projectPicker()),
+            {
+              key: "provider",
+              label: "CI provider",
+              kind: "select",
+              required: true,
+              options: TRUST_PROVIDERS.map((p) => ({ id: p.id, label: p.label })),
+              defaultValue: "github",
+            },
+            {
+              key: "repositoryOwner",
+              label: "Repository owner",
+              kind: "text",
+              required: true,
+              description: "The GitHub user or organization that owns the repository.",
+              showWhen: when("github"),
+            },
+            {
+              key: "repository",
+              label: "Repository name",
+              kind: "text",
+              required: true,
+              showWhen: when("github"),
+            },
+            {
+              key: "organizationUuid",
+              label: "CircleCI organization ID",
+              kind: "text",
+              required: true,
+              description: "Organization Settings, Overview, Organization ID in CircleCI.",
+              showWhen: when("circleci"),
+            },
+            {
+              key: "projectUuid",
+              label: "CircleCI project ID",
+              kind: "text",
+              required: true,
+              description: "Project Settings, Overview, Project ID in CircleCI.",
+              showWhen: when("circleci"),
+            },
+            {
+              key: "organizationSlug",
+              label: "Buildkite organization slug",
+              kind: "text",
+              required: true,
+              showWhen: when("buildkite"),
+            },
+            {
+              key: "pipelineSlug",
+              label: "Buildkite pipeline slug",
+              kind: "text",
+              required: true,
+              showWhen: when("buildkite"),
+            },
+            {
+              key: "namespaceId",
+              label: "GitLab group or user",
+              kind: "text",
+              required: true,
+              showWhen: when("gitlab"),
+            },
+            {
+              key: "gitlabProject",
+              label: "GitLab project",
+              kind: "text",
+              required: true,
+              showWhen: when("gitlab"),
+            },
+          ],
+        };
+      }
+
+      throw new Error(`Depot plugin: no create config for type "${typeId}"`);
+    });
   }
 
   private cachePolicy(fields: Record<string, string>): Record<string, number> | undefined {
@@ -774,168 +802,185 @@ export class DepotClient implements PluginClient {
     return projectId;
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === PROJECT_TYPE) {
-      const name = (fields["name"] ?? "").trim();
-      if (!name) throw new Error("Depot plugin: a project name is required");
-      const hardware = hardwareToWire(fields["hardware"]);
-      const cachePolicy = this.cachePolicy(fields);
-      const res = await connectCall<{ project?: WireProject }>(this.transport, RPC.createProject, {
-        name,
-        regionId: fields["regionId"] || "us-east-1",
-        ...(cachePolicy ? { cachePolicy } : {}),
-        ...(hardware ? { hardware } : {}),
-      });
-      this.projectCache = undefined;
-      if (!res.project) throw new Error("Depot plugin: Depot did not return the new project");
-      return this.mapProject(res.project, accountId);
-    }
-
-    if (typeId === TOKEN_TYPE) {
-      const projectId = this.projectOf(fields, parentResourceId);
-      const description = (fields["description"] ?? "").trim();
-      if (!description) throw new Error("Depot plugin: a token description is required");
-      const res = await connectCall<{ tokenId?: string; secret?: string }>(
-        this.transport,
-        RPC.createToken,
-        { projectId, description },
-      );
-      const instance = this.mapToken(
-        { tokenId: res.tokenId ?? "", description },
-        projectId,
-        accountId,
-      );
-      // The secret is returned exactly once, on this response.
-      if (res.secret) instance.resolvedOutputs["token"] = res.secret;
-      return instance;
-    }
-
-    if (typeId === TRUST_POLICY_TYPE) {
-      const projectId = this.projectOf(fields, parentResourceId);
-      const v = (k: string) => (fields[k] ?? "").trim();
-      const need = (...keys: string[]) => {
-        const missing = keys.filter((k) => !v(k));
-        if (missing.length > 0)
-          throw new Error("Depot plugin: fill in every field for this CI provider");
-      };
-      let policy: Record<string, unknown>;
-      switch (fields["provider"]) {
-        case "circleci":
-          need("organizationUuid", "projectUuid");
-          policy = {
-            circleci: { organizationUuid: v("organizationUuid"), projectUuid: v("projectUuid") },
-          };
-          break;
-        case "buildkite":
-          need("organizationSlug", "pipelineSlug");
-          policy = {
-            buildkite: { organizationSlug: v("organizationSlug"), pipelineSlug: v("pipelineSlug") },
-          };
-          break;
-        case "gitlab":
-          need("namespaceId", "gitlabProject");
-          policy = { gitlab: { namespaceId: v("namespaceId"), projectId: v("gitlabProject") } };
-          break;
-        default:
-          need("repositoryOwner", "repository");
-          policy = {
-            github: { repositoryOwner: v("repositoryOwner"), repository: v("repository") },
-          };
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === PROJECT_TYPE) {
+        const name = (fields["name"] ?? "").trim();
+        if (!name) throw new Error("Depot plugin: a project name is required");
+        const hardware = hardwareToWire(fields["hardware"]);
+        const cachePolicy = this.cachePolicy(fields);
+        const res = await connectCall<{ project?: WireProject }>(
+          this.transport,
+          RPC.createProject,
+          {
+            name,
+            regionId: fields["regionId"] || "us-east-1",
+            ...(cachePolicy ? { cachePolicy } : {}),
+            ...(hardware ? { hardware } : {}),
+          },
+        );
+        this.projectCache = undefined;
+        if (!res.project) throw new Error("Depot plugin: Depot did not return the new project");
+        return this.mapProject(res.project, accountId);
       }
-      const res = await connectCall<{ trustPolicy?: WireTrustPolicy }>(
-        this.transport,
-        RPC.addTrustPolicy,
-        { projectId, ...policy },
-      );
-      return this.mapTrustPolicy(res.trustPolicy ?? policy, projectId, accountId);
-    }
 
-    throw new Error(`Depot plugin: cannot create type "${typeId}"`);
+      if (typeId === TOKEN_TYPE) {
+        const projectId = this.projectOf(fields, parentResourceId);
+        const description = (fields["description"] ?? "").trim();
+        if (!description) throw new Error("Depot plugin: a token description is required");
+        const res = await connectCall<{ tokenId?: string; secret?: string }>(
+          this.transport,
+          RPC.createToken,
+          { projectId, description },
+        );
+        const instance = this.mapToken(
+          { tokenId: res.tokenId ?? "", description },
+          projectId,
+          accountId,
+        );
+        // The secret is returned exactly once, on this response.
+        if (res.secret) instance.resolvedOutputs["token"] = res.secret;
+        return instance;
+      }
+
+      if (typeId === TRUST_POLICY_TYPE) {
+        const projectId = this.projectOf(fields, parentResourceId);
+        const v = (k: string) => (fields[k] ?? "").trim();
+        const need = (...keys: string[]) => {
+          const missing = keys.filter((k) => !v(k));
+          if (missing.length > 0)
+            throw new Error("Depot plugin: fill in every field for this CI provider");
+        };
+        let policy: Record<string, unknown>;
+        switch (fields["provider"]) {
+          case "circleci":
+            need("organizationUuid", "projectUuid");
+            policy = {
+              circleci: { organizationUuid: v("organizationUuid"), projectUuid: v("projectUuid") },
+            };
+            break;
+          case "buildkite":
+            need("organizationSlug", "pipelineSlug");
+            policy = {
+              buildkite: {
+                organizationSlug: v("organizationSlug"),
+                pipelineSlug: v("pipelineSlug"),
+              },
+            };
+            break;
+          case "gitlab":
+            need("namespaceId", "gitlabProject");
+            policy = { gitlab: { namespaceId: v("namespaceId"), projectId: v("gitlabProject") } };
+            break;
+          default:
+            need("repositoryOwner", "repository");
+            policy = {
+              github: { repositoryOwner: v("repositoryOwner"), repository: v("repository") },
+            };
+        }
+        const res = await connectCall<{ trustPolicy?: WireTrustPolicy }>(
+          this.transport,
+          RPC.addTrustPolicy,
+          { projectId, ...policy },
+        );
+        return this.mapTrustPolicy(res.trustPolicy ?? policy, projectId, accountId);
+      }
+
+      throw new Error(`Depot plugin: cannot create type "${typeId}"`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    if (typeId === PROJECT_TYPE) {
-      const body: Record<string, unknown> = { projectId: externalId };
-      const name = (fields["name"] ?? "").trim();
-      if (name) body["name"] = name;
-      if (fields["regionId"]) body["regionId"] = fields["regionId"];
-      const hardware =
-        fields["hardware"] !== undefined ? hardwareToWire(fields["hardware"]) : undefined;
-      if (fields["hardware"] !== undefined) body["hardware"] = hardware ?? "HARDWARE_UNSPECIFIED";
-      const cachePolicy = this.cachePolicy(fields);
-      if (cachePolicy) body["cachePolicy"] = cachePolicy;
-      const res = await connectCall<{ project?: WireProject }>(
-        this.transport,
-        RPC.updateProject,
-        body,
-      );
-      this.projectCache = undefined;
-      return res.project
-        ? this.mapProject(res.project, accountId)
-        : this.getResource(typeId, resourceId, accountId);
-    }
-    if (typeId === TOKEN_TYPE) {
-      const { projectId, id } = splitChildId(externalId);
-      const description = (fields["description"] ?? "").trim();
-      if (!description) throw new Error("Depot plugin: a token description is required");
-      await connectCall(this.transport, RPC.updateToken, { tokenId: id, description });
-      return this.mapToken({ tokenId: id, description }, projectId, accountId);
-    }
-    throw new Error(`Depot plugin: cannot update type "${typeId}"`);
-  }
-
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    switch (typeId) {
-      case PROJECT_TYPE:
-        await connectCall(this.transport, RPC.deleteProject, { projectId: externalId });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (typeId === PROJECT_TYPE) {
+        const body: Record<string, unknown> = { projectId: externalId };
+        const name = (fields["name"] ?? "").trim();
+        if (name) body["name"] = name;
+        if (fields["regionId"]) body["regionId"] = fields["regionId"];
+        const hardware =
+          fields["hardware"] !== undefined ? hardwareToWire(fields["hardware"]) : undefined;
+        if (fields["hardware"] !== undefined) body["hardware"] = hardware ?? "HARDWARE_UNSPECIFIED";
+        const cachePolicy = this.cachePolicy(fields);
+        if (cachePolicy) body["cachePolicy"] = cachePolicy;
+        const res = await connectCall<{ project?: WireProject }>(
+          this.transport,
+          RPC.updateProject,
+          body,
+        );
         this.projectCache = undefined;
-        return;
-      case TOKEN_TYPE:
-        await connectCall(this.transport, RPC.deleteToken, {
-          tokenId: splitChildId(externalId).id,
-        });
-        return;
-      case TRUST_POLICY_TYPE: {
-        const { projectId, id } = splitChildId(externalId);
-        await connectCall(this.transport, RPC.removeTrustPolicy, {
-          projectId,
-          trustPolicyId: id,
-        });
-        return;
+        return res.project
+          ? this.mapProject(res.project, accountId)
+          : runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
-      case IMAGE_TYPE: {
+      if (typeId === TOKEN_TYPE) {
         const { projectId, id } = splitChildId(externalId);
-        await connectCall(this.transport, RPC.deleteImage, { projectId, imageTags: [id] });
-        return;
+        const description = (fields["description"] ?? "").trim();
+        if (!description) throw new Error("Depot plugin: a token description is required");
+        await connectCall(this.transport, RPC.updateToken, { tokenId: id, description });
+        return this.mapToken({ tokenId: id, description }, projectId, accountId);
       }
-      default:
-        throw new Error(`Depot plugin: cannot delete type "${typeId}"`);
-    }
+      throw new Error(`Depot plugin: cannot update type "${typeId}"`);
+    });
   }
 
-  async invokeAction(
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      switch (typeId) {
+        case PROJECT_TYPE:
+          await connectCall(this.transport, RPC.deleteProject, { projectId: externalId });
+          this.projectCache = undefined;
+          return;
+        case TOKEN_TYPE:
+          await connectCall(this.transport, RPC.deleteToken, {
+            tokenId: splitChildId(externalId).id,
+          });
+          return;
+        case TRUST_POLICY_TYPE: {
+          const { projectId, id } = splitChildId(externalId);
+          await connectCall(this.transport, RPC.removeTrustPolicy, {
+            projectId,
+            trustPolicyId: id,
+          });
+          return;
+        }
+        case IMAGE_TYPE: {
+          const { projectId, id } = splitChildId(externalId);
+          await connectCall(this.transport, RPC.deleteImage, { projectId, imageTags: [id] });
+          return;
+        }
+        default:
+          throw new Error(`Depot plugin: cannot delete type "${typeId}"`);
+      }
+    });
+  }
+
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    if (typeId === PROJECT_TYPE && actionId === RESET_CACHE_ACTION) {
-      await connectCall(this.transport, RPC.resetProject, { projectId: externalIdOf(resourceId) });
-      return;
-    }
-    throw new Error(`Depot plugin: unknown action "${actionId}" on "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === PROJECT_TYPE && actionId === RESET_CACHE_ACTION) {
+        await connectCall(this.transport, RPC.resetProject, {
+          projectId: externalIdOf(resourceId),
+        });
+        return;
+      }
+      throw new Error(`Depot plugin: unknown action "${actionId}" on "${typeId}"`);
+    });
   }
 
   /* ---------------------------------------------------------------------- */

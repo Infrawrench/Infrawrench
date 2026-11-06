@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { normalizeRealm, statusOf } from "../api.js";
@@ -30,7 +31,7 @@ describe("SplunkObservabilityClient", () => {
       }
       return undefined;
     });
-    const client = new SplunkObservabilityClient(CREDS, { http });
+    const client = hostClient(new SplunkObservabilityClient(CREDS, { http }));
     const list = await client.listResources("detector", "acct");
     expect(list).toHaveLength(1001);
     expect(calls[0]?.url.origin).toBe("https://api.us1.observability.splunkcloud.com");
@@ -44,7 +45,7 @@ describe("SplunkObservabilityClient", () => {
         ? { status: 403, body: { code: 403, message: "admin only" } }
         : { status: 500, body: { message: "boom" } },
     );
-    const client = new SplunkObservabilityClient(CREDS, { http });
+    const client = hostClient(new SplunkObservabilityClient(CREDS, { http }));
     expect(await client.listResources("org-token", "acct")).toEqual([]);
     const err = await client.listResources("team", "acct").catch((e: unknown) => e);
     expect(statusOf(err)).toBe(500);
@@ -59,7 +60,7 @@ describe("SplunkObservabilityClient", () => {
       if (url.pathname === "/v2/detector/D1/disable") return { status: 204 };
       return undefined;
     });
-    await new SplunkObservabilityClient(CREDS, { http }).invokeAction(
+    await hostClient(new SplunkObservabilityClient(CREDS, { http })).invokeAction(
       "detector",
       "acct:detector:D1",
       "disable",
@@ -79,7 +80,7 @@ describe("SplunkObservabilityClient", () => {
         return { body: { name: "ingest" } };
       return undefined;
     });
-    const client = new SplunkObservabilityClient(CREDS, { http });
+    const client = hostClient(new SplunkObservabilityClient(CREDS, { http }));
     const out = await client.exportCredential(
       "org-token",
       "acct:org-token:ingest",
@@ -94,7 +95,7 @@ describe("SplunkObservabilityClient", () => {
 
   it("pauses synthetic tests by numeric id", async () => {
     const { http, calls } = makeHttp(() => ({ body: { success: true } }));
-    await new SplunkObservabilityClient(CREDS, { http }).invokeAction(
+    await hostClient(new SplunkObservabilityClient(CREDS, { http })).invokeAction(
       "synthetic-test",
       "acct:synthetic-test:42",
       "pause",
@@ -125,7 +126,7 @@ describe("SplunkObservabilityClient", () => {
         return { status: 200, headers: {}, body: sse };
       },
     };
-    const client = new SplunkObservabilityClient(CREDS, { http });
+    const client = hostClient(new SplunkObservabilityClient(CREDS, { http }));
     const quotas = await client.fetchQuotas();
     expect(quotas).toEqual([
       {
@@ -145,13 +146,17 @@ describe("SplunkObservabilityClient", () => {
 
   it("creates a muting rule from friendly filters", async () => {
     const { http, calls } = makeHttp(() => ({ body: { id: "M1", description: "release" } }));
-    await new SplunkObservabilityClient(CREDS, { http }).createResource("muting-rule", "acct", {
-      description: "release",
-      filters: "host=web-1, !env=dev",
-      startTime: "1700000000000",
-      stopTime: "",
-      sendAlertsAfter: "true",
-    });
+    await hostClient(new SplunkObservabilityClient(CREDS, { http })).createResource(
+      "muting-rule",
+      "acct",
+      {
+        description: "release",
+        filters: "host=web-1, !env=dev",
+        startTime: "1700000000000",
+        stopTime: "",
+        sendAlertsAfter: "true",
+      },
+    );
     expect(calls[0]?.body).toEqual({
       description: "release",
       filters: [
@@ -198,7 +203,7 @@ describe("preflight", () => {
       url.pathname === "/v2/token" ? { status: 403, body: {} } : { body: {} },
     );
     const res = await verifySplunkCredentials(
-      new SplunkObservabilityClient(CREDS, { http }).context,
+      hostClient(new SplunkObservabilityClient(CREDS, { http })).context,
     );
     expect(res.checks.find((c) => c.capabilityId === "api")?.status).toBe("ok");
     expect(res.checks.find((c) => c.capabilityId === "tokens")?.status).toBe("missing");

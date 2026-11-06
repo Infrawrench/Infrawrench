@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { BitbucketApiError, authHeader, bbPaged, statusOf } from "../api.js";
 import {
@@ -23,12 +24,11 @@ function client(
   creds: Record<string, string> = {},
 ) {
   const { http, calls } = makeHttp(route);
-  const c = new BitbucketClient(
-    { email: "me@example.com", token: "tok", workspace: "acme", ...creds },
-    {
+  const c = hostClient(
+    new BitbucketClient({ email: "me@example.com", token: "tok", workspace: "acme", ...creds }, {
       http,
       ...extra,
-    } as never,
+    } as never),
   );
   return { c, calls };
 }
@@ -89,7 +89,7 @@ describe("workspace picker", () => {
         { administrator: false, workspace: { slug: "acme", name: "Acme" } },
       ],
     }));
-    const options = await plugin.listCredentialOptions!(
+    const options = await hostPlugin(plugin).listCredentialOptions!(
       "workspace",
       { email: "a@b.c", token: "t" },
       { http } as never,
@@ -103,7 +103,7 @@ describe("workspace picker", () => {
   it("explains that access tokens cannot list workspaces", async () => {
     const { http } = makeHttp(() => ({ status: 401, body: {} }));
     await expect(
-      plugin.listCredentialOptions!("workspace", { token: "t" }, { http } as never),
+      hostPlugin(plugin).listCredentialOptions!("workspace", { token: "t" }, { http } as never),
     ).rejects.toThrow(/Type the workspace slug/);
   });
 });

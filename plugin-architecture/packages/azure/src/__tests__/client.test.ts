@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { AzureClient } from "../client.js";
 import * as auth from "../auth.js";
@@ -22,12 +23,12 @@ function jsonResponse(body: unknown, init: Partial<Response> = {}): Response {
 
 describe("AzureClient construction", () => {
   it("throws when required credentials are missing", () => {
-    expect(() => new AzureClient({ tenantId: "t" })).toThrow(/missing tenantId/);
-    expect(() => new AzureClient({})).toThrow();
+    expect(() => hostClient(new AzureClient({ tenantId: "t" }))).toThrow(/missing tenantId/);
+    expect(() => hostClient(new AzureClient({}))).toThrow();
   });
 
   it("constructs with all required credentials", () => {
-    expect(() => new AzureClient(creds)).not.toThrow();
+    expect(() => hostClient(new AzureClient(creds))).not.toThrow();
   });
 });
 
@@ -42,7 +43,7 @@ describe("AzureClient token + HTTP helpers", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("caches the ARM token across calls (single fetchAccessToken)", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     fetchSpy.mockResolvedValue(jsonResponse({ value: [] }));
     await client.listResources("azure-resource-group", "acct");
     await client.listResources("azure-resource-group", "acct");
@@ -54,7 +55,7 @@ describe("AzureClient token + HTTP helpers", () => {
   });
 
   it("get() throws with status + body on a non-ok response", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     fetchSpy.mockResolvedValue({
       ok: false,
       status: 403,
@@ -66,7 +67,7 @@ describe("AzureClient token + HTTP helpers", () => {
   });
 
   it("listResources dispatches to the matching lister and shapes ResourceInstances", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     fetchSpy.mockResolvedValue(
       jsonResponse({ value: [{ name: "rg-a", location: "eastus", properties: {} }] }),
     );
@@ -83,14 +84,14 @@ describe("AzureClient token + HTTP helpers", () => {
   });
 
   it("listResources throws on an unknown type", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     await expect(client.listResources("azure-nope", "acct")).rejects.toThrow(
       /unknown resource type "azure-nope"/,
     );
   });
 
   it("getResource finds a listed resource by id, else throws", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     fetchSpy.mockResolvedValue(jsonResponse({ value: [{ name: "rg-a", location: "eastus" }] }));
     const found = await client.getResource(
       "azure-resource-group",
@@ -104,7 +105,7 @@ describe("AzureClient token + HTTP helpers", () => {
   });
 
   it("renderDetail / renderSidebarItem delegate to renderers", () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     const resource = {
       id: "acct:azure-vm:rg/vm1",
       pluginId: "azure",
@@ -125,7 +126,7 @@ describe("AzureClient token + HTTP helpers", () => {
   });
 
   it("fetchDashboardStats resolves the resource then builds stats", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     fetchSpy.mockResolvedValue(
       jsonResponse({
         value: [
@@ -142,7 +143,7 @@ describe("AzureClient token + HTTP helpers", () => {
   });
 
   it("fetchMetricSeries queries Azure Monitor for supported resource metrics", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     fetchSpy.mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes("/virtualMachines?")) {
@@ -205,7 +206,7 @@ describe("AzureClient token + HTTP helpers", () => {
   });
 
   it("fetchMetricSeries returns [] for resource types without metric mappings", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     fetchSpy.mockResolvedValue(
       jsonResponse({ value: [{ name: "rg-a", location: "eastus", properties: {} }] }),
     );
@@ -215,7 +216,7 @@ describe("AzureClient token + HTTP helpers", () => {
   });
 
   it("publishMessage throws for unsupported types", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     // publishMessage resolves the resource first, then rejects unsupported types;
     // stub getResource so the test targets the "not supported" branch directly.
     vi.spyOn(client, "getResource").mockResolvedValue({
@@ -238,7 +239,7 @@ describe("AzureClient pricing", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("getCreateSizePricing returns {} for types without size pricing", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     const out = await client.getCreateSizePricing("azure-storage-account", {
       sizes: [{ id: "x" }],
     } as never);
@@ -246,7 +247,7 @@ describe("AzureClient pricing", () => {
   });
 
   it("getCreateSizePricing fetches + caches region rates for supported types", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ Items: [] }));
     const out = await client.getCreateSizePricing("azure-vm", {
       regionId: "eastus",
@@ -263,7 +264,7 @@ describe("AzureClient pricing", () => {
   });
 
   it("estimateCost uses region rates (defaults region to eastus)", async () => {
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ Items: [] }));
     const est = await client.estimateCost("azure-vm", { size: "unknown" });
     expect(est).toBeNull();

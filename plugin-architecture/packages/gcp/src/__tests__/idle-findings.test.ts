@@ -1,9 +1,6 @@
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
 import { describe, expect, it, vi } from "vitest";
-import {
-  pluginManifestSchema,
-  type IdleScanRequest,
-  type IdleScanResource,
-} from "@infrawrench/plugin-base";
+import { type IdleScanRequest, type IdleScanResource } from "@infrawrench/plugin-base";
 import {
   fetchGcpIdleFindings,
   GCP_IDLE_FINDINGS,
@@ -56,7 +53,7 @@ const cluster = res("prod", "gke-cluster", {
 describe("declaration", () => {
   it("is on the manifest, validates, and names declared types", () => {
     expect(plugin.manifest.idleFindings).toBe(GCP_IDLE_FINDINGS);
-    expect(pluginManifestSchema.safeParse(plugin.manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, plugin.manifest).success).toBe(true);
     const types = new Set(plugin.resourceTypes.map((t) => t.id));
     for (const rule of GCP_IDLE_FINDINGS.rules) {
       for (const id of rule.resourceTypeIds) expect(types.has(id)).toBe(true);

@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -82,7 +85,7 @@ export class CoralogixClient implements PluginClient {
   private readonly ctx: CoralogixContext;
   private readonly unitPriceRaw: string;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Coralogix plugin: missing apiKey credential");
     const caCert = credentials["caCert"] ?? "";
@@ -117,74 +120,76 @@ export class CoralogixClient implements PluginClient {
     }
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "team":
-        return [await this.teamInstance(accountId)];
-      case "alert":
-        return this.scoped(async () =>
-          (await this.fetchAlerts()).map((a) => mapAlert(accountId, a)),
-        );
-      case "dashboard":
-        return this.scoped(async () => {
-          const res = await cxFetch<{ items?: CxDashboardCatalogItem[] }>(
-            this.ctx,
-            "/dashboards/dashboards/v1/catalog/list",
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "team":
+          return [await this.teamInstance(accountId)];
+        case "alert":
+          return this.scoped(async () =>
+            (await this.fetchAlerts()).map((a) => mapAlert(accountId, a)),
           );
-          return (res?.items ?? []).map((d) => mapDashboard(accountId, d));
-        });
-      case "tco-policy":
-        return this.scoped(async () =>
-          (await this.fetchPolicies())
-            .filter((p) => !p.deleted)
-            .map((p) => mapPolicy(accountId, p)),
-        );
-      case "parsing-rule-group":
-        return this.scoped(async () => {
-          const res = await cxFetch<{ ruleGroups?: CxRuleGroup[] }>(
-            this.ctx,
-            "/parsing-rules/rule-groups/v1",
+        case "dashboard":
+          return this.scoped(async () => {
+            const res = await cxFetch<{ items?: CxDashboardCatalogItem[] }>(
+              this.ctx,
+              "/dashboards/dashboards/v1/catalog/list",
+            );
+            return (res?.items ?? []).map((d) => mapDashboard(accountId, d));
+          });
+        case "tco-policy":
+          return this.scoped(async () =>
+            (await this.fetchPolicies())
+              .filter((p) => !p.deleted)
+              .map((p) => mapPolicy(accountId, p)),
           );
-          return (res?.ruleGroups ?? [])
-            .filter((g) => !g.hidden)
-            .map((g) => mapRuleGroup(accountId, g));
-        });
-      case "enrichment":
-        return this.scoped(async () => {
-          const [enrichments, custom] = await Promise.all([
-            this.fetchEnrichments(),
-            this.fetchCustomEnrichments().catch(() => [] as CxCustomEnrichment[]),
-          ]);
-          const names = new Map<number, string>();
-          for (const c of custom) if (c.id !== undefined && c.name) names.set(c.id, c.name);
-          return enrichments.map((e) => mapEnrichment(accountId, e, names));
-        });
-      case "custom-enrichment":
-        return this.scoped(async () =>
-          (await this.fetchCustomEnrichments()).map((c) => mapCustomEnrichment(accountId, c)),
-        );
-      case "outgoing-webhook":
-        return this.scoped(async () => {
-          const res = await cxFetch<{ deployed?: CxWebhookSummary[] }>(
-            this.ctx,
-            "/integrations/webhooks/v1",
+        case "parsing-rule-group":
+          return this.scoped(async () => {
+            const res = await cxFetch<{ ruleGroups?: CxRuleGroup[] }>(
+              this.ctx,
+              "/parsing-rules/rule-groups/v1",
+            );
+            return (res?.ruleGroups ?? [])
+              .filter((g) => !g.hidden)
+              .map((g) => mapRuleGroup(accountId, g));
+          });
+        case "enrichment":
+          return this.scoped(async () => {
+            const [enrichments, custom] = await Promise.all([
+              this.fetchEnrichments(),
+              this.fetchCustomEnrichments().catch(() => [] as CxCustomEnrichment[]),
+            ]);
+            const names = new Map<number, string>();
+            for (const c of custom) if (c.id !== undefined && c.name) names.set(c.id, c.name);
+            return enrichments.map((e) => mapEnrichment(accountId, e, names));
+          });
+        case "custom-enrichment":
+          return this.scoped(async () =>
+            (await this.fetchCustomEnrichments()).map((c) => mapCustomEnrichment(accountId, c)),
           );
-          return (res?.deployed ?? []).map((w) => mapWebhook(accountId, w));
-        });
-      case "quota-rule":
-        return this.scoped(async () => {
-          const set = await this.fetchQuotaRuleSet();
-          return (set?.rules ?? [])
-            .filter((r) => r.entityType)
-            .map((r) => mapQuotaRule(accountId, r));
-        });
-      case "events2metrics":
-        return this.scoped(async () =>
-          (await this.fetchE2Ms()).filter((e) => !e.isInternal).map((e) => mapE2M(accountId, e)),
-        );
-      default:
-        throw new Error(`Coralogix plugin: unknown resource type "${typeId}"`);
-    }
+        case "outgoing-webhook":
+          return this.scoped(async () => {
+            const res = await cxFetch<{ deployed?: CxWebhookSummary[] }>(
+              this.ctx,
+              "/integrations/webhooks/v1",
+            );
+            return (res?.deployed ?? []).map((w) => mapWebhook(accountId, w));
+          });
+        case "quota-rule":
+          return this.scoped(async () => {
+            const set = await this.fetchQuotaRuleSet();
+            return (set?.rules ?? [])
+              .filter((r) => r.entityType)
+              .map((r) => mapQuotaRule(accountId, r));
+          });
+        case "events2metrics":
+          return this.scoped(async () =>
+            (await this.fetchE2Ms()).filter((e) => !e.isInternal).map((e) => mapE2M(accountId, e)),
+          );
+        default:
+          throw new Error(`Coralogix plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private fetchAlerts(): Promise<CxAlertDef[]> {
@@ -407,176 +412,188 @@ export class CoralogixClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "team": {
-        const info = await this.teamInfo();
-        const summary = await this.teamSummary(info.team?.dailyQuota);
-        return this.teamInstance(accountId, summary);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "team": {
+          const info = await this.teamInfo();
+          const summary = await this.teamSummary(info.team?.dailyQuota);
+          return this.teamInstance(accountId, summary);
+        }
+        case "alert": {
+          const res = await cxFetch<{ alertDef?: CxAlertDef }>(
+            this.ctx,
+            `/alerts/alerts/v3/${encodeURIComponent(id)}`,
+          );
+          if (res?.alertDef) return mapAlert(accountId, res.alertDef);
+          break;
+        }
+        case "tco-policy": {
+          const res = await cxFetch<{ policy?: CxPolicy }>(
+            this.ctx,
+            `/dataplans/policies/v1/${encodeURIComponent(id)}`,
+          );
+          if (res?.policy) return mapPolicy(accountId, res.policy);
+          break;
+        }
+        case "parsing-rule-group": {
+          const res = await cxFetch<{ ruleGroup?: CxRuleGroup }>(
+            this.ctx,
+            `/parsing-rules/rule-groups/v1/${encodeURIComponent(id)}`,
+          );
+          if (res?.ruleGroup) return mapRuleGroup(accountId, res.ruleGroup);
+          break;
+        }
+        case "events2metrics": {
+          const res = await cxFetch<{ e2m?: CxE2M }>(
+            this.ctx,
+            `/events2metrics/events2metrics/v2/${encodeURIComponent(id)}`,
+          );
+          if (res?.e2m) return mapE2M(accountId, res.e2m);
+          break;
+        }
+        default:
+          break;
       }
-      case "alert": {
-        const res = await cxFetch<{ alertDef?: CxAlertDef }>(
-          this.ctx,
-          `/alerts/alerts/v3/${encodeURIComponent(id)}`,
-        );
-        if (res?.alertDef) return mapAlert(accountId, res.alertDef);
-        break;
-      }
-      case "tco-policy": {
-        const res = await cxFetch<{ policy?: CxPolicy }>(
-          this.ctx,
-          `/dataplans/policies/v1/${encodeURIComponent(id)}`,
-        );
-        if (res?.policy) return mapPolicy(accountId, res.policy);
-        break;
-      }
-      case "parsing-rule-group": {
-        const res = await cxFetch<{ ruleGroup?: CxRuleGroup }>(
-          this.ctx,
-          `/parsing-rules/rule-groups/v1/${encodeURIComponent(id)}`,
-        );
-        if (res?.ruleGroup) return mapRuleGroup(accountId, res.ruleGroup);
-        break;
-      }
-      case "events2metrics": {
-        const res = await cxFetch<{ e2m?: CxE2M }>(
-          this.ctx,
-          `/events2metrics/events2metrics/v2/${encodeURIComponent(id)}`,
-        );
-        if (res?.e2m) return mapE2M(accountId, res.e2m);
-        break;
-      }
-      default:
-        break;
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === id);
-    if (!found) throw new Error(`Coralogix plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === id);
+      if (!found) throw new Error(`Coralogix plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`Coralogix plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(
+        `Coralogix plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics, costs and quotas
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    const num = (v: unknown, digits = 0) =>
-      typeof v === "number" ? v.toLocaleString("en-US", { maximumFractionDigits: digits }) : "—";
-    switch (resourceTypeId) {
-      case "team": {
-        const quota = typeof f["dailyQuota"] === "number" ? f["dailyQuota"] : undefined;
-        const today = typeof f["todayUnits"] === "number" ? f["todayUnits"] : undefined;
-        const share = quota && today !== undefined ? today / quota : undefined;
-        return [
-          {
-            label: "Estimated This Month",
-            value:
-              typeof f["monthToDateCost"] === "number" ? `$${num(f["monthToDateCost"], 2)}` : "—",
-          },
-          { label: "Units This Month", value: num(f["monthToDateUnits"], 1) },
-          {
-            label: "Quota Used Today",
-            value: share !== undefined ? `${(share * 100).toFixed(0)}%` : "—",
-            variant:
-              share === undefined
-                ? "default"
-                : share >= 1
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      const num = (v: unknown, digits = 0) =>
+        typeof v === "number" ? v.toLocaleString("en-US", { maximumFractionDigits: digits }) : "—";
+      switch (resourceTypeId) {
+        case "team": {
+          const quota = typeof f["dailyQuota"] === "number" ? f["dailyQuota"] : undefined;
+          const today = typeof f["todayUnits"] === "number" ? f["todayUnits"] : undefined;
+          const share = quota && today !== undefined ? today / quota : undefined;
+          return [
+            {
+              label: "Estimated This Month",
+              value:
+                typeof f["monthToDateCost"] === "number" ? `$${num(f["monthToDateCost"], 2)}` : "—",
+            },
+            { label: "Units This Month", value: num(f["monthToDateUnits"], 1) },
+            {
+              label: "Quota Used Today",
+              value: share !== undefined ? `${(share * 100).toFixed(0)}%` : "—",
+              variant:
+                share === undefined
+                  ? "default"
+                  : share >= 1
+                    ? "status-error"
+                    : share >= 0.8
+                      ? "status-degraded"
+                      : "status-healthy",
+            },
+          ];
+        }
+        case "alert": {
+          const status = String(f["status"] ?? "");
+          return [
+            {
+              label: "Status",
+              value: f["enabled"] === false ? "Disabled" : status || "—",
+              variant:
+                status === "Alerting"
                   ? "status-error"
-                  : share >= 0.8
-                    ? "status-degraded"
-                    : "status-healthy",
-          },
-        ];
+                  : status === "OK"
+                    ? "status-healthy"
+                    : "default",
+            },
+            { label: "Priority", value: String(f["priority"] ?? "—") },
+          ];
+        }
+        case "tco-policy":
+          return [
+            { label: "Priority", value: String(f["priorityLabel"] ?? "—") },
+            { label: "Source", value: String(f["source"] ?? "—") },
+          ];
+        default:
+          return [];
       }
-      case "alert": {
-        const status = String(f["status"] ?? "");
-        return [
-          {
-            label: "Status",
-            value: f["enabled"] === false ? "Disabled" : status || "—",
-            variant:
-              status === "Alerting"
-                ? "status-error"
-                : status === "OK"
-                  ? "status-healthy"
-                  : "default",
-          },
-          { label: "Priority", value: String(f["priority"] ?? "—") },
-        ];
-      }
-      case "tco-policy":
-        return [
-          { label: "Priority", value: String(f["priorityLabel"] ?? "—") },
-          { label: "Source", value: String(f["source"] ?? "—") },
-        ];
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const id = externalIdOf(resourceId);
-    switch (resourceTypeId) {
-      case "team": {
-        const info = await this.teamInfo().catch(() => ({}) as TeamInfo);
-        return teamSeries(
-          this.ctx,
-          rangeOrDefault(timeRange, TEAM_METRICS_WINDOW_MS),
-          info.team?.dailyQuota,
-        );
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (resourceTypeId) {
+        case "team": {
+          const info = await this.teamInfo().catch(() => ({}) as TeamInfo);
+          return teamSeries(
+            this.ctx,
+            rangeOrDefault(timeRange, TEAM_METRICS_WINDOW_MS),
+            info.team?.dailyQuota,
+          );
+        }
+        case "alert": {
+          const a = await runPluginEffect(this.getResource("alert", resourceId, accountId));
+          return alertSeries(
+            this.ctx,
+            String(a.resolvedOutputs["alertVersionId"] ?? a.fields["alertVersionId"] ?? ""),
+            rangeOrDefault(timeRange, ALERT_METRICS_WINDOW_MS),
+          );
+        }
+        case "tco-policy": {
+          const res = await cxFetch<{ policy?: CxPolicy }>(
+            this.ctx,
+            `/dataplans/policies/v1/${encodeURIComponent(id)}`,
+          );
+          return res?.policy ? policySeries(this.ctx, res.policy) : [];
+        }
+        default:
+          return [];
       }
-      case "alert": {
-        const a = await this.getResource("alert", resourceId, accountId);
-        return alertSeries(
-          this.ctx,
-          String(a.resolvedOutputs["alertVersionId"] ?? a.fields["alertVersionId"] ?? ""),
-          rangeOrDefault(timeRange, ALERT_METRICS_WINDOW_MS),
-        );
-      }
-      case "tco-policy": {
-        const res = await cxFetch<{ policy?: CxPolicy }>(
-          this.ctx,
-          `/dataplans/policies/v1/${encodeURIComponent(id)}`,
-        );
-        return res?.policy ? policySeries(this.ctx, res.policy) : [];
-      }
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchCoralogixCostData(this.ctx, range, this.unitPrice());
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchCoralogixCostData(this.ctx, range, this.unitPrice());
+    });
   }
 
   /**
@@ -586,316 +603,331 @@ export class CoralogixClient implements PluginClient {
    * list is a subset), but anything other than a permission refusal throws so
    * a transient failure never reads as quotas disappearing.
    */
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    const out: QuotaUsage[] = [];
-    let anyReadable = false;
-    const soft = async <T>(load: () => Promise<T>): Promise<T | undefined> => {
-      try {
-        const v = await load();
-        anyReadable = true;
-        return v;
-      } catch (err) {
-        if (isPermissionError(err)) return undefined;
-        throw err;
-      }
-    };
-    const [info, e2m, parsing, enrich] = await Promise.all([
-      this.teamInfo(),
-      soft(() => cxFetch<E2MLimits>(this.ctx, "/events2metrics/limits/v2")),
-      soft(() =>
-        cxFetch<ParsingLimits>(this.ctx, "/parsing-rules/limits/v1", { method: "POST", body: {} }),
-      ),
-      soft(() =>
-        cxFetch<{ limit?: number; used?: number }>(
-          this.ctx,
-          "/enrichment-rules/enrichment-rules/v1/limit",
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      const out: QuotaUsage[] = [];
+      let anyReadable = false;
+      const soft = async <T>(load: () => Promise<T>): Promise<T | undefined> => {
+        try {
+          const v = await load();
+          anyReadable = true;
+          return v;
+        } catch (err) {
+          if (isPermissionError(err)) return undefined;
+          throw err;
+        }
+      };
+      const [info, e2m, parsing, enrich] = await Promise.all([
+        this.teamInfo(),
+        soft(() => cxFetch<E2MLimits>(this.ctx, "/events2metrics/limits/v2")),
+        soft(() =>
+          cxFetch<ParsingLimits>(this.ctx, "/parsing-rules/limits/v1", {
+            method: "POST",
+            body: {},
+          }),
         ),
-      ),
-    ]);
-    const quota = info.team?.dailyQuota;
-    if (typeof quota === "number" && quota > 0) {
-      const today = new Date().toISOString().slice(0, 10);
-      const cells = await soft(() => fetchUsageCells(this.ctx, { fromDate: today, toDate: today }));
-      if (cells) {
-        out.push({
-          id: "team/daily-units",
-          service: "Data usage",
-          name: "Daily unit quota",
-          used: cells.reduce((s, c) => s + c.units, 0),
-          limit: quota,
-          unit: "units",
-          adjustable: true,
-          docsUrl:
-            "https://coralogix.com/docs/user-guides/account-management/payment-and-billing/quota-rules/",
-        });
+        soft(() =>
+          cxFetch<{ limit?: number; used?: number }>(
+            this.ctx,
+            "/enrichment-rules/enrichment-rules/v1/limit",
+          ),
+        ),
+      ]);
+      const quota = info.team?.dailyQuota;
+      if (typeof quota === "number" && quota > 0) {
+        const today = new Date().toISOString().slice(0, 10);
+        const cells = await soft(() =>
+          fetchUsageCells(this.ctx, { fromDate: today, toDate: today }),
+        );
+        if (cells) {
+          out.push({
+            id: "team/daily-units",
+            service: "Data usage",
+            name: "Daily unit quota",
+            used: cells.reduce((s, c) => s + c.units, 0),
+            limit: quota,
+            unit: "units",
+            adjustable: true,
+            docsUrl:
+              "https://coralogix.com/docs/user-guides/account-management/payment-and-billing/quota-rules/",
+          });
+        }
       }
-    }
-    const push = (
-      id: string,
-      service: string,
-      name: string,
-      used: number | undefined,
-      limit: number | undefined,
-      unit: string,
-    ) => {
-      if (typeof limit === "number" && limit > 0) {
-        out.push({ id, service, name, used: used ?? 0, limit, unit, adjustable: true });
-      }
-    };
-    push(
-      "e2m/metrics",
-      "Events2Metrics",
-      "Events2Metrics metrics",
-      e2m?.metricsLimit?.used,
-      e2m?.metricsLimit?.limit,
-      "metrics",
-    );
-    push(
-      "e2m/permutations",
-      "Events2Metrics",
-      "Events2Metrics label permutations",
-      e2m?.permutationsLimit?.used,
-      e2m?.permutationsLimit?.limit,
-      "permutations",
-    );
-    push(
-      "parsing/groups",
-      "Parsing rules",
-      "Parsing rule groups",
-      parsing?.usage?.groups,
-      parsing?.limits?.groups,
-      "groups",
-    );
-    push(
-      "parsing/rules",
-      "Parsing rules",
-      "Parsing rules",
-      parsing?.usage?.rules,
-      parsing?.limits?.rules,
-      "rules",
-    );
-    push(
-      "enrichments/rules",
-      "Enrichments",
-      "Enrichment rules",
-      enrich?.used,
-      enrich?.limit,
-      "rules",
-    );
-    if (!anyReadable && out.length === 0) {
-      throw new QuotaAccessError(
-        "The Coralogix API key may not read any limits. Attach the DataUsage, Events2Metrics, ParsingRules and Enrichments presets to the key.",
-        {
-          label: "Coralogix API keys",
-          url: "https://coralogix.com/docs/user-guides/account-management/api-keys/api-keys/",
-        },
+      const push = (
+        id: string,
+        service: string,
+        name: string,
+        used: number | undefined,
+        limit: number | undefined,
+        unit: string,
+      ) => {
+        if (typeof limit === "number" && limit > 0) {
+          out.push({ id, service, name, used: used ?? 0, limit, unit, adjustable: true });
+        }
+      };
+      push(
+        "e2m/metrics",
+        "Events2Metrics",
+        "Events2Metrics metrics",
+        e2m?.metricsLimit?.used,
+        e2m?.metricsLimit?.limit,
+        "metrics",
       );
-    }
-    return out;
+      push(
+        "e2m/permutations",
+        "Events2Metrics",
+        "Events2Metrics label permutations",
+        e2m?.permutationsLimit?.used,
+        e2m?.permutationsLimit?.limit,
+        "permutations",
+      );
+      push(
+        "parsing/groups",
+        "Parsing rules",
+        "Parsing rule groups",
+        parsing?.usage?.groups,
+        parsing?.limits?.groups,
+        "groups",
+      );
+      push(
+        "parsing/rules",
+        "Parsing rules",
+        "Parsing rules",
+        parsing?.usage?.rules,
+        parsing?.limits?.rules,
+        "rules",
+      );
+      push(
+        "enrichments/rules",
+        "Enrichments",
+        "Enrichment rules",
+        enrich?.used,
+        enrich?.limit,
+        "rules",
+      );
+      if (!anyReadable && out.length === 0) {
+        throw new QuotaAccessError(
+          "The Coralogix API key may not read any limits. Attach the DataUsage, Events2Metrics, ParsingRules and Enrichments presets to the key.",
+          {
+            label: "Coralogix API keys",
+            url: "https://coralogix.com/docs/user-guides/account-management/api-keys/api-keys/",
+          },
+        );
+      }
+      return out;
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return verifyCoralogixCredentials(this.ctx);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyCoralogixCredentials(this.ctx);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create / update / delete
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "enrichment") {
-      throw new Error(`Coralogix plugin: cannot create "${typeId}" from Infrawrench`);
-    }
-    const custom = await this.fetchCustomEnrichments().catch(() => [] as CxCustomEnrichment[]);
-    return {
-      fields: [
-        {
-          key: "kind",
-          label: "Type",
-          kind: "select",
-          required: true,
-          defaultValue: "geo-ip",
-          options: [
-            {
-              id: "geo-ip",
-              label: "Geo IP",
-              description: "Country, city and coordinates for an IP address.",
-            },
-            {
-              id: "geo-ip-asn",
-              label: "Geo IP with ASN",
-              description: "Geo IP plus the network (autonomous system) the address belongs to.",
-            },
-            {
-              id: "suspicious-ip",
-              label: "Suspicious IP",
-              description: "Flags addresses that appear in threat intelligence feeds.",
-            },
-            ...(custom.length > 0
-              ? [
-                  {
-                    id: "custom",
-                    label: "Custom lookup",
-                    description: "Adds columns from a custom enrichment table you uploaded.",
-                  },
-                ]
-              : []),
-          ],
-        },
-        {
-          key: "customEnrichmentId",
-          label: "Custom enrichment",
-          kind: "select",
-          required: false,
-          showWhen: { fieldKey: "kind", fieldValue: "custom" },
-          options: custom
-            .filter((c) => c.id !== undefined)
-            .map((c) => ({
-              id: String(c.id),
-              label: c.name ?? String(c.id),
-              ...(c.fileName ? { description: c.fileName } : {}),
-            })),
-        },
-        {
-          key: "fieldName",
-          label: "Log field",
-          kind: "text",
-          required: true,
-          placeholder: "client_ip",
-          description:
-            "The field in your logs that holds the value to look up, for example client_ip or request.source.ip.",
-        },
-        {
-          key: "enrichedFieldName",
-          label: "Enriched field name",
-          kind: "text",
-          required: false,
-          description:
-            "Where the added data is written. Leave empty to let Coralogix name it after the log field.",
-        },
-      ],
-    };
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId !== "enrichment") {
+        throw new Error(`Coralogix plugin: cannot create "${typeId}" from Infrawrench`);
+      }
+      const custom = await this.fetchCustomEnrichments().catch(() => [] as CxCustomEnrichment[]);
+      return {
+        fields: [
+          {
+            key: "kind",
+            label: "Type",
+            kind: "select",
+            required: true,
+            defaultValue: "geo-ip",
+            options: [
+              {
+                id: "geo-ip",
+                label: "Geo IP",
+                description: "Country, city and coordinates for an IP address.",
+              },
+              {
+                id: "geo-ip-asn",
+                label: "Geo IP with ASN",
+                description: "Geo IP plus the network (autonomous system) the address belongs to.",
+              },
+              {
+                id: "suspicious-ip",
+                label: "Suspicious IP",
+                description: "Flags addresses that appear in threat intelligence feeds.",
+              },
+              ...(custom.length > 0
+                ? [
+                    {
+                      id: "custom",
+                      label: "Custom lookup",
+                      description: "Adds columns from a custom enrichment table you uploaded.",
+                    },
+                  ]
+                : []),
+            ],
+          },
+          {
+            key: "customEnrichmentId",
+            label: "Custom enrichment",
+            kind: "select",
+            required: false,
+            showWhen: { fieldKey: "kind", fieldValue: "custom" },
+            options: custom
+              .filter((c) => c.id !== undefined)
+              .map((c) => ({
+                id: String(c.id),
+                label: c.name ?? String(c.id),
+                ...(c.fileName ? { description: c.fileName } : {}),
+              })),
+          },
+          {
+            key: "fieldName",
+            label: "Log field",
+            kind: "text",
+            required: true,
+            placeholder: "client_ip",
+            description:
+              "The field in your logs that holds the value to look up, for example client_ip or request.source.ip.",
+          },
+          {
+            key: "enrichedFieldName",
+            label: "Enriched field name",
+            kind: "text",
+            required: false,
+            description:
+              "Where the added data is written. Leave empty to let Coralogix name it after the log field.",
+          },
+        ],
+      };
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "enrichment") {
-      throw new Error(`Coralogix plugin: cannot create "${typeId}" from Infrawrench`);
-    }
-    const fieldName = (fields["fieldName"] ?? "").trim();
-    if (!fieldName) throw new Error("Pick the log field to enrich.");
-    const kind = fields["kind"] ?? "geo-ip";
-    let enrichmentType: CxEnrichment["enrichmentType"];
-    switch (kind) {
-      case "geo-ip":
-        enrichmentType = { geoIp: { withAsn: false } };
-        break;
-      case "geo-ip-asn":
-        enrichmentType = { geoIp: { withAsn: true } };
-        break;
-      case "suspicious-ip":
-        enrichmentType = { suspiciousIp: {} };
-        break;
-      case "custom": {
-        const id = Number(fields["customEnrichmentId"]);
-        if (!Number.isFinite(id)) throw new Error("Pick the custom enrichment to look up.");
-        enrichmentType = { customEnrichment: { id } };
-        break;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "enrichment") {
+        throw new Error(`Coralogix plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      default:
-        throw new Error(`Unknown enrichment type "${kind}".`);
-    }
-    const enrichedFieldName = (fields["enrichedFieldName"] ?? "").trim();
-    const res = await cxFetch<{ enrichments?: CxEnrichment[] }>(
-      this.ctx,
-      "/enrichment-rules/enrichment-rules/v1",
-      {
-        method: "POST",
-        body: {
-          requestEnrichments: [
-            { fieldName, enrichmentType, ...(enrichedFieldName ? { enrichedFieldName } : {}) },
-          ],
+      const fieldName = (fields["fieldName"] ?? "").trim();
+      if (!fieldName) throw new Error("Pick the log field to enrich.");
+      const kind = fields["kind"] ?? "geo-ip";
+      let enrichmentType: CxEnrichment["enrichmentType"];
+      switch (kind) {
+        case "geo-ip":
+          enrichmentType = { geoIp: { withAsn: false } };
+          break;
+        case "geo-ip-asn":
+          enrichmentType = { geoIp: { withAsn: true } };
+          break;
+        case "suspicious-ip":
+          enrichmentType = { suspiciousIp: {} };
+          break;
+        case "custom": {
+          const id = Number(fields["customEnrichmentId"]);
+          if (!Number.isFinite(id)) throw new Error("Pick the custom enrichment to look up.");
+          enrichmentType = { customEnrichment: { id } };
+          break;
+        }
+        default:
+          throw new Error(`Unknown enrichment type "${kind}".`);
+      }
+      const enrichedFieldName = (fields["enrichedFieldName"] ?? "").trim();
+      const res = await cxFetch<{ enrichments?: CxEnrichment[] }>(
+        this.ctx,
+        "/enrichment-rules/enrichment-rules/v1",
+        {
+          method: "POST",
+          body: {
+            requestEnrichments: [
+              { fieldName, enrichmentType, ...(enrichedFieldName ? { enrichedFieldName } : {}) },
+            ],
+          },
         },
-      },
-    );
-    const created =
-      (res?.enrichments ?? []).find(
-        (e) =>
-          e.fieldName === fieldName &&
-          JSON.stringify(e.enrichmentType) === JSON.stringify(enrichmentType),
-      ) ?? res?.enrichments?.[res.enrichments.length - 1];
-    if (!created) throw new Error("Coralogix plugin: enrichment create returned no rule");
-    const custom = await this.fetchCustomEnrichments().catch(() => [] as CxCustomEnrichment[]);
-    const names = new Map<number, string>();
-    for (const c of custom) if (c.id !== undefined && c.name) names.set(c.id, c.name);
-    return mapEnrichment(accountId, created, names);
+      );
+      const created =
+        (res?.enrichments ?? []).find(
+          (e) =>
+            e.fieldName === fieldName &&
+            JSON.stringify(e.enrichmentType) === JSON.stringify(enrichmentType),
+        ) ?? res?.enrichments?.[res.enrichments.length - 1];
+      if (!created) throw new Error("Coralogix plugin: enrichment create returned no rule");
+      const custom = await this.fetchCustomEnrichments().catch(() => [] as CxCustomEnrichment[]);
+      const names = new Map<number, string>();
+      for (const c of custom) if (c.id !== undefined && c.name) names.set(c.id, c.name);
+      return mapEnrichment(accountId, created, names);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "alert": {
-        const updated = await this.replaceAlert(id, (p) => {
-          const name = (fields["name"] ?? "").trim();
-          if (name) p.name = name;
-          if ("description" in fields) p.description = fields["description"] ?? "";
-          if ("priority" in fields && fields["priority"]) {
-            p.priority = alertPriorityValue(fields["priority"]);
-          }
-        });
-        return mapAlert(accountId, updated);
-      }
-      case "tco-policy": {
-        const policy = await this.replacePolicy(id, (body) => {
-          if ("name" in fields) body["name"] = (fields["name"] ?? "").trim() || body["name"];
-          if ("description" in fields) body["description"] = fields["description"] ?? "";
-          if ("priority" in fields) {
-            const p = policyPriorityValue(fields["priority"] ?? "");
-            if (!p) throw new Error("Pick High, Medium, Low or Block.");
-            body["priority"] = p;
-          }
-        });
-        return mapPolicy(accountId, policy);
-      }
-      case "quota-rule": {
-        const set = await this.fetchQuotaRuleSet();
-        if (!set?.rules) throw new Error("Coralogix plugin: the team has no quota rule set");
-        const rules = set.rules.map((r) => {
-          if (r.entityType !== id) return r;
-          const next = { ...r };
-          if ("allocation" in fields && fields["allocation"] !== "") {
-            const n = Number(fields["allocation"]);
-            if (!Number.isFinite(n) || n < 0)
-              throw new Error("Allocation must be a number of 0 or more.");
-            if (next.allocationType !== "QUOTA_ALLOCATION_TYPE_LOCKED_UNITS" && n > 100) {
-              throw new Error("A percentage allocation cannot be more than 100.");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "alert": {
+          const updated = await this.replaceAlert(id, (p) => {
+            const name = (fields["name"] ?? "").trim();
+            if (name) p.name = name;
+            if ("description" in fields) p.description = fields["description"] ?? "";
+            if ("priority" in fields && fields["priority"]) {
+              p.priority = alertPriorityValue(fields["priority"]);
             }
-            next.allocation = n;
-          }
-          if ("canOverflow" in fields) next.canOverflow = fields["canOverflow"] === "true";
-          if ("enabled" in fields) next.enabled = fields["enabled"] === "true";
-          return next;
-        });
-        const res = await cxFetch<{ ruleSet?: CxQuotaRuleSet }>(
-          this.ctx,
-          "/dataplan/quota-rules/v1",
-          { method: "PUT", body: { ruleSet: { ...(set.id ? { id: set.id } : {}), rules } } },
-        );
-        const rule = (res?.ruleSet?.rules ?? rules).find((r) => r.entityType === id);
-        if (!rule) throw new Error(`Coralogix plugin: quota rule "${id}" not found`);
-        return mapQuotaRule(accountId, rule);
+          });
+          return mapAlert(accountId, updated);
+        }
+        case "tco-policy": {
+          const policy = await this.replacePolicy(id, (body) => {
+            if ("name" in fields) body["name"] = (fields["name"] ?? "").trim() || body["name"];
+            if ("description" in fields) body["description"] = fields["description"] ?? "";
+            if ("priority" in fields) {
+              const p = policyPriorityValue(fields["priority"] ?? "");
+              if (!p) throw new Error("Pick High, Medium, Low or Block.");
+              body["priority"] = p;
+            }
+          });
+          return mapPolicy(accountId, policy);
+        }
+        case "quota-rule": {
+          const set = await this.fetchQuotaRuleSet();
+          if (!set?.rules) throw new Error("Coralogix plugin: the team has no quota rule set");
+          const rules = set.rules.map((r) => {
+            if (r.entityType !== id) return r;
+            const next = { ...r };
+            if ("allocation" in fields && fields["allocation"] !== "") {
+              const n = Number(fields["allocation"]);
+              if (!Number.isFinite(n) || n < 0)
+                throw new Error("Allocation must be a number of 0 or more.");
+              if (next.allocationType !== "QUOTA_ALLOCATION_TYPE_LOCKED_UNITS" && n > 100) {
+                throw new Error("A percentage allocation cannot be more than 100.");
+              }
+              next.allocation = n;
+            }
+            if ("canOverflow" in fields) next.canOverflow = fields["canOverflow"] === "true";
+            if ("enabled" in fields) next.enabled = fields["enabled"] === "true";
+            return next;
+          });
+          const res = await cxFetch<{ ruleSet?: CxQuotaRuleSet }>(
+            this.ctx,
+            "/dataplan/quota-rules/v1",
+            { method: "PUT", body: { ruleSet: { ...(set.id ? { id: set.id } : {}), rules } } },
+          );
+          const rule = (res?.ruleSet?.rules ?? rules).find((r) => r.entityType === id);
+          if (!rule) throw new Error(`Coralogix plugin: quota rule "${id}" not found`);
+          return mapQuotaRule(accountId, rule);
+        }
+        default:
+          throw new Error(`Coralogix plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-      default:
-        throw new Error(`Coralogix plugin: "${typeId}" cannot be edited from Infrawrench`);
-    }
+    });
   }
 
   /** Read an alert definition, let `edit` change its properties, and write it back. */
@@ -985,118 +1017,122 @@ export class CoralogixClient implements PluginClient {
     });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const raw = externalIdOf(resourceId);
-    const id = encodeURIComponent(raw);
-    switch (typeId) {
-      case "alert":
-        await cxFetch<unknown>(this.ctx, `/alerts/alerts/v3/${id}`, { method: "DELETE" });
-        return;
-      case "dashboard":
-        await cxFetch<unknown>(this.ctx, `/dashboards/dashboards/v1/${id}`, { method: "DELETE" });
-        return;
-      case "tco-policy":
-        await cxFetch<unknown>(this.ctx, `/dataplans/policies/v1/${id}`, { method: "DELETE" });
-        return;
-      case "parsing-rule-group":
-        await cxFetch<unknown>(this.ctx, `/parsing-rules/rule-groups/v1/${id}`, {
-          method: "DELETE",
-        });
-        return;
-      case "enrichment":
-        await cxFetch<unknown>(this.ctx, "/enrichment-rules/enrichment-rules/v1", {
-          method: "DELETE",
-          query: { enrichment_ids: [raw] },
-        });
-        return;
-      case "custom-enrichment":
-        await cxFetch<unknown>(this.ctx, `/enrichment-rules/custom-enrichment-rules/v1/${id}`, {
-          method: "DELETE",
-        });
-        return;
-      case "outgoing-webhook":
-        await cxFetch<unknown>(this.ctx, `/integrations/webhooks/v1/${id}`, { method: "DELETE" });
-        return;
-      case "events2metrics":
-        await cxFetch<unknown>(this.ctx, `/events2metrics/events2metrics/v2/${id}`, {
-          method: "DELETE",
-        });
-        return;
-      default:
-        throw new Error(`Coralogix plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const raw = externalIdOf(resourceId);
+      const id = encodeURIComponent(raw);
+      switch (typeId) {
+        case "alert":
+          await cxFetch<unknown>(this.ctx, `/alerts/alerts/v3/${id}`, { method: "DELETE" });
+          return;
+        case "dashboard":
+          await cxFetch<unknown>(this.ctx, `/dashboards/dashboards/v1/${id}`, { method: "DELETE" });
+          return;
+        case "tco-policy":
+          await cxFetch<unknown>(this.ctx, `/dataplans/policies/v1/${id}`, { method: "DELETE" });
+          return;
+        case "parsing-rule-group":
+          await cxFetch<unknown>(this.ctx, `/parsing-rules/rule-groups/v1/${id}`, {
+            method: "DELETE",
+          });
+          return;
+        case "enrichment":
+          await cxFetch<unknown>(this.ctx, "/enrichment-rules/enrichment-rules/v1", {
+            method: "DELETE",
+            query: { enrichment_ids: [raw] },
+          });
+          return;
+        case "custom-enrichment":
+          await cxFetch<unknown>(this.ctx, `/enrichment-rules/custom-enrichment-rules/v1/${id}`, {
+            method: "DELETE",
+          });
+          return;
+        case "outgoing-webhook":
+          await cxFetch<unknown>(this.ctx, `/integrations/webhooks/v1/${id}`, { method: "DELETE" });
+          return;
+        case "events2metrics":
+          await cxFetch<unknown>(this.ctx, `/events2metrics/events2metrics/v2/${id}`, {
+            method: "DELETE",
+          });
+          return;
+        default:
+          throw new Error(`Coralogix plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId);
-    const toggle = actionId === "enable" || actionId === "disable";
-    const enabled = actionId === "enable";
-    if (typeId === "alert" && toggle) {
-      await this.replaceAlert(id, (p) => {
-        p.enabled = enabled;
-      });
-      return;
-    }
-    if (typeId === "tco-policy" && toggle) {
-      await this.replacePolicy(id, (body) => {
-        body["enabled"] = enabled;
-      });
-      return;
-    }
-    if (typeId === "parsing-rule-group" && toggle) {
-      await this.setRuleGroupEnabled(id, enabled);
-      return;
-    }
-    if (typeId === "dashboard") {
-      if (actionId === "pin" || actionId === "unpin") {
-        await cxFetch<unknown>(this.ctx, `/dashboards/pinned/v1/${encodeURIComponent(id)}`, {
-          method: actionId === "pin" ? "PUT" : "DELETE",
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const toggle = actionId === "enable" || actionId === "disable";
+      const enabled = actionId === "enable";
+      if (typeId === "alert" && toggle) {
+        await this.replaceAlert(id, (p) => {
+          p.enabled = enabled;
         });
         return;
       }
-      if (actionId === "make-default") {
-        await cxFetch<unknown>(
-          this.ctx,
-          `/dashboards/dashboards/v1/${encodeURIComponent(id)}/default`,
-          { method: "PUT", body: {} },
-        );
+      if (typeId === "tco-policy" && toggle) {
+        await this.replacePolicy(id, (body) => {
+          body["enabled"] = enabled;
+        });
         return;
       }
-    }
-    if (typeId === "outgoing-webhook" && actionId === "test") {
-      const res = await cxFetch<{
-        success?: unknown;
-        failure?: { displayMessage?: string; errorMessage?: string; statusCode?: number };
-      }>(this.ctx, `/integrations/webhooks/v1/${encodeURIComponent(id)}/test`);
-      if (res?.failure) {
-        const f = res.failure;
-        throw new Error(
-          `The test notification failed${f.statusCode ? ` (HTTP ${f.statusCode})` : ""}: ${f.displayMessage || f.errorMessage || "no details"}`,
-        );
+      if (typeId === "parsing-rule-group" && toggle) {
+        await this.setRuleGroupEnabled(id, enabled);
+        return;
       }
-      return;
-    }
-    if (
-      typeId === "team" &&
-      (actionId === "enable-usage-metrics" || actionId === "disable-usage-metrics")
-    ) {
-      await cxFetch<unknown>(this.ctx, "/dataplans/data-usage/v2/export-status", {
-        method: "POST",
-        version: 4,
-        body: { enabled: actionId === "enable-usage-metrics" },
-      });
-      return;
-    }
-    throw new Error(`Coralogix plugin: unknown action "${actionId}" for "${typeId}"`);
+      if (typeId === "dashboard") {
+        if (actionId === "pin" || actionId === "unpin") {
+          await cxFetch<unknown>(this.ctx, `/dashboards/pinned/v1/${encodeURIComponent(id)}`, {
+            method: actionId === "pin" ? "PUT" : "DELETE",
+          });
+          return;
+        }
+        if (actionId === "make-default") {
+          await cxFetch<unknown>(
+            this.ctx,
+            `/dashboards/dashboards/v1/${encodeURIComponent(id)}/default`,
+            { method: "PUT", body: {} },
+          );
+          return;
+        }
+      }
+      if (typeId === "outgoing-webhook" && actionId === "test") {
+        const res = await cxFetch<{
+          success?: unknown;
+          failure?: { displayMessage?: string; errorMessage?: string; statusCode?: number };
+        }>(this.ctx, `/integrations/webhooks/v1/${encodeURIComponent(id)}/test`);
+        if (res?.failure) {
+          const f = res.failure;
+          throw new Error(
+            `The test notification failed${f.statusCode ? ` (HTTP ${f.statusCode})` : ""}: ${f.displayMessage || f.errorMessage || "no details"}`,
+          );
+        }
+        return;
+      }
+      if (
+        typeId === "team" &&
+        (actionId === "enable-usage-metrics" || actionId === "disable-usage-metrics")
+      ) {
+        await cxFetch<unknown>(this.ctx, "/dataplans/data-usage/v2/export-status", {
+          method: "POST",
+          version: 4,
+          body: { enabled: actionId === "enable-usage-metrics" },
+        });
+        return;
+      }
+      throw new Error(`Coralogix plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------

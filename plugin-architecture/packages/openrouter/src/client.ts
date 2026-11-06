@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -323,7 +326,7 @@ export class OpenRouterClient implements PluginClient {
   private speechModelsPromise: Promise<{ tts: OrModel[]; stt: OrModel[] }> | undefined;
   private canonicalSlugs: Promise<Map<string, string>> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const managementKey = credentials["managementKey"] || credentials["apiKey"];
     if (!managementKey)
       throw new Error("OpenRouter plugin: enter a management key or an inference API key");
@@ -363,30 +366,34 @@ export class OpenRouterClient implements PluginClient {
 
   // ------------------------------------------------------------------ list
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (!this.hasManagementKey && MANAGEMENT_ONLY_TYPES.has(typeId)) return [];
-    switch (typeId) {
-      case "model":
-        return this.listModels(accountId);
-      case "model-endpoint":
-        return this.listModelEndpoints(accountId);
-      case "provider":
-        return this.listProviders(accountId);
-      case "api-key":
-        return this.listApiKeys(accountId);
-      case "guardrail":
-        return (await this.listPaged<OrGuardrail>("/guardrails")).map((g) =>
-          mapGuardrail(accountId, g),
-        );
-      case "workspace":
-        return (await this.listPaged<OrWorkspace>("/workspaces")).map((w) =>
-          mapWorkspace(accountId, w),
-        );
-      case "byok-credential":
-        return (await this.listPaged<OrByokCredential>("/byok")).map((b) => mapByok(accountId, b));
-      default:
-        throw new Error(`OpenRouter plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      if (!this.hasManagementKey && MANAGEMENT_ONLY_TYPES.has(typeId)) return [];
+      switch (typeId) {
+        case "model":
+          return this.listModels(accountId);
+        case "model-endpoint":
+          return this.listModelEndpoints(accountId);
+        case "provider":
+          return this.listProviders(accountId);
+        case "api-key":
+          return this.listApiKeys(accountId);
+        case "guardrail":
+          return (await this.listPaged<OrGuardrail>("/guardrails")).map((g) =>
+            mapGuardrail(accountId, g),
+          );
+        case "workspace":
+          return (await this.listPaged<OrWorkspace>("/workspaces")).map((w) =>
+            mapWorkspace(accountId, w),
+          );
+        case "byok-credential":
+          return (await this.listPaged<OrByokCredential>("/byok")).map((b) =>
+            mapByok(accountId, b),
+          );
+        default:
+          throw new Error(`OpenRouter plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -658,111 +665,117 @@ export class OpenRouterClient implements PluginClient {
 
   // ------------------------------------------------------------------- get
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    const now = new Date().toISOString();
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      const now = new Date().toISOString();
 
-    if (typeId === "api-key") {
-      const data = await this.fetch<{ data: OrKey }>(`/keys/${encodeURIComponent(externalId)}`);
-      return this.mapKey(accountId, now, data.data);
-    }
+      if (typeId === "api-key") {
+        const data = await this.fetch<{ data: OrKey }>(`/keys/${encodeURIComponent(externalId)}`);
+        return this.mapKey(accountId, now, data.data);
+      }
 
-    if (typeId === "guardrail") {
-      const id = encodeURIComponent(externalId);
-      const [data, assignments] = await Promise.all([
-        this.fetch<{ data: OrGuardrail }>(`/guardrails/${id}`),
-        this.listPaged<OrGuardrailKeyAssignment>(`/guardrails/${id}/assignments/keys`).catch(
-          () => undefined,
-        ),
-      ]);
-      return mapGuardrail(accountId, data.data, assignments);
-    }
+      if (typeId === "guardrail") {
+        const id = encodeURIComponent(externalId);
+        const [data, assignments] = await Promise.all([
+          this.fetch<{ data: OrGuardrail }>(`/guardrails/${id}`),
+          this.listPaged<OrGuardrailKeyAssignment>(`/guardrails/${id}/assignments/keys`).catch(
+            () => undefined,
+          ),
+        ]);
+        return mapGuardrail(accountId, data.data, assignments);
+      }
 
-    if (typeId === "workspace") {
-      const id = encodeURIComponent(externalId);
-      const [data, budgets, members] = await Promise.all([
-        this.fetch<{ data: OrWorkspace }>(`/workspaces/${id}`),
-        this.fetch<{ data?: OrWorkspaceBudget[]; include_byok_in_budgets?: boolean }>(
-          `/workspaces/${id}/budgets`,
-        ).catch(() => undefined),
-        this.fetch<{ total_count?: number; data?: unknown[] }>(
-          `/workspaces/${id}/members?limit=1`,
-        ).catch(() => undefined),
-      ]);
-      return mapWorkspace(
-        accountId,
-        data.data,
-        budgets,
-        members ? (members.total_count ?? members.data?.length) : undefined,
-      );
-    }
+      if (typeId === "workspace") {
+        const id = encodeURIComponent(externalId);
+        const [data, budgets, members] = await Promise.all([
+          this.fetch<{ data: OrWorkspace }>(`/workspaces/${id}`),
+          this.fetch<{ data?: OrWorkspaceBudget[]; include_byok_in_budgets?: boolean }>(
+            `/workspaces/${id}/budgets`,
+          ).catch(() => undefined),
+          this.fetch<{ total_count?: number; data?: unknown[] }>(
+            `/workspaces/${id}/members?limit=1`,
+          ).catch(() => undefined),
+        ]);
+        return mapWorkspace(
+          accountId,
+          data.data,
+          budgets,
+          members ? (members.total_count ?? members.data?.length) : undefined,
+        );
+      }
 
-    if (typeId === "byok-credential") {
-      const data = await this.fetch<{ data: OrByokCredential }>(
-        `/byok/${encodeURIComponent(externalId)}`,
-      );
-      return mapByok(accountId, data.data);
-    }
+      if (typeId === "byok-credential") {
+        const data = await this.fetch<{ data: OrByokCredential }>(
+          `/byok/${encodeURIComponent(externalId)}`,
+        );
+        return mapByok(accountId, data.data);
+      }
 
-    if (typeId === "model-endpoint") {
-      const [modelId, endpointName] = splitEndpointExternalId(externalId);
-      const endpoints = await this.fetchModelEndpoints(modelId);
-      const found = endpoints.find((e) => e.name === endpointName);
-      if (!found) throw new Error(`OpenRouter plugin: endpoint ${externalId} not found`);
-      return this.mapEndpoint(accountId, now, modelId, found);
-    }
+      if (typeId === "model-endpoint") {
+        const [modelId, endpointName] = splitEndpointExternalId(externalId);
+        const endpoints = await this.fetchModelEndpoints(modelId);
+        const found = endpoints.find((e) => e.name === endpointName);
+        if (!found) throw new Error(`OpenRouter plugin: endpoint ${externalId} not found`);
+        return this.mapEndpoint(accountId, now, modelId, found);
+      }
 
-    if (typeId === "model") {
-      const [author, ...rest] = externalId.split("/");
-      const slug = rest.join("/");
-      if (author && slug) {
-        const data = await this.fetch<{
-          data?: OrModel & { endpoints?: OrEndpoint[] };
-        }>(`/models/${encodeURIComponent(author)}/${encodeURIComponent(slug)}/endpoints`);
-        if (data.data) {
-          const resource = this.mapModel(accountId, now, data.data);
-          // `renderDetail` is synchronous, so anything it needs from an extra
-          // call is stashed here. Same pattern as Cloudflare Queues'
-          // `__consumers__`.
-          const stash: Record<string, string> = {
-            __endpoints__: JSON.stringify(data.data.endpoints ?? []),
-          };
-          if (isAudioModel(data.data)) {
-            try {
-              const speech = await this.speechCatalogue();
-              stash["__speech__"] = JSON.stringify(speech);
-            } catch {
-              // fall back to the verified defaults in the panel
+      if (typeId === "model") {
+        const [author, ...rest] = externalId.split("/");
+        const slug = rest.join("/");
+        if (author && slug) {
+          const data = await this.fetch<{
+            data?: OrModel & { endpoints?: OrEndpoint[] };
+          }>(`/models/${encodeURIComponent(author)}/${encodeURIComponent(slug)}/endpoints`);
+          if (data.data) {
+            const resource = this.mapModel(accountId, now, data.data);
+            // `renderDetail` is synchronous, so anything it needs from an extra
+            // call is stashed here. Same pattern as Cloudflare Queues'
+            // `__consumers__`.
+            const stash: Record<string, string> = {
+              __endpoints__: JSON.stringify(data.data.endpoints ?? []),
+            };
+            if (isAudioModel(data.data)) {
+              try {
+                const speech = await this.speechCatalogue();
+                stash["__speech__"] = JSON.stringify(speech);
+              } catch {
+                // fall back to the verified defaults in the panel
+              }
             }
+            resource.resolvedOutputs = stash;
+            return resource;
           }
-          resource.resolvedOutputs = stash;
-          return resource;
         }
       }
-    }
 
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`OpenRouter plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`OpenRouter plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const stored = resource.resolvedOutputs[outputKey];
-    if (stored !== undefined) return stored;
-    const direct = resource.fields[outputKey];
-    if (direct !== undefined) return String(direct);
-    throw new Error(`OpenRouter plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const stored = resource.resolvedOutputs[outputKey];
+      if (stored !== undefined) return stored;
+      const direct = resource.fields[outputKey];
+      if (direct !== undefined) return String(direct);
+      throw new Error(
+        `OpenRouter plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   // --------------------------------------------------------------- credits
@@ -776,104 +789,114 @@ export class OpenRouterClient implements PluginClient {
    * `total_credits` is everything ever added, so it *is* an honest `granted`:
    * "spent 38 of 50" is exactly what those two numbers mean.
    */
-  async fetchCreditBalance(): Promise<CreditBalance[]> {
-    let body: { data?: { total_credits?: number; total_usage?: number } };
-    try {
-      body = await this.fetch<{ data?: { total_credits?: number; total_usage?: number } }>(
-        "/credits",
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (/40[13]/.test(message)) {
-        throw new CreditAccessError(
-          "OpenRouter only exposes the account credit balance to a provisioning key. Add one to this account to track credits.",
-          {
-            label: "Create a provisioning key",
-            url: "https://openrouter.ai/settings/provisioning-keys",
-          },
+  fetchCreditBalance(): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      let body: { data?: { total_credits?: number; total_usage?: number } };
+      try {
+        body = await this.fetch<{ data?: { total_credits?: number; total_usage?: number } }>(
+          "/credits",
         );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/40[13]/.test(message)) {
+          throw new CreditAccessError(
+            "OpenRouter only exposes the account credit balance to a provisioning key. Add one to this account to track credits.",
+            {
+              label: "Create a provisioning key",
+              url: "https://openrouter.ai/settings/provisioning-keys",
+            },
+          );
+        }
+        throw err;
       }
-      throw err;
-    }
-    const granted = body.data?.total_credits ?? 0;
-    const used = body.data?.total_usage ?? 0;
-    return [
-      {
-        key: "default",
-        label: "Account credits",
-        remaining: granted - used,
-        currency: "USD",
-        granted,
-      },
-    ];
+      const granted = body.data?.total_credits ?? 0;
+      const used = body.data?.total_usage ?? 0;
+      return [
+        {
+          key: "default",
+          label: "Account credits",
+          remaining: granted - used,
+          currency: "USD",
+          granted,
+        },
+      ];
+    });
   }
 
   // ------------------------------------------------------------- dashboard
 
   /** GET /credits → `{ total_credits, total_usage }` (management key only). */
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (resourceTypeId === "api-key") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const stats: DashboardStat[] = [
-        { label: "Usage", value: `$${Number(f["usage"] ?? 0).toFixed(4)}` },
-        {
-          label: "Limit",
-          value: Number(f["limit"] ?? 0) > 0 ? `$${Number(f["limit"]).toFixed(2)}` : "unlimited",
-        },
-        {
-          label: "Status",
-          value: f["disabled"] === true ? "disabled" : "active",
-          variant: f["disabled"] === true ? "status-degraded" : "status-healthy",
-        },
-      ];
-      try {
-        const credits = await this.fetch<{
-          data?: { total_credits?: number; total_usage?: number };
-        }>("/credits");
-        const total = credits.data?.total_credits ?? 0;
-        const used = credits.data?.total_usage ?? 0;
-        stats.push({ label: "Account credits left", value: `$${(total - used).toFixed(2)}` });
-      } catch {
-        // /credits needs a management key; skip the stat rather than fail.
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "api-key") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const stats: DashboardStat[] = [
+          { label: "Usage", value: `$${Number(f["usage"] ?? 0).toFixed(4)}` },
+          {
+            label: "Limit",
+            value: Number(f["limit"] ?? 0) > 0 ? `$${Number(f["limit"]).toFixed(2)}` : "unlimited",
+          },
+          {
+            label: "Status",
+            value: f["disabled"] === true ? "disabled" : "active",
+            variant: f["disabled"] === true ? "status-degraded" : "status-healthy",
+          },
+        ];
+        try {
+          const credits = await this.fetch<{
+            data?: { total_credits?: number; total_usage?: number };
+          }>("/credits");
+          const total = credits.data?.total_credits ?? 0;
+          const used = credits.data?.total_usage ?? 0;
+          stats.push({ label: "Account credits left", value: `$${(total - used).toFixed(2)}` });
+        } catch {
+          // /credits needs a management key; skip the stat rather than fail.
+        }
+        return stats;
       }
-      return stats;
-    }
 
-    if (resourceTypeId === "model") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      return [
-        { label: "Context", value: Number(f["contextLength"] ?? 0).toLocaleString() },
-        { label: "Prompt", value: `$${Number(f["promptPricePerMillion"] ?? 0).toFixed(2)}/M` },
-        {
-          label: "Completion",
-          value: `$${Number(f["completionPricePerMillion"] ?? 0).toFixed(2)}/M`,
-        },
-      ];
-    }
+      if (resourceTypeId === "model") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        return [
+          { label: "Context", value: Number(f["contextLength"] ?? 0).toLocaleString() },
+          { label: "Prompt", value: `$${Number(f["promptPricePerMillion"] ?? 0).toFixed(2)}/M` },
+          {
+            label: "Completion",
+            value: `$${Number(f["completionPricePerMillion"] ?? 0).toFixed(2)}/M`,
+          },
+        ];
+      }
 
-    if (resourceTypeId === "model-endpoint") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const uptime = Number(f["uptimeLast1d"] ?? 0);
-      return [
-        { label: "Provider", value: String(f["providerName"] ?? "") },
-        {
-          label: "Uptime (1d)",
-          value: `${(uptime * 100).toFixed(1)}%`,
-          variant:
-            uptime >= 0.99 ? "status-healthy" : uptime >= 0.9 ? "default" : "status-degraded",
-        },
-        { label: "p50 latency", value: `${Math.round(Number(f["latencyP50"] ?? 0))} ms` },
-      ];
-    }
+      if (resourceTypeId === "model-endpoint") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const uptime = Number(f["uptimeLast1d"] ?? 0);
+        return [
+          { label: "Provider", value: String(f["providerName"] ?? "") },
+          {
+            label: "Uptime (1d)",
+            value: `${(uptime * 100).toFixed(1)}%`,
+            variant:
+              uptime >= 0.99 ? "status-healthy" : uptime >= 0.9 ? "default" : "status-degraded",
+          },
+          { label: "p50 latency", value: `${Math.round(Number(f["latencyP50"] ?? 0))} ms` },
+        ];
+      }
 
-    return [];
+      return [];
+    });
   }
 
   // ----------------------------------------------------------- usage/costs
@@ -882,12 +905,14 @@ export class OpenRouterClient implements PluginClient {
    * GET /activity: daily rows for the last 30 completed UTC days, broken down
    * by model + provider. Management key required; a plain key 403s.
    */
-  async fetchCostData(accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    // Normalized AI dimensions (`ai:provider`, and `ai:model` /
-    // `ai:token_type` where the billing API says), so request logs can be
-    // reconciled against this bill. See plugin-base `ai-requests.ts`.
-    return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), (row) => {
-      return { provider: "openrouter", model: row.resourceId || undefined };
+  fetchCostData(accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      // Normalized AI dimensions (`ai:provider`, and `ai:model` /
+      // `ai:token_type` where the billing API says), so request logs can be
+      // reconciled against this bill. See plugin-base `ai-requests.ts`.
+      return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), (row) => {
+        return { provider: "openrouter", model: row.resourceId || undefined };
+      });
     });
   }
 
@@ -938,48 +963,50 @@ export class OpenRouterClient implements PluginClient {
    * `GET /activity` rows when the query endpoint refuses the key.
    * https://openrouter.ai/docs/api/api-reference/analytics/query-analytics-data
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const id = resourceId.split(":").slice(2).join(":");
-    if (!id) return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const id = resourceId.split(":").slice(2).join(":");
+      if (!id) return [];
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
-    let filter: AnalyticsFilter;
-    switch (resourceTypeId) {
-      case "model": {
-        // Filters match the model's permaslug (`canonical_slug`), which often
-        // differs from the catalogue id (dated snapshots), so pass both.
-        const canonical = await this.canonicalSlugOf(id).catch(() => "");
-        filter = {
-          field: "model",
-          operator: "in",
-          value: canonical && canonical !== id ? [id, canonical] : [id],
-        };
-        break;
+      let filter: AnalyticsFilter;
+      switch (resourceTypeId) {
+        case "model": {
+          // Filters match the model's permaslug (`canonical_slug`), which often
+          // differs from the catalogue id (dated snapshots), so pass both.
+          const canonical = await this.canonicalSlugOf(id).catch(() => "");
+          filter = {
+            field: "model",
+            operator: "in",
+            value: canonical && canonical !== id ? [id, canonical] : [id],
+          };
+          break;
+        }
+        case "api-key":
+          // `api_key_id` accepts the key hash and resolves it server-side.
+          filter = { field: "api_key_id", operator: "eq", value: id };
+          break;
+        case "workspace":
+          filter = { field: "workspace", operator: "eq", value: id };
+          break;
+        default:
+          return [];
       }
-      case "api-key":
-        // `api_key_id` accepts the key hash and resolves it server-side.
-        filter = { field: "api_key_id", operator: "eq", value: id };
-        break;
-      case "workspace":
-        filter = { field: "workspace", operator: "eq", value: id };
-        break;
-      default:
-        return [];
-    }
 
-    try {
-      return await this.queryAnalyticsSeries(filter, startMs, endMs);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!/\b(401|403|404)\b/.test(message)) throw err;
-      return resourceTypeId === "model" ? this.activitySeries(id, startMs, endMs) : [];
-    }
+      try {
+        return await this.queryAnalyticsSeries(filter, startMs, endMs);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!/\b(401|403|404)\b/.test(message)) throw err;
+        return resourceTypeId === "model" ? this.activitySeries(id, startMs, endMs) : [];
+      }
+    });
   }
 
   /**
@@ -1122,124 +1149,134 @@ export class OpenRouterClient implements PluginClient {
     };
   }
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "api-key":
-        break;
-      case "guardrail":
-        return guardrailCreateConfig(
-          await this.pickerSources({ providers: true, models: true, keys: true, workspaces: true }),
-        );
-      case "workspace":
-        return workspaceCreateConfig(await this.pickerSources({ models: true }));
-      case "byok-credential":
-        return byokCreateConfig(await this.pickerSources({ providers: true, workspaces: true }));
-      default:
-        throw new Error(`OpenRouter plugin: no create config for type "${typeId}"`);
-    }
-    const { workspaces } = await this.pickerSources({ workspaces: true });
-    return {
-      fields: [
-        { key: "name", label: "Name", kind: "text", required: true },
-        ...(workspaces.length > 0
-          ? [
-              {
-                key: "workspaceId",
-                label: "Workspace",
-                kind: "select" as const,
-                required: false,
-                options: [
-                  { id: "", label: "Default workspace" },
-                  ...workspaces.map((w) => ({ id: w.id, label: w.name || w.slug || w.id })),
-                ],
-                defaultValue: "",
-              },
-            ]
-          : []),
-        {
-          key: "limit",
-          label: "Credit limit (USD)",
-          kind: "number",
-          required: false,
-          description: "Leave blank for no limit.",
-        },
-        {
-          key: "limitReset",
-          label: "Limit resets",
-          kind: "select",
-          required: false,
-          options: [
-            { id: "", label: "Never (lifetime limit)" },
-            { id: "daily", label: "Daily" },
-            { id: "weekly", label: "Weekly" },
-            { id: "monthly", label: "Monthly" },
-          ],
-          defaultValue: "",
-        },
-        {
-          key: "expiresAt",
-          label: "Expires at",
-          kind: "datetime",
-          required: false,
-          description: "Leave blank for a key that never expires.",
-        },
-        {
-          key: "includeByokInLimit",
-          label: "Count BYOK usage toward the limit",
-          kind: "select",
-          required: false,
-          options: [
-            { id: "false", label: "No" },
-            { id: "true", label: "Yes" },
-          ],
-          defaultValue: "false",
-        },
-      ],
-    };
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "api-key":
+          break;
+        case "guardrail":
+          return guardrailCreateConfig(
+            await this.pickerSources({
+              providers: true,
+              models: true,
+              keys: true,
+              workspaces: true,
+            }),
+          );
+        case "workspace":
+          return workspaceCreateConfig(await this.pickerSources({ models: true }));
+        case "byok-credential":
+          return byokCreateConfig(await this.pickerSources({ providers: true, workspaces: true }));
+        default:
+          throw new Error(`OpenRouter plugin: no create config for type "${typeId}"`);
+      }
+      const { workspaces } = await this.pickerSources({ workspaces: true });
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          ...(workspaces.length > 0
+            ? [
+                {
+                  key: "workspaceId",
+                  label: "Workspace",
+                  kind: "select" as const,
+                  required: false,
+                  options: [
+                    { id: "", label: "Default workspace" },
+                    ...workspaces.map((w) => ({ id: w.id, label: w.name || w.slug || w.id })),
+                  ],
+                  defaultValue: "",
+                },
+              ]
+            : []),
+          {
+            key: "limit",
+            label: "Credit limit (USD)",
+            kind: "number",
+            required: false,
+            description: "Leave blank for no limit.",
+          },
+          {
+            key: "limitReset",
+            label: "Limit resets",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "", label: "Never (lifetime limit)" },
+              { id: "daily", label: "Daily" },
+              { id: "weekly", label: "Weekly" },
+              { id: "monthly", label: "Monthly" },
+            ],
+            defaultValue: "",
+          },
+          {
+            key: "expiresAt",
+            label: "Expires at",
+            kind: "datetime",
+            required: false,
+            description: "Leave blank for a key that never expires.",
+          },
+          {
+            key: "includeByokInLimit",
+            label: "Count BYOK usage toward the limit",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "false", label: "No" },
+              { id: "true", label: "Yes" },
+            ],
+            defaultValue: "false",
+          },
+        ],
+      };
+    });
   }
 
   /** POST /keys: the plaintext `key` is only ever returned here. */
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "api-key":
-        break;
-      case "guardrail":
-        return this.createGuardrail(accountId, fields);
-      case "workspace":
-        return this.createWorkspace(accountId, fields);
-      case "byok-credential": {
-        if (!fields["provider"]) throw new Error("OpenRouter plugin: pick a provider");
-        if (!fields["key"]) throw new Error("OpenRouter plugin: the provider API key is required");
-        const created = await this.fetch<{ data: OrByokCredential }>("/byok", {
-          method: "POST",
-          body: JSON.stringify(byokBody(fields, true)),
-        });
-        return mapByok(accountId, created.data);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "api-key":
+          break;
+        case "guardrail":
+          return this.createGuardrail(accountId, fields);
+        case "workspace":
+          return this.createWorkspace(accountId, fields);
+        case "byok-credential": {
+          if (!fields["provider"]) throw new Error("OpenRouter plugin: pick a provider");
+          if (!fields["key"])
+            throw new Error("OpenRouter plugin: the provider API key is required");
+          const created = await this.fetch<{ data: OrByokCredential }>("/byok", {
+            method: "POST",
+            body: JSON.stringify(byokBody(fields, true)),
+          });
+          return mapByok(accountId, created.data);
+        }
+        default:
+          throw new Error(`OpenRouter plugin: cannot create type "${typeId}"`);
       }
-      default:
-        throw new Error(`OpenRouter plugin: cannot create type "${typeId}"`);
-    }
-    const name = fields["name"];
-    if (!name) throw new Error("OpenRouter plugin: missing API key name");
+      const name = fields["name"];
+      if (!name) throw new Error("OpenRouter plugin: missing API key name");
 
-    const body: Record<string, unknown> = { name };
-    if (fields["workspaceId"]) body["workspace_id"] = fields["workspaceId"];
-    if (fields["limit"]) body["limit"] = Number(fields["limit"]);
-    if (fields["limitReset"]) body["limit_reset"] = fields["limitReset"];
-    if (fields["expiresAt"]) body["expires_at"] = fields["expiresAt"];
-    if (fields["includeByokInLimit"] === "true") body["include_byok_in_limit"] = true;
+      const body: Record<string, unknown> = { name };
+      if (fields["workspaceId"]) body["workspace_id"] = fields["workspaceId"];
+      if (fields["limit"]) body["limit"] = Number(fields["limit"]);
+      if (fields["limitReset"]) body["limit_reset"] = fields["limitReset"];
+      if (fields["expiresAt"]) body["expires_at"] = fields["expiresAt"];
+      if (fields["includeByokInLimit"] === "true") body["include_byok_in_limit"] = true;
 
-    const created = await this.fetch<{ data: OrKey; key?: string }>("/keys", {
-      method: "POST",
-      body: JSON.stringify(body),
+      const created = await this.fetch<{ data: OrKey; key?: string }>("/keys", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const resource = this.mapKey(accountId, new Date().toISOString(), created.data);
+      if (created.key) resource.resolvedOutputs = { apiKey: created.key };
+      return resource;
     });
-    const resource = this.mapKey(accountId, new Date().toISOString(), created.data);
-    if (created.key) resource.resolvedOutputs = { apiKey: created.key };
-    return resource;
   }
 
   /**
@@ -1315,94 +1352,99 @@ export class OpenRouterClient implements PluginClient {
   }
 
   /** PATCH /keys/{hash} */
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    switch (typeId) {
-      case "api-key":
-        break;
-      case "guardrail": {
-        const body = guardrailBody(fields);
-        if (Object.keys(body).length > 0) {
-          await this.fetch(`/guardrails/${encodeURIComponent(externalId)}`, {
-            method: "PATCH",
-            body: JSON.stringify(body),
-          });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      switch (typeId) {
+        case "api-key":
+          break;
+        case "guardrail": {
+          const body = guardrailBody(fields);
+          if (Object.keys(body).length > 0) {
+            await this.fetch(`/guardrails/${encodeURIComponent(externalId)}`, {
+              method: "PATCH",
+              body: JSON.stringify(body),
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "workspace": {
-        const body = workspaceBody(fields);
-        if (Object.keys(body).length > 0) {
-          await this.fetch(`/workspaces/${encodeURIComponent(externalId)}`, {
-            method: "PATCH",
-            body: JSON.stringify(body),
-          });
+        case "workspace": {
+          const body = workspaceBody(fields);
+          if (Object.keys(body).length > 0) {
+            await this.fetch(`/workspaces/${encodeURIComponent(externalId)}`, {
+              method: "PATCH",
+              body: JSON.stringify(body),
+            });
+          }
+          await this.applyWorkspaceBudgets(externalId, fields);
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        await this.applyWorkspaceBudgets(externalId, fields);
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "byok-credential": {
-        const body = byokBody(fields, false);
-        if (Object.keys(body).length > 0) {
-          await this.fetch(`/byok/${encodeURIComponent(externalId)}`, {
-            method: "PATCH",
-            body: JSON.stringify(body),
-          });
+        case "byok-credential": {
+          const body = byokBody(fields, false);
+          if (Object.keys(body).length > 0) {
+            await this.fetch(`/byok/${encodeURIComponent(externalId)}`, {
+              method: "PATCH",
+              body: JSON.stringify(body),
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
+        default:
+          throw new Error(`OpenRouter plugin: cannot update type "${typeId}"`);
       }
-      default:
-        throw new Error(`OpenRouter plugin: cannot update type "${typeId}"`);
-    }
-    const hash = externalId;
+      const hash = externalId;
 
-    const body: Record<string, unknown> = {};
-    if (fields["name"] !== undefined) body["name"] = fields["name"];
-    if (fields["disabled"] !== undefined) body["disabled"] = fields["disabled"] === "true";
-    if (fields["limit"] !== undefined) {
-      body["limit"] = fields["limit"] === "" ? null : Number(fields["limit"]);
-    }
-    if (fields["limitReset"] !== undefined) {
-      body["limit_reset"] = fields["limitReset"] === "" ? null : fields["limitReset"];
-    }
-    if (fields["includeByokInLimit"] !== undefined) {
-      body["include_byok_in_limit"] = fields["includeByokInLimit"] === "true";
-    }
-    if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined) body["name"] = fields["name"];
+      if (fields["disabled"] !== undefined) body["disabled"] = fields["disabled"] === "true";
+      if (fields["limit"] !== undefined) {
+        body["limit"] = fields["limit"] === "" ? null : Number(fields["limit"]);
+      }
+      if (fields["limitReset"] !== undefined) {
+        body["limit_reset"] = fields["limitReset"] === "" ? null : fields["limitReset"];
+      }
+      if (fields["includeByokInLimit"] !== undefined) {
+        body["include_byok_in_limit"] = fields["includeByokInLimit"] === "true";
+      }
+      if (Object.keys(body).length === 0)
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
 
-    const updated = await this.fetch<{ data: OrKey }>(`/keys/${encodeURIComponent(hash)}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
+      const updated = await this.fetch<{ data: OrKey }>(`/keys/${encodeURIComponent(hash)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      return this.mapKey(accountId, new Date().toISOString(), updated.data);
     });
-    return this.mapKey(accountId, new Date().toISOString(), updated.data);
   }
 
   /** DELETE /keys/{hash}, /guardrails/{id}, /workspaces/{id} or /byok/{id} */
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = encodeURIComponent(resourceId.split(":").slice(2).join(":"));
-    switch (typeId) {
-      case "api-key":
-        await this.fetch(`/keys/${externalId}`, { method: "DELETE" });
-        return;
-      case "guardrail":
-        await this.fetch(`/guardrails/${externalId}`, { method: "DELETE" });
-        return;
-      // The default workspace refuses deletion without an explicit
-      // confirmation flag; the plugin deliberately never sends it.
-      case "workspace":
-        await this.fetch(`/workspaces/${externalId}`, { method: "DELETE" });
-        return;
-      case "byok-credential":
-        await this.fetch(`/byok/${externalId}`, { method: "DELETE" });
-        return;
-      default:
-        throw new Error(`OpenRouter plugin: cannot delete type "${typeId}"`);
-    }
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = encodeURIComponent(resourceId.split(":").slice(2).join(":"));
+      switch (typeId) {
+        case "api-key":
+          await this.fetch(`/keys/${externalId}`, { method: "DELETE" });
+          return;
+        case "guardrail":
+          await this.fetch(`/guardrails/${externalId}`, { method: "DELETE" });
+          return;
+        // The default workspace refuses deletion without an explicit
+        // confirmation flag; the plugin deliberately never sends it.
+        case "workspace":
+          await this.fetch(`/workspaces/${externalId}`, { method: "DELETE" });
+          return;
+        case "byok-credential":
+          await this.fetch(`/byok/${externalId}`, { method: "DELETE" });
+          return;
+        default:
+          throw new Error(`OpenRouter plugin: cannot delete type "${typeId}"`);
+      }
+    });
   }
 
   // ---------------------------------------------------------------- speech
@@ -1436,48 +1478,50 @@ export class OpenRouterClient implements PluginClient {
    *
    * Spec: https://openrouter.ai/openapi.json  → `SpeechRequest`
    */
-  async synthesizeSpeech(
+  synthesizeSpeech(
     _typeId: string,
     resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    const key = this.requireInferenceKey();
-    const model = await this.resolveSpeechModel(payload.modelId, resourceId, "tts");
-    const voice = await this.resolveVoice(payload.voiceId, model);
-    const started = Date.now();
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      const key = this.requireInferenceKey();
+      const model = await this.resolveSpeechModel(payload.modelId, resourceId, "tts");
+      const voice = await this.resolveVoice(payload.voiceId, model);
+      const started = Date.now();
 
-    const res = await fetch(`${BASE_URL}/audio/speech`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg",
-      },
-      body: JSON.stringify({
-        model,
-        input: payload.text,
-        voice,
-        // The spec's enum is mp3|pcm: ask for mp3, which <audio> can play.
-        response_format: "mp3",
-      }),
+      const res = await fetch(`${BASE_URL}/audio/speech`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
+        },
+        body: JSON.stringify({
+          model,
+          input: payload.text,
+          voice,
+          // The spec's enum is mp3|pcm: ask for mp3, which <audio> can play.
+          response_format: "mp3",
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(
+          `OpenRouter API error ${res.status} for /audio/speech: ${await res.text().catch(() => "")}`,
+        );
+      }
+
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const elapsed = Date.now() - started;
+
+      return {
+        audioBase64: bytesToBase64(bytes),
+        mimeType: res.headers.get("content-type") ?? "audio/mpeg",
+        fileName: `openrouter-${voice}.mp3`,
+        summary: `${payload.text.length.toLocaleString()} characters · ${model} · voice ${voice} · ${(bytes.byteLength / 1024).toFixed(0)} KB · ${elapsed} ms`,
+        characters: payload.text.length,
+      };
     });
-    if (!res.ok) {
-      throw new Error(
-        `OpenRouter API error ${res.status} for /audio/speech: ${await res.text().catch(() => "")}`,
-      );
-    }
-
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const elapsed = Date.now() - started;
-
-    return {
-      audioBase64: bytesToBase64(bytes),
-      mimeType: res.headers.get("content-type") ?? "audio/mpeg",
-      fileName: `openrouter-${voice}.mp3`,
-      summary: `${payload.text.length.toLocaleString()} characters · ${model} · voice ${voice} · ${(bytes.byteLength / 1024).toFixed(0)} KB · ${elapsed} ms`,
-      characters: payload.text.length,
-    };
   }
 
   /**
@@ -1490,87 +1534,89 @@ export class OpenRouterClient implements PluginClient {
    *
    * Spec: https://openrouter.ai/openapi.json  → `STTRequest`
    */
-  async transcribeAudio(
+  transcribeAudio(
     _typeId: string,
     resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    const key = this.requireInferenceKey();
-    const sizeBytes = Math.floor((payload.audioBase64.length * 3) / 4);
-    if (sizeBytes > STT_MAX_AUDIO_BYTES) {
-      throw new Error(
-        `OpenRouter plugin: clip is ${(sizeBytes / 1024 / 1024).toFixed(1)} MB, over the ${STT_MAX_AUDIO_BYTES / 1024 / 1024} MB limit`,
-      );
-    }
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      const key = this.requireInferenceKey();
+      const sizeBytes = Math.floor((payload.audioBase64.length * 3) / 4);
+      if (sizeBytes > STT_MAX_AUDIO_BYTES) {
+        throw new Error(
+          `OpenRouter plugin: clip is ${(sizeBytes / 1024 / 1024).toFixed(1)} MB, over the ${STT_MAX_AUDIO_BYTES / 1024 / 1024} MB limit`,
+        );
+      }
 
-    const model = await this.resolveSpeechModel(payload.modelId, resourceId, "stt");
-    const base: Record<string, unknown> = {
-      model,
-      input_audio: {
-        // Straight through: the browser's MediaRecorder output is not transcoded.
-        data: payload.audioBase64,
-        format: audioFormatForMime(payload.mimeType),
-      },
-    };
-    if (payload.language && payload.language !== "auto") base["language"] = payload.language;
-
-    const started = Date.now();
-    let res: OrSttResponse;
-    try {
-      res = await this.fetch<OrSttResponse>(
-        "/audio/transcriptions",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            ...base,
-            response_format: "verbose_json",
-            timestamp_granularities: ["segment", "word"],
-          }),
+      const model = await this.resolveSpeechModel(payload.modelId, resourceId, "stt");
+      const base: Record<string, unknown> = {
+        model,
+        input_audio: {
+          // Straight through: the browser's MediaRecorder output is not transcoded.
+          data: payload.audioBase64,
+          format: audioFormatForMime(payload.mimeType),
         },
-        key,
-      );
-    } catch {
-      res = await this.fetch<OrSttResponse>(
-        "/audio/transcriptions",
-        { method: "POST", body: JSON.stringify(base) },
-        key,
-      );
-    }
-    const elapsed = Date.now() - started;
+      };
+      if (payload.language && payload.language !== "auto") base["language"] = payload.language;
 
-    const words: TranscriptWord[] = (res.words ?? []).map((w) => ({
-      text: w.word,
-      start: w.start,
-      end: w.end,
-      ...(w.speaker !== undefined ? { speaker: `Speaker ${w.speaker + 1}` } : {}),
-    }));
-    const segments: TranscriptWord[] = (res.segments ?? []).map((s) => ({
-      text: s.text,
-      start: s.start,
-      end: s.end,
-      ...(s.speaker !== undefined ? { speaker: `Speaker ${s.speaker + 1}` } : {}),
-    }));
-    const timings = words.length > 0 ? words : segments;
+      const started = Date.now();
+      let res: OrSttResponse;
+      try {
+        res = await this.fetch<OrSttResponse>(
+          "/audio/transcriptions",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              ...base,
+              response_format: "verbose_json",
+              timestamp_granularities: ["segment", "word"],
+            }),
+          },
+          key,
+        );
+      } catch {
+        res = await this.fetch<OrSttResponse>(
+          "/audio/transcriptions",
+          { method: "POST", body: JSON.stringify(base) },
+          key,
+        );
+      }
+      const elapsed = Date.now() - started;
 
-    const duration = res.duration ?? res.usage?.seconds;
-    const summary = [
-      model,
-      duration !== undefined ? `${duration.toFixed(2)}s audio` : undefined,
-      res.usage?.cost !== undefined ? `$${res.usage.cost.toFixed(6)}` : undefined,
-      `${(sizeBytes / 1024).toFixed(0)} KB uploaded`,
-      `${elapsed} ms`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+      const words: TranscriptWord[] = (res.words ?? []).map((w) => ({
+        text: w.word,
+        start: w.start,
+        end: w.end,
+        ...(w.speaker !== undefined ? { speaker: `Speaker ${w.speaker + 1}` } : {}),
+      }));
+      const segments: TranscriptWord[] = (res.segments ?? []).map((s) => ({
+        text: s.text,
+        start: s.start,
+        end: s.end,
+        ...(s.speaker !== undefined ? { speaker: `Speaker ${s.speaker + 1}` } : {}),
+      }));
+      const timings = words.length > 0 ? words : segments;
 
-    return {
-      text: res.text ?? "",
-      summary,
-      ...(res.language ? { language: res.language } : {}),
-      ...(duration !== undefined ? { durationSeconds: duration } : {}),
-      ...(timings.length > 0 ? { words: timings } : {}),
-    };
+      const duration = res.duration ?? res.usage?.seconds;
+      const summary = [
+        model,
+        duration !== undefined ? `${duration.toFixed(2)}s audio` : undefined,
+        res.usage?.cost !== undefined ? `$${res.usage.cost.toFixed(6)}` : undefined,
+        `${(sizeBytes / 1024).toFixed(0)} KB uploaded`,
+        `${elapsed} ms`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      return {
+        text: res.text ?? "",
+        summary,
+        ...(res.language ? { language: res.language } : {}),
+        ...(duration !== undefined ? { durationSeconds: duration } : {}),
+        ...(timings.length > 0 ? { words: timings } : {}),
+      };
+    });
   }
 
   /**

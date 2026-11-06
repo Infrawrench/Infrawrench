@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { S3CompatibleClient, normalizeEndpoint } from "../client.js";
 import { detectServer } from "../minio.js";
@@ -23,9 +24,11 @@ function client(
     },
   };
   return {
-    c: new S3CompatibleClient(
-      { endpoint: "minio.lan:9000/", accessKey: "a", secretKey: "s", ...extra },
-      { http } as never,
+    c: hostClient(
+      new S3CompatibleClient(
+        { endpoint: "minio.lan:9000/", accessKey: "a", secretKey: "s", ...extra },
+        { http } as never,
+      ),
     ),
     calls,
   };
@@ -164,9 +167,8 @@ describe("buckets", () => {
   });
 
   it("offers the addressing choices", async () => {
-    expect((await plugin.listCredentialOptions!("addressing", {})).map((o) => o.id)).toEqual([
-      "path",
-      "virtual",
-    ]);
+    expect(
+      (await hostPlugin(plugin).listCredentialOptions!("addressing", {})).map((o) => o.id),
+    ).toEqual(["path", "virtual"]);
   });
 });

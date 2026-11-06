@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HerokuApi } from "./api.js";
@@ -16,15 +18,14 @@ import { herokuTerraformExport } from "./terraform.js";
 import type { HkTeam } from "./types.js";
 import { herokuDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "heroku",
-  version: "0.1.0",
+  // *.heroku.com covers the one-off log session URLs the API returns
+  egressHosts: ["api.heroku.com", "*.heroku.com"],
   displayName: "Heroku",
   description:
     "Application platform. Manage apps, dyno formations and scaling, releases with rollback, config vars, add-ons and plans, domains and SSL certificates, pipelines with promotions and review apps, log drains and Private Spaces, with logs, invoices and credits.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -38,7 +39,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://dashboard.heroku.com/account/applications",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -60,7 +61,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiKey"], emptyLabel: "Personal and all teams" },
     },
     caCertCredentialField,
-  ],
+  ]),
   // 4,500 requests an hour per user.
   rateLimit: { capacity: 30, refillPerSecond: 1.2 },
   costs: {
@@ -75,7 +76,9 @@ const manifest: PluginManifest = {
     topUpUrl: "https://dashboard.heroku.com/account/billing",
   },
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -99,13 +102,14 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: herokuDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new HerokuClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "HRKU-test" },
   parseStatusFeed,
   terraformExport: herokuTerraformExport,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   remediationCommands: herokuRemediationCommands,
-};
+});

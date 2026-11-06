@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { EXOSCALE_PREFLIGHT, ExoscaleClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { exoscaleTerraformExport } from "./terraform.js";
 import { exoscaleRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "exoscale",
-  version: "0.1.0",
+  egressHosts: ["*.exoscale.com", "*.exo.io"],
   displayName: "Exoscale",
   description:
     "Exoscale: billed spend from the monthly FOCUS billing report, organization quotas and balance, and compute instances, block storage and snapshots, templates, private networks, security groups, elastic IPs, SKS Kubernetes, network load balancers, instance pools, DBaaS, DNS and SOS object storage across every zone.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -37,7 +36,7 @@ const manifest: PluginManifest = {
       placeholder: "Secret for the key above",
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Billed spend from the organization's FOCUS report
    * (`GET /v2/focus-report/{YYYY-MM}`, a presigned download), aggregated per
@@ -57,14 +56,20 @@ const manifest: PluginManifest = {
   preflight: EXOSCALE_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) =>
     new ExoscaleClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: {
+    apiKey: "EXO0123456789abcdef01234567",
+    apiSecret: "test-secret-0000000000000000000000000000",
+  },
   terraformExport: exoscaleTerraformExport,
   remediationCommands: exoscaleRemediationCommands,
   parseStatusFeed: (body) => parseStatusFeed(body),
-};
+});

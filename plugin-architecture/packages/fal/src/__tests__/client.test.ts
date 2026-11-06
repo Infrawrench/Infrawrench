@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { FalClient, analyticsSeries, modelUsageRows, serverlessUsageRows } from "../client.js";
@@ -71,7 +72,7 @@ describe("fal client", () => {
         };
       throw new Error(url);
     });
-    const [m] = await new FalClient({ apiKey: "id:secret" }, { http }).listResources(
+    const [m] = await hostClient(new FalClient({ apiKey: "id:secret" }, { http })).listResources(
       "fal-model",
       ACCOUNT,
     );
@@ -85,7 +86,7 @@ describe("fal client", () => {
 
   it("reads a non-admin key as no admin-only resources", async () => {
     const { http } = host(() => ({ status: 403, body: { error: { message: "admin required" } } }));
-    const client = new FalClient({ apiKey: "k" }, { http });
+    const client = hostClient(new FalClient({ apiKey: "k" }, { http }));
     expect(await client.listResources("fal-api-key", ACCOUNT)).toEqual([]);
     expect(await client.listResources("fal-model", ACCOUNT)).toEqual([]);
   });
@@ -96,7 +97,7 @@ describe("fal client", () => {
         return { body: { instances: [{ id: "i2", status: "ready" }], next_cursor: null } };
       return { body: { instances: [{ id: "i1", status: "init" }], next_cursor: "c2" } };
     });
-    const items = await new FalClient({ apiKey: "k" }, { http }).listResources(
+    const items = await hostClient(new FalClient({ apiKey: "k" }, { http })).listResources(
       "fal-compute-instance",
       ACCOUNT,
     );
@@ -104,7 +105,10 @@ describe("fal client", () => {
     expect(calls[1]?.url).toContain("cursor=c2");
     const failing = host(() => ({ status: 500, body: {} }));
     await expect(
-      new FalClient({ apiKey: "k" }, { http: failing.http }).listResources("fal-workflow", ACCOUNT),
+      hostClient(new FalClient({ apiKey: "k" }, { http: failing.http })).listResources(
+        "fal-workflow",
+        ACCOUNT,
+      ),
     ).rejects.toMatchObject({ status: 500 });
   });
 
@@ -114,7 +118,7 @@ describe("fal client", () => {
         return { body: { key_id: "new", key_secret: "s3cret", key: "new:s3cret" } };
       return { body: { keys: [{ key_id: "old", alias: "ci" }], next_cursor: null } };
     });
-    const res = await new FalClient({ apiKey: "k" }, { http }).exportCredential(
+    const res = await hostClient(new FalClient({ apiKey: "k" }, { http })).exportCredential(
       "fal-api-key",
       `${ACCOUNT}:fal-api-key:old`,
       ACCOUNT,
@@ -130,9 +134,9 @@ describe("fal client", () => {
     const { http } = host(() => ({
       body: { username: "me", credits: { current_balance: 12.5, currency: "usd" } },
     }));
-    expect(await new FalClient({ apiKey: "k" }, { http }).fetchCreditBalance(ACCOUNT)).toEqual([
-      { key: "USD", label: "fal credits", remaining: 12.5, currency: "USD" },
-    ]);
+    expect(
+      await hostClient(new FalClient({ apiKey: "k" }, { http })).fetchCreditBalance(ACCOUNT),
+    ).toEqual([{ key: "USD", label: "fal credits", remaining: 12.5, currency: "USD" }]);
   });
 });
 

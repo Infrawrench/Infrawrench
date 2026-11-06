@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import * as listers from "../resource-listers.js";
@@ -767,7 +768,7 @@ describe("AzureClient actions and edits", () => {
       if ((init as RequestInit | undefined)?.method === "POST") return response(202, undefined);
       return response(200, appList);
     });
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     await expect(
       client.invokeAction(
         "azure-container-app",
@@ -784,7 +785,7 @@ describe("AzureClient actions and edits", () => {
   it("rejects actions a type does not have before touching the network", async () => {
     const { AzureClient } = await import("../client.js");
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     await expect(client.invokeAction("azure-disk", "id", "start", "acct")).rejects.toThrow(
       /not supported/,
     );

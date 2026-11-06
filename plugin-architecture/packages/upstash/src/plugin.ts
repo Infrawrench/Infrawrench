@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { UpstashClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { upstashTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "upstash",
-  version: "0.1.0",
+  // Developer API plus the two regional QStash APIs
+  egressHosts: ["api.upstash.com", "qstash-eu-central-1.upstash.io", "qstash-us-east-1.upstash.io"],
   displayName: "Upstash",
   description:
     "Manage Upstash Redis databases, Vector and Search indexes, QStash schedules, queues and URL groups, and teams: plans, budgets, read regions, backups, tokens, the dead letter queue and message logs, with stats, daily Redis and QStash spend, and a Redis console.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "email",
       label: "Email",
@@ -37,7 +37,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Daily spend per Redis database and per regional QStash account, from
     // their stats endpoints, which only reach back about a week.
@@ -47,13 +47,16 @@ const manifest: PluginManifest = {
   },
   quotas: { label: "QStash and Redis limits" },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new UpstashClient(credentials, services),
+  testCredentials: { email: "test@example.com", apiKey: "test-upstash-key" },
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: upstashTerraformExport,
   remediationCommands: upstashRemediationCommands,
-};
+});

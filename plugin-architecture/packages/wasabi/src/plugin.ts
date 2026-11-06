@@ -1,20 +1,20 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { WasabiClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "wasabi",
-  version: "0.1.0",
+  // s3.<region>, iam, stats and partner (Account Control) hosts
+  egressHosts: ["*.wasabisys.com"],
   displayName: "Wasabi",
   description:
     "Hot cloud storage. Browse and upload objects, manage buckets with versioning, Object Lock, policies, lifecycle and CORS rules, IAM users and access keys, Account Control sub-accounts, and daily storage and estimated spend from the Stats API.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accessKey",
       label: "Access Key",
@@ -41,7 +41,7 @@ const manifest: PluginManifest = {
       advanced: true,
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Stats API daily per-bucket utilization × pay-as-you-go list price
     // (active plus timed-deleted storage; no egress or request fees).
@@ -80,11 +80,14 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new WasabiClient(credentials, services),
+  testCredentials: { accessKey: "TESTACCESSKEY0000000", secretKey: "test-wasabi-secret" },
   parseStatusFeed,
-};
+});

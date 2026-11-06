@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DepotClient } from "./client.js";
 import { DEFAULT_PLAN_ID, DEPOT_PLANS } from "./rates.js";
@@ -26,14 +31,12 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   </g>
 </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "depot",
-  version: "0.1.0",
+  egressHosts: ["api.depot.dev"],
   displayName: "Depot",
   logoSvg,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "token",
       label: "Organization Token",
@@ -66,7 +69,7 @@ const manifest: PluginManifest = {
       placeholder: "planFee=1000\nincludedBuildMinutes=30000\nbuildMinute=0.03\ncycleStartDay=15",
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Estimated spend from `UsageService/GetUsage` (see `cost-data.ts`).
    *
@@ -94,7 +97,9 @@ const manifest: PluginManifest = {
   // account, against the current billing cycle's usage.
   quotas: { label: "Plan allowances", increaseUrl: "https://depot.dev/pricing" },
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ProjectResourceType,
@@ -105,9 +110,10 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ActionsRepoResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new DepotClient(credentials, services),
+  testCredentials: { token: "test-depot-org-token", plan: "startup" },
   parseStatusFeed,
-};
+});

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import {
   listR2Buckets,
@@ -233,7 +234,7 @@ describe("r2-client storage class and r2.dev access", () => {
   });
 
   it("client enriches the detail with r2.dev state and routes the toggle actions", async () => {
-    const c = new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes);
+    const c = hostClient(new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes));
     const a = api();
     (c as unknown as { api: unknown }).api = a;
     const bucket = await c.getResource("r2-bucket", "acct:r2-bucket:b1", "acct");

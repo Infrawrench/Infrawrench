@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField, f, o, rt } from "@infrawrench/plugin-base";
 import { PerplexityClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -96,16 +101,14 @@ export const RESOURCE_TYPES: ResourceTypeDefinition[] = [
   SkillType,
 ];
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "perplexity",
-  version: "0.1.0",
+  egressHosts: ["api.perplexity.ai"],
   displayName: "Perplexity",
   description:
     "Sonar, Agent API and Router models with Playgrounds, asynchronous deep-research requests and Agent API skills.",
   logoSvg: LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -116,13 +119,16 @@ const manifest: PluginManifest = {
       helpLink: { label: "Create an API key", url: "https://console.perplexity.ai/project/keys" },
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new PerplexityClient(credentials, services),
+  testCredentials: { apiKey: "pplx-test" },
   parseStatusFeed,
-};
+});

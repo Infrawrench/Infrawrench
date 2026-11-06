@@ -1,15 +1,18 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { OpenSearchClient } from "./client.js";
 import { OpenSearchClusterResourceType } from "./resources/opensearch-cluster.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "opensearch",
-  version: "0.1.0",
+  egressHosts: [],
   displayName: "OpenSearch",
   logoSvg: `<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="#005EB8" d="M19.929 5.022a.516.516 0 0 0-.51.51c0 6.156-5.082 7.392-7.92 7.83-2.508.396-5.28 1.32-5.28 4.752a4.62 4.62 0 0 0 .768 2.508 9.96 9.96 0 0 0 13.464-13.488.51.51 0 0 0-.522-.112zM4.071 18.978a.516.516 0 0 0 .51-.51c0-6.156 5.082-7.392 7.92-7.83 2.508-.396 5.28-1.32 5.28-4.752a4.62 4.62 0 0 0-.768-2.508A9.96 9.96 0 0 0 3.549 18.866a.51.51 0 0 0 .522.112z"/></svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "endpoint",
       label: "Endpoint",
@@ -88,13 +91,29 @@ const manifest: PluginManifest = {
         "When 'true', the host skips TLS chain verification. Only for isolated dev clusters, never production.",
       sensitive: false,
     },
-  ],
-};
+  ]),
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [OpenSearchClusterResourceType];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new OpenSearchClient(credentials, services),
-};
+  testCredentials: {
+    endpoint: "https://search.example.com:9200",
+    authMode: "basic",
+    username: "test",
+    password: "test",
+    apiKey: "test",
+    awsAccessKeyId: "test",
+    awsSecretAccessKey: "test",
+    awsRegion: "us-east-1",
+    awsSessionToken: "test",
+    awsService: "es",
+    caCertificate: "test",
+    skipTlsVerify: "false",
+  },
+});

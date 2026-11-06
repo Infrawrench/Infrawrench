@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { STRIPE_API_VERSION, encodeForm, formatMoney, fromMinor, listV1, toMinor } from "../api.js";
 import { feeRows, serviceFromFeeDescription } from "../balance.js";
@@ -13,7 +14,7 @@ const ACC = "acc";
 
 function client(route: (call: Call) => unknown, extra: Record<string, unknown> = {}) {
   const { http, calls } = makeHttp(route);
-  const c = new StripeClient({ apiKey: "rk_test_KEY" }, { http, ...extra } as never);
+  const c = hostClient(new StripeClient({ apiKey: "rk_test_KEY" }, { http, ...extra } as never));
   return { c, calls };
 }
 
@@ -76,7 +77,7 @@ describe("api", () => {
   });
 
   it("refuses publishable keys", () => {
-    expect(() => new StripeClient({ apiKey: "pk_test_x" })).toThrow(/publishable/);
+    expect(() => hostClient(new StripeClient({ apiKey: "pk_test_x" }))).toThrow(/publishable/);
   });
 });
 

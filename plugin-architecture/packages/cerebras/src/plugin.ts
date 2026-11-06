@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CerebrasClient } from "./client.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -16,16 +17,15 @@ const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   </g>
 </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "cerebras",
-  version: "0.1.0",
+  // api.cerebras.ai serves inference, the public catalogue and the management API; cloud.cerebras.ai serves Dedicated Inference metrics.
+  egressHosts: ["api.cerebras.ai", "cloud.cerebras.ai"],
   displayName: "Cerebras",
   description:
     "Cerebras Inference models with prices and a Playground, batches and files, and Dedicated Inference endpoints and model versions.",
   logoSvg: LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -63,13 +63,16 @@ const manifest: PluginManifest = {
       placeholder: "management key",
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CerebrasClient(credentials, services),
+  testCredentials: { apiKey: "csk-test" },
   parseStatusFeed,
-};
+});

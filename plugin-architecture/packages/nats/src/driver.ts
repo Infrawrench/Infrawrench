@@ -1,3 +1,6 @@
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import {
   connect,
   credsAuthenticator,
@@ -647,28 +650,34 @@ export const driver = {
   id: "nats",
   dialTargets,
 
-  async command(
-    connectionString: string,
-    cmd: string,
-    args: (string | number)[],
-  ): Promise<unknown> {
-    const { auth, rest, keyed } = decodeAuthArgs(args);
-    const key = `${connectionString}\n${keyed}`;
-    for (let attempt = 0; ; attempt++) {
-      const entry = acquire(key, connectionString, auth);
-      try {
-        const nc = await entry.nc;
-        if (nc.isClosed()) throw new Error("connection closed");
-        return await run(nc, cmd, rest);
-      } catch (err) {
-        if (attempt === 0 && isStale(err)) {
-          drop(key);
-          continue;
+  command(connectionString: string, cmd: string, args: (string | number)[]): PluginEffect<unknown> {
+    return attempt(async () => {
+      const { auth, rest, keyed } = decodeAuthArgs(args);
+      const key = `${connectionString}\n${keyed}`;
+      for (let attempt = 0; ; attempt++) {
+        const entry = acquire(key, connectionString, auth);
+        try {
+          const nc = await entry.nc;
+          if (nc.isClosed()) throw new Error("connection closed");
+          return await run(nc, cmd, rest);
+        } catch (err) {
+          if (attempt === 0 && isStale(err)) {
+            drop(key);
+            continue;
+          }
+          throw describeFailure(err, connectionString);
+        } finally {
+          release(key);
         }
-        throw describeFailure(err, connectionString);
-      } finally {
-        release(key);
       }
-    }
+    });
   },
 } satisfies KvNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { kv: driver },
+  server: { kv: driver },
+});

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { HoneycombApiError } from "../api.js";
@@ -25,7 +26,7 @@ function client(
   secrets = memorySecrets(),
 ) {
   const { http, calls } = makeHttp(route);
-  const c = new HoneycombClient(creds, { http, secrets } as unknown as HostServices);
+  const c = hostClient(new HoneycombClient(creds, { http, secrets } as unknown as HostServices));
   return { c, calls, secrets };
 }
 
@@ -59,11 +60,11 @@ describe("regions", () => {
 
 describe("HoneycombClient construction", () => {
   it("needs at least one key and both halves of a management key", () => {
-    expect(() => new HoneycombClient({})).toThrow(/configuration key/);
-    expect(() => new HoneycombClient({ managementKeyId: "id" })).toThrow(
+    expect(() => hostClient(new HoneycombClient({}))).toThrow(/configuration key/);
+    expect(() => hostClient(new HoneycombClient({ managementKeyId: "id" }))).toThrow(
       /both its ID and its secret/,
     );
-    expect(() => new HoneycombClient({ managementKeyId: "id:secret" })).not.toThrow();
+    expect(() => hostClient(new HoneycombClient({ managementKeyId: "id:secret" }))).not.toThrow();
   });
 });
 

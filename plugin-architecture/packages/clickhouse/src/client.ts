@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import { createClient, type ClickHouseClient as ClickHouseSdkClient } from "@clickhouse/client-web";
 import type {
   ActionNode,
@@ -77,7 +80,7 @@ export class ClickHouseClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     this.apiKeyId = credentials["apiKeyId"] ?? "";
     this.apiKeySecret = credentials["apiKeySecret"] ?? "";
     this.organizationId = credentials["organizationId"] ?? "";
@@ -200,20 +203,24 @@ export class ClickHouseClient implements PluginClient {
     };
   }
 
-  async listBusinessMetricSourceOptions(
+  listBusinessMetricSourceOptions(
     _accountId: string,
     fieldKey: string,
     params: Record<string, string>,
-  ): Promise<BusinessMetricSourceOption[]> {
-    return listClickHouseBusinessMetricOptions(this.businessMetricCtx, fieldKey, params);
+  ): PluginEffect<BusinessMetricSourceOption[]> {
+    return attempt(async () => {
+      return listClickHouseBusinessMetricOptions(this.businessMetricCtx, fieldKey, params);
+    });
   }
 
-  async runBusinessMetricSource(
+  runBusinessMetricSource(
     _accountId: string,
     params: Record<string, string>,
     range: BusinessMetricSourceRange,
-  ): Promise<BusinessMetricSourceResult> {
-    return runClickHouseBusinessMetricSource(this.businessMetricCtx, params, range);
+  ): PluginEffect<BusinessMetricSourceResult> {
+    return attempt(async () => {
+      return runClickHouseBusinessMetricSource(this.businessMetricCtx, params, range);
+    });
   }
 
   private async chQuery(sql: string): Promise<Record<string, unknown>[]> {
@@ -276,187 +283,203 @@ export class ClickHouseClient implements PluginClient {
     };
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "ch-service":
-        return listServices(this.ctx, accountId);
-      case "ch-database": {
-        // List databases for all services
-        const services = await listServices(this.ctx, accountId);
-        const results: ResourceInstance[] = [];
-        for (const svc of services) {
-          if (svc.fields["state"] === "running" || svc.fields["state"] === "idle") {
-            try {
-              const dbs = await listDatabases(this.ctx, accountId, String(svc.fields["serviceId"]));
-              results.push(...dbs);
-            } catch {
-              // Skip services we can't query
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "ch-service":
+          return listServices(this.ctx, accountId);
+        case "ch-database": {
+          // List databases for all services
+          const services = await listServices(this.ctx, accountId);
+          const results: ResourceInstance[] = [];
+          for (const svc of services) {
+            if (svc.fields["state"] === "running" || svc.fields["state"] === "idle") {
+              try {
+                const dbs = await listDatabases(
+                  this.ctx,
+                  accountId,
+                  String(svc.fields["serviceId"]),
+                );
+                results.push(...dbs);
+              } catch {
+                // Skip services we can't query
+              }
             }
           }
+          return results;
         }
-        return results;
+        case "ch-backup":
+        case "ch-clickpipe": {
+          // Per-service children. A service that refuses (no ClickPipes
+          // permission on the key, a service mid-deletion) is skipped rather
+          // than failing the whole listing.
+          const services = await listServices(this.ctx, accountId);
+          const lister = typeId === "ch-backup" ? listBackups : listClickPipes;
+          const perService = await Promise.all(
+            services.map(async (svc) => {
+              try {
+                return await lister(this.ctx, accountId, String(svc.fields["serviceId"]));
+              } catch {
+                return [];
+              }
+            }),
+          );
+          return perService.flat();
+        }
+        case "ch-api-key":
+          return listApiKeys(this.ctx, accountId);
+        case "ch-member":
+          return listMembers(this.ctx, accountId);
+        case "ch-postgres":
+          return listPostgres(this.ctx, accountId);
+        default:
+          throw new Error(`ClickHouse plugin: unknown resource type "${typeId}"`);
       }
-      case "ch-backup":
-      case "ch-clickpipe": {
-        // Per-service children. A service that refuses (no ClickPipes
-        // permission on the key, a service mid-deletion) is skipped rather
-        // than failing the whole listing.
-        const services = await listServices(this.ctx, accountId);
-        const lister = typeId === "ch-backup" ? listBackups : listClickPipes;
-        const perService = await Promise.all(
-          services.map(async (svc) => {
-            try {
-              return await lister(this.ctx, accountId, String(svc.fields["serviceId"]));
-            } catch {
-              return [];
-            }
-          }),
-        );
-        return perService.flat();
-      }
-      case "ch-api-key":
-        return listApiKeys(this.ctx, accountId);
-      case "ch-member":
-        return listMembers(this.ctx, accountId);
-      case "ch-postgres":
-        return listPostgres(this.ctx, accountId);
-      default:
-        throw new Error(`ClickHouse plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) {
-      throw new Error(`ClickHouse plugin: resource ${typeId}/${resourceId} not found`);
-    }
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) {
+        throw new Error(`ClickHouse plugin: resource ${typeId}/${resourceId} not found`);
+      }
+      return found;
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchClickHouseCostData(this.ctx, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchClickHouseCostData(this.ctx, range);
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value === undefined) {
-      throw new Error(
-        `ClickHouse plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-      );
-    }
-    return String(value);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value === undefined) {
+        throw new Error(
+          `ClickHouse plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+        );
+      }
+      return String(value);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
 
-    if (resourceTypeId === "ch-service") {
-      const state = String(f["state"] ?? "unknown");
-      const stats: DashboardStat[] = [
-        {
-          label: "State",
-          value: state,
-          variant:
-            state === "running"
-              ? "status-healthy"
-              : state === "idle"
-                ? "status-degraded"
-                : state === "stopped" || state === "stopping"
-                  ? "status-error"
-                  : "status-degraded",
-        },
-      ];
-      if (f["clickhouseVersion"]) {
-        stats.push({ label: "Version", value: String(f["clickhouseVersion"]) });
-      }
-      stats.push({
-        label: "Provider",
-        value: `${String(f["provider"] ?? "").toUpperCase()} · ${String(f["region"] ?? "")}`,
-      });
-      if (f["autoscalingMode"] === "horizontal" && f["maxReplicas"]) {
-        stats.push({
-          label: "Replicas",
-          value: `${String(f["minReplicas"] ?? 0)}-${String(f["maxReplicas"])}`,
-        });
-      } else if (f["numReplicas"]) {
-        stats.push({ label: "Replicas", value: String(f["numReplicas"]) });
-      }
-      if (f["releaseChannel"]) {
-        stats.push({ label: "Channel", value: String(f["releaseChannel"]) });
-      }
-      return stats;
-    }
-
-    switch (resourceTypeId) {
-      case "ch-postgres": {
+      if (resourceTypeId === "ch-service") {
         const state = String(f["state"] ?? "unknown");
-        return [
+        const stats: DashboardStat[] = [
           {
             label: "State",
             value: state,
             variant:
               state === "running"
                 ? "status-healthy"
-                : state === "stopped" || state === "unavailable"
-                  ? "status-error"
-                  : "status-degraded",
+                : state === "idle"
+                  ? "status-degraded"
+                  : state === "stopped" || state === "stopping"
+                    ? "status-error"
+                    : "status-degraded",
           },
-          { label: "Version", value: `Postgres ${String(f["postgresVersion"] ?? "")}` },
-          { label: "Size", value: String(f["size"] ?? "") },
-          { label: "HA", value: String(f["haType"] || "none") },
         ];
+        if (f["clickhouseVersion"]) {
+          stats.push({ label: "Version", value: String(f["clickhouseVersion"]) });
+        }
+        stats.push({
+          label: "Provider",
+          value: `${String(f["provider"] ?? "").toUpperCase()} · ${String(f["region"] ?? "")}`,
+        });
+        if (f["autoscalingMode"] === "horizontal" && f["maxReplicas"]) {
+          stats.push({
+            label: "Replicas",
+            value: `${String(f["minReplicas"] ?? 0)}-${String(f["maxReplicas"])}`,
+          });
+        } else if (f["numReplicas"]) {
+          stats.push({ label: "Replicas", value: String(f["numReplicas"]) });
+        }
+        if (f["releaseChannel"]) {
+          stats.push({ label: "Channel", value: String(f["releaseChannel"]) });
+        }
+        return stats;
       }
-      case "ch-clickpipe": {
-        const state = String(f["state"] ?? "Unknown");
-        return [
-          {
-            label: "State",
-            value: state,
-            variant:
-              state === "Running" || state === "Completed"
-                ? "status-healthy"
-                : state === "Failed" || state === "InternalError"
-                  ? "status-error"
-                  : "status-degraded",
-          },
-          { label: "Source", value: String(f["sourceType"] || "unknown") },
-          ...(f["replicas"] ? [{ label: "Replicas", value: String(f["replicas"]) }] : []),
-        ];
+
+      switch (resourceTypeId) {
+        case "ch-postgres": {
+          const state = String(f["state"] ?? "unknown");
+          return [
+            {
+              label: "State",
+              value: state,
+              variant:
+                state === "running"
+                  ? "status-healthy"
+                  : state === "stopped" || state === "unavailable"
+                    ? "status-error"
+                    : "status-degraded",
+            },
+            { label: "Version", value: `Postgres ${String(f["postgresVersion"] ?? "")}` },
+            { label: "Size", value: String(f["size"] ?? "") },
+            { label: "HA", value: String(f["haType"] || "none") },
+          ];
+        }
+        case "ch-clickpipe": {
+          const state = String(f["state"] ?? "Unknown");
+          return [
+            {
+              label: "State",
+              value: state,
+              variant:
+                state === "Running" || state === "Completed"
+                  ? "status-healthy"
+                  : state === "Failed" || state === "InternalError"
+                    ? "status-error"
+                    : "status-degraded",
+            },
+            { label: "Source", value: String(f["sourceType"] || "unknown") },
+            ...(f["replicas"] ? [{ label: "Replicas", value: String(f["replicas"]) }] : []),
+          ];
+        }
+        case "ch-backup":
+          return [
+            { label: "Status", value: String(f["status"] ?? "") },
+            { label: "Type", value: String(f["type"] ?? "") },
+            { label: "Size", value: formatBytes(Number(f["sizeInBytes"] ?? 0)) },
+          ];
+        case "ch-api-key":
+          return [
+            {
+              label: "State",
+              value: String(f["state"] ?? ""),
+              variant: f["state"] === "enabled" ? "status-healthy" : "status-error",
+            },
+            { label: "Last Used", value: String(f["lastUsedAt"] || "never") },
+          ];
+        default:
+          return [];
       }
-      case "ch-backup":
-        return [
-          { label: "Status", value: String(f["status"] ?? "") },
-          { label: "Type", value: String(f["type"] ?? "") },
-          { label: "Size", value: formatBytes(Number(f["sizeInBytes"] ?? 0)) },
-        ];
-      case "ch-api-key":
-        return [
-          {
-            label: "State",
-            value: String(f["state"] ?? ""),
-            variant: f["state"] === "enabled" ? "status-healthy" : "status-error",
-          },
-          { label: "Last Used", value: String(f["lastUsedAt"] || "never") },
-        ];
-      default:
-        return [];
-    }
+    });
   }
 
   /**
@@ -464,72 +487,74 @@ export class ClickHouseClient implements PluginClient {
    * only); Managed Postgres has a real time-series endpoint bucketed over
    * the requested window.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    if (!externalId) return [];
-    if (resourceTypeId === "ch-service") {
-      try {
-        const body = await this.cloudRequest(
-          "GET",
-          `${this.orgPath}/services/${externalId}/prometheus?filtered_metrics=true`,
-        );
-        return serviceMetricSeries(body, Date.now());
-      } catch {
-        return [];
-      }
-    }
-    if (resourceTypeId === "ch-clickpipe") {
-      const [serviceId, clickPipeId] = externalId.split("/");
-      if (!serviceId || !clickPipeId) return [];
-      // The filtered scrape is the server's curated set; ClickPipes counters
-      // are documented on the full one.
-      const body = await this.cloudRequest(
-        "GET",
-        `${this.orgPath}/services/${serviceId}/prometheus`,
-      );
-      return clickPipeMetricSeries(body, clickPipeId, Date.now());
-    }
-    if (resourceTypeId === "ch-postgres") {
-      const endMs = timeRange?.endMs ?? Date.now();
-      const startMs = timeRange?.startMs ?? endMs - 60 * 60 * 1000;
-      const from = encodeURIComponent(new Date(startMs).toISOString());
-      const to = encodeURIComponent(new Date(endMs).toISOString());
-      const data = await this.cloudApi<{
-        result?: {
-          metrics?: Array<{
-            key?: string;
-            name?: string;
-            unit?: string;
-            series?: Array<{
-              label?: string;
-              dataPoints?: Array<{ timestamp: number; value: number }>;
-            }>;
-          }>;
-        };
-      }>("GET", `${this.orgPath}/postgres/${externalId}/metrics?from_date=${from}&to_date=${to}`);
-      const out: MetricSeries[] = [];
-      for (const metric of data.result?.metrics ?? []) {
-        const seriesList = metric.series ?? [];
-        for (const series of seriesList) {
-          const name = metric.name || metric.key || "metric";
-          out.push({
-            label: seriesList.length > 1 && series.label ? `${name} (${series.label})` : name,
-            ...(metric.unit ? { unit: metric.unit } : {}),
-            points: (series.dataPoints ?? []).map((p) => ({
-              timestamp: p.timestamp * 1000,
-              value: p.value,
-            })),
-          });
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      if (!externalId) return [];
+      if (resourceTypeId === "ch-service") {
+        try {
+          const body = await this.cloudRequest(
+            "GET",
+            `${this.orgPath}/services/${externalId}/prometheus?filtered_metrics=true`,
+          );
+          return serviceMetricSeries(body, Date.now());
+        } catch {
+          return [];
         }
       }
-      return out;
-    }
-    return [];
+      if (resourceTypeId === "ch-clickpipe") {
+        const [serviceId, clickPipeId] = externalId.split("/");
+        if (!serviceId || !clickPipeId) return [];
+        // The filtered scrape is the server's curated set; ClickPipes counters
+        // are documented on the full one.
+        const body = await this.cloudRequest(
+          "GET",
+          `${this.orgPath}/services/${serviceId}/prometheus`,
+        );
+        return clickPipeMetricSeries(body, clickPipeId, Date.now());
+      }
+      if (resourceTypeId === "ch-postgres") {
+        const endMs = timeRange?.endMs ?? Date.now();
+        const startMs = timeRange?.startMs ?? endMs - 60 * 60 * 1000;
+        const from = encodeURIComponent(new Date(startMs).toISOString());
+        const to = encodeURIComponent(new Date(endMs).toISOString());
+        const data = await this.cloudApi<{
+          result?: {
+            metrics?: Array<{
+              key?: string;
+              name?: string;
+              unit?: string;
+              series?: Array<{
+                label?: string;
+                dataPoints?: Array<{ timestamp: number; value: number }>;
+              }>;
+            }>;
+          };
+        }>("GET", `${this.orgPath}/postgres/${externalId}/metrics?from_date=${from}&to_date=${to}`);
+        const out: MetricSeries[] = [];
+        for (const metric of data.result?.metrics ?? []) {
+          const seriesList = metric.series ?? [];
+          for (const series of seriesList) {
+            const name = metric.name || metric.key || "metric";
+            out.push({
+              label: seriesList.length > 1 && series.label ? `${name} (${series.label})` : name,
+              ...(metric.unit ? { unit: metric.unit } : {}),
+              points: (series.dataPoints ?? []).map((p) => ({
+                timestamp: p.timestamp * 1000,
+                value: p.value,
+              })),
+            });
+          }
+        }
+        return out;
+      }
+      return [];
+    });
   }
 
   /**
@@ -537,104 +562,110 @@ export class ClickHouseClient implements PluginClient {
    * last 30 days), or a Managed Postgres service's server log (the last 24
    * hours, filterable by severity).
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    const tail = Math.max(1, Math.min(params.tailLines ?? 200, 2000));
-    const now = Date.now();
-    if (typeId === "ch-service") {
-      const from = encodeURIComponent(new Date(now - 30 * 86_400_000).toISOString());
-      const to = encodeURIComponent(new Date(now).toISOString());
-      const data = await this.cloudApi<{ result?: CloudActivity[] }>(
-        "GET",
-        `${this.orgPath}/activities?from_date=${from}&to_date=${to}`,
-      );
-      const text = serviceActivityLines(data.result ?? [], externalId, tail);
-      return {
-        text: text || "No activity recorded for this service in the last 30 days.\n",
-        containers: ["activity"],
-        activeContainer: "activity",
-      };
-    }
-    if (typeId === "ch-postgres") {
-      const containers = [...POSTGRES_LOG_FILTERS];
-      const active =
-        params.container && (containers as string[]).includes(params.container)
-          ? params.container
-          : "all";
-      const from = encodeURIComponent(new Date(now - 86_400_000).toISOString());
-      const to = encodeURIComponent(new Date(now).toISOString());
-      const data = await this.cloudApi<{ result?: PostgresLogEntry[] }>(
-        "GET",
-        `${this.orgPath}/postgres/${encodeURIComponent(externalId)}/logs?from_date=${from}&to_date=${to}` +
-          `&sort_order=desc&limit=${tail}` +
-          (active === "all" ? "" : `&severity=${encodeURIComponent(active)}`),
-      );
-      const text = postgresLogLines(data.result ?? []);
-      return {
-        text: text || "No log entries in the last 24 hours.\n",
-        containers,
-        activeContainer: active,
-      };
-    }
-    return { text: "", containers: [], activeContainer: "" };
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      const tail = Math.max(1, Math.min(params.tailLines ?? 200, 2000));
+      const now = Date.now();
+      if (typeId === "ch-service") {
+        const from = encodeURIComponent(new Date(now - 30 * 86_400_000).toISOString());
+        const to = encodeURIComponent(new Date(now).toISOString());
+        const data = await this.cloudApi<{ result?: CloudActivity[] }>(
+          "GET",
+          `${this.orgPath}/activities?from_date=${from}&to_date=${to}`,
+        );
+        const text = serviceActivityLines(data.result ?? [], externalId, tail);
+        return {
+          text: text || "No activity recorded for this service in the last 30 days.\n",
+          containers: ["activity"],
+          activeContainer: "activity",
+        };
+      }
+      if (typeId === "ch-postgres") {
+        const containers = [...POSTGRES_LOG_FILTERS];
+        const active =
+          params.container && (containers as string[]).includes(params.container)
+            ? params.container
+            : "all";
+        const from = encodeURIComponent(new Date(now - 86_400_000).toISOString());
+        const to = encodeURIComponent(new Date(now).toISOString());
+        const data = await this.cloudApi<{ result?: PostgresLogEntry[] }>(
+          "GET",
+          `${this.orgPath}/postgres/${encodeURIComponent(externalId)}/logs?from_date=${from}&to_date=${to}` +
+            `&sort_order=desc&limit=${tail}` +
+            (active === "all" ? "" : `&severity=${encodeURIComponent(active)}`),
+        );
+        const text = postgresLogLines(data.result ?? []);
+        return {
+          text: text || "No log entries in the last 24 hours.\n",
+          containers,
+          activeContainer: active,
+        };
+      }
+      return { text: "", containers: [], activeContainer: "" };
+    });
   }
 
   /** Active prepaid and trial credit balances, in ClickHouse Credits. */
-  async fetchCreditBalance(): Promise<CreditBalance[]> {
-    const data = await this.cloudApi<{
-      result?: {
-        balances?: Array<{
-          id?: string;
-          type?: string;
-          remainingCredits?: number;
-          totalAmount?: number;
-          expirationDate?: string;
-        }>;
-      };
-    }>("GET", `${this.orgPath}/creditBalances`);
-    return (data.result?.balances ?? []).map((b, i) => ({
-      key: b.id || `balance-${i}`,
-      label: b.type === "trial" ? "Trial credits" : "Prepaid credits",
-      remaining: Number(b.remainingCredits ?? 0),
-      // 1 CHC = $1 list price, the same conversion the cost collector uses.
-      currency: "USD",
-      ...(typeof b.totalAmount === "number" ? { granted: b.totalAmount } : {}),
-      ...(b.expirationDate ? { expiresAt: b.expirationDate } : {}),
-    }));
+  fetchCreditBalance(): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      const data = await this.cloudApi<{
+        result?: {
+          balances?: Array<{
+            id?: string;
+            type?: string;
+            remainingCredits?: number;
+            totalAmount?: number;
+            expirationDate?: string;
+          }>;
+        };
+      }>("GET", `${this.orgPath}/creditBalances`);
+      return (data.result?.balances ?? []).map((b, i) => ({
+        key: b.id || `balance-${i}`,
+        label: b.type === "trial" ? "Trial credits" : "Prepaid credits",
+        remaining: Number(b.remainingCredits ?? 0),
+        // 1 CHC = $1 list price, the same conversion the cost collector uses.
+        currency: "USD",
+        ...(typeof b.totalAmount === "number" ? { granted: b.totalAmount } : {}),
+        ...(b.expirationDate ? { expiresAt: b.expirationDate } : {}),
+      }));
+    });
   }
 
   /** Organization quotas (services, Postgres services, replicas, API keys). */
-  async fetchQuotas(): Promise<QuotaUsage[]> {
-    const data = await this.cloudApi<{
-      result?: Array<{
-        quotaCode?: string;
-        name?: string;
-        scope?: string;
-        value?: number;
-        usage?: number;
-        adjustable?: boolean;
-      }>;
-    }>("GET", `${this.orgPath}/quotas`);
-    const out: QuotaUsage[] = [];
-    for (const q of data.result ?? []) {
-      if (!q.quotaCode || !q.value || q.value <= 0) continue;
-      // Quotas that report no usage carry no used/limit pair to trend.
-      if (typeof q.usage !== "number") continue;
-      out.push({
-        id: q.quotaCode,
-        service: q.scope ?? "organization",
-        name: q.name || q.quotaCode,
-        limit: q.value,
-        used: q.usage,
-        ...(typeof q.adjustable === "boolean" ? { adjustable: q.adjustable } : {}),
-      });
-    }
-    return out;
+  fetchQuotas(): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      const data = await this.cloudApi<{
+        result?: Array<{
+          quotaCode?: string;
+          name?: string;
+          scope?: string;
+          value?: number;
+          usage?: number;
+          adjustable?: boolean;
+        }>;
+      }>("GET", `${this.orgPath}/quotas`);
+      const out: QuotaUsage[] = [];
+      for (const q of data.result ?? []) {
+        if (!q.quotaCode || !q.value || q.value <= 0) continue;
+        // Quotas that report no usage carry no used/limit pair to trend.
+        if (typeof q.usage !== "number") continue;
+        out.push({
+          id: q.quotaCode,
+          service: q.scope ?? "organization",
+          name: q.name || q.quotaCode,
+          limit: q.value,
+          used: q.usage,
+          ...(typeof q.adjustable === "boolean" ? { adjustable: q.adjustable } : {}),
+        });
+      }
+      return out;
+    });
   }
 
   private static readonly STATE_MAP: Record<string, ResourceStatus> = {
@@ -915,29 +946,31 @@ export class ClickHouseClient implements PluginClient {
    * on every listing. Stashed as JSON in `__`-prefixed fields for the
    * synchronous renderDetail.
    */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (resource.resourceTypeId !== "ch-service") return resource;
-    const serviceId = String(resource.fields["serviceId"] ?? resource.externalId ?? "");
-    if (!serviceId) return resource;
-    const base = `${this.orgPath}/services/${serviceId}`;
-    const [backupR, windowR] = await Promise.allSettled([
-      this.cloudApi<{ result?: BackupConfig }>("GET", `${base}/backupConfiguration`),
-      this.cloudApi<{ result?: UpgradeWindow }>("GET", `${base}/upgradeWindow`),
-    ]);
-    return {
-      ...resource,
-      fields: {
-        ...resource.fields,
-        __backupConfig:
-          backupR.status === "fulfilled" && backupR.value.result
-            ? JSON.stringify(backupR.value.result)
-            : "",
-        __upgradeWindow:
-          windowR.status === "fulfilled" && windowR.value.result
-            ? JSON.stringify(windowR.value.result)
-            : "",
-      },
-    };
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (resource.resourceTypeId !== "ch-service") return resource;
+      const serviceId = String(resource.fields["serviceId"] ?? resource.externalId ?? "");
+      if (!serviceId) return resource;
+      const base = `${this.orgPath}/services/${serviceId}`;
+      const [backupR, windowR] = await Promise.allSettled([
+        this.cloudApi<{ result?: BackupConfig }>("GET", `${base}/backupConfiguration`),
+        this.cloudApi<{ result?: UpgradeWindow }>("GET", `${base}/upgradeWindow`),
+      ]);
+      return {
+        ...resource,
+        fields: {
+          ...resource.fields,
+          __backupConfig:
+            backupR.status === "fulfilled" && backupR.value.result
+              ? JSON.stringify(backupR.value.result)
+              : "",
+          __upgradeWindow:
+            windowR.status === "fulfilled" && windowR.value.result
+              ? JSON.stringify(windowR.value.result)
+              : "",
+        },
+      };
+    });
   }
 
   private serviceOperationsSections(fields: Record<string, unknown>): SectionNode[] {
@@ -1318,82 +1351,168 @@ export class ClickHouseClient implements PluginClient {
     };
   }
 
-  async executeQuery(
+  executeQuery(
     resourceId: string,
     accountId: string,
     sql: string,
-  ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
-    const start = Date.now();
-    const rows = await this.chQuery(sql);
-    return { rows, durationMs: Date.now() - start };
+  ): PluginEffect<{ rows: Record<string, unknown>[]; durationMs: number }> {
+    return attempt(async () => {
+      const start = Date.now();
+      const rows = await this.chQuery(sql);
+      return { rows, durationMs: Date.now() - start };
+    });
   }
 
-  async introspectResource(resourceId: string, accountId: string): Promise<SqlTableMeta[]> {
-    try {
-      const rows = await this.chQuery(
-        `SELECT database, table, name AS column_name, type AS data_type
+  introspectResource(resourceId: string, accountId: string): PluginEffect<SqlTableMeta[]> {
+    return attempt(async () => {
+      try {
+        const rows = await this.chQuery(
+          `SELECT database, table, name AS column_name, type AS data_type
          FROM system.columns
          WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')
          ORDER BY database, table, position
          LIMIT 5000`,
-      );
+        );
 
-      const tableMap = new Map<string, SqlTableMeta>();
-      for (const row of rows) {
-        const fullName = `${row["database"]}.${row["table"]}`;
-        if (!tableMap.has(fullName)) {
-          tableMap.set(fullName, { name: fullName, columns: [] });
+        const tableMap = new Map<string, SqlTableMeta>();
+        for (const row of rows) {
+          const fullName = `${row["database"]}.${row["table"]}`;
+          if (!tableMap.has(fullName)) {
+            tableMap.set(fullName, { name: fullName, columns: [] });
+          }
+          tableMap.get(fullName)!.columns.push({
+            name: String(row["column_name"] ?? ""),
+            type: String(row["data_type"] ?? ""),
+          });
         }
-        tableMap.get(fullName)!.columns.push({
-          name: String(row["column_name"] ?? ""),
-          type: String(row["data_type"] ?? ""),
-        });
-      }
 
-      return [...tableMap.values()];
-    } catch {
-      return [];
-    }
+        return [...tableMap.values()];
+      } catch {
+        return [];
+      }
+    });
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    if (typeId === "ch-database") {
-      const fields: CreateResourceConfig["fields"] = [
-        {
-          key: "name",
-          label: "Database Name",
-          kind: "text",
-          required: true,
-          description: "Name for the new ClickHouse database",
-        },
-        {
-          key: "comment",
-          label: "Comment",
-          kind: "text",
-          required: false,
-        },
-      ];
-      if (!parentResourceId) {
-        const services = await listServices(this.ctx, "");
-        const options = services
-          .filter((s) => s.fields["state"] === "running" || s.fields["state"] === "idle")
-          .map((s) => ({
-            id: String(s.fields["serviceId"] ?? ""),
-            label: String(s.fields["name"] ?? s.fields["serviceId"] ?? ""),
-          }));
-        fields.unshift({
-          key: "serviceId",
-          label: "Service",
-          kind: "select",
-          required: true,
-          options,
-          ...(options[0] ? { defaultValue: options[0].id } : {}),
-          description: "ClickHouse Cloud service to create the database in",
-        });
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "ch-database") {
+        const fields: CreateResourceConfig["fields"] = [
+          {
+            key: "name",
+            label: "Database Name",
+            kind: "text",
+            required: true,
+            description: "Name for the new ClickHouse database",
+          },
+          {
+            key: "comment",
+            label: "Comment",
+            kind: "text",
+            required: false,
+          },
+        ];
+        if (!parentResourceId) {
+          const services = await listServices(this.ctx, "");
+          const options = services
+            .filter((s) => s.fields["state"] === "running" || s.fields["state"] === "idle")
+            .map((s) => ({
+              id: String(s.fields["serviceId"] ?? ""),
+              label: String(s.fields["name"] ?? s.fields["serviceId"] ?? ""),
+            }));
+          fields.unshift({
+            key: "serviceId",
+            label: "Service",
+            kind: "select",
+            required: true,
+            options,
+            ...(options[0] ? { defaultValue: options[0].id } : {}),
+            description: "ClickHouse Cloud service to create the database in",
+          });
+        }
+        return { fields };
       }
-      return { fields };
-    }
-    if (typeId === "ch-postgres") {
+      if (typeId === "ch-postgres") {
+        return {
+          fields: [
+            {
+              key: "name",
+              label: "Service Name",
+              kind: "text",
+              required: true,
+              description: "Up to 50 characters.",
+            },
+            {
+              key: "provider",
+              label: "Cloud Provider",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "aws", label: "AWS" },
+                { id: "gcp", label: "Google Cloud" },
+              ],
+              defaultValue: "aws",
+            },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions: CLOUD_REGIONS.filter(
+                (r) => r.availableFor?.includes("aws") || r.availableFor?.includes("gcp"),
+              ),
+              filterByFieldKey: "provider",
+              description: "Managed Postgres is not offered in every ClickHouse Cloud region yet.",
+            },
+            {
+              key: "postgresVersion",
+              label: "Postgres Version",
+              kind: "select",
+              required: false,
+              options: [
+                { id: "18", label: "Postgres 18" },
+                { id: "17", label: "Postgres 17" },
+              ],
+              defaultValue: "18",
+            },
+            {
+              key: "awsSize",
+              label: "Instance Size",
+              kind: "select",
+              required: true,
+              options: postgresSizeOptions("aws"),
+              defaultValue: "r8gd.large",
+              showWhen: { fieldKey: "provider", fieldValue: "aws" },
+              description: "EC2 instance type with local NVMe storage.",
+            },
+            {
+              key: "gcpSize",
+              label: "Instance Size",
+              kind: "select",
+              required: true,
+              options: postgresSizeOptions("gcp"),
+              defaultValue: "c4a-highmem-4",
+              showWhen: { fieldKey: "provider", fieldValue: "gcp" },
+              description: "Compute Engine machine type.",
+            },
+            {
+              key: "haType",
+              label: "High Availability",
+              kind: "select",
+              required: false,
+              options: [
+                { id: "none", label: "None", description: "Single instance" },
+                { id: "async", label: "Async", description: "One standby, asynchronous" },
+                { id: "sync", label: "Sync", description: "Two standbys, synchronous" },
+              ],
+              defaultValue: "none",
+            },
+          ],
+        };
+      }
+      if (typeId !== "ch-service") {
+        throw new Error(`ClickHouse plugin: create not supported for type "${typeId}"`);
+      }
+
       return {
         fields: [
           {
@@ -1401,7 +1520,7 @@ export class ClickHouseClient implements PluginClient {
             label: "Service Name",
             kind: "text",
             required: true,
-            description: "Up to 50 characters.",
+            description: "A human-readable name for this ClickHouse Cloud service (max 50 chars).",
           },
           {
             key: "provider",
@@ -1411,6 +1530,7 @@ export class ClickHouseClient implements PluginClient {
             options: [
               { id: "aws", label: "AWS" },
               { id: "gcp", label: "Google Cloud" },
+              { id: "azure", label: "Azure" },
             ],
             defaultValue: "aws",
           },
@@ -1419,378 +1539,307 @@ export class ClickHouseClient implements PluginClient {
             label: "Region",
             kind: "region-picker",
             required: true,
-            regions: CLOUD_REGIONS.filter(
-              (r) => r.availableFor?.includes("aws") || r.availableFor?.includes("gcp"),
-            ),
+            regions: CLOUD_REGIONS,
             filterByFieldKey: "provider",
-            description: "Managed Postgres is not offered in every ClickHouse Cloud region yet.",
           },
           {
-            key: "postgresVersion",
-            label: "Postgres Version",
+            key: "releaseChannel",
+            label: "Release Channel",
             kind: "select",
             required: false,
             options: [
-              { id: "18", label: "Postgres 18" },
-              { id: "17", label: "Postgres 17" },
+              { id: "default", label: "Default", description: "Regular release cadence" },
+              { id: "fast", label: "Fast", description: "New releases first, higher risk" },
+              { id: "slow", label: "Slow", description: "Upgrades later (plan-dependent)" },
             ],
-            defaultValue: "18",
+            defaultValue: "default",
           },
           {
-            key: "awsSize",
-            label: "Instance Size",
-            kind: "select",
-            required: true,
-            options: postgresSizeOptions("aws"),
-            defaultValue: "r8gd.large",
-            showWhen: { fieldKey: "provider", fieldValue: "aws" },
-            description: "EC2 instance type with local NVMe storage.",
+            key: "minReplicaMemoryGb",
+            label: "Min Replica Memory (GB)",
+            kind: "number",
+            required: false,
+            description:
+              "Minimum memory per replica in GB (multiples of 4, range 8-356). Leave blank for default.",
+            minValue: 8,
+            maxValue: 356,
+            stepValue: 4,
+            defaultValue: "24",
           },
           {
-            key: "gcpSize",
-            label: "Instance Size",
-            kind: "select",
-            required: true,
-            options: postgresSizeOptions("gcp"),
-            defaultValue: "c4a-highmem-4",
-            showWhen: { fieldKey: "provider", fieldValue: "gcp" },
-            description: "Compute Engine machine type.",
+            key: "maxReplicaMemoryGb",
+            label: "Max Replica Memory (GB)",
+            kind: "number",
+            required: false,
+            description:
+              "Maximum memory per replica in GB (multiples of 4, range 8-356). Leave blank for default.",
+            minValue: 8,
+            maxValue: 356,
+            stepValue: 4,
+            defaultValue: "24",
           },
           {
-            key: "haType",
-            label: "High Availability",
+            key: "numReplicas",
+            label: "Number of Replicas",
+            kind: "number",
+            required: false,
+            description: "Number of replicas (1-20). Defaults to 3.",
+            minValue: 1,
+            maxValue: 20,
+            stepValue: 1,
+            defaultValue: "3",
+          },
+          {
+            key: "idleScaling",
+            label: "Idle Scaling",
             kind: "select",
             required: false,
             options: [
-              { id: "none", label: "None", description: "Single instance" },
-              { id: "async", label: "Async", description: "One standby, asynchronous" },
-              { id: "sync", label: "Sync", description: "Two standbys, synchronous" },
+              { id: "true", label: "Enabled (scale to zero when idle)" },
+              { id: "false", label: "Disabled (always running)" },
             ],
-            defaultValue: "none",
+            defaultValue: "true",
+            description: "When enabled, the service can scale to zero when there is no activity.",
           },
         ],
       };
-    }
-    if (typeId !== "ch-service") {
-      throw new Error(`ClickHouse plugin: create not supported for type "${typeId}"`);
-    }
-
-    return {
-      fields: [
-        {
-          key: "name",
-          label: "Service Name",
-          kind: "text",
-          required: true,
-          description: "A human-readable name for this ClickHouse Cloud service (max 50 chars).",
-        },
-        {
-          key: "provider",
-          label: "Cloud Provider",
-          kind: "select",
-          required: true,
-          options: [
-            { id: "aws", label: "AWS" },
-            { id: "gcp", label: "Google Cloud" },
-            { id: "azure", label: "Azure" },
-          ],
-          defaultValue: "aws",
-        },
-        {
-          key: "region",
-          label: "Region",
-          kind: "region-picker",
-          required: true,
-          regions: CLOUD_REGIONS,
-          filterByFieldKey: "provider",
-        },
-        {
-          key: "releaseChannel",
-          label: "Release Channel",
-          kind: "select",
-          required: false,
-          options: [
-            { id: "default", label: "Default", description: "Regular release cadence" },
-            { id: "fast", label: "Fast", description: "New releases first, higher risk" },
-            { id: "slow", label: "Slow", description: "Upgrades later (plan-dependent)" },
-          ],
-          defaultValue: "default",
-        },
-        {
-          key: "minReplicaMemoryGb",
-          label: "Min Replica Memory (GB)",
-          kind: "number",
-          required: false,
-          description:
-            "Minimum memory per replica in GB (multiples of 4, range 8-356). Leave blank for default.",
-          minValue: 8,
-          maxValue: 356,
-          stepValue: 4,
-          defaultValue: "24",
-        },
-        {
-          key: "maxReplicaMemoryGb",
-          label: "Max Replica Memory (GB)",
-          kind: "number",
-          required: false,
-          description:
-            "Maximum memory per replica in GB (multiples of 4, range 8-356). Leave blank for default.",
-          minValue: 8,
-          maxValue: 356,
-          stepValue: 4,
-          defaultValue: "24",
-        },
-        {
-          key: "numReplicas",
-          label: "Number of Replicas",
-          kind: "number",
-          required: false,
-          description: "Number of replicas (1-20). Defaults to 3.",
-          minValue: 1,
-          maxValue: 20,
-          stepValue: 1,
-          defaultValue: "3",
-        },
-        {
-          key: "idleScaling",
-          label: "Idle Scaling",
-          kind: "select",
-          required: false,
-          options: [
-            { id: "true", label: "Enabled (scale to zero when idle)" },
-            { id: "false", label: "Disabled (always running)" },
-          ],
-          defaultValue: "true",
-          description: "When enabled, the service can scale to zero when there is no activity.",
-        },
-      ],
-    };
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "ch-database") {
-      const name = fields["name"] ?? "";
-      const comment = fields["comment"] ?? "";
-      const parentExternalId = parentResourceId
-        ? parentResourceId.split(":").slice(2).join(":")
-        : "";
-      const serviceId = fields["serviceId"] || parentExternalId;
-      if (!serviceId) {
-        throw new Error("ClickHouse database creation requires a service");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "ch-database") {
+        const name = fields["name"] ?? "";
+        const comment = fields["comment"] ?? "";
+        const parentExternalId = parentResourceId
+          ? parentResourceId.split(":").slice(2).join(":")
+          : "";
+        const serviceId = fields["serviceId"] || parentExternalId;
+        if (!serviceId) {
+          throw new Error("ClickHouse database creation requires a service");
+        }
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+          throw new Error(
+            "Database name must be alphanumeric with underscores, starting with a letter or underscore",
+          );
+        }
+
+        const services = await listServices(this.ctx, accountId);
+        const target = services.find((s) => String(s.fields["serviceId"]) === serviceId);
+        if (!target) {
+          throw new Error(`ClickHouse service "${serviceId}" not found`);
+        }
+        const targetHost = String(target.resolvedOutputs["host"] ?? "");
+        if (!targetHost) {
+          throw new Error(`ClickHouse service "${serviceId}" has no HTTPS endpoint available`);
+        }
+
+        const sql = comment
+          ? `CREATE DATABASE {name:Identifier} COMMENT {comment:String}`
+          : `CREATE DATABASE {name:Identifier}`;
+        const params: Record<string, unknown> = comment ? { name, comment } : { name };
+        await this.chCommandAt(targetHost, sql, params);
+        const now = new Date().toISOString();
+        const externalId = `${serviceId}/${name}`;
+        return {
+          id: this.makeId(accountId, "ch-database", externalId),
+          pluginId: "clickhouse",
+          resourceTypeId: "ch-database",
+          accountId,
+          displayName: name,
+          parentResourceId: this.makeId(accountId, "ch-service", serviceId),
+          fields: { name, engine: "Atomic", comment },
+          resolvedOutputs: { databaseName: name },
+          secretStates: [],
+          externalId,
+          createdAt: now,
+          updatedAt: now,
+        };
       }
-      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-        throw new Error(
-          "Database name must be alphanumeric with underscores, starting with a letter or underscore",
+
+      if (typeId === "ch-postgres") {
+        const provider = fields["provider"] === "gcp" ? "gcp" : "aws";
+        const size = provider === "gcp" ? fields["gcpSize"] : fields["awsSize"];
+        if (!fields["name"] || !fields["region"] || !size) {
+          throw new Error("Managed Postgres needs a name, region and instance size");
+        }
+        const body: Record<string, unknown> = {
+          name: fields["name"],
+          provider,
+          region: fields["region"],
+          size,
+        };
+        if (fields["postgresVersion"]) body["postgresVersion"] = fields["postgresVersion"];
+        if (fields["haType"]) body["haType"] = fields["haType"];
+        const data = await this.cloudApi<{ result?: CloudPostgres }>(
+          "POST",
+          `${this.orgPath}/postgres`,
+          body,
         );
+        if (!data.result?.id) {
+          throw new Error("ClickHouse Cloud: create Postgres service returned no result");
+        }
+        return postgresToResource(this.ctx, accountId, data.result);
       }
 
-      const services = await listServices(this.ctx, accountId);
-      const target = services.find((s) => String(s.fields["serviceId"]) === serviceId);
-      if (!target) {
-        throw new Error(`ClickHouse service "${serviceId}" not found`);
-      }
-      const targetHost = String(target.resolvedOutputs["host"] ?? "");
-      if (!targetHost) {
-        throw new Error(`ClickHouse service "${serviceId}" has no HTTPS endpoint available`);
+      if (typeId !== "ch-service") {
+        throw new Error(`ClickHouse plugin: create not supported for type "${typeId}"`);
       }
 
-      const sql = comment
-        ? `CREATE DATABASE {name:Identifier} COMMENT {comment:String}`
-        : `CREATE DATABASE {name:Identifier}`;
-      const params: Record<string, unknown> = comment ? { name, comment } : { name };
-      await this.chCommandAt(targetHost, sql, params);
+      const body: Record<string, unknown> = {
+        name: fields["name"],
+        provider: fields["provider"],
+        region: fields["region"],
+      };
+
+      if (fields["minReplicaMemoryGb"]) {
+        body["minReplicaMemoryGb"] = Number(fields["minReplicaMemoryGb"]);
+      }
+      if (fields["maxReplicaMemoryGb"]) {
+        body["maxReplicaMemoryGb"] = Number(fields["maxReplicaMemoryGb"]);
+      }
+      if (fields["numReplicas"]) {
+        body["numReplicas"] = Number(fields["numReplicas"]);
+      }
+      if (fields["idleScaling"] !== undefined) {
+        body["idleScaling"] = fields["idleScaling"] === "true";
+      }
+      if (fields["releaseChannel"]) {
+        body["releaseChannel"] = fields["releaseChannel"];
+      }
+
+      interface CreateResponse {
+        result?: {
+          service?: {
+            id: string;
+            name: string;
+            state: string;
+            provider: string;
+            region: string;
+            endpoints?: Array<{ protocol: string; host: string; port: number }>;
+          };
+          password?: string;
+        };
+      }
+
+      const data = await this.cloudApi<CreateResponse>(
+        "POST",
+        `/v1/organizations/${this.organizationId}/services`,
+        body,
+      );
+
+      const svc = data.result?.service;
+      if (!svc) {
+        throw new Error("ClickHouse Cloud: create service returned no result");
+      }
+
+      const httpsEndpoint = svc.endpoints?.find((e) => e.protocol === "https");
+      const nativeEndpoint = svc.endpoints?.find(
+        (e) => e.protocol === "native" || e.protocol === "nativesecure",
+      );
+      const host = httpsEndpoint?.host ?? "";
+      const port = String(httpsEndpoint?.port ?? 8443);
+      const nativePort = String(nativeEndpoint?.port ?? 9440);
       const now = new Date().toISOString();
-      const externalId = `${serviceId}/${name}`;
+
       return {
-        id: this.makeId(accountId, "ch-database", externalId),
+        id: this.makeId(accountId, "ch-service", svc.id),
         pluginId: "clickhouse",
-        resourceTypeId: "ch-database",
+        resourceTypeId: "ch-service",
         accountId,
-        displayName: name,
-        parentResourceId: this.makeId(accountId, "ch-service", serviceId),
-        fields: { name, engine: "Atomic", comment },
-        resolvedOutputs: { databaseName: name },
+        displayName: svc.name || svc.id,
+        fields: {
+          serviceId: svc.id,
+          name: svc.name,
+          state: svc.state,
+          provider: svc.provider,
+          region: svc.region,
+        },
+        resolvedOutputs: {
+          serviceId: svc.id,
+          host,
+          port,
+          nativePort,
+          httpUrl: host ? `https://${host}:${port}` : "",
+          connectionString: host ? `clickhouse://${host}:${nativePort}` : "",
+        },
         secretStates: [],
-        externalId,
+        externalId: svc.id,
         createdAt: now,
         updatedAt: now,
       };
-    }
-
-    if (typeId === "ch-postgres") {
-      const provider = fields["provider"] === "gcp" ? "gcp" : "aws";
-      const size = provider === "gcp" ? fields["gcpSize"] : fields["awsSize"];
-      if (!fields["name"] || !fields["region"] || !size) {
-        throw new Error("Managed Postgres needs a name, region and instance size");
-      }
-      const body: Record<string, unknown> = {
-        name: fields["name"],
-        provider,
-        region: fields["region"],
-        size,
-      };
-      if (fields["postgresVersion"]) body["postgresVersion"] = fields["postgresVersion"];
-      if (fields["haType"]) body["haType"] = fields["haType"];
-      const data = await this.cloudApi<{ result?: CloudPostgres }>(
-        "POST",
-        `${this.orgPath}/postgres`,
-        body,
-      );
-      if (!data.result?.id) {
-        throw new Error("ClickHouse Cloud: create Postgres service returned no result");
-      }
-      return postgresToResource(this.ctx, accountId, data.result);
-    }
-
-    if (typeId !== "ch-service") {
-      throw new Error(`ClickHouse plugin: create not supported for type "${typeId}"`);
-    }
-
-    const body: Record<string, unknown> = {
-      name: fields["name"],
-      provider: fields["provider"],
-      region: fields["region"],
-    };
-
-    if (fields["minReplicaMemoryGb"]) {
-      body["minReplicaMemoryGb"] = Number(fields["minReplicaMemoryGb"]);
-    }
-    if (fields["maxReplicaMemoryGb"]) {
-      body["maxReplicaMemoryGb"] = Number(fields["maxReplicaMemoryGb"]);
-    }
-    if (fields["numReplicas"]) {
-      body["numReplicas"] = Number(fields["numReplicas"]);
-    }
-    if (fields["idleScaling"] !== undefined) {
-      body["idleScaling"] = fields["idleScaling"] === "true";
-    }
-    if (fields["releaseChannel"]) {
-      body["releaseChannel"] = fields["releaseChannel"];
-    }
-
-    interface CreateResponse {
-      result?: {
-        service?: {
-          id: string;
-          name: string;
-          state: string;
-          provider: string;
-          region: string;
-          endpoints?: Array<{ protocol: string; host: string; port: number }>;
-        };
-        password?: string;
-      };
-    }
-
-    const data = await this.cloudApi<CreateResponse>(
-      "POST",
-      `/v1/organizations/${this.organizationId}/services`,
-      body,
-    );
-
-    const svc = data.result?.service;
-    if (!svc) {
-      throw new Error("ClickHouse Cloud: create service returned no result");
-    }
-
-    const httpsEndpoint = svc.endpoints?.find((e) => e.protocol === "https");
-    const nativeEndpoint = svc.endpoints?.find(
-      (e) => e.protocol === "native" || e.protocol === "nativesecure",
-    );
-    const host = httpsEndpoint?.host ?? "";
-    const port = String(httpsEndpoint?.port ?? 8443);
-    const nativePort = String(nativeEndpoint?.port ?? 9440);
-    const now = new Date().toISOString();
-
-    return {
-      id: this.makeId(accountId, "ch-service", svc.id),
-      pluginId: "clickhouse",
-      resourceTypeId: "ch-service",
-      accountId,
-      displayName: svc.name || svc.id,
-      fields: {
-        serviceId: svc.id,
-        name: svc.name,
-        state: svc.state,
-        provider: svc.provider,
-        region: svc.region,
-      },
-      resolvedOutputs: {
-        serviceId: svc.id,
-        host,
-        port,
-        nativePort,
-        httpUrl: host ? `https://${host}:${port}` : "",
-        connectionString: host ? `clickhouse://${host}:${nativePort}` : "",
-      },
-      secretStates: [],
-      externalId: svc.id,
-      createdAt: now,
-      updatedAt: now,
-    };
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    if (typeId === "ch-database") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const externalId = String(resource.externalId);
-      const slashIdx = externalId.indexOf("/");
-      const serviceId = slashIdx >= 0 ? externalId.slice(0, slashIdx) : "";
-      const name = slashIdx >= 0 ? externalId.slice(slashIdx + 1) : externalId;
-      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-        throw new Error("Invalid database name");
-      }
-      let targetHost = this.chHost;
-      if (serviceId) {
-        const services = await listServices(this.ctx, accountId);
-        const target = services.find((s) => String(s.fields["serviceId"]) === serviceId);
-        if (target) {
-          targetHost = String(target.resolvedOutputs["host"] ?? this.chHost);
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "ch-database") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const externalId = String(resource.externalId);
+        const slashIdx = externalId.indexOf("/");
+        const serviceId = slashIdx >= 0 ? externalId.slice(0, slashIdx) : "";
+        const name = slashIdx >= 0 ? externalId.slice(slashIdx + 1) : externalId;
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+          throw new Error("Invalid database name");
         }
-      }
-      await this.chCommandAt(targetHost, `DROP DATABASE {name:Identifier}`, { name });
-      return;
-    }
-
-    const externalId = resourceId.split(":").slice(2).join(":");
-    switch (typeId) {
-      case "ch-clickpipe": {
-        const [serviceId, pipeId] = splitPipeId(externalId);
-        await this.cloudApi("DELETE", `${this.orgPath}/services/${serviceId}/clickpipes/${pipeId}`);
+        let targetHost = this.chHost;
+        if (serviceId) {
+          const services = await listServices(this.ctx, accountId);
+          const target = services.find((s) => String(s.fields["serviceId"]) === serviceId);
+          if (target) {
+            targetHost = String(target.resolvedOutputs["host"] ?? this.chHost);
+          }
+        }
+        await this.chCommandAt(targetHost, `DROP DATABASE {name:Identifier}`, { name });
         return;
       }
-      case "ch-api-key":
-        await this.cloudApi("DELETE", `${this.orgPath}/keys/${externalId}`);
-        return;
-      case "ch-member":
-        await this.cloudApi("DELETE", `${this.orgPath}/members/${externalId}`);
-        return;
-      case "ch-postgres":
-        await this.cloudApi("DELETE", `${this.orgPath}/postgres/${externalId}`);
-        return;
-    }
 
-    if (typeId !== "ch-service") {
-      throw new Error(`ClickHouse plugin: delete not supported for type "${typeId}"`);
-    }
+      const externalId = resourceId.split(":").slice(2).join(":");
+      switch (typeId) {
+        case "ch-clickpipe": {
+          const [serviceId, pipeId] = splitPipeId(externalId);
+          await this.cloudApi(
+            "DELETE",
+            `${this.orgPath}/services/${serviceId}/clickpipes/${pipeId}`,
+          );
+          return;
+        }
+        case "ch-api-key":
+          await this.cloudApi("DELETE", `${this.orgPath}/keys/${externalId}`);
+          return;
+        case "ch-member":
+          await this.cloudApi("DELETE", `${this.orgPath}/members/${externalId}`);
+          return;
+        case "ch-postgres":
+          await this.cloudApi("DELETE", `${this.orgPath}/postgres/${externalId}`);
+          return;
+      }
 
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const serviceId = String(resource.fields["serviceId"]);
+      if (typeId !== "ch-service") {
+        throw new Error(`ClickHouse plugin: delete not supported for type "${typeId}"`);
+      }
 
-    // If the service is running or idle, stop it first (ClickHouse Cloud requires stopped state to delete)
-    const state = String(resource.fields["state"]);
-    if (state === "running" || state === "idle") {
-      await this.setServiceState(serviceId, "stop");
-      // Wait a bit for the stop to initiate
-      await new Promise((r) => setTimeout(r, 2000));
-    }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const serviceId = String(resource.fields["serviceId"]);
 
-    await this.cloudApi("DELETE", `/v1/organizations/${this.organizationId}/services/${serviceId}`);
+      // If the service is running or idle, stop it first (ClickHouse Cloud requires stopped state to delete)
+      const state = String(resource.fields["state"]);
+      if (state === "running" || state === "idle") {
+        await this.setServiceState(serviceId, "stop");
+        // Wait a bit for the stop to initiate
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+
+      await this.cloudApi(
+        "DELETE",
+        `/v1/organizations/${this.organizationId}/services/${serviceId}`,
+      );
+    });
   }
 
   /** Start or stop a ClickHouse Cloud service via the state PATCH endpoint. */
@@ -1802,209 +1851,216 @@ export class ClickHouseClient implements PluginClient {
     );
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    const has = (key: string) => fields[key] !== undefined;
-    const num = (key: string) => Number(fields[key]);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      const has = (key: string) => fields[key] !== undefined;
+      const num = (key: string) => Number(fields[key]);
 
-    switch (typeId) {
-      case "ch-service": {
-        const current = await this.getResource(typeId, resourceId, accountId);
-        const base = `${this.orgPath}/services/${externalId}`;
+      switch (typeId) {
+        case "ch-service": {
+          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const base = `${this.orgPath}/services/${externalId}`;
 
-        const basic: Record<string, unknown> = {};
-        if (has("name")) basic["name"] = fields["name"];
-        if (has("releaseChannel") && fields["releaseChannel"]) {
-          basic["releaseChannel"] = fields["releaseChannel"];
-        }
-        if (has("ipAccessList")) {
-          const patch = ipAccessListPatch(
-            String(current.fields["ipAccessList"] ?? ""),
-            fields["ipAccessList"] ?? "",
-          );
-          if (patch.add.length > 0 || patch.remove.length > 0) basic["ipAccessList"] = patch;
-        }
-        if (Object.keys(basic).length > 0) await this.cloudApi("PATCH", base, basic);
+          const basic: Record<string, unknown> = {};
+          if (has("name")) basic["name"] = fields["name"];
+          if (has("releaseChannel") && fields["releaseChannel"]) {
+            basic["releaseChannel"] = fields["releaseChannel"];
+          }
+          if (has("ipAccessList")) {
+            const patch = ipAccessListPatch(
+              String(current.fields["ipAccessList"] ?? ""),
+              fields["ipAccessList"] ?? "",
+            );
+            if (patch.add.length > 0 || patch.remove.length > 0) basic["ipAccessList"] = patch;
+          }
+          if (Object.keys(basic).length > 0) await this.cloudApi("PATCH", base, basic);
 
-        // numReplicas is the vertical-mode count and min/maxReplicas the
-        // horizontal band; the API rejects both in one request, so only the
-        // keys the user actually changed are sent.
-        const scaling: Record<string, unknown> = {};
-        for (const key of [
-          "minReplicaMemoryGb",
-          "maxReplicaMemoryGb",
-          "numReplicas",
-          "minReplicas",
-          "maxReplicas",
-          "idleTimeoutMinutes",
-        ]) {
-          if (has(key) && fields[key] !== "" && Number.isFinite(num(key))) scaling[key] = num(key);
+          // numReplicas is the vertical-mode count and min/maxReplicas the
+          // horizontal band; the API rejects both in one request, so only the
+          // keys the user actually changed are sent.
+          const scaling: Record<string, unknown> = {};
+          for (const key of [
+            "minReplicaMemoryGb",
+            "maxReplicaMemoryGb",
+            "numReplicas",
+            "minReplicas",
+            "maxReplicas",
+            "idleTimeoutMinutes",
+          ]) {
+            if (has(key) && fields[key] !== "" && Number.isFinite(num(key)))
+              scaling[key] = num(key);
+          }
+          if (has("idleScaling")) scaling["idleScaling"] = fields["idleScaling"] === "true";
+          if (has("autoscalingMode") && fields["autoscalingMode"]) {
+            scaling["autoscalingMode"] = fields["autoscalingMode"];
+          }
+          if (Object.keys(scaling).length > 0) {
+            await this.cloudApi("PATCH", `${base}/replicaScaling`, scaling);
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        if (has("idleScaling")) scaling["idleScaling"] = fields["idleScaling"] === "true";
-        if (has("autoscalingMode") && fields["autoscalingMode"]) {
-          scaling["autoscalingMode"] = fields["autoscalingMode"];
+        case "ch-clickpipe": {
+          const [serviceId, pipeId] = splitPipeId(externalId);
+          const base = `${this.orgPath}/services/${serviceId}/clickpipes/${pipeId}`;
+          let latest: CloudClickPipe | undefined;
+          if (has("name")) {
+            const r = await this.cloudApi<{ result?: CloudClickPipe }>("PATCH", base, {
+              name: fields["name"],
+            });
+            latest = r.result;
+          }
+          const scaling: Record<string, unknown> = {};
+          if (has("replicas") && fields["replicas"] !== "") scaling["replicas"] = num("replicas");
+          if (has("concurrency") && fields["concurrency"] !== "") {
+            scaling["concurrency"] = num("concurrency");
+          }
+          if (Object.keys(scaling).length > 0) {
+            const r = await this.cloudApi<{ result?: CloudClickPipe }>(
+              "PATCH",
+              `${base}/scaling`,
+              scaling,
+            );
+            latest = r.result ?? latest;
+          }
+          if (latest?.id) return clickPipeToResource(this.ctx, accountId, serviceId, latest);
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        if (Object.keys(scaling).length > 0) {
-          await this.cloudApi("PATCH", `${base}/replicaScaling`, scaling);
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "ch-clickpipe": {
-        const [serviceId, pipeId] = splitPipeId(externalId);
-        const base = `${this.orgPath}/services/${serviceId}/clickpipes/${pipeId}`;
-        let latest: CloudClickPipe | undefined;
-        if (has("name")) {
-          const r = await this.cloudApi<{ result?: CloudClickPipe }>("PATCH", base, {
-            name: fields["name"],
-          });
-          latest = r.result;
-        }
-        const scaling: Record<string, unknown> = {};
-        if (has("replicas") && fields["replicas"] !== "") scaling["replicas"] = num("replicas");
-        if (has("concurrency") && fields["concurrency"] !== "") {
-          scaling["concurrency"] = num("concurrency");
-        }
-        if (Object.keys(scaling).length > 0) {
-          const r = await this.cloudApi<{ result?: CloudClickPipe }>(
+        case "ch-api-key": {
+          const body: Record<string, unknown> = {};
+          if (has("name")) body["name"] = fields["name"];
+          if (has("state")) body["state"] = fields["state"];
+          const r = await this.cloudApi<{ result?: CloudApiKey }>(
             "PATCH",
-            `${base}/scaling`,
-            scaling,
+            `${this.orgPath}/keys/${externalId}`,
+            body,
           );
-          latest = r.result ?? latest;
+          if (r.result?.id) return apiKeyToResource(this.ctx, accountId, r.result);
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        if (latest?.id) return clickPipeToResource(this.ctx, accountId, serviceId, latest);
-        return this.getResource(typeId, resourceId, accountId);
+        case "ch-postgres": {
+          const body: Record<string, unknown> = {};
+          if (has("name")) body["name"] = fields["name"];
+          if (has("size") && fields["size"]) body["size"] = fields["size"];
+          if (has("haType") && fields["haType"]) body["haType"] = fields["haType"];
+          const r = await this.cloudApi<{ result?: CloudPostgres }>(
+            "PATCH",
+            `${this.orgPath}/postgres/${externalId}`,
+            body,
+          );
+          if (r.result?.id) return postgresToResource(this.ctx, accountId, r.result);
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        default:
+          throw new Error(`ClickHouse plugin: update not supported for type "${typeId}"`);
       }
-      case "ch-api-key": {
-        const body: Record<string, unknown> = {};
-        if (has("name")) body["name"] = fields["name"];
-        if (has("state")) body["state"] = fields["state"];
-        const r = await this.cloudApi<{ result?: CloudApiKey }>(
-          "PATCH",
-          `${this.orgPath}/keys/${externalId}`,
-          body,
-        );
-        if (r.result?.id) return apiKeyToResource(this.ctx, accountId, r.result);
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "ch-postgres": {
-        const body: Record<string, unknown> = {};
-        if (has("name")) body["name"] = fields["name"];
-        if (has("size") && fields["size"]) body["size"] = fields["size"];
-        if (has("haType") && fields["haType"]) body["haType"] = fields["haType"];
-        const r = await this.cloudApi<{ result?: CloudPostgres }>(
-          "PATCH",
-          `${this.orgPath}/postgres/${externalId}`,
-          body,
-        );
-        if (r.result?.id) return postgresToResource(this.ctx, accountId, r.result);
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      default:
-        throw new Error(`ClickHouse plugin: update not supported for type "${typeId}"`);
-    }
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    if (typeId === "ch-service" && (actionId === "start" || actionId === "stop")) {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const serviceId = String(resource.fields["serviceId"] ?? resource.externalId ?? "");
-      if (!serviceId) throw new Error("Cannot determine ClickHouse Cloud service ID");
-      await this.setServiceState(serviceId, actionId);
-      return;
-    }
-    if (typeId === "ch-service" && actionId === "clear-upgrade-window") {
-      await this.cloudApi("DELETE", `${this.orgPath}/services/${externalId}/upgradeWindow`);
-      return;
-    }
-    if (
-      typeId === "ch-clickpipe" &&
-      (actionId === "start" || actionId === "stop" || actionId === "resync")
-    ) {
-      const [serviceId, pipeId] = splitPipeId(externalId);
-      await this.cloudApi(
-        "PATCH",
-        `${this.orgPath}/services/${serviceId}/clickpipes/${pipeId}/state`,
-        { command: actionId },
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      if (typeId === "ch-service" && (actionId === "start" || actionId === "stop")) {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const serviceId = String(resource.fields["serviceId"] ?? resource.externalId ?? "");
+        if (!serviceId) throw new Error("Cannot determine ClickHouse Cloud service ID");
+        await this.setServiceState(serviceId, actionId);
+        return;
+      }
+      if (typeId === "ch-service" && actionId === "clear-upgrade-window") {
+        await this.cloudApi("DELETE", `${this.orgPath}/services/${externalId}/upgradeWindow`);
+        return;
+      }
+      if (
+        typeId === "ch-clickpipe" &&
+        (actionId === "start" || actionId === "stop" || actionId === "resync")
+      ) {
+        const [serviceId, pipeId] = splitPipeId(externalId);
+        await this.cloudApi(
+          "PATCH",
+          `${this.orgPath}/services/${serviceId}/clickpipes/${pipeId}/state`,
+          { command: actionId },
+        );
+        return;
+      }
+      if (typeId === "ch-api-key" && (actionId === "enable" || actionId === "disable")) {
+        await this.cloudApi("PATCH", `${this.orgPath}/keys/${externalId}`, {
+          state: actionId === "enable" ? "enabled" : "disabled",
+        });
+        return;
+      }
+      if (typeId === "ch-postgres" && actionId === "restart") {
+        await this.cloudApi("PATCH", `${this.orgPath}/postgres/${externalId}/state`, {
+          command: "restart",
+        });
+        return;
+      }
+      throw new Error(
+        `ClickHouse plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
       );
-      return;
-    }
-    if (typeId === "ch-api-key" && (actionId === "enable" || actionId === "disable")) {
-      await this.cloudApi("PATCH", `${this.orgPath}/keys/${externalId}`, {
-        state: actionId === "enable" ? "enabled" : "disabled",
-      });
-      return;
-    }
-    if (typeId === "ch-postgres" && actionId === "restart") {
-      await this.cloudApi("PATCH", `${this.orgPath}/postgres/${externalId}/state`, {
-        command: "restart",
-      });
-      return;
-    }
-    throw new Error(
-      `ClickHouse plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
-    );
+    });
   }
 
   /** Prompt-form commands from the service detail page (backup schedule, upgrade window). */
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    if (typeId !== "ch-service") {
-      throw new Error(`ClickHouse plugin: command "${command}" not supported for "${typeId}"`);
-    }
-    const serviceId = resourceId.split(":").slice(2).join(":");
-    const base = `${this.orgPath}/services/${serviceId}`;
-    const form = decodePromptArgs(args);
-    switch (command) {
-      case "set-backup-config": {
-        const body: Record<string, unknown> = {};
-        if (form["backupStartTime"]) {
-          body["backupStartTime"] = form["backupStartTime"];
-        } else if (form["backupPeriodInHours"]) {
-          body["backupPeriodInHours"] = Number(form["backupPeriodInHours"]);
-        }
-        if (form["retentionDays"]) {
-          const days = Number(form["retentionDays"]);
-          if (!Number.isInteger(days) || days < 1 || days > 45) {
-            throw new Error("Retention must be a whole number of days between 1 and 45");
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      if (typeId !== "ch-service") {
+        throw new Error(`ClickHouse plugin: command "${command}" not supported for "${typeId}"`);
+      }
+      const serviceId = resourceId.split(":").slice(2).join(":");
+      const base = `${this.orgPath}/services/${serviceId}`;
+      const form = decodePromptArgs(args);
+      switch (command) {
+        case "set-backup-config": {
+          const body: Record<string, unknown> = {};
+          if (form["backupStartTime"]) {
+            body["backupStartTime"] = form["backupStartTime"];
+          } else if (form["backupPeriodInHours"]) {
+            body["backupPeriodInHours"] = Number(form["backupPeriodInHours"]);
           }
-          body["backupRetentionPeriodInHours"] = days * 24;
+          if (form["retentionDays"]) {
+            const days = Number(form["retentionDays"]);
+            if (!Number.isInteger(days) || days < 1 || days > 45) {
+              throw new Error("Retention must be a whole number of days between 1 and 45");
+            }
+            body["backupRetentionPeriodInHours"] = days * 24;
+          }
+          if (Object.keys(body).length === 0) return { ok: true };
+          await this.cloudApi("PATCH", `${base}/backupConfiguration`, body);
+          return { ok: true };
         }
-        if (Object.keys(body).length === 0) return { ok: true };
-        await this.cloudApi("PATCH", `${base}/backupConfiguration`, body);
-        return { ok: true };
+        case "set-upgrade-window": {
+          const weekday = Number(form["weekday"]);
+          const startHourUtc = Number(form["startHourUtc"]);
+          if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+            throw new Error("Pick a day for the upgrade window");
+          }
+          if (![0, 6, 12, 18].includes(startHourUtc)) {
+            throw new Error("The upgrade window starts at 00:00, 06:00, 12:00 or 18:00 UTC");
+          }
+          await this.cloudApi("PUT", `${base}/upgradeWindow`, { weekday, startHourUtc });
+          return { ok: true };
+        }
+        default:
+          throw new Error(`ClickHouse plugin: unknown command "${command}"`);
       }
-      case "set-upgrade-window": {
-        const weekday = Number(form["weekday"]);
-        const startHourUtc = Number(form["startHourUtc"]);
-        if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
-          throw new Error("Pick a day for the upgrade window");
-        }
-        if (![0, 6, 12, 18].includes(startHourUtc)) {
-          throw new Error("The upgrade window starts at 00:00, 06:00, 12:00 or 18:00 UTC");
-        }
-        await this.cloudApi("PUT", `${base}/upgradeWindow`, { weekday, startHourUtc });
-        return { ok: true };
-      }
-      default:
-        throw new Error(`ClickHouse plugin: unknown command "${command}"`);
-    }
+    });
   }
 }
 

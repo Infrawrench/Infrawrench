@@ -1,3 +1,4 @@
+import { runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -102,7 +103,7 @@ async function scopedOptions(
   accountId = "picker",
 ): Promise<SelectOption[]> {
   const [items, projects] = await Promise.all([
-    client.listResources(typeId, accountId).catch(() => []),
+    runPluginEffect(client.listResources(typeId, accountId)).catch(() => []),
     client.projects().catch(() => []),
   ]);
   const projectNames = new Map(projects.map((p) => [p.id, p.name || p.id]));

@@ -1,4 +1,6 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { IncidentIoClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +9,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { incidentIoTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "incident-io",
-  version: "0.1.0",
+  egressHosts: ["api.incident.io"],
   displayName: "incident.io",
   description:
     "Incident response and on-call. Declare and update incidents, change status and severity, acknowledge and cancel escalations, see who is on call and add schedule overrides, and browse alert sources, alert routes, escalation paths, severities, statuses, catalog types, workflows, status pages and maintenance windows. Alert routing rules can send Infrawrench alerts to an HTTP alert source and page whoever is on call, and incident.io incidents show up in Infrawrench.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -27,7 +27,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "incident.io API keys", url: "https://app.incident.io/settings/api-keys" },
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
   paging: {
     targetLabel: "Alert source",
@@ -42,13 +42,16 @@ const manifest: PluginManifest = {
         "In incident.io, open Settings, then Webhooks, add an endpoint with this URL, subscribe it to the incident, escalation and alert events, then paste its signing secret here.",
     },
   },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new IncidentIoClient(credentials, services),
+  testCredentials: { apiKey: "test-incident-io-api-key" },
   parseStatusFeed,
   terraformExport: incidentIoTerraformExport,
-  verifyPagingWebhook: verifyWebhook,
-};
+  verifyPagingWebhook: attemptFn(verifyWebhook),
+});

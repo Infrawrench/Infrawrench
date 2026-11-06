@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -246,7 +249,7 @@ export class PlanetScaleClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     this.authorization = planetscaleAuthorization(credentials);
 
     const org = credentials["organizationName"];
@@ -281,90 +284,96 @@ export class PlanetScaleClient implements PluginClient {
     return `${this.dbPath(databaseName)}/branches/${enc(branchName)}`;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "ps-database":
-        return this.listDatabases(accountId);
-      case "ps-branch":
-        return this.listAllBranches(accountId);
-      case "ps-password":
-        return this.listAllPasswords(accountId);
-      case "ps-role":
-        return this.listAllRoles(accountId);
-      case "ps-deploy-request":
-        return this.listAllDeployRequests(accountId);
-      case "ps-backup":
-        return this.listAllBackups(accountId);
-      case "ps-webhook":
-        return this.listAllWebhooks(accountId);
-      default:
-        throw new Error(`PlanetScale plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "ps-database":
+          return this.listDatabases(accountId);
+        case "ps-branch":
+          return this.listAllBranches(accountId);
+        case "ps-password":
+          return this.listAllPasswords(accountId);
+        case "ps-role":
+          return this.listAllRoles(accountId);
+        case "ps-deploy-request":
+          return this.listAllDeployRequests(accountId);
+        case "ps-backup":
+          return this.listAllBackups(accountId);
+        case "ps-webhook":
+          return this.listAllWebhooks(accountId);
+        default:
+          throw new Error(`PlanetScale plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`PlanetScale plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`PlanetScale plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "ps-branch" && outputKey === "connectionString") {
-      return this.resolveBranchConnectionString(resourceId);
-    }
-    if (typeId === "ps-role" && outputKey === "connectionString") {
-      // PlanetScale returns a role's password only when it is created or
-      // reset, so there is nothing to read back later.
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "ps-branch" && outputKey === "connectionString") {
+        return this.resolveBranchConnectionString(resourceId);
+      }
+      if (typeId === "ps-role" && outputKey === "connectionString") {
+        // PlanetScale returns a role's password only when it is created or
+        // reset, so there is nothing to read back later.
+        throw new Error(
+          "PlanetScale plugin: a role's password is shown only when the role is created. Reset the role's password or create a new role to get a fresh connection string.",
+        );
+      }
+
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+
+      if (typeId === "ps-database") {
+        if (outputKey === "databaseName") return String(resource.fields["name"] ?? "");
+        if (outputKey === "region") return String(resource.fields["region"] ?? "");
+      }
+
+      if (typeId === "ps-branch") {
+        if (outputKey === "branchName") return String(resource.fields["name"] ?? "");
+        if (outputKey === "databaseName") return String(resource.fields["databaseName"] ?? "");
+      }
+
+      if (typeId === "ps-password" || typeId === "ps-role") {
+        if (outputKey === "username") return String(resource.fields["username"] ?? "");
+        if (outputKey === "host") return String(resource.fields["host"] ?? "");
+      }
+
+      if (typeId === "ps-deploy-request") {
+        if (outputKey === "deployRequestNumber") return String(resource.fields["number"] ?? "");
+        if (outputKey === "sourceBranch") return String(resource.fields["branch"] ?? "");
+        if (outputKey === "targetBranch") return String(resource.fields["intoBranch"] ?? "");
+      }
+
+      if (typeId === "ps-backup") {
+        if (outputKey === "backupName") return String(resource.fields["name"] ?? "");
+        if (outputKey === "backupId") return String(resource.fields["id"] ?? "");
+      }
+
+      if (typeId === "ps-webhook" && outputKey === "url") {
+        return String(resource.fields["url"] ?? "");
+      }
+
       throw new Error(
-        "PlanetScale plugin: a role's password is shown only when the role is created. Reset the role's password or create a new role to get a fresh connection string.",
+        `PlanetScale plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
       );
-    }
-
-    const resource = await this.getResource(typeId, resourceId, accountId);
-
-    if (typeId === "ps-database") {
-      if (outputKey === "databaseName") return String(resource.fields["name"] ?? "");
-      if (outputKey === "region") return String(resource.fields["region"] ?? "");
-    }
-
-    if (typeId === "ps-branch") {
-      if (outputKey === "branchName") return String(resource.fields["name"] ?? "");
-      if (outputKey === "databaseName") return String(resource.fields["databaseName"] ?? "");
-    }
-
-    if (typeId === "ps-password" || typeId === "ps-role") {
-      if (outputKey === "username") return String(resource.fields["username"] ?? "");
-      if (outputKey === "host") return String(resource.fields["host"] ?? "");
-    }
-
-    if (typeId === "ps-deploy-request") {
-      if (outputKey === "deployRequestNumber") return String(resource.fields["number"] ?? "");
-      if (outputKey === "sourceBranch") return String(resource.fields["branch"] ?? "");
-      if (outputKey === "targetBranch") return String(resource.fields["intoBranch"] ?? "");
-    }
-
-    if (typeId === "ps-backup") {
-      if (outputKey === "backupName") return String(resource.fields["name"] ?? "");
-      if (outputKey === "backupId") return String(resource.fields["id"] ?? "");
-    }
-
-    if (typeId === "ps-webhook" && outputKey === "url") {
-      return String(resource.fields["url"] ?? "");
-    }
-
-    throw new Error(
-      `PlanetScale plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -424,278 +433,280 @@ export class PlanetScaleClient implements PluginClient {
     };
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    if (typeId === "ps-database") {
-      const [regions, mysqlSizes, postgresSizes] = await Promise.all([
-        this.fetchRegionOptions(),
-        this.fetchClusterSizeOptions("mysql"),
-        this.fetchClusterSizeOptions("postgresql"),
-      ]);
-      const defaultRegion =
-        regions.find((r) => r.id === "us-east")?.id ?? regions[0]?.id ?? "us-east";
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "ps-database") {
+        const [regions, mysqlSizes, postgresSizes] = await Promise.all([
+          this.fetchRegionOptions(),
+          this.fetchClusterSizeOptions("mysql"),
+          this.fetchClusterSizeOptions("postgresql"),
+        ]);
+        const defaultRegion =
+          regions.find((r) => r.id === "us-east")?.id ?? regions[0]?.id ?? "us-east";
 
-      return {
-        fields: [
-          { key: "name", label: "Database Name", kind: "text", required: true },
-          {
-            key: "kind",
-            label: "Engine",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "mysql", label: "Vitess (MySQL-compatible)" },
-              { id: "postgresql", label: "Postgres" },
-            ],
-            defaultValue: "mysql",
-          },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions,
-            defaultValue: defaultRegion,
-            // Not every region runs both engines; the picker hides the
-            // ones the chosen engine can't use.
-            filterByFieldKey: "kind",
-          },
-          clusterSizeField("clusterSizeMysql", "mysql", mysqlSizes),
-          clusterSizeField("clusterSizePostgres", "postgresql", postgresSizes),
-        ],
-      };
-    }
-
-    if (typeId === "ps-branch") {
-      // When created from a database detail page, the database is inherited from the parent
-      // and we only need to collect the branch name + parent branch.
-      const parentExternalId = parentResourceId
-        ? parentResourceId.split(":").slice(2).join(":")
-        : "";
-
-      // Fetch databases to populate the parent selector, then
-      // fetch branches from the first database to offer a "from" branch
-      const databases = await this.fetchDatabases();
-      const dbOptions = databases.map((db) => ({
-        id: db.name,
-        label: db.name,
-      }));
-
-      // For the parent branch selector, we list branches of the first database
-      // (or the inherited parent database, if provided).
-      const parentBranchOptions: { id: string; label: string }[] = [];
-      const branchSourceDb = parentExternalId || databases[0]?.name || "";
-      if (branchSourceDb) {
-        const branches = await this.fetchBranches(branchSourceDb);
-        for (const b of branches) {
-          parentBranchOptions.push({ id: b.name, label: b.name });
-        }
+        return {
+          fields: [
+            { key: "name", label: "Database Name", kind: "text", required: true },
+            {
+              key: "kind",
+              label: "Engine",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "mysql", label: "Vitess (MySQL-compatible)" },
+                { id: "postgresql", label: "Postgres" },
+              ],
+              defaultValue: "mysql",
+            },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions,
+              defaultValue: defaultRegion,
+              // Not every region runs both engines; the picker hides the
+              // ones the chosen engine can't use.
+              filterByFieldKey: "kind",
+            },
+            clusterSizeField("clusterSizeMysql", "mysql", mysqlSizes),
+            clusterSizeField("clusterSizePostgres", "postgresql", postgresSizes),
+          ],
+        };
       }
 
-      return {
-        fields: [
-          ...(parentResourceId
-            ? []
-            : [
-                {
-                  key: "databaseName",
-                  label: "Database",
-                  kind: "select" as const,
-                  required: true,
-                  options: dbOptions,
-                  ...(dbOptions[0] ? { defaultValue: dbOptions[0].id } : {}),
-                },
-              ]),
-          { key: "name", label: "Branch Name", kind: "text", required: true },
-          {
-            key: "parentBranch",
-            label: "Branch From",
-            kind: "select",
-            required: true,
-            options: parentBranchOptions,
-            ...(parentBranchOptions.find((b) => b.id === "main")
-              ? { defaultValue: "main" }
-              : parentBranchOptions[0]
-                ? { defaultValue: parentBranchOptions[0].id }
-                : {}),
-          },
-          {
-            key: "seedData",
-            label: "Data",
-            kind: "select",
-            required: false,
-            description:
-              "Schema only, or seed the branch with data from the parent's latest backup (Vitess databases with data branching on).",
-            options: [
-              { id: "", label: "Schema only" },
-              { id: "last_successful_backup", label: "Data from the latest backup" },
-            ],
-            defaultValue: "",
-          },
-          {
-            key: "deletionProtected",
-            label: "Deletion Protection",
-            kind: "select",
-            required: false,
-            options: [
-              { id: "false", label: "Off" },
-              { id: "true", label: "On" },
-            ],
-            defaultValue: "false",
-          },
-        ],
-      };
-    }
+      if (typeId === "ps-branch") {
+        // When created from a database detail page, the database is inherited from the parent
+        // and we only need to collect the branch name + parent branch.
+        const parentExternalId = parentResourceId
+          ? parentResourceId.split(":").slice(2).join(":")
+          : "";
 
-    if (typeId === "ps-password") {
-      const parent = parentResourceId ? PlanetScaleClient.parseBranchId(parentResourceId) : null;
-      return {
-        fields: [
-          ...(parent ? [] : await this.branchPickerFields("mysql")),
-          { key: "name", label: "Password Name", kind: "text", required: false },
-          {
-            key: "role",
-            label: "Role",
-            kind: "select",
-            required: false,
-            defaultValue: "reader",
-            options: [
-              { id: "reader", label: "Reader" },
-              { id: "writer", label: "Writer" },
-              { id: "readwriter", label: "Read/Write" },
-              { id: "admin", label: "Admin" },
-            ],
-          },
-          { key: "ttl", label: "TTL seconds", kind: "number", required: false },
-          {
-            key: "replica",
-            label: "Route to Replicas",
-            kind: "select",
-            required: false,
-            options: [
-              { id: "false", label: "No, use the primary" },
-              { id: "true", label: "Yes, read-only replica connections" },
-            ],
-            defaultValue: "false",
-          },
-          {
-            key: "cidrs",
-            label: "Allowed CIDRs",
-            kind: "string-list",
-            required: false,
-            addLabel: "Add CIDR",
-          },
-        ],
-      };
-    }
+        // Fetch databases to populate the parent selector, then
+        // fetch branches from the first database to offer a "from" branch
+        const databases = await this.fetchDatabases();
+        const dbOptions = databases.map((db) => ({
+          id: db.name,
+          label: db.name,
+        }));
 
-    if (typeId === "ps-role") {
-      const parent = parentResourceId ? PlanetScaleClient.parseBranchId(parentResourceId) : null;
-      return {
-        fields: [
-          ...(parent ? [] : await this.branchPickerFields("postgresql")),
-          { key: "name", label: "Role Name", kind: "text", required: false },
-          {
-            key: "inheritedRoles",
-            label: "Grants",
-            kind: "policy-picker",
-            required: false,
-            description: "Built-in Postgres roles this role inherits. Leave empty for none.",
-            policies: POSTGRES_INHERITED_ROLES.map((role) => ({
-              id: role.id,
-              label: role.id,
-              description: role.description,
-            })),
-          },
-          {
-            key: "ttl",
-            label: "Expires After (seconds)",
-            kind: "number",
-            required: false,
-            description: "Leave blank for a role that never expires.",
-          },
-          safetyField("requireWhereOnDelete", "Require WHERE on DELETE"),
-          safetyField("requireWhereOnUpdate", "Require WHERE on UPDATE"),
-        ],
-      };
-    }
+        // For the parent branch selector, we list branches of the first database
+        // (or the inherited parent database, if provided).
+        const parentBranchOptions: { id: string; label: string }[] = [];
+        const branchSourceDb = parentExternalId || databases[0]?.name || "";
+        if (branchSourceDb) {
+          const branches = await this.fetchBranches(branchSourceDb);
+          for (const b of branches) {
+            parentBranchOptions.push({ id: b.name, label: b.name });
+          }
+        }
 
-    if (typeId === "ps-backup") {
-      const parent = parentResourceId ? PlanetScaleClient.parseBranchId(parentResourceId) : null;
-      return {
-        fields: [
-          ...(parent ? [] : await this.branchPickerFields()),
-          { key: "name", label: "Backup Name", kind: "text", required: false },
-          {
-            key: "retentionValue",
-            label: "Keep For",
-            kind: "number",
-            required: true,
-            minValue: 1,
-            maxValue: 1000,
-            defaultValue: "7",
-          },
-          {
-            key: "retentionUnit",
-            label: "Unit",
-            kind: "select",
-            required: true,
-            options: ["hour", "day", "week", "month", "year"].map((u) => ({
-              id: u,
-              label: `${u[0]!.toUpperCase()}${u.slice(1)}s`,
-            })),
-            defaultValue: "day",
-          },
-        ],
-      };
-    }
+        return {
+          fields: [
+            ...(parentResourceId
+              ? []
+              : [
+                  {
+                    key: "databaseName",
+                    label: "Database",
+                    kind: "select" as const,
+                    required: true,
+                    options: dbOptions,
+                    ...(dbOptions[0] ? { defaultValue: dbOptions[0].id } : {}),
+                  },
+                ]),
+            { key: "name", label: "Branch Name", kind: "text", required: true },
+            {
+              key: "parentBranch",
+              label: "Branch From",
+              kind: "select",
+              required: true,
+              options: parentBranchOptions,
+              ...(parentBranchOptions.find((b) => b.id === "main")
+                ? { defaultValue: "main" }
+                : parentBranchOptions[0]
+                  ? { defaultValue: parentBranchOptions[0].id }
+                  : {}),
+            },
+            {
+              key: "seedData",
+              label: "Data",
+              kind: "select",
+              required: false,
+              description:
+                "Schema only, or seed the branch with data from the parent's latest backup (Vitess databases with data branching on).",
+              options: [
+                { id: "", label: "Schema only" },
+                { id: "last_successful_backup", label: "Data from the latest backup" },
+              ],
+              defaultValue: "",
+            },
+            {
+              key: "deletionProtected",
+              label: "Deletion Protection",
+              kind: "select",
+              required: false,
+              options: [
+                { id: "false", label: "Off" },
+                { id: "true", label: "On" },
+              ],
+              defaultValue: "false",
+            },
+          ],
+        };
+      }
 
-    if (typeId === "ps-webhook") {
-      const parentDb = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
-      const databases = parentDb ? [] : await this.fetchDatabases();
-      return {
-        fields: [
-          ...(parentDb
-            ? []
-            : [
-                {
-                  key: "databaseName",
-                  label: "Database",
-                  kind: "select" as const,
-                  required: true,
-                  options: databases.map((db) => ({ id: db.name, label: db.name })),
-                  ...(databases[0] ? { defaultValue: databases[0].name } : {}),
-                },
-              ]),
-          {
-            key: "url",
-            label: "URL",
-            kind: "text",
-            required: true,
-            placeholder: "https://example.com/planetscale",
-          },
-          {
-            key: "events",
-            label: "Events",
-            kind: "policy-picker",
-            required: true,
-            policies: WEBHOOK_EVENTS.map((event) => ({
-              id: event,
-              label: event,
-              category: event.split(".")[0] ?? "",
-            })),
-          },
-          {
-            key: "authorizationHeader",
-            label: "Authorization Header",
-            kind: "password",
-            required: false,
-            description: "Optional value PlanetScale sends verbatim as the Authorization header.",
-          },
-        ],
-      };
-    }
+      if (typeId === "ps-password") {
+        const parent = parentResourceId ? PlanetScaleClient.parseBranchId(parentResourceId) : null;
+        return {
+          fields: [
+            ...(parent ? [] : await this.branchPickerFields("mysql")),
+            { key: "name", label: "Password Name", kind: "text", required: false },
+            {
+              key: "role",
+              label: "Role",
+              kind: "select",
+              required: false,
+              defaultValue: "reader",
+              options: [
+                { id: "reader", label: "Reader" },
+                { id: "writer", label: "Writer" },
+                { id: "readwriter", label: "Read/Write" },
+                { id: "admin", label: "Admin" },
+              ],
+            },
+            { key: "ttl", label: "TTL seconds", kind: "number", required: false },
+            {
+              key: "replica",
+              label: "Route to Replicas",
+              kind: "select",
+              required: false,
+              options: [
+                { id: "false", label: "No, use the primary" },
+                { id: "true", label: "Yes, read-only replica connections" },
+              ],
+              defaultValue: "false",
+            },
+            {
+              key: "cidrs",
+              label: "Allowed CIDRs",
+              kind: "string-list",
+              required: false,
+              addLabel: "Add CIDR",
+            },
+          ],
+        };
+      }
 
-    throw new Error(`PlanetScale plugin: no create config for type "${typeId}"`);
+      if (typeId === "ps-role") {
+        const parent = parentResourceId ? PlanetScaleClient.parseBranchId(parentResourceId) : null;
+        return {
+          fields: [
+            ...(parent ? [] : await this.branchPickerFields("postgresql")),
+            { key: "name", label: "Role Name", kind: "text", required: false },
+            {
+              key: "inheritedRoles",
+              label: "Grants",
+              kind: "policy-picker",
+              required: false,
+              description: "Built-in Postgres roles this role inherits. Leave empty for none.",
+              policies: POSTGRES_INHERITED_ROLES.map((role) => ({
+                id: role.id,
+                label: role.id,
+                description: role.description,
+              })),
+            },
+            {
+              key: "ttl",
+              label: "Expires After (seconds)",
+              kind: "number",
+              required: false,
+              description: "Leave blank for a role that never expires.",
+            },
+            safetyField("requireWhereOnDelete", "Require WHERE on DELETE"),
+            safetyField("requireWhereOnUpdate", "Require WHERE on UPDATE"),
+          ],
+        };
+      }
+
+      if (typeId === "ps-backup") {
+        const parent = parentResourceId ? PlanetScaleClient.parseBranchId(parentResourceId) : null;
+        return {
+          fields: [
+            ...(parent ? [] : await this.branchPickerFields()),
+            { key: "name", label: "Backup Name", kind: "text", required: false },
+            {
+              key: "retentionValue",
+              label: "Keep For",
+              kind: "number",
+              required: true,
+              minValue: 1,
+              maxValue: 1000,
+              defaultValue: "7",
+            },
+            {
+              key: "retentionUnit",
+              label: "Unit",
+              kind: "select",
+              required: true,
+              options: ["hour", "day", "week", "month", "year"].map((u) => ({
+                id: u,
+                label: `${u[0]!.toUpperCase()}${u.slice(1)}s`,
+              })),
+              defaultValue: "day",
+            },
+          ],
+        };
+      }
+
+      if (typeId === "ps-webhook") {
+        const parentDb = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
+        const databases = parentDb ? [] : await this.fetchDatabases();
+        return {
+          fields: [
+            ...(parentDb
+              ? []
+              : [
+                  {
+                    key: "databaseName",
+                    label: "Database",
+                    kind: "select" as const,
+                    required: true,
+                    options: databases.map((db) => ({ id: db.name, label: db.name })),
+                    ...(databases[0] ? { defaultValue: databases[0].name } : {}),
+                  },
+                ]),
+            {
+              key: "url",
+              label: "URL",
+              kind: "text",
+              required: true,
+              placeholder: "https://example.com/planetscale",
+            },
+            {
+              key: "events",
+              label: "Events",
+              kind: "policy-picker",
+              required: true,
+              policies: WEBHOOK_EVENTS.map((event) => ({
+                id: event,
+                label: event,
+                category: event.split(".")[0] ?? "",
+              })),
+            },
+            {
+              key: "authorizationHeader",
+              label: "Authorization Header",
+              kind: "password",
+              required: false,
+              description: "Optional value PlanetScale sends verbatim as the Authorization header.",
+            },
+          ],
+        };
+      }
+
+      throw new Error(`PlanetScale plugin: no create config for type "${typeId}"`);
+    });
   }
 
   /**
@@ -745,427 +756,465 @@ export class PlanetScaleClient implements PluginClient {
     return { databaseName, branchName };
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "ps-database":
-        return this.createDatabase(accountId, fields);
-      case "ps-branch":
-        return this.createBranch(accountId, fields, parentResourceId);
-      case "ps-password":
-        return this.createPassword(accountId, fields, parentResourceId);
-      case "ps-role":
-        return this.createRole(accountId, fields, parentResourceId);
-      case "ps-backup":
-        return this.createBackup(accountId, fields, parentResourceId);
-      case "ps-webhook":
-        return this.createWebhook(accountId, fields, parentResourceId);
-      default:
-        throw new Error(`PlanetScale plugin: cannot create type "${typeId}"`);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "ps-database":
+          return this.createDatabase(accountId, fields);
+        case "ps-branch":
+          return this.createBranch(accountId, fields, parentResourceId);
+        case "ps-password":
+          return this.createPassword(accountId, fields, parentResourceId);
+        case "ps-role":
+          return this.createRole(accountId, fields, parentResourceId);
+        case "ps-backup":
+          return this.createBackup(accountId, fields, parentResourceId);
+        case "ps-webhook":
+          return this.createWebhook(accountId, fields, parentResourceId);
+        default:
+          throw new Error(`PlanetScale plugin: cannot create type "${typeId}"`);
+      }
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = resourceId.split(":").slice(2).join(":");
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
 
-    if (typeId === "ps-database") {
-      await this.fetch(this.dbPath(externalId), { method: "DELETE" });
-      return;
-    }
+      if (typeId === "ps-database") {
+        await this.fetch(this.dbPath(externalId), { method: "DELETE" });
+        return;
+      }
 
-    if (typeId === "ps-branch") {
-      const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
-      await this.fetch(this.branchPath(databaseName, branchName), { method: "DELETE" });
-      return;
-    }
+      if (typeId === "ps-branch") {
+        const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
+        await this.fetch(this.branchPath(databaseName, branchName), { method: "DELETE" });
+        return;
+      }
 
-    if (typeId === "ps-password" || typeId === "ps-role" || typeId === "ps-backup") {
-      const { databaseName, branchName, passwordId } =
-        PlanetScaleClient.parsePasswordId(resourceId);
-      const collection =
-        typeId === "ps-password" ? "passwords" : typeId === "ps-role" ? "roles" : "backups";
-      await this.fetch(
-        `${this.branchPath(databaseName, branchName)}/${collection}/${enc(passwordId)}`,
-        { method: "DELETE" },
-      );
-      return;
-    }
+      if (typeId === "ps-password" || typeId === "ps-role" || typeId === "ps-backup") {
+        const { databaseName, branchName, passwordId } =
+          PlanetScaleClient.parsePasswordId(resourceId);
+        const collection =
+          typeId === "ps-password" ? "passwords" : typeId === "ps-role" ? "roles" : "backups";
+        await this.fetch(
+          `${this.branchPath(databaseName, branchName)}/${collection}/${enc(passwordId)}`,
+          { method: "DELETE" },
+        );
+        return;
+      }
 
-    if (typeId === "ps-webhook") {
-      const { databaseName, id } = PlanetScaleClient.parseDatabaseScopedId(resourceId);
-      await this.fetch(`${this.dbPath(databaseName)}/webhooks/${enc(id)}`, { method: "DELETE" });
-      return;
-    }
+      if (typeId === "ps-webhook") {
+        const { databaseName, id } = PlanetScaleClient.parseDatabaseScopedId(resourceId);
+        await this.fetch(`${this.dbPath(databaseName)}/webhooks/${enc(id)}`, { method: "DELETE" });
+        return;
+      }
 
-    throw new Error(`PlanetScale plugin: cannot delete type "${typeId}"`);
+      throw new Error(`PlanetScale plugin: cannot delete type "${typeId}"`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "ps-password") {
-      const { databaseName, branchName, passwordId } =
-        PlanetScaleClient.parsePasswordId(resourceId);
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined) body["name"] = fields["name"];
-      if (fields["cidrs"] !== undefined) body["cidrs"] = splitList(fields["cidrs"]);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "ps-password") {
+        const { databaseName, branchName, passwordId } =
+          PlanetScaleClient.parsePasswordId(resourceId);
+        const body: Record<string, unknown> = {};
+        if (fields["name"] !== undefined) body["name"] = fields["name"];
+        if (fields["cidrs"] !== undefined) body["cidrs"] = splitList(fields["cidrs"]);
 
-      const data = await this.fetch<{ data: PsPassword }>(
-        `${this.branchPath(databaseName, branchName)}/passwords/${enc(passwordId)}`,
-        { method: "PATCH", body: JSON.stringify(body) },
-      );
+        const data = await this.fetch<{ data: PsPassword }>(
+          `${this.branchPath(databaseName, branchName)}/passwords/${enc(passwordId)}`,
+          { method: "PATCH", body: JSON.stringify(body) },
+        );
 
-      return this.toPasswordResource(
-        data.data,
-        databaseName,
-        branchName,
-        accountId,
-        new Date().toISOString(),
-      );
-    }
+        return this.toPasswordResource(
+          data.data,
+          databaseName,
+          branchName,
+          accountId,
+          new Date().toISOString(),
+        );
+      }
 
-    if (typeId === "ps-role") {
-      const { databaseName, branchName, passwordId } =
-        PlanetScaleClient.parsePasswordId(resourceId);
-      const body: Record<string, unknown> = {};
-      if (fields["name"]) body["name"] = fields["name"];
-      if (fields["requireWhereOnDelete"]) {
-        body["require_where_on_delete"] = fields["requireWhereOnDelete"];
+      if (typeId === "ps-role") {
+        const { databaseName, branchName, passwordId } =
+          PlanetScaleClient.parsePasswordId(resourceId);
+        const body: Record<string, unknown> = {};
+        if (fields["name"]) body["name"] = fields["name"];
+        if (fields["requireWhereOnDelete"]) {
+          body["require_where_on_delete"] = fields["requireWhereOnDelete"];
+        }
+        if (fields["requireWhereOnUpdate"]) {
+          body["require_where_on_update"] = fields["requireWhereOnUpdate"];
+        }
+        const data = await this.fetch<{ data?: PsRole } & PsRole>(
+          `${this.branchPath(databaseName, branchName)}/roles/${enc(passwordId)}`,
+          { method: "PATCH", body: JSON.stringify(body) },
+        );
+        return this.toRoleResource(
+          unwrap(data),
+          databaseName,
+          branchName,
+          accountId,
+          new Date().toISOString(),
+        );
       }
-      if (fields["requireWhereOnUpdate"]) {
-        body["require_where_on_update"] = fields["requireWhereOnUpdate"];
-      }
-      const data = await this.fetch<{ data?: PsRole } & PsRole>(
-        `${this.branchPath(databaseName, branchName)}/roles/${enc(passwordId)}`,
-        { method: "PATCH", body: JSON.stringify(body) },
-      );
-      return this.toRoleResource(
-        unwrap(data),
-        databaseName,
-        branchName,
-        accountId,
-        new Date().toISOString(),
-      );
-    }
 
-    if (typeId === "ps-database") {
-      const databaseName = resourceId.split(":").slice(2).join(":");
-      const current = await this.fetch<PsDatabase>(this.dbPath(databaseName));
-      const body: Record<string, unknown> = {};
-      // Send only what changed: Vitess-only settings are rejected on Postgres
-      // databases, and the form submits every field.
-      for (const [key, readKey, writeKey] of DATABASE_BOOL_SETTINGS) {
-        const value = fields[key];
-        if (value === undefined || value === "") continue;
-        const next = value === "true";
-        if (next !== (current[readKey] === true)) body[writeKey] = next;
+      if (typeId === "ps-database") {
+        const databaseName = resourceId.split(":").slice(2).join(":");
+        const current = await this.fetch<PsDatabase>(this.dbPath(databaseName));
+        const body: Record<string, unknown> = {};
+        // Send only what changed: Vitess-only settings are rejected on Postgres
+        // databases, and the form submits every field.
+        for (const [key, readKey, writeKey] of DATABASE_BOOL_SETTINGS) {
+          const value = fields[key];
+          if (value === undefined || value === "") continue;
+          const next = value === "true";
+          if (next !== (current[readKey] === true)) body[writeKey] = next;
+        }
+        for (const [key, readKey, writeKey] of DATABASE_STRING_SETTINGS) {
+          const value = fields[key]?.trim();
+          if (value === undefined || value === "") continue;
+          if (value !== String(current[readKey] ?? "")) body[writeKey] = value;
+        }
+        const limit = fields["developmentBranchesLimit"];
+        if (limit && Number(limit) !== Number(current.development_branches_limit ?? NaN)) {
+          body["development_branches_limit"] = Number(limit);
+        }
+        const updated =
+          Object.keys(body).length > 0
+            ? await this.fetch<PsDatabase>(this.dbPath(databaseName), {
+                method: "PATCH",
+                body: JSON.stringify(body),
+              })
+            : current;
+        return this.toDatabaseResource(unwrap(updated), accountId, new Date().toISOString());
       }
-      for (const [key, readKey, writeKey] of DATABASE_STRING_SETTINGS) {
-        const value = fields[key]?.trim();
-        if (value === undefined || value === "") continue;
-        if (value !== String(current[readKey] ?? "")) body[writeKey] = value;
-      }
-      const limit = fields["developmentBranchesLimit"];
-      if (limit && Number(limit) !== Number(current.development_branches_limit ?? NaN)) {
-        body["development_branches_limit"] = Number(limit);
-      }
-      const updated =
-        Object.keys(body).length > 0
-          ? await this.fetch<PsDatabase>(this.dbPath(databaseName), {
-              method: "PATCH",
-              body: JSON.stringify(body),
-            })
-          : current;
-      return this.toDatabaseResource(unwrap(updated), accountId, new Date().toISOString());
-    }
 
-    if (typeId === "ps-branch") {
-      const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
-      const body: Record<string, unknown> = {};
-      if (fields["deletionProtected"] !== undefined && fields["deletionProtected"] !== "") {
-        body["deletion_protected"] = fields["deletionProtected"] === "true";
-      }
-      const data = await this.fetch<PsBranch>(this.branchPath(databaseName, branchName), {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
-      return this.toBranchResource(unwrap(data), databaseName, accountId, new Date().toISOString());
-    }
-
-    if (typeId === "ps-backup") {
-      const { databaseName, branchName, passwordId } =
-        PlanetScaleClient.parsePasswordId(resourceId);
-      const data = await this.fetch<PsBackup>(
-        `${this.branchPath(databaseName, branchName)}/backups/${enc(passwordId)}`,
-        {
+      if (typeId === "ps-branch") {
+        const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
+        const body: Record<string, unknown> = {};
+        if (fields["deletionProtected"] !== undefined && fields["deletionProtected"] !== "") {
+          body["deletion_protected"] = fields["deletionProtected"] === "true";
+        }
+        const data = await this.fetch<PsBranch>(this.branchPath(databaseName, branchName), {
           method: "PATCH",
-          body: JSON.stringify({ protected: fields["protected"] === "true" }),
-        },
-      );
-      return this.toBackupResource(
-        unwrap(data),
-        databaseName,
-        branchName,
-        accountId,
-        new Date().toISOString(),
-      );
-    }
-
-    if (typeId === "ps-webhook") {
-      const { databaseName, id } = PlanetScaleClient.parseDatabaseScopedId(resourceId);
-      const body: Record<string, unknown> = {};
-      if (fields["url"]) body["url"] = fields["url"];
-      if (fields["events"] !== undefined) body["events"] = parseEventList(fields["events"]);
-      if (fields["enabled"] !== undefined && fields["enabled"] !== "") {
-        body["enabled"] = fields["enabled"] === "true";
+          body: JSON.stringify(body),
+        });
+        return this.toBranchResource(
+          unwrap(data),
+          databaseName,
+          accountId,
+          new Date().toISOString(),
+        );
       }
-      // A write-only secret: blank means keep the current header.
-      if (fields["authorizationHeader"]) {
-        body["authorization_header"] = fields["authorizationHeader"];
-      }
-      const data = await this.fetch<PsWebhook>(`${this.dbPath(databaseName)}/webhooks/${enc(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
-      return this.toWebhookResource(unwrap(data), databaseName, accountId);
-    }
 
-    throw new Error(`PlanetScale plugin: cannot update type "${typeId}"`);
+      if (typeId === "ps-backup") {
+        const { databaseName, branchName, passwordId } =
+          PlanetScaleClient.parsePasswordId(resourceId);
+        const data = await this.fetch<PsBackup>(
+          `${this.branchPath(databaseName, branchName)}/backups/${enc(passwordId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ protected: fields["protected"] === "true" }),
+          },
+        );
+        return this.toBackupResource(
+          unwrap(data),
+          databaseName,
+          branchName,
+          accountId,
+          new Date().toISOString(),
+        );
+      }
+
+      if (typeId === "ps-webhook") {
+        const { databaseName, id } = PlanetScaleClient.parseDatabaseScopedId(resourceId);
+        const body: Record<string, unknown> = {};
+        if (fields["url"]) body["url"] = fields["url"];
+        if (fields["events"] !== undefined) body["events"] = parseEventList(fields["events"]);
+        if (fields["enabled"] !== undefined && fields["enabled"] !== "") {
+          body["enabled"] = fields["enabled"] === "true";
+        }
+        // A write-only secret: blank means keep the current header.
+        if (fields["authorizationHeader"]) {
+          body["authorization_header"] = fields["authorizationHeader"];
+        }
+        const data = await this.fetch<PsWebhook>(
+          `${this.dbPath(databaseName)}/webhooks/${enc(id)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          },
+        );
+        return this.toWebhookResource(unwrap(data), databaseName, accountId);
+      }
+
+      throw new Error(`PlanetScale plugin: cannot update type "${typeId}"`);
+    });
   }
 
-  async attachResource(
+  attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
     targetTypeId: string,
     targetResourceId: string,
     accountId: string,
-  ): Promise<void> {
-    if (sourceTypeId === "ps-branch" && targetTypeId === "ps-branch") {
-      const [source, target] = await Promise.all([
-        this.getResource(sourceTypeId, sourceResourceId, accountId),
-        this.getResource(targetTypeId, targetResourceId, accountId),
-      ]);
-      const sourceDb = String(source.fields["databaseName"] ?? "");
-      const targetDb = String(target.fields["databaseName"] ?? "");
-      const sourceBranch = String(source.fields["name"] ?? "");
-      const targetBranch = String(target.fields["name"] ?? "");
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (sourceTypeId === "ps-branch" && targetTypeId === "ps-branch") {
+        const [source, target] = await Promise.all([
+          runPluginEffect(this.getResource(sourceTypeId, sourceResourceId, accountId)),
+          runPluginEffect(this.getResource(targetTypeId, targetResourceId, accountId)),
+        ]);
+        const sourceDb = String(source.fields["databaseName"] ?? "");
+        const targetDb = String(target.fields["databaseName"] ?? "");
+        const sourceBranch = String(source.fields["name"] ?? "");
+        const targetBranch = String(target.fields["name"] ?? "");
 
-      if (!sourceDb || !targetDb || !sourceBranch || !targetBranch) {
-        throw new Error("PlanetScale plugin: missing branch identity for deploy request.");
-      }
-      if (sourceDb !== targetDb) {
-        throw new Error(
-          "PlanetScale plugin: deploy requests require branches in the same database.",
-        );
-      }
-      if (sourceBranch === targetBranch) {
-        throw new Error("PlanetScale plugin: cannot create a deploy request into the same branch.");
+        if (!sourceDb || !targetDb || !sourceBranch || !targetBranch) {
+          throw new Error("PlanetScale plugin: missing branch identity for deploy request.");
+        }
+        if (sourceDb !== targetDb) {
+          throw new Error(
+            "PlanetScale plugin: deploy requests require branches in the same database.",
+          );
+        }
+        if (sourceBranch === targetBranch) {
+          throw new Error(
+            "PlanetScale plugin: cannot create a deploy request into the same branch.",
+          );
+        }
+
+        await this.fetch<{ data: PsDeployRequest }>(`${this.dbPath(sourceDb)}/deploy-requests`, {
+          method: "POST",
+          body: JSON.stringify({
+            branch: sourceBranch,
+            into_branch: targetBranch,
+            notes: "Created by Infrawrench resource association.",
+          }),
+        });
+        return;
       }
 
-      await this.fetch<{ data: PsDeployRequest }>(`${this.dbPath(sourceDb)}/deploy-requests`, {
-        method: "POST",
-        body: JSON.stringify({
-          branch: sourceBranch,
-          into_branch: targetBranch,
-          notes: "Created by Infrawrench resource association.",
-        }),
-      });
-      return;
-    }
-
-    throw new Error(
-      `PlanetScale plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
-    );
+      throw new Error(
+        `PlanetScale plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
+      );
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    if (typeId === "ps-branch") {
-      const path = this.branchPath(...branchParts(resourceId));
-      switch (actionId) {
-        case "promote":
-          await this.fetch(`${path}/promote`, { method: "POST" });
-          return;
-        case "demote":
-          await this.fetch(`${path}/demote`, { method: "POST" });
-          return;
-        case "enable-safe-migrations":
-          await this.fetch(`${path}/safe-migrations`, { method: "POST" });
-          return;
-        case "disable-safe-migrations":
-          await this.fetch(`${path}/safe-migrations`, { method: "DELETE" });
-          return;
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "ps-branch") {
+        const path = this.branchPath(...branchParts(resourceId));
+        switch (actionId) {
+          case "promote":
+            await this.fetch(`${path}/promote`, { method: "POST" });
+            return;
+          case "demote":
+            await this.fetch(`${path}/demote`, { method: "POST" });
+            return;
+          case "enable-safe-migrations":
+            await this.fetch(`${path}/safe-migrations`, { method: "POST" });
+            return;
+          case "disable-safe-migrations":
+            await this.fetch(`${path}/safe-migrations`, { method: "DELETE" });
+            return;
+        }
       }
-    }
 
-    if (typeId === "ps-deploy-request") {
-      const { databaseName, number } = PlanetScaleClient.parseDeployRequestId(resourceId);
-      const path = `${this.dbPath(databaseName)}/deploy-requests/${enc(number)}`;
-      const post: Record<string, string> = {
-        deploy: "deploy",
-        apply: "apply-deploy",
-        cancel: "cancel",
-        "skip-revert": "skip-revert",
-        revert: "revert",
-      };
-      const suffix = post[actionId];
-      if (suffix) {
-        await this.fetch(`${path}/${suffix}`, { method: "POST" });
+      if (typeId === "ps-deploy-request") {
+        const { databaseName, number } = PlanetScaleClient.parseDeployRequestId(resourceId);
+        const path = `${this.dbPath(databaseName)}/deploy-requests/${enc(number)}`;
+        const post: Record<string, string> = {
+          deploy: "deploy",
+          apply: "apply-deploy",
+          cancel: "cancel",
+          "skip-revert": "skip-revert",
+          revert: "revert",
+        };
+        const suffix = post[actionId];
+        if (suffix) {
+          await this.fetch(`${path}/${suffix}`, { method: "POST" });
+          return;
+        }
+        if (actionId === "close") {
+          await this.fetch(path, { method: "PATCH", body: JSON.stringify({ state: "closed" }) });
+          return;
+        }
+      }
+
+      if (typeId === "ps-password" && actionId === "renew") {
+        await this.renewPassword(resourceId, accountId);
         return;
       }
-      if (actionId === "close") {
-        await this.fetch(path, { method: "PATCH", body: JSON.stringify({ state: "closed" }) });
+
+      if (typeId === "ps-role" && (actionId === "renew" || actionId === "reset-password")) {
+        const { databaseName, branchName, passwordId } =
+          PlanetScaleClient.parsePasswordId(resourceId);
+        const suffix = actionId === "renew" ? "renew" : "reset";
+        await this.fetch(
+          `${this.branchPath(databaseName, branchName)}/roles/${enc(passwordId)}/${suffix}`,
+          { method: "POST" },
+        );
         return;
       }
-    }
 
-    if (typeId === "ps-password" && actionId === "renew") {
-      await this.renewPassword(resourceId, accountId);
-      return;
-    }
+      if (typeId === "ps-webhook" && actionId === "test") {
+        const { databaseName, id } = PlanetScaleClient.parseDatabaseScopedId(resourceId);
+        await this.fetch(`${this.dbPath(databaseName)}/webhooks/${enc(id)}/test`, {
+          method: "POST",
+        });
+        return;
+      }
 
-    if (typeId === "ps-role" && (actionId === "renew" || actionId === "reset-password")) {
-      const { databaseName, branchName, passwordId } =
-        PlanetScaleClient.parsePasswordId(resourceId);
-      const suffix = actionId === "renew" ? "renew" : "reset";
-      await this.fetch(
-        `${this.branchPath(databaseName, branchName)}/roles/${enc(passwordId)}/${suffix}`,
-        { method: "POST" },
-      );
-      return;
-    }
-
-    if (typeId === "ps-webhook" && actionId === "test") {
-      const { databaseName, id } = PlanetScaleClient.parseDatabaseScopedId(resourceId);
-      await this.fetch(`${this.dbPath(databaseName)}/webhooks/${enc(id)}/test`, {
-        method: "POST",
-      });
-      return;
-    }
-
-    throw new Error(`PlanetScale plugin: unknown action "${actionId}" for type "${typeId}"`);
+      throw new Error(`PlanetScale plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (resourceTypeId === "ps-database") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const region = String(resource.fields["region"] ?? "");
-      const state = String(resource.fields["state"] ?? "");
-      const status = databaseStatus(state);
-      const variant: DashboardStat["variant"] =
-        status === "healthy"
-          ? "status-healthy"
-          : status === "provisioning" || status === "degraded"
-            ? "status-degraded"
-            : "status-error";
-      return [
-        { label: "Region", value: region },
-        { label: "State", value: state, variant },
-        ...(resource.fields["kind"]
-          ? [{ label: "Engine", value: engineLabel(String(resource.fields["kind"])) }]
-          : []),
-      ];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "ps-database") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const region = String(resource.fields["region"] ?? "");
+        const state = String(resource.fields["state"] ?? "");
+        const status = databaseStatus(state);
+        const variant: DashboardStat["variant"] =
+          status === "healthy"
+            ? "status-healthy"
+            : status === "provisioning" || status === "degraded"
+              ? "status-degraded"
+              : "status-error";
+        return [
+          { label: "Region", value: region },
+          { label: "State", value: state, variant },
+          ...(resource.fields["kind"]
+            ? [{ label: "Engine", value: engineLabel(String(resource.fields["kind"])) }]
+            : []),
+        ];
+      }
 
-    if (resourceTypeId === "ps-branch") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const production = resource.fields["production"] === true;
-      const ready = resource.fields["ready"] === true;
-      return [
-        { label: "Production", value: production ? "Yes" : "No" },
-        { label: "Ready", value: ready ? "Yes" : "No" },
-        ...(resource.fields["clusterName"]
-          ? [{ label: "Cluster", value: String(resource.fields["clusterName"]) }]
-          : []),
-      ];
-    }
+      if (resourceTypeId === "ps-branch") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const production = resource.fields["production"] === true;
+        const ready = resource.fields["ready"] === true;
+        return [
+          { label: "Production", value: production ? "Yes" : "No" },
+          { label: "Ready", value: ready ? "Yes" : "No" },
+          ...(resource.fields["clusterName"]
+            ? [{ label: "Cluster", value: String(resource.fields["clusterName"]) }]
+            : []),
+        ];
+      }
 
-    if (resourceTypeId === "ps-password") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      return [
-        { label: "Role", value: String(resource.fields["role"] ?? "") },
-        {
-          label: "Expired",
-          value: resource.fields["expired"] === true ? "Yes" : "No",
-          variant: resource.fields["expired"] === true ? "status-error" : "status-healthy",
-        },
-      ];
-    }
+      if (resourceTypeId === "ps-password") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        return [
+          { label: "Role", value: String(resource.fields["role"] ?? "") },
+          {
+            label: "Expired",
+            value: resource.fields["expired"] === true ? "Yes" : "No",
+            variant: resource.fields["expired"] === true ? "status-error" : "status-healthy",
+          },
+        ];
+      }
 
-    if (resourceTypeId === "ps-deploy-request") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      return [
-        { label: "State", value: String(resource.fields["state"] ?? "") },
-        { label: "Approved", value: resource.fields["approved"] === true ? "Yes" : "No" },
-      ];
-    }
+      if (resourceTypeId === "ps-deploy-request") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        return [
+          { label: "State", value: String(resource.fields["state"] ?? "") },
+          { label: "Approved", value: resource.fields["approved"] === true ? "Yes" : "No" },
+        ];
+      }
 
-    if (resourceTypeId === "ps-backup") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      return [
-        { label: "State", value: String(resource.fields["state"] ?? "") },
-        { label: "Size", value: String(resource.fields["size"] ?? "") },
-      ];
-    }
+      if (resourceTypeId === "ps-backup") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        return [
+          { label: "State", value: String(resource.fields["state"] ?? "") },
+          { label: "Size", value: String(resource.fields["size"] ?? "") },
+        ];
+      }
 
-    // Default: count databases
-    const databases = await this.fetchDatabases();
-    return [
-      { label: "Version", value: "PlanetScale" },
-      { label: "Databases", value: String(databases.length) },
-    ];
+      // Default: count databases
+      const databases = await this.fetchDatabases();
+      return [
+        { label: "Version", value: "PlanetScale" },
+        { label: "Databases", value: String(databases.length) },
+      ];
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "ps-branch") return [];
-    const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
-    return fetchBranchMetrics(
-      <T>(path: string) => this.fetch<T>(path),
-      this.branchPath(databaseName, branchName),
-      timeRange,
-    );
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "ps-branch") return [];
+      const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
+      return fetchBranchMetrics(
+        <T>(path: string) => this.fetch<T>(path),
+        this.branchPath(databaseName, branchName),
+        timeRange,
+      );
+    });
   }
 
   /** Branch Logs tab: Insights query errors and latency anomalies. */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "ps-branch") return { text: "", containers: [], activeContainer: "" };
-    const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
-    return fetchInsightsLog(
-      <T>(path: string) => this.fetch<T>(path),
-      this.branchPath(databaseName, branchName),
-      params,
-    );
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "ps-branch") return { text: "", containers: [], activeContainer: "" };
+      const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
+      return fetchInsightsLog(
+        <T>(path: string) => this.fetch<T>(path),
+        this.branchPath(databaseName, branchName),
+        params,
+      );
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    // Bind preserves the generic signature of the private fetch helper so the
-    // cost module reuses the token auth + optional CA/bastion routing.
-    return fetchPlanetScaleCostData(this.fetch.bind(this), this.orgName, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      // Bind preserves the generic signature of the private fetch helper so the
+      // cost module reuses the token auth + optional CA/bastion routing.
+      return fetchPlanetScaleCostData(this.fetch.bind(this), this.orgName, range);
+    });
   }
 
   private async fetchDatabases(): Promise<PsDatabase[]> {
@@ -1875,15 +1924,15 @@ export class PlanetScaleClient implements PluginClient {
   }
 
   async promoteBranch(resourceId: string): Promise<void> {
-    await this.invokeAction("ps-branch", resourceId, "promote", "");
+    await runPluginEffect(this.invokeAction("ps-branch", resourceId, "promote", ""));
   }
 
   async closeDeployRequest(resourceId: string): Promise<void> {
-    await this.invokeAction("ps-deploy-request", resourceId, "close", "");
+    await runPluginEffect(this.invokeAction("ps-deploy-request", resourceId, "close", ""));
   }
 
   async applyDeployRequest(resourceId: string): Promise<void> {
-    await this.invokeAction("ps-deploy-request", resourceId, "apply", "");
+    await runPluginEffect(this.invokeAction("ps-deploy-request", resourceId, "apply", ""));
   }
 
   private static parseBranchId(resourceId: string): { databaseName: string; branchName: string } {

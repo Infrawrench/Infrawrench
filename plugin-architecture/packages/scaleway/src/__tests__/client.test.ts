@@ -1,3 +1,5 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import type { HttpHostServices, SignedS3FetchOptions } from "@infrawrench/plugin-base";
 import type { K8Sv1 } from "@scaleway/sdk-k8s";
@@ -138,7 +140,7 @@ const CREDS = {
 };
 
 function makeClient(creds: Record<string, string> = CREDS) {
-  return new ScalewayClient(creds, resourceTypes);
+  return hostClient(new ScalewayClient(creds, resourceTypes));
 }
 
 function s3Response(status: number, text: string): Response {
@@ -191,10 +193,12 @@ afterEach(() => {
 
 describe("constructor", () => {
   it("throws without secretKey", () => {
-    expect(() => new ScalewayClient({}, resourceTypes)).toThrow(/missing secretKey/);
+    expect(() => hostClient(new ScalewayClient({}, resourceTypes))).toThrow(/missing secretKey/);
   });
   it("constructs with secretKey only", () => {
-    expect(new ScalewayClient({ secretKey: "sk" }, resourceTypes)).toBeInstanceOf(ScalewayClient);
+    expect(hostClient(new ScalewayClient({ secretKey: "sk" }, resourceTypes))).toBeInstanceOf(
+      ScalewayClient,
+    );
   });
 
   it("routes SDK calls through host HTTP services when provided by plugin factory", async () => {
@@ -203,7 +207,9 @@ describe("constructor", () => {
       headers: { "Content-Type": "application/json" },
       body: '{"ok":true}',
     }));
-    const c = plugin.createClient(CREDS, { http: { request } }) as ScalewayClient;
+    const c = hostPlugin(plugin).createClient(CREDS, {
+      http: { request },
+    }) as HostedMethods<ScalewayClient>;
 
     await c.listResources("instance", ACCOUNT);
 
@@ -1219,10 +1225,10 @@ describe("fetchMetricSeries", () => {
         }),
       };
     });
-    const c = plugin.createClient(
+    const c = hostPlugin(plugin).createClient(
       { ...CREDS, cockpitQueryToken: "tok" },
       { http: { request } },
-    ) as ScalewayClient;
+    ) as HostedMethods<ScalewayClient>;
 
     const series = await c.fetchMetricSeries(
       "instance",

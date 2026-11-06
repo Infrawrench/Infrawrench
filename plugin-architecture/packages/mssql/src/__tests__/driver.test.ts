@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { mockQuery, mockInput, mockConnect, mockClose, ConnectionPool } = vi.hoisted(() => {
@@ -20,7 +21,9 @@ vi.mock("mssql", () => ({
   ConnectionPool,
 }));
 
-import { driver } from "../driver.js";
+import { driver as contractDriver } from "../driver.js";
+
+const driver = hostDriver(contractDriver);
 
 const CS = "mssql://sa:p%40ss@db.example.com:1433/appdb?encrypt=true&trustServerCertificate=true";
 

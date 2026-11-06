@@ -47,7 +47,7 @@ export const GceInstanceResourceType = rt({
       editable: false,
     }),
   ],
-  outputs: [o("externalIp", "External IP"), o("internalIp", "Internal IP")],
+  outputs: [o("externalIp", "External IP", { dnsValue: "ipv4" }), o("internalIp", "Internal IP")],
   // The lister reduces each selfLink to the form the target is keyed by:
   // networks are matched on their bare `name`, subnets on their `region/name`
   // external id (auto-mode VPCs put a `default` subnet in every region, so a

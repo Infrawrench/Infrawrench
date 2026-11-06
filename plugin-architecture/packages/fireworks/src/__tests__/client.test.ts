@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FireworksClient } from "../client.js";
 
@@ -30,7 +31,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new FireworksClient({ apiKey: "fw_test", accountId: "my-team" });
+  return hostClient(new FireworksClient({ apiKey: "fw_test", accountId: "my-team" }));
 }
 
 beforeEach(() => {
@@ -44,7 +45,7 @@ afterEach(() => {
 describe("credentials", () => {
   it("refuses to construct without an account id", () => {
     // Fireworks has no whoami endpoint, so this cannot be discovered.
-    expect(() => new FireworksClient({ apiKey: "fw_test" })).toThrow(/accountId/);
+    expect(() => hostClient(new FireworksClient({ apiKey: "fw_test" }))).toThrow(/accountId/);
   });
 });
 

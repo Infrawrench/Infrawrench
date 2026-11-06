@@ -2,6 +2,7 @@
  * One-click actions (`invokeAction`) and form-backed actions
  * (`executeNoSqlCommand`, reached through `prompt-nosql-command`).
  */
+import { runPluginEffect } from "@infrawrench/plugin-base/effect";
 import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
 import { ProxmoxApiError, type FormValue } from "./api.js";
 import { seg, type ProxmoxClient } from "./client.js";
@@ -222,7 +223,9 @@ export async function proxmoxPromptCommand(
     }
     if (typeId === BACKUP && command === "restore") {
       const { volid } = parseBackupExternalId(ext);
-      const resource = await client.getResource(typeId, resourceId, resourceId.split(":")[0] ?? "");
+      const resource = await runPluginEffect(
+        client.getResource(typeId, resourceId, resourceId.split(":")[0] ?? ""),
+      );
       const isLxc = resource.fields["guestType"] === "lxc";
       const node = v["node"] || String(resource.fields["node"] ?? "");
       const vmid = v["vmid"]

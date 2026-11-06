@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -9,7 +10,7 @@ runPluginRenderingTests(plugin);
 const ACCOUNT = "acct-1";
 
 function client() {
-  return new DeepgramClient({ apiKey: "test-key" });
+  return hostClient(new DeepgramClient({ apiKey: "test-key" }));
 }
 
 function resource(overrides: Partial<ResourceInstance> & { resourceTypeId: string }) {

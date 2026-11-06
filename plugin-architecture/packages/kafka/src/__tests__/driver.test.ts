@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ---- kafkajs mock ----
@@ -40,7 +41,9 @@ vi.mock("kafkajs", () => {
   };
 });
 
-import { driver, buildKafkaConfig } from "../driver.js";
+import { driver as contractDriver, buildKafkaConfig } from "../driver.js";
+
+const driver = hostDriver(contractDriver);
 
 const CONN = "kafka://alice:secret@broker1:9092?sasl=scram-sha-256&ssl=true";
 

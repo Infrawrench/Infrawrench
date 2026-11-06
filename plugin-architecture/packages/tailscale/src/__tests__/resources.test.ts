@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { plugin } from "../plugin.js";
@@ -16,7 +17,10 @@ function routed(routes: Record<string, unknown>) {
     if (body === undefined) return { status: 404, headers: {}, body: '{"message":"not found"}' };
     return { status: 200, headers: {}, body: body === "" ? "" : JSON.stringify(body) };
   });
-  const client = plugin.createClient({ apiKey: "tskey-api-secret" }, { http: { request } });
+  const client = hostPlugin(plugin).createClient(
+    { apiKey: "tskey-api-secret" },
+    { http: { request } },
+  );
   const sent = (method: string, path: string) =>
     request.mock.calls
       .map(([req]) => req)

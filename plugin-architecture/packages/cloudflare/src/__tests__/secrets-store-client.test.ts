@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi } from "vitest";
 import {
   listStoreSecrets,
@@ -178,7 +179,7 @@ describe("secrets-store-client", () => {
 
 describe("CloudflareClient secrets-store wiring", () => {
   function client() {
-    const c = new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes);
+    const c = hostClient(new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes));
     const api = ssApi();
     (c as unknown as { api: unknown }).api = api;
     return { c, api };

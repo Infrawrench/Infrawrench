@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl } from "@infrawrench/plugin-base";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlanetScaleClient } from "../client.js";
@@ -74,10 +75,12 @@ describe("client with an OAuth token", () => {
       async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const client = new PlanetScaleClient({
-      serviceTokenSecret: "pscale_oauth_x",
-      organizationName: "acme",
-    });
+    const client = hostClient(
+      new PlanetScaleClient({
+        serviceTokenSecret: "pscale_oauth_x",
+        organizationName: "acme",
+      }),
+    );
     await client.listResources("ps-database", "acct");
     const init = fetchMock.mock.calls[0]! as unknown as [string, RequestInit];
     const headers = new Headers(init[1]?.headers);
@@ -88,7 +91,7 @@ describe("client with an OAuth token", () => {
 describe("completeOAuthConnection", () => {
   it("pre-fills the organization and names the account", async () => {
     const { doFetch, seen } = fakeFetch({ status: 200, body: { data: [{ name: "acme" }] } });
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "server",
       fetch: doFetch,
     });
@@ -104,7 +107,10 @@ describe("completeOAuthConnection", () => {
     for (const reply of [{ status: 403, body: {} }, new Error("offline")]) {
       const { doFetch } = fakeFetch(reply);
       expect(
-        await plugin.completeOAuthConnection!(tokens, { client: "server", fetch: doFetch }),
+        await hostPlugin(plugin).completeOAuthConnection!(tokens, {
+          client: "server",
+          fetch: doFetch,
+        }),
       ).toEqual({});
     }
   });

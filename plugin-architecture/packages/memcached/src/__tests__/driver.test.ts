@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type StatsCallback = (
@@ -28,8 +29,10 @@ vi.mock("memjs", () => ({
   },
 }));
 
-import { driver } from "../driver.js";
+import { driver as contractDriver } from "../driver.js";
 import Memjs from "memjs";
+
+const driver = hostDriver(contractDriver);
 
 describe("memcached driver", () => {
   beforeEach(() => {

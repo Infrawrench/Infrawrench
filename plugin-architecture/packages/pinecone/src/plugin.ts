@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { errorText, PineconeApi } from "./api.js";
@@ -14,16 +16,15 @@ import { pineconeTerraformExport } from "./terraform.js";
 import { pineconeRemediationCommands } from "./remediation.js";
 import type { PcProject } from "./types.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "pinecone",
-  version: "0.1.0",
+  // index and assistant data-plane hosts are per-resource subdomains of pinecone.io; login.pinecone.io issues Admin API tokens
+  egressHosts: ["api.pinecone.io", "login.pinecone.io", "*.pinecone.io"],
   displayName: "Pinecone",
   description:
     "Vector database. Manage serverless and pod-based indexes (read capacity, replicas, pod size, deletion protection, tags), backups, backup schedules and restores, collections, assistants with a chat playground, and, with a service account, projects, API keys and service accounts. Index stats and Prometheus counters as metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -68,14 +69,16 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["clientId", "clientSecret"], emptyLabel: "Not set" },
     },
     caCertCredentialField,
-  ],
+  ]),
   quotas: {
     label: "Project pod limit",
     increaseUrl: "https://app.pinecone.io/organizations/-/settings/projects",
     partial: true,
   },
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -102,13 +105,14 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) =>
     new PineconeClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "pcsk_test_pinecone_key" },
   parseStatusFeed,
   terraformExport: pineconeTerraformExport,
   remediationCommands: pineconeRemediationCommands,
-  listCredentialOptions,
-};
+  listCredentialOptions: attemptFn(listCredentialOptions),
+});

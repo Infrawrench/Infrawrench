@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DetailViewSchema,
@@ -275,7 +278,7 @@ export class GroqClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Groq plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -315,19 +318,21 @@ export class GroqClient implements PluginClient {
 
   // ---------------------------------------------------------------- listing
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "groq-model":
-        return this.listModels(accountId);
-      case "groq-batch":
-        return this.listBatches(accountId);
-      case "groq-file":
-        return this.listFiles(accountId);
-      case "groq-fine-tuning":
-        return this.listFineTunings(accountId);
-      default:
-        throw new Error(`Groq plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "groq-model":
+          return this.listModels(accountId);
+        case "groq-batch":
+          return this.listBatches(accountId);
+        case "groq-file":
+          return this.listFiles(accountId);
+        case "groq-fine-tuning":
+          return this.listFineTunings(accountId);
+        default:
+          throw new Error(`Groq plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /** https://console.groq.com/docs/api-reference: `GET /openai/v1/models` */
@@ -478,112 +483,118 @@ export class GroqClient implements PluginClient {
 
   // ------------------------------------------------------------------- get
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Groq plugin: resource ${typeId}/${resourceId} not found`);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Groq plugin: resource ${typeId}/${resourceId} not found`);
 
-    if (typeId === "groq-model") {
-      // `renderDetail` is synchronous but the Speech tab's model pickers have
-      // to reflect Groq's live catalogue (models are deprecated on a rolling
-      // schedule). Stash the audio subset here and parse it back in the
-      // renderer: same trick the Cloudflare queue plugin uses for
-      // `__consumers__`.
-      const stash: AudioModelStash = { stt: [], tts: [] };
-      for (const resource of all) {
-        const id = String(resource.fields["modelId"] ?? "");
-        if (!id) continue;
-        if (isSttModel(id)) stash.stt.push(id);
-        else if (isTtsModel(id)) stash.tts.push(id);
+      if (typeId === "groq-model") {
+        // `renderDetail` is synchronous but the Speech tab's model pickers have
+        // to reflect Groq's live catalogue (models are deprecated on a rolling
+        // schedule). Stash the audio subset here and parse it back in the
+        // renderer: same trick the Cloudflare queue plugin uses for
+        // `__consumers__`.
+        const stash: AudioModelStash = { stt: [], tts: [] };
+        for (const resource of all) {
+          const id = String(resource.fields["modelId"] ?? "");
+          if (!id) continue;
+          if (isSttModel(id)) stash.stt.push(id);
+          else if (isTtsModel(id)) stash.tts.push(id);
+        }
+        found.resolvedOutputs = {
+          ...found.resolvedOutputs,
+          __audioModels__: JSON.stringify(stash),
+        };
       }
-      found.resolvedOutputs = {
-        ...found.resolvedOutputs,
-        __audioModels__: JSON.stringify(stash),
-      };
-    }
 
-    return found;
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "baseUrl") return OPENAI_BASE;
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.fields[outputKey];
-    return value === undefined || value === null ? "" : String(value);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "baseUrl") return OPENAI_BASE;
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.fields[outputKey];
+      return value === undefined || value === null ? "" : String(value);
+    });
   }
 
   // --------------------------------------------------------------- mutation
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "groq-batch") return this.getBatchCreateConfig();
-    if (typeId !== "groq-fine-tuning") {
-      throw new Error(`Groq plugin: ${typeId} cannot be created through the API`);
-    }
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "groq-batch") return this.getBatchCreateConfig();
+      if (typeId !== "groq-fine-tuning") {
+        throw new Error(`Groq plugin: ${typeId} cannot be created through the API`);
+      }
 
-    // Both pickers are populated from live calls: the user never has to know
-    // a file id or type out a base-model slug.
-    const [files, models] = await Promise.all([
-      this.fetch<{ data?: GroqFile[] }>("/files").catch(() => ({ data: [] as GroqFile[] })),
-      this.fetch<{ data?: GroqModel[] }>("/models").catch(() => ({ data: [] as GroqModel[] })),
-    ]);
+      // Both pickers are populated from live calls: the user never has to know
+      // a file id or type out a base-model slug.
+      const [files, models] = await Promise.all([
+        this.fetch<{ data?: GroqFile[] }>("/files").catch(() => ({ data: [] as GroqFile[] })),
+        this.fetch<{ data?: GroqModel[] }>("/models").catch(() => ({ data: [] as GroqModel[] })),
+      ]);
 
-    const fileOptions = (files.data ?? [])
-      .filter((file) => Boolean(file.id))
-      .map((file) => ({ id: String(file.id), label: file.filename || String(file.id) }));
+      const fileOptions = (files.data ?? [])
+        .filter((file) => Boolean(file.id))
+        .map((file) => ({ id: String(file.id), label: file.filename || String(file.id) }));
 
-    // Only a subset of chat models accept LoRA adapters; Groq's self-serve
-    // tier is `llama-3.1-8b-instant`. Offer what the account can actually see
-    // rather than a constant that a deprecation would invalidate.
-    const baseOptions = (models.data ?? [])
-      .map((m) => String(m.id ?? ""))
-      .filter((id) => id && !isSttModel(id) && !isTtsModel(id))
-      .map((id) => ({ id, label: id }));
+      // Only a subset of chat models accept LoRA adapters; Groq's self-serve
+      // tier is `llama-3.1-8b-instant`. Offer what the account can actually see
+      // rather than a constant that a deprecation would invalidate.
+      const baseOptions = (models.data ?? [])
+        .map((m) => String(m.id ?? ""))
+        .filter((id) => id && !isSttModel(id) && !isTtsModel(id))
+        .map((id) => ({ id, label: id }));
 
-    return {
-      fields: [
-        {
-          key: "name",
-          label: "Name",
-          kind: "text",
-          required: true,
-          placeholder: "my-lora-adapter",
-          description: "Shown in the Groq console and used to build the inference model id.",
-        },
-        {
-          key: "inputFileId",
-          label: "Adapter File",
-          kind: "select",
-          required: true,
-          options: fileOptions,
-          description:
-            fileOptions.length > 0
-              ? "The uploaded LoRA adapter archive to register."
-              : "No files uploaded yet. Upload the adapter archive to Groq first.",
-        },
-        {
-          key: "baseModel",
-          label: "Base Model",
-          kind: "select",
-          required: true,
-          options: baseOptions,
-          defaultValue:
-            baseOptions.find((option) => option.id === "llama-3.1-8b-instant")?.id ??
-            baseOptions[0]?.id ??
-            "",
-          description:
-            "The model the adapter was trained against. Self-serve LoRA currently covers llama-3.1-8b-instant.",
-        },
-      ],
-    };
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            placeholder: "my-lora-adapter",
+            description: "Shown in the Groq console and used to build the inference model id.",
+          },
+          {
+            key: "inputFileId",
+            label: "Adapter File",
+            kind: "select",
+            required: true,
+            options: fileOptions,
+            description:
+              fileOptions.length > 0
+                ? "The uploaded LoRA adapter archive to register."
+                : "No files uploaded yet. Upload the adapter archive to Groq first.",
+          },
+          {
+            key: "baseModel",
+            label: "Base Model",
+            kind: "select",
+            required: true,
+            options: baseOptions,
+            defaultValue:
+              baseOptions.find((option) => option.id === "llama-3.1-8b-instant")?.id ??
+              baseOptions[0]?.id ??
+              "",
+            description:
+              "The model the adapter was trained against. Self-serve LoRA currently covers llama-3.1-8b-instant.",
+          },
+        ],
+      };
+    });
   }
 
   /**
@@ -642,89 +653,95 @@ export class GroqClient implements PluginClient {
    * https://console.groq.com/docs/api-reference: `POST /openai/v1/batches`
    * https://console.groq.com/docs/lora: `POST https://api.groq.com/v1/fine_tunings`
    */
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "groq-batch") {
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "groq-batch") {
+        const inputFileId = fields["inputFileId"];
+        if (!inputFileId) throw new Error("Groq plugin: missing batch input file");
+        const created = await this.fetch<GroqBatch>("/batches", {
+          method: "POST",
+          body: JSON.stringify({
+            input_file_id: inputFileId,
+            endpoint: fields["endpoint"] || "/v1/chat/completions",
+            completion_window: fields["completionWindow"] || "24h",
+          }),
+        });
+        return this.mapBatch(accountId, created, new Date().toISOString());
+      }
+      if (typeId !== "groq-fine-tuning") {
+        throw new Error(`Groq plugin: ${typeId} cannot be created through the API`);
+      }
+      const name = fields["name"];
       const inputFileId = fields["inputFileId"];
-      if (!inputFileId) throw new Error("Groq plugin: missing batch input file");
-      const created = await this.fetch<GroqBatch>("/batches", {
-        method: "POST",
-        body: JSON.stringify({
-          input_file_id: inputFileId,
-          endpoint: fields["endpoint"] || "/v1/chat/completions",
-          completion_window: fields["completionWindow"] || "24h",
-        }),
-      });
-      return this.mapBatch(accountId, created, new Date().toISOString());
-    }
-    if (typeId !== "groq-fine-tuning") {
-      throw new Error(`Groq plugin: ${typeId} cannot be created through the API`);
-    }
-    const name = fields["name"];
-    const inputFileId = fields["inputFileId"];
-    const baseModel = fields["baseModel"];
-    if (!name) throw new Error("Groq plugin: missing fine-tuning name");
-    if (!inputFileId) throw new Error("Groq plugin: missing adapter file");
-    if (!baseModel) throw new Error("Groq plugin: missing base model");
+      const baseModel = fields["baseModel"];
+      if (!name) throw new Error("Groq plugin: missing fine-tuning name");
+      if (!inputFileId) throw new Error("Groq plugin: missing adapter file");
+      if (!baseModel) throw new Error("Groq plugin: missing base model");
 
-    const created = await this.rootFetch<{ data?: GroqFineTuning } & GroqFineTuning>(
-      "/fine_tunings",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          input_file_id: inputFileId,
-          name,
-          type: "lora",
-          base_model: baseModel,
-        }),
-      },
-    );
+      const created = await this.rootFetch<{ data?: GroqFineTuning } & GroqFineTuning>(
+        "/fine_tunings",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            input_file_id: inputFileId,
+            name,
+            type: "lora",
+            base_model: baseModel,
+          }),
+        },
+      );
 
-    // The create response nests the record under `data`; list/get return it flat.
-    const record: GroqFineTuning = created.data ?? created;
-    return this.mapFineTuning(accountId, record, new Date().toISOString());
+      // The create response nests the record under `data`; list/get return it flat.
+      const record: GroqFineTuning = created.data ?? created;
+      return this.mapFineTuning(accountId, record, new Date().toISOString());
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const externalId = resourceId.slice(`${accountId}:${typeId}:`.length);
-    if (!externalId) throw new Error(`Groq plugin: cannot parse resource id "${resourceId}"`);
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = resourceId.slice(`${accountId}:${typeId}:`.length);
+      if (!externalId) throw new Error(`Groq plugin: cannot parse resource id "${resourceId}"`);
 
-    switch (typeId) {
-      // https://console.groq.com/docs/api-reference: `DELETE /openai/v1/files/{file_id}`
-      case "groq-file":
-        await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      // https://console.groq.com/docs/lora: `DELETE /v1/fine_tunings/{id}`
-      case "groq-fine-tuning":
-        await this.rootFetch<unknown>(`/fine_tunings/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      default:
-        throw new Error(`Groq plugin: ${typeId} does not support delete`);
-    }
+      switch (typeId) {
+        // https://console.groq.com/docs/api-reference: `DELETE /openai/v1/files/{file_id}`
+        case "groq-file":
+          await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        // https://console.groq.com/docs/lora: `DELETE /v1/fine_tunings/{id}`
+        case "groq-fine-tuning":
+          await this.rootFetch<unknown>(`/fine_tunings/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        default:
+          throw new Error(`Groq plugin: ${typeId} does not support delete`);
+      }
+    });
   }
 
   /** https://console.groq.com/docs/api-reference: `POST /openai/v1/batches/{id}/cancel` */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    if (typeId === "groq-batch" && actionId === "cancel") {
-      const batchId = resourceId.slice(`${accountId}:${typeId}:`.length);
-      await this.fetch<unknown>(`/batches/${encodeURIComponent(batchId)}/cancel`, {
-        method: "POST",
-      });
-      return;
-    }
-    throw new Error(`Groq plugin: unknown action "${actionId}" for ${typeId}`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "groq-batch" && actionId === "cancel") {
+        const batchId = resourceId.slice(`${accountId}:${typeId}:`.length);
+        await this.fetch<unknown>(`/batches/${encodeURIComponent(batchId)}/cancel`, {
+          method: "POST",
+        });
+        return;
+      }
+      throw new Error(`Groq plugin: unknown action "${actionId}" for ${typeId}`);
+    });
   }
 
   // ---------------------------------------------------------------- metrics
@@ -739,116 +756,139 @@ export class GroqClient implements PluginClient {
    * gets a 401/403/404, which is reported as "no series" rather than an
    * error, so the tab stays empty instead of failing on every refresh.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "groq-model") return [];
-    const modelId = resourceId.slice(`${accountId}:${resourceTypeId}:`.length);
-    if (!modelId) return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "groq-model") return [];
+      const modelId = resourceId.slice(`${accountId}:${resourceTypeId}:`.length);
+      if (!modelId) return [];
 
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - DEFAULT_METRICS_WINDOW_MS;
-    // ~120 points per chart, never finer than the 5-minute rate window's
-    // useful resolution of one minute.
-    const stepSeconds = Math.max(60, Math.round((endMs - startMs) / 1000 / 120));
-    const sel = `model=${JSON.stringify(modelId)}`;
-    const quantile = (q: number, metric: string) =>
-      `histogram_quantile(${q}, sum by (le) (le_model_project_id:${metric}_bucket:rate5m{${sel}}))`;
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - DEFAULT_METRICS_WINDOW_MS;
+      // ~120 points per chart, never finer than the 5-minute rate window's
+      // useful resolution of one minute.
+      const stepSeconds = Math.max(60, Math.round((endMs - startMs) / 1000 / 120));
+      const sel = `model=${JSON.stringify(modelId)}`;
+      const quantile = (q: number, metric: string) =>
+        `histogram_quantile(${q}, sum by (le) (le_model_project_id:${metric}_bucket:rate5m{${sel}}))`;
 
-    const queries: Array<{ label: string; unit: string; query: string; byLabel?: string }> = [
-      {
-        label: "Requests/s",
-        unit: "req/s",
-        query: `sum by (status_code) (model_project_id_status_code:requests:rate5m{${sel}})`,
-        byLabel: "status_code",
-      },
-      {
-        label: "Input tokens/s",
-        unit: "tokens/s",
-        query: `sum(model_project_id:tokens_in:rate5m{${sel}})`,
-      },
-      {
-        label: "Output tokens/s",
-        unit: "tokens/s",
-        query: `sum(model_project_id:tokens_out:rate5m{${sel}})`,
-      },
-      { label: "Queue latency p50", unit: "s", query: quantile(0.5, "queue_latency_seconds") },
-      { label: "Queue latency p99", unit: "s", query: quantile(0.99, "queue_latency_seconds") },
-      { label: "Time to first token p50", unit: "s", query: quantile(0.5, "ttft_latency_seconds") },
-      {
-        label: "Time to first token p99",
-        unit: "s",
-        query: quantile(0.99, "ttft_latency_seconds"),
-      },
-      { label: "End-to-end latency p50", unit: "s", query: quantile(0.5, "e2e_latency_seconds") },
-      { label: "End-to-end latency p99", unit: "s", query: quantile(0.99, "e2e_latency_seconds") },
-      // Per-request token counts, from the `tokens_in`/`tokens_out` histograms.
-      { label: "Input tokens per request p50", unit: "tokens", query: quantile(0.5, "tokens_in") },
-      { label: "Input tokens per request p99", unit: "tokens", query: quantile(0.99, "tokens_in") },
-      {
-        label: "Output tokens per request p50",
-        unit: "tokens",
-        query: quantile(0.5, "tokens_out"),
-      },
-      {
-        label: "Output tokens per request p99",
-        unit: "tokens",
-        query: quantile(0.99, "tokens_out"),
-      },
-      {
-        label: "Prompt cache hit rate",
-        unit: "%",
-        query: `100 * sum(model_project_id:prompt_cache_hits:rate5m{${sel}}) / (sum(model_project_id:prompt_cache_hits:rate5m{${sel}}) + sum(model_project_id:prompt_cache_misses:rate5m{${sel}}))`,
-      },
-    ];
+      const queries: Array<{ label: string; unit: string; query: string; byLabel?: string }> = [
+        {
+          label: "Requests/s",
+          unit: "req/s",
+          query: `sum by (status_code) (model_project_id_status_code:requests:rate5m{${sel}})`,
+          byLabel: "status_code",
+        },
+        {
+          label: "Input tokens/s",
+          unit: "tokens/s",
+          query: `sum(model_project_id:tokens_in:rate5m{${sel}})`,
+        },
+        {
+          label: "Output tokens/s",
+          unit: "tokens/s",
+          query: `sum(model_project_id:tokens_out:rate5m{${sel}})`,
+        },
+        { label: "Queue latency p50", unit: "s", query: quantile(0.5, "queue_latency_seconds") },
+        { label: "Queue latency p99", unit: "s", query: quantile(0.99, "queue_latency_seconds") },
+        {
+          label: "Time to first token p50",
+          unit: "s",
+          query: quantile(0.5, "ttft_latency_seconds"),
+        },
+        {
+          label: "Time to first token p99",
+          unit: "s",
+          query: quantile(0.99, "ttft_latency_seconds"),
+        },
+        { label: "End-to-end latency p50", unit: "s", query: quantile(0.5, "e2e_latency_seconds") },
+        {
+          label: "End-to-end latency p99",
+          unit: "s",
+          query: quantile(0.99, "e2e_latency_seconds"),
+        },
+        // Per-request token counts, from the `tokens_in`/`tokens_out` histograms.
+        {
+          label: "Input tokens per request p50",
+          unit: "tokens",
+          query: quantile(0.5, "tokens_in"),
+        },
+        {
+          label: "Input tokens per request p99",
+          unit: "tokens",
+          query: quantile(0.99, "tokens_in"),
+        },
+        {
+          label: "Output tokens per request p50",
+          unit: "tokens",
+          query: quantile(0.5, "tokens_out"),
+        },
+        {
+          label: "Output tokens per request p99",
+          unit: "tokens",
+          query: quantile(0.99, "tokens_out"),
+        },
+        {
+          label: "Prompt cache hit rate",
+          unit: "%",
+          query: `100 * sum(model_project_id:prompt_cache_hits:rate5m{${sel}}) / (sum(model_project_id:prompt_cache_hits:rate5m{${sel}}) + sum(model_project_id:prompt_cache_misses:rate5m{${sel}}))`,
+        },
+      ];
 
-    const start = Math.floor(startMs / 1000);
-    const end = Math.floor(endMs / 1000);
-    const run = async (query: string): Promise<PromRangeResponse> => {
-      const qs = new URLSearchParams({
-        query,
-        start: String(start),
-        end: String(end),
-        step: `${stepSeconds}s`,
-      });
-      return this.fetchAt<PromRangeResponse>(METRICS_BASE, `/api/v1/query_range?${qs.toString()}`);
-    };
-
-    // Probe with the first query so a non-Enterprise key costs one request,
-    // not one per chart.
-    const [first, ...rest] = queries;
-    if (!first) return [];
-    let firstResult: PromRangeResponse;
-    try {
-      firstResult = await run(first.query);
-    } catch (err) {
-      if (/API error (401|403|404)\b/.test(String((err as Error).message))) return [];
-      throw err;
-    }
-    const results = [
-      firstResult,
-      ...(await Promise.all(rest.map((q) => run(q.query).catch(() => ({}) as PromRangeResponse)))),
-    ];
-
-    const series: MetricSeries[] = [];
-    queries.forEach((q, index) => {
-      for (const row of results[index]?.data?.result ?? []) {
-        const points = (row.values ?? [])
-          .map(([ts, raw]) => ({ timestamp: Number(ts) * 1000, value: Number(raw) }))
-          .filter((p) => Number.isFinite(p.value));
-        if (points.length === 0) continue;
-        const suffix = q.byLabel ? row.metric?.[q.byLabel] : undefined;
-        series.push({
-          label: suffix ? `${q.label} (${suffix})` : q.label,
-          unit: q.unit,
-          points,
+      const start = Math.floor(startMs / 1000);
+      const end = Math.floor(endMs / 1000);
+      const run = async (query: string): Promise<PromRangeResponse> => {
+        const qs = new URLSearchParams({
+          query,
+          start: String(start),
+          end: String(end),
+          step: `${stepSeconds}s`,
         });
+        return this.fetchAt<PromRangeResponse>(
+          METRICS_BASE,
+          `/api/v1/query_range?${qs.toString()}`,
+        );
+      };
+
+      // Probe with the first query so a non-Enterprise key costs one request,
+      // not one per chart.
+      const [first, ...rest] = queries;
+      if (!first) return [];
+      let firstResult: PromRangeResponse;
+      try {
+        firstResult = await run(first.query);
+      } catch (err) {
+        if (/API error (401|403|404)\b/.test(String((err as Error).message))) return [];
+        throw err;
       }
+      const results = [
+        firstResult,
+        ...(await Promise.all(
+          rest.map((q) => run(q.query).catch(() => ({}) as PromRangeResponse)),
+        )),
+      ];
+
+      const series: MetricSeries[] = [];
+      queries.forEach((q, index) => {
+        for (const row of results[index]?.data?.result ?? []) {
+          const points = (row.values ?? [])
+            .map(([ts, raw]) => ({ timestamp: Number(ts) * 1000, value: Number(raw) }))
+            .filter((p) => Number.isFinite(p.value));
+          if (points.length === 0) continue;
+          const suffix = q.byLabel ? row.metric?.[q.byLabel] : undefined;
+          series.push({
+            label: suffix ? `${q.label} (${suffix})` : q.label,
+            unit: q.unit,
+            points,
+          });
+        }
+      });
+      return series;
     });
-    return series;
   }
 
   // ------------------------------------------------------------------ audio
@@ -862,55 +902,57 @@ export class GroqClient implements PluginClient {
    * bastion egress routing. Orpheus only emits WAV; there is no mp3 option to
    * ask for, and browsers play WAV natively.
    */
-  async synthesizeSpeech(
+  synthesizeSpeech(
     _typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    const text = payload.text.trim();
-    if (!text) throw new Error("Groq plugin: nothing to synthesize");
-    if (text.length > MAX_TTS_CHARACTERS) {
-      throw new Error(
-        `Groq plugin: Orpheus accepts at most ${MAX_TTS_CHARACTERS} characters per request (got ${text.length})`,
-      );
-    }
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      const text = payload.text.trim();
+      if (!text) throw new Error("Groq plugin: nothing to synthesize");
+      if (text.length > MAX_TTS_CHARACTERS) {
+        throw new Error(
+          `Groq plugin: Orpheus accepts at most ${MAX_TTS_CHARACTERS} characters per request (got ${text.length})`,
+        );
+      }
 
-    const voice = payload.voiceId || DEFAULT_VOICE;
-    // The voice implies its checkpoint: an Arabic voice on the English model
-    // is a 400. Prefer the voice's own model over whatever the shared model
-    // dropdown happened to be showing.
-    const voiceModel = ORPHEUS_VOICES.find((v) => v.id === voice)?.model;
-    const selected = payload.modelId && isTtsModel(payload.modelId) ? payload.modelId : undefined;
-    const model = voiceModel ?? selected ?? ORPHEUS_ENGLISH_MODEL;
+      const voice = payload.voiceId || DEFAULT_VOICE;
+      // The voice implies its checkpoint: an Arabic voice on the English model
+      // is a 400. Prefer the voice's own model over whatever the shared model
+      // dropdown happened to be showing.
+      const voiceModel = ORPHEUS_VOICES.find((v) => v.id === voice)?.model;
+      const selected = payload.modelId && isTtsModel(payload.modelId) ? payload.modelId : undefined;
+      const model = voiceModel ?? selected ?? ORPHEUS_ENGLISH_MODEL;
 
-    const started = Date.now();
-    const response = await fetch(`${OPENAI_BASE}/audio/speech`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model, input: text, voice, response_format: "wav" }),
+      const started = Date.now();
+      const response = await fetch(`${OPENAI_BASE}/audio/speech`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model, input: text, voice, response_format: "wav" }),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Groq API error ${response.status} for /audio/speech: ${await response.text()}`,
+        );
+      }
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const elapsedMs = Date.now() - started;
+      const requestId = response.headers.get("x-request-id") ?? undefined;
+
+      return {
+        audioBase64: bytesToBase64(bytes),
+        mimeType: "audio/wav",
+        fileName: `groq-${voice}.wav`,
+        summary: `${model} · ${voice} · ${text.length} characters · ${formatBytes(bytes.byteLength)} · ${elapsedMs} ms`,
+        characters: text.length,
+        ...(requestId ? { requestId } : {}),
+      };
     });
-    if (!response.ok) {
-      throw new Error(
-        `Groq API error ${response.status} for /audio/speech: ${await response.text()}`,
-      );
-    }
-
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const elapsedMs = Date.now() - started;
-    const requestId = response.headers.get("x-request-id") ?? undefined;
-
-    return {
-      audioBase64: bytesToBase64(bytes),
-      mimeType: "audio/wav",
-      fileName: `groq-${voice}.wav`,
-      summary: `${model} · ${voice} · ${text.length} characters · ${formatBytes(bytes.byteLength)} · ${elapsedMs} ms`,
-      characters: text.length,
-      ...(requestId ? { requestId } : {}),
-    };
   }
 
   /**
@@ -922,95 +964,97 @@ export class GroqClient implements PluginClient {
    * encoding it, which would post the literal text "[object FormData]".
    * The trade-off is that this call bypasses bastion egress routing.
    */
-  async transcribeAudio(
+  transcribeAudio(
     _typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    const model =
-      payload.modelId && isSttModel(payload.modelId)
-        ? payload.modelId
-        : (FALLBACK_STT_MODELS[0] as string);
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      const model =
+        payload.modelId && isSttModel(payload.modelId)
+          ? payload.modelId
+          : (FALLBACK_STT_MODELS[0] as string);
 
-    const buffer = base64ToBytes(payload.audioBase64);
-    if (buffer.byteLength === 0) throw new Error("Groq plugin: empty audio clip");
-    if (buffer.byteLength > MAX_AUDIO_BYTES) {
-      throw new Error(
-        `Groq plugin: clip is ${formatBytes(buffer.byteLength)}, over the ${formatBytes(MAX_AUDIO_BYTES)} free-tier limit`,
-      );
-    }
-
-    // Forward whatever MediaRecorder produced (webm/opus on Chromium, mp4 on
-    // Safari) verbatim: Groq accepts both and transcoding here would only
-    // lose fidelity.
-    const fileName = payload.fileName || `clip.${extensionFor(payload.mimeType)}`;
-    const form = new FormData();
-    form.append("file", new Blob([buffer], { type: payload.mimeType }), fileName);
-    form.append("model", model);
-    form.append("response_format", "verbose_json");
-    form.append("timestamp_granularities[]", "segment");
-    form.append("timestamp_granularities[]", "word");
-    if (payload.language) form.append("language", payload.language);
-
-    const started = Date.now();
-    const response = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-      body: form,
-    });
-    if (!response.ok) {
-      throw new Error(
-        `Groq API error ${response.status} for /audio/transcriptions: ${await response.text()}`,
-      );
-    }
-
-    const result = (await response.json()) as GroqTranscription;
-    const elapsedMs = Date.now() - started;
-
-    const words: TranscriptWord[] = (result.words ?? []).map((word) => ({
-      text: String(word.word ?? ""),
-      ...(typeof word.start === "number" ? { start: word.start } : {}),
-      ...(typeof word.end === "number" ? { end: word.end } : {}),
-    }));
-    if (words.length === 0) {
-      for (const segment of result.segments ?? []) {
-        words.push({
-          text: String(segment.text ?? "").trim(),
-          ...(typeof segment.start === "number" ? { start: segment.start } : {}),
-          ...(typeof segment.end === "number" ? { end: segment.end } : {}),
-        });
+      const buffer = base64ToBytes(payload.audioBase64);
+      if (buffer.byteLength === 0) throw new Error("Groq plugin: empty audio clip");
+      if (buffer.byteLength > MAX_AUDIO_BYTES) {
+        throw new Error(
+          `Groq plugin: clip is ${formatBytes(buffer.byteLength)}, over the ${formatBytes(MAX_AUDIO_BYTES)} free-tier limit`,
+        );
       }
-    }
 
-    // `avg_logprob` is a mean log-probability per segment; exponentiating it
-    // gives a 0..1 figure comparable to what other providers call confidence.
-    const logProbs = (result.segments ?? [])
-      .map((segment) => segment.avg_logprob)
-      .filter((value): value is number => typeof value === "number");
-    const confidence =
-      logProbs.length > 0
-        ? Math.exp(logProbs.reduce((sum, value) => sum + value, 0) / logProbs.length)
-        : undefined;
+      // Forward whatever MediaRecorder produced (webm/opus on Chromium, mp4 on
+      // Safari) verbatim: Groq accepts both and transcoding here would only
+      // lose fidelity.
+      const fileName = payload.fileName || `clip.${extensionFor(payload.mimeType)}`;
+      const form = new FormData();
+      form.append("file", new Blob([buffer], { type: payload.mimeType }), fileName);
+      form.append("model", model);
+      form.append("response_format", "verbose_json");
+      form.append("timestamp_granularities[]", "segment");
+      form.append("timestamp_granularities[]", "word");
+      if (payload.language) form.append("language", payload.language);
 
-    const duration = typeof result.duration === "number" ? result.duration : undefined;
-    const billed = duration !== undefined ? Math.max(duration, 10) : undefined;
-    const summaryParts = [model];
-    if (duration !== undefined) summaryParts.push(`${duration.toFixed(1)} s of audio`);
-    if (billed !== undefined && duration !== undefined && billed > duration) {
-      summaryParts.push("billed as 10 s (Groq's minimum)");
-    }
-    summaryParts.push(`${elapsedMs} ms`);
+      const started = Date.now();
+      const response = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        body: form,
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Groq API error ${response.status} for /audio/transcriptions: ${await response.text()}`,
+        );
+      }
 
-    return {
-      text: String(result.text ?? ""),
-      summary: summaryParts.join(" · "),
-      ...(result.language ? { language: String(result.language) } : {}),
-      ...(duration !== undefined ? { durationSeconds: duration } : {}),
-      ...(confidence !== undefined ? { confidence } : {}),
-      ...(words.length > 0 ? { words } : {}),
-      ...(result.x_groq?.id ? { requestId: String(result.x_groq.id) } : {}),
-    };
+      const result = (await response.json()) as GroqTranscription;
+      const elapsedMs = Date.now() - started;
+
+      const words: TranscriptWord[] = (result.words ?? []).map((word) => ({
+        text: String(word.word ?? ""),
+        ...(typeof word.start === "number" ? { start: word.start } : {}),
+        ...(typeof word.end === "number" ? { end: word.end } : {}),
+      }));
+      if (words.length === 0) {
+        for (const segment of result.segments ?? []) {
+          words.push({
+            text: String(segment.text ?? "").trim(),
+            ...(typeof segment.start === "number" ? { start: segment.start } : {}),
+            ...(typeof segment.end === "number" ? { end: segment.end } : {}),
+          });
+        }
+      }
+
+      // `avg_logprob` is a mean log-probability per segment; exponentiating it
+      // gives a 0..1 figure comparable to what other providers call confidence.
+      const logProbs = (result.segments ?? [])
+        .map((segment) => segment.avg_logprob)
+        .filter((value): value is number => typeof value === "number");
+      const confidence =
+        logProbs.length > 0
+          ? Math.exp(logProbs.reduce((sum, value) => sum + value, 0) / logProbs.length)
+          : undefined;
+
+      const duration = typeof result.duration === "number" ? result.duration : undefined;
+      const billed = duration !== undefined ? Math.max(duration, 10) : undefined;
+      const summaryParts = [model];
+      if (duration !== undefined) summaryParts.push(`${duration.toFixed(1)} s of audio`);
+      if (billed !== undefined && duration !== undefined && billed > duration) {
+        summaryParts.push("billed as 10 s (Groq's minimum)");
+      }
+      summaryParts.push(`${elapsedMs} ms`);
+
+      return {
+        text: String(result.text ?? ""),
+        summary: summaryParts.join(" · "),
+        ...(result.language ? { language: String(result.language) } : {}),
+        ...(duration !== undefined ? { durationSeconds: duration } : {}),
+        ...(confidence !== undefined ? { confidence } : {}),
+        ...(words.length > 0 ? { words } : {}),
+        ...(result.x_groq?.id ? { requestId: String(result.x_groq.id) } : {}),
+      };
+    });
   }
 
   // ----------------------------------------------------------------- render

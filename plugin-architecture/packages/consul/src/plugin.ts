@@ -1,20 +1,20 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CONSUL_PREFLIGHT, ConsulClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { consulTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "consul",
-  version: "0.1.0",
+  // Consul is self-hosted: the agent address is user-supplied, so there is no fixed egress host (same as kubernetes).
+  egressHosts: [],
   displayName: "HashiCorp Consul",
   description:
     "Self-hosted Consul: catalog services and nodes with health checks, a KV browser with editing, intentions, config entries, ACL policies, roles and tokens, sessions, cluster peering, and Enterprise namespaces and admin partitions.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "address",
       label: "Consul Address",
@@ -64,14 +64,17 @@ const manifest: PluginManifest = {
       advanced: true,
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: CONSUL_PREFLIGHT,
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new ConsulClient(credentials, services),
+  testCredentials: { address: "http://consul.internal:8500", token: "test" },
   terraformExport: consulTerraformExport,
-};
+});

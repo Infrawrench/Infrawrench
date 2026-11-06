@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -372,7 +375,7 @@ export class XaiClient implements PluginClient {
   private readonly services: HostServices | undefined;
   private teamIdPromise: Promise<string> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("xAI plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -485,33 +488,35 @@ export class XaiClient implements PluginClient {
 
   // ------------------------------------------------------------------ list
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "model":
-        return this.listModels(accountId);
-      case "file":
-        return this.listFiles(accountId);
-      case "batch":
-        return this.listBatches(accountId);
-      case "custom-voice":
-        return this.listVoices(accountId);
-      case "api-key":
-        return this.managementKey ? this.listApiKeys(accountId) : [];
-      case "audit-event":
-        return this.managementKey ? this.listAuditEvents(accountId) : [];
-      case "skill":
-        return this.listSkills(accountId);
-      case "collection":
-        return this.managementKey ? this.listCollections(accountId) : [];
-      case "collection-document":
-        return this.managementKey ? this.listCollectionDocuments(accountId) : [];
-      case "invoice":
-        return this.managementKey ? this.listInvoices(accountId) : [];
-      case "spending-limit":
-        return this.managementKey ? this.listSpendingLimit(accountId) : [];
-      default:
-        throw new Error(`xAI plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "model":
+          return this.listModels(accountId);
+        case "file":
+          return this.listFiles(accountId);
+        case "batch":
+          return this.listBatches(accountId);
+        case "custom-voice":
+          return this.listVoices(accountId);
+        case "api-key":
+          return this.managementKey ? this.listApiKeys(accountId) : [];
+        case "audit-event":
+          return this.managementKey ? this.listAuditEvents(accountId) : [];
+        case "skill":
+          return this.listSkills(accountId);
+        case "collection":
+          return this.managementKey ? this.listCollections(accountId) : [];
+        case "collection-document":
+          return this.managementKey ? this.listCollectionDocuments(accountId) : [];
+        case "invoice":
+          return this.managementKey ? this.listInvoices(accountId) : [];
+        case "spending-limit":
+          return this.managementKey ? this.listSpendingLimit(accountId) : [];
+        default:
+          throw new Error(`xAI plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
@@ -1150,18 +1155,20 @@ export class XaiClient implements PluginClient {
    * current period's invoice preview; see `prepaidBalances` for why not the
    * prepaid ledger.
    */
-  async fetchCreditBalance(): Promise<CreditBalance[]> {
-    if (!this.managementKey) {
-      throw new CreditAccessError(
-        "xAI reports prepaid credit only through its Management API. Add a management key to this account to track the balance.",
-        MANAGEMENT_KEY_HELP,
+  fetchCreditBalance(): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      if (!this.managementKey) {
+        throw new CreditAccessError(
+          "xAI reports prepaid credit only through its Management API. Add a management key to this account to track the balance.",
+          MANAGEMENT_KEY_HELP,
+        );
+      }
+      const teamId = encodeURIComponent(await this.getTeamId());
+      const preview = await this.mgmtFetch<XaiInvoicePreview>(
+        `/v1/billing/teams/${teamId}/postpaid/invoice/preview`,
       );
-    }
-    const teamId = encodeURIComponent(await this.getTeamId());
-    const preview = await this.mgmtFetch<XaiInvoicePreview>(
-      `/v1/billing/teams/${teamId}/postpaid/invoice/preview`,
-    );
-    return prepaidBalances(preview);
+      return prepaidBalances(preview);
+    });
   }
 
   /** GET /v1/batches/{batch_id}/requests: first page only, for the detail view. */
@@ -1174,38 +1181,40 @@ export class XaiClient implements PluginClient {
 
   // ------------------------------------------------------------------- get
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`xAI plugin: resource ${typeId}/${resourceId} not found`);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`xAI plugin: resource ${typeId}/${resourceId} not found`);
 
-    // `renderDetail` is synchronous, so the Speech tab's voice picker has to be
-    // filled here and stashed on the instance. Follows the Cloudflare queue
-    // plugin's `__consumers__` precedent.
-    if (typeId === "custom-voice" || (typeId === "model" && isAudioModel(found))) {
-      try {
-        const voices = await this.speechVoiceOptions();
-        found.resolvedOutputs = { ...found.resolvedOutputs, __voices__: JSON.stringify(voices) };
-      } catch {
-        // Leave the panel to fall back to the documented built-in voices.
+      // `renderDetail` is synchronous, so the Speech tab's voice picker has to be
+      // filled here and stashed on the instance. Follows the Cloudflare queue
+      // plugin's `__consumers__` precedent.
+      if (typeId === "custom-voice" || (typeId === "model" && isAudioModel(found))) {
+        try {
+          const voices = await this.speechVoiceOptions();
+          found.resolvedOutputs = { ...found.resolvedOutputs, __voices__: JSON.stringify(voices) };
+        } catch {
+          // Leave the panel to fall back to the documented built-in voices.
+        }
       }
-    }
-    if (typeId === "batch") {
-      try {
-        const requests = await this.fetchBatchRequests(found.externalId ?? "");
-        found.resolvedOutputs = {
-          ...found.resolvedOutputs,
-          __requests__: JSON.stringify(requests),
-        };
-      } catch {
-        // The counters on the row still tell the story without the per-request list.
+      if (typeId === "batch") {
+        try {
+          const requests = await this.fetchBatchRequests(found.externalId ?? "");
+          found.resolvedOutputs = {
+            ...found.resolvedOutputs,
+            __requests__: JSON.stringify(requests),
+          };
+        } catch {
+          // The counters on the row still tell the story without the per-request list.
+        }
       }
-    }
-    return found;
+      return found;
+    });
   }
 
   private async speechVoiceOptions(): Promise<SpeechPanelOption[]> {
@@ -1229,124 +1238,130 @@ export class XaiClient implements PluginClient {
     return options;
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const direct = resource.fields[outputKey];
-    if (direct !== undefined) return String(direct);
-    throw new Error(`xAI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const direct = resource.fields[outputKey];
+      if (direct !== undefined) return String(direct);
+      throw new Error(`xAI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // ------------------------------------------------------------- dashboard
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
 
-    if (resourceTypeId === "model") {
-      return [
-        { label: "Kind", value: String(f["kind"] ?? "") },
-        { label: "Owner", value: String(f["ownedBy"] ?? "") },
-        { label: "Input", value: String(f["prompt"] ?? f["inputModalities"] ?? "") },
-      ];
-    }
-    if (resourceTypeId === "batch") {
-      const errored = Number(f["numError"] ?? 0);
-      return [
-        { label: "Requests", value: String(f["numRequests"] ?? 0) },
-        { label: "Succeeded", value: String(f["numSuccess"] ?? 0) },
-        {
-          label: "Errored",
-          value: String(errored),
-          variant: errored > 0 ? "status-error" : "default",
-        },
-      ];
-    }
-    if (resourceTypeId === "custom-voice") {
-      return [
-        { label: "Voice ID", value: String(f["voiceId"] ?? "") },
-        { label: "Source", value: f["builtIn"] === true ? "Built-in" : "Custom" },
-      ];
-    }
-    if (resourceTypeId === "collection") {
-      return [
-        { label: "Documents", value: Number(f["documentsCount"] ?? 0).toLocaleString("en-US") },
-        { label: "Embedding", value: String(f["embeddingModel"] || "default") },
-      ];
-    }
-    if (resourceTypeId === "collection-document") {
-      const status = String(f["status"] ?? "");
-      const dot = documentStatusDot(status);
-      return [
-        {
-          label: "Status",
-          value: status.replace(/^DOCUMENT_STATUS_/, "").toLowerCase() || "unknown",
-          variant:
-            dot === "healthy" ? "status-healthy" : dot === "error" ? "status-error" : "default",
-        },
-        { label: "Collection", value: String(f["collectionName"] || f["collectionId"] || "") },
-      ];
-    }
-    if (resourceTypeId === "invoice") {
-      const status = String(f["status"] ?? "");
-      const dot = invoiceStatusDot(status);
-      return [
-        { label: "Total", value: formatUsd(Number(f["total"] ?? 0)) },
-        {
-          label: "Status",
-          value: status || "unknown",
-          variant:
-            dot === "healthy"
-              ? "status-healthy"
-              : dot === "error"
-                ? "status-error"
-                : dot === "degraded"
-                  ? "status-degraded"
-                  : "default",
-        },
-      ];
-    }
-    if (resourceTypeId === "spending-limit") {
-      const spend = Number(f["currentSpend"] ?? 0);
-      const limit = Number(f["effectiveLimit"] ?? 0) || Number(f["softLimit"] ?? 0);
-      return [
-        { label: "This period", value: formatUsd(spend) },
-        {
-          label: "Limit",
-          value: formatUsd(limit),
-          variant: limit > 0 && spend >= limit * 0.9 ? "status-degraded" : "default",
-        },
-        {
-          label: "Prepaid left",
-          value: formatUsd(
-            Math.max(0, Number(f["prepaidCredits"] ?? 0) - Number(f["prepaidCreditsUsed"] ?? 0)),
-          ),
-        },
-      ];
-    }
-    if (resourceTypeId === "skill") {
-      return [{ label: "Version", value: String(f["latestVersion"] || "1") }];
-    }
-    if (resourceTypeId === "api-key") {
-      const disabled = f["disabled"] === true;
-      return [
-        { label: "Key", value: String(f["redactedApiKey"] ?? "") },
-        {
-          label: "Status",
-          value: disabled ? "disabled" : "active",
-          variant: disabled ? "status-degraded" : "status-healthy",
-        },
-      ];
-    }
-    return [];
+      if (resourceTypeId === "model") {
+        return [
+          { label: "Kind", value: String(f["kind"] ?? "") },
+          { label: "Owner", value: String(f["ownedBy"] ?? "") },
+          { label: "Input", value: String(f["prompt"] ?? f["inputModalities"] ?? "") },
+        ];
+      }
+      if (resourceTypeId === "batch") {
+        const errored = Number(f["numError"] ?? 0);
+        return [
+          { label: "Requests", value: String(f["numRequests"] ?? 0) },
+          { label: "Succeeded", value: String(f["numSuccess"] ?? 0) },
+          {
+            label: "Errored",
+            value: String(errored),
+            variant: errored > 0 ? "status-error" : "default",
+          },
+        ];
+      }
+      if (resourceTypeId === "custom-voice") {
+        return [
+          { label: "Voice ID", value: String(f["voiceId"] ?? "") },
+          { label: "Source", value: f["builtIn"] === true ? "Built-in" : "Custom" },
+        ];
+      }
+      if (resourceTypeId === "collection") {
+        return [
+          { label: "Documents", value: Number(f["documentsCount"] ?? 0).toLocaleString("en-US") },
+          { label: "Embedding", value: String(f["embeddingModel"] || "default") },
+        ];
+      }
+      if (resourceTypeId === "collection-document") {
+        const status = String(f["status"] ?? "");
+        const dot = documentStatusDot(status);
+        return [
+          {
+            label: "Status",
+            value: status.replace(/^DOCUMENT_STATUS_/, "").toLowerCase() || "unknown",
+            variant:
+              dot === "healthy" ? "status-healthy" : dot === "error" ? "status-error" : "default",
+          },
+          { label: "Collection", value: String(f["collectionName"] || f["collectionId"] || "") },
+        ];
+      }
+      if (resourceTypeId === "invoice") {
+        const status = String(f["status"] ?? "");
+        const dot = invoiceStatusDot(status);
+        return [
+          { label: "Total", value: formatUsd(Number(f["total"] ?? 0)) },
+          {
+            label: "Status",
+            value: status || "unknown",
+            variant:
+              dot === "healthy"
+                ? "status-healthy"
+                : dot === "error"
+                  ? "status-error"
+                  : dot === "degraded"
+                    ? "status-degraded"
+                    : "default",
+          },
+        ];
+      }
+      if (resourceTypeId === "spending-limit") {
+        const spend = Number(f["currentSpend"] ?? 0);
+        const limit = Number(f["effectiveLimit"] ?? 0) || Number(f["softLimit"] ?? 0);
+        return [
+          { label: "This period", value: formatUsd(spend) },
+          {
+            label: "Limit",
+            value: formatUsd(limit),
+            variant: limit > 0 && spend >= limit * 0.9 ? "status-degraded" : "default",
+          },
+          {
+            label: "Prepaid left",
+            value: formatUsd(
+              Math.max(0, Number(f["prepaidCredits"] ?? 0) - Number(f["prepaidCreditsUsed"] ?? 0)),
+            ),
+          },
+        ];
+      }
+      if (resourceTypeId === "skill") {
+        return [{ label: "Version", value: String(f["latestVersion"] || "1") }];
+      }
+      if (resourceTypeId === "api-key") {
+        const disabled = f["disabled"] === true;
+        return [
+          { label: "Key", value: String(f["redactedApiKey"] ?? "") },
+          {
+            label: "Status",
+            value: disabled ? "disabled" : "active",
+            variant: disabled ? "status-degraded" : "status-healthy",
+          },
+        ];
+      }
+      return [];
+    });
   }
 
   // ----------------------------------------------------------- usage/costs
@@ -1358,13 +1373,15 @@ export class XaiClient implements PluginClient {
    *
    * Docs: https://docs.x.ai/developers/rest-api-reference/management/billing
    */
-  async fetchCostData(accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    // Normalized AI dimensions (`ai:provider`, and `ai:model` /
-    // `ai:token_type` where the billing API says), so request logs can be
-    // reconciled against this bill. See plugin-base `ai-requests.ts`.
-    return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), () => ({
-      provider: "xai",
-    }));
+  fetchCostData(accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      // Normalized AI dimensions (`ai:provider`, and `ai:model` /
+      // `ai:token_type` where the billing API says), so request logs can be
+      // reconciled against this bill. See plugin-base `ai-requests.ts`.
+      return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), () => ({
+        provider: "xai",
+      }));
+    });
   }
 
   private async fetchUntaggedCostRows(
@@ -1452,175 +1469,179 @@ export class XaiClient implements PluginClient {
    *   - **spending-limit**: the whole team's spend, plus the line items that
    *     cost the most over the window, so the trend sits next to the limit.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "model" && resourceTypeId !== "spending-limit") return [];
-    if (!this.managementKey) return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
-    const usage = await this.queryUsageWindow(startMs, endMs);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "model" && resourceTypeId !== "spending-limit") return [];
+      if (!this.managementKey) return [];
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
+      const usage = await this.queryUsageWindow(startMs, endMs);
 
-    if (resourceTypeId === "spending-limit") return teamSpendSeries(usage);
+      if (resourceTypeId === "spending-limit") return teamSpendSeries(usage);
 
-    const modelId = resourceId.split(":").slice(2).join(":");
-    const points: Array<{ timestamp: number; value: number }> = [];
-    for (const s of usage.timeSeries ?? []) {
-      const label = s.groupLabels?.[0] ?? s.group?.[0] ?? "";
-      if (modelId && !label.includes(modelId)) continue;
-      for (const p of s.dataPoints ?? []) {
-        if (!p.timestamp) continue;
-        const ts = Date.parse(p.timestamp);
-        if (Number.isNaN(ts)) continue;
-        const existing = points.find((x) => x.timestamp === ts);
-        const value = p.values?.[0] ?? 0;
-        if (existing) existing.value += value;
-        else points.push({ timestamp: ts, value });
+      const modelId = resourceId.split(":").slice(2).join(":");
+      const points: Array<{ timestamp: number; value: number }> = [];
+      for (const s of usage.timeSeries ?? []) {
+        const label = s.groupLabels?.[0] ?? s.group?.[0] ?? "";
+        if (modelId && !label.includes(modelId)) continue;
+        for (const p of s.dataPoints ?? []) {
+          if (!p.timestamp) continue;
+          const ts = Date.parse(p.timestamp);
+          if (Number.isNaN(ts)) continue;
+          const existing = points.find((x) => x.timestamp === ts);
+          const value = p.values?.[0] ?? 0;
+          if (existing) existing.value += value;
+          else points.push({ timestamp: ts, value });
+        }
       }
-    }
-    if (points.length === 0) return [];
-    points.sort((a, b) => a.timestamp - b.timestamp);
-    return [{ label: `${modelId} spend`, unit: "USD", points }];
+      if (points.length === 0) return [];
+      points.sort((a, b) => a.timestamp - b.timestamp);
+      return [{ label: `${modelId} spend`, unit: "USD", points }];
+    });
   }
 
   // ------------------------------------------------------------ create/edit
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "api-key") {
-      const models = await this.listModelAclOptions();
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "modelAcl",
-            label: "Models",
-            kind: "select",
-            required: true,
-            options: [{ id: "*", label: "All models" }, ...models],
-            defaultValue: "*",
-            description: "Which models this key may call.",
-          },
-          {
-            key: "endpointAcl",
-            label: "Endpoints",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "*", label: "All endpoints" },
-              { id: "chat", label: "Chat & vision" },
-              { id: "image", label: "Image generation" },
-            ],
-            defaultValue: "*",
-          },
-          {
-            key: "qps",
-            label: "Queries per second",
-            kind: "number",
-            required: false,
-            description: "Leave blank for no per-second limit.",
-          },
-          {
-            key: "qpm",
-            label: "Queries per minute",
-            kind: "number",
-            required: false,
-            description: "Leave blank for no per-minute limit.",
-          },
-          {
-            key: "tpm",
-            label: "Tokens per minute",
-            kind: "number",
-            required: false,
-            description: "Leave blank for no token limit.",
-          },
-        ],
-      };
-    }
-    if (typeId === "batch") {
-      return {
-        fields: [
-          {
-            key: "name",
-            label: "Name",
-            kind: "text",
-            required: true,
-            description:
-              "Creates an empty batch. Add requests to it from your code with POST /v1/batches/{batch_id}/requests.",
-          },
-        ],
-      };
-    }
-    if (typeId === "collection") {
-      const models = await this.listEmbeddingModelOptions();
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          { key: "description", label: "Description", kind: "text", required: false },
-          {
-            key: "embeddingModel",
-            label: "Embedding model",
-            kind: "select",
-            required: false,
-            options: [{ id: "", label: "xAI default" }, ...models],
-            defaultValue: "",
-            description: "Fixed once the collection exists.",
-          },
-          {
-            key: "maxChunkTokens",
-            label: "Max chunk size (tokens)",
-            kind: "number",
-            required: false,
-            minValue: 1,
-            description: "Leave blank for xAI's default chunking.",
-          },
-          {
-            key: "chunkOverlapTokens",
-            label: "Chunk overlap (tokens)",
-            kind: "number",
-            required: false,
-            minValue: 0,
-            description: "Only used when a max chunk size is set.",
-          },
-        ],
-      };
-    }
-    if (typeId === "collection-document") {
-      const [collections, files] = await Promise.all([
-        this.fetchCollections().catch(() => [] as XaiCollection[]),
-        this.listFiles("picker").catch(() => [] as ResourceInstance[]),
-      ]);
-      return {
-        fields: [
-          {
-            key: "collectionId",
-            label: "Collection",
-            kind: "select",
-            required: true,
-            options: collections.map((c) => ({
-              id: c.collection_id,
-              label: c.collection_name || c.collection_id,
-              description: `${(c.documents_count ?? 0).toLocaleString("en-US")} documents`,
-            })),
-          },
-          {
-            key: "fileId",
-            label: "File",
-            kind: "select",
-            required: true,
-            options: files.map((f) => ({
-              id: String(f.fields["fileId"]),
-              label: f.displayName,
-              description: String(f.fields["createdAt"] || ""),
-            })),
-            description: "An uploaded xAI file. It is indexed into the collection, not copied.",
-          },
-        ],
-      };
-    }
-    throw new Error(`xAI plugin: no create config for type "${typeId}"`);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "api-key") {
+        const models = await this.listModelAclOptions();
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "modelAcl",
+              label: "Models",
+              kind: "select",
+              required: true,
+              options: [{ id: "*", label: "All models" }, ...models],
+              defaultValue: "*",
+              description: "Which models this key may call.",
+            },
+            {
+              key: "endpointAcl",
+              label: "Endpoints",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "*", label: "All endpoints" },
+                { id: "chat", label: "Chat & vision" },
+                { id: "image", label: "Image generation" },
+              ],
+              defaultValue: "*",
+            },
+            {
+              key: "qps",
+              label: "Queries per second",
+              kind: "number",
+              required: false,
+              description: "Leave blank for no per-second limit.",
+            },
+            {
+              key: "qpm",
+              label: "Queries per minute",
+              kind: "number",
+              required: false,
+              description: "Leave blank for no per-minute limit.",
+            },
+            {
+              key: "tpm",
+              label: "Tokens per minute",
+              kind: "number",
+              required: false,
+              description: "Leave blank for no token limit.",
+            },
+          ],
+        };
+      }
+      if (typeId === "batch") {
+        return {
+          fields: [
+            {
+              key: "name",
+              label: "Name",
+              kind: "text",
+              required: true,
+              description:
+                "Creates an empty batch. Add requests to it from your code with POST /v1/batches/{batch_id}/requests.",
+            },
+          ],
+        };
+      }
+      if (typeId === "collection") {
+        const models = await this.listEmbeddingModelOptions();
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            { key: "description", label: "Description", kind: "text", required: false },
+            {
+              key: "embeddingModel",
+              label: "Embedding model",
+              kind: "select",
+              required: false,
+              options: [{ id: "", label: "xAI default" }, ...models],
+              defaultValue: "",
+              description: "Fixed once the collection exists.",
+            },
+            {
+              key: "maxChunkTokens",
+              label: "Max chunk size (tokens)",
+              kind: "number",
+              required: false,
+              minValue: 1,
+              description: "Leave blank for xAI's default chunking.",
+            },
+            {
+              key: "chunkOverlapTokens",
+              label: "Chunk overlap (tokens)",
+              kind: "number",
+              required: false,
+              minValue: 0,
+              description: "Only used when a max chunk size is set.",
+            },
+          ],
+        };
+      }
+      if (typeId === "collection-document") {
+        const [collections, files] = await Promise.all([
+          this.fetchCollections().catch(() => [] as XaiCollection[]),
+          this.listFiles("picker").catch(() => [] as ResourceInstance[]),
+        ]);
+        return {
+          fields: [
+            {
+              key: "collectionId",
+              label: "Collection",
+              kind: "select",
+              required: true,
+              options: collections.map((c) => ({
+                id: c.collection_id,
+                label: c.collection_name || c.collection_id,
+                description: `${(c.documents_count ?? 0).toLocaleString("en-US")} documents`,
+              })),
+            },
+            {
+              key: "fileId",
+              label: "File",
+              kind: "select",
+              required: true,
+              options: files.map((f) => ({
+                id: String(f.fields["fileId"]),
+                label: f.displayName,
+                description: String(f.fields["createdAt"] || ""),
+              })),
+              description: "An uploaded xAI file. It is indexed into the collection, not copied.",
+            },
+          ],
+        };
+      }
+      throw new Error(`xAI plugin: no create config for type "${typeId}"`);
+    });
   }
 
   private async listEmbeddingModelOptions(): Promise<Array<{ id: string; label: string }>> {
@@ -1641,23 +1662,25 @@ export class XaiClient implements PluginClient {
     }
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "api-key":
-        return this.createApiKey(accountId, fields);
-      case "batch":
-        return this.createBatch(accountId, fields);
-      case "collection":
-        return this.createCollection(accountId, fields);
-      case "collection-document":
-        return this.createCollectionDocument(accountId, fields);
-      default:
-        throw new Error(`xAI plugin: cannot create type "${typeId}"`);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "api-key":
+          return this.createApiKey(accountId, fields);
+        case "batch":
+          return this.createBatch(accountId, fields);
+        case "collection":
+          return this.createCollection(accountId, fields);
+        case "collection-document":
+          return this.createCollectionDocument(accountId, fields);
+        default:
+          throw new Error(`xAI plugin: cannot create type "${typeId}"`);
+      }
+    });
   }
 
   /** POST /v1/batches: the API takes only a name. */
@@ -1762,150 +1785,158 @@ export class XaiClient implements PluginClient {
     return resource;
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = resourceId.split(":").slice(2).join(":");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
 
-    if (typeId === "api-key") {
-      // PUT /auth/api-keys/{api_key_id} takes { apiKey: {...}, fieldMask }.
-      const apiKey: Record<string, unknown> = {};
-      const mask: string[] = [];
-      if (fields["name"] !== undefined) {
-        apiKey["name"] = fields["name"];
-        mask.push("name");
-      }
-      if (fields["disabled"] !== undefined) {
-        apiKey["disabled"] = fields["disabled"] === "true";
-        mask.push("disabled");
-      }
-      if (fields["qps"] !== undefined) {
-        apiKey["qps"] = Number(fields["qps"]);
-        mask.push("qps");
-      }
-      if (fields["qpm"] !== undefined) {
-        apiKey["qpm"] = Number(fields["qpm"]);
-        mask.push("qpm");
-      }
-      if (fields["tpm"] !== undefined) {
-        apiKey["tpm"] = String(fields["tpm"]);
-        mask.push("tpm");
-      }
-      if (fields["acls"] !== undefined) {
-        apiKey["aclStrings"] = fields["acls"]
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        mask.push("acl_strings");
-      }
-      if (mask.length === 0) return this.getResource(typeId, resourceId, accountId);
+      if (typeId === "api-key") {
+        // PUT /auth/api-keys/{api_key_id} takes { apiKey: {...}, fieldMask }.
+        const apiKey: Record<string, unknown> = {};
+        const mask: string[] = [];
+        if (fields["name"] !== undefined) {
+          apiKey["name"] = fields["name"];
+          mask.push("name");
+        }
+        if (fields["disabled"] !== undefined) {
+          apiKey["disabled"] = fields["disabled"] === "true";
+          mask.push("disabled");
+        }
+        if (fields["qps"] !== undefined) {
+          apiKey["qps"] = Number(fields["qps"]);
+          mask.push("qps");
+        }
+        if (fields["qpm"] !== undefined) {
+          apiKey["qpm"] = Number(fields["qpm"]);
+          mask.push("qpm");
+        }
+        if (fields["tpm"] !== undefined) {
+          apiKey["tpm"] = String(fields["tpm"]);
+          mask.push("tpm");
+        }
+        if (fields["acls"] !== undefined) {
+          apiKey["aclStrings"] = fields["acls"]
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          mask.push("acl_strings");
+        }
+        if (mask.length === 0)
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
 
-      const updated = await this.mgmtFetch<XaiManagedApiKey>(
-        `/auth/api-keys/${encodeURIComponent(externalId)}`,
-        { method: "PUT", body: JSON.stringify({ apiKey, fieldMask: mask.join(",") }) },
-      );
-      return this.mapApiKey(accountId, new Date().toISOString(), updated);
-    }
-
-    if (typeId === "custom-voice") {
-      // PATCH /v1/custom-voices/{voice_id}: built-in voices have no metadata.
-      const body: Record<string, unknown> = {};
-      for (const key of ["name", "description", "gender", "accent", "age", "language", "tone"]) {
-        if (fields[key] !== undefined) body[key] = fields[key];
+        const updated = await this.mgmtFetch<XaiManagedApiKey>(
+          `/auth/api-keys/${encodeURIComponent(externalId)}`,
+          { method: "PUT", body: JSON.stringify({ apiKey, fieldMask: mask.join(",") }) },
+        );
+        return this.mapApiKey(accountId, new Date().toISOString(), updated);
       }
-      if (fields["useCase"] !== undefined) body["use_case"] = fields["useCase"];
-      if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
-      await this.fetch<XaiCustomVoice>(`/v1/custom-voices/${encodeURIComponent(externalId)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
-      return this.getResource(typeId, resourceId, accountId);
-    }
 
-    if (typeId === "collection") {
-      // PUT /v1/collections/{collection_id}: only name and description are
-      // changed here; chunking is fixed once documents are embedded.
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined && fields["name"].trim()) {
-        body["collection_name"] = fields["name"].trim();
+      if (typeId === "custom-voice") {
+        // PATCH /v1/custom-voices/{voice_id}: built-in voices have no metadata.
+        const body: Record<string, unknown> = {};
+        for (const key of ["name", "description", "gender", "accent", "age", "language", "tone"]) {
+          if (fields[key] !== undefined) body[key] = fields[key];
+        }
+        if (fields["useCase"] !== undefined) body["use_case"] = fields["useCase"];
+        if (Object.keys(body).length === 0)
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        await this.fetch<XaiCustomVoice>(`/v1/custom-voices/${encodeURIComponent(externalId)}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
-      if (fields["description"] !== undefined)
-        body["collection_description"] = fields["description"];
-      if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
-      const updated = await this.mgmtFetch<XaiCollection>(
-        `/v1/collections/${encodeURIComponent(externalId)}`,
-        { method: "PUT", body: JSON.stringify(body) },
-      );
-      return mapCollection(accountId, new Date().toISOString(), updated);
-    }
 
-    if (typeId === "spending-limit") {
-      // POST .../postpaid/spending-limits takes the soft limit in USD cents.
-      const raw = fields["softLimit"];
-      if (raw === undefined) return this.getResource(typeId, resourceId, accountId);
-      const dollars = Number(raw);
-      if (!Number.isFinite(dollars) || dollars < 0) {
-        throw new Error("xAI plugin: the spending limit must be a non-negative dollar amount");
+      if (typeId === "collection") {
+        // PUT /v1/collections/{collection_id}: only name and description are
+        // changed here; chunking is fixed once documents are embedded.
+        const body: Record<string, unknown> = {};
+        if (fields["name"] !== undefined && fields["name"].trim()) {
+          body["collection_name"] = fields["name"].trim();
+        }
+        if (fields["description"] !== undefined)
+          body["collection_description"] = fields["description"];
+        if (Object.keys(body).length === 0)
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const updated = await this.mgmtFetch<XaiCollection>(
+          `/v1/collections/${encodeURIComponent(externalId)}`,
+          { method: "PUT", body: JSON.stringify(body) },
+        );
+        return mapCollection(accountId, new Date().toISOString(), updated);
       }
-      const teamId = encodeURIComponent(await this.getTeamId());
-      await this.mgmtFetch<unknown>(`/v1/billing/teams/${teamId}/postpaid/spending-limits`, {
-        method: "POST",
-        body: JSON.stringify({
-          desiredSoftSpendingLimit: { val: String(Math.round(dollars * 100)) },
-        }),
-      });
-      return this.getResource(typeId, resourceId, accountId);
-    }
 
-    throw new Error(`xAI plugin: cannot update type "${typeId}"`);
+      if (typeId === "spending-limit") {
+        // POST .../postpaid/spending-limits takes the soft limit in USD cents.
+        const raw = fields["softLimit"];
+        if (raw === undefined)
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const dollars = Number(raw);
+        if (!Number.isFinite(dollars) || dollars < 0) {
+          throw new Error("xAI plugin: the spending limit must be a non-negative dollar amount");
+        }
+        const teamId = encodeURIComponent(await this.getTeamId());
+        await this.mgmtFetch<unknown>(`/v1/billing/teams/${teamId}/postpaid/spending-limits`, {
+          method: "POST",
+          body: JSON.stringify({
+            desiredSoftSpendingLimit: { val: String(Math.round(dollars * 100)) },
+          }),
+        });
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
+
+      throw new Error(`xAI plugin: cannot update type "${typeId}"`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    if (typeId === "api-key") {
-      await this.mgmtFetch(`/auth/api-keys/${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "file") {
-      await this.fetch(`/v1/files/${encodeURIComponent(externalId)}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "custom-voice") {
-      await this.fetch(`/v1/custom-voices/${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "skill") {
-      const result = await this.fetch<{ deleted?: boolean }>(
-        `/v1/skills/${encodeURIComponent(externalId)}`,
-        { method: "DELETE" },
-      );
-      if (result.deleted === false)
-        throw new Error(`xAI plugin: skill ${externalId} was not deleted`);
-      return;
-    }
-    if (typeId === "collection") {
-      await this.mgmtFetch(`/v1/collections/${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "collection-document") {
-      // Removes the document from the collection; the underlying file stays.
-      const { collectionId, fileId } = splitDocumentId(externalId);
-      await this.mgmtFetch(
-        `/v1/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(fileId)}`,
-        { method: "DELETE" },
-      );
-      return;
-    }
-    throw new Error(`xAI plugin: cannot delete type "${typeId}"`);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      if (typeId === "api-key") {
+        await this.mgmtFetch(`/auth/api-keys/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      if (typeId === "file") {
+        await this.fetch(`/v1/files/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+        return;
+      }
+      if (typeId === "custom-voice") {
+        await this.fetch(`/v1/custom-voices/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      if (typeId === "skill") {
+        const result = await this.fetch<{ deleted?: boolean }>(
+          `/v1/skills/${encodeURIComponent(externalId)}`,
+          { method: "DELETE" },
+        );
+        if (result.deleted === false)
+          throw new Error(`xAI plugin: skill ${externalId} was not deleted`);
+        return;
+      }
+      if (typeId === "collection") {
+        await this.mgmtFetch(`/v1/collections/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      if (typeId === "collection-document") {
+        // Removes the document from the collection; the underlying file stays.
+        const { collectionId, fileId } = splitDocumentId(externalId);
+        await this.mgmtFetch(
+          `/v1/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(fileId)}`,
+          { method: "DELETE" },
+        );
+        return;
+      }
+      throw new Error(`xAI plugin: cannot delete type "${typeId}"`);
+    });
   }
 
   /**
@@ -1918,50 +1949,52 @@ export class XaiClient implements PluginClient {
    *     own expiry, or none; revoke is idempotent.
    *   - collection-document `reindex`: PATCH .../documents/{file_id}.
    */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    if (typeId === "api-key" && actionId === "rotate") {
-      await this.mgmtFetch(`/auth/api-keys/${encodeURIComponent(externalId)}/rotate`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      return;
-    }
-    if (typeId === "batch" && actionId === "cancel") {
-      await this.fetch(`/v1/batches/${encodeURIComponent(externalId)}:cancel`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      return;
-    }
-    if (typeId === "file" && actionId === "create-public-url") {
-      await this.fetch(`/v1/files/${encodeURIComponent(externalId)}/public-url`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      return;
-    }
-    if (typeId === "file" && actionId === "revoke-public-url") {
-      await this.fetch(`/v1/files/${encodeURIComponent(externalId)}/public-url/revoke`, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      return;
-    }
-    if (typeId === "collection-document" && actionId === "reindex") {
-      const { collectionId, fileId } = splitDocumentId(externalId);
-      await this.mgmtFetch(
-        `/v1/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(fileId)}`,
-        { method: "PATCH", body: JSON.stringify({}) },
-      );
-      return;
-    }
-    throw new Error(`xAI plugin: unknown action "${actionId}" for type "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      if (typeId === "api-key" && actionId === "rotate") {
+        await this.mgmtFetch(`/auth/api-keys/${encodeURIComponent(externalId)}/rotate`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        return;
+      }
+      if (typeId === "batch" && actionId === "cancel") {
+        await this.fetch(`/v1/batches/${encodeURIComponent(externalId)}:cancel`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        return;
+      }
+      if (typeId === "file" && actionId === "create-public-url") {
+        await this.fetch(`/v1/files/${encodeURIComponent(externalId)}/public-url`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        return;
+      }
+      if (typeId === "file" && actionId === "revoke-public-url") {
+        await this.fetch(`/v1/files/${encodeURIComponent(externalId)}/public-url/revoke`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        return;
+      }
+      if (typeId === "collection-document" && actionId === "reindex") {
+        const { collectionId, fileId } = splitDocumentId(externalId);
+        await this.mgmtFetch(
+          `/v1/collections/${encodeURIComponent(collectionId)}/documents/${encodeURIComponent(fileId)}`,
+          { method: "PATCH", body: JSON.stringify({}) },
+        );
+        return;
+      }
+      throw new Error(`xAI plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
   // ---------------------------------------------------------------- speech
@@ -1973,46 +2006,48 @@ export class XaiClient implements PluginClient {
    *
    * Docs: https://docs.x.ai/developers/rest-api-reference/inference/voice
    */
-  async synthesizeSpeech(
+  synthesizeSpeech(
     _typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    const text = payload.text.slice(0, TTS_MAX_CHARACTERS);
-    const voiceId = payload.voiceId || "eve";
-    const language = payload.modelId || "auto";
-    const started = Date.now();
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      const text = payload.text.slice(0, TTS_MAX_CHARACTERS);
+      const voiceId = payload.voiceId || "eve";
+      const language = payload.modelId || "auto";
+      const started = Date.now();
 
-    const res = await this.fetch<XaiTtsResponse>("/v1/tts", {
-      method: "POST",
-      body: JSON.stringify({
-        text,
-        voice_id: voiceId,
-        language,
-        // Ask for mp3 explicitly: a browser <audio> element has to play it.
-        output_format: { codec: "mp3", sample_rate: 24000, bit_rate: 128000 },
-      }),
+      const res = await this.fetch<XaiTtsResponse>("/v1/tts", {
+        method: "POST",
+        body: JSON.stringify({
+          text,
+          voice_id: voiceId,
+          language,
+          // Ask for mp3 explicitly: a browser <audio> element has to play it.
+          output_format: { codec: "mp3", sample_rate: 24000, bit_rate: 128000 },
+        }),
+      });
+
+      const elapsed = Date.now() - started;
+      const duration = res.duration ?? 0;
+      const summary = [
+        `${text.length.toLocaleString()} characters`,
+        duration > 0 ? `${duration.toFixed(2)}s audio` : undefined,
+        `voice ${voiceId}`,
+        `${elapsed} ms`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      return {
+        audioBase64: res.audio,
+        mimeType: res.content_type || "audio/mpeg",
+        fileName: `xai-${voiceId}.mp3`,
+        summary,
+        characters: text.length,
+      };
     });
-
-    const elapsed = Date.now() - started;
-    const duration = res.duration ?? 0;
-    const summary = [
-      `${text.length.toLocaleString()} characters`,
-      duration > 0 ? `${duration.toFixed(2)}s audio` : undefined,
-      `voice ${voiceId}`,
-      `${elapsed} ms`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-    return {
-      audioBase64: res.audio,
-      mimeType: res.content_type || "audio/mpeg",
-      fileName: `xai-${voiceId}.mp3`,
-      summary,
-      characters: text.length,
-    };
   }
 
   /**
@@ -2024,73 +2059,75 @@ export class XaiClient implements PluginClient {
    *
    * Docs: https://docs.x.ai/developers/rest-api-reference/inference/speech-to-text
    */
-  async transcribeAudio(
+  transcribeAudio(
     _typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    const bytes = base64ToBytes(payload.audioBase64);
-    if (bytes.byteLength > STT_MAX_AUDIO_BYTES) {
-      throw new Error(
-        `xAI plugin: clip is ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB, over the ${STT_MAX_AUDIO_BYTES / 1024 / 1024} MB limit`,
-      );
-    }
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      const bytes = base64ToBytes(payload.audioBase64);
+      if (bytes.byteLength > STT_MAX_AUDIO_BYTES) {
+        throw new Error(
+          `xAI plugin: clip is ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB, over the ${STT_MAX_AUDIO_BYTES / 1024 / 1024} MB limit`,
+        );
+      }
 
-    const parts: MultipartPart[] = [];
-    // `auto` is a TTS-only value; for STT an unset language means auto-detect.
-    // `format` belongs in this branch rather than beside `diarize`: the docs
-    // define it as `"true" | "false"` and require `language` to be set with it,
-    // and the pair is what turns on inverse text normalisation (spoken numbers,
-    // currencies and units written out). Sending it on its own does nothing.
-    if (payload.language && payload.language !== "auto") {
-      parts.push({ name: "language", value: payload.language });
-      parts.push({ name: "format", value: "true" });
-    }
-    parts.push({ name: "diarize", value: "true" });
-    parts.push({
-      name: "file",
-      value: bytes,
-      filename: payload.fileName || fileNameForMime(payload.mimeType),
-      contentType: payload.mimeType || "application/octet-stream",
+      const parts: MultipartPart[] = [];
+      // `auto` is a TTS-only value; for STT an unset language means auto-detect.
+      // `format` belongs in this branch rather than beside `diarize`: the docs
+      // define it as `"true" | "false"` and require `language` to be set with it,
+      // and the pair is what turns on inverse text normalisation (spoken numbers,
+      // currencies and units written out). Sending it on its own does nothing.
+      if (payload.language && payload.language !== "auto") {
+        parts.push({ name: "language", value: payload.language });
+        parts.push({ name: "format", value: "true" });
+      }
+      parts.push({ name: "diarize", value: "true" });
+      parts.push({
+        name: "file",
+        value: bytes,
+        filename: payload.fileName || fileNameForMime(payload.mimeType),
+        contentType: payload.mimeType || "application/octet-stream",
+      });
+
+      const started = Date.now();
+      const res = await this.postMultipart<XaiSttResponse>("/v1/stt", parts);
+      const elapsed = Date.now() - started;
+
+      const words: TranscriptWord[] = (res.words ?? []).map((w) => ({
+        text: w.text,
+        ...(w.start !== undefined ? { start: w.start } : {}),
+        ...(w.end !== undefined ? { end: w.end } : {}),
+        ...(w.speaker !== undefined ? { speaker: `Speaker ${w.speaker + 1}` } : {}),
+      }));
+
+      const confidences = (res.words ?? [])
+        .map((w) => w.confidence)
+        .filter((c): c is number => typeof c === "number");
+      const confidence =
+        confidences.length > 0
+          ? confidences.reduce((a, b) => a + b, 0) / confidences.length
+          : undefined;
+
+      const summary = [
+        res.duration ? `${res.duration.toFixed(2)}s audio` : undefined,
+        `${(bytes.byteLength / 1024).toFixed(0)} KB uploaded`,
+        words.length > 0 ? `${words.length} words` : undefined,
+        `${elapsed} ms`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      return {
+        text: res.text ?? "",
+        summary,
+        ...(res.language ? { language: res.language } : {}),
+        ...(res.duration !== undefined ? { durationSeconds: res.duration } : {}),
+        ...(confidence !== undefined ? { confidence } : {}),
+        ...(words.length > 0 ? { words } : {}),
+      };
     });
-
-    const started = Date.now();
-    const res = await this.postMultipart<XaiSttResponse>("/v1/stt", parts);
-    const elapsed = Date.now() - started;
-
-    const words: TranscriptWord[] = (res.words ?? []).map((w) => ({
-      text: w.text,
-      ...(w.start !== undefined ? { start: w.start } : {}),
-      ...(w.end !== undefined ? { end: w.end } : {}),
-      ...(w.speaker !== undefined ? { speaker: `Speaker ${w.speaker + 1}` } : {}),
-    }));
-
-    const confidences = (res.words ?? [])
-      .map((w) => w.confidence)
-      .filter((c): c is number => typeof c === "number");
-    const confidence =
-      confidences.length > 0
-        ? confidences.reduce((a, b) => a + b, 0) / confidences.length
-        : undefined;
-
-    const summary = [
-      res.duration ? `${res.duration.toFixed(2)}s audio` : undefined,
-      `${(bytes.byteLength / 1024).toFixed(0)} KB uploaded`,
-      words.length > 0 ? `${words.length} words` : undefined,
-      `${elapsed} ms`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-    return {
-      text: res.text ?? "",
-      summary,
-      ...(res.language ? { language: res.language } : {}),
-      ...(res.duration !== undefined ? { durationSeconds: res.duration } : {}),
-      ...(confidence !== undefined ? { confidence } : {}),
-      ...(words.length > 0 ? { words } : {}),
-    };
   }
 
   // ---------------------------------------------------------------- render

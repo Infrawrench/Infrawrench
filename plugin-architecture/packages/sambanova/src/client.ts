@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ChatMessage,
   ChatStreamEvent,
@@ -81,7 +84,7 @@ export class SambaNovaClient implements PluginClient {
   private readonly caCert: string;
   private readonly http: HttpHostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("SambaNova plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -109,44 +112,52 @@ export class SambaNovaClient implements PluginClient {
    * `GET /models` answers without checking the key, so validation uses
    * `POST /messages/count_tokens`, which authenticates but generates nothing.
    */
-  async verifyCredentials(): Promise<PreflightResult> {
-    try {
-      await this.fetch("/messages/count_tokens", {
-        method: "POST",
-        body: JSON.stringify({
-          model: "gpt-oss-120b",
-          messages: [{ role: "user", content: "ping" }],
-        }),
-      });
-      return { checks: [{ capabilityId: "inference", status: "ok" }] };
-    } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 401 || status === 403) {
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      try {
+        await this.fetch("/messages/count_tokens", {
+          method: "POST",
+          body: JSON.stringify({
+            model: "gpt-oss-120b",
+            messages: [{ role: "user", content: "ping" }],
+          }),
+        });
+        return { checks: [{ capabilityId: "inference", status: "ok" }] };
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 401 || status === 403) {
+          return {
+            checks: [
+              {
+                capabilityId: "inference",
+                status: "missing",
+                missingPermissions: [{ id: "api-key", label: "A valid SambaCloud API key" }],
+                message: "SambaNova rejected the API key.",
+                helpLink: { label: "Manage API keys", url: `${CONSOLE_URL}/apis` },
+              },
+            ],
+          };
+        }
         return {
           checks: [
             {
               capabilityId: "inference",
-              status: "missing",
-              missingPermissions: [{ id: "api-key", label: "A valid SambaCloud API key" }],
-              message: "SambaNova rejected the API key.",
-              helpLink: { label: "Manage API keys", url: `${CONSOLE_URL}/apis` },
+              status: "unknown",
+              message: String((err as Error).message),
             },
           ],
         };
       }
-      return {
-        checks: [
-          { capabilityId: "inference", status: "unknown", message: String((err as Error).message) },
-        ],
-      };
-    }
+    });
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (typeId !== "sambanova-model")
-      throw new Error(`SambaNova plugin: unknown resource type "${typeId}"`);
-    const res = await this.fetch<{ data?: SnModel[] }>("/models");
-    return (res.data ?? []).filter((m) => m.id).map((m) => this.mapModel(accountId, m));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      if (typeId !== "sambanova-model")
+        throw new Error(`SambaNova plugin: unknown resource type "${typeId}"`);
+      const res = await this.fetch<{ data?: SnModel[] }>("/models");
+      return (res.data ?? []).filter((m) => m.id).map((m) => this.mapModel(accountId, m));
+    });
   }
 
   private mapModel(accountId: string, m: SnModel): ResourceInstance {
@@ -180,30 +191,37 @@ export class SambaNovaClient implements PluginClient {
   }
 
   /** `GET /models/{model_id}` */
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id =
-      resourceId.slice(`${accountId}:${typeId}:`.length) ||
-      resourceId.split(":").slice(2).join(":");
-    return this.mapModel(accountId, await this.fetch<SnModel>(`/models/${encodeURIComponent(id)}`));
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id =
+        resourceId.slice(`${accountId}:${typeId}:`.length) ||
+        resourceId.split(":").slice(2).join(":");
+      return this.mapModel(
+        accountId,
+        await this.fetch<SnModel>(`/models/${encodeURIComponent(id)}`),
+      );
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "baseUrl") return API_BASE;
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "baseUrl") return API_BASE;
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+    });
   }
 
   /** `POST /chat/completions` with `stream: true`. */
-  async *streamChatMessage(
+  private async *streamChatMessageIterable(
     _typeId: string,
     resourceId: string,
     accountId: string,
@@ -246,53 +264,66 @@ export class SambaNovaClient implements PluginClient {
     yield* streamOpenAiSseChat(res.body);
   }
 
+  streamChatMessage(
+    _typeId: string,
+    resourceId: string,
+    accountId: string,
+    messages: ChatMessage[],
+  ) {
+    return attemptStream(() =>
+      this.streamChatMessageIterable(_typeId, resourceId, accountId, messages),
+    );
+  }
+
   /**
    * `POST /audio/transcriptions` (multipart). Uses global `fetch` with a real
    * `FormData`: the host HTTP service cannot carry multipart bodies.
    */
-  async transcribeAudio(
+  transcribeAudio(
     _typeId: string,
     resourceId: string,
     accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    const model =
-      payload.modelId ||
-      resourceId.slice(`${accountId}:sambanova-model:`.length) ||
-      "Whisper-Large-v3";
-    const bytes = base64ToBytes(payload.audioBase64);
-    if (bytes.byteLength === 0) throw new Error("SambaNova plugin: empty audio clip");
-    if (bytes.byteLength > MAX_AUDIO_BYTES) {
-      throw new Error(
-        `SambaNova plugin: clip is ${formatBytes(bytes.byteLength)}, over the 25 MB limit`,
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      const model =
+        payload.modelId ||
+        resourceId.slice(`${accountId}:sambanova-model:`.length) ||
+        "Whisper-Large-v3";
+      const bytes = base64ToBytes(payload.audioBase64);
+      if (bytes.byteLength === 0) throw new Error("SambaNova plugin: empty audio clip");
+      if (bytes.byteLength > MAX_AUDIO_BYTES) {
+        throw new Error(
+          `SambaNova plugin: clip is ${formatBytes(bytes.byteLength)}, over the 25 MB limit`,
+        );
+      }
+      const form = new FormData();
+      const ext = (payload.mimeType.split("/")[1] ?? "webm").split(";")[0];
+      form.append(
+        "file",
+        new Blob([bytes], { type: payload.mimeType }),
+        payload.fileName || `clip.${ext}`,
       );
-    }
-    const form = new FormData();
-    const ext = (payload.mimeType.split("/")[1] ?? "webm").split(";")[0];
-    form.append(
-      "file",
-      new Blob([bytes], { type: payload.mimeType }),
-      payload.fileName || `clip.${ext}`,
-    );
-    form.append("model", model);
-    form.append("response_format", "json");
-    if (payload.language) form.append("language", payload.language);
-    const started = Date.now();
-    const res = await fetch(`${API_BASE}/audio/transcriptions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-      body: form,
+      form.append("model", model);
+      form.append("response_format", "json");
+      if (payload.language) form.append("language", payload.language);
+      const started = Date.now();
+      const res = await fetch(`${API_BASE}/audio/transcriptions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        body: form,
+      });
+      if (!res.ok) {
+        throw Object.assign(
+          new Error(
+            `SambaNova API error ${res.status} for /audio/transcriptions: ${await res.text()}`,
+          ),
+          { status: res.status },
+        );
+      }
+      const body = (await res.json()) as { text?: string };
+      return { text: s(body.text), summary: `${model} · ${Date.now() - started} ms` };
     });
-    if (!res.ok) {
-      throw Object.assign(
-        new Error(
-          `SambaNova API error ${res.status} for /audio/transcriptions: ${await res.text()}`,
-        ),
-        { status: res.status },
-      );
-    }
-    const body = (await res.json()) as { text?: string };
-    return { text: s(body.text), summary: `${model} · ${Date.now() - started} ms` };
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

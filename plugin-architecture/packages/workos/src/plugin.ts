@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { WorkosClient } from "./client.js";
 import { OrganizationResourceType } from "./resources/organization.js";
@@ -36,16 +41,14 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   </g>
 </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "workos",
-  version: "0.1.0",
+  egressHosts: ["api.workos.com"],
   displayName: "WorkOS",
   description:
     "Enterprise auth infrastructure. Manage organizations, users, memberships and invitations, watch SSO connections and directories, define roles, issue API keys, toggle feature flags and wire up webhooks.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -59,9 +62,11 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   rateLimit: { capacity: 30, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   OrganizationResourceType,
@@ -82,8 +87,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   GroupResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new WorkosClient(credentials, services),
-};
+  testCredentials: { apiKey: "sk_test_workos_key" },
+});

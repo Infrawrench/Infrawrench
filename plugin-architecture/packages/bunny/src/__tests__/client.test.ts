@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { chartPoints } from "../api.js";
@@ -27,7 +28,7 @@ function client(route: (u: URL, r: Req) => { status?: number; body?: unknown }) 
       };
     },
   };
-  return { c: new BunnyClient({ apiKey: "KEY" }, { http } as never), calls };
+  return { c: hostClient(new BunnyClient({ apiKey: "KEY" }, { http } as never)), calls };
 }
 
 const PZ = {

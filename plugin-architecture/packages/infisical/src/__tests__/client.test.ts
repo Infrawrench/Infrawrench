@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { InfisicalClient } from "../client.js";
@@ -58,15 +59,17 @@ const PROJECT = {
 };
 
 function client(handler: (call: Call) => { status?: number; body: unknown }) {
-  return new InfisicalClient(
-    { siteUrl: "eu.infisical.com/", clientId: "cid", clientSecret: "csecret" },
-    services((call) => {
-      if (call.url.endsWith("/api/v1/auth/universal-auth/login")) return { body: LOGIN };
-      if (call.url.includes("/api/v1/projects") && !call.url.includes("/api/v1/projects/")) {
-        return { body: { projects: [PROJECT] } };
-      }
-      return handler(call);
-    }),
+  return hostClient(
+    new InfisicalClient(
+      { siteUrl: "eu.infisical.com/", clientId: "cid", clientSecret: "csecret" },
+      services((call) => {
+        if (call.url.endsWith("/api/v1/auth/universal-auth/login")) return { body: LOGIN };
+        if (call.url.includes("/api/v1/projects") && !call.url.includes("/api/v1/projects/")) {
+          return { body: { projects: [PROJECT] } };
+        }
+        return handler(call);
+      }),
+    ),
   );
 }
 
@@ -79,8 +82,8 @@ afterEach(() => {
 
 describe("credentials", () => {
   it("requires a client id and secret", () => {
-    expect(() => new InfisicalClient({ clientSecret: "x" })).toThrow(/clientId/);
-    expect(() => new InfisicalClient({ clientId: "x" })).toThrow(/clientSecret/);
+    expect(() => hostClient(new InfisicalClient({ clientSecret: "x" }))).toThrow(/clientId/);
+    expect(() => hostClient(new InfisicalClient({ clientId: "x" }))).toThrow(/clientSecret/);
   });
 
   it("normalizes the instance URL", () => {

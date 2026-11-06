@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { RedisCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -6,16 +7,15 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { redisCloudTerraformExport } from "./terraform.js";
 import { redisCloudRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "redis-cloud",
-  version: "0.1.0",
+  // REST API, plus the subscriptions' Prometheus endpoints on the internal network.
+  egressHosts: ["api.redislabs.com", "*.rlrcp.com"],
   displayName: "Redis Cloud",
   description:
     "Manage Redis Cloud Pro and Essentials subscriptions, databases, ACLs, users, VPC peering and private connectivity. Billed cost by subscription and database, plus a Redis console and key browser.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accountKey",
       label: "Account Key",
@@ -40,7 +40,7 @@ const manifest: PluginManifest = {
         url: "https://redis.io/docs/latest/operate/rc/api/get-started/manage-api-keys/",
       },
     },
-  ],
+  ]),
   costs: {
     // FOCUS cost report: service = tier (Pro / Essentials, network and
     // minimum-charge lines apart), region, resource = the database or
@@ -54,13 +54,16 @@ const manifest: PluginManifest = {
   statusFeed,
   // Documented limit: 400 requests per minute per key.
   rateLimit: { capacity: 20, refillPerSecond: 6 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new RedisCloudClient(credentials, services),
+  testCredentials: { accountKey: "test-account-key", userKey: "test-user-key" },
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: redisCloudTerraformExport,
   remediationCommands: redisCloudRemediationCommands,
-};
+});

@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DetailViewSchema,
@@ -115,7 +118,7 @@ export class S3CompatibleClient implements PluginClient {
   private readonly admin: MinioAdmin;
   private serverHeader: Promise<string> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const endpoint = normalizeEndpoint(credentials["endpoint"] ?? "");
     const accessKey = (credentials["accessKey"] ?? "").trim();
     const secretKey = (credentials["secretKey"] ?? "").trim();
@@ -228,55 +231,57 @@ export class S3CompatibleClient implements PluginClient {
     return instance(accountId, "bucket", b.name, b.name, fields);
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "endpoint":
-        return [await this.endpointInstance(accountId)];
-      case "minio-server": {
-        const { info } = await this.minio();
-        return (info?.servers ?? []).map((s) => serverInstance(accountId, this.host(), s));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "endpoint":
+          return [await this.endpointInstance(accountId)];
+        case "minio-server": {
+          const { info } = await this.minio();
+          return (info?.servers ?? []).map((s) => serverInstance(accountId, this.host(), s));
+        }
+        case "bucket": {
+          const [buckets, m] = await Promise.all([this.s3.listBuckets(), this.minio()]);
+          return this.mapLimit(buckets, (b) => this.bucketInstance(accountId, b, m.usage));
+        }
+        case "lifecycle-rule": {
+          const buckets = await this.s3.listBuckets();
+          const all = await this.mapLimit(buckets, async (b) => {
+            try {
+              return (await this.s3.getLifecycle(b.name)).map((r) =>
+                lifecycleInstance(accountId, b.name, r),
+              );
+            } catch (err) {
+              if (
+                unsupported(err) ||
+                (err instanceof S3Error && err.code === "NoSuchLifecycleConfiguration")
+              )
+                return [];
+              throw err;
+            }
+          });
+          return all.flat();
+        }
+        case "cors-rule": {
+          const buckets = await this.s3.listBuckets();
+          const all = await this.mapLimit(buckets, async (b) => {
+            try {
+              return (await this.s3.getCors(b.name)).map((r) => corsInstance(accountId, b.name, r));
+            } catch (err) {
+              if (
+                unsupported(err) ||
+                (err instanceof S3Error && err.code === "NoSuchCORSConfiguration")
+              )
+                return [];
+              throw err;
+            }
+          });
+          return all.flat();
+        }
+        default:
+          return [];
       }
-      case "bucket": {
-        const [buckets, m] = await Promise.all([this.s3.listBuckets(), this.minio()]);
-        return this.mapLimit(buckets, (b) => this.bucketInstance(accountId, b, m.usage));
-      }
-      case "lifecycle-rule": {
-        const buckets = await this.s3.listBuckets();
-        const all = await this.mapLimit(buckets, async (b) => {
-          try {
-            return (await this.s3.getLifecycle(b.name)).map((r) =>
-              lifecycleInstance(accountId, b.name, r),
-            );
-          } catch (err) {
-            if (
-              unsupported(err) ||
-              (err instanceof S3Error && err.code === "NoSuchLifecycleConfiguration")
-            )
-              return [];
-            throw err;
-          }
-        });
-        return all.flat();
-      }
-      case "cors-rule": {
-        const buckets = await this.s3.listBuckets();
-        const all = await this.mapLimit(buckets, async (b) => {
-          try {
-            return (await this.s3.getCors(b.name)).map((r) => corsInstance(accountId, b.name, r));
-          } catch (err) {
-            if (
-              unsupported(err) ||
-              (err instanceof S3Error && err.code === "NoSuchCORSConfiguration")
-            )
-              return [];
-            throw err;
-          }
-        });
-        return all.flat();
-      }
-      default:
-        return [];
-    }
+    });
   }
 
   private async endpointInstance(accountId: string): Promise<ResourceInstance> {
@@ -320,39 +325,47 @@ export class S3CompatibleClient implements PluginClient {
     return instance(accountId, "endpoint", this.host(), this.host(), fields);
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    if (typeId === "bucket") {
-      const b = (await this.s3.listBuckets()).find((x) => x.name === externalId);
-      if (!b) throw new S3Error(404, "NoSuchBucket", `Bucket ${externalId} not found`);
-      return this.bucketInstance(accountId, b, (await this.minio()).usage);
-    }
-    const found = (await this.listResources(typeId, accountId)).find(
-      (r) => r.externalId === externalId,
-    );
-    if (!found)
-      throw new S3Error(404, "NotFound", `S3-compatible plugin: ${typeId} ${externalId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (typeId === "bucket") {
+        const b = (await this.s3.listBuckets()).find((x) => x.name === externalId);
+        if (!b) throw new S3Error(404, "NoSuchBucket", `Bucket ${externalId} not found`);
+        return this.bucketInstance(accountId, b, (await this.minio()).usage);
+      }
+      const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
+        (r) => r.externalId === externalId,
+      );
+      if (!found)
+        throw new S3Error(
+          404,
+          "NotFound",
+          `S3-compatible plugin: ${typeId} ${externalId} not found`,
+        );
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<string> {
-    const externalId = externalIdOf(resourceId);
-    if (outputKey === "endpoint") return this.cfg.endpoint;
-    if (outputKey === "region") return this.cfg.region;
-    if (typeId === "bucket") {
-      if (outputKey === "bucketName") return externalId;
-      if (outputKey === "s3Url") return this.s3.url(externalId, undefined).replace(/\/$/, "");
-    }
-    throw new Error(`S3-compatible plugin: unknown output ${outputKey} on ${typeId}`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (outputKey === "endpoint") return this.cfg.endpoint;
+      if (outputKey === "region") return this.cfg.region;
+      if (typeId === "bucket") {
+        if (outputKey === "bucketName") return externalId;
+        if (outputKey === "s3Url") return this.s3.url(externalId, undefined).replace(/\/$/, "");
+      }
+      throw new Error(`S3-compatible plugin: unknown output ${outputKey} on ${typeId}`);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -363,447 +376,478 @@ export class S3CompatibleClient implements PluginClient {
     return renderS3Sidebar(resource);
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    const checks: PreflightResult["checks"] = [];
-    let server = "";
-    try {
-      server = await this.server();
-      checks.push({ capabilityId: "resources", status: "ok" });
-    } catch (err) {
-      const s = err instanceof S3Error ? err.status : 0;
-      if (s === 401 || s === 403) {
-        checks.push({
-          capabilityId: "resources",
-          status: "missing",
-          missingPermissions: [{ id: "s3:ListAllMyBuckets", label: "List buckets" }],
-          message: err instanceof Error ? err.message : "",
-        });
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      const checks: PreflightResult["checks"] = [];
+      let server = "";
+      try {
+        server = await this.server();
+        checks.push({ capabilityId: "resources", status: "ok" });
+      } catch (err) {
+        const s = err instanceof S3Error ? err.status : 0;
+        if (s === 401 || s === 403) {
+          checks.push({
+            capabilityId: "resources",
+            status: "missing",
+            missingPermissions: [{ id: "s3:ListAllMyBuckets", label: "List buckets" }],
+            message: err instanceof Error ? err.message : "",
+          });
+        } else {
+          checks.push({
+            capabilityId: "resources",
+            status: "unknown",
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      if (server === "MinIO") {
+        try {
+          await this.admin.info();
+          checks.push({ capabilityId: "minio-admin", status: "ok" });
+        } catch (err) {
+          checks.push({
+            capabilityId: "minio-admin",
+            status: "missing",
+            missingPermissions: [{ id: "admin:ServerInfo", label: "Read server info" }],
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
       } else {
         checks.push({
-          capabilityId: "resources",
-          status: "unknown",
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-    if (server === "MinIO") {
-      try {
-        await this.admin.info();
-        checks.push({ capabilityId: "minio-admin", status: "ok" });
-      } catch (err) {
-        checks.push({
           capabilityId: "minio-admin",
-          status: "missing",
-          missingPermissions: [{ id: "admin:ServerInfo", label: "Read server info" }],
-          message: err instanceof Error ? err.message : String(err),
+          status: "unknown",
+          message: `Not a MinIO server (${server || "unknown"}).`,
         });
       }
-    } else {
-      checks.push({
-        capabilityId: "minio-admin",
-        status: "unknown",
-        message: `Not a MinIO server (${server || "unknown"}).`,
-      });
-    }
-    return { checks, ...(server ? { identity: `${server} at ${this.cfg.endpoint}` } : {}) };
+      return { checks, ...(server ? { identity: `${server} at ${this.cfg.endpoint}` } : {}) };
+    });
   }
 
   // ── Create / update / delete ────────────────────────────────────────────
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    const bucketPicker = async () =>
-      parentResourceId
-        ? []
-        : [
-            {
-              key: "bucket",
-              label: "Bucket",
-              kind: "select" as const,
-              required: true,
-              options: (await this.s3.listBuckets()).map((b) => ({ id: b.name, label: b.name })),
-            },
-          ];
-    switch (typeId) {
-      case "bucket":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Bucket name",
-              kind: "text",
-              required: true,
-              placeholder: "my-bucket",
-            },
-            {
-              key: "versioning",
-              label: "Versioning",
-              kind: "select",
-              required: true,
-              defaultValue: "off",
-              options: [
-                { id: "off", label: "Off" },
-                { id: "Enabled", label: "Enabled" },
-              ],
-            },
-            {
-              key: "objectLock",
-              label: "Object Lock",
-              kind: "select",
-              required: true,
-              defaultValue: "off",
-              options: [
-                { id: "off", label: "Off" },
-                {
-                  id: "on",
-                  label: "Enabled",
-                  description: "Turns versioning on; cannot be turned off",
-                },
-              ],
-            },
-            {
-              key: "retentionMode",
-              label: "Default retention",
-              kind: "select",
-              required: false,
-              defaultValue: "none",
-              showWhen: { fieldKey: "objectLock", fieldValue: "on" },
-              options: [
-                { id: "none", label: "None" },
-                { id: "GOVERNANCE", label: "Governance" },
-                { id: "COMPLIANCE", label: "Compliance" },
-              ],
-            },
-            {
-              key: "retentionDays",
-              label: "Retention period (days)",
-              kind: "number",
-              required: false,
-              defaultValue: "30",
-              minValue: 1,
-              showWhen: {
-                allOf: [
-                  { fieldKey: "objectLock", fieldValue: "on" },
-                  { fieldKey: "retentionMode", fieldValuesNot: ["none"] },
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const bucketPicker = async () =>
+        parentResourceId
+          ? []
+          : [
+              {
+                key: "bucket",
+                label: "Bucket",
+                kind: "select" as const,
+                required: true,
+                options: (await this.s3.listBuckets()).map((b) => ({ id: b.name, label: b.name })),
+              },
+            ];
+      switch (typeId) {
+        case "bucket":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Bucket name",
+                kind: "text",
+                required: true,
+                placeholder: "my-bucket",
+              },
+              {
+                key: "versioning",
+                label: "Versioning",
+                kind: "select",
+                required: true,
+                defaultValue: "off",
+                options: [
+                  { id: "off", label: "Off" },
+                  { id: "Enabled", label: "Enabled" },
                 ],
               },
-            },
-          ],
-        };
-      case "lifecycle-rule":
-        return {
-          fields: [
-            ...(await bucketPicker()),
-            {
-              key: "ruleId",
-              label: "Rule ID",
-              kind: "text",
-              required: true,
-              placeholder: "expire-logs",
-            },
-            { key: "prefix", label: "Prefix", kind: "text", required: false, placeholder: "logs/" },
-            {
-              key: "expirationDays",
-              label: "Expire objects after (days)",
-              kind: "number",
-              required: false,
-              minValue: 1,
-            },
-            {
-              key: "noncurrentDays",
-              label: "Expire previous versions after (days)",
-              kind: "number",
-              required: false,
-              minValue: 1,
-            },
-            {
-              key: "abortMultipartDays",
-              label: "Abort incomplete uploads after (days)",
-              kind: "number",
-              required: false,
-              minValue: 1,
-            },
-          ],
-        };
-      case "cors-rule":
-        return {
-          fields: [
-            ...(await bucketPicker()),
-            {
-              key: "ruleId",
-              label: "Rule ID",
-              kind: "text",
-              required: true,
-              placeholder: "allow-app",
-            },
-            {
-              key: "allowedOrigins",
-              label: "Allowed origins",
-              kind: "string-list",
-              required: true,
-              placeholder: "https://app.example.com",
-            },
-            {
-              key: "allowedMethods",
-              label: "Allowed methods",
-              kind: "policy-picker",
-              required: true,
-              policies: ["GET", "PUT", "POST", "DELETE", "HEAD"].map((m) => ({ id: m, label: m })),
-            },
-            {
-              key: "allowedHeaders",
-              label: "Allowed headers",
-              kind: "string-list",
-              required: false,
-            },
-            {
-              key: "exposeHeaders",
-              label: "Exposed headers",
-              kind: "string-list",
-              required: false,
-            },
-            {
-              key: "maxAgeSeconds",
-              label: "Preflight cache (seconds)",
-              kind: "number",
-              required: false,
-              defaultValue: "3600",
-              minValue: 0,
-            },
-          ],
-        };
-      default:
-        return { fields: [] };
-    }
+              {
+                key: "objectLock",
+                label: "Object Lock",
+                kind: "select",
+                required: true,
+                defaultValue: "off",
+                options: [
+                  { id: "off", label: "Off" },
+                  {
+                    id: "on",
+                    label: "Enabled",
+                    description: "Turns versioning on; cannot be turned off",
+                  },
+                ],
+              },
+              {
+                key: "retentionMode",
+                label: "Default retention",
+                kind: "select",
+                required: false,
+                defaultValue: "none",
+                showWhen: { fieldKey: "objectLock", fieldValue: "on" },
+                options: [
+                  { id: "none", label: "None" },
+                  { id: "GOVERNANCE", label: "Governance" },
+                  { id: "COMPLIANCE", label: "Compliance" },
+                ],
+              },
+              {
+                key: "retentionDays",
+                label: "Retention period (days)",
+                kind: "number",
+                required: false,
+                defaultValue: "30",
+                minValue: 1,
+                showWhen: {
+                  allOf: [
+                    { fieldKey: "objectLock", fieldValue: "on" },
+                    { fieldKey: "retentionMode", fieldValuesNot: ["none"] },
+                  ],
+                },
+              },
+            ],
+          };
+        case "lifecycle-rule":
+          return {
+            fields: [
+              ...(await bucketPicker()),
+              {
+                key: "ruleId",
+                label: "Rule ID",
+                kind: "text",
+                required: true,
+                placeholder: "expire-logs",
+              },
+              {
+                key: "prefix",
+                label: "Prefix",
+                kind: "text",
+                required: false,
+                placeholder: "logs/",
+              },
+              {
+                key: "expirationDays",
+                label: "Expire objects after (days)",
+                kind: "number",
+                required: false,
+                minValue: 1,
+              },
+              {
+                key: "noncurrentDays",
+                label: "Expire previous versions after (days)",
+                kind: "number",
+                required: false,
+                minValue: 1,
+              },
+              {
+                key: "abortMultipartDays",
+                label: "Abort incomplete uploads after (days)",
+                kind: "number",
+                required: false,
+                minValue: 1,
+              },
+            ],
+          };
+        case "cors-rule":
+          return {
+            fields: [
+              ...(await bucketPicker()),
+              {
+                key: "ruleId",
+                label: "Rule ID",
+                kind: "text",
+                required: true,
+                placeholder: "allow-app",
+              },
+              {
+                key: "allowedOrigins",
+                label: "Allowed origins",
+                kind: "string-list",
+                required: true,
+                placeholder: "https://app.example.com",
+              },
+              {
+                key: "allowedMethods",
+                label: "Allowed methods",
+                kind: "policy-picker",
+                required: true,
+                policies: ["GET", "PUT", "POST", "DELETE", "HEAD"].map((m) => ({
+                  id: m,
+                  label: m,
+                })),
+              },
+              {
+                key: "allowedHeaders",
+                label: "Allowed headers",
+                kind: "string-list",
+                required: false,
+              },
+              {
+                key: "exposeHeaders",
+                label: "Exposed headers",
+                kind: "string-list",
+                required: false,
+              },
+              {
+                key: "maxAgeSeconds",
+                label: "Preflight cache (seconds)",
+                kind: "number",
+                required: false,
+                defaultValue: "3600",
+                minValue: 0,
+              },
+            ],
+          };
+        default:
+          return { fields: [] };
+      }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    const parentBucket = parentResourceId ? externalIdOf(parentResourceId) : "";
-    switch (typeId) {
-      case "bucket": {
-        const name = (fields["name"] ?? "").trim();
-        const invalid = validateBucketName(name);
-        if (invalid) throw new Error(invalid);
-        const lock = fields["objectLock"] === "on";
-        await this.s3.createBucket(name, { region: this.cfg.region, objectLock: lock });
-        if (!lock && fields["versioning"] === "Enabled")
-          await this.s3.putVersioning(name, "Enabled");
-        const mode = fields["retentionMode"];
-        const d = days(fields["retentionDays"]);
-        if (lock && mode && mode !== "none" && d) await this.s3.putObjectLock(name, mode, d);
-        return this.bucketInstance(
-          accountId,
-          { name, creationDate: new Date().toISOString() },
-          undefined,
-        );
-      }
-      case "lifecycle-rule": {
-        const bucket = fields["bucket"] || parentBucket;
-        const rule = lifecycleFromFields(fields);
-        const rules = await this.s3.getLifecycle(bucket);
-        if (rules.some((r) => r.id === rule.id))
-          throw new Error(`A lifecycle rule ${rule.id} already exists on ${bucket}.`);
-        await this.s3.putLifecycle(bucket, [...rules, rule]);
-        return lifecycleInstance(accountId, bucket, rule);
-      }
-      case "cors-rule": {
-        const bucket = fields["bucket"] || parentBucket;
-        const rule = corsFromFields(fields);
-        let rules: S3CorsRule[];
-        try {
-          rules = await this.s3.getCors(bucket);
-        } catch (err) {
-          if (unsupported(err))
-            throw new Error("This server does not support bucket CORS configuration.");
-          throw err;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const parentBucket = parentResourceId ? externalIdOf(parentResourceId) : "";
+      switch (typeId) {
+        case "bucket": {
+          const name = (fields["name"] ?? "").trim();
+          const invalid = validateBucketName(name);
+          if (invalid) throw new Error(invalid);
+          const lock = fields["objectLock"] === "on";
+          await this.s3.createBucket(name, { region: this.cfg.region, objectLock: lock });
+          if (!lock && fields["versioning"] === "Enabled")
+            await this.s3.putVersioning(name, "Enabled");
+          const mode = fields["retentionMode"];
+          const d = days(fields["retentionDays"]);
+          if (lock && mode && mode !== "none" && d) await this.s3.putObjectLock(name, mode, d);
+          return this.bucketInstance(
+            accountId,
+            { name, creationDate: new Date().toISOString() },
+            undefined,
+          );
         }
-        if (rules.some((r) => r.id === rule.id))
-          throw new Error(`A CORS rule ${rule.id} already exists on ${bucket}.`);
-        await this.s3.putCors(bucket, [...rules, rule]);
-        return corsInstance(accountId, bucket, rule);
+        case "lifecycle-rule": {
+          const bucket = fields["bucket"] || parentBucket;
+          const rule = lifecycleFromFields(fields);
+          const rules = await this.s3.getLifecycle(bucket);
+          if (rules.some((r) => r.id === rule.id))
+            throw new Error(`A lifecycle rule ${rule.id} already exists on ${bucket}.`);
+          await this.s3.putLifecycle(bucket, [...rules, rule]);
+          return lifecycleInstance(accountId, bucket, rule);
+        }
+        case "cors-rule": {
+          const bucket = fields["bucket"] || parentBucket;
+          const rule = corsFromFields(fields);
+          let rules: S3CorsRule[];
+          try {
+            rules = await this.s3.getCors(bucket);
+          } catch (err) {
+            if (unsupported(err))
+              throw new Error("This server does not support bucket CORS configuration.");
+            throw err;
+          }
+          if (rules.some((r) => r.id === rule.id))
+            throw new Error(`A CORS rule ${rule.id} already exists on ${bucket}.`);
+          await this.s3.putCors(bucket, [...rules, rule]);
+          return corsInstance(accountId, bucket, rule);
+        }
+        default:
+          throw new Error(`S3-compatible plugin: cannot create ${typeId}`);
       }
-      default:
-        throw new Error(`S3-compatible plugin: cannot create ${typeId}`);
-    }
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    switch (typeId) {
-      case "bucket": {
-        if (fields["versioning"] === "Enabled" || fields["versioning"] === "Suspended") {
-          await this.s3.putVersioning(externalId, fields["versioning"]);
-        } else if (fields["versioning"] === "Unversioned") {
-          throw new Error("Versioning cannot be turned off once enabled; suspend it instead.");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      switch (typeId) {
+        case "bucket": {
+          if (fields["versioning"] === "Enabled" || fields["versioning"] === "Suspended") {
+            await this.s3.putVersioning(externalId, fields["versioning"]);
+          } else if (fields["versioning"] === "Unversioned") {
+            throw new Error("Versioning cannot be turned off once enabled; suspend it instead.");
+          }
+          if (fields["retentionMode"] !== undefined || fields["retentionDays"] !== undefined) {
+            const lock = await this.s3.getObjectLock(externalId);
+            if (!lock.enabled)
+              throw new Error("Default retention needs a bucket created with Object Lock.");
+            const mode = fields["retentionMode"] ?? lock.mode ?? "none";
+            const d =
+              days(fields["retentionDays"]) ??
+              lock.days ??
+              (lock.years ? lock.years * 365 : undefined);
+            await this.s3.putObjectLock(
+              externalId,
+              mode === "none" ? undefined : mode,
+              mode === "none" ? undefined : (d ?? 1),
+            );
+          }
+          if (fields["tags"] !== undefined)
+            await this.s3.putTags(externalId, parseTagString(fields["tags"]));
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        if (fields["retentionMode"] !== undefined || fields["retentionDays"] !== undefined) {
-          const lock = await this.s3.getObjectLock(externalId);
-          if (!lock.enabled)
-            throw new Error("Default retention needs a bucket created with Object Lock.");
-          const mode = fields["retentionMode"] ?? lock.mode ?? "none";
-          const d =
-            days(fields["retentionDays"]) ??
-            lock.days ??
-            (lock.years ? lock.years * 365 : undefined);
-          await this.s3.putObjectLock(
-            externalId,
-            mode === "none" ? undefined : mode,
-            mode === "none" ? undefined : (d ?? 1),
+        case "lifecycle-rule": {
+          const { parent: bucket, key } = splitChild(externalId);
+          const rules = await this.s3.getLifecycle(bucket);
+          const i = rules.findIndex((r) => r.id === key);
+          if (i < 0) throw new S3Error(404, "NoSuchRule", "That lifecycle rule no longer exists.");
+          const cur = rules[i]!;
+          const next = lifecycleFromFields({
+            ruleId: cur.id,
+            prefix: cur.prefix,
+            enabled: String(cur.enabled),
+            expirationDays: cur.expirationDays?.toString() ?? "",
+            noncurrentDays: cur.noncurrentDays?.toString() ?? "",
+            abortMultipartDays: cur.abortMultipartDays?.toString() ?? "",
+            ...fields,
+          });
+          if (cur.expiredDeleteMarker && !next.expirationDays) next.expiredDeleteMarker = true;
+          await this.s3.putLifecycle(
+            bucket,
+            rules.map((r, j) => (j === i ? next : r)),
           );
+          return lifecycleInstance(accountId, bucket, next);
         }
-        if (fields["tags"] !== undefined)
-          await this.s3.putTags(externalId, parseTagString(fields["tags"]));
-        return this.getResource(typeId, resourceId, accountId);
+        case "cors-rule": {
+          const { parent: bucket, key } = splitChild(externalId);
+          const rules = await this.s3.getCors(bucket);
+          const i = rules.findIndex((r) => r.id === key);
+          if (i < 0) throw new S3Error(404, "NoSuchRule", "That CORS rule no longer exists.");
+          const cur = rules[i]!;
+          const next = corsFromFields({
+            ruleId: cur.id,
+            allowedOrigins: cur.allowedOrigins.join(","),
+            allowedMethods: cur.allowedMethods.join(","),
+            allowedHeaders: cur.allowedHeaders.join(","),
+            exposeHeaders: cur.exposeHeaders.join(","),
+            maxAgeSeconds: cur.maxAgeSeconds?.toString() ?? "",
+            ...fields,
+          });
+          await this.s3.putCors(
+            bucket,
+            rules.map((r, j) => (j === i ? next : r)),
+          );
+          return corsInstance(accountId, bucket, next);
+        }
+        default:
+          throw new Error(`S3-compatible plugin: ${typeId} cannot be edited`);
       }
-      case "lifecycle-rule": {
-        const { parent: bucket, key } = splitChild(externalId);
-        const rules = await this.s3.getLifecycle(bucket);
-        const i = rules.findIndex((r) => r.id === key);
-        if (i < 0) throw new S3Error(404, "NoSuchRule", "That lifecycle rule no longer exists.");
-        const cur = rules[i]!;
-        const next = lifecycleFromFields({
-          ruleId: cur.id,
-          prefix: cur.prefix,
-          enabled: String(cur.enabled),
-          expirationDays: cur.expirationDays?.toString() ?? "",
-          noncurrentDays: cur.noncurrentDays?.toString() ?? "",
-          abortMultipartDays: cur.abortMultipartDays?.toString() ?? "",
-          ...fields,
-        });
-        if (cur.expiredDeleteMarker && !next.expirationDays) next.expiredDeleteMarker = true;
-        await this.s3.putLifecycle(
-          bucket,
-          rules.map((r, j) => (j === i ? next : r)),
-        );
-        return lifecycleInstance(accountId, bucket, next);
-      }
-      case "cors-rule": {
-        const { parent: bucket, key } = splitChild(externalId);
-        const rules = await this.s3.getCors(bucket);
-        const i = rules.findIndex((r) => r.id === key);
-        if (i < 0) throw new S3Error(404, "NoSuchRule", "That CORS rule no longer exists.");
-        const cur = rules[i]!;
-        const next = corsFromFields({
-          ruleId: cur.id,
-          allowedOrigins: cur.allowedOrigins.join(","),
-          allowedMethods: cur.allowedMethods.join(","),
-          allowedHeaders: cur.allowedHeaders.join(","),
-          exposeHeaders: cur.exposeHeaders.join(","),
-          maxAgeSeconds: cur.maxAgeSeconds?.toString() ?? "",
-          ...fields,
-        });
-        await this.s3.putCors(
-          bucket,
-          rules.map((r, j) => (j === i ? next : r)),
-        );
-        return corsInstance(accountId, bucket, next);
-      }
-      default:
-        throw new Error(`S3-compatible plugin: ${typeId} cannot be edited`);
-    }
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    switch (typeId) {
-      case "bucket":
-        await this.s3.deleteBucket(externalId);
-        return;
-      case "lifecycle-rule": {
-        const { parent: bucket, key } = splitChild(externalId);
-        await this.s3.putLifecycle(
-          bucket,
-          (await this.s3.getLifecycle(bucket)).filter((r) => r.id !== key),
-        );
-        return;
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      switch (typeId) {
+        case "bucket":
+          await this.s3.deleteBucket(externalId);
+          return;
+        case "lifecycle-rule": {
+          const { parent: bucket, key } = splitChild(externalId);
+          await this.s3.putLifecycle(
+            bucket,
+            (await this.s3.getLifecycle(bucket)).filter((r) => r.id !== key),
+          );
+          return;
+        }
+        case "cors-rule": {
+          const { parent: bucket, key } = splitChild(externalId);
+          await this.s3.putCors(
+            bucket,
+            (await this.s3.getCors(bucket)).filter((r) => r.id !== key),
+          );
+          return;
+        }
+        default:
+          throw new Error(`S3-compatible plugin: ${typeId} cannot be deleted`);
       }
-      case "cors-rule": {
-        const { parent: bucket, key } = splitChild(externalId);
-        await this.s3.putCors(
-          bucket,
-          (await this.s3.getCors(bucket)).filter((r) => r.id !== key),
-        );
-        return;
-      }
-      default:
-        throw new Error(`S3-compatible plugin: ${typeId} cannot be deleted`);
-    }
+    });
   }
 
   // ── Bucket policy (the host's policy editor) ────────────────────────────
 
-  async getManifest(resourceId: string, _accountId: string): Promise<string> {
-    const raw = await this.s3.getPolicy(externalIdOf(resourceId));
-    if (!raw) return "";
-    try {
-      return JSON.stringify(JSON.parse(raw), null, 2);
-    } catch {
-      return raw;
-    }
+  getManifest(resourceId: string, _accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      const raw = await this.s3.getPolicy(externalIdOf(resourceId));
+      if (!raw) return "";
+      try {
+        return JSON.stringify(JSON.parse(raw), null, 2);
+      } catch {
+        return raw;
+      }
+    });
   }
 
-  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
-    await this.s3.putPolicy(externalIdOf(resourceId), manifest);
+  applyManifest(resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
+    return attempt(async () => {
+      await this.s3.putPolicy(externalIdOf(resourceId), manifest);
+    });
   }
 
   // ── Storage browser ─────────────────────────────────────────────────────
 
-  async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    const page = await this.s3.listObjects(bucket, prefix);
-    return [
-      ...page.folders.map((key) => ({
-        key,
-        name: key.slice(prefix.length).replace(/\/$/, ""),
-        size: 0,
-        lastModified: "",
-        isDirectory: true,
-      })),
-      ...page.objects
-        .filter((o) => o.key !== prefix)
-        .map((o) => ({
-          key: o.key,
-          name: o.key.slice(prefix.length),
-          size: o.size,
-          lastModified: o.lastModified,
-          isDirectory: false,
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      const page = await this.s3.listObjects(bucket, prefix);
+      return [
+        ...page.folders.map((key) => ({
+          key,
+          name: key.slice(prefix.length).replace(/\/$/, ""),
+          size: 0,
+          lastModified: "",
+          isDirectory: true,
         })),
-    ];
+        ...page.objects
+          .filter((o) => o.key !== prefix)
+          .map((o) => ({
+            key: o.key,
+            name: o.key.slice(prefix.length),
+            size: o.size,
+            lastModified: o.lastModified,
+            isDirectory: false,
+          })),
+      ];
+    });
   }
 
-  async uploadStorageObject(
+  uploadStorageObject(
     bucket: string,
     key: string,
     file: File,
     onProgress?: (pct: number) => void,
-  ): Promise<void> {
-    await this.s3.putObject(bucket, key, new Uint8Array(await file.arrayBuffer()), file.type);
-    onProgress?.(100);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      await this.s3.putObject(bucket, key, new Uint8Array(await file.arrayBuffer()), file.type);
+      onProgress?.(100);
+    });
   }
 
-  async makeStorageFolder(bucket: string, key: string): Promise<void> {
-    await this.s3.putObject(
-      bucket,
-      key.endsWith("/") ? key : `${key}/`,
-      new Uint8Array(0),
-      "application/x-directory",
-    );
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      await this.s3.putObject(
+        bucket,
+        key.endsWith("/") ? key : `${key}/`,
+        new Uint8Array(0),
+        "application/x-directory",
+      );
+    });
   }
 
-  async deleteStorageObject(bucket: string, key: string): Promise<void> {
-    if (!key.endsWith("/")) return this.s3.deleteObject(bucket, key);
-    const all = await this.s3.listObjects(bucket, key, "", 1000);
-    const keys = all.objects.map((o) => o.key);
-    if (!keys.includes(key)) keys.push(key);
-    await this.s3.deleteObjects(bucket, keys);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (!key.endsWith("/")) return this.s3.deleteObject(bucket, key);
+      const all = await this.s3.listObjects(bucket, key, "", 1000);
+      const keys = all.objects.map((o) => o.key);
+      if (!keys.includes(key)) keys.push(key);
+      await this.s3.deleteObjects(bucket, keys);
+    });
   }
 
   // ── Metrics (MinIO only) ────────────────────────────────────────────────
@@ -813,68 +857,70 @@ export class S3CompatibleClient implements PluginClient {
    * history, so each fetch is one point at "now"; the host's metric store
    * builds the series over successive polls.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
-  ): Promise<MetricSeries[]> {
-    const { info, usage } = await this.minio();
-    if (!info && !usage) return [];
-    const now = Date.now();
-    const point = (label: string, unit: string, value: number | undefined): MetricSeries[] =>
-      value === undefined ? [] : [{ label, unit, points: [{ timestamp: now, value }] }];
-    const gib = (b: number | undefined) =>
-      b === undefined ? undefined : Math.round((b / 1024 ** 3) * 1000) / 1000;
-    if (resourceTypeId === "endpoint") {
-      const servers = info?.servers ?? [];
-      const drives = servers.flatMap((s) => s.drives ?? []);
-      return [
-        ...point("Used", "GiB", gib(usage?.objectsTotalSize ?? info?.usage?.size)),
-        ...point("Free capacity", "GiB", gib(usage?.freeCapacity)),
-        ...point("Objects", "objects", usage?.objectsCount ?? info?.objects?.count),
-        ...point("Buckets", "buckets", usage?.bucketsCount ?? info?.buckets?.count),
-        ...point(
-          "Servers online",
-          "servers",
-          servers.filter((s) => (s.state ?? "").toLowerCase() === "online").length,
-        ),
-        ...point(
-          "Drives offline",
-          "drives",
-          drives.filter((d) => (d.state ?? "").toLowerCase() !== "ok").length,
-        ),
-      ];
-    }
-    if (resourceTypeId === "minio-server") {
-      const s = (info?.servers ?? []).find(
-        (x) => x.endpoint === externalIdOf(resourceId).split("/").slice(1).join("/"),
-      );
-      if (!s) return [];
-      const drives = s.drives ?? [];
-      return [
-        ...point("Drive used", "GiB", gib(drives.reduce((a, d) => a + (d.usedspace ?? 0), 0))),
-        ...point(
-          "Drives online",
-          "drives",
-          drives.filter((d) => (d.state ?? "").toLowerCase() === "ok").length,
-        ),
-        ...point(
-          "Uptime",
-          "hours",
-          s.uptime !== undefined ? Math.round(s.uptime / 36) / 100 : undefined,
-        ),
-      ];
-    }
-    if (resourceTypeId === "bucket") {
-      const u = usage?.bucketsUsageInfo?.[externalIdOf(resourceId)];
-      if (!u) return [];
-      return [
-        ...point("Size", "GiB", gib(u.size)),
-        ...point("Objects", "objects", u.objectsCount),
-        ...point("Versions", "versions", u.versionsCount),
-      ];
-    }
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const { info, usage } = await this.minio();
+      if (!info && !usage) return [];
+      const now = Date.now();
+      const point = (label: string, unit: string, value: number | undefined): MetricSeries[] =>
+        value === undefined ? [] : [{ label, unit, points: [{ timestamp: now, value }] }];
+      const gib = (b: number | undefined) =>
+        b === undefined ? undefined : Math.round((b / 1024 ** 3) * 1000) / 1000;
+      if (resourceTypeId === "endpoint") {
+        const servers = info?.servers ?? [];
+        const drives = servers.flatMap((s) => s.drives ?? []);
+        return [
+          ...point("Used", "GiB", gib(usage?.objectsTotalSize ?? info?.usage?.size)),
+          ...point("Free capacity", "GiB", gib(usage?.freeCapacity)),
+          ...point("Objects", "objects", usage?.objectsCount ?? info?.objects?.count),
+          ...point("Buckets", "buckets", usage?.bucketsCount ?? info?.buckets?.count),
+          ...point(
+            "Servers online",
+            "servers",
+            servers.filter((s) => (s.state ?? "").toLowerCase() === "online").length,
+          ),
+          ...point(
+            "Drives offline",
+            "drives",
+            drives.filter((d) => (d.state ?? "").toLowerCase() !== "ok").length,
+          ),
+        ];
+      }
+      if (resourceTypeId === "minio-server") {
+        const s = (info?.servers ?? []).find(
+          (x) => x.endpoint === externalIdOf(resourceId).split("/").slice(1).join("/"),
+        );
+        if (!s) return [];
+        const drives = s.drives ?? [];
+        return [
+          ...point("Drive used", "GiB", gib(drives.reduce((a, d) => a + (d.usedspace ?? 0), 0))),
+          ...point(
+            "Drives online",
+            "drives",
+            drives.filter((d) => (d.state ?? "").toLowerCase() === "ok").length,
+          ),
+          ...point(
+            "Uptime",
+            "hours",
+            s.uptime !== undefined ? Math.round(s.uptime / 36) / 100 : undefined,
+          ),
+        ];
+      }
+      if (resourceTypeId === "bucket") {
+        const u = usage?.bucketsUsageInfo?.[externalIdOf(resourceId)];
+        if (!u) return [];
+        return [
+          ...point("Size", "GiB", gib(u.size)),
+          ...point("Objects", "objects", u.objectsCount),
+          ...point("Versions", "versions", u.versionsCount),
+        ];
+      }
+      return [];
+    });
   }
 }
 

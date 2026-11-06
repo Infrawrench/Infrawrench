@@ -1,3 +1,5 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 
@@ -91,11 +93,14 @@ const CREDS = {
 };
 
 function client(over: Record<string, string> = {}) {
-  return new ClickHouseClient({ ...CREDS, ...over });
+  return hostClient(new ClickHouseClient({ ...CREDS, ...over }));
 }
 
-function hostClient(services: HostServices, over: Record<string, string> = {}): ClickHouseClient {
-  return new ClickHouseClient({ ...CREDS, ...over }, services);
+function clientWithServices(
+  services: HostServices,
+  over: Record<string, string> = {},
+): HostedMethods<ClickHouseClient> {
+  return hostClient(new ClickHouseClient({ ...CREDS, ...over }, services));
 }
 
 const RUNNING_SERVICE = {
@@ -128,10 +133,12 @@ afterEach(() => {
 
 describe("constructor", () => {
   it("throws without API key creds", () => {
-    expect(() => new ClickHouseClient({ organizationId: "o" })).toThrow(/missing API key/);
+    expect(() => hostClient(new ClickHouseClient({ organizationId: "o" }))).toThrow(
+      /missing API key/,
+    );
   });
   it("throws without organization id", () => {
-    expect(() => new ClickHouseClient({ apiKeyId: "a", apiKeySecret: "b" })).toThrow(
+    expect(() => hostClient(new ClickHouseClient({ apiKeyId: "a", apiKeySecret: "b" }))).toThrow(
       /missing organization ID/,
     );
   });
@@ -169,7 +176,7 @@ describe("cloudApi (via listResources ch-service)", () => {
       headers: {},
       body: JSON.stringify({ result: [RUNNING_SERVICE] }),
     }));
-    const res = await hostClient({ http: { request } } as unknown as HostServices, {
+    const res = await clientWithServices({ http: { request } } as unknown as HostServices, {
       caCert: "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----",
     }).listResources("ch-service", ACCOUNT);
 
@@ -189,7 +196,7 @@ describe("cloudApi (via listResources ch-service)", () => {
   it("throws host http errors with the ClickHouse Cloud path", async () => {
     const request = vi.fn(async () => ({ status: 401, headers: {}, body: "denied" }));
     await expect(
-      hostClient({ http: { request } } as unknown as HostServices).listResources(
+      clientWithServices({ http: { request } } as unknown as HostServices).listResources(
         "ch-service",
         ACCOUNT,
       ),
@@ -777,9 +784,9 @@ describe("plugin manifest", () => {
       headers: {},
       body: JSON.stringify({ result: [RUNNING_SERVICE] }),
     }));
-    const created = plugin.createClient(CREDS, {
+    const created = hostPlugin(plugin).createClient(CREDS, {
       http: { request },
-    } as unknown as HostServices) as ClickHouseClient;
+    } as unknown as HostServices) as HostedMethods<ClickHouseClient>;
 
     await created.listResources("ch-service", ACCOUNT);
 

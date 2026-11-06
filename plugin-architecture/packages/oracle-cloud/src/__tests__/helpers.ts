@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { OracleCloudClient } from "../client.js";
 
 /**
@@ -70,15 +71,17 @@ export function makeHttp(route: (url: URL, method: string, body: unknown) => Rep
 
 export function makeClient(route: Parameters<typeof makeHttp>[0], region = "us-ashburn-1") {
   const { http, calls } = makeHttp(route);
-  const client = new OracleCloudClient(
-    {
-      tenancyOcid: TENANCY,
-      userOcid: "ocid1.user.oc1..aaaauser",
-      fingerprint: "aa:bb",
-      privateKey: TEST_KEY,
-      region,
-    },
-    { http },
+  const client = hostClient(
+    new OracleCloudClient(
+      {
+        tenancyOcid: TENANCY,
+        userOcid: "ocid1.user.oc1..aaaauser",
+        fingerprint: "aa:bb",
+        privateKey: TEST_KEY,
+        region,
+      },
+      { http },
+    ),
   );
   return { client, calls };
 }

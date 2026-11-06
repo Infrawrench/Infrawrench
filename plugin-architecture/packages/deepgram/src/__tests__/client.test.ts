@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeepgramClient } from "../client.js";
 
@@ -48,7 +49,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new DeepgramClient({ apiKey: "dg-test-key" });
+  return hostClient(new DeepgramClient({ apiKey: "dg-test-key" }));
 }
 
 // GET /v1/projects returns only project_id + name: there is no `company`.

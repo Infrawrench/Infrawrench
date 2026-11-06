@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // --- Mock the @clickhouse/client-web SDK -----------------------------------
@@ -93,7 +94,7 @@ describe("runBusinessMetricSource", () => {
       ],
       headers: { "x-clickhouse-summary": '{"read_rows":"1500","read_bytes":"2048"}' },
     });
-    const client = new ClickHouseClient(CREDS);
+    const client = hostClient(new ClickHouseClient(CREDS));
     const result = await client.runBusinessMetricSource("acct", params, range);
     expect(result.points).toEqual([
       { date: "2026-09-01", value: 10 },
@@ -122,7 +123,7 @@ describe("runBusinessMetricSource", () => {
   });
 
   it("rejects writes before contacting ClickHouse", async () => {
-    const client = new ClickHouseClient(CREDS);
+    const client = hostClient(new ClickHouseClient(CREDS));
     await expect(
       client.runBusinessMetricSource("acct", { sql: "INSERT INTO t VALUES (1)" }, range),
     ).rejects.toThrow(/SELECT or WITH/);
@@ -130,7 +131,7 @@ describe("runBusinessMetricSource", () => {
   });
 
   it("explains a missing SQL connection", async () => {
-    const client = new ClickHouseClient(BASE_CREDS);
+    const client = hostClient(new ClickHouseClient(BASE_CREDS));
     await expect(client.runBusinessMetricSource("acct", params, range)).rejects.toThrow(
       /no SQL connection/,
     );
@@ -143,7 +144,7 @@ describe("runBusinessMetricSource", () => {
         type: "TOO_MANY_ROWS_OR_BYTES",
       });
     };
-    const client = new ClickHouseClient(CREDS);
+    const client = hostClient(new ClickHouseClient(CREDS));
     await expect(client.runBusinessMetricSource("acct", params, range)).rejects.toThrow(
       /more than 2 rows/,
     );
@@ -157,7 +158,7 @@ describe("runBusinessMetricSource", () => {
         { day: "2026-09-03", value: 1 },
       ],
     });
-    const client = new ClickHouseClient(CREDS);
+    const client = hostClient(new ClickHouseClient(CREDS));
     await expect(client.runBusinessMetricSource("acct", params, range)).rejects.toThrow(
       /more than 2 rows/,
     );
@@ -171,7 +172,7 @@ describe("runBusinessMetricSource", () => {
       }
       return { rows: [{ day: "2026-09-01", value: 3 }] };
     };
-    const client = new ClickHouseClient(CREDS);
+    const client = hostClient(new ClickHouseClient(CREDS));
     const result = await client.runBusinessMetricSource("acct", params, range);
     expect(result.points).toEqual([{ date: "2026-09-01", value: 3 }]);
     expect(result.notes).toContain("Read-only through the SQL user's profile");
@@ -188,7 +189,7 @@ describe("runBusinessMetricSource", () => {
       }
       return { rows: [{ day: "2026-09-01", value: 3 }] };
     };
-    const client = new ClickHouseClient(CREDS);
+    const client = hostClient(new ClickHouseClient(CREDS));
     await client.runBusinessMetricSource("acct", params, range);
     expect(sdk.queries.at(-1)!.clickhouse_settings).toEqual({});
   });
@@ -198,7 +199,7 @@ describe("runBusinessMetricSource", () => {
       if (q.query.includes("getSetting('readonly')")) return { rows: [{ ro: "0" }] };
       throw readonlyError("Cannot modify 'max_threads' setting in readonly mode");
     };
-    const client = new ClickHouseClient(CREDS);
+    const client = hostClient(new ClickHouseClient(CREDS));
     await expect(
       client.runBusinessMetricSource(
         "acct",
@@ -222,7 +223,7 @@ describe("listBusinessMetricSourceOptions", () => {
         { name: "system", engine: "Atomic" },
       ],
     });
-    const options = await new ClickHouseClient(CREDS).listBusinessMetricSourceOptions(
+    const options = await hostClient(new ClickHouseClient(CREDS)).listBusinessMetricSourceOptions(
       "acct",
       "database",
       {},
@@ -240,7 +241,7 @@ describe("listBusinessMetricSourceOptions", () => {
   });
 
   it("returns nothing for fields without choices", async () => {
-    const client = new ClickHouseClient(CREDS);
+    const client = hostClient(new ClickHouseClient(CREDS));
     expect(await client.listBusinessMetricSourceOptions("acct", "sql", {})).toEqual([]);
   });
 });

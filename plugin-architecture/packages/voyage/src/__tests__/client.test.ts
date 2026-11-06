@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { VoyageClient, parseRerankInput } from "../client.js";
@@ -49,7 +50,7 @@ describe("Voyage", () => {
             },
           },
     );
-    const items = await new VoyageClient({ apiKey: "k" }, { http }).listResources(
+    const items = await hostClient(new VoyageClient({ apiKey: "k" }, { http })).listResources(
       "voyage-batch",
       ACCOUNT,
     );
@@ -62,13 +63,17 @@ describe("Voyage", () => {
     const { http, calls } = host(() => ({
       body: { id: "batch-9", status: "validating", model: "rerank-3" },
     }));
-    await new VoyageClient({ apiKey: "k" }, { http }).createResource("voyage-batch", ACCOUNT, {
-      inputFileId: "file-1",
-      endpoint: "/v1/rerank",
-      "model:rerank": "rerank-3",
-      "model:embedding": "voyage-4",
-      metadata: "corpus=docs\nbad line",
-    });
+    await hostClient(new VoyageClient({ apiKey: "k" }, { http })).createResource(
+      "voyage-batch",
+      ACCOUNT,
+      {
+        inputFileId: "file-1",
+        endpoint: "/v1/rerank",
+        "model:rerank": "rerank-3",
+        "model:embedding": "voyage-4",
+        metadata: "corpus=docs\nbad line",
+      },
+    );
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
       input_file_id: "file-1",
       endpoint: "/v1/rerank",
@@ -89,7 +94,7 @@ describe("Voyage", () => {
       },
     }));
     const events = await collect(
-      new VoyageClient({ apiKey: "k" }, { http }).streamChatMessage(
+      hostClient(new VoyageClient({ apiKey: "k" }, { http })).streamChatMessage(
         "voyage-model",
         `${ACCOUNT}:voyage-model:rerank-3`,
         ACCOUNT,
@@ -110,7 +115,7 @@ describe("Voyage", () => {
       body: { data: [{ embedding: [0.6, 0.8, 0, 0] }], usage: { total_tokens: 3 } },
     }));
     const events = await collect(
-      new VoyageClient({ apiKey: "k" }, { http }).streamChatMessage(
+      hostClient(new VoyageClient({ apiKey: "k" }, { http })).streamChatMessage(
         "voyage-model",
         `${ACCOUNT}:voyage-model:voyage-4`,
         ACCOUNT,
@@ -128,7 +133,7 @@ describe("Voyage", () => {
       status: 401,
       body: { detail: "Provided API key is invalid." },
     }));
-    const res = await new VoyageClient({ apiKey: "bad" }, { http }).verifyCredentials();
+    const res = await hostClient(new VoyageClient({ apiKey: "bad" }, { http })).verifyCredentials();
     expect(res.checks[0]?.status).toBe("missing");
   });
 

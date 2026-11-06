@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { clusterKeyOf } from "../api.js";
 import {
@@ -56,10 +57,8 @@ function signedIn(extra: Record<string, string> = {}) {
     ],
     metadata: {},
   });
-  const c = new WeaviateClient(
-    { cloudToken: "refresh-1", ...extra },
-    RESOURCE_TYPES,
-    http.services,
+  const c = hostClient(
+    new WeaviateClient({ cloudToken: "refresh-1", ...extra }, RESOURCE_TYPES, http.services),
   );
   return { http, c };
 }
@@ -86,7 +85,7 @@ describe("ids and credentials", () => {
   it("accepts the bare refresh token or the whole wcloud credentials file", () => {
     expect(parseRefreshToken("  refresh-1 ")).toBe("refresh-1");
     expect(parseRefreshToken(JSON.stringify({ access_token: "x", refresh_token: "r" }))).toBe("r");
-    expect(() => new WeaviateClient({}, RESOURCE_TYPES)).toThrow(/endpoint/);
+    expect(() => hostClient(new WeaviateClient({}, RESOURCE_TYPES))).toThrow(/endpoint/);
   });
 });
 
@@ -98,10 +97,12 @@ describe("many clusters per account", () => {
       http.route("GET", `${host}/v1/nodes`, nodes);
       http.route("GET", `${host}/v1/schema`, { classes: [{ class: "Article" }] });
     }
-    const c = new WeaviateClient(
-      { endpoint: A, apiKey: "key-a", clusters: `http://${SELF}` },
-      RESOURCE_TYPES,
-      http.services,
+    const c = hostClient(
+      new WeaviateClient(
+        { endpoint: A, apiKey: "key-a", clusters: `http://${SELF}` },
+        RESOURCE_TYPES,
+        http.services,
+      ),
     );
     const clusters = await c.listResources("cluster", ACCOUNT);
     expect(clusters.map((x) => [x.id, x.fields["hosting"], x.fields["status"]])).toEqual([
@@ -123,7 +124,9 @@ describe("many clusters per account", () => {
     const http = fakeHttp();
     http.route("GET", `${A}/v1/schema`, { classes: [] });
     http.route("GET", `${SELF}/v1/schema`, { classes: [] });
-    const c = new WeaviateClient({ endpoint: A, apiKey: "key-a" }, RESOURCE_TYPES, http.services);
+    const c = hostClient(
+      new WeaviateClient({ endpoint: A, apiKey: "key-a" }, RESOURCE_TYPES, http.services),
+    );
     const res = await c.createResource("cluster", ACCOUNT, {
       endpoint: `http://${SELF}/`,
       apiKey: "key-self",
@@ -136,7 +139,7 @@ describe("many clusters per account", () => {
   it("refuses a key the cluster rejects", async () => {
     const http = fakeHttp();
     http.route("GET", `${SELF}/v1/schema`, respond(401, { error: [{ message: "bad key" }] }));
-    const c = new WeaviateClient({ endpoint: A }, RESOURCE_TYPES, http.services);
+    const c = hostClient(new WeaviateClient({ endpoint: A }, RESOURCE_TYPES, http.services));
     await expect(
       c.createResource("cluster", ACCOUNT, { endpoint: `http://${SELF}`, apiKey: "nope" }),
     ).rejects.toThrow(/refused/);
@@ -250,7 +253,9 @@ describe("Weaviate Cloud organization", () => {
     });
     http.route("GET", `${host}/v1/meta`, meta);
     http.route("GET", `${host}/v1/nodes`, nodes);
-    const fresh = new WeaviateClient({ cloudToken: "refresh-1" }, RESOURCE_TYPES, http.services);
+    const fresh = hostClient(
+      new WeaviateClient({ cloudToken: "refresh-1" }, RESOURCE_TYPES, http.services),
+    );
     const [cluster] = await fresh.listResources("cluster", ACCOUNT);
     expect(http.secrets.get(`${ACCOUNT}:cluster:${host}/apiKey`)).toBe("minted");
     expect(http.secrets.get(`${ACCOUNT}:cluster:wcd-c-new/pendingKey`)).toBe("");
@@ -281,7 +286,9 @@ describe("Weaviate Cloud organization", () => {
   it("asks for a new sign-in when the refresh token is refused", async () => {
     const http = fakeHttp();
     http.route("POST", `${AUTH}/oauth2/v1/apps/token`, respond(400, { error: "invalid_grant" }));
-    const c = new WeaviateClient({ cloudToken: "stale" }, RESOURCE_TYPES, http.services);
+    const c = hostClient(
+      new WeaviateClient({ cloudToken: "stale" }, RESOURCE_TYPES, http.services),
+    );
     await expect(c.listResources("cluster", ACCOUNT)).rejects.toThrow(/wcloud auth login/);
   });
 });

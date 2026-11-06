@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { WasabiClient, corsFromFields, lifecycleFromFields } from "../client.js";
 import { costRows, usdPerGibDay } from "../usage.js";
@@ -23,7 +24,9 @@ function client(
     },
   };
   return {
-    c: new WasabiClient({ accessKey: "AK", secretKey: "SK", ...creds }, { http } as never),
+    c: hostClient(
+      new WasabiClient({ accessKey: "AK", secretKey: "SK", ...creds }, { http } as never),
+    ),
     calls,
   };
 }

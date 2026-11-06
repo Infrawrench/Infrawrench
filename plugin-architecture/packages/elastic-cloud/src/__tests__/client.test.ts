@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { ElasticCloudClient, sourcesToRules, thresholdsToAlerts } from "../client.js";
@@ -82,7 +83,7 @@ function client(
         }
       : {}),
   };
-  return { c: new ElasticCloudClient({ apiKey: "k" }, services), calls };
+  return { c: hostClient(new ElasticCloudClient({ apiKey: "k" }, services)), calls };
 }
 
 describe("ElasticCloudClient listing", () => {

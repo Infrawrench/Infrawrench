@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { WeaviateClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -12,16 +13,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
  * is nothing to parse. No `costs`, no `terraformExport`: Weaviate has no
  * billing API and no Terraform provider.
  */
-const manifest: PluginManifest = {
+export const manifest = {
   id: "weaviate-cloud",
-  version: "0.1.0",
+  // Weaviate Cloud clusters and its provisioning API (api-cloud, auth) live under weaviate.cloud, older clusters under weaviate.network; self-hosted endpoints are user-supplied
+  egressHosts: ["*.weaviate.cloud", "*.weaviate.network"],
   displayName: "Weaviate Cloud",
   description:
     "Weaviate vector database clusters on Weaviate Cloud or self-hosted, many per account. List and create Weaviate Cloud clusters through a wcloud sign-in, then manage collections with their vectorizers, properties, replication and tenancy, tenants, aliases, backups, database users with key rotation, and RBAC roles. Node health, object and shard counts as metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "cloudToken",
       label: "Weaviate Cloud Sign-in",
@@ -69,12 +69,18 @@ const manifest: PluginManifest = {
       placeholder: "https://<cluster-host> <api-key>",
     },
     caCertCredentialField,
-  ],
-};
+  ]),
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) =>
     new WeaviateClient(credentials, RESOURCE_TYPES, services),
-};
+  testCredentials: {
+    endpoint: "https://test.c0.europe-west3.gcp.weaviate.cloud",
+    apiKey: "test-weaviate-key",
+  },
+});

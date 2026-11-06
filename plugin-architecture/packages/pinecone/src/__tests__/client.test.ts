@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { PineconeApiError } from "../api.js";
 import { buildConfigurePatch, parseMetadata, parseRoles, PineconeClient } from "../client.js";
@@ -13,7 +14,9 @@ const ACCOUNT = "acct";
 
 function client(extra: Record<string, string> = {}) {
   const http = fakeHttp();
-  const c = new PineconeClient({ apiKey: "pcsk_k", ...extra }, RESOURCE_TYPES, http.services);
+  const c = hostClient(
+    new PineconeClient({ apiKey: "pcsk_k", ...extra }, RESOURCE_TYPES, http.services),
+  );
   return { http, c };
 }
 

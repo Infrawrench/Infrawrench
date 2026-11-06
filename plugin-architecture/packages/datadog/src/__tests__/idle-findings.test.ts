@@ -1,5 +1,7 @@
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
-import { pluginManifestSchema, type IdleScanRequest } from "@infrawrench/plugin-base";
+import { type IdleScanRequest } from "@infrawrench/plugin-base";
 import {
   DATADOG_IDLE_FINDINGS,
   datadogMetricListFetch,
@@ -35,16 +37,18 @@ function page(metrics: Array<[string, number]>, nextCursor: string | null = null
 
 function client(route: (url: URL) => unknown) {
   const { http, calls } = makeHttp((url) => ({ body: route(url) }));
-  const c = new DatadogClient({ apiKey: "test-api-key", appKey: "test-app-key", site: "us5" }, {
-    http,
-  } as never);
+  const c = hostClient(
+    new DatadogClient({ apiKey: "test-api-key", appKey: "test-app-key", site: "us5" }, {
+      http,
+    } as never),
+  );
   return { c, calls };
 }
 
 describe("declaration", () => {
   it("is on the manifest, validates, and judges no synced type", () => {
     expect(plugin.manifest.idleFindings).toBe(DATADOG_IDLE_FINDINGS);
-    expect(pluginManifestSchema.safeParse(plugin.manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, plugin.manifest).success).toBe(true);
     expect(DATADOG_IDLE_FINDINGS.rules[0]!.resourceTypeIds).toEqual([]);
     expect(plugin.remediationCommands).toBe(datadogRemediationCommands);
   });

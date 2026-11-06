@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { HostServices, ResourceInstance, KvHostServices } from "@infrawrench/plugin-base";
 import { RedisClient } from "../client.js";
@@ -34,13 +35,13 @@ describe("RedisClient", () => {
 
   describe("constructor", () => {
     it("throws when connectionString missing", () => {
-      expect(() => new RedisClient({})).toThrow(/missing connectionString/);
+      expect(() => hostClient(new RedisClient({}))).toThrow(/missing connectionString/);
     });
   });
 
   describe("listResources", () => {
     it("parses host/port/db from connection string", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const res = await c.listResources("redis-instance", "acct");
       expect(res[0]!.id).toBe("acct:redis-instance:db3");
       expect(res[0]!.displayName).toBe("DB 3");
@@ -49,39 +50,41 @@ describe("RedisClient", () => {
     });
 
     it("omits default port 6379 from host", async () => {
-      const c = new RedisClient({ connectionString: "redis://cache.example.com:6379/0" });
+      const c = hostClient(
+        new RedisClient({ connectionString: "redis://cache.example.com:6379/0" }),
+      );
       const res = await c.listResources("redis-instance", "acct");
       expect(res[0]!.fields["host"]).toBe("cache.example.com");
       expect(res[0]!.fields["db"]).toBe(0);
     });
 
     it("defaults db to 0 when path empty", async () => {
-      const c = new RedisClient({ connectionString: "redis://cache.example.com" });
+      const c = hostClient(new RedisClient({ connectionString: "redis://cache.example.com" }));
       const res = await c.listResources("redis-instance", "acct");
       expect(res[0]!.fields["db"]).toBe(0);
     });
 
     it("tolerates unparseable connection string", async () => {
-      const c = new RedisClient({ connectionString: "garbage" });
+      const c = hostClient(new RedisClient({ connectionString: "garbage" }));
       const res = await c.listResources("redis-instance", "acct");
       expect(res[0]!.fields["host"]).toBe("");
       expect(res[0]!.fields["db"]).toBe(0);
     });
 
     it("throws on unknown type", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       await expect(c.listResources("nope", "acct")).rejects.toThrow(/unknown resource type/);
     });
   });
 
   describe("getResource", () => {
     it("returns matching", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const r = await c.getResource("redis-instance", "acct:redis-instance:db3", "acct");
       expect(r.displayName).toBe("DB 3");
     });
     it("throws when not found", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       await expect(
         c.getResource("redis-instance", "acct:redis-instance:db99", "acct"),
       ).rejects.toThrow(/not found/);
@@ -90,17 +93,17 @@ describe("RedisClient", () => {
 
   describe("resolveOutput", () => {
     it("returns connectionString", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       expect(await c.resolveOutput("redis-instance", "x", "connectionString")).toBe(CS);
     });
     it("throws for unknown output", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       await expect(c.resolveOutput("redis-instance", "x", "nope")).rejects.toThrow(
         /cannot resolve output/,
       );
     });
     it("throws for wrong type", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       await expect(c.resolveOutput("other", "x", "connectionString")).rejects.toThrow(
         /cannot resolve output/,
       );
@@ -109,14 +112,14 @@ describe("RedisClient", () => {
 
   describe("renderDetail", () => {
     it("renders healthy with literal connection string", () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const schema = c.renderDetail(makeResource());
       expect(schema.status).toMatchObject({ status: "healthy" });
       expect(schema.subtitle).toContain("cache.example.com:6380");
     });
 
     it("renders secret placeholder when secretState present", () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const schema = c.renderDetail(
         makeResource({
           secretStates: [
@@ -129,7 +132,7 @@ describe("RedisClient", () => {
 
     it("renders info status and (not set) without connection", () => {
       // Build a client with a valid CS then strip it via a resource with no fields
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       // status depends on this.connectionString which is always set here; cover
       // the no-host subtitle branch instead
       const schema = c.renderDetail(makeResource({ fields: { db: 0 } }));
@@ -137,7 +140,7 @@ describe("RedisClient", () => {
     });
 
     it("renders stats section when stats outputs present", () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const schema = c.renderDetail(
         makeResource({
           resolvedOutputs: {
@@ -154,7 +157,7 @@ describe("RedisClient", () => {
     });
 
     it("renders only the populated stats", () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const schema = c.renderDetail(
         makeResource({ resolvedOutputs: { __redis_version__: "7.2.0" } }),
       );
@@ -164,7 +167,7 @@ describe("RedisClient", () => {
     });
 
     it("defaults db to 0 when field missing", () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const schema = c.renderDetail(makeResource({ fields: { host: "h" } }));
       expect(schema.subtitle).toContain("DB 0");
     });
@@ -172,14 +175,14 @@ describe("RedisClient", () => {
 
   describe("renderSidebarItem", () => {
     it("returns item", () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       expect(c.renderSidebarItem(makeResource())).toMatchObject({ label: "DB 3" });
     });
   });
 
   describe("renderPeerPane", () => {
     it("lists instances", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const pane = await c.renderPeerPane({
         tabLabel: "x",
         parentPluginId: "p",
@@ -195,7 +198,7 @@ describe("RedisClient", () => {
 
   describe("fetchDashboardStats", () => {
     it("placeholder without kv", async () => {
-      const c = new RedisClient({ connectionString: CS });
+      const c = hostClient(new RedisClient({ connectionString: CS }));
       const stats = await c.fetchDashboardStats("redis-instance", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "" },
@@ -219,7 +222,7 @@ describe("RedisClient", () => {
           "malformed_line_without_colon",
         ].join("\r\n"),
       );
-      const c = new RedisClient({ connectionString: CS }, services(kv));
+      const c = hostClient(new RedisClient({ connectionString: CS }, services(kv)));
       const stats = await c.fetchDashboardStats("redis-instance", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "7.2.0" },
@@ -233,7 +236,7 @@ describe("RedisClient", () => {
 
     it("handles missing info fields", async () => {
       kv.command.mockResolvedValue("# Server\r\n");
-      const c = new RedisClient({ connectionString: CS }, services(kv));
+      const c = hostClient(new RedisClient({ connectionString: CS }, services(kv)));
       const stats = await c.fetchDashboardStats("redis-instance", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "" },
@@ -246,7 +249,7 @@ describe("RedisClient", () => {
 
     it("placeholder on kv error", async () => {
       kv.command.mockRejectedValue(new Error("boom"));
-      const c = new RedisClient({ connectionString: CS }, services(kv));
+      const c = hostClient(new RedisClient({ connectionString: CS }, services(kv)));
       const stats = await c.fetchDashboardStats("redis-instance", "x", "acct");
       expect(stats[3]).toEqual({ label: "Databases", value: "0" });
     });

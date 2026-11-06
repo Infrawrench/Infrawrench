@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 
@@ -147,37 +148,39 @@ beforeEach(() => {
 
 describe("AWSClient construction", () => {
   it("throws without access key or secret", () => {
-    expect(() => new AWSClient({ accessKeyId: "x" })).toThrow(/missing/);
-    expect(() => new AWSClient({})).toThrow(/missing/);
+    expect(() => hostClient(new AWSClient({ accessKeyId: "x" }))).toThrow(/missing/);
+    expect(() => hostClient(new AWSClient({}))).toThrow(/missing/);
   });
   it("defaults region to us-east-1 and wires host http when provided", () => {
-    const c = new AWSClient({ accessKeyId: "A", secretAccessKey: "S" }, [], {
-      http: { request: vi.fn() },
-    } as never);
+    const c = hostClient(
+      new AWSClient({ accessKeyId: "A", secretAccessKey: "S" }, [], {
+        http: { request: vi.fn() },
+      } as never),
+    );
     expect(c).toBeInstanceOf(AWSClient);
   });
 });
 
 describe("AWSClient.listResources", () => {
   it("throws for unknown type", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(c.listResources("nope", "acct")).rejects.toThrow(/unknown resource type/);
   });
   it("lists global types once (no region fan-out)", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await c.listResources("s3-bucket", "acct");
     // DescribeRegions not called for global types
     expect(ec2Call).not.toHaveBeenCalled();
   });
   it("lists Bedrock models from the home region only", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await c.listResources("bedrock-model", "acct");
     // Same model ids exist in every region; a fan-out would only duplicate them.
     expect(ec2Call).not.toHaveBeenCalled();
   });
   it("honors regionHint without fan-out", async () => {
     listEC2Instances.mockResolvedValue([inst()]);
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const out = await c.listResources("ec2-instance", "acct", { regionHint: "eu-west-1" });
     expect(out.length).toBe(1);
     expect(ec2Call).not.toHaveBeenCalled();
@@ -187,14 +190,14 @@ describe("AWSClient.listResources", () => {
       regionInfo: { item: [{ regionName: "us-east-1" }, { regionName: "eu-west-1" }] },
     });
     listEC2Instances.mockResolvedValueOnce([inst()]).mockRejectedValueOnce(new Error("bad region"));
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const out = await c.listResources("ec2-instance", "acct");
     expect(out.length).toBe(1);
   });
   it("falls back to home region when DescribeRegions fails", async () => {
     ec2Call.mockRejectedValue(new Error("denied"));
     listEC2Instances.mockResolvedValue([inst()]);
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const out = await c.listResources("ec2-instance", "acct");
     expect(out.length).toBe(1);
   });
@@ -204,13 +207,13 @@ describe("AWSClient.getResource", () => {
   it("returns the matching resource", async () => {
     const r = inst({ id: "acct:ec2-instance:i-9", externalId: "i-9" });
     listEC2Instances.mockResolvedValue([r]);
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const found = await c.getResource("ec2-instance", "acct:ec2-instance:i-9", "acct");
     expect(found.externalId).toBe("i-9");
   });
   it("throws when not found", async () => {
     listEC2Instances.mockResolvedValue([]);
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(c.getResource("ec2-instance", "missing", "acct")).rejects.toThrow(/not found/);
   });
 });
@@ -219,16 +222,16 @@ describe("AWSClient delegating methods", () => {
   function clientWithResource() {
     const r = inst({ id: "acct:ec2-instance:i-1" });
     listEC2Instances.mockResolvedValue([r]);
-    return new AWSClient(credMap);
+    return hostClient(new AWSClient(credMap));
   }
 
   it("attachResource delegates", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await c.attachResource("a", "s", "b", "t", "acct");
     expect(attachResource).toHaveBeenCalled();
   });
   it("resolveOutput delegates", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     expect(await c.resolveOutput("t", "r", "k", "acct")).toBe("resolved");
   });
   it("fetchDashboardStats delegates after getResource", async () => {
@@ -242,12 +245,12 @@ describe("AWSClient delegating methods", () => {
     expect(series.length).toBe(1);
   });
   it("renderDetail / renderSidebarItem delegate", () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     expect(c.renderDetail(inst())).toEqual({ tabs: [] });
     expect(c.renderSidebarItem(inst())).toEqual({ label: "x" });
   });
   it("renderDetail adds a Logs tab only for types with a log group", () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     expect(c.renderDetail(inst({ resourceTypeId: "lambda-function" })).logs).toEqual({
       defaultTailLines: 200,
     });
@@ -255,24 +258,24 @@ describe("AWSClient delegating methods", () => {
     expect(c.renderDetail(inst()).logs).toBeUndefined();
   });
   it("storage passthroughs", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     expect((await c.listStorageObjects("bucket", "")).length).toBe(1);
     await c.uploadStorageObject("b", "k", {} as File);
     await c.makeStorageFolder("b", "k");
     await c.deleteStorageObject("b", "k");
   });
   it("getCreateConfig / createResource / estimateCost delegate", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     expect(await c.getCreateConfig("ec2-instance")).toEqual({ fields: [] });
     expect((await c.createResource("ec2-instance", "acct", {})).id).toBe("created");
     expect((await c.estimateCost("ec2-instance", {}))?.monthlyAmount).toBe(12.5);
   });
   it("executeFieldAction delegates", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     expect(await c.executeFieldAction("t", "f", "a", "acct", {})).toEqual({ value: "v" });
   });
   it("deleteResource delegates", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await c.deleteResource("t", "r", "acct");
     expect(deleteResource).toHaveBeenCalled();
   });
@@ -280,7 +283,7 @@ describe("AWSClient delegating methods", () => {
 
 describe("AWSClient.listArtifacts", () => {
   it("throws for non-ecr types", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(c.listArtifacts("ec2-instance", "r", "acct")).rejects.toThrow(/not supported/);
   });
   it("maps ECR images, applies prefix filter + pagination", async () => {
@@ -293,7 +296,7 @@ describe("AWSClient.listArtifacts", () => {
     listEC2Instances.mockResolvedValue([]);
     // getResource lists ecr-repository: our extended-listers proxy returns [],
     // so stub the ecr lister path by routing through the generic listers proxy.
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     // getResource would fail to find; instead test the data mapping directly by
     // making listResources return our resource via the ecr lister mock.
     jsonCall.mockResolvedValue({
@@ -328,7 +331,7 @@ describe("AWSClient.updateResource", () => {
     });
     // route53-record-set lister is the noop proxy → []; so getResource fails.
     listEC2Instances.mockResolvedValue([]);
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(
       c.updateResource("route53-record-set", "acct:route53-record-set:z:n:A", "acct", {
         value: "5.6.7.8",
@@ -337,7 +340,7 @@ describe("AWSClient.updateResource", () => {
     void r;
   });
   it("throws for unsupported update types", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(c.updateResource("s3-bucket", "r", "acct", {})).rejects.toThrow(/not supported/);
   });
 });
@@ -347,20 +350,20 @@ describe("AWSClient.publishMessage / executeNoSqlCommand / exportCredential", ()
     const r = inst({ id: "acct:sqs-queue:q", resourceTypeId: "sqs-queue", externalId: "q" });
     // sqs-queue lister is noop → []; getResource fails. Use ec2-instance map instead:
     listEC2Instances.mockResolvedValue([]);
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(
       c.publishMessage("sqs-queue", "acct:sqs-queue:q", "acct", { body: "x", extras: {} } as never),
     ).rejects.toThrow(/not found/);
     void r;
   });
   it("executeNoSqlCommand throws for non-dynamodb", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(c.executeNoSqlCommand("ec2-instance", "r", "acct", "cmd", [])).rejects.toThrow(
       /not supported/,
     );
   });
   it("exportCredential throws for unsupported type/format", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(c.exportCredential("ec2-instance", "r", "acct", "x")).rejects.toThrow(
       /not supported/,
     );
@@ -370,27 +373,27 @@ describe("AWSClient.publishMessage / executeNoSqlCommand / exportCredential", ()
 describe("AWSClient.getManifest / applyManifest", () => {
   it("getManifest returns '' for empty bucket policy", async () => {
     getBucketPolicy.mockResolvedValue("");
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     expect(await c.getManifest("acct:s3-bucket:bucket", "acct")).toBe("");
   });
   it("getManifest pretty-prints a bucket policy", async () => {
     getBucketPolicy.mockResolvedValue('{"Version":"2012"}');
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const out = await c.getManifest("acct:s3-bucket:bucket", "acct");
     expect(out).toContain("\n");
   });
   it("getManifest returns raw text when policy is not valid JSON", async () => {
     getBucketPolicy.mockResolvedValue("not-json");
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     expect(await c.getManifest("acct:s3-bucket:bucket", "acct")).toBe("not-json");
   });
   it("applyManifest delegates putBucketPolicy for s3-bucket", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await c.applyManifest("acct:s3-bucket:bucket", "acct", "{}");
     expect(putBucketPolicy).toHaveBeenCalled();
   });
   it("applyManifest throws for non-s3 types", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     await expect(c.applyManifest("acct:ec2-instance:i", "acct", "{}")).rejects.toThrow(
       /not supported/,
     );
@@ -405,12 +408,12 @@ describe("AWSClient.streamChatMessage", () => {
   }
 
   it("errors for non-bedrock types", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const events = await collect(c.streamChatMessage("ec2-instance", "r", "acct", []) as never);
     expect(events[0]!.kind).toBe("error");
   });
   it("errors when modelId can't be determined", async () => {
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const events = await collect(
       c.streamChatMessage("bedrock-model", "acct:bedrock-model:", "acct", []) as never,
     );
@@ -423,7 +426,7 @@ describe("AWSClient.streamChatMessage", () => {
         usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
       }),
     });
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const events = await collect(
       c.streamChatMessage("bedrock-model", "acct:bedrock-model:anthropic.claude:0", "acct", [
         { role: "system", content: "sys" },
@@ -436,7 +439,7 @@ describe("AWSClient.streamChatMessage", () => {
   });
   it("emits an error event when the signed request fails", async () => {
     fetchSigned.mockImplementationOnce(() => Promise.reject(new Error("boom")));
-    const c = new AWSClient(credMap);
+    const c = hostClient(new AWSClient(credMap));
     const events = await collect(
       c.streamChatMessage("bedrock-model", "acct:bedrock-model:m:0", "acct", []) as never,
     );

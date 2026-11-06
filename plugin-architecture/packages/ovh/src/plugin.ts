@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { OVH_FOCUS } from "./focus-services.js";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { OvhClient } from "./client.js";
@@ -17,9 +22,9 @@ import { ContainerRegistryResourceType } from "./resources/container-registry.js
 import { ovhTerraformExport } from "./terraform.js";
 import { ovhRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "ovh",
-  version: "0.1.0",
+  egressHosts: ["*.ovh.com"],
   displayName: "OVHcloud",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#000E9C"/>
@@ -27,9 +32,7 @@ const manifest: PluginManifest = {
       <path d="M19.881 10.095l2.563-4.45C23.434 7.389 24 9.404 24 11.555c0 2.88-1.017 5.523-2.71 7.594h-6.62l2.04-3.541h-2.696l3.176-5.513h2.691zm-2.32-5.243L9.333 19.14l.003.009H2.709C1.014 17.077 0 14.435 0 11.555c0-2.152.57-4.17 1.561-5.918L5.855 13.1 10.6 4.852h6.961z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "applicationKey",
       label: "Application Key",
@@ -70,7 +73,7 @@ const manifest: PluginManifest = {
       placeholder: "12345678-abcd-1234-abcd-1234567890ab",
     },
     caCertCredentialField,
-  ],
+  ]),
   // /me/bill invoices (+ per-line details) for finalized spend and
   // /me/consumption/usage/current for the unbilled in-progress period.
   // Account-level dimensions only: bill lines identify the billed service,
@@ -84,7 +87,9 @@ const manifest: PluginManifest = {
     restatementDays: 5,
     periodNative: true,
   },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   InstanceResourceType,
@@ -101,10 +106,17 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ContainerRegistryResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new OvhClient(credentials, resourceTypes, services),
+  testCredentials: {
+    applicationKey: "test",
+    applicationSecret: "test",
+    consumerKey: "test",
+    endpoint: "eu",
+    projectId: "12345678-abcd-1234-abcd-1234567890ab",
+  },
   terraformExport: ovhTerraformExport,
   remediationCommands: ovhRemediationCommands,
-};
+});

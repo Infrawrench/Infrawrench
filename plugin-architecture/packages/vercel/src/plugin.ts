@@ -1,4 +1,10 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { VercelClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -18,16 +24,14 @@ import {
 } from "./oauth.js";
 import { vercelDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "vercel",
-  version: "0.1.0",
+  egressHosts: ["api.vercel.com"],
   displayName: "Vercel",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#000000"/>
     <polygon points="50,22 78,72 22,72" fill="white"/>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -40,7 +44,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://vercel.com/account/settings/tokens",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accessToken",
       label: "Access Token",
@@ -59,7 +63,7 @@ const manifest: PluginManifest = {
       placeholder: "team_...",
     },
     caCertCredentialField,
-  ],
+  ]),
   // FOCUS billing charges (`/v1/billing/charges`), aggregated per day by
   // ServiceName + RegionId + project (surfaced as the `project` tag). Daily
   // granularity, ≤1-year window per request; works with the same access
@@ -74,7 +78,9 @@ const manifest: PluginManifest = {
   // "Connect with Vercel" installs the Infrawrench integration (server only).
   // Pasted access tokens keep working; see oauth.ts.
   oauth: vercelOAuth,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   VercelProjectResourceType,
@@ -86,14 +92,15 @@ const resourceTypes: ResourceTypeDefinition[] = [
   VercelWebhookResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: vercelDeployEvents,
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new VercelClient(credentials, services),
+  testCredentials: { accessToken: "test-vercel-token", teamId: "" },
   parseStatusFeed,
   terraformExport: vercelTerraformExport,
   buildOAuthAuthorizeUrl: buildVercelAuthorizeUrl,
-  exchangeOAuthCode: exchangeVercelCode,
-  completeOAuthConnection: completeVercelOAuth,
-};
+  exchangeOAuthCode: attemptFn(exchangeVercelCode),
+  completeOAuthConnection: attemptFn(completeVercelOAuth),
+});

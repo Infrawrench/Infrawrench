@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DetailViewSchema,
@@ -203,7 +206,7 @@ export class AlgoliaClient implements PluginClient {
   private indexCache: { at: number; value: Promise<AlIndex[]> } | undefined;
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     private readonly resourceTypes: ResourceTypeDefinition[],
     private readonly services?: HostServices,
   ) {
@@ -284,51 +287,53 @@ export class AlgoliaClient implements PluginClient {
 
   // ── Listing ──────────────────────────────────────────────────────────
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "application":
-        return [await this.application(accountId)];
-      case "index": {
-        const indexes = await this.indexes();
-        // Settings feed the edit form; large applications get them for the first indices only.
-        const settings = await mapLimit(indexes.slice(0, MAX_SETTINGS_FETCH), FAN_OUT, (i) =>
-          this.settings(i.name).catch(() => undefined),
-        );
-        return indexes.map((i, n) => mapIndex(i, settings[n], accountId));
-      }
-      case "api-key":
-        return (await this.keys()).map((k) => mapApiKey(k, accountId));
-      case "ab-test": {
-        try {
-          const res = await this.api.analytics<{ abtests?: AlAbTest[] | null }>("/2/abtests", {
-            query: { limit: 100 },
-          });
-          return (res?.abtests ?? []).map((t) => mapAbTest(t, accountId));
-        } catch (e) {
-          // A/B testing needs a plan that includes it and the analytics ACL.
-          if (isStatus(e, 400, 401, 403, 404)) return [];
-          throw e;
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "application":
+          return [await this.application(accountId)];
+        case "index": {
+          const indexes = await this.indexes();
+          // Settings feed the edit form; large applications get them for the first indices only.
+          const settings = await mapLimit(indexes.slice(0, MAX_SETTINGS_FETCH), FAN_OUT, (i) =>
+            this.settings(i.name).catch(() => undefined),
+          );
+          return indexes.map((i, n) => mapIndex(i, settings[n], accountId));
         }
+        case "api-key":
+          return (await this.keys()).map((k) => mapApiKey(k, accountId));
+        case "ab-test": {
+          try {
+            const res = await this.api.analytics<{ abtests?: AlAbTest[] | null }>("/2/abtests", {
+              query: { limit: 100 },
+            });
+            return (res?.abtests ?? []).map((t) => mapAbTest(t, accountId));
+          } catch (e) {
+            // A/B testing needs a plan that includes it and the analytics ACL.
+            if (isStatus(e, 400, 401, 403, 404)) return [];
+            throw e;
+          }
+        }
+        case "crawler": {
+          if (!this.api.hasCrawler) return [];
+          const res = await this.api.crawler<{ items?: Array<{ id: string; name?: string }> }>(
+            "/1/crawlers",
+            {
+              query: { appID: this.api.creds.appId, itemsPerPage: 100 },
+            },
+          );
+          const crawlers = await mapLimit(res?.items ?? [], FAN_OUT, async (c) => {
+            const full = await this.api
+              .crawler<AlCrawler>(`/1/crawlers/${enc(c.id)}`, { query: { withConfig: true } })
+              .catch(() => ({ name: c.name }) as AlCrawler);
+            return mapCrawler(c.id, full, accountId);
+          });
+          return crawlers;
+        }
+        default:
+          throw new Error(`Algolia plugin: unknown resource type "${typeId}"`);
       }
-      case "crawler": {
-        if (!this.api.hasCrawler) return [];
-        const res = await this.api.crawler<{ items?: Array<{ id: string; name?: string }> }>(
-          "/1/crawlers",
-          {
-            query: { appID: this.api.creds.appId, itemsPerPage: 100 },
-          },
-        );
-        const crawlers = await mapLimit(res?.items ?? [], FAN_OUT, async (c) => {
-          const full = await this.api
-            .crawler<AlCrawler>(`/1/crawlers/${enc(c.id)}`, { query: { withConfig: true } })
-            .catch(() => ({ name: c.name }) as AlCrawler);
-          return mapCrawler(c.id, full, accountId);
-        });
-        return crawlers;
-      }
-      default:
-        throw new Error(`Algolia plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   private async application(accountId: string): Promise<ResourceInstance> {
@@ -356,141 +361,147 @@ export class AlgoliaClient implements PluginClient {
     });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalOf(resourceId);
-    switch (typeId) {
-      case "index": {
-        const [list, settings] = await Promise.all([this.indexes(), this.settings(id)]);
-        const meta = list.find((i) => i.name === id) ?? { name: id };
-        return mapIndex(meta, settings, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      switch (typeId) {
+        case "index": {
+          const [list, settings] = await Promise.all([this.indexes(), this.settings(id)]);
+          const meta = list.find((i) => i.name === id) ?? { name: id };
+          return mapIndex(meta, settings, accountId);
+        }
+        case "api-key":
+          return mapApiKey(await this.keyByFingerprint(id), accountId);
+        case "ab-test":
+          return mapAbTest(await this.api.analytics<AlAbTest>(`/2/abtests/${enc(id)}`), accountId);
+        case "crawler":
+          return mapCrawler(
+            id,
+            await this.api.crawler<AlCrawler>(`/1/crawlers/${enc(id)}`, {
+              query: { withConfig: true },
+            }),
+            accountId,
+          );
+        default: {
+          const all = await runPluginEffect(this.listResources(typeId, accountId));
+          const found = all.find((r) => r.id === resourceId || r.externalId === id);
+          if (!found) throw new Error(`Algolia plugin: ${typeId} ${id} not found`);
+          return found;
+        }
       }
-      case "api-key":
-        return mapApiKey(await this.keyByFingerprint(id), accountId);
-      case "ab-test":
-        return mapAbTest(await this.api.analytics<AlAbTest>(`/2/abtests/${enc(id)}`), accountId);
-      case "crawler":
-        return mapCrawler(
-          id,
-          await this.api.crawler<AlCrawler>(`/1/crawlers/${enc(id)}`, {
-            query: { withConfig: true },
-          }),
-          accountId,
-        );
-      default: {
-        const all = await this.listResources(typeId, accountId);
-        const found = all.find((r) => r.id === resourceId || r.externalId === id);
-        if (!found) throw new Error(`Algolia plugin: ${typeId} ${id} not found`);
-        return found;
-      }
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "application" && outputKey === "adminApiKey") return this.api.creds.apiKey;
-    if (typeId === "api-key" && outputKey === "apiKey") {
-      return (await this.keyByFingerprint(externalOf(resourceId))).value;
-    }
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return r.resolvedOutputs[outputKey] ?? "";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "application" && outputKey === "adminApiKey") return this.api.creds.apiKey;
+      if (typeId === "api-key" && outputKey === "apiKey") {
+        return (await this.keyByFingerprint(externalOf(resourceId))).value;
+      }
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return r.resolvedOutputs[outputKey] ?? "";
+    });
   }
 
   // ── Detail ───────────────────────────────────────────────────────────
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const fields = { ...resource.fields };
-    const id = resource.externalId ?? externalOf(resource.id);
-    const end = Date.now();
-    const range = { startDate: day(end - 7 * DAY_MS), endDate: day(end) };
-    if (resource.resourceTypeId === "application") {
-      const sources = await this.api
-        .search<AlSource[]>("/1/security/sources")
-        .catch(() => [] as AlSource[]);
-      if (sources.length) {
-        fields[ENRICH_SOURCES] = JSON.stringify(
-          sources.map((s) => ({ source: s.source, description: s.description ?? "" })),
-        );
-        fields["allowedSources"] = sources.map((s) => s.source).join(", ");
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const fields = { ...resource.fields };
+      const id = resource.externalId ?? externalOf(resource.id);
+      const end = Date.now();
+      const range = { startDate: day(end - 7 * DAY_MS), endDate: day(end) };
+      if (resource.resourceTypeId === "application") {
+        const sources = await this.api
+          .search<AlSource[]>("/1/security/sources")
+          .catch(() => [] as AlSource[]);
+        if (sources.length) {
+          fields[ENRICH_SOURCES] = JSON.stringify(
+            sources.map((s) => ({ source: s.source, description: s.description ?? "" })),
+          );
+          fields["allowedSources"] = sources.map((s) => s.source).join(", ");
+        }
+      } else if (resource.resourceTypeId === "index") {
+        const [syn, rules, top, none, list] = await Promise.all([
+          this.api
+            .search<{ nbHits?: number }>(`/1/indexes/${enc(id)}/synonyms/search`, {
+              method: "POST",
+              body: { query: "", hitsPerPage: 1 },
+            })
+            .catch(() => undefined),
+          this.api
+            .search<{ nbHits?: number }>(`/1/indexes/${enc(id)}/rules/search`, {
+              method: "POST",
+              body: { query: "", hitsPerPage: 1 },
+            })
+            .catch(() => undefined),
+          this.api
+            .analytics<{ searches?: Array<{ search?: string; count?: number; nbHits?: number }> }>(
+              "/2/searches",
+              {
+                query: { index: id, limit: 10, ...range },
+              },
+            )
+            .catch(() => undefined),
+          this.api
+            .analytics<{ searches?: Array<{ search?: string; count?: number }> }>(
+              "/2/searches/noResults",
+              {
+                query: { index: id, limit: 10, ...range },
+              },
+            )
+            .catch(() => undefined),
+          this.indexes().catch(() => [] as AlIndex[]),
+        ]);
+        if (syn?.nbHits !== undefined) fields["synonymCount"] = syn.nbHits;
+        if (rules?.nbHits !== undefined) fields["ruleCount"] = rules.nbHits;
+        if (top?.searches?.length) {
+          fields[ENRICH_TOP_SEARCHES] = JSON.stringify(
+            top.searches.map((s) => ({
+              search: s.search || "(empty)",
+              count: String(s.count ?? 0),
+              hits: String(s.nbHits ?? ""),
+            })),
+          );
+        }
+        if (none?.searches?.length) {
+          fields[ENRICH_NO_RESULTS] = JSON.stringify(
+            none.searches.map((s) => ({
+              search: s.search || "(empty)",
+              count: String(s.count ?? 0),
+            })),
+          );
+        }
+        fields[ENRICH_INDEXES] = JSON.stringify(list.map((i) => i.name));
+      } else if (resource.resourceTypeId === "crawler") {
+        const stats = await this.api
+          .crawler<{
+            count?: number;
+            data?: Array<{ reason?: string; status?: string; count?: number }>;
+          }>(`/1/crawlers/${enc(id)}/stats/urls`)
+          .catch(() => undefined);
+        if (stats) {
+          fields["crawledUrls"] = stats.count ?? 0;
+          fields[ENRICH_CRAWL_STATS] = JSON.stringify(
+            (stats.data ?? []).map((d) => ({
+              status: d.status ?? "",
+              reason: d.reason ?? "",
+              count: String(d.count ?? 0),
+            })),
+          );
+        }
       }
-    } else if (resource.resourceTypeId === "index") {
-      const [syn, rules, top, none, list] = await Promise.all([
-        this.api
-          .search<{ nbHits?: number }>(`/1/indexes/${enc(id)}/synonyms/search`, {
-            method: "POST",
-            body: { query: "", hitsPerPage: 1 },
-          })
-          .catch(() => undefined),
-        this.api
-          .search<{ nbHits?: number }>(`/1/indexes/${enc(id)}/rules/search`, {
-            method: "POST",
-            body: { query: "", hitsPerPage: 1 },
-          })
-          .catch(() => undefined),
-        this.api
-          .analytics<{ searches?: Array<{ search?: string; count?: number; nbHits?: number }> }>(
-            "/2/searches",
-            {
-              query: { index: id, limit: 10, ...range },
-            },
-          )
-          .catch(() => undefined),
-        this.api
-          .analytics<{ searches?: Array<{ search?: string; count?: number }> }>(
-            "/2/searches/noResults",
-            {
-              query: { index: id, limit: 10, ...range },
-            },
-          )
-          .catch(() => undefined),
-        this.indexes().catch(() => [] as AlIndex[]),
-      ]);
-      if (syn?.nbHits !== undefined) fields["synonymCount"] = syn.nbHits;
-      if (rules?.nbHits !== undefined) fields["ruleCount"] = rules.nbHits;
-      if (top?.searches?.length) {
-        fields[ENRICH_TOP_SEARCHES] = JSON.stringify(
-          top.searches.map((s) => ({
-            search: s.search || "(empty)",
-            count: String(s.count ?? 0),
-            hits: String(s.nbHits ?? ""),
-          })),
-        );
-      }
-      if (none?.searches?.length) {
-        fields[ENRICH_NO_RESULTS] = JSON.stringify(
-          none.searches.map((s) => ({
-            search: s.search || "(empty)",
-            count: String(s.count ?? 0),
-          })),
-        );
-      }
-      fields[ENRICH_INDEXES] = JSON.stringify(list.map((i) => i.name));
-    } else if (resource.resourceTypeId === "crawler") {
-      const stats = await this.api
-        .crawler<{
-          count?: number;
-          data?: Array<{ reason?: string; status?: string; count?: number }>;
-        }>(`/1/crawlers/${enc(id)}/stats/urls`)
-        .catch(() => undefined);
-      if (stats) {
-        fields["crawledUrls"] = stats.count ?? 0;
-        fields[ENRICH_CRAWL_STATS] = JSON.stringify(
-          (stats.data ?? []).map((d) => ({
-            status: d.status ?? "",
-            reason: d.reason ?? "",
-            count: String(d.count ?? 0),
-          })),
-        );
-      }
-    }
-    return { ...resource, fields };
+      return { ...resource, fields };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -506,25 +517,29 @@ export class AlgoliaClient implements PluginClient {
   }
 
   /** Full index settings as JSON, for the manifest editor. */
-  async getManifest(resourceId: string): Promise<string> {
-    return JSON.stringify(await this.settings(externalOf(resourceId)), null, 2);
+  getManifest(resourceId: string): PluginEffect<string> {
+    return attempt(async () => {
+      return JSON.stringify(await this.settings(externalOf(resourceId)), null, 2);
+    });
   }
 
-  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
-    let settings: unknown;
-    try {
-      settings = JSON.parse(manifest);
-    } catch {
-      throw new Error("Settings must be a JSON object.");
-    }
-    if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
-      throw new Error("Settings must be a JSON object.");
-    }
-    await this.api.search(`/1/indexes/${enc(externalOf(resourceId))}/settings`, {
-      method: "PUT",
-      body: settings,
+  applyManifest(resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
+    return attempt(async () => {
+      let settings: unknown;
+      try {
+        settings = JSON.parse(manifest);
+      } catch {
+        throw new Error("Settings must be a JSON object.");
+      }
+      if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+        throw new Error("Settings must be a JSON object.");
+      }
+      await this.api.search(`/1/indexes/${enc(externalOf(resourceId))}/settings`, {
+        method: "PUT",
+        body: settings,
+      });
+      this.invalidateIndexes();
     });
-    this.invalidateIndexes();
   }
 
   // ── Create ───────────────────────────────────────────────────────────
@@ -536,236 +551,240 @@ export class AlgoliaClient implements PluginClient {
       .map((i) => ({ id: i.name, label: i.name, description: `${i.entries ?? 0} records` }));
   }
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "index":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "products" },
-            {
-              key: "copyFrom",
-              label: "Start from",
-              kind: "select",
-              required: false,
-              defaultValue: "",
-              options: [
-                { id: "", label: "Empty index with the settings below" },
-                ...(await this.indexOptions()).map((o) => ({
-                  ...o,
-                  label: `Settings of ${o.label}`,
-                })),
-              ],
-              description:
-                "Copying another index's configuration copies settings, synonyms and rules, not records",
-            },
-            {
-              key: "searchableAttributes",
-              label: "Searchable attributes",
-              kind: "string-list",
-              required: false,
-              placeholder: "title",
-              showWhen: { fieldKey: "copyFrom", fieldValue: "" },
-            },
-            {
-              key: "attributesForFaceting",
-              label: "Facets",
-              kind: "string-list",
-              required: false,
-              placeholder: "searchable(brand)",
-              showWhen: { fieldKey: "copyFrom", fieldValue: "" },
-            },
-            {
-              key: "customRanking",
-              label: "Custom ranking",
-              kind: "string-list",
-              required: false,
-              placeholder: "desc(popularity)",
-              showWhen: { fieldKey: "copyFrom", fieldValue: "" },
-            },
-          ],
-        };
-      case "api-key":
-        return {
-          fields: [
-            {
-              key: "description",
-              label: "Description",
-              kind: "text",
-              required: true,
-              placeholder: "Storefront search",
-            },
-            {
-              key: "acl",
-              label: "Permissions",
-              kind: "policy-picker",
-              required: true,
-              policies: ACLS.map((a) => ({ id: a, label: a, description: ACL_LABELS[a] ?? "" })),
-            },
-            {
-              key: "indexes",
-              label: "Restrict to indices",
-              kind: "policy-picker",
-              required: false,
-              description: "Leave empty for every index",
-              policies: (await this.indexOptions()).map((o) => ({ id: o.id, label: o.label })),
-            },
-            {
-              key: "referers",
-              label: "Allowed referrers",
-              kind: "string-list",
-              required: false,
-              placeholder: "https://example.com/*",
-            },
-            {
-              key: "maxQueriesPerIPPerHour",
-              label: "Max queries per IP per hour",
-              kind: "number",
-              required: false,
-              minValue: 0,
-            },
-            {
-              key: "maxHitsPerQuery",
-              label: "Max hits per query",
-              kind: "number",
-              required: false,
-              minValue: 0,
-            },
-            {
-              key: "expiresAt",
-              label: "Expires",
-              kind: "datetime",
-              datetimeMode: "datetime",
-              required: false,
-              description: "Leave empty for a key that never expires",
-            },
-          ],
-        };
-      case "ab-test": {
-        const options = await this.indexOptions(true);
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "indexA",
-              label: "Variant A (control)",
-              kind: "select",
-              required: true,
-              options,
-            },
-            {
-              key: "indexB",
-              label: "Variant B",
-              kind: "select",
-              required: true,
-              options: (await this.indexOptions()).map((o) => ({ id: o.id, label: o.label })),
-              description: "Usually a replica of A with changed settings",
-            },
-            {
-              key: "trafficB",
-              label: "Traffic to B (%)",
-              kind: "number",
-              required: true,
-              minValue: 1,
-              maxValue: 99,
-              defaultValue: "50",
-            },
-            {
-              key: "endAt",
-              label: "End",
-              kind: "datetime",
-              datetimeMode: "datetime",
-              required: true,
-            },
-          ],
-        };
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "index":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "products" },
+              {
+                key: "copyFrom",
+                label: "Start from",
+                kind: "select",
+                required: false,
+                defaultValue: "",
+                options: [
+                  { id: "", label: "Empty index with the settings below" },
+                  ...(await this.indexOptions()).map((o) => ({
+                    ...o,
+                    label: `Settings of ${o.label}`,
+                  })),
+                ],
+                description:
+                  "Copying another index's configuration copies settings, synonyms and rules, not records",
+              },
+              {
+                key: "searchableAttributes",
+                label: "Searchable attributes",
+                kind: "string-list",
+                required: false,
+                placeholder: "title",
+                showWhen: { fieldKey: "copyFrom", fieldValue: "" },
+              },
+              {
+                key: "attributesForFaceting",
+                label: "Facets",
+                kind: "string-list",
+                required: false,
+                placeholder: "searchable(brand)",
+                showWhen: { fieldKey: "copyFrom", fieldValue: "" },
+              },
+              {
+                key: "customRanking",
+                label: "Custom ranking",
+                kind: "string-list",
+                required: false,
+                placeholder: "desc(popularity)",
+                showWhen: { fieldKey: "copyFrom", fieldValue: "" },
+              },
+            ],
+          };
+        case "api-key":
+          return {
+            fields: [
+              {
+                key: "description",
+                label: "Description",
+                kind: "text",
+                required: true,
+                placeholder: "Storefront search",
+              },
+              {
+                key: "acl",
+                label: "Permissions",
+                kind: "policy-picker",
+                required: true,
+                policies: ACLS.map((a) => ({ id: a, label: a, description: ACL_LABELS[a] ?? "" })),
+              },
+              {
+                key: "indexes",
+                label: "Restrict to indices",
+                kind: "policy-picker",
+                required: false,
+                description: "Leave empty for every index",
+                policies: (await this.indexOptions()).map((o) => ({ id: o.id, label: o.label })),
+              },
+              {
+                key: "referers",
+                label: "Allowed referrers",
+                kind: "string-list",
+                required: false,
+                placeholder: "https://example.com/*",
+              },
+              {
+                key: "maxQueriesPerIPPerHour",
+                label: "Max queries per IP per hour",
+                kind: "number",
+                required: false,
+                minValue: 0,
+              },
+              {
+                key: "maxHitsPerQuery",
+                label: "Max hits per query",
+                kind: "number",
+                required: false,
+                minValue: 0,
+              },
+              {
+                key: "expiresAt",
+                label: "Expires",
+                kind: "datetime",
+                datetimeMode: "datetime",
+                required: false,
+                description: "Leave empty for a key that never expires",
+              },
+            ],
+          };
+        case "ab-test": {
+          const options = await this.indexOptions(true);
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "indexA",
+                label: "Variant A (control)",
+                kind: "select",
+                required: true,
+                options,
+              },
+              {
+                key: "indexB",
+                label: "Variant B",
+                kind: "select",
+                required: true,
+                options: (await this.indexOptions()).map((o) => ({ id: o.id, label: o.label })),
+                description: "Usually a replica of A with changed settings",
+              },
+              {
+                key: "trafficB",
+                label: "Traffic to B (%)",
+                kind: "number",
+                required: true,
+                minValue: 1,
+                maxValue: 99,
+                defaultValue: "50",
+              },
+              {
+                key: "endAt",
+                label: "End",
+                kind: "datetime",
+                datetimeMode: "datetime",
+                required: true,
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`Algolia plugin: cannot create "${typeId}"`);
       }
-      default:
-        throw new Error(`Algolia plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceCreateReturn> {
-    switch (typeId) {
-      case "index": {
-        const name = str(fields["name"]);
-        if (!name || name.length > 512 || /^\s|\s$/.test(name))
-          throw new Error("Enter an index name.");
-        const from = str(fields["copyFrom"]);
-        if (from) {
-          await this.api.search(`/1/indexes/${enc(from)}/operation`, {
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "index": {
+          const name = str(fields["name"]);
+          if (!name || name.length > 512 || /^\s|\s$/.test(name))
+            throw new Error("Enter an index name.");
+          const from = str(fields["copyFrom"]);
+          if (from) {
+            await this.api.search(`/1/indexes/${enc(from)}/operation`, {
+              method: "POST",
+              body: {
+                operation: "copy",
+                destination: name,
+                scope: ["settings", "synonyms", "rules"],
+              },
+            });
+          } else {
+            await this.api.search(`/1/indexes/${enc(name)}/settings`, {
+              method: "PUT",
+              body: settingsPatch({
+                searchableAttributes: fields["searchableAttributes"] ?? "",
+                attributesForFaceting: fields["attributesForFaceting"] ?? "",
+                customRanking: fields["customRanking"] ?? "",
+              }),
+            });
+          }
+          this.invalidateIndexes();
+          return mapIndex({ name, entries: 0 }, undefined, accountId);
+        }
+        case "api-key": {
+          const body = this.keyBody(fields);
+          if (!body.acl?.length) throw new Error("Pick at least one permission.");
+          const res = await this.api.search<{ key: string; createdAt?: string }>("/1/keys", {
+            method: "POST",
+            body,
+          });
+          return mapApiKey(
+            { ...body, value: res.key, createdAt: Date.parse(res.createdAt ?? "") || Date.now() },
+            accountId,
+          );
+        }
+        case "ab-test": {
+          const a = str(fields["indexA"]);
+          const b = str(fields["indexB"]);
+          if (!a || !b || a === b) throw new Error("Choose two different indices.");
+          const pct = intField(fields["trafficB"], "Traffic to B", 1) ?? 50;
+          if (pct > 99) throw new Error("Traffic to B must be between 1 and 99 percent.");
+          const endAt = new Date(str(fields["endAt"]));
+          if (Number.isNaN(endAt.getTime()) || endAt.getTime() <= Date.now())
+            throw new Error("Choose an end date in the future.");
+          const res = await this.api.analytics<{ abTestID: number }>("/2/abtests", {
             method: "POST",
             body: {
-              operation: "copy",
-              destination: name,
-              scope: ["settings", "synonyms", "rules"],
+              name: str(fields["name"]),
+              variants: [
+                { index: a, trafficPercentage: 100 - pct },
+                { index: b, trafficPercentage: pct },
+              ],
+              endAt: endAt.toISOString(),
             },
           });
-        } else {
-          await this.api.search(`/1/indexes/${enc(name)}/settings`, {
-            method: "PUT",
-            body: settingsPatch({
-              searchableAttributes: fields["searchableAttributes"] ?? "",
-              attributesForFaceting: fields["attributesForFaceting"] ?? "",
-              customRanking: fields["customRanking"] ?? "",
-            }),
-          });
+          return mapAbTest(
+            {
+              abTestID: res.abTestID,
+              name: str(fields["name"]),
+              status: "active",
+              endAt: endAt.toISOString(),
+              variants: [
+                { index: a, trafficPercentage: 100 - pct },
+                { index: b, trafficPercentage: pct },
+              ],
+            },
+            accountId,
+          );
         }
-        this.invalidateIndexes();
-        return mapIndex({ name, entries: 0 }, undefined, accountId);
+        default:
+          throw new Error(`Algolia plugin: cannot create "${typeId}"`);
       }
-      case "api-key": {
-        const body = this.keyBody(fields);
-        if (!body.acl?.length) throw new Error("Pick at least one permission.");
-        const res = await this.api.search<{ key: string; createdAt?: string }>("/1/keys", {
-          method: "POST",
-          body,
-        });
-        return mapApiKey(
-          { ...body, value: res.key, createdAt: Date.parse(res.createdAt ?? "") || Date.now() },
-          accountId,
-        );
-      }
-      case "ab-test": {
-        const a = str(fields["indexA"]);
-        const b = str(fields["indexB"]);
-        if (!a || !b || a === b) throw new Error("Choose two different indices.");
-        const pct = intField(fields["trafficB"], "Traffic to B", 1) ?? 50;
-        if (pct > 99) throw new Error("Traffic to B must be between 1 and 99 percent.");
-        const endAt = new Date(str(fields["endAt"]));
-        if (Number.isNaN(endAt.getTime()) || endAt.getTime() <= Date.now())
-          throw new Error("Choose an end date in the future.");
-        const res = await this.api.analytics<{ abTestID: number }>("/2/abtests", {
-          method: "POST",
-          body: {
-            name: str(fields["name"]),
-            variants: [
-              { index: a, trafficPercentage: 100 - pct },
-              { index: b, trafficPercentage: pct },
-            ],
-            endAt: endAt.toISOString(),
-          },
-        });
-        return mapAbTest(
-          {
-            abTestID: res.abTestID,
-            name: str(fields["name"]),
-            status: "active",
-            endAt: endAt.toISOString(),
-            variants: [
-              { index: a, trafficPercentage: 100 - pct },
-              { index: b, trafficPercentage: pct },
-            ],
-          },
-          accountId,
-        );
-      }
-      default:
-        throw new Error(`Algolia plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
   /** API key body from form fields (create) or edited fields merged over the current key (update). */
@@ -809,191 +828,203 @@ export class AlgoliaClient implements PluginClient {
 
   // ── Update ───────────────────────────────────────────────────────────
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalOf(resourceId);
-    switch (typeId) {
-      case "index": {
-        const patch = settingsPatch(fields);
-        if (Object.keys(patch).length) {
-          await this.api.search(`/1/indexes/${enc(id)}/settings`, {
-            method: "PUT",
-            query: { forwardToReplicas: false },
-            body: patch,
-          });
-          this.invalidateIndexes();
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      switch (typeId) {
+        case "index": {
+          const patch = settingsPatch(fields);
+          if (Object.keys(patch).length) {
+            await this.api.search(`/1/indexes/${enc(id)}/settings`, {
+              method: "PUT",
+              query: { forwardToReplicas: false },
+              body: patch,
+            });
+            this.invalidateIndexes();
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
+        case "api-key": {
+          const current = await this.keyByFingerprint(id);
+          const body = this.keyBody(fields, current);
+          if (!body.acl?.length) throw new Error("An API key needs at least one permission.");
+          await this.api.search(`/1/keys/${enc(current.value)}`, { method: "PUT", body });
+          return mapApiKey({ ...current, ...body }, accountId);
+        }
+        default:
+          throw new Error(`Algolia plugin: cannot update "${typeId}"`);
       }
-      case "api-key": {
-        const current = await this.keyByFingerprint(id);
-        const body = this.keyBody(fields, current);
-        if (!body.acl?.length) throw new Error("An API key needs at least one permission.");
-        await this.api.search(`/1/keys/${enc(current.value)}`, { method: "PUT", body });
-        return mapApiKey({ ...current, ...body }, accountId);
-      }
-      default:
-        throw new Error(`Algolia plugin: cannot update "${typeId}"`);
-    }
+    });
   }
 
   // ── Delete ───────────────────────────────────────────────────────────
 
-  async deleteResource(typeId: string, resourceId: string): Promise<void> {
-    const id = externalOf(resourceId);
-    switch (typeId) {
-      case "index":
-        await this.api.search(`/1/indexes/${enc(id)}`, { method: "DELETE" });
-        this.invalidateIndexes();
-        return;
-      case "api-key": {
-        const key = await this.keyByFingerprint(id);
-        await this.api.search(`/1/keys/${enc(key.value)}`, { method: "DELETE" });
-        return;
+  deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      switch (typeId) {
+        case "index":
+          await this.api.search(`/1/indexes/${enc(id)}`, { method: "DELETE" });
+          this.invalidateIndexes();
+          return;
+        case "api-key": {
+          const key = await this.keyByFingerprint(id);
+          await this.api.search(`/1/keys/${enc(key.value)}`, { method: "DELETE" });
+          return;
+        }
+        case "ab-test":
+          await this.api.analytics(`/2/abtests/${enc(id)}`, { method: "DELETE" });
+          return;
+        case "crawler":
+          await this.api.crawler(`/1/crawlers/${enc(id)}`, { method: "DELETE" });
+          return;
+        default:
+          throw new Error(`Algolia plugin: cannot delete "${typeId}"`);
       }
-      case "ab-test":
-        await this.api.analytics(`/2/abtests/${enc(id)}`, { method: "DELETE" });
-        return;
-      case "crawler":
-        await this.api.crawler(`/1/crawlers/${enc(id)}`, { method: "DELETE" });
-        return;
-      default:
-        throw new Error(`Algolia plugin: cannot delete "${typeId}"`);
-    }
+    });
   }
 
   // ── Actions ──────────────────────────────────────────────────────────
 
-  async invokeAction(typeId: string, resourceId: string, actionId: string): Promise<void> {
-    const id = externalOf(resourceId);
-    if (typeId === "index" && actionId === "clear") {
-      await this.api.search(`/1/indexes/${enc(id)}/clear`, { method: "POST" });
-      return;
-    }
-    if (typeId === "ab-test" && actionId === "stop") {
-      await this.api.analytics(`/2/abtests/${enc(id)}/stop`, { method: "POST" });
-      return;
-    }
-    if (typeId === "crawler" && ["run", "pause", "reindex"].includes(actionId)) {
-      await this.api.crawler(`/1/crawlers/${enc(id)}/${actionId}`, { method: "POST" });
-      return;
-    }
-    throw new Error(`Algolia plugin: action "${actionId}" is not supported for "${typeId}"`);
+  invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      if (typeId === "index" && actionId === "clear") {
+        await this.api.search(`/1/indexes/${enc(id)}/clear`, { method: "POST" });
+        return;
+      }
+      if (typeId === "ab-test" && actionId === "stop") {
+        await this.api.analytics(`/2/abtests/${enc(id)}/stop`, { method: "POST" });
+        return;
+      }
+      if (typeId === "crawler" && ["run", "pause", "reindex"].includes(actionId)) {
+        await this.api.crawler(`/1/crawlers/${enc(id)}/${actionId}`, { method: "POST" });
+        return;
+      }
+      throw new Error(`Algolia plugin: action "${actionId}" is not supported for "${typeId}"`);
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const id = externalOf(resourceId);
-    const vals = parseFormArg(args[0]);
-    if (typeId === "index" && (command === "copyIndex" || command === "moveIndex")) {
-      const destination = str(vals["destination"]);
-      if (!destination || destination === id)
-        throw new Error("Choose a different destination index.");
-      const scope =
-        command === "copyIndex" && vals["scope"] && vals["scope"] !== "all"
-          ? splitList(vals["scope"])
-          : undefined;
-      await this.api.search(`/1/indexes/${enc(id)}/operation`, {
-        method: "POST",
-        body: {
-          operation: command === "copyIndex" ? "copy" : "move",
-          destination,
-          ...(scope ? { scope } : {}),
-        },
-      });
-      this.invalidateIndexes();
-      return null;
-    }
-    throw new Error(`Algolia plugin: unknown command "${command}"`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      const vals = parseFormArg(args[0]);
+      if (typeId === "index" && (command === "copyIndex" || command === "moveIndex")) {
+        const destination = str(vals["destination"]);
+        if (!destination || destination === id)
+          throw new Error("Choose a different destination index.");
+        const scope =
+          command === "copyIndex" && vals["scope"] && vals["scope"] !== "all"
+            ? splitList(vals["scope"])
+            : undefined;
+        await this.api.search(`/1/indexes/${enc(id)}/operation`, {
+          method: "POST",
+          body: {
+            operation: command === "copyIndex" ? "copy" : "move",
+            destination,
+            ...(scope ? { scope } : {}),
+          },
+        });
+        this.invalidateIndexes();
+        return null;
+      }
+      throw new Error(`Algolia plugin: unknown command "${command}"`);
+    });
   }
 
   // ── Logs ─────────────────────────────────────────────────────────────
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const types = ["all", "query", "build", "error"];
-    const type = params.container && types.includes(params.container) ? params.container : "all";
-    const res = await this.api.search<{ logs?: AlLogEntry[] }>("/1/logs", {
-      query: {
-        length: Math.min(Math.max(params.tailLines ?? 100, 1), 1000),
-        type,
-        ...(typeId === "index" ? { indexName: externalOf(resourceId) } : {}),
-      },
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const types = ["all", "query", "build", "error"];
+      const type = params.container && types.includes(params.container) ? params.container : "all";
+      const res = await this.api.search<{ logs?: AlLogEntry[] }>("/1/logs", {
+        query: {
+          length: Math.min(Math.max(params.tailLines ?? 100, 1), 1000),
+          type,
+          ...(typeId === "index" ? { indexName: externalOf(resourceId) } : {}),
+        },
+      });
+      const lines = (res?.logs ?? [])
+        .slice()
+        .reverse()
+        .map(
+          (l) =>
+            `${l.timestamp ?? ""} ${l.method ?? ""} ${l.url ?? ""} ${l.answer_code ?? ""} ${l.processing_time_ms ?? "?"}ms` +
+            `${l.index ? ` index=${l.index}` : ""}${l.query_nb_hits ? ` hits=${l.query_nb_hits}` : ""} ip=${l.ip ?? ""}\n`,
+        );
+      return { text: lines.join(""), containers: types, activeContainer: type };
     });
-    const lines = (res?.logs ?? [])
-      .slice()
-      .reverse()
-      .map(
-        (l) =>
-          `${l.timestamp ?? ""} ${l.method ?? ""} ${l.url ?? ""} ${l.answer_code ?? ""} ${l.processing_time_ms ?? "?"}ms` +
-          `${l.index ? ` index=${l.index}` : ""}${l.query_nb_hits ? ` hits=${l.query_nb_hits}` : ""} ip=${l.ip ?? ""}\n`,
-      );
-    return { text: lines.join(""), containers: types, activeContainer: type };
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const end = timeRange?.endMs ?? Date.now();
-    const start = timeRange?.startMs ?? end - 7 * DAY_MS;
-    const hourly = end - start <= 7 * DAY_MS;
-    const usageQuery = {
-      startDate: new Date(start).toISOString(),
-      endDate: new Date(end).toISOString(),
-      granularity: hourly ? "hourly" : "daily",
-    };
-    if (resourceTypeId === "application") {
-      const [usage, monitoring] = await Promise.all([
-        this.api.creds.usageApiKey
-          ? this.api
-              .usage<Record<string, AlUsagePoint[]>>(
-                `/1/usage/${Object.keys(APP_USAGE).join(",")}`,
-                { query: usageQuery },
-              )
-              .then((r) => usageSeries(r, APP_USAGE))
-              .catch(() => [] as MetricSeries[])
-          : Promise.resolve([] as MetricSeries[]),
-        this.monitoringSeries(),
-      ]);
-      return [...usage, ...monitoring];
-    }
-    if (resourceTypeId === "index") {
-      const index = externalOf(resourceId);
-      const [usage, analytics] = await Promise.all([
-        this.api.creds.usageApiKey
-          ? this.api
-              .usage<Record<string, AlUsagePoint[]>>(
-                `/1/usage/${Object.keys(INDEX_USAGE).join(",")}/${enc(index)}`,
-                {
-                  query: usageQuery,
-                },
-              )
-              .then((r) => usageSeries(r, INDEX_USAGE))
-              .catch(() => [] as MetricSeries[])
-          : Promise.resolve([] as MetricSeries[]),
-        this.analyticsSeries(index, day(start), day(end)),
-      ]);
-      return [...usage, ...analytics];
-    }
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const end = timeRange?.endMs ?? Date.now();
+      const start = timeRange?.startMs ?? end - 7 * DAY_MS;
+      const hourly = end - start <= 7 * DAY_MS;
+      const usageQuery = {
+        startDate: new Date(start).toISOString(),
+        endDate: new Date(end).toISOString(),
+        granularity: hourly ? "hourly" : "daily",
+      };
+      if (resourceTypeId === "application") {
+        const [usage, monitoring] = await Promise.all([
+          this.api.creds.usageApiKey
+            ? this.api
+                .usage<Record<string, AlUsagePoint[]>>(
+                  `/1/usage/${Object.keys(APP_USAGE).join(",")}`,
+                  { query: usageQuery },
+                )
+                .then((r) => usageSeries(r, APP_USAGE))
+                .catch(() => [] as MetricSeries[])
+            : Promise.resolve([] as MetricSeries[]),
+          this.monitoringSeries(),
+        ]);
+        return [...usage, ...monitoring];
+      }
+      if (resourceTypeId === "index") {
+        const index = externalOf(resourceId);
+        const [usage, analytics] = await Promise.all([
+          this.api.creds.usageApiKey
+            ? this.api
+                .usage<Record<string, AlUsagePoint[]>>(
+                  `/1/usage/${Object.keys(INDEX_USAGE).join(",")}/${enc(index)}`,
+                  {
+                    query: usageQuery,
+                  },
+                )
+                .then((r) => usageSeries(r, INDEX_USAGE))
+                .catch(() => [] as MetricSeries[])
+            : Promise.resolve([] as MetricSeries[]),
+          this.analyticsSeries(index, day(start), day(end)),
+        ]);
+        return [...usage, ...analytics];
+      }
+      return [];
+    });
   }
 
   private async monitoringSeries(): Promise<MetricSeries[]> {

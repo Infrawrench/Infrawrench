@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { normaliseEndpoint } from "./api.js";
 import { SpaceliftClient } from "./client.js";
@@ -8,16 +9,15 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { spaceliftTerraformExport } from "./terraform.js";
 import { spaceliftDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "spacelift",
-  version: "0.1.0",
+  // account GraphQL endpoints (<account>.app.spacelift.io, .app.us.spacelift.io); presigned S3 URLs for state downloads; self-hosted hostnames are user-supplied
+  egressHosts: ["*.spacelift.io", "*.amazonaws.com"],
   displayName: "Spacelift",
   description:
     "Spacelift infrastructure orchestration. Manage spaces, stacks and their outputs, trigger, confirm, discard and stop runs with phase logs, set up drift detection and scheduled runs, and manage contexts, policies, modules and worker pools.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "endpoint",
       label: "Account",
@@ -47,11 +47,13 @@ const manifest: PluginManifest = {
       placeholder: "api_key_secret value",
     },
     caCertCredentialField,
-  ],
+  ]),
   quotas: { label: "Plan run minutes", partial: true },
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /** The cloud host must not send the key to a private address someone typed in. */
 function validateServerCredentials(credentials: Record<string, string>): string | null {
@@ -71,12 +73,13 @@ function validateServerCredentials(credentials: Record<string, string>): string 
   return null;
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: spaceliftDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new SpaceliftClient(credentials, services),
+  testCredentials: { endpoint: "acme", apiKeyId: "01HTEST", apiKeySecret: "secret" },
   parseStatusFeed,
   validateServerCredentials,
   terraformExport: spaceliftTerraformExport,
-};
+});

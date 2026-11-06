@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { CreditAccessError, evaluateOrphanRule } from "@infrawrench/plugin-base";
 import { TwilioClient, toForm } from "../client.js";
@@ -15,21 +16,27 @@ function client(
   const credentials: Record<string, string> = apiKey
     ? { accountSid: MAIN, apiKeySid: KEY, apiKeySecret: "s" }
     : { accountSid: MAIN, authToken: "t" };
-  return { c: new TwilioClient(credentials, { http } as never), calls };
+  return { c: hostClient(new TwilioClient(credentials, { http } as never)), calls };
 }
 
 describe("credentials", () => {
   it("prefers an API key and validates SIDs", () => {
-    const both = new TwilioClient({
-      accountSid: MAIN,
-      apiKeySid: KEY,
-      apiKeySecret: "s",
-      authToken: "t",
-    });
+    const both = hostClient(
+      new TwilioClient({
+        accountSid: MAIN,
+        apiKeySid: KEY,
+        apiKeySecret: "s",
+        authToken: "t",
+      }),
+    );
     expect(both.context.authMode).toBe("api-key");
-    expect(() => new TwilioClient({ accountSid: "nope", authToken: "t" })).toThrow(/AC/);
-    expect(() => new TwilioClient({ accountSid: MAIN })).toThrow(/auth token/);
-    expect(() => new TwilioClient({ accountSid: MAIN, apiKeySid: KEY })).toThrow(/secret/);
+    expect(() => hostClient(new TwilioClient({ accountSid: "nope", authToken: "t" }))).toThrow(
+      /AC/,
+    );
+    expect(() => hostClient(new TwilioClient({ accountSid: MAIN }))).toThrow(/auth token/);
+    expect(() => hostClient(new TwilioClient({ accountSid: MAIN, apiKeySid: KEY }))).toThrow(
+      /secret/,
+    );
   });
 });
 

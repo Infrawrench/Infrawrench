@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { DatabricksClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -6,10 +7,12 @@ const ACCOUNT = "acct1";
 const resourceTypes = plugin.resourceTypes;
 
 function makeClient(extraCreds: Record<string, string> = {}, services?: unknown) {
-  return new DatabricksClient(
-    { host: "dbc-test.cloud.databricks.com", token: "dapi123", ...extraCreds },
-    resourceTypes,
-    services as never,
+  return hostClient(
+    new DatabricksClient(
+      { host: "dbc-test.cloud.databricks.com", token: "dapi123", ...extraCreds },
+      resourceTypes,
+      services as never,
+    ),
   );
 }
 
@@ -57,7 +60,9 @@ afterEach(() => {
 
 describe("constructor", () => {
   it("throws without token", () => {
-    expect(() => new DatabricksClient({ host: "h" }, [])).toThrow(/missing personal access token/);
+    expect(() => hostClient(new DatabricksClient({ host: "h" }, []))).toThrow(
+      /missing personal access token/,
+    );
   });
   it("normalizes host with https and strips trailing slash", async () => {
     mockFetch({ body: { clusters: [] } });
@@ -401,7 +406,7 @@ describe("renderDetail / renderSidebarItem", () => {
 });
 
 describe("streamChatMessage", () => {
-  async function collect(gen: AsyncGenerator<unknown>) {
+  async function collect(gen: AsyncIterable<unknown>) {
     const events: unknown[] = [];
     for await (const e of gen) events.push(e);
     return events;
@@ -1299,7 +1304,7 @@ describe("caCert host http routing", () => {
   it("exposes caCert and passes host services through the plugin factory", async () => {
     expect(plugin.manifest.credentialFields.map((field) => field.key)).toContain("caCert");
     const request = vi.fn(async () => ({ status: 200, body: JSON.stringify({ clusters: [] }) }));
-    const client = plugin.createClient(
+    const client = hostPlugin(plugin).createClient(
       { host: "dbc-test.cloud.databricks.com", token: "dapi123", caCert: "PEM" },
       { http: { request } } as never,
     );

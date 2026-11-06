@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RenderClient, buildServiceCreateBody, buildServicePatch, parseDotenv } from "../client.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
@@ -10,7 +11,7 @@ import type { RenderService } from "../types.js";
 const ACCOUNT = "acct";
 
 function client(creds: Record<string, string> = { apiKey: "rnd_key" }) {
-  return new RenderClient(creds, RESOURCE_TYPES);
+  return hostClient(new RenderClient(creds, RESOURCE_TYPES));
 }
 
 const WEB: RenderService = {
@@ -50,7 +51,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("transport", () => {
   it("throws without an API key", () => {
-    expect(() => new RenderClient({}, RESOURCE_TYPES)).toThrow(/missing apiKey/);
+    expect(() => hostClient(new RenderClient({}, RESOURCE_TYPES))).toThrow(/missing apiKey/);
   });
 
   it("sends a bearer token and follows cursors across pages", async () => {
@@ -89,9 +90,11 @@ describe("transport", () => {
 
   it("routes through the host HTTP service when present", async () => {
     const request = vi.fn(async () => ({ status: 200, headers: {}, body: "[]" }));
-    const c = new RenderClient({ apiKey: "k", caCert: "PEM" }, RESOURCE_TYPES, {
-      http: { request },
-    });
+    const c = hostClient(
+      new RenderClient({ apiKey: "k", caCert: "PEM" }, RESOURCE_TYPES, {
+        http: { request },
+      }),
+    );
     await c.listResources("blueprint", ACCOUNT);
     expect(request).toHaveBeenCalledOnce();
     const [arg] = (request.mock.calls as unknown as Array<[{ caCert?: string; url: string }]>)[0]!;
@@ -360,7 +363,7 @@ describe("credential options", () => {
     route("GET", "/owners", [
       { owner: { id: "tea-1", name: "Acme", type: "team", email: "a@b.c" }, cursor: "x" },
     ]);
-    const opts = await plugin.listCredentialOptions!("workspaceId", { apiKey: "k" });
+    const opts = await hostPlugin(plugin).listCredentialOptions!("workspaceId", { apiKey: "k" });
     expect(opts).toEqual([{ id: "tea-1", label: "Acme", description: "Team · tea-1" }]);
   });
 });

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RunpodClient, parseEnv, startCommandArgs } from "../client.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
@@ -56,7 +57,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const client = () => new RunpodClient({ apiKey: "rpa_KEY" }, RESOURCE_TYPES);
+const client = () => hostClient(new RunpodClient({ apiKey: "rpa_KEY" }, RESOURCE_TYPES));
 
 const POD = {
   id: "pod1",
@@ -105,9 +106,11 @@ describe("auth and errors", () => {
 
   it("uses services.http when the host provides it", async () => {
     const request = vi.fn(async () => ({ status: 200, body: "[]", headers: {} }));
-    const c = new RunpodClient({ apiKey: "rpa_KEY", caCert: "PEM" }, RESOURCE_TYPES, {
-      http: { request },
-    } as never);
+    const c = hostClient(
+      new RunpodClient({ apiKey: "rpa_KEY", caCert: "PEM" }, RESOURCE_TYPES, {
+        http: { request },
+      } as never),
+    );
     await c.listResources("container-registry-auth", "acct");
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({

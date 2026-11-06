@@ -1,3 +1,6 @@
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import {
   createConnection,
   type Connection,
@@ -69,18 +72,20 @@ export const driver = {
   id: "mysql",
   dialTargets,
 
-  async query(
+  query(
     connectionString: string,
     sql: string,
     options?: SqlNodeDriverOptions,
-  ): Promise<Record<string, unknown>[]> {
-    const conn = await openConnection(connectionString, options);
-    try {
-      const [rows] = await (conn as unknown as Queryable).query(sql);
-      return rows;
-    } finally {
-      await conn.end();
-    }
+  ): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      const conn = await openConnection(connectionString, options);
+      try {
+        const [rows] = await (conn as unknown as Queryable).query(sql);
+        return rows;
+      } finally {
+        await conn.end();
+      }
+    });
   },
 
   /**
@@ -96,40 +101,52 @@ export const driver = {
    * wins over an explicit `false` option), so the driver default is not
    * something to lean on.
    */
-  async queryReadOnly(
+  queryReadOnly(
     connectionString: string,
     sql: string,
     options?: SqlNodeDriverOptions,
-  ): Promise<Record<string, unknown>[]> {
-    assertSingleSqlStatement(sql);
-    const conn = await openConnection(connectionString, options);
-    const q = conn as unknown as Queryable;
-    try {
-      await q.query("SET SESSION TRANSACTION READ ONLY");
-      await q.query("START TRANSACTION READ ONLY");
+  ): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      assertSingleSqlStatement(sql);
+      const conn = await openConnection(connectionString, options);
+      const q = conn as unknown as Queryable;
       try {
-        const [rows] = await q.query(sql);
-        return rows;
+        await q.query("SET SESSION TRANSACTION READ ONLY");
+        await q.query("START TRANSACTION READ ONLY");
+        try {
+          const [rows] = await q.query(sql);
+          return rows;
+        } finally {
+          await q.query("ROLLBACK").catch(() => {});
+        }
       } finally {
-        await q.query("ROLLBACK").catch(() => {});
+        await conn.end();
       }
-    } finally {
-      await conn.end();
-    }
+    });
   },
 
-  async execute(
+  execute(
     connectionString: string,
     sql: string,
     params: unknown[],
     options?: SqlNodeDriverOptions,
-  ): Promise<number> {
-    const conn = await openConnection(connectionString, options);
-    try {
-      const [result] = await (conn as unknown as Queryable).execute(sql, params);
-      return result.affectedRows;
-    } finally {
-      await conn.end();
-    }
+  ): PluginEffect<number> {
+    return attempt(async () => {
+      const conn = await openConnection(connectionString, options);
+      try {
+        const [result] = await (conn as unknown as Queryable).execute(sql, params);
+        return result.affectedRows;
+      } finally {
+        await conn.end();
+      }
+    });
   },
 } satisfies SqlNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { sql: driver },
+  server: { sql: driver },
+});

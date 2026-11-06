@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect } from "vitest";
 
 import { computeClusterCost } from "../cluster-cost.js";
@@ -346,16 +347,20 @@ describe("label-key picker", () => {
         },
       },
     } as never;
-    const nodeOptions = await plugin.listCredentialOptions!(
+    const nodeOptions = await hostPlugin(plugin).listCredentialOptions!(
       "costNodeLabelKeys",
       { kubeconfig: "apiVersion: v1" },
       services,
     );
     expect(nodeOptions.map((o) => o.id)).toEqual(["none", "team"]);
-    await plugin.listCredentialOptions!("costPvcLabelKeys", { kubeconfig: "x" }, services);
-    expect(paths).toEqual(["/api/v1/nodes", "/api/v1/persistentvolumeclaims"]);
-    await expect(plugin.listCredentialOptions!("kubeconfig", { kubeconfig: "x" })).rejects.toThrow(
-      /no options/,
+    await hostPlugin(plugin).listCredentialOptions!(
+      "costPvcLabelKeys",
+      { kubeconfig: "x" },
+      services,
     );
+    expect(paths).toEqual(["/api/v1/nodes", "/api/v1/persistentvolumeclaims"]);
+    await expect(
+      hostPlugin(plugin).listCredentialOptions!("kubeconfig", { kubeconfig: "x" }),
+    ).rejects.toThrow(/no options/);
   });
 });

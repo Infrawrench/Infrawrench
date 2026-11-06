@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   BusinessMetricSourceOption,
@@ -50,78 +53,92 @@ function formatDate(iso: string): string {
 export class MetronomeClient implements PluginClient {
   readonly api: MetronomeApi;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Metronome plugin: missing apiToken credential");
     this.api = new MetronomeApi(token, services, credentials["caCert"] ?? "");
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "customer":
-        return (await this.api.listCustomers()).map((c) => this.mapCustomer(accountId, c));
-      case "billable-metric":
-        return (await this.api.listBillableMetrics()).map((m) => this.mapMetric(accountId, m));
-      default:
-        throw new Error(`Metronome plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "customer":
+          return (await this.api.listCustomers()).map((c) => this.mapCustomer(accountId, c));
+        case "billable-metric":
+          return (await this.api.listBillableMetrics()).map((m) => this.mapMetric(accountId, m));
+        default:
+          throw new Error(`Metronome plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "customer") return this.mapCustomer(accountId, await this.api.getCustomer(id));
-    if (typeId === "billable-metric") {
-      return this.mapMetric(accountId, await this.api.getBillableMetric(id));
-    }
-    throw new Error(`Metronome plugin: unknown resource type "${typeId}"`);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "customer") return this.mapCustomer(accountId, await this.api.getCustomer(id));
+      if (typeId === "billable-metric") {
+        return this.mapMetric(accountId, await this.api.getBillableMetric(id));
+      }
+      throw new Error(`Metronome plugin: unknown resource type "${typeId}"`);
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (
-      (typeId === "customer" && outputKey === "customerId") ||
-      (typeId === "billable-metric" && outputKey === "metricId")
-    ) {
-      return externalIdOf(resourceId);
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`Metronome plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (
+        (typeId === "customer" && outputKey === "customerId") ||
+        (typeId === "billable-metric" && outputKey === "metricId")
+      ) {
+        return externalIdOf(resourceId);
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(
+        `Metronome plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   /** Customer detail pulls the ten most recent invoices. */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (resource.resourceTypeId !== "customer") return resource;
-    const invoices = await this.api.listRecentInvoices(resource.externalId ?? "");
-    return {
-      ...resource,
-      fields: { ...resource.fields, recentInvoices: JSON.stringify(invoices) },
-    };
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (resource.resourceTypeId !== "customer") return resource;
+      const invoices = await this.api.listRecentInvoices(resource.externalId ?? "");
+      return {
+        ...resource,
+        fields: { ...resource.fields, recentInvoices: JSON.stringify(invoices) },
+      };
+    });
   }
 
   listBusinessMetricSourceOptions(
     _accountId: string,
     fieldKey: string,
     params: Record<string, string>,
-  ): Promise<BusinessMetricSourceOption[]> {
-    return listSourceOptions(this.api, fieldKey, params);
+  ): PluginEffect<BusinessMetricSourceOption[]> {
+    return attempt(async () => {
+      return listSourceOptions(this.api, fieldKey, params);
+    });
   }
 
   runBusinessMetricSource(
     _accountId: string,
     params: Record<string, string>,
     range: BusinessMetricSourceRange,
-  ): Promise<BusinessMetricSourceResult> {
-    return runSource(this.api, params, range);
+  ): PluginEffect<BusinessMetricSourceResult> {
+    return attempt(async () => {
+      return runSource(this.api, params, range);
+    });
   }
 
   private mapCustomer(accountId: string, c: MetronomeCustomer): ResourceInstance {

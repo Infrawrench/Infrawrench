@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CloudinaryClient } from "../client.js";
 
@@ -30,7 +31,9 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new CloudinaryClient({ cloudName: "demo", apiKey: "key", apiSecret: "secret" });
+  return hostClient(
+    new CloudinaryClient({ cloudName: "demo", apiKey: "key", apiSecret: "secret" }),
+  );
 }
 
 beforeEach(() => {

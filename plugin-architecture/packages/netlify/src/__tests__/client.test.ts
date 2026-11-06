@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NetlifyClient } from "../client.js";
 
@@ -50,7 +51,7 @@ afterEach(() => {
 });
 
 function client(creds: Record<string, string> = { accessToken: "tok" }, services?: unknown) {
-  return new NetlifyClient(creds, services as never);
+  return hostClient(new NetlifyClient(creds, services as never));
 }
 
 const SITE = {
@@ -81,7 +82,7 @@ const SITE = {
 
 describe("constructor", () => {
   it("throws without accessToken", () => {
-    expect(() => new NetlifyClient({})).toThrow(/missing accessToken/);
+    expect(() => hostClient(new NetlifyClient({}))).toThrow(/missing accessToken/);
   });
 
   it("sends auth + accept headers and base url", async () => {

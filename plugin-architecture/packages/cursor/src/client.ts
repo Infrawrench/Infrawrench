@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -185,7 +188,7 @@ export class CursorClient implements PluginClient {
   private readonly configuredPrices: ConfiguredSeatPrices;
   private readonly cache = new Map<string, { at: number; value: Promise<unknown> }>();
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Cursor plugin: missing apiKey credential");
     this.ctx = {
@@ -290,127 +293,137 @@ export class CursorClient implements PluginClient {
    * 30 days come from the shared snapshot; a longer org threshold adds the
    * older 30-day windows, up to 90 days. Any failed page fails the read.
    */
-  async fetchSeats(_accountId: string, options: SeatFetchOptions): Promise<SeatRecord[]> {
-    const windowDays = seatWindowDays(options.lookbackDays);
-    const [snap, enterprise] = await Promise.all([this.snapshot(), this.analyticsAvailable()]);
-    const startMs = snap.usageEndMs - windowDays * DAY_MS;
-    const older =
-      startMs < snap.usageStartMs
-        ? await this.cached(`seat-usage:${windowDays}`, () =>
-            // https://cursor.com/docs/account/teams/admin-api (POST /teams/daily-usage-data, 30-day windows)
-            getDailyUsageRange(this.ctx, startMs, snap.usageStartMs - 1),
-          )
-        : [];
-    return buildCursorSeats({
-      members: snap.members,
-      usage: [...older, ...snap.usage],
-      windowStartDay: isoDay(startMs),
-      windowDays,
-      pricing: this.pricing,
-      configured: this.configuredPrices,
-      // The Analytics API is Enterprise only, so reaching it identifies the plan.
-      enterprise,
+  fetchSeats(_accountId: string, options: SeatFetchOptions): PluginEffect<SeatRecord[]> {
+    return attempt(async () => {
+      const windowDays = seatWindowDays(options.lookbackDays);
+      const [snap, enterprise] = await Promise.all([this.snapshot(), this.analyticsAvailable()]);
+      const startMs = snap.usageEndMs - windowDays * DAY_MS;
+      const older =
+        startMs < snap.usageStartMs
+          ? await this.cached(`seat-usage:${windowDays}`, () =>
+              // https://cursor.com/docs/account/teams/admin-api (POST /teams/daily-usage-data, 30-day windows)
+              getDailyUsageRange(this.ctx, startMs, snap.usageStartMs - 1),
+            )
+          : [];
+      return buildCursorSeats({
+        members: snap.members,
+        usage: [...older, ...snap.usage],
+        windowStartDay: isoDay(startMs),
+        windowDays,
+        pricing: this.pricing,
+        configured: this.configuredPrices,
+        // The Analytics API is Enterprise only, so reaching it identifies the plan.
+        enterprise,
+      });
     });
   }
 
-  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
-    const id = seat.memberId.startsWith("user_") ? seat.memberId : (seat.email ?? seat.memberId);
-    this.invalidate();
-    let result: Awaited<ReturnType<typeof removeTeamMember>>;
-    try {
-      // https://cursor.com/docs/account/teams/admin-api (POST /teams/remove-member)
-      result = await removeTeamMember(this.ctx, id);
-    } catch (err) {
-      if (isAccessDenied(err)) {
-        throw new Error(
-          "Cursor refused to remove the member. Removing members through the API needs an Enterprise plan and an Admin API key with the admin scope; otherwise remove them from the Members page of the team dashboard.",
-        );
-      }
-      if (err instanceof CursorApiError) {
-        throw new Error(`Cursor refused to remove the member: ${err.message}`);
-      }
-      throw err;
-    }
-    if (result.success === false) throw new Error("Cursor did not remove the member.");
-    return result.hasBillingCycleUsage
-      ? {
-          effective: "end-of-cycle",
-          message:
-            "Removed from the team. They used credits this cycle, so Cursor keeps the seat billed until the cycle ends.",
+  removeSeat(_accountId: string, seat: SeatRef): PluginEffect<SeatRemovalResult> {
+    return attempt(async () => {
+      const id = seat.memberId.startsWith("user_") ? seat.memberId : (seat.email ?? seat.memberId);
+      this.invalidate();
+      let result: Awaited<ReturnType<typeof removeTeamMember>>;
+      try {
+        // https://cursor.com/docs/account/teams/admin-api (POST /teams/remove-member)
+        result = await removeTeamMember(this.ctx, id);
+      } catch (err) {
+        if (isAccessDenied(err)) {
+          throw new Error(
+            "Cursor refused to remove the member. Removing members through the API needs an Enterprise plan and an Admin API key with the admin scope; otherwise remove them from the Members page of the team dashboard.",
+          );
         }
-      : { effective: "immediate", message: "Removed from the team." };
+        if (err instanceof CursorApiError) {
+          throw new Error(`Cursor refused to remove the member: ${err.message}`);
+        }
+        throw err;
+      }
+      if (result.success === false) throw new Error("Cursor did not remove the member.");
+      return result.hasBillingCycleUsage
+        ? {
+            effective: "end-of-cycle",
+            message:
+              "Removed from the team. They used credits this cycle, so Cursor keeps the seat billed until the cycle ends.",
+          }
+        : { effective: "immediate", message: "Removed from the team." };
+    });
   }
 
   // ---- Listing -------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "team":
-        return [await this.teamResource(accountId)];
-      case "team-member": {
-        const snap = await this.snapshot();
-        return snap.members.map((m) => this.mapMember(accountId, m, snap));
-      }
-      case "model": {
-        const { events, truncated } = await this.recentEvents();
-        return modelUsage(events).map((m) => this.mapModel(accountId, m, truncated));
-      }
-      case "billing-group": {
-        const { groups } = await getBillingGroups(this.ctx);
-        return groups.map((g) => this.mapBillingGroup(accountId, g));
-      }
-      case "directory-group": {
-        const groups = await getDirectoryGroups(this.ctx);
-        const withMembers = groups.length <= LIST_MEMBERS_FOR_GROUPS;
-        return Promise.all(
-          groups.map(async (g) =>
-            this.mapDirectoryGroup(
-              accountId,
-              g,
-              withMembers ? await getDirectoryGroupMembers(this.ctx, g.id) : undefined,
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "team":
+          return [await this.teamResource(accountId)];
+        case "team-member": {
+          const snap = await this.snapshot();
+          return snap.members.map((m) => this.mapMember(accountId, m, snap));
+        }
+        case "model": {
+          const { events, truncated } = await this.recentEvents();
+          return modelUsage(events).map((m) => this.mapModel(accountId, m, truncated));
+        }
+        case "billing-group": {
+          const { groups } = await getBillingGroups(this.ctx);
+          return groups.map((g) => this.mapBillingGroup(accountId, g));
+        }
+        case "directory-group": {
+          const groups = await getDirectoryGroups(this.ctx);
+          const withMembers = groups.length <= LIST_MEMBERS_FOR_GROUPS;
+          return Promise.all(
+            groups.map(async (g) =>
+              this.mapDirectoryGroup(
+                accountId,
+                g,
+                withMembers ? await getDirectoryGroupMembers(this.ctx, g.id) : undefined,
+              ),
             ),
-          ),
-        );
+          );
+        }
+        case "repo-blocklist":
+          return (await getRepoBlocklists(this.ctx)).map((r) => this.mapBlocklist(accountId, r));
+        default:
+          throw new Error(`Cursor plugin: unknown resource type "${typeId}"`);
       }
-      case "repo-blocklist":
-        return (await getRepoBlocklists(this.ctx)).map((r) => this.mapBlocklist(accountId, r));
-      default:
-        throw new Error(`Cursor plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    if (typeId === "billing-group") {
-      return this.mapBillingGroup(accountId, await getBillingGroup(this.ctx, externalId));
-    }
-    if (typeId === "directory-group") {
-      const [group, members] = await Promise.all([
-        getDirectoryGroup(this.ctx, externalId),
-        getDirectoryGroupMembers(this.ctx, externalId),
-      ]);
-      return this.mapDirectoryGroup(accountId, group, members);
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === externalId);
-    if (!found) throw new Error(`Cursor plugin: resource ${typeId}/${externalId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (typeId === "billing-group") {
+        return this.mapBillingGroup(accountId, await getBillingGroup(this.ctx, externalId));
+      }
+      if (typeId === "directory-group") {
+        const [group, members] = await Promise.all([
+          getDirectoryGroup(this.ctx, externalId),
+          getDirectoryGroupMembers(this.ctx, externalId),
+        ]);
+        return this.mapDirectoryGroup(accountId, group, members);
+      }
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === externalId);
+      if (!found) throw new Error(`Cursor plugin: resource ${typeId}/${externalId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`Cursor plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(`Cursor plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // ---- Mapping -------------------------------------------------------------
@@ -660,198 +673,208 @@ export class CursorClient implements PluginClient {
       .sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "billing-group" || typeId === "directory-group") {
-      const policies = await this.memberPickerOptions();
-      return {
-        fields: [
-          {
-            key: "name",
-            label: "Name",
-            kind: "text",
-            required: true,
-            placeholder: typeId === "billing-group" ? "Platform engineering" : "Contractors",
-            description: "Must be unique within the team.",
-          },
-          ...(typeId === "directory-group"
-            ? [
-                {
-                  key: "monthlySpendingLimitDollars",
-                  label: "Monthly spending limit (USD)",
-                  kind: "number" as const,
-                  required: false,
-                  minValue: 0,
-                  maxValue: MAX_LIMIT_DOLLARS,
-                  stepValue: 1,
-                  description: "Whole US dollars per member per month. Leave empty for no limit.",
-                },
-              ]
-            : []),
-          {
-            key: "memberIds",
-            label: "Members",
-            kind: "policy-picker",
-            required: false,
-            policies,
-            description: "Team members to add to the group. You can change them later.",
-          },
-        ],
-      };
-    }
-    if (typeId === "repo-blocklist") {
-      return {
-        fields: [
-          {
-            key: "url",
-            label: "Repository URL",
-            kind: "text",
-            required: true,
-            placeholder: "https://github.com/acme/payments",
-          },
-          {
-            key: "patterns",
-            label: "Blocked patterns",
-            kind: "string-list",
-            required: true,
-            placeholder: "*.env",
-            addLabel: "Add pattern",
-            minEntries: 1,
-            description: "Glob patterns of files Cursor must not read, for example secrets/**",
-          },
-        ],
-      };
-    }
-    throw new Error(`Cursor plugin: ${typeId} cannot be created`);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "billing-group" || typeId === "directory-group") {
+        const policies = await this.memberPickerOptions();
+        return {
+          fields: [
+            {
+              key: "name",
+              label: "Name",
+              kind: "text",
+              required: true,
+              placeholder: typeId === "billing-group" ? "Platform engineering" : "Contractors",
+              description: "Must be unique within the team.",
+            },
+            ...(typeId === "directory-group"
+              ? [
+                  {
+                    key: "monthlySpendingLimitDollars",
+                    label: "Monthly spending limit (USD)",
+                    kind: "number" as const,
+                    required: false,
+                    minValue: 0,
+                    maxValue: MAX_LIMIT_DOLLARS,
+                    stepValue: 1,
+                    description: "Whole US dollars per member per month. Leave empty for no limit.",
+                  },
+                ]
+              : []),
+            {
+              key: "memberIds",
+              label: "Members",
+              kind: "policy-picker",
+              required: false,
+              policies,
+              description: "Team members to add to the group. You can change them later.",
+            },
+          ],
+        };
+      }
+      if (typeId === "repo-blocklist") {
+        return {
+          fields: [
+            {
+              key: "url",
+              label: "Repository URL",
+              kind: "text",
+              required: true,
+              placeholder: "https://github.com/acme/payments",
+            },
+            {
+              key: "patterns",
+              label: "Blocked patterns",
+              kind: "string-list",
+              required: true,
+              placeholder: "*.env",
+              addLabel: "Add pattern",
+              minEntries: 1,
+              description: "Glob patterns of files Cursor must not read, for example secrets/**",
+            },
+          ],
+        };
+      }
+      throw new Error(`Cursor plugin: ${typeId} cannot be created`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    this.invalidate();
-    if (typeId === "billing-group" || typeId === "directory-group") {
-      const name = (fields["name"] ?? "").trim();
-      if (!name) throw new Error("A group name is required.");
-      const memberIds = parseIdList(fields["memberIds"]);
-      if (typeId === "billing-group") {
-        const group = await createBillingGroup(this.ctx, name);
-        await changeBillingGroupMembers(this.ctx, group.id, "add", memberIds);
-        return this.getResource(typeId, `${accountId}:${typeId}:${group.id}`, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      this.invalidate();
+      if (typeId === "billing-group" || typeId === "directory-group") {
+        const name = (fields["name"] ?? "").trim();
+        if (!name) throw new Error("A group name is required.");
+        const memberIds = parseIdList(fields["memberIds"]);
+        if (typeId === "billing-group") {
+          const group = await createBillingGroup(this.ctx, name);
+          await changeBillingGroupMembers(this.ctx, group.id, "add", memberIds);
+          return runPluginEffect(
+            this.getResource(typeId, `${accountId}:${typeId}:${group.id}`, accountId),
+          );
+        }
+        const limit = parseDollarLimit(
+          fields["monthlySpendingLimitDollars"] ?? "",
+          "The monthly spending limit",
+        );
+        let group = await createDirectoryGroup(this.ctx, name);
+        if (limit !== null) {
+          group = await updateDirectoryGroup(this.ctx, group.id, {
+            monthlySpendingLimitDollars: limit,
+          });
+        }
+        await changeDirectoryGroupMembers(this.ctx, group.id, "add", memberIds);
+        return runPluginEffect(
+          this.getResource(typeId, `${accountId}:${typeId}:${group.id}`, accountId),
+        );
       }
-      const limit = parseDollarLimit(
-        fields["monthlySpendingLimitDollars"] ?? "",
-        "The monthly spending limit",
-      );
-      let group = await createDirectoryGroup(this.ctx, name);
-      if (limit !== null) {
-        group = await updateDirectoryGroup(this.ctx, group.id, {
-          monthlySpendingLimitDollars: limit,
-        });
+      if (typeId === "repo-blocklist") {
+        const url = validateRepoUrl(fields["url"] ?? "");
+        const patterns = parsePatterns(fields["patterns"] ?? "");
+        if (patterns.length === 0) throw new Error("Add at least one pattern to block.");
+        const saved = await upsertRepoBlocklist(this.ctx, url, patterns);
+        if (!saved) throw new Error("Cursor did not return the saved blocklist.");
+        return this.mapBlocklist(accountId, saved);
       }
-      await changeDirectoryGroupMembers(this.ctx, group.id, "add", memberIds);
-      return this.getResource(typeId, `${accountId}:${typeId}:${group.id}`, accountId);
-    }
-    if (typeId === "repo-blocklist") {
-      const url = validateRepoUrl(fields["url"] ?? "");
-      const patterns = parsePatterns(fields["patterns"] ?? "");
-      if (patterns.length === 0) throw new Error("Add at least one pattern to block.");
-      const saved = await upsertRepoBlocklist(this.ctx, url, patterns);
-      if (!saved) throw new Error("Cursor did not return the saved blocklist.");
-      return this.mapBlocklist(accountId, saved);
-    }
-    throw new Error(`Cursor plugin: ${typeId} cannot be created`);
+      throw new Error(`Cursor plugin: ${typeId} cannot be created`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "team-member") {
-      if (fields["spendLimitDollars"] === undefined) {
-        throw new Error("The spend limit is the only editable field on a team member.");
-      }
-      const limit = parseDollarLimit(fields["spendLimitDollars"], "The spend limit");
-      const member = (await this.snapshot()).members.find(
-        (m) => m.id === externalId || str(m.email).toLowerCase() === externalId.toLowerCase(),
-      );
-      const email = str(member?.email);
-      if (!email) throw new Error(`Cursor plugin: team member ${externalId} not found`);
-      if (member?.isRemoved) throw new Error("This member has been removed from the team.");
-      await setUserSpendLimit(this.ctx, email, limit);
-      this.invalidate();
-      return this.getResource(typeId, resourceId, accountId);
-    }
-
-    if (typeId === "billing-group") {
-      if (fields["name"] !== undefined) {
-        const name = fields["name"].trim();
-        if (!name) throw new Error("A group name cannot be empty.");
-        await updateBillingGroup(this.ctx, externalId, { name });
-      }
-      if (fields["members"] !== undefined) {
-        const current = await getBillingGroup(this.ctx, externalId);
-        const currentIds = (current.currentMembers ?? current.members ?? [])
-          .map((m) => str(m.userId))
-          .filter(Boolean);
-        const { add, remove } = await this.membershipDiff(currentIds, fields["members"]);
-        await changeBillingGroupMembers(this.ctx, externalId, "add", add);
-        await changeBillingGroupMembers(this.ctx, externalId, "remove", remove);
-      }
-      this.invalidate();
-      return this.getResource(typeId, resourceId, accountId);
-    }
-
-    if (typeId === "directory-group") {
-      const patch: {
-        name?: string;
-        monthlySpendingLimitDollars?: number;
-        clearMonthlySpendingLimitDollars?: boolean;
-      } = {};
-      if (fields["name"] !== undefined) {
-        const name = fields["name"].trim();
-        if (!name) throw new Error("A group name cannot be empty.");
-        patch.name = name;
-      }
-      if (fields["monthlySpendingLimitDollars"] !== undefined) {
-        const limit = parseDollarLimit(
-          fields["monthlySpendingLimitDollars"],
-          "The monthly spending limit",
+      if (typeId === "team-member") {
+        if (fields["spendLimitDollars"] === undefined) {
+          throw new Error("The spend limit is the only editable field on a team member.");
+        }
+        const limit = parseDollarLimit(fields["spendLimitDollars"], "The spend limit");
+        const member = (await this.snapshot()).members.find(
+          (m) => m.id === externalId || str(m.email).toLowerCase() === externalId.toLowerCase(),
         );
-        if (limit === null) patch.clearMonthlySpendingLimitDollars = true;
-        else patch.monthlySpendingLimitDollars = limit;
+        const email = str(member?.email);
+        if (!email) throw new Error(`Cursor plugin: team member ${externalId} not found`);
+        if (member?.isRemoved) throw new Error("This member has been removed from the team.");
+        await setUserSpendLimit(this.ctx, email, limit);
+        this.invalidate();
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
-      if (fields["members"] !== undefined) {
-        const current = await getDirectoryGroupMembers(this.ctx, externalId);
-        const currentIds = current.map((m) => str(m.userId)).filter(Boolean);
-        const { add, remove } = await this.membershipDiff(currentIds, fields["members"]);
-        await changeDirectoryGroupMembers(this.ctx, externalId, "add", add);
-        await changeDirectoryGroupMembers(this.ctx, externalId, "remove", remove);
-      }
-      if (Object.keys(patch).length > 0) await updateDirectoryGroup(this.ctx, externalId, patch);
-      this.invalidate();
-      return this.getResource(typeId, resourceId, accountId);
-    }
 
-    if (typeId === "repo-blocklist") {
-      if (fields["patterns"] === undefined) {
-        throw new Error("The patterns are the only editable field on a blocklist.");
+      if (typeId === "billing-group") {
+        if (fields["name"] !== undefined) {
+          const name = fields["name"].trim();
+          if (!name) throw new Error("A group name cannot be empty.");
+          await updateBillingGroup(this.ctx, externalId, { name });
+        }
+        if (fields["members"] !== undefined) {
+          const current = await getBillingGroup(this.ctx, externalId);
+          const currentIds = (current.currentMembers ?? current.members ?? [])
+            .map((m) => str(m.userId))
+            .filter(Boolean);
+          const { add, remove } = await this.membershipDiff(currentIds, fields["members"]);
+          await changeBillingGroupMembers(this.ctx, externalId, "add", add);
+          await changeBillingGroupMembers(this.ctx, externalId, "remove", remove);
+        }
+        this.invalidate();
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
-      const patterns = parsePatterns(fields["patterns"]);
-      if (patterns.length === 0) {
-        throw new Error("Add at least one pattern, or delete the blocklist instead.");
-      }
-      const existing = (await getRepoBlocklists(this.ctx)).find((r) => r.id === externalId);
-      if (!existing?.url) throw new Error(`Cursor plugin: blocklist ${externalId} not found`);
-      const saved = await upsertRepoBlocklist(this.ctx, existing.url, patterns);
-      return this.mapBlocklist(accountId, saved ?? { ...existing, patterns });
-    }
 
-    throw new Error(`Cursor plugin: ${typeId} cannot be edited`);
+      if (typeId === "directory-group") {
+        const patch: {
+          name?: string;
+          monthlySpendingLimitDollars?: number;
+          clearMonthlySpendingLimitDollars?: boolean;
+        } = {};
+        if (fields["name"] !== undefined) {
+          const name = fields["name"].trim();
+          if (!name) throw new Error("A group name cannot be empty.");
+          patch.name = name;
+        }
+        if (fields["monthlySpendingLimitDollars"] !== undefined) {
+          const limit = parseDollarLimit(
+            fields["monthlySpendingLimitDollars"],
+            "The monthly spending limit",
+          );
+          if (limit === null) patch.clearMonthlySpendingLimitDollars = true;
+          else patch.monthlySpendingLimitDollars = limit;
+        }
+        if (fields["members"] !== undefined) {
+          const current = await getDirectoryGroupMembers(this.ctx, externalId);
+          const currentIds = current.map((m) => str(m.userId)).filter(Boolean);
+          const { add, remove } = await this.membershipDiff(currentIds, fields["members"]);
+          await changeDirectoryGroupMembers(this.ctx, externalId, "add", add);
+          await changeDirectoryGroupMembers(this.ctx, externalId, "remove", remove);
+        }
+        if (Object.keys(patch).length > 0) await updateDirectoryGroup(this.ctx, externalId, patch);
+        this.invalidate();
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
+
+      if (typeId === "repo-blocklist") {
+        if (fields["patterns"] === undefined) {
+          throw new Error("The patterns are the only editable field on a blocklist.");
+        }
+        const patterns = parsePatterns(fields["patterns"]);
+        if (patterns.length === 0) {
+          throw new Error("Add at least one pattern, or delete the blocklist instead.");
+        }
+        const existing = (await getRepoBlocklists(this.ctx)).find((r) => r.id === externalId);
+        if (!existing?.url) throw new Error(`Cursor plugin: blocklist ${externalId} not found`);
+        const saved = await upsertRepoBlocklist(this.ctx, existing.url, patterns);
+        return this.mapBlocklist(accountId, saved ?? { ...existing, patterns });
+      }
+
+      throw new Error(`Cursor plugin: ${typeId} cannot be edited`);
+    });
   }
 
   private async membershipDiff(
@@ -866,96 +889,104 @@ export class CursorClient implements PluginClient {
     };
   }
 
-  async deleteResource(typeId: string, resourceId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    this.invalidate();
-    switch (typeId) {
-      case "team-member":
-        await removeTeamMember(this.ctx, externalId);
-        return;
-      case "billing-group":
-        return deleteBillingGroup(this.ctx, externalId);
-      case "directory-group":
-        return deleteDirectoryGroup(this.ctx, externalId);
-      case "repo-blocklist":
-        return deleteRepoBlocklist(this.ctx, externalId);
-      default:
-        throw new Error(`Cursor plugin: ${typeId} cannot be deleted`);
-    }
+  deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      this.invalidate();
+      switch (typeId) {
+        case "team-member":
+          await removeTeamMember(this.ctx, externalId);
+          return;
+        case "billing-group":
+          return deleteBillingGroup(this.ctx, externalId);
+        case "directory-group":
+          return deleteDirectoryGroup(this.ctx, externalId);
+        case "repo-blocklist":
+          return deleteRepoBlocklist(this.ctx, externalId);
+        default:
+          throw new Error(`Cursor plugin: ${typeId} cannot be deleted`);
+      }
+    });
   }
 
   /** `remove-from-group:<userId>` on a group's member table. */
-  async invokeAction(typeId: string, resourceId: string, actionId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    const [verb, userId] = actionId.split(":", 2);
-    if (verb === "remove-from-group" && userId) {
-      this.invalidate();
-      if (typeId === "billing-group") {
-        return changeBillingGroupMembers(this.ctx, externalId, "remove", [userId]);
+  invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const [verb, userId] = actionId.split(":", 2);
+      if (verb === "remove-from-group" && userId) {
+        this.invalidate();
+        if (typeId === "billing-group") {
+          return changeBillingGroupMembers(this.ctx, externalId, "remove", [userId]);
+        }
+        if (typeId === "directory-group") {
+          return changeDirectoryGroupMembers(this.ctx, externalId, "remove", [userId]);
+        }
       }
-      if (typeId === "directory-group") {
-        return changeDirectoryGroupMembers(this.ctx, externalId, "remove", [userId]);
-      }
-    }
-    throw new Error(`Cursor plugin: unknown action "${actionId}" for type "${typeId}"`);
+      throw new Error(`Cursor plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
   // ---- Metrics, cost, stats, logs -----------------------------------------
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const endMs = Math.min(timeRange?.endMs ?? Date.now(), Date.now());
-    const startMs = timeRange?.startMs ?? endMs - DEFAULT_METRICS_WINDOW_MS;
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const endMs = Math.min(timeRange?.endMs ?? Date.now(), Date.now());
+      const startMs = timeRange?.startMs ?? endMs - DEFAULT_METRICS_WINDOW_MS;
+      const externalId = externalIdOf(resourceId);
 
-    switch (resourceTypeId) {
-      case "team": {
-        const usage = await getDailyUsageRange(this.ctx, startMs, endMs);
-        return [...dailyUsageSeries(usage), ...(await this.enterpriseTeamSeries(startMs, endMs))];
+      switch (resourceTypeId) {
+        case "team": {
+          const usage = await getDailyUsageRange(this.ctx, startMs, endMs);
+          return [...dailyUsageSeries(usage), ...(await this.enterpriseTeamSeries(startMs, endMs))];
+        }
+        case "team-member": {
+          const resource = await runPluginEffect(
+            this.getResource(resourceTypeId, resourceId, accountId),
+          );
+          const email = str(resource.fields["email"]).toLowerCase();
+          if (!email) return [];
+          const [usage, events] = await Promise.all([
+            getDailyUsageRange(this.ctx, startMs, endMs),
+            getUsageEvents(this.ctx, startMs, endMs, { email, maxPages: 5 }),
+          ]);
+          const own = usage.filter((r) => str(r.email).toLowerCase() === email);
+          return [...eventSeries(events.events), ...dailyUsageSeries(own, { perMember: true })];
+        }
+        case "model": {
+          const { events } = await getUsageEvents(this.ctx, startMs, endMs);
+          const own = events.filter((e) => e.model === externalId);
+          return [
+            ...eventSeries(own),
+            ...(await this.analyticsModelSeries(externalId, startMs, endMs)),
+          ];
+        }
+        case "billing-group": {
+          const group = await getBillingGroup(this.ctx, externalId);
+          const startDay = isoDay(startMs);
+          const endDay = isoDay(endMs);
+          const rows = (group.dailySpend ?? []).filter(
+            (d) => str(d.date) >= startDay && str(d.date) <= endDay,
+          );
+          return [
+            analyticsSeries(
+              rows,
+              "Spend",
+              "USD",
+              (d) => d.date,
+              (d) => dollars(d.spendCents),
+            ),
+          ];
+        }
+        default:
+          return [];
       }
-      case "team-member": {
-        const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-        const email = str(resource.fields["email"]).toLowerCase();
-        if (!email) return [];
-        const [usage, events] = await Promise.all([
-          getDailyUsageRange(this.ctx, startMs, endMs),
-          getUsageEvents(this.ctx, startMs, endMs, { email, maxPages: 5 }),
-        ]);
-        const own = usage.filter((r) => str(r.email).toLowerCase() === email);
-        return [...eventSeries(events.events), ...dailyUsageSeries(own, { perMember: true })];
-      }
-      case "model": {
-        const { events } = await getUsageEvents(this.ctx, startMs, endMs);
-        const own = events.filter((e) => e.model === externalId);
-        return [
-          ...eventSeries(own),
-          ...(await this.analyticsModelSeries(externalId, startMs, endMs)),
-        ];
-      }
-      case "billing-group": {
-        const group = await getBillingGroup(this.ctx, externalId);
-        const startDay = isoDay(startMs);
-        const endDay = isoDay(endMs);
-        const rows = (group.dailySpend ?? []).filter(
-          (d) => str(d.date) >= startDay && str(d.date) <= endDay,
-        );
-        return [
-          analyticsSeries(
-            rows,
-            "Spend",
-            "USD",
-            (d) => d.date,
-            (d) => dollars(d.spendCents),
-          ),
-        ];
-      }
-      default:
-        return [];
-    }
+    });
   }
 
   /** Analytics API and AI Code Tracking series; empty for teams without Enterprise. */
@@ -1081,159 +1112,167 @@ export class CursorClient implements PluginClient {
     }
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    try {
-      return await fetchCursorCostData(this.ctx, this.pricing, range);
-    } catch (err) {
-      if (isAccessDenied(err)) {
-        throw new CostSetupError(
-          "Cursor rejected the API key. Cost collection needs a team API key created by a team admin (Teams or Enterprise plan).",
-          { label: "Create an Admin API key", url: ADMIN_API_DOCS },
-        );
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      try {
+        return await fetchCursorCostData(this.ctx, this.pricing, range);
+      } catch (err) {
+        if (isAccessDenied(err)) {
+          throw new CostSetupError(
+            "Cursor rejected the API key. Cost collection needs a team API key created by a team admin (Teams or Enterprise plan).",
+            { label: "Create an Admin API key", url: ADMIN_API_DOCS },
+          );
+        }
+        throw err;
       }
-      throw err;
-    }
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    switch (resourceTypeId) {
-      case "team":
-        return [
-          { label: "Paid seats", value: String(n(f["paidSeats"])) },
-          {
-            label: "Idle seats",
-            value: String(n(f["idleSeats"])),
-            variant: n(f["idleSeats"]) > 0 ? "status-degraded" : "status-healthy",
-          },
-          { label: "Cycle spend", value: `$${n(f["cycleSpendUsd"]).toFixed(2)}` },
-        ];
-      case "team-member":
-        return [
-          { label: "Seat", value: str(f["seatStatus"]) },
-          { label: "Cycle spend", value: `$${n(f["spendThisCycleUsd"]).toFixed(2)}` },
-          { label: "Requests (30d)", value: n(f["requests30d"]).toLocaleString("en-US") },
-        ];
-      case "model":
-        return [
-          { label: "Requests (30d)", value: n(f["requests30d"]).toLocaleString("en-US") },
-          { label: "Usage spend", value: `$${n(f["usageBasedSpendUsd30d"]).toFixed(2)}` },
-          { label: "Members", value: String(n(f["users30d"])) },
-        ];
-      case "billing-group":
-        return [
-          { label: "Members", value: String(n(f["memberCount"])) },
-          { label: "Cycle spend", value: `$${n(f["spendThisCycleUsd"]).toFixed(2)}` },
-        ];
-      case "directory-group":
-        return [
-          { label: "Members", value: String(n(f["memberCount"])) },
-          {
-            label: "Monthly limit",
-            value:
-              f["monthlySpendingLimitDollars"] === ""
-                ? "None"
-                : `$${n(f["monthlySpendingLimitDollars"])}`,
-          },
-        ];
-      case "repo-blocklist":
-        return [{ label: "Patterns", value: String(n(f["patternCount"])) }];
-      default:
-        return [];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      switch (resourceTypeId) {
+        case "team":
+          return [
+            { label: "Paid seats", value: String(n(f["paidSeats"])) },
+            {
+              label: "Idle seats",
+              value: String(n(f["idleSeats"])),
+              variant: n(f["idleSeats"]) > 0 ? "status-degraded" : "status-healthy",
+            },
+            { label: "Cycle spend", value: `$${n(f["cycleSpendUsd"]).toFixed(2)}` },
+          ];
+        case "team-member":
+          return [
+            { label: "Seat", value: str(f["seatStatus"]) },
+            { label: "Cycle spend", value: `$${n(f["spendThisCycleUsd"]).toFixed(2)}` },
+            { label: "Requests (30d)", value: n(f["requests30d"]).toLocaleString("en-US") },
+          ];
+        case "model":
+          return [
+            { label: "Requests (30d)", value: n(f["requests30d"]).toLocaleString("en-US") },
+            { label: "Usage spend", value: `$${n(f["usageBasedSpendUsd30d"]).toFixed(2)}` },
+            { label: "Members", value: String(n(f["users30d"])) },
+          ];
+        case "billing-group":
+          return [
+            { label: "Members", value: String(n(f["memberCount"])) },
+            { label: "Cycle spend", value: `$${n(f["spendThisCycleUsd"]).toFixed(2)}` },
+          ];
+        case "directory-group":
+          return [
+            { label: "Members", value: String(n(f["memberCount"])) },
+            {
+              label: "Monthly limit",
+              value:
+                f["monthlySpendingLimitDollars"] === ""
+                  ? "None"
+                  : `$${n(f["monthlySpendingLimitDollars"])}`,
+            },
+          ];
+        case "repo-blocklist":
+          return [{ label: "Patterns", value: String(n(f["patternCount"])) }];
+        default:
+          return [];
+      }
+    });
   }
 
   /** The team audit log, oldest first so the tail is the newest. */
-  async getLogs(
+  getLogs(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const container = "audit-log";
-    if (typeId !== "team") return { text: "", containers: [], activeContainer: "" };
-    const end = Date.now();
-    const events = await getAuditLogs(
-      this.ctx,
-      end - 30 * DAY_MS + 60_000,
-      end,
-      params.tailLines ?? 200,
-    );
-    const lines = events
-      .slice()
-      .sort((a, b) => (str(a.timestamp) < str(b.timestamp) ? -1 : 1))
-      .map((e) => {
-        const data =
-          e.event_data && Object.keys(e.event_data).length > 0
-            ? ` ${JSON.stringify(e.event_data)}`
-            : "";
-        const ip = e.ip_address ? ` from ${e.ip_address}` : "";
-        return `${str(e.timestamp)} ${str(e.event_type)} ${str(e.user_email) || "-"}${ip}${data}\n`;
-      });
-    return { text: lines.join(""), containers: [container], activeContainer: container };
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const container = "audit-log";
+      if (typeId !== "team") return { text: "", containers: [], activeContainer: "" };
+      const end = Date.now();
+      const events = await getAuditLogs(
+        this.ctx,
+        end - 30 * DAY_MS + 60_000,
+        end,
+        params.tailLines ?? 200,
+      );
+      const lines = events
+        .slice()
+        .sort((a, b) => (str(a.timestamp) < str(b.timestamp) ? -1 : 1))
+        .map((e) => {
+          const data =
+            e.event_data && Object.keys(e.event_data).length > 0
+              ? ` ${JSON.stringify(e.event_data)}`
+              : "";
+          const ip = e.ip_address ? ` from ${e.ip_address}` : "";
+          return `${str(e.timestamp)} ${str(e.event_type)} ${str(e.user_email) || "-"}${ip}${data}\n`;
+        });
+      return { text: lines.join(""), containers: [container], activeContainer: container };
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    const checks: PreflightCapabilityCheck[] = [];
-    let identity: string | undefined;
-    try {
-      const members = await getTeamMembers(this.ctx);
-      identity = `Cursor team (${members.filter((m) => !m.isRemoved).length} members)`;
-      checks.push({ capabilityId: "read", status: "ok" });
-    } catch (err) {
-      checks.push(
-        isAccessDenied(err)
-          ? {
-              capabilityId: "read",
-              status: "missing",
-              missingPermissions: [
-                { id: "read-only", label: "Team API key (read-only or admin scope)" },
-              ],
-              message:
-                "Cursor rejected the key. Check it was copied in full and has not been revoked.",
-              helpLink: { label: "Admin API keys", url: ADMIN_API_DOCS },
-            }
-          : { capabilityId: "read", status: "unknown", message: errorMessage(err) },
-      );
-    }
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      const checks: PreflightCapabilityCheck[] = [];
+      let identity: string | undefined;
+      try {
+        const members = await getTeamMembers(this.ctx);
+        identity = `Cursor team (${members.filter((m) => !m.isRemoved).length} members)`;
+        checks.push({ capabilityId: "read", status: "ok" });
+      } catch (err) {
+        checks.push(
+          isAccessDenied(err)
+            ? {
+                capabilityId: "read",
+                status: "missing",
+                missingPermissions: [
+                  { id: "read-only", label: "Team API key (read-only or admin scope)" },
+                ],
+                message:
+                  "Cursor rejected the key. Check it was copied in full and has not been revoked.",
+                helpLink: { label: "Admin API keys", url: ADMIN_API_DOCS },
+              }
+            : { capabilityId: "read", status: "unknown", message: errorMessage(err) },
+        );
+      }
 
-    // Cursor has no read endpoint that tells a read-only key from an
-    // admin-scoped one, and preflight must not write, so the write check is
-    // reported as unknown with what will happen if the key is read-only.
-    checks.push({
-      capabilityId: "write",
-      status: "unknown",
-      message:
-        "Cursor offers no read-only way to check a key's scope. With a read-only key, listing and costs work and edits fail with a permission error.",
+      // Cursor has no read endpoint that tells a read-only key from an
+      // admin-scoped one, and preflight must not write, so the write check is
+      // reported as unknown with what will happen if the key is read-only.
+      checks.push({
+        capabilityId: "write",
+        status: "unknown",
+        message:
+          "Cursor offers no read-only way to check a key's scope. With a read-only key, listing and costs work and edits fail with a permission error.",
+      });
+
+      try {
+        const available = await this.analyticsAvailable();
+        checks.push(
+          available
+            ? { capabilityId: "analytics", status: "ok" }
+            : {
+                capabilityId: "analytics",
+                status: "missing",
+                missingPermissions: [
+                  { id: "enterprise", label: "Enterprise plan" },
+                  { id: "admin", label: "Team API key with the admin scope" },
+                ],
+                message:
+                  "The Analytics API answered with an access error: it is Enterprise-only and needs an admin-scoped key. Everything else keeps working.",
+                helpLink: { label: "Analytics API", url: ANALYTICS_API_DOCS },
+              },
+        );
+      } catch (err) {
+        checks.push({ capabilityId: "analytics", status: "unknown", message: errorMessage(err) });
+      }
+
+      return { checks, ...(identity ? { identity } : {}) };
     });
-
-    try {
-      const available = await this.analyticsAvailable();
-      checks.push(
-        available
-          ? { capabilityId: "analytics", status: "ok" }
-          : {
-              capabilityId: "analytics",
-              status: "missing",
-              missingPermissions: [
-                { id: "enterprise", label: "Enterprise plan" },
-                { id: "admin", label: "Team API key with the admin scope" },
-              ],
-              message:
-                "The Analytics API answered with an access error: it is Enterprise-only and needs an admin-scoped key. Everything else keeps working.",
-              helpLink: { label: "Analytics API", url: ANALYTICS_API_DOCS },
-            },
-      );
-    } catch (err) {
-      checks.push({ capabilityId: "analytics", status: "unknown", message: errorMessage(err) });
-    }
-
-    return { checks, ...(identity ? { identity } : {}) };
   }
 
   // ---- Rendering -----------------------------------------------------------

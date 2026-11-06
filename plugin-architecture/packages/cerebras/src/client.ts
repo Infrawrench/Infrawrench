@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   ChatMessage,
@@ -196,7 +199,7 @@ export class CerebrasClient implements PluginClient {
   private readonly organizationId: string;
   private readonly ctx: CerebrasContext;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Cerebras plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -231,21 +234,23 @@ export class CerebrasClient implements PluginClient {
 
   // ------------------------------------------------------------- listing
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "cerebras-model":
-        return this.listModels(accountId);
-      case "cerebras-batch":
-        return this.previewList(() => this.listBatches(accountId));
-      case "cerebras-file":
-        return this.previewList(() => this.listFiles(accountId));
-      case "cerebras-endpoint":
-        return this.hasManagement ? this.listEndpoints(accountId) : [];
-      case "cerebras-model-version":
-        return this.hasManagement ? this.listVersions(accountId) : [];
-      default:
-        throw new Error(`Cerebras plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "cerebras-model":
+          return this.listModels(accountId);
+        case "cerebras-batch":
+          return this.previewList(() => this.listBatches(accountId));
+        case "cerebras-file":
+          return this.previewList(() => this.listFiles(accountId));
+        case "cerebras-endpoint":
+          return this.hasManagement ? this.listEndpoints(accountId) : [];
+        case "cerebras-model-version":
+          return this.hasManagement ? this.listVersions(accountId) : [];
+        default:
+          throw new Error(`Cerebras plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /** Private Preview routes answer 403/404 for organizations without access. */
@@ -490,253 +495,271 @@ export class CerebrasClient implements PluginClient {
 
   // ----------------------------------------------------------------- get
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    switch (typeId) {
-      case "cerebras-batch":
-        return this.mapBatch(accountId, await this.api<Batch>(`/batches/${enc(id)}`));
-      case "cerebras-file":
-        return this.mapFile(accountId, await this.api<CerebrasFile>(`/files/${enc(id)}`));
-      case "cerebras-endpoint":
-        return this.mapEndpoint(
-          accountId,
-          await this.mgmt<EndpointStatus>(`/endpoints/${enc(id)}`),
-        );
-      case "cerebras-model-version": {
-        const [arch, version] = id.split("/");
-        return this.mapVersion(
-          accountId,
-          await this.mgmt<ModelVersion>(
-            `/orgs/${enc(this.orgName)}/models/${enc(arch ?? "")}/versions/${enc(version ?? "")}`,
-          ),
-        );
-      }
-      default: {
-        const all = await this.listResources(typeId, accountId);
-        const found = all.find((r) => r.externalId === id);
-        if (!found) {
-          throw Object.assign(new Error(`Cerebras plugin: ${typeId}/${id} not found`), {
-            status: 404,
-          });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      switch (typeId) {
+        case "cerebras-batch":
+          return this.mapBatch(accountId, await this.api<Batch>(`/batches/${enc(id)}`));
+        case "cerebras-file":
+          return this.mapFile(accountId, await this.api<CerebrasFile>(`/files/${enc(id)}`));
+        case "cerebras-endpoint":
+          return this.mapEndpoint(
+            accountId,
+            await this.mgmt<EndpointStatus>(`/endpoints/${enc(id)}`),
+          );
+        case "cerebras-model-version": {
+          const [arch, version] = id.split("/");
+          return this.mapVersion(
+            accountId,
+            await this.mgmt<ModelVersion>(
+              `/orgs/${enc(this.orgName)}/models/${enc(arch ?? "")}/versions/${enc(version ?? "")}`,
+            ),
+          );
         }
-        return found;
+        default: {
+          const all = await runPluginEffect(this.listResources(typeId, accountId));
+          const found = all.find((r) => r.externalId === id);
+          if (!found) {
+            throw Object.assign(new Error(`Cerebras plugin: ${typeId}/${id} not found`), {
+              status: 404,
+            });
+          }
+          return found;
+        }
       }
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "baseUrl") return V1;
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "baseUrl") return V1;
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+    });
   }
 
   /** Stash the versions an endpoint could deploy, for the Deploy prompt. */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (resource.resourceTypeId !== "cerebras-endpoint" || !this.hasManagement) return resource;
-    const arch = s(resource.fields["modelArchitecture"]);
-    if (!arch) return resource;
-    const res = await this.mgmt<{ model_versions?: ModelVersion[] }>(
-      `/orgs/${enc(this.orgName)}/models/${enc(arch)}/versions`,
-    ).catch(() => ({ model_versions: [] as ModelVersion[] }));
-    return {
-      ...resource,
-      resolvedOutputs: {
-        ...resource.resolvedOutputs,
-        __versions__: JSON.stringify(res.model_versions ?? []),
-      },
-    };
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (resource.resourceTypeId !== "cerebras-endpoint" || !this.hasManagement) return resource;
+      const arch = s(resource.fields["modelArchitecture"]);
+      if (!arch) return resource;
+      const res = await this.mgmt<{ model_versions?: ModelVersion[] }>(
+        `/orgs/${enc(this.orgName)}/models/${enc(arch)}/versions`,
+      ).catch(() => ({ model_versions: [] as ModelVersion[] }));
+      return {
+        ...resource,
+        resolvedOutputs: {
+          ...resource.resolvedOutputs,
+          __versions__: JSON.stringify(res.model_versions ?? []),
+        },
+      };
+    });
   }
 
   // -------------------------------------------------------------- create
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "cerebras-batch") {
-      const files = await this.previewList(() => this.listFiles("x"));
-      const options = files
-        .filter((f) => (f.fields["purpose"] ?? "batch") === "batch")
-        .map((f) => ({
-          id: f.externalId ?? "",
-          label: s(f.fields["filename"]) || (f.externalId ?? ""),
-          description: Number(f.fields["bytes"]) ? formatBytes(Number(f.fields["bytes"])) : "",
-        }));
-      return {
-        fields: [
-          {
-            key: "inputFileId",
-            label: "Input File",
-            kind: "select",
-            required: true,
-            options,
-            ...(options[0] ? { defaultValue: options[0].id } : {}),
-            description: options.length
-              ? 'A JSONL file uploaded with purpose "batch": at most 50,000 requests and 200 MB.'
-              : "No batch files uploaded yet. Upload a JSONL request file to Cerebras first.",
-          },
-        ],
-      };
-    }
-    if (typeId === "cerebras-model-version") {
-      const archs = await this.mgmt<{ model_architectures?: string[] }>(
-        `/orgs/${enc(this.orgName)}/models`,
-      );
-      const options = (archs.model_architectures ?? []).map((a) => ({ id: a, label: a }));
-      return {
-        fields: [
-          {
-            key: "modelArchitecture",
-            label: "Architecture",
-            kind: "select",
-            required: true,
-            options,
-            ...(options[0] ? { defaultValue: options[0].id } : {}),
-            description: "The weights must be compatible with this architecture.",
-          },
-          {
-            key: "weightUri",
-            label: "Weights Location",
-            kind: "text",
-            required: true,
-            placeholder: "s3://my-bucket/model-weights",
-            description:
-              "An S3 prefix shared with Cerebras through the cross-account bucket policy they provide.",
-          },
-          { key: "aliases", label: "Aliases", kind: "string-list", required: false },
-          {
-            key: "systemFingerprintSuffix",
-            label: "Fingerprint Suffix (optional)",
-            kind: "text",
-            required: false,
-            placeholder: "my-custom-suffix",
-          },
-        ],
-      };
-    }
-    throw new Error(`Cerebras plugin: ${typeId} cannot be created`);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "cerebras-batch") {
+        const files = await this.previewList(() => this.listFiles("x"));
+        const options = files
+          .filter((f) => (f.fields["purpose"] ?? "batch") === "batch")
+          .map((f) => ({
+            id: f.externalId ?? "",
+            label: s(f.fields["filename"]) || (f.externalId ?? ""),
+            description: Number(f.fields["bytes"]) ? formatBytes(Number(f.fields["bytes"])) : "",
+          }));
+        return {
+          fields: [
+            {
+              key: "inputFileId",
+              label: "Input File",
+              kind: "select",
+              required: true,
+              options,
+              ...(options[0] ? { defaultValue: options[0].id } : {}),
+              description: options.length
+                ? 'A JSONL file uploaded with purpose "batch": at most 50,000 requests and 200 MB.'
+                : "No batch files uploaded yet. Upload a JSONL request file to Cerebras first.",
+            },
+          ],
+        };
+      }
+      if (typeId === "cerebras-model-version") {
+        const archs = await this.mgmt<{ model_architectures?: string[] }>(
+          `/orgs/${enc(this.orgName)}/models`,
+        );
+        const options = (archs.model_architectures ?? []).map((a) => ({ id: a, label: a }));
+        return {
+          fields: [
+            {
+              key: "modelArchitecture",
+              label: "Architecture",
+              kind: "select",
+              required: true,
+              options,
+              ...(options[0] ? { defaultValue: options[0].id } : {}),
+              description: "The weights must be compatible with this architecture.",
+            },
+            {
+              key: "weightUri",
+              label: "Weights Location",
+              kind: "text",
+              required: true,
+              placeholder: "s3://my-bucket/model-weights",
+              description:
+                "An S3 prefix shared with Cerebras through the cross-account bucket policy they provide.",
+            },
+            { key: "aliases", label: "Aliases", kind: "string-list", required: false },
+            {
+              key: "systemFingerprintSuffix",
+              label: "Fingerprint Suffix (optional)",
+              kind: "text",
+              required: false,
+              placeholder: "my-custom-suffix",
+            },
+          ],
+        };
+      }
+      throw new Error(`Cerebras plugin: ${typeId} cannot be created`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "cerebras-batch") {
-      if (!fields["inputFileId"]) throw new Error("Cerebras plugin: pick an input file");
-      // Only `/v1/chat/completions` and `24h` are accepted today.
-      const created = await this.api<Batch>("/batches", {
-        method: "POST",
-        body: JSON.stringify({
-          input_file_id: fields["inputFileId"],
-          endpoint: "/v1/chat/completions",
-          completion_window: "24h",
-        }),
-      });
-      return this.mapBatch(accountId, created);
-    }
-    if (typeId === "cerebras-model-version") {
-      const arch = fields["modelArchitecture"];
-      if (!arch || !fields["weightUri"])
-        throw new Error("Cerebras plugin: architecture and weights are required");
-      const created = await this.mgmt<ModelVersion>(`/orgs/${enc(this.orgName)}/models:upload`, {
-        method: "POST",
-        body: JSON.stringify({
-          model_arch_id: arch,
-          model: {
-            weight_uri: fields["weightUri"].trim(),
-            version_aliases: splitList(fields["aliases"]),
-            ...(fields["systemFingerprintSuffix"]
-              ? { system_fingerprint_suffix: fields["systemFingerprintSuffix"] }
-              : {}),
-          },
-        }),
-      });
-      return this.mapVersion(accountId, created);
-    }
-    throw new Error(`Cerebras plugin: ${typeId} cannot be created`);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "cerebras-batch") {
+        if (!fields["inputFileId"]) throw new Error("Cerebras plugin: pick an input file");
+        // Only `/v1/chat/completions` and `24h` are accepted today.
+        const created = await this.api<Batch>("/batches", {
+          method: "POST",
+          body: JSON.stringify({
+            input_file_id: fields["inputFileId"],
+            endpoint: "/v1/chat/completions",
+            completion_window: "24h",
+          }),
+        });
+        return this.mapBatch(accountId, created);
+      }
+      if (typeId === "cerebras-model-version") {
+        const arch = fields["modelArchitecture"];
+        if (!arch || !fields["weightUri"])
+          throw new Error("Cerebras plugin: architecture and weights are required");
+        const created = await this.mgmt<ModelVersion>(`/orgs/${enc(this.orgName)}/models:upload`, {
+          method: "POST",
+          body: JSON.stringify({
+            model_arch_id: arch,
+            model: {
+              weight_uri: fields["weightUri"].trim(),
+              version_aliases: splitList(fields["aliases"]),
+              ...(fields["systemFingerprintSuffix"]
+                ? { system_fingerprint_suffix: fields["systemFingerprintSuffix"] }
+                : {}),
+            },
+          }),
+        });
+        return this.mapVersion(accountId, created);
+      }
+      throw new Error(`Cerebras plugin: ${typeId} cannot be created`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "cerebras-model-version")
-      throw new Error(`Cerebras plugin: ${typeId} cannot be edited`);
-    const [arch, version] = externalIdOf(resourceId, accountId, typeId).split("/");
-    await this.mgmt(
-      `/orgs/${enc(this.orgName)}/models/${enc(arch ?? "")}/versions/${enc(version ?? "")}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ version_aliases: splitList(fields["aliases"]) }),
-      },
-    );
-    return this.getResource(typeId, resourceId, accountId);
-  }
-
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    if (typeId === "cerebras-file") {
-      await this.api(`/files/${enc(id)}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "cerebras-model-version") {
-      const [arch, version] = id.split("/");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "cerebras-model-version")
+        throw new Error(`Cerebras plugin: ${typeId} cannot be edited`);
+      const [arch, version] = externalIdOf(resourceId, accountId, typeId).split("/");
       await this.mgmt(
         `/orgs/${enc(this.orgName)}/models/${enc(arch ?? "")}/versions/${enc(version ?? "")}`,
         {
-          method: "DELETE",
+          method: "PATCH",
+          body: JSON.stringify({ version_aliases: splitList(fields["aliases"]) }),
         },
       );
-      return;
-    }
-    throw new Error(`Cerebras plugin: ${typeId} cannot be deleted`);
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 
-  async invokeAction(
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      if (typeId === "cerebras-file") {
+        await this.api(`/files/${enc(id)}`, { method: "DELETE" });
+        return;
+      }
+      if (typeId === "cerebras-model-version") {
+        const [arch, version] = id.split("/");
+        await this.mgmt(
+          `/orgs/${enc(this.orgName)}/models/${enc(arch ?? "")}/versions/${enc(version ?? "")}`,
+          {
+            method: "DELETE",
+          },
+        );
+        return;
+      }
+      throw new Error(`Cerebras plugin: ${typeId} cannot be deleted`);
+    });
+  }
+
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    if (typeId === "cerebras-batch" && actionId === "cancel") {
-      await this.api(`/batches/${enc(id)}/cancel`, { method: "POST" });
-      return;
-    }
-    throw new Error(`Cerebras plugin: unknown action "${actionId}" for ${typeId}`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      if (typeId === "cerebras-batch" && actionId === "cancel") {
+        await this.api(`/batches/${enc(id)}/cancel`, { method: "POST" });
+        return;
+      }
+      throw new Error(`Cerebras plugin: unknown action "${actionId}" for ${typeId}`);
+    });
   }
 
   /** Deploy prompt: `POST /management/v1/endpoints/{id}:deployModel {model}`. */
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    if (typeId !== "cerebras-endpoint" || command !== "deployModel") {
-      throw new Error(`Cerebras plugin: unknown command "${command}"`);
-    }
-    let form: Record<string, string> = {};
-    try {
-      form = typeof args[0] === "string" ? (JSON.parse(args[0]) as Record<string, string>) : {};
-    } catch {
-      form = {};
-    }
-    if (!form["model"]) throw new Error("Cerebras plugin: pick a model version");
-    const id = externalIdOf(resourceId, accountId, typeId);
-    return this.mgmt(`/endpoints/${enc(id)}:deployModel`, {
-      method: "POST",
-      body: JSON.stringify({ model: form["model"] }),
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      if (typeId !== "cerebras-endpoint" || command !== "deployModel") {
+        throw new Error(`Cerebras plugin: unknown command "${command}"`);
+      }
+      let form: Record<string, string> = {};
+      try {
+        form = typeof args[0] === "string" ? (JSON.parse(args[0]) as Record<string, string>) : {};
+      } catch {
+        form = {};
+      }
+      if (!form["model"]) throw new Error("Cerebras plugin: pick a model version");
+      const id = externalIdOf(resourceId, accountId, typeId);
+      return this.mgmt(`/endpoints/${enc(id)}:deployModel`, {
+        method: "POST",
+        body: JSON.stringify({ model: form["model"] }),
+      });
     });
   }
 
@@ -747,42 +770,47 @@ export class CerebrasClient implements PluginClient {
    * Prometheus text for the last complete minute, rate-limited to 6/min.
    * Each value becomes a one-point series stamped now.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "cerebras-endpoint" || !this.organizationId) return [];
-    const id = externalIdOf(resourceId, accountId, resourceTypeId);
-    let text: string;
-    try {
-      text = await cerebrasText(
-        this.ctx,
-        this.apiKey,
-        `${METRICS_BASE}/${enc(this.organizationId)}`,
-      );
-    } catch (err) {
-      if ([403, 404, 429].includes(statusOf(err) ?? 0)) return [];
-      throw err;
-    }
-    const at = Math.floor(Date.now() / 60_000) * 60_000;
-    return parsePrometheus(text)
-      .filter((sample) => sample.labels["endpoint"] === id)
-      .map((sample) => {
-        const qualifier =
-          sample.labels["statistic"] ?? sample.labels["percentile"] ?? sample.labels["code"] ?? "";
-        return {
-          label: qualifier ? `${sample.name} ${qualifier}` : sample.name,
-          ...(sample.name.endsWith("_seconds") ? { unit: "s" } : {}),
-          points: [{ timestamp: at, value: sample.value }],
-        };
-      });
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "cerebras-endpoint" || !this.organizationId) return [];
+      const id = externalIdOf(resourceId, accountId, resourceTypeId);
+      let text: string;
+      try {
+        text = await cerebrasText(
+          this.ctx,
+          this.apiKey,
+          `${METRICS_BASE}/${enc(this.organizationId)}`,
+        );
+      } catch (err) {
+        if ([403, 404, 429].includes(statusOf(err) ?? 0)) return [];
+        throw err;
+      }
+      const at = Math.floor(Date.now() / 60_000) * 60_000;
+      return parsePrometheus(text)
+        .filter((sample) => sample.labels["endpoint"] === id)
+        .map((sample) => {
+          const qualifier =
+            sample.labels["statistic"] ??
+            sample.labels["percentile"] ??
+            sample.labels["code"] ??
+            "";
+          return {
+            label: qualifier ? `${sample.name} ${qualifier}` : sample.name,
+            ...(sample.name.endsWith("_seconds") ? { unit: "s" } : {}),
+            points: [{ timestamp: at, value: sample.value }],
+          };
+        });
+    });
   }
 
   // ---------------------------------------------------------------- chat
 
   /** `POST /v1/chat/completions` with `stream: true`; endpoints use their id as model. */
-  async *streamChatMessage(
+  private async *streamChatMessageIterable(
     typeId: string,
     resourceId: string,
     accountId: string,
@@ -824,6 +852,17 @@ export class CerebrasClient implements PluginClient {
       return;
     }
     yield* streamOpenAiSseChat(res.body);
+  }
+
+  streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    messages: ChatMessage[],
+  ) {
+    return attemptStream(() =>
+      this.streamChatMessageIterable(typeId, resourceId, accountId, messages),
+    );
   }
 
   // -------------------------------------------------------------- render

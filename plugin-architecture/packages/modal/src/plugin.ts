@@ -1,20 +1,19 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ModalClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "modal",
-  version: "0.1.0",
+  egressHosts: ["api.modal.com"],
   displayName: "Modal",
   description:
     "Serverless GPU and CPU compute. Track Modal spend per app and per resource type (each GPU type, CPU, memory) with credits and plan adjustments, environment spend limits and concurrency caps, and manage environments, apps, functions and their schedules, volumes, secrets, dicts and queues, with invocation, cold-start and latency charts.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "tokenId",
       label: "Token ID",
@@ -34,7 +33,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Manage Modal API tokens", url: "https://modal.com/settings/tokens" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // The workspace billing report: daily cost per Modal object (app,
     // sandbox, volume…) split by resource type (each GPU type, CPU, memory),
@@ -58,11 +57,14 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new ModalClient(credentials, services),
+  testCredentials: { tokenId: "ak-test-modal", tokenSecret: "as-test-modal" },
   parseStatusFeed,
-};
+});

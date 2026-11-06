@@ -1,6 +1,7 @@
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi } from "vitest";
 import { plugin } from "../plugin.js";
-import { pluginManifestSchema } from "@infrawrench/plugin-base";
 import { runPluginContractTests } from "@infrawrench/plugin-base/test-harness";
 
 runPluginContractTests(plugin);
@@ -22,12 +23,12 @@ function client() {
     .mockResolvedValue({ status: 200, body: JSON.stringify({ devices: [device] }) });
   return {
     request,
-    client: plugin.createClient({ apiKey: "tskey-api-secret" }, { http: { request } }),
+    client: hostPlugin(plugin).createClient({ apiKey: "tskey-api-secret" }, { http: { request } }),
   };
 }
 describe("Tailscale plugin", () => {
   it("has a valid manifest and declares cross-provider SSH enrollment", () => {
-    expect(pluginManifestSchema.safeParse(plugin.manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, plugin.manifest).success).toBe(true);
     expect(plugin.manifest.sshInstall).toBeDefined();
   });
   it("lists the token's tailnet using the host transport and stable node IDs", async () => {

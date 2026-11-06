@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { evaluateOrphanRule } from "@infrawrench/plugin-base";
 import { AnyscaleClient } from "../client.js";
@@ -8,7 +9,7 @@ import type { Reply } from "./helpers.js";
 
 function clientWith(route: (url: URL, method: string, body: unknown) => Reply) {
   const { http, calls } = makeHttp(route);
-  return { client: new AnyscaleClient({ apiKey: "key" }, { http }), calls };
+  return { client: hostClient(new AnyscaleClient({ apiKey: "key" }, { http })), calls };
 }
 
 describe("workspaces", () => {

@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ChatMessage,
   ChatStreamEvent,
@@ -140,7 +143,7 @@ export class HuggingFaceClient implements PluginClient {
   private whoamiCache?: { at: number; value: WhoAmI };
   private vendorsCache?: { at: number; value: Vendors };
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiToken"] ?? "").trim();
     if (!token) throw new Error("Hugging Face plugin: missing apiToken credential");
     this.ctx = {
@@ -199,31 +202,33 @@ export class HuggingFaceClient implements PluginClient {
 
   // ------------------------------------------------------------- listing
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "hf-inference-endpoint":
-        return this.listEndpoints(accountId);
-      case "hf-model":
-        return this.listRepos(accountId, "model");
-      case "hf-dataset":
-        return this.listRepos(accountId, "dataset");
-      case "hf-space":
-        return this.listSpaces(accountId);
-      case "hf-job":
-        return this.listJobs(accountId);
-      case "hf-scheduled-job":
-        return this.listScheduledJobs(accountId);
-      case "hf-provider-model":
-        return this.listProviderModels(accountId);
-      case "hf-service-account":
-        return this.listServiceAccounts(accountId);
-      case "hf-member-token":
-        return this.listMemberTokens(accountId);
-      case "hf-webhook":
-        return this.listWebhooks(accountId);
-      default:
-        throw new Error(`Hugging Face plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "hf-inference-endpoint":
+          return this.listEndpoints(accountId);
+        case "hf-model":
+          return this.listRepos(accountId, "model");
+        case "hf-dataset":
+          return this.listRepos(accountId, "dataset");
+        case "hf-space":
+          return this.listSpaces(accountId);
+        case "hf-job":
+          return this.listJobs(accountId);
+        case "hf-scheduled-job":
+          return this.listScheduledJobs(accountId);
+        case "hf-provider-model":
+          return this.listProviderModels(accountId);
+        case "hf-service-account":
+          return this.listServiceAccounts(accountId);
+        case "hf-member-token":
+          return this.listMemberTokens(accountId);
+        case "hf-webhook":
+          return this.listWebhooks(accountId);
+        default:
+          throw new Error(`Hugging Face plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -358,83 +363,87 @@ export class HuggingFaceClient implements PluginClient {
 
   // ----------------------------------------------------------------- get
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const ns = await this.namespace();
-    switch (typeId) {
-      case "hf-inference-endpoint": {
-        const endpoint = await hfJson<Endpoint>(
-          this.ctx,
-          `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}`,
-        );
-        const vendors = await this.vendors().catch(() => undefined);
-        return mapEndpoint(accountId, endpoint, vendors, ns);
-      }
-      case "hf-model":
-      case "hf-dataset": {
-        const kind = typeId === "hf-model" ? "model" : "dataset";
-        const expand = kind === "model" ? MODEL_EXPAND : DATASET_EXPAND;
-        const repo = await hfJson<RepoInfo>(
-          this.ctx,
-          `${HUB_BASE}/api/${kind}s/${encRepo(id)}?${expandQuery(expand)}`,
-        );
-        return mapRepo(accountId, kind, { ...repo, id: repo.id ?? id });
-      }
-      case "hf-space": {
-        const repo = await hfJson<RepoInfo>(
-          this.ctx,
-          `${HUB_BASE}/api/spaces/${encRepo(id)}?${expandQuery(SPACE_EXPAND)}`,
-        );
-        return mapSpace(accountId, { ...repo, id: repo.id ?? id });
-      }
-      case "hf-job": {
-        const job = await hfJson<Job>(this.ctx, `${HUB_BASE}/api/jobs/${enc(ns)}/${enc(id)}`);
-        return mapJob(accountId, job);
-      }
-      case "hf-scheduled-job": {
-        const job = await hfJson<ScheduledJob>(
-          this.ctx,
-          `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}`,
-        );
-        return mapScheduledJob(accountId, job, ns);
-      }
-      case "hf-service-account": {
-        const sa = await hfJson<ServiceAccount>(
-          this.ctx,
-          `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(id)}`,
-        );
-        const mapped = mapServiceAccount(accountId, sa);
-        mapped.resolvedOutputs["__tokens__"] = JSON.stringify(sa.accessTokens ?? []);
-        return mapped;
-      }
-      default: {
-        const all = await this.listResources(typeId, accountId);
-        const found = all.find((r) => r.externalId === id || r.id === resourceId);
-        if (!found) {
-          throw Object.assign(
-            new Error(`Hugging Face plugin: resource ${typeId}/${id} not found`),
-            { status: 404 },
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const ns = await this.namespace();
+      switch (typeId) {
+        case "hf-inference-endpoint": {
+          const endpoint = await hfJson<Endpoint>(
+            this.ctx,
+            `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}`,
           );
+          const vendors = await this.vendors().catch(() => undefined);
+          return mapEndpoint(accountId, endpoint, vendors, ns);
         }
-        return found;
+        case "hf-model":
+        case "hf-dataset": {
+          const kind = typeId === "hf-model" ? "model" : "dataset";
+          const expand = kind === "model" ? MODEL_EXPAND : DATASET_EXPAND;
+          const repo = await hfJson<RepoInfo>(
+            this.ctx,
+            `${HUB_BASE}/api/${kind}s/${encRepo(id)}?${expandQuery(expand)}`,
+          );
+          return mapRepo(accountId, kind, { ...repo, id: repo.id ?? id });
+        }
+        case "hf-space": {
+          const repo = await hfJson<RepoInfo>(
+            this.ctx,
+            `${HUB_BASE}/api/spaces/${encRepo(id)}?${expandQuery(SPACE_EXPAND)}`,
+          );
+          return mapSpace(accountId, { ...repo, id: repo.id ?? id });
+        }
+        case "hf-job": {
+          const job = await hfJson<Job>(this.ctx, `${HUB_BASE}/api/jobs/${enc(ns)}/${enc(id)}`);
+          return mapJob(accountId, job);
+        }
+        case "hf-scheduled-job": {
+          const job = await hfJson<ScheduledJob>(
+            this.ctx,
+            `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}`,
+          );
+          return mapScheduledJob(accountId, job, ns);
+        }
+        case "hf-service-account": {
+          const sa = await hfJson<ServiceAccount>(
+            this.ctx,
+            `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(id)}`,
+          );
+          const mapped = mapServiceAccount(accountId, sa);
+          mapped.resolvedOutputs["__tokens__"] = JSON.stringify(sa.accessTokens ?? []);
+          return mapped;
+        }
+        default: {
+          const all = await runPluginEffect(this.listResources(typeId, accountId));
+          const found = all.find((r) => r.externalId === id || r.id === resourceId);
+          if (!found) {
+            throw Object.assign(
+              new Error(`Hugging Face plugin: resource ${typeId}/${id} not found`),
+              { status: 404 },
+            );
+          }
+          return found;
+        }
       }
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "baseUrl") return ROUTER_BASE;
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey] ?? resource.fields[outputKey];
-    return value === undefined || value === null ? "" : String(value);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "baseUrl") return ROUTER_BASE;
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey] ?? resource.fields[outputKey];
+      return value === undefined || value === null ? "" : String(value);
+    });
   }
 
   /**
@@ -443,52 +452,54 @@ export class HuggingFaceClient implements PluginClient {
    * account's tokens. Stashed under `__…__` outputs because `renderDetail`
    * is synchronous.
    */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const ns = await this.namespace();
-    const out = { ...resource, resolvedOutputs: { ...resource.resolvedOutputs } };
-    if (resource.resourceTypeId === "hf-inference-endpoint") {
-      const name = String(resource.fields["name"] ?? resource.externalId ?? "");
-      const [vendors, replicas] = await Promise.all([
-        this.vendors().catch(() => undefined),
-        hfJson<Replicas>(
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ns = await this.namespace();
+      const out = { ...resource, resolvedOutputs: { ...resource.resolvedOutputs } };
+      if (resource.resourceTypeId === "hf-inference-endpoint") {
+        const name = String(resource.fields["name"] ?? resource.externalId ?? "");
+        const [vendors, replicas] = await Promise.all([
+          this.vendors().catch(() => undefined),
+          hfJson<Replicas>(
+            this.ctx,
+            `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(name)}/replica`,
+          ).catch(() => ({ items: [] }) as Replicas),
+        ]);
+        const computes = pickableComputes(
+          vendors,
+          String(resource.fields["vendor"] ?? ""),
+          String(resource.fields["region"] ?? ""),
+        );
+        out.resolvedOutputs["__computes__"] = JSON.stringify(computes);
+        out.resolvedOutputs["__replicas__"] = JSON.stringify(replicas.items ?? []);
+      } else if (resource.resourceTypeId === "hf-space") {
+        const repo = resource.externalId ?? "";
+        const [secrets, variables, hardware] = await Promise.all([
+          hfJson<Record<string, SpaceKeyEntry>>(
+            this.ctx,
+            `${HUB_BASE}/api/spaces/${encRepo(repo)}/secrets`,
+          ).catch(() => ({})),
+          hfJson<Record<string, SpaceKeyEntry>>(
+            this.ctx,
+            `${HUB_BASE}/api/spaces/${encRepo(repo)}/variables`,
+          ).catch(() => ({})),
+          this.spaceHardware().catch(() => [] as HardwareFlavor[]),
+        ]);
+        out.resolvedOutputs["__secrets__"] = JSON.stringify(Object.values(secrets ?? {}));
+        out.resolvedOutputs["__variables__"] = JSON.stringify(Object.values(variables ?? {}));
+        out.resolvedOutputs["__hardware__"] = JSON.stringify(hardware);
+      } else if (
+        resource.resourceTypeId === "hf-service-account" &&
+        !out.resolvedOutputs["__tokens__"]
+      ) {
+        const sa = await hfJson<ServiceAccount>(
           this.ctx,
-          `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(name)}/replica`,
-        ).catch(() => ({ items: [] }) as Replicas),
-      ]);
-      const computes = pickableComputes(
-        vendors,
-        String(resource.fields["vendor"] ?? ""),
-        String(resource.fields["region"] ?? ""),
-      );
-      out.resolvedOutputs["__computes__"] = JSON.stringify(computes);
-      out.resolvedOutputs["__replicas__"] = JSON.stringify(replicas.items ?? []);
-    } else if (resource.resourceTypeId === "hf-space") {
-      const repo = resource.externalId ?? "";
-      const [secrets, variables, hardware] = await Promise.all([
-        hfJson<Record<string, SpaceKeyEntry>>(
-          this.ctx,
-          `${HUB_BASE}/api/spaces/${encRepo(repo)}/secrets`,
-        ).catch(() => ({})),
-        hfJson<Record<string, SpaceKeyEntry>>(
-          this.ctx,
-          `${HUB_BASE}/api/spaces/${encRepo(repo)}/variables`,
-        ).catch(() => ({})),
-        this.spaceHardware().catch(() => [] as HardwareFlavor[]),
-      ]);
-      out.resolvedOutputs["__secrets__"] = JSON.stringify(Object.values(secrets ?? {}));
-      out.resolvedOutputs["__variables__"] = JSON.stringify(Object.values(variables ?? {}));
-      out.resolvedOutputs["__hardware__"] = JSON.stringify(hardware);
-    } else if (
-      resource.resourceTypeId === "hf-service-account" &&
-      !out.resolvedOutputs["__tokens__"]
-    ) {
-      const sa = await hfJson<ServiceAccount>(
-        this.ctx,
-        `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(resource.externalId ?? "")}`,
-      );
-      out.resolvedOutputs["__tokens__"] = JSON.stringify(sa.accessTokens ?? []);
-    }
-    return out;
+          `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(resource.externalId ?? "")}`,
+        );
+        out.resolvedOutputs["__tokens__"] = JSON.stringify(sa.accessTokens ?? []);
+      }
+      return out;
+    });
   }
 
   /** `GET /api/spaces/hardware`: public list of Space flavors with per-minute prices. */
@@ -503,145 +514,152 @@ export class HuggingFaceClient implements PluginClient {
 
   // -------------------------------------------------------------- create
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    const ns = await this.namespace();
-    switch (typeId) {
-      case "hf-inference-endpoint": {
-        const [vendors, catalog, ownModels, trending] = await Promise.all([
-          this.vendors().catch(() => ({ vendors: [] }) as Vendors),
-          hfJson<CatalogList>(this.ctx, `${CATALOG_BASE}/list`).catch(() => ({ items: [] })),
-          hfJson<RepoInfo[]>(
-            this.ctx,
-            `${HUB_BASE}/api/models?author=${enc(ns)}&limit=200&${expandQuery(["pipeline_tag"])}`,
-          ).catch(() => [] as RepoInfo[]),
-          hfJson<RepoInfo[]>(
-            this.ctx,
-            `${HUB_BASE}/api/models?sort=trendingScore&limit=50&${expandQuery(["pipeline_tag"])}`,
-          ).catch(() => [] as RepoInfo[]),
-        ]);
-        return buildCreateConfig("hf-inference-endpoint", {
-          vendors,
-          catalog,
-          ownModels,
-          trending,
-        });
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const ns = await this.namespace();
+      switch (typeId) {
+        case "hf-inference-endpoint": {
+          const [vendors, catalog, ownModels, trending] = await Promise.all([
+            this.vendors().catch(() => ({ vendors: [] }) as Vendors),
+            hfJson<CatalogList>(this.ctx, `${CATALOG_BASE}/list`).catch(() => ({ items: [] })),
+            hfJson<RepoInfo[]>(
+              this.ctx,
+              `${HUB_BASE}/api/models?author=${enc(ns)}&limit=200&${expandQuery(["pipeline_tag"])}`,
+            ).catch(() => [] as RepoInfo[]),
+            hfJson<RepoInfo[]>(
+              this.ctx,
+              `${HUB_BASE}/api/models?sort=trendingScore&limit=50&${expandQuery(["pipeline_tag"])}`,
+            ).catch(() => [] as RepoInfo[]),
+          ]);
+          return buildCreateConfig("hf-inference-endpoint", {
+            vendors,
+            catalog,
+            ownModels,
+            trending,
+          });
+        }
+        case "hf-space":
+          return buildCreateConfig("hf-space", {
+            spaceHardware: await this.spaceHardware().catch(() => []),
+            namespace: ns,
+          });
+        case "hf-job":
+        case "hf-scheduled-job": {
+          const [hardware, spaces] = await Promise.all([
+            this.jobHardware().catch(() => [] as HardwareFlavor[]),
+            hfJson<RepoInfo[]>(
+              this.ctx,
+              `${HUB_BASE}/api/spaces?author=${enc(ns)}&limit=200`,
+            ).catch(() => [] as RepoInfo[]),
+          ]);
+          return buildCreateConfig(typeId, { jobHardware: hardware, ownSpaces: spaces });
+        }
+        case "hf-model":
+        case "hf-dataset":
+        case "hf-service-account":
+          return buildCreateConfig(typeId, { namespace: ns });
+        default:
+          throw new Error(`Hugging Face plugin: ${typeId} cannot be created`);
       }
-      case "hf-space":
-        return buildCreateConfig("hf-space", {
-          spaceHardware: await this.spaceHardware().catch(() => []),
-          namespace: ns,
-        });
-      case "hf-job":
-      case "hf-scheduled-job": {
-        const [hardware, spaces] = await Promise.all([
-          this.jobHardware().catch(() => [] as HardwareFlavor[]),
-          hfJson<RepoInfo[]>(this.ctx, `${HUB_BASE}/api/spaces?author=${enc(ns)}&limit=200`).catch(
-            () => [] as RepoInfo[],
-          ),
-        ]);
-        return buildCreateConfig(typeId, { jobHardware: hardware, ownSpaces: spaces });
-      }
-      case "hf-model":
-      case "hf-dataset":
-      case "hf-service-account":
-        return buildCreateConfig(typeId, { namespace: ns });
-      default:
-        throw new Error(`Hugging Face plugin: ${typeId} cannot be created`);
-    }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const ns = await this.namespace();
-    const isOrg = await this.isOrgNamespace();
-    switch (typeId) {
-      case "hf-inference-endpoint":
-        return this.createEndpoint(accountId, ns, fields);
-      case "hf-model":
-      case "hf-dataset":
-      case "hf-space": {
-        const kind =
-          typeId === "hf-model" ? "model" : typeId === "hf-dataset" ? "dataset" : "space";
-        const name = (fields["name"] ?? "").trim();
-        if (!name) throw new Error("Hugging Face plugin: a repository name is required");
-        const body: Record<string, unknown> = {
-          name,
-          type: kind,
-          ...(isOrg ? { organization: ns } : {}),
-        };
-        const visibility = fields["visibility"] || "public";
-        if (kind === "space") {
-          body["visibility"] = visibility;
-          body["sdk"] = fields["sdk"] || "gradio";
-          if (fields["hardware"]) body["hardware"] = fields["hardware"];
-          if (fields["shortDescription"]) body["short_description"] = fields["shortDescription"];
-          const sleep = intOrUndefined(fields["sleepTimeSeconds"]);
-          if (sleep !== undefined && fields["hardware"] && fields["hardware"] !== "cpu-basic") {
-            body["sleepTimeSeconds"] = sleep;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ns = await this.namespace();
+      const isOrg = await this.isOrgNamespace();
+      switch (typeId) {
+        case "hf-inference-endpoint":
+          return this.createEndpoint(accountId, ns, fields);
+        case "hf-model":
+        case "hf-dataset":
+        case "hf-space": {
+          const kind =
+            typeId === "hf-model" ? "model" : typeId === "hf-dataset" ? "dataset" : "space";
+          const name = (fields["name"] ?? "").trim();
+          if (!name) throw new Error("Hugging Face plugin: a repository name is required");
+          const body: Record<string, unknown> = {
+            name,
+            type: kind,
+            ...(isOrg ? { organization: ns } : {}),
+          };
+          const visibility = fields["visibility"] || "public";
+          if (kind === "space") {
+            body["visibility"] = visibility;
+            body["sdk"] = fields["sdk"] || "gradio";
+            if (fields["hardware"]) body["hardware"] = fields["hardware"];
+            if (fields["shortDescription"]) body["short_description"] = fields["shortDescription"];
+            const sleep = intOrUndefined(fields["sleepTimeSeconds"]);
+            if (sleep !== undefined && fields["hardware"] && fields["hardware"] !== "cpu-basic") {
+              body["sleepTimeSeconds"] = sleep;
+            }
+          } else {
+            body["private"] = visibility === "private";
           }
-        } else {
-          body["private"] = visibility === "private";
-        }
-        if (fields["license"]) body["license"] = fields["license"];
-        if (fields["region"]) body["region"] = fields["region"];
-        // https://huggingface.co/.well-known/openapi.json: POST /api/repos/create
-        await hfJson(this.ctx, `${HUB_BASE}/api/repos/create`, { method: "POST", body });
-        const repoId = `${ns}/${name}`;
-        return this.getResource(typeId, `${accountId}:${typeId}:${repoId}`, accountId);
-      }
-      case "hf-job": {
-        const job = await hfJson<Job>(this.ctx, `${HUB_BASE}/api/jobs/${enc(ns)}`, {
-          method: "POST",
-          body: jobSpecFrom(fields),
-        });
-        return mapJob(accountId, job);
-      }
-      case "hf-scheduled-job": {
-        const schedule = (fields["schedule"] ?? "").trim();
-        if (!schedule) throw new Error("Hugging Face plugin: a schedule is required");
-        const job = await hfJson<ScheduledJob>(
-          this.ctx,
-          `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}`,
-          {
-            method: "POST",
-            body: {
-              jobSpec: jobSpecFrom(fields),
-              schedule,
-              suspend: false,
-              concurrency: fields["concurrency"] === "true",
-            },
-          },
-        );
-        return mapScheduledJob(accountId, job, ns);
-      }
-      case "hf-service-account": {
-        if (!isOrg) {
-          throw new Error(
-            "Hugging Face plugin: service accounts belong to organizations. Point this account at an organization namespace.",
+          if (fields["license"]) body["license"] = fields["license"];
+          if (fields["region"]) body["region"] = fields["region"];
+          // https://huggingface.co/.well-known/openapi.json: POST /api/repos/create
+          await hfJson(this.ctx, `${HUB_BASE}/api/repos/create`, { method: "POST", body });
+          const repoId = `${ns}/${name}`;
+          return runPluginEffect(
+            this.getResource(typeId, `${accountId}:${typeId}:${repoId}`, accountId),
           );
         }
-        const created = await hfJson<ServiceAccount & { fullname?: string }>(
-          this.ctx,
-          `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts`,
-          {
+        case "hf-job": {
+          const job = await hfJson<Job>(this.ctx, `${HUB_BASE}/api/jobs/${enc(ns)}`, {
             method: "POST",
-            body: {
-              name: (fields["name"] ?? "").trim(),
-              ...(fields["description"] ? { description: fields["description"] } : {}),
+            body: jobSpecFrom(fields),
+          });
+          return mapJob(accountId, job);
+        }
+        case "hf-scheduled-job": {
+          const schedule = (fields["schedule"] ?? "").trim();
+          if (!schedule) throw new Error("Hugging Face plugin: a schedule is required");
+          const job = await hfJson<ScheduledJob>(
+            this.ctx,
+            `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}`,
+            {
+              method: "POST",
+              body: {
+                jobSpec: jobSpecFrom(fields),
+                schedule,
+                suspend: false,
+                concurrency: fields["concurrency"] === "true",
+              },
             },
-          },
-        );
-        return mapServiceAccount(accountId, {
-          ...created,
-          name: created.name ?? created.fullname ?? fields["name"] ?? "",
-        });
+          );
+          return mapScheduledJob(accountId, job, ns);
+        }
+        case "hf-service-account": {
+          if (!isOrg) {
+            throw new Error(
+              "Hugging Face plugin: service accounts belong to organizations. Point this account at an organization namespace.",
+            );
+          }
+          const created = await hfJson<ServiceAccount & { fullname?: string }>(
+            this.ctx,
+            `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts`,
+            {
+              method: "POST",
+              body: {
+                name: (fields["name"] ?? "").trim(),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+              },
+            },
+          );
+          return mapServiceAccount(accountId, {
+            ...created,
+            name: created.name ?? created.fullname ?? fields["name"] ?? "",
+          });
+        }
+        default:
+          throw new Error(`Hugging Face plugin: ${typeId} cannot be created`);
       }
-      default:
-        throw new Error(`Hugging Face plugin: ${typeId} cannot be created`);
-    }
+    });
   }
 
   /**
@@ -727,268 +745,278 @@ export class HuggingFaceClient implements PluginClient {
 
   // -------------------------------------------------------------- update
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const ns = await this.namespace();
-    switch (typeId) {
-      case "hf-inference-endpoint": {
-        // https://api.endpoints.huggingface.cloud/openapi.json: PUT /v2/endpoint/{ns}/{name}
-        const scaling: Record<string, number> = {};
-        const min = intOrUndefined(fields["minReplica"]);
-        const max = intOrUndefined(fields["maxReplica"]);
-        const timeout = intOrUndefined(fields["scaleToZeroTimeout"]);
-        if (min !== undefined) scaling["minReplica"] = min;
-        if (max !== undefined) scaling["maxReplica"] = max;
-        if (timeout !== undefined) scaling["scaleToZeroTimeout"] = timeout;
-        const body: Record<string, unknown> = {};
-        if (Object.keys(scaling).length) body["compute"] = { scaling };
-        if (fields["type"]) body["type"] = fields["type"];
-        if (fields["tags"] !== undefined) body["tags"] = splitList(fields["tags"]);
-        const model: Record<string, unknown> = {};
-        if (fields["repository"]) model["repository"] = fields["repository"];
-        if (fields["revision"] !== undefined) model["revision"] = fields["revision"] || null;
-        if (Object.keys(model).length) body["model"] = model;
-        const updated = await hfJson<Endpoint>(
-          this.ctx,
-          `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}`,
-          { method: "PUT", body },
-        );
-        return mapEndpoint(accountId, updated, await this.vendors().catch(() => undefined), ns);
-      }
-      case "hf-model":
-      case "hf-dataset":
-      case "hf-space": {
-        const kind =
-          typeId === "hf-model" ? "models" : typeId === "hf-dataset" ? "datasets" : "spaces";
-        const body: Record<string, unknown> = {};
-        if (fields["visibility"]) {
-          if (kind === "spaces") body["visibility"] = fields["visibility"];
-          else body["private"] = fields["visibility"] === "private";
-        }
-        if (fields["gated"] !== undefined && kind !== "spaces") {
-          body["gated"] =
-            fields["gated"] === "auto" || fields["gated"] === "manual" ? fields["gated"] : false;
-        }
-        if (fields["discussionsDisabled"] !== undefined) {
-          body["discussionsDisabled"] = fields["discussionsDisabled"] === "true";
-        }
-        // PUT /api/{models|datasets|spaces}/{namespace}/{repo}/settings
-        await hfJson(this.ctx, `${HUB_BASE}/api/${kind}/${encRepo(id)}/settings`, {
-          method: "PUT",
-          body,
-        });
-        const fresh = await this.getResource(typeId, resourceId, accountId);
-        if (fields["discussionsDisabled"] !== undefined) {
-          fresh.fields["discussionsDisabled"] = fields["discussionsDisabled"] === "true";
-        }
-        return fresh;
-      }
-      case "hf-scheduled-job": {
-        if (fields["schedule"]) {
-          // POST /api/scheduled-jobs/{namespace}/{id}/schedule
-          const job = await hfJson<ScheduledJob>(
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const ns = await this.namespace();
+      switch (typeId) {
+        case "hf-inference-endpoint": {
+          // https://api.endpoints.huggingface.cloud/openapi.json: PUT /v2/endpoint/{ns}/{name}
+          const scaling: Record<string, number> = {};
+          const min = intOrUndefined(fields["minReplica"]);
+          const max = intOrUndefined(fields["maxReplica"]);
+          const timeout = intOrUndefined(fields["scaleToZeroTimeout"]);
+          if (min !== undefined) scaling["minReplica"] = min;
+          if (max !== undefined) scaling["maxReplica"] = max;
+          if (timeout !== undefined) scaling["scaleToZeroTimeout"] = timeout;
+          const body: Record<string, unknown> = {};
+          if (Object.keys(scaling).length) body["compute"] = { scaling };
+          if (fields["type"]) body["type"] = fields["type"];
+          if (fields["tags"] !== undefined) body["tags"] = splitList(fields["tags"]);
+          const model: Record<string, unknown> = {};
+          if (fields["repository"]) model["repository"] = fields["repository"];
+          if (fields["revision"] !== undefined) model["revision"] = fields["revision"] || null;
+          if (Object.keys(model).length) body["model"] = model;
+          const updated = await hfJson<Endpoint>(
             this.ctx,
-            `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}/schedule`,
-            { method: "POST", body: { schedule: fields["schedule"].trim() } },
+            `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}`,
+            { method: "PUT", body },
           );
-          return mapScheduledJob(accountId, job, ns);
+          return mapEndpoint(accountId, updated, await this.vendors().catch(() => undefined), ns);
         }
-        return this.getResource(typeId, resourceId, accountId);
+        case "hf-model":
+        case "hf-dataset":
+        case "hf-space": {
+          const kind =
+            typeId === "hf-model" ? "models" : typeId === "hf-dataset" ? "datasets" : "spaces";
+          const body: Record<string, unknown> = {};
+          if (fields["visibility"]) {
+            if (kind === "spaces") body["visibility"] = fields["visibility"];
+            else body["private"] = fields["visibility"] === "private";
+          }
+          if (fields["gated"] !== undefined && kind !== "spaces") {
+            body["gated"] =
+              fields["gated"] === "auto" || fields["gated"] === "manual" ? fields["gated"] : false;
+          }
+          if (fields["discussionsDisabled"] !== undefined) {
+            body["discussionsDisabled"] = fields["discussionsDisabled"] === "true";
+          }
+          // PUT /api/{models|datasets|spaces}/{namespace}/{repo}/settings
+          await hfJson(this.ctx, `${HUB_BASE}/api/${kind}/${encRepo(id)}/settings`, {
+            method: "PUT",
+            body,
+          });
+          const fresh = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          if (fields["discussionsDisabled"] !== undefined) {
+            fresh.fields["discussionsDisabled"] = fields["discussionsDisabled"] === "true";
+          }
+          return fresh;
+        }
+        case "hf-scheduled-job": {
+          if (fields["schedule"]) {
+            // POST /api/scheduled-jobs/{namespace}/{id}/schedule
+            const job = await hfJson<ScheduledJob>(
+              this.ctx,
+              `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}/schedule`,
+              { method: "POST", body: { schedule: fields["schedule"].trim() } },
+            );
+            return mapScheduledJob(accountId, job, ns);
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        default:
+          throw new Error(`Hugging Face plugin: ${typeId} cannot be edited`);
       }
-      default:
-        throw new Error(`Hugging Face plugin: ${typeId} cannot be edited`);
-    }
+    });
   }
 
   // -------------------------------------------------------------- delete
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const ns = await this.namespace();
-    switch (typeId) {
-      case "hf-inference-endpoint":
-        await hfJson(this.ctx, `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "hf-model":
-      case "hf-dataset":
-      case "hf-space": {
-        const [owner, ...rest] = id.split("/");
-        const name = rest.join("/");
-        const type =
-          typeId === "hf-model" ? "model" : typeId === "hf-dataset" ? "dataset" : "space";
-        // DELETE /api/repos/delete with {name, organization, type}
-        await hfJson(this.ctx, `${HUB_BASE}/api/repos/delete`, {
-          method: "DELETE",
-          body: { name, organization: owner, type },
-        });
-        return;
-      }
-      case "hf-scheduled-job":
-        await hfJson(this.ctx, `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "hf-service-account":
-        await hfJson(
-          this.ctx,
-          `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(id)}`,
-          {
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const ns = await this.namespace();
+      switch (typeId) {
+        case "hf-inference-endpoint":
+          await hfJson(this.ctx, `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}`, {
             method: "DELETE",
-          },
-        );
-        return;
-      case "hf-webhook":
-        await hfJson(this.ctx, `${HUB_BASE}/api/settings/webhooks/${enc(id)}`, {
-          method: "DELETE",
-        });
-        return;
-      default:
-        throw new Error(`Hugging Face plugin: ${typeId} cannot be deleted`);
-    }
+          });
+          return;
+        case "hf-model":
+        case "hf-dataset":
+        case "hf-space": {
+          const [owner, ...rest] = id.split("/");
+          const name = rest.join("/");
+          const type =
+            typeId === "hf-model" ? "model" : typeId === "hf-dataset" ? "dataset" : "space";
+          // DELETE /api/repos/delete with {name, organization, type}
+          await hfJson(this.ctx, `${HUB_BASE}/api/repos/delete`, {
+            method: "DELETE",
+            body: { name, organization: owner, type },
+          });
+          return;
+        }
+        case "hf-scheduled-job":
+          await hfJson(this.ctx, `${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "hf-service-account":
+          await hfJson(
+            this.ctx,
+            `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(id)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        case "hf-webhook":
+          await hfJson(this.ctx, `${HUB_BASE}/api/settings/webhooks/${enc(id)}`, {
+            method: "DELETE",
+          });
+          return;
+        default:
+          throw new Error(`Hugging Face plugin: ${typeId} cannot be deleted`);
+      }
+    });
   }
 
   // ------------------------------------------------------------- actions
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const ns = await this.namespace();
-    const post = (url: string, body?: unknown) =>
-      hfJson(this.ctx, url, { method: "POST", ...(body !== undefined ? { body } : {}) });
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const ns = await this.namespace();
+      const post = (url: string, body?: unknown) =>
+        hfJson(this.ctx, url, { method: "POST", ...(body !== undefined ? { body } : {}) });
 
-    if (typeId === "hf-inference-endpoint") {
-      // POST /v2/endpoint/{ns}/{name}/{pause|resume|scale-to-zero}
-      if (actionId === "pause" || actionId === "resume" || actionId === "scale-to-zero") {
-        await post(`${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}/${actionId}`);
+      if (typeId === "hf-inference-endpoint") {
+        // POST /v2/endpoint/{ns}/{name}/{pause|resume|scale-to-zero}
+        if (actionId === "pause" || actionId === "resume" || actionId === "scale-to-zero") {
+          await post(`${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}/${actionId}`);
+          return;
+        }
+      } else if (typeId === "hf-space") {
+        const base = `${HUB_BASE}/api/spaces/${encRepo(id)}`;
+        if (actionId === "restart") return void (await post(`${base}/restart`));
+        if (actionId === "factory-reboot") return void (await post(`${base}/restart?factory=true`));
+        if (actionId === "pause") return void (await post(`${base}/pause`));
+        if (actionId.startsWith("delete-secret:")) {
+          await hfJson(this.ctx, `${base}/secrets`, {
+            method: "DELETE",
+            body: { key: actionId.slice("delete-secret:".length) },
+          });
+          return;
+        }
+        if (actionId.startsWith("delete-variable:")) {
+          await hfJson(this.ctx, `${base}/variables`, {
+            method: "DELETE",
+            body: { key: actionId.slice("delete-variable:".length) },
+          });
+          return;
+        }
+      } else if (typeId === "hf-job" && actionId === "cancel") {
+        await post(`${HUB_BASE}/api/jobs/${enc(ns)}/${enc(id)}/cancel`);
+        return;
+      } else if (typeId === "hf-scheduled-job") {
+        if (actionId === "suspend" || actionId === "resume" || actionId === "run") {
+          await post(`${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}/${actionId}`);
+          return;
+        }
+      } else if (typeId === "hf-member-token" && actionId === "revoke") {
+        await post(`${HUB_BASE}/api/organizations/${enc(ns)}/settings/tokens/${enc(id)}/revoke`);
+        return;
+      } else if (typeId === "hf-webhook" && (actionId === "enable" || actionId === "disable")) {
+        await post(`${HUB_BASE}/api/settings/webhooks/${enc(id)}/${actionId}`);
+        return;
+      } else if (typeId === "hf-service-account" && actionId.startsWith("delete-token:")) {
+        const tokenId = actionId.slice("delete-token:".length);
+        await hfJson(
+          this.ctx,
+          `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(id)}/tokens/${enc(tokenId)}`,
+          { method: "DELETE" },
+        );
         return;
       }
-    } else if (typeId === "hf-space") {
-      const base = `${HUB_BASE}/api/spaces/${encRepo(id)}`;
-      if (actionId === "restart") return void (await post(`${base}/restart`));
-      if (actionId === "factory-reboot") return void (await post(`${base}/restart?factory=true`));
-      if (actionId === "pause") return void (await post(`${base}/pause`));
-      if (actionId.startsWith("delete-secret:")) {
-        await hfJson(this.ctx, `${base}/secrets`, {
-          method: "DELETE",
-          body: { key: actionId.slice("delete-secret:".length) },
-        });
-        return;
-      }
-      if (actionId.startsWith("delete-variable:")) {
-        await hfJson(this.ctx, `${base}/variables`, {
-          method: "DELETE",
-          body: { key: actionId.slice("delete-variable:".length) },
-        });
-        return;
-      }
-    } else if (typeId === "hf-job" && actionId === "cancel") {
-      await post(`${HUB_BASE}/api/jobs/${enc(ns)}/${enc(id)}/cancel`);
-      return;
-    } else if (typeId === "hf-scheduled-job") {
-      if (actionId === "suspend" || actionId === "resume" || actionId === "run") {
-        await post(`${HUB_BASE}/api/scheduled-jobs/${enc(ns)}/${enc(id)}/${actionId}`);
-        return;
-      }
-    } else if (typeId === "hf-member-token" && actionId === "revoke") {
-      await post(`${HUB_BASE}/api/organizations/${enc(ns)}/settings/tokens/${enc(id)}/revoke`);
-      return;
-    } else if (typeId === "hf-webhook" && (actionId === "enable" || actionId === "disable")) {
-      await post(`${HUB_BASE}/api/settings/webhooks/${enc(id)}/${actionId}`);
-      return;
-    } else if (typeId === "hf-service-account" && actionId.startsWith("delete-token:")) {
-      const tokenId = actionId.slice("delete-token:".length);
-      await hfJson(
-        this.ctx,
-        `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(id)}/tokens/${enc(tokenId)}`,
-        { method: "DELETE" },
-      );
-      return;
-    }
-    throw new Error(`Hugging Face plugin: unknown action "${actionId}" for ${typeId}`);
+      throw new Error(`Hugging Face plugin: unknown action "${actionId}" for ${typeId}`);
+    });
   }
 
   /** Form-driven actions (`prompt-nosql-command`): hardware, sleep time, secrets, variables. */
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const ns = await this.namespace();
-    const form = parseForm(args[0]);
-    if (typeId === "hf-inference-endpoint" && command === "changeHardware") {
-      const vendors = await this.vendors();
-      let chosen: import("./wire.js").Compute | undefined;
-      for (const v of vendors.vendors ?? []) {
-        for (const r of v.regions ?? []) {
-          chosen ??= (r.computes ?? []).find((c) => c.id === form["compute"]);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const ns = await this.namespace();
+      const form = parseForm(args[0]);
+      if (typeId === "hf-inference-endpoint" && command === "changeHardware") {
+        const vendors = await this.vendors();
+        let chosen: import("./wire.js").Compute | undefined;
+        for (const v of vendors.vendors ?? []) {
+          for (const r of v.regions ?? []) {
+            chosen ??= (r.computes ?? []).find((c) => c.id === form["compute"]);
+          }
         }
-      }
-      if (!chosen) throw new Error("Hugging Face plugin: pick the new hardware");
-      await hfJson(this.ctx, `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}`, {
-        method: "PUT",
-        body: {
-          compute: {
-            accelerator: chosen.accelerator,
-            instanceType: chosen.instanceType,
-            instanceSize: chosen.instanceSize,
+        if (!chosen) throw new Error("Hugging Face plugin: pick the new hardware");
+        await hfJson(this.ctx, `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}`, {
+          method: "PUT",
+          body: {
+            compute: {
+              accelerator: chosen.accelerator,
+              instanceType: chosen.instanceType,
+              instanceSize: chosen.instanceSize,
+            },
           },
-        },
-      });
-      return { ok: true };
-    }
-    if (typeId === "hf-space") {
-      const base = `${HUB_BASE}/api/spaces/${encRepo(id)}`;
-      switch (command) {
-        case "changeHardware": {
-          const flavor = form["flavor"];
-          if (!flavor) throw new Error("Hugging Face plugin: pick the hardware");
-          const sleep = intOrUndefined(form["sleepTimeSeconds"]);
-          await hfJson(this.ctx, `${base}/hardware`, {
-            method: "POST",
-            body: {
-              flavor,
-              ...(sleep !== undefined && flavor !== "cpu-basic" ? { sleepTimeSeconds: sleep } : {}),
-            },
-          });
-          return { ok: true };
-        }
-        case "setSleepTime": {
-          const seconds = intOrUndefined(form["seconds"]);
-          if (seconds === undefined) throw new Error("Hugging Face plugin: pick a sleep time");
-          await hfJson(this.ctx, `${base}/sleeptime`, { method: "POST", body: { seconds } });
-          return { ok: true };
-        }
-        case "addSecret":
-        case "addVariable": {
-          const key = (form["key"] ?? "").trim();
-          if (!key) throw new Error("Hugging Face plugin: a key is required");
-          await hfJson(this.ctx, `${base}/${command === "addSecret" ? "secrets" : "variables"}`, {
-            method: "POST",
-            body: {
-              key,
-              value: form["value"] ?? "",
-              ...(form["description"] ? { description: form["description"] } : {}),
-            },
-          });
-          return { ok: true };
+        });
+        return { ok: true };
+      }
+      if (typeId === "hf-space") {
+        const base = `${HUB_BASE}/api/spaces/${encRepo(id)}`;
+        switch (command) {
+          case "changeHardware": {
+            const flavor = form["flavor"];
+            if (!flavor) throw new Error("Hugging Face plugin: pick the hardware");
+            const sleep = intOrUndefined(form["sleepTimeSeconds"]);
+            await hfJson(this.ctx, `${base}/hardware`, {
+              method: "POST",
+              body: {
+                flavor,
+                ...(sleep !== undefined && flavor !== "cpu-basic"
+                  ? { sleepTimeSeconds: sleep }
+                  : {}),
+              },
+            });
+            return { ok: true };
+          }
+          case "setSleepTime": {
+            const seconds = intOrUndefined(form["seconds"]);
+            if (seconds === undefined) throw new Error("Hugging Face plugin: pick a sleep time");
+            await hfJson(this.ctx, `${base}/sleeptime`, { method: "POST", body: { seconds } });
+            return { ok: true };
+          }
+          case "addSecret":
+          case "addVariable": {
+            const key = (form["key"] ?? "").trim();
+            if (!key) throw new Error("Hugging Face plugin: a key is required");
+            await hfJson(this.ctx, `${base}/${command === "addSecret" ? "secrets" : "variables"}`, {
+              method: "POST",
+              body: {
+                key,
+                value: form["value"] ?? "",
+                ...(form["description"] ? { description: form["description"] } : {}),
+              },
+            });
+            return { ok: true };
+          }
         }
       }
-    }
-    throw new Error(`Hugging Face plugin: unknown command "${command}" for ${typeId}`);
+      throw new Error(`Hugging Face plugin: unknown command "${command}" for ${typeId}`);
+    });
   }
 
   /**
@@ -996,47 +1024,49 @@ export class HuggingFaceClient implements PluginClient {
    * `POST /api/organizations/{name}/service-accounts/{id}/tokens`.
    * The secret is returned once and never again.
    */
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId !== "hf-service-account") {
-      throw new Error(`Hugging Face plugin: ${typeId} has no credentials to export`);
-    }
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const ns = await this.namespace();
-    const permissions: Record<string, string[]> = {
-      "read-token": ["org.read", "repo.content.read"],
-      "write-token": ["org.read", "repo.write"],
-      "inference-token": ["inference.serverless.write", "inference.endpoints.infer.write"],
-    };
-    const chosen = permissions[formatId];
-    if (!chosen) throw new Error(`Hugging Face plugin: unknown token format "${formatId}"`);
-    const created = await hfJson<{
-      token?: string;
-      tokenInfo?: { _id?: string; displayName?: string };
-    }>(this.ctx, `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(id)}/tokens`, {
-      method: "POST",
-      body: {
-        displayName: `infrawrench-${formatId}-${new Date().toISOString().slice(0, 10)}`,
-        permissions: chosen,
-      },
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId !== "hf-service-account") {
+        throw new Error(`Hugging Face plugin: ${typeId} has no credentials to export`);
+      }
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const ns = await this.namespace();
+      const permissions: Record<string, string[]> = {
+        "read-token": ["org.read", "repo.content.read"],
+        "write-token": ["org.read", "repo.write"],
+        "inference-token": ["inference.serverless.write", "inference.endpoints.infer.write"],
+      };
+      const chosen = permissions[formatId];
+      if (!chosen) throw new Error(`Hugging Face plugin: unknown token format "${formatId}"`);
+      const created = await hfJson<{
+        token?: string;
+        tokenInfo?: { _id?: string; displayName?: string };
+      }>(this.ctx, `${HUB_BASE}/api/organizations/${enc(ns)}/service-accounts/${enc(id)}/tokens`, {
+        method: "POST",
+        body: {
+          displayName: `infrawrench-${formatId}-${new Date().toISOString().slice(0, 10)}`,
+          permissions: chosen,
+        },
+      });
+      const token = created.token ?? "";
+      if (!token) throw new Error("Hugging Face plugin: the token was created but not returned");
+      return {
+        content: token,
+        filename: `${id}-${formatId}.txt`,
+        mimeType: "text/plain",
+        fields: [
+          { label: "Token", value: token, sensitive: true },
+          { label: "Name", value: created.tokenInfo?.displayName ?? "" },
+          { label: "Permissions", value: chosen.join(", ") },
+        ],
+        warning: "Save this token now: Hugging Face never shows it again.",
+      };
     });
-    const token = created.token ?? "";
-    if (!token) throw new Error("Hugging Face plugin: the token was created but not returned");
-    return {
-      content: token,
-      filename: `${id}-${formatId}.txt`,
-      mimeType: "text/plain",
-      fields: [
-        { label: "Token", value: token, sensitive: true },
-        { label: "Name", value: created.tokenInfo?.displayName ?? "" },
-        { label: "Permissions", value: chosen.join(", ") },
-      ],
-      warning: "Save this token now: Hugging Face never shows it again.",
-    };
   }
 
   // ------------------------------------------------------------- metrics
@@ -1045,76 +1075,82 @@ export class HuggingFaceClient implements PluginClient {
    * `POST /v2/endpoint/{ns}/{name}/metrics` with `{start, stop}` returns every
    * graph the console draws in one call.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "hf-inference-endpoint") return [];
-    const id = externalIdOf(resourceId, accountId, resourceTypeId);
-    const ns = await this.namespace();
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - DEFAULT_METRICS_WINDOW_MS;
-    let graphs: AllGraphs;
-    try {
-      graphs = await hfJson<AllGraphs>(
-        this.ctx,
-        `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}/metrics`,
-        {
-          method: "POST",
-          body: { start: new Date(startMs).toISOString(), stop: new Date(endMs).toISOString() },
-        },
-      );
-    } catch (err) {
-      if (statusOf(err) === 404) return [];
-      throw err;
-    }
-    return endpointMetricSeries(graphs);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "hf-inference-endpoint") return [];
+      const id = externalIdOf(resourceId, accountId, resourceTypeId);
+      const ns = await this.namespace();
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - DEFAULT_METRICS_WINDOW_MS;
+      let graphs: AllGraphs;
+      try {
+        graphs = await hfJson<AllGraphs>(
+          this.ctx,
+          `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}/metrics`,
+          {
+            method: "POST",
+            body: { start: new Date(startMs).toISOString(), stop: new Date(endMs).toISOString() },
+          },
+        );
+      } catch (err) {
+        if (statusOf(err) === 404) return [];
+        throw err;
+      }
+      return endpointMetricSeries(graphs);
+    });
   }
 
   // ---------------------------------------------------------------- logs
 
   /** `GET /v3/endpoint/{ns}/{name}/logs?limit=&order=desc[&replica=]` */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "hf-inference-endpoint") {
-      return { text: "", containers: [], activeContainer: "" };
-    }
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const ns = await this.namespace();
-    const replicas = await hfJson<Replicas>(
-      this.ctx,
-      `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}/replica`,
-    ).catch(() => ({ items: [] }) as Replicas);
-    const containers = [
-      "All replicas",
-      ...(replicas.items ?? []).map((r) => String(r.id ?? "")).filter(Boolean),
-    ];
-    const active =
-      params.container && containers.includes(params.container) ? params.container : "All replicas";
-    const qs = new URLSearchParams({
-      limit: String(Math.min(Math.max(params.tailLines ?? 500, 1), 5000)),
-      order: "desc",
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "hf-inference-endpoint") {
+        return { text: "", containers: [], activeContainer: "" };
+      }
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const ns = await this.namespace();
+      const replicas = await hfJson<Replicas>(
+        this.ctx,
+        `${ENDPOINTS_BASE}/v2/endpoint/${enc(ns)}/${enc(id)}/replica`,
+      ).catch(() => ({ items: [] }) as Replicas);
+      const containers = [
+        "All replicas",
+        ...(replicas.items ?? []).map((r) => String(r.id ?? "")).filter(Boolean),
+      ];
+      const active =
+        params.container && containers.includes(params.container)
+          ? params.container
+          : "All replicas";
+      const qs = new URLSearchParams({
+        limit: String(Math.min(Math.max(params.tailLines ?? 500, 1), 5000)),
+        order: "desc",
+      });
+      if (active !== "All replicas") qs.set("replica", active);
+      const entries = await hfJson<LogEntry[]>(
+        this.ctx,
+        `${ENDPOINTS_BASE}/v3/endpoint/${enc(ns)}/${enc(id)}/logs?${qs.toString()}`,
+      );
+      const text = (entries ?? [])
+        .slice()
+        .reverse()
+        .map((e) => {
+          const replica = active === "All replicas" && e.replica_id ? ` [${e.replica_id}]` : "";
+          return `${e.timestamp ?? ""}${replica} ${e.line ?? ""}\n`;
+        })
+        .join("");
+      return { text, containers, activeContainer: active };
     });
-    if (active !== "All replicas") qs.set("replica", active);
-    const entries = await hfJson<LogEntry[]>(
-      this.ctx,
-      `${ENDPOINTS_BASE}/v3/endpoint/${enc(ns)}/${enc(id)}/logs?${qs.toString()}`,
-    );
-    const text = (entries ?? [])
-      .slice()
-      .reverse()
-      .map((e) => {
-        const replica = active === "All replicas" && e.replica_id ? ` [${e.replica_id}]` : "";
-        return `${e.timestamp ?? ""}${replica} ${e.line ?? ""}\n`;
-      })
-      .join("");
-    return { text, containers, activeContainer: active };
   }
 
   // ---------------------------------------------------------------- chat
@@ -1126,7 +1162,7 @@ export class HuggingFaceClient implements PluginClient {
    * called directly at `{url}/v1/chat/completions`, which TGI, vLLM and
    * SGLang containers serve.
    */
-  async *streamChatMessage(
+  private async *streamChatMessageIterable(
     typeId: string,
     resourceId: string,
     accountId: string,
@@ -1141,7 +1177,7 @@ export class HuggingFaceClient implements PluginClient {
     } else if (typeId === "hf-inference-endpoint") {
       let resource: ResourceInstance;
       try {
-        resource = await this.getResource(typeId, resourceId, accountId);
+        resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
       } catch (err) {
         yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
         return;
@@ -1193,53 +1229,67 @@ export class HuggingFaceClient implements PluginClient {
     yield* streamOpenAiSseChat(res.body);
   }
 
+  streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    messages: ChatMessage[],
+    options?: { model?: string },
+  ) {
+    return attemptStream(() =>
+      this.streamChatMessageIterable(typeId, resourceId, accountId, messages, options),
+    );
+  }
+
   // --------------------------------------------------------------- quotas
 
   /**
    * Inference Endpoints accelerator quotas (`GET /v2/provider/quotas/{ns}`)
    * and the token user's ZeroGPU quota (`GET /api/spaces/zero-gpu/quota`).
    */
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    const ns = await this.namespace();
-    const out: QuotaUsage[] = [];
-    const quotas = await hfJson<VendorQuotas>(
-      this.ctx,
-      `${ENDPOINTS_BASE}/v2/provider/quotas/${enc(ns)}`,
-    ).catch(() => ({ vendors: [] }) as VendorQuotas);
-    for (const vendor of quotas.vendors ?? []) {
-      for (const q of vendor.quotas ?? []) {
-        if (!q.instanceType || !q.maxAccelerators || q.maxAccelerators <= 0) continue;
-        out.push({
-          id: `endpoints/${vendor.name}/${q.instanceType}`,
-          service: "inference-endpoints",
-          name: `${q.architecture ?? q.instanceType} accelerators on ${String(vendor.name ?? "").toUpperCase()}`,
-          limit: q.maxAccelerators,
-          used: q.usedAccelerators ?? 0,
-          unit: "accelerators",
-          adjustable: true,
-          docsUrl: "https://huggingface.co/docs/inference-endpoints/en/support",
-        });
-      }
-    }
-    if (!(await this.isOrgNamespace())) {
-      const zero = await hfJson<ZeroGpuQuota>(
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      const ns = await this.namespace();
+      const out: QuotaUsage[] = [];
+      const quotas = await hfJson<VendorQuotas>(
         this.ctx,
-        `${HUB_BASE}/api/spaces/zero-gpu/quota`,
-      ).catch(() => undefined);
-      if (zero && typeof zero.base === "number" && zero.base > 0) {
-        out.push({
-          id: "spaces/zero-gpu",
-          service: "spaces",
-          name: "ZeroGPU daily quota",
-          limit: zero.base,
-          used: Math.max(0, zero.base - (zero.current ?? zero.base)),
-          unit: "GPU-seconds",
-          adjustable: false,
-          docsUrl: "https://huggingface.co/docs/hub/spaces-zerogpu",
-        });
+        `${ENDPOINTS_BASE}/v2/provider/quotas/${enc(ns)}`,
+      ).catch(() => ({ vendors: [] }) as VendorQuotas);
+      for (const vendor of quotas.vendors ?? []) {
+        for (const q of vendor.quotas ?? []) {
+          if (!q.instanceType || !q.maxAccelerators || q.maxAccelerators <= 0) continue;
+          out.push({
+            id: `endpoints/${vendor.name}/${q.instanceType}`,
+            service: "inference-endpoints",
+            name: `${q.architecture ?? q.instanceType} accelerators on ${String(vendor.name ?? "").toUpperCase()}`,
+            limit: q.maxAccelerators,
+            used: q.usedAccelerators ?? 0,
+            unit: "accelerators",
+            adjustable: true,
+            docsUrl: "https://huggingface.co/docs/inference-endpoints/en/support",
+          });
+        }
       }
-    }
-    return out;
+      if (!(await this.isOrgNamespace())) {
+        const zero = await hfJson<ZeroGpuQuota>(
+          this.ctx,
+          `${HUB_BASE}/api/spaces/zero-gpu/quota`,
+        ).catch(() => undefined);
+        if (zero && typeof zero.base === "number" && zero.base > 0) {
+          out.push({
+            id: "spaces/zero-gpu",
+            service: "spaces",
+            name: "ZeroGPU daily quota",
+            limit: zero.base,
+            used: Math.max(0, zero.base - (zero.current ?? zero.base)),
+            unit: "GPU-seconds",
+            adjustable: false,
+            docsUrl: "https://huggingface.co/docs/hub/spaces-zerogpu",
+          });
+        }
+      }
+      return out;
+    });
   }
 
   // ----------------------------------------------------------------- cost
@@ -1251,27 +1301,32 @@ export class HuggingFaceClient implements PluginClient {
    * - users: Jobs usage for the current billing period, per job
    *   (`GET /api/settings/billing/usage/jobs`).
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    const ns = await this.namespace();
-    if (await this.isOrgNamespace()) {
-      // Both dates must fall within the last 12 months.
-      const floor = new Date(Date.now() - 364 * 86_400_000).toISOString().slice(0, 10);
-      const from = range.fromDate < floor ? floor : range.fromDate;
-      if (from > range.toDate) return [];
-      const qs = new URLSearchParams({
-        startDate: `${from}T00:00:00.000Z`,
-        endDate: `${range.toDate}T23:59:59.999Z`,
-        limit: "31",
-      });
-      const periods = await hfPaginate<InferenceUsagePeriod>(
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      const ns = await this.namespace();
+      if (await this.isOrgNamespace()) {
+        // Both dates must fall within the last 12 months.
+        const floor = new Date(Date.now() - 364 * 86_400_000).toISOString().slice(0, 10);
+        const from = range.fromDate < floor ? floor : range.fromDate;
+        if (from > range.toDate) return [];
+        const qs = new URLSearchParams({
+          startDate: `${from}T00:00:00.000Z`,
+          endDate: `${range.toDate}T23:59:59.999Z`,
+          limit: "31",
+        });
+        const periods = await hfPaginate<InferenceUsagePeriod>(
+          this.ctx,
+          `${HUB_BASE}/api/organizations/${enc(ns)}/billing/usage/inference?${qs.toString()}`,
+          30,
+        );
+        return inferenceUsageRows(periods, range);
+      }
+      const usage = await hfJson<JobsUsage>(
         this.ctx,
-        `${HUB_BASE}/api/organizations/${enc(ns)}/billing/usage/inference?${qs.toString()}`,
-        30,
+        `${HUB_BASE}/api/settings/billing/usage/jobs`,
       );
-      return inferenceUsageRows(periods, range);
-    }
-    const usage = await hfJson<JobsUsage>(this.ctx, `${HUB_BASE}/api/settings/billing/usage/jobs`);
-    return jobsUsageRows(usage, range);
+      return jobsUsageRows(usage, range);
+    });
   }
 
   // --------------------------------------------------------------- render

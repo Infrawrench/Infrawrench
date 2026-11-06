@@ -1,4 +1,10 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CloudinaryClient } from "./client.js";
 import { cloudinaryOAuth, completeCloudinaryOAuth } from "./oauth.js";
@@ -10,9 +16,9 @@ import { TriggerResourceType } from "./resources/trigger.js";
 import { UploadMappingResourceType } from "./resources/upload-mapping.js";
 import { ProductEnvironmentResourceType } from "./resources/product-environment.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "cloudinary",
-  version: "0.1.0",
+  egressHosts: ["api.cloudinary.com"],
   displayName: "Cloudinary",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#3448C5"/>
@@ -20,9 +26,7 @@ const manifest: PluginManifest = {
       <path d="M80.2 26.8C76.8 11.4 63 0 46.8 0 34 0 22.6 6.6 16.2 17 7 18.2 0 26.2 0 35.8c0 10.8 8.8 19.6 19.6 19.6h57.8C85.4 55.4 92 48.8 92 40.8c0-6.8-4.8-12.6-11.8-14zM77.4 49H19.6C11.8 49 5.4 42.6 5.4 35.8c0-7.6 5.4-14 12.8-14.8l3.2-.4 1.6-2.8C28.4 9 37 3.4 46.8 3.4c14 0 26.2 10 28.8 23.6l.6 3.2 3.2.4c5.2.8 9.2 5.2 9.2 10.4 0 5.6-4.6 8-11.2 8z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "cloudName",
       label: "Cloud Name",
@@ -48,7 +52,7 @@ const manifest: PluginManifest = {
       placeholder: "abcdefghijklmnopqrstuvwxyz",
     },
     caCertCredentialField,
-  ],
+  ]),
   // `GET /usage` reports the plan's credit, storage, bandwidth and add-on
   // allowances alongside what has been consumed; `fetchQuotas` turns each
   // used/limit pair into a reading.
@@ -58,7 +62,9 @@ const manifest: PluginManifest = {
   },
   // "Connect with Cloudinary" (OAuth, beta). Pasted keys keep working; see oauth.ts.
   oauth: cloudinaryOAuth,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ProductEnvironmentResourceType,
@@ -70,9 +76,14 @@ const resourceTypes: ResourceTypeDefinition[] = [
   TriggerResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new CloudinaryClient(credentials, services),
-  completeOAuthConnection: completeCloudinaryOAuth,
-};
+  testCredentials: {
+    cloudName: "test-cloud",
+    apiKey: "123456789012345",
+    apiSecret: "test-api-secret",
+  },
+  completeOAuthConnection: attemptFn(completeCloudinaryOAuth),
+});

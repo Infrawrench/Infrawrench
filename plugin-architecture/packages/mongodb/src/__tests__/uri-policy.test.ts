@@ -1,8 +1,14 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect } from "vitest";
 import { MongoClient } from "mongodb";
-import { serverDriver, serverMongoConnectionStringError } from "../driver.js";
+import {
+  serverDriver as contractServerDriver,
+  serverMongoConnectionStringError,
+} from "../driver.js";
 import { findServerUnsafeMongoOptions, serverMongoUriError } from "../uri-policy.js";
 import { plugin } from "../plugin.js";
+
+const serverDriver = hostDriver(contractServerDriver);
 
 // The real driver parses here (no mock): the constructor neither reads files
 // nor dials, and parsing through it is the point of the policy.

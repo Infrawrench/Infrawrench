@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { CC_VERSION, CrdbApiError, statusOf } from "../api.js";
@@ -57,7 +58,11 @@ function fake(routes: Route[], secrets: Record<string, string> = {}) {
       },
     },
   };
-  return { client: new CockroachClient({ apiKey: "CCDB1_k" }, services), calls, secrets };
+  return {
+    client: hostClient(new CockroachClient({ apiKey: "CCDB1_k" }, services)),
+    calls,
+    secrets,
+  };
 }
 
 const on =

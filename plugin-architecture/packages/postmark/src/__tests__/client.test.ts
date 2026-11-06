@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { evaluatePostureRule } from "@infrawrench/plugin-base";
 import { PostmarkApiError } from "../api.js";
@@ -36,7 +37,7 @@ function client(route: Route, credentials: Record<string, string> = { accountTok
       };
     },
   };
-  return { c: new PostmarkClient(credentials, { http } as never), calls };
+  return { c: hostClient(new PostmarkClient(credentials, { http } as never)), calls };
 }
 
 const SERVERS = {
@@ -48,8 +49,8 @@ const SERVERS = {
 
 describe("credentials", () => {
   it("needs one of the two tokens", () => {
-    expect(() => new PostmarkClient({})).toThrow(/account API token/);
-    expect(() => new PostmarkClient({ serverToken: "s" })).not.toThrow();
+    expect(() => hostClient(new PostmarkClient({}))).toThrow(/account API token/);
+    expect(() => hostClient(new PostmarkClient({ serverToken: "s" }))).not.toThrow();
   });
 });
 

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaperspaceClient } from "../client.js";
 import { PaperspaceApiError } from "../api.js";
@@ -49,7 +50,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-const client = () => new PaperspaceClient({ apiKey: "KEY" }, RESOURCE_TYPES);
+const client = () => hostClient(new PaperspaceClient({ apiKey: "KEY" }, RESOURCE_TYPES));
 
 const MACHINE = {
   id: "ps1",

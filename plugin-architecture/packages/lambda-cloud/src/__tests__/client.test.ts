@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LambdaCloudClient } from "../client.js";
 import { LambdaApiError } from "../api.js";
@@ -51,7 +52,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-const client = () => new LambdaCloudClient({ apiKey: "secret_k" }, RESOURCE_TYPES);
+const client = () => hostClient(new LambdaCloudClient({ apiKey: "secret_k" }, RESOURCE_TYPES));
 
 const INSTANCE = {
   id: "i1",

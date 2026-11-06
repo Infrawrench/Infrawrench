@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // --- Mock the Neon SDK ----------------------------------------------------
@@ -65,7 +66,7 @@ function httpError(status: number) {
 }
 
 function makeClient() {
-  return new NeonClient({ apiKey: "neon_test" });
+  return hostClient(new NeonClient({ apiKey: "neon_test" }));
 }
 
 beforeEach(() => {

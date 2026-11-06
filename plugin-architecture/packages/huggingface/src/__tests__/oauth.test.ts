@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl, desktopOAuthRedirectUri } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { plugin } from "../plugin.js";
@@ -38,7 +39,7 @@ describe("Hugging Face OAuth declaration", () => {
 describe("completeOAuthConnection", () => {
   it("names the account after the user", async () => {
     const { doFetch, seen } = fakeFetch({ status: 200, body: { name: "ada", orgs: [] } });
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "server",
       fetch: doFetch,
     });
@@ -51,7 +52,10 @@ describe("completeOAuthConnection", () => {
     for (const reply of [{ status: 401, body: {} }, new Error("offline")]) {
       const { doFetch } = fakeFetch(reply);
       expect(
-        await plugin.completeOAuthConnection!(tokens, { client: "desktop", fetch: doFetch }),
+        await hostPlugin(plugin).completeOAuthConnection!(tokens, {
+          client: "desktop",
+          fetch: doFetch,
+        }),
       ).toEqual({});
     }
   });

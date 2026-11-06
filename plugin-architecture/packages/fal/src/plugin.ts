@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { FalClient } from "./client.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -14,16 +15,14 @@ const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   </g>
 </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "fal",
-  version: "0.1.0",
+  egressHosts: ["api.fal.ai"],
   displayName: "fal",
   description:
     "fal Model API usage, prices and analytics, Serverless apps, Compute instances, API keys, workflows, billed spend and credits.",
   logoSvg: LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "Admin API Key",
@@ -34,7 +33,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Create an API key", url: "https://fal.ai/dashboard/keys" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Model APIs per endpoint (resource) with the auth method as a tag;
     // Serverless per app (resource) with machine type, environment and surge.
@@ -50,11 +49,14 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
   },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new FalClient(credentials, services),
+  testCredentials: { apiKey: "key-id:key-secret" },
   parseStatusFeed,
-};
+});

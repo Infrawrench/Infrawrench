@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FlyClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -50,7 +51,7 @@ afterEach(() => {
 const resourceTypes = plugin.resourceTypes;
 
 function client(creds: Record<string, string> = { apiToken: "tok" }, services?: unknown) {
-  return new FlyClient(creds, resourceTypes, services as never);
+  return hostClient(new FlyClient(creds, resourceTypes, services as never));
 }
 
 const APP_LIST = {
@@ -86,7 +87,7 @@ const VOLUME = {
 
 describe("constructor", () => {
   it("throws without apiToken", () => {
-    expect(() => new FlyClient({})).toThrow(/missing apiToken/);
+    expect(() => hostClient(new FlyClient({}))).toThrow(/missing apiToken/);
   });
 
   it("defaults orgSlug to personal and sends auth header", async () => {

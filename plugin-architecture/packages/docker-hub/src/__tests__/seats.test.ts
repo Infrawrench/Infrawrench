@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { SeatRemediationFinding } from "@infrawrench/plugin-base";
 import { normalizeSeatRecords } from "@infrawrench/plugin-base";
@@ -13,9 +14,11 @@ function client(route: (call: Call) => unknown, creds: Record<string, string> = 
     return route(call);
   });
   return {
-    c: new DockerHubClient(
-      { username: "alice", token: "dckr_pat_x", namespaces: "alice, acme", ...creds },
-      { http } as never,
+    c: hostClient(
+      new DockerHubClient(
+        { username: "alice", token: "dckr_pat_x", namespaces: "alice, acme", ...creds },
+        { http } as never,
+      ),
     ),
     calls,
   };

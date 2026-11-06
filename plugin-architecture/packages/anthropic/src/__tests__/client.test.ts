@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { AnthropicClient } from "../client.js";
@@ -36,10 +37,12 @@ function headerOf(init: RequestInit | undefined, key: string): string | undefine
 }
 
 function client(withAdmin = true) {
-  return new AnthropicClient({
-    apiKey: "sk-ant-api03-test",
-    ...(withAdmin ? { adminApiKey: "sk-ant-admin01-test" } : {}),
-  });
+  return hostClient(
+    new AnthropicClient({
+      apiKey: "sk-ant-api03-test",
+      ...(withAdmin ? { adminApiKey: "sk-ant-admin01-test" } : {}),
+    }),
+  );
 }
 
 beforeEach(() => {

@@ -1,6 +1,6 @@
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  pluginManifestSchema,
   type IdleScanRequest,
   type IdleScanResource,
   type RemediationCommand,
@@ -112,7 +112,7 @@ function run(
 describe("declaration", () => {
   it("is on the manifest and validates against plugin-base's schema", async () => {
     expect(plugin.manifest.idleFindings).toBe(AWS_IDLE_FINDINGS);
-    expect(pluginManifestSchema.safeParse(plugin.manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, plugin.manifest).success).toBe(true);
   });
 
   it("only names resource types the plugin declares", () => {

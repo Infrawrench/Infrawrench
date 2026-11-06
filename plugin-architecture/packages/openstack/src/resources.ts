@@ -71,7 +71,10 @@ export const ServerResourceType = rt({
     f("createdAt", "Created", ro),
   ],
   outputs: [
-    o("publicIp", "Public IP", { description: "Floating IP if any, otherwise the first address" }),
+    o("publicIp", "Public IP", {
+      dnsValue: "ipv4",
+      description: "Floating IP if any, otherwise the first address",
+    }),
     o("privateIp", "Private IP"),
     o("serverId", "Server ID"),
   ],
@@ -360,7 +363,7 @@ export const FloatingIpResourceType = rt({
     f("serverId", "Server", ro),
     f("dnsName", "DNS Name", ro),
   ],
-  outputs: [o("ip", "Address")],
+  outputs: [o("ip", "Address", { dnsValue: "ipv4" })],
   dependsOn: [
     { fieldKey: "networkId", targetTypeId: NETWORK, label: "from" },
     { fieldKey: "serverId", targetTypeId: SERVER, label: "assigned to" },

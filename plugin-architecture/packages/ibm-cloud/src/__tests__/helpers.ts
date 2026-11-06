@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { IbmCloudClient } from "../client.js";
 
 export interface Recorded {
@@ -64,9 +65,11 @@ export function makeClient(
       };
     },
   };
-  const client = new IbmCloudClient(
-    { apiKey: "key", region: "us-south", regions: "us-south, eu-de", ...creds },
-    { http } as never,
+  const client = hostClient(
+    new IbmCloudClient(
+      { apiKey: "key", region: "us-south", regions: "us-south, eu-de", ...creds },
+      { http } as never,
+    ),
   );
   return { client, calls, tokenCalls: () => tokenCalls };
 }

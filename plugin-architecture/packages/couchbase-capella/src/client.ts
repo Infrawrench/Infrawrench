@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -150,7 +153,7 @@ export class CapellaClient implements PluginClient {
   private cache = new Map<string, { at: number; value: Promise<unknown> }>();
   private freeTier = new Map<string, boolean>();
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     const organizationId = (credentials["organizationId"] ?? "").trim();
     if (!apiKey) throw new Error("Capella plugin: missing apiKey credential");
@@ -291,11 +294,13 @@ export class CapellaClient implements PluginClient {
     return lists.flat();
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    const list = await this.listRaw(typeId, accountId);
-    // The organization id rides along so Terraform import ids can name it.
-    for (const r of list) r.fields["organizationId"] = this.ctx.organizationId;
-    return list;
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      const list = await this.listRaw(typeId, accountId);
+      // The organization id rides along so Terraform import ids can name it.
+      for (const r of list) r.fields["organizationId"] = this.ctx.organizationId;
+      return list;
+    });
   }
 
   private async listRaw(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -528,130 +533,144 @@ export class CapellaClient implements PluginClient {
     }
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    if (typeId === T.cluster) {
-      const [p, c] = splitId(ext, 2) as [string, string];
-      await this.clustersOf(p);
-      const cluster = await this.req<CpCluster>("GET", this.clusterPath(p, c));
-      const stats = this.freeTier.get(c)
-        ? undefined
-        : await this.req<{ freeMemoryInMb?: number; totalMemoryInMb?: number }>(
-            "GET",
-            `${this.sub(p, c)}/stats`,
-          ).catch(() => undefined);
-      const r = mapCluster(accountId, p, cluster, stats);
-      r.fields["organizationId"] = this.ctx.organizationId;
-      return r;
-    }
-    const found = (await this.listResources(typeId, accountId)).find((r) => r.externalId === ext);
-    if (!found) throw notFound(`${typeId} ${ext}`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      if (typeId === T.cluster) {
+        const [p, c] = splitId(ext, 2) as [string, string];
+        await this.clustersOf(p);
+        const cluster = await this.req<CpCluster>("GET", this.clusterPath(p, c));
+        const stats = this.freeTier.get(c)
+          ? undefined
+          : await this.req<{ freeMemoryInMb?: number; totalMemoryInMb?: number }>(
+              "GET",
+              `${this.sub(p, c)}/stats`,
+            ).catch(() => undefined);
+        const r = mapCluster(accountId, p, cluster, stats);
+        r.fields["organizationId"] = this.ctx.organizationId;
+        return r;
+      }
+      const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
+        (r) => r.externalId === ext,
+      );
+      if (!found) throw notFound(`${typeId} ${ext}`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const ext = externalIdOf(resourceId);
-    if (typeId === T.cluster) {
-      const [p, c] = splitId(ext, 2) as [string, string];
-      if (outputKey === "connectionString") {
-        await this.clustersOf(p);
-        return (await this.req<CpCluster>("GET", this.clusterPath(p, c)))?.connectionString ?? "";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      if (typeId === T.cluster) {
+        const [p, c] = splitId(ext, 2) as [string, string];
+        if (outputKey === "connectionString") {
+          await this.clustersOf(p);
+          return (await this.req<CpCluster>("GET", this.clusterPath(p, c)))?.connectionString ?? "";
+        }
+        if (outputKey === "certificate") {
+          return (
+            (await this.req<{ certificate?: string }>("GET", `${this.sub(p, c)}/certificates`))
+              ?.certificate ?? ""
+          );
+        }
       }
-      if (outputKey === "certificate") {
-        return (
-          (await this.req<{ certificate?: string }>("GET", `${this.sub(p, c)}/certificates`))
-            ?.certificate ?? ""
-        );
+      if (typeId === T.credential) {
+        const [p, c] = splitId(ext, 3) as [string, string, string];
+        const cred = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const username = String(cred.fields["name"] ?? "");
+        if (outputKey === "username") return username;
+        const password = await this.services?.secrets?.getPlaintext(resourceId, PASSWORD_SECRET);
+        if (!password) {
+          throw new Error(
+            "Capella shows a credential's password only when it is set. Use Reset password and Infrawrench keeps the new one.",
+          );
+        }
+        if (outputKey === "password") return password;
+        if (outputKey === "connectionString") {
+          await this.clustersOf(p);
+          const host = (
+            (await this.req<CpCluster>("GET", this.clusterPath(p, c)))?.connectionString ?? ""
+          ).replace(/^couchbases?:\/\//, "");
+          return `couchbases://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}`;
+        }
       }
-    }
-    if (typeId === T.credential) {
-      const [p, c] = splitId(ext, 3) as [string, string, string];
-      const cred = await this.getResource(typeId, resourceId, accountId);
-      const username = String(cred.fields["name"] ?? "");
-      if (outputKey === "username") return username;
-      const password = await this.services?.secrets?.getPlaintext(resourceId, PASSWORD_SECRET);
-      if (!password) {
-        throw new Error(
-          "Capella shows a credential's password only when it is set. Use Reset password and Infrawrench keeps the new one.",
-        );
-      }
-      if (outputKey === "password") return password;
-      if (outputKey === "connectionString") {
-        await this.clustersOf(p);
-        const host = (
-          (await this.req<CpCluster>("GET", this.clusterPath(p, c)))?.connectionString ?? ""
-        ).replace(/^couchbases?:\/\//, "");
-        return `couchbases://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}`;
-      }
-    }
-    throw new Error(`Capella plugin: cannot resolve "${outputKey}" for "${typeId}"`);
+      throw new Error(`Capella plugin: cannot resolve "${outputKey}" for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Detail
   // -------------------------------------------------------------------------
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const out: ResourceInstance = { ...resource, resolvedOutputs: { ...resource.resolvedOutputs } };
-    const put = (key: string, value: unknown) => {
-      if (value !== undefined) out.resolvedOutputs[key] = JSON.stringify(value);
-    };
-    const settle = async <V>(p: Promise<V>) => p.catch(() => undefined);
-    const ext = resource.externalId ?? externalIdOf(resource.id);
-    switch (resource.resourceTypeId) {
-      case T.cluster: {
-        if (resource.fields["freeTier"] === true) break;
-        const [p, c] = splitId(ext, 2) as [string, string];
-        const [schedule, audit] = await Promise.all([
-          settle(this.req<unknown>("GET", `${this.sub(p, c)}/onOffSchedule`)),
-          settle(this.req<unknown>("GET", `${this.sub(p, c)}/auditLog`)),
-        ]);
-        put(ENRICH.schedule, schedule);
-        put(ENRICH.auditLog, audit);
-        break;
-      }
-      case T.bucket: {
-        const [p, c, b] = splitId(ext, 3) as [string, string, string];
-        put(
-          ENRICH.backupSchedule,
-          await settle(
-            this.req<unknown>(
-              "GET",
-              `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backup/schedules`,
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const out: ResourceInstance = {
+        ...resource,
+        resolvedOutputs: { ...resource.resolvedOutputs },
+      };
+      const put = (key: string, value: unknown) => {
+        if (value !== undefined) out.resolvedOutputs[key] = JSON.stringify(value);
+      };
+      const settle = async <V>(p: Promise<V>) => p.catch(() => undefined);
+      const ext = resource.externalId ?? externalIdOf(resource.id);
+      switch (resource.resourceTypeId) {
+        case T.cluster: {
+          if (resource.fields["freeTier"] === true) break;
+          const [p, c] = splitId(ext, 2) as [string, string];
+          const [schedule, audit] = await Promise.all([
+            settle(this.req<unknown>("GET", `${this.sub(p, c)}/onOffSchedule`)),
+            settle(this.req<unknown>("GET", `${this.sub(p, c)}/auditLog`)),
+          ]);
+          put(ENRICH.schedule, schedule);
+          put(ENRICH.auditLog, audit);
+          break;
+        }
+        case T.bucket: {
+          const [p, c, b] = splitId(ext, 3) as [string, string, string];
+          put(
+            ENRICH.backupSchedule,
+            await settle(
+              this.req<unknown>(
+                "GET",
+                `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backup/schedules`,
+              ),
             ),
-          ),
-        );
-        break;
-      }
-      case T.backup:
-        put(
-          ENRICH.clusters,
-          (await this.clusterRefs().catch(() => []))
-            .filter((r) => !r.free)
-            .map((r) => ({
-              id: joinId(r.projectId, r.clusterId),
-              label: r.name ?? r.clusterId,
-              description: r.region ?? "",
+          );
+          break;
+        }
+        case T.backup:
+          put(
+            ENRICH.clusters,
+            (await this.clusterRefs().catch(() => []))
+              .filter((r) => !r.free)
+              .map((r) => ({
+                id: joinId(r.projectId, r.clusterId),
+                label: r.name ?? r.clusterId,
+                description: r.region ?? "",
+              })),
+          );
+          break;
+        case T.user:
+          put(
+            ENRICH.projects,
+            (await this.projects().catch(() => [])).map((p) => ({
+              id: p.id,
+              label: p.name ?? p.id,
             })),
-        );
-        break;
-      case T.user:
-        put(
-          ENRICH.projects,
-          (await this.projects().catch(() => [])).map((p) => ({ id: p.id, label: p.name ?? p.id })),
-        );
-        break;
-    }
-    return out;
+          );
+          break;
+      }
+      return out;
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -715,835 +734,847 @@ export class CapellaClient implements PluginClient {
     return [decodeURIComponent(parts[0]!), decodeURIComponent(parts[1]!)];
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case T.project:
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case T.cluster:
-        return {
-          fields: [
-            ...(await this.projectField(parentResourceId)),
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "tier",
-              label: "Tier",
-              kind: "select",
-              required: true,
-              options: [
-                {
-                  id: "paid",
-                  label: "Provisioned",
-                  description: "Choose node size, count and services",
-                },
-                {
-                  id: "free",
-                  label: "Free tier",
-                  description: "One small single-node cluster per organization",
-                },
-              ],
-              defaultValue: "paid",
-            },
-            {
-              key: "cloud",
-              label: "Cloud",
-              kind: "select",
-              required: true,
-              options: [
-                { id: "aws", label: "AWS" },
-                { id: "gcp", label: "Google Cloud" },
-                { id: "azure", label: "Azure" },
-              ],
-              defaultValue: "aws",
-            },
-            {
-              key: "region",
-              label: "Region",
-              kind: "region-picker",
-              required: true,
-              regions: REGIONS,
-              filterByFieldKey: "cloud",
-            },
-            {
-              key: "cidr",
-              label: "CIDR",
-              kind: "text",
-              required: false,
-              placeholder: "10.0.30.0/23",
-              description:
-                "Private range for the cluster's network; must not overlap networks you will peer with. Blank picks one.",
-            },
-            {
-              key: "compute",
-              label: "Node size",
-              kind: "select",
-              required: true,
-              options: computeOptions(),
-              defaultValue: "4/16",
-              showWhen: { fieldKey: "tier", fieldValue: "paid" },
-            },
-            {
-              key: "nodes",
-              label: "Nodes",
-              kind: "number",
-              required: true,
-              minValue: 1,
-              maxValue: 27,
-              defaultValue: "3",
-              showWhen: { fieldKey: "tier", fieldValue: "paid" },
-            },
-            {
-              key: "storage",
-              label: "Disk per node (GB)",
-              kind: "number",
-              required: true,
-              minValue: 50,
-              defaultValue: "50",
-              showWhen: { fieldKey: "tier", fieldValue: "paid" },
-            },
-            {
-              key: "services",
-              label: "Services",
-              kind: "policy-picker",
-              required: true,
-              policies: SERVICES.map((s) => ({ id: s, label: s })),
-              defaultValue: JSON.stringify(["data", "query", "index", "search"]),
-              showWhen: { fieldKey: "tier", fieldValue: "paid" },
-            },
-            {
-              key: "availability",
-              label: "Availability",
-              kind: "select",
-              required: true,
-              options: [
-                { id: "multi", label: "Multiple availability zones" },
-                { id: "single", label: "Single availability zone" },
-              ],
-              defaultValue: "multi",
-              showWhen: { fieldKey: "tier", fieldValue: "paid" },
-            },
-            {
-              key: "supportPlan",
-              label: "Support plan",
-              kind: "select",
-              required: true,
-              options: [
-                { id: "basic", label: "Basic" },
-                { id: "developer pro", label: "Developer Pro" },
-                { id: "enterprise", label: "Enterprise" },
-              ],
-              defaultValue: "developer pro",
-              showWhen: { fieldKey: "tier", fieldValue: "paid" },
-            },
-            {
-              key: "timezone",
-              label: "Support timezone",
-              kind: "select",
-              required: false,
-              options: ["ET", "GMT", "IST", "PT"].map((t) => ({ id: t, label: t })),
-              defaultValue: "ET",
-              showWhen: { fieldKey: "tier", fieldValue: "paid" },
-            },
-            {
-              key: "version",
-              label: "Couchbase Server version (optional)",
-              kind: "text",
-              required: false,
-              placeholder: "Latest",
-              showWhen: { fieldKey: "tier", fieldValue: "paid" },
-            },
-          ],
-        };
-      case T.appService:
-        return {
-          fields: [
-            ...(await this.clusterField(parentResourceId)),
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "nodes",
-              label: "Nodes",
-              kind: "number",
-              required: true,
-              minValue: 2,
-              maxValue: 12,
-              defaultValue: "2",
-            },
-            {
-              key: "compute",
-              label: "Node size",
-              kind: "select",
-              required: true,
-              options: APP_SERVICE_COMPUTE,
-              defaultValue: "2/4",
-            },
-          ],
-        };
-      case T.bucket:
-        return {
-          fields: [
-            ...(await this.clusterField(parentResourceId, true)),
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              description:
-                "Up to 100 letters, digits, periods, underscores, percent signs and hyphens.",
-            },
-            {
-              key: "type",
-              label: "Type",
-              kind: "select",
-              required: false,
-              options: [
-                { id: "couchbase", label: "Couchbase (persistent)" },
-                { id: "ephemeral", label: "Ephemeral (memory only)" },
-              ],
-              defaultValue: "couchbase",
-            },
-            {
-              key: "storageBackend",
-              label: "Storage backend",
-              kind: "select",
-              required: false,
-              options: [
-                { id: "couchstore", label: "Couchstore" },
-                { id: "magma", label: "Magma" },
-              ],
-              defaultValue: "couchstore",
-              showWhen: { fieldKey: "type", fieldValue: "couchbase" },
-            },
-            {
-              key: "memoryAllocationInMb",
-              label: "Memory quota (MB)",
-              kind: "number",
-              required: true,
-              minValue: 100,
-              defaultValue: "100",
-            },
-            {
-              key: "replicas",
-              label: "Replicas",
-              kind: "select",
-              required: false,
-              options: ["1", "2", "3"].map((r) => ({ id: r, label: r })),
-              defaultValue: "1",
-            },
-            {
-              key: "durabilityLevel",
-              label: "Minimum durability",
-              kind: "select",
-              required: false,
-              options: ["none", "majority", "majorityAndPersistActive", "persistToMajority"].map(
-                (d) => ({ id: d, label: d }),
-              ),
-              defaultValue: "none",
-            },
-            {
-              key: "timeToLiveInSeconds",
-              label: "Max TTL (seconds, 0 for none)",
-              kind: "number",
-              required: false,
-              minValue: 0,
-              defaultValue: "0",
-            },
-            {
-              key: "flushEnabled",
-              label: "Allow flush",
-              kind: "select",
-              required: false,
-              options: [
-                { id: "false", label: "No" },
-                { id: "true", label: "Yes" },
-              ],
-              defaultValue: "false",
-            },
-          ],
-        };
-      case T.scope:
-        return { fields: [{ key: "name", label: "Name", kind: "text", required: true }] };
-      case T.collection:
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "maxTTL",
-              label: "Max TTL (seconds)",
-              kind: "number",
-              required: false,
-              minValue: -1,
-              defaultValue: "0",
-              description: "0 inherits the bucket's TTL; -1 never expires.",
-            },
-          ],
-        };
-      case T.credential: {
-        let buckets: Array<{ id: string; label: string }> = [];
-        if (parentResourceId) {
-          const [p, c] = this.parentCluster({}, parentResourceId);
-          buckets = (
-            await this.bucketsOf({
-              projectId: p,
-              clusterId: c,
-              free: this.freeTier.get(c) === true,
-            })
-          ).map((b) => ({
-            id: b.name ?? b.id,
-            label: b.name ?? b.id,
-          }));
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case T.project:
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case T.cluster:
+          return {
+            fields: [
+              ...(await this.projectField(parentResourceId)),
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "tier",
+                label: "Tier",
+                kind: "select",
+                required: true,
+                options: [
+                  {
+                    id: "paid",
+                    label: "Provisioned",
+                    description: "Choose node size, count and services",
+                  },
+                  {
+                    id: "free",
+                    label: "Free tier",
+                    description: "One small single-node cluster per organization",
+                  },
+                ],
+                defaultValue: "paid",
+              },
+              {
+                key: "cloud",
+                label: "Cloud",
+                kind: "select",
+                required: true,
+                options: [
+                  { id: "aws", label: "AWS" },
+                  { id: "gcp", label: "Google Cloud" },
+                  { id: "azure", label: "Azure" },
+                ],
+                defaultValue: "aws",
+              },
+              {
+                key: "region",
+                label: "Region",
+                kind: "region-picker",
+                required: true,
+                regions: REGIONS,
+                filterByFieldKey: "cloud",
+              },
+              {
+                key: "cidr",
+                label: "CIDR",
+                kind: "text",
+                required: false,
+                placeholder: "10.0.30.0/23",
+                description:
+                  "Private range for the cluster's network; must not overlap networks you will peer with. Blank picks one.",
+              },
+              {
+                key: "compute",
+                label: "Node size",
+                kind: "select",
+                required: true,
+                options: computeOptions(),
+                defaultValue: "4/16",
+                showWhen: { fieldKey: "tier", fieldValue: "paid" },
+              },
+              {
+                key: "nodes",
+                label: "Nodes",
+                kind: "number",
+                required: true,
+                minValue: 1,
+                maxValue: 27,
+                defaultValue: "3",
+                showWhen: { fieldKey: "tier", fieldValue: "paid" },
+              },
+              {
+                key: "storage",
+                label: "Disk per node (GB)",
+                kind: "number",
+                required: true,
+                minValue: 50,
+                defaultValue: "50",
+                showWhen: { fieldKey: "tier", fieldValue: "paid" },
+              },
+              {
+                key: "services",
+                label: "Services",
+                kind: "policy-picker",
+                required: true,
+                policies: SERVICES.map((s) => ({ id: s, label: s })),
+                defaultValue: JSON.stringify(["data", "query", "index", "search"]),
+                showWhen: { fieldKey: "tier", fieldValue: "paid" },
+              },
+              {
+                key: "availability",
+                label: "Availability",
+                kind: "select",
+                required: true,
+                options: [
+                  { id: "multi", label: "Multiple availability zones" },
+                  { id: "single", label: "Single availability zone" },
+                ],
+                defaultValue: "multi",
+                showWhen: { fieldKey: "tier", fieldValue: "paid" },
+              },
+              {
+                key: "supportPlan",
+                label: "Support plan",
+                kind: "select",
+                required: true,
+                options: [
+                  { id: "basic", label: "Basic" },
+                  { id: "developer pro", label: "Developer Pro" },
+                  { id: "enterprise", label: "Enterprise" },
+                ],
+                defaultValue: "developer pro",
+                showWhen: { fieldKey: "tier", fieldValue: "paid" },
+              },
+              {
+                key: "timezone",
+                label: "Support timezone",
+                kind: "select",
+                required: false,
+                options: ["ET", "GMT", "IST", "PT"].map((t) => ({ id: t, label: t })),
+                defaultValue: "ET",
+                showWhen: { fieldKey: "tier", fieldValue: "paid" },
+              },
+              {
+                key: "version",
+                label: "Couchbase Server version (optional)",
+                kind: "text",
+                required: false,
+                placeholder: "Latest",
+                showWhen: { fieldKey: "tier", fieldValue: "paid" },
+              },
+            ],
+          };
+        case T.appService:
+          return {
+            fields: [
+              ...(await this.clusterField(parentResourceId)),
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "nodes",
+                label: "Nodes",
+                kind: "number",
+                required: true,
+                minValue: 2,
+                maxValue: 12,
+                defaultValue: "2",
+              },
+              {
+                key: "compute",
+                label: "Node size",
+                kind: "select",
+                required: true,
+                options: APP_SERVICE_COMPUTE,
+                defaultValue: "2/4",
+              },
+            ],
+          };
+        case T.bucket:
+          return {
+            fields: [
+              ...(await this.clusterField(parentResourceId, true)),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                description:
+                  "Up to 100 letters, digits, periods, underscores, percent signs and hyphens.",
+              },
+              {
+                key: "type",
+                label: "Type",
+                kind: "select",
+                required: false,
+                options: [
+                  { id: "couchbase", label: "Couchbase (persistent)" },
+                  { id: "ephemeral", label: "Ephemeral (memory only)" },
+                ],
+                defaultValue: "couchbase",
+              },
+              {
+                key: "storageBackend",
+                label: "Storage backend",
+                kind: "select",
+                required: false,
+                options: [
+                  { id: "couchstore", label: "Couchstore" },
+                  { id: "magma", label: "Magma" },
+                ],
+                defaultValue: "couchstore",
+                showWhen: { fieldKey: "type", fieldValue: "couchbase" },
+              },
+              {
+                key: "memoryAllocationInMb",
+                label: "Memory quota (MB)",
+                kind: "number",
+                required: true,
+                minValue: 100,
+                defaultValue: "100",
+              },
+              {
+                key: "replicas",
+                label: "Replicas",
+                kind: "select",
+                required: false,
+                options: ["1", "2", "3"].map((r) => ({ id: r, label: r })),
+                defaultValue: "1",
+              },
+              {
+                key: "durabilityLevel",
+                label: "Minimum durability",
+                kind: "select",
+                required: false,
+                options: ["none", "majority", "majorityAndPersistActive", "persistToMajority"].map(
+                  (d) => ({ id: d, label: d }),
+                ),
+                defaultValue: "none",
+              },
+              {
+                key: "timeToLiveInSeconds",
+                label: "Max TTL (seconds, 0 for none)",
+                kind: "number",
+                required: false,
+                minValue: 0,
+                defaultValue: "0",
+              },
+              {
+                key: "flushEnabled",
+                label: "Allow flush",
+                kind: "select",
+                required: false,
+                options: [
+                  { id: "false", label: "No" },
+                  { id: "true", label: "Yes" },
+                ],
+                defaultValue: "false",
+              },
+            ],
+          };
+        case T.scope:
+          return { fields: [{ key: "name", label: "Name", kind: "text", required: true }] };
+        case T.collection:
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "maxTTL",
+                label: "Max TTL (seconds)",
+                kind: "number",
+                required: false,
+                minValue: -1,
+                defaultValue: "0",
+                description: "0 inherits the bucket's TTL; -1 never expires.",
+              },
+            ],
+          };
+        case T.credential: {
+          let buckets: Array<{ id: string; label: string }> = [];
+          if (parentResourceId) {
+            const [p, c] = this.parentCluster({}, parentResourceId);
+            buckets = (
+              await this.bucketsOf({
+                projectId: p,
+                clusterId: c,
+                free: this.freeTier.get(c) === true,
+              })
+            ).map((b) => ({
+              id: b.name ?? b.id,
+              label: b.name ?? b.id,
+            }));
+          }
+          return {
+            fields: [
+              ...(await this.clusterField(parentResourceId)),
+              { key: "name", label: "Username", kind: "text", required: true },
+              {
+                key: "access",
+                label: "Access",
+                kind: "select",
+                required: true,
+                options: [
+                  { id: "read", label: "Read" },
+                  { id: "write", label: "Read and write" },
+                ],
+                defaultValue: "write",
+              },
+              buckets.length
+                ? {
+                    key: "buckets",
+                    label: "Buckets",
+                    kind: "policy-picker",
+                    required: false,
+                    policies: buckets,
+                    description: "Leave empty for every bucket.",
+                  }
+                : {
+                    key: "buckets",
+                    label: "Buckets",
+                    kind: "string-list",
+                    required: false,
+                    description: "Leave empty for every bucket.",
+                  },
+              {
+                key: "password",
+                label: "Password (optional)",
+                kind: "password",
+                required: false,
+                description: "Blank generates one; Infrawrench keeps it either way.",
+              },
+            ],
+          };
         }
-        return {
-          fields: [
-            ...(await this.clusterField(parentResourceId)),
-            { key: "name", label: "Username", kind: "text", required: true },
-            {
-              key: "access",
-              label: "Access",
-              kind: "select",
-              required: true,
-              options: [
-                { id: "read", label: "Read" },
-                { id: "write", label: "Read and write" },
-              ],
-              defaultValue: "write",
-            },
-            buckets.length
-              ? {
-                  key: "buckets",
-                  label: "Buckets",
-                  kind: "policy-picker",
-                  required: false,
-                  policies: buckets,
-                  description: "Leave empty for every bucket.",
-                }
-              : {
-                  key: "buckets",
-                  label: "Buckets",
-                  kind: "string-list",
-                  required: false,
-                  description: "Leave empty for every bucket.",
-                },
-            {
-              key: "password",
-              label: "Password (optional)",
-              kind: "password",
-              required: false,
-              description: "Blank generates one; Infrawrench keeps it either way.",
-            },
-          ],
-        };
+        case T.cidr:
+          return {
+            fields: [
+              ...(await this.clusterField(parentResourceId)),
+              {
+                key: "cidr",
+                label: "CIDR",
+                kind: "text",
+                required: true,
+                placeholder: "203.0.113.0/24",
+              },
+              { key: "comment", label: "Comment", kind: "text", required: false },
+              { key: "expiresAt", label: "Expires (optional)", kind: "datetime", required: false },
+            ],
+          };
+        case T.user: {
+          const projects = (await this.projects()).map((p) => ({
+            id: p.id,
+            label: p.name ?? p.id,
+          }));
+          return {
+            fields: [
+              { key: "email", label: "Email", kind: "text", required: true },
+              { key: "name", label: "Name", kind: "text", required: false },
+              {
+                key: "organizationRoles",
+                label: "Organization roles",
+                kind: "policy-picker",
+                required: true,
+                policies: ORG_ROLES.map((r) => ({ id: r, label: r })),
+                defaultValue: JSON.stringify(["organizationMember"]),
+              },
+              {
+                key: "projectId",
+                label: "Project (optional)",
+                kind: "select",
+                required: false,
+                options: [{ id: "", label: "None" }, ...projects],
+                defaultValue: "",
+              },
+              {
+                key: "projectRoles",
+                label: "Project roles",
+                kind: "policy-picker",
+                required: false,
+                policies: PROJECT_ROLES.map((r) => ({ id: r, label: r })),
+              },
+            ],
+          };
+        }
+        case T.apiKey: {
+          const projects = (await this.projects()).map((p) => ({
+            id: p.id,
+            label: p.name ?? p.id,
+          }));
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "organizationRoles",
+                label: "Organization roles",
+                kind: "policy-picker",
+                required: true,
+                policies: ORG_ROLES.map((r) => ({ id: r, label: r })),
+                defaultValue: JSON.stringify(["organizationMember"]),
+              },
+              {
+                key: "projectId",
+                label: "Project (optional)",
+                kind: "select",
+                required: false,
+                options: [{ id: "", label: "None" }, ...projects],
+                defaultValue: "",
+              },
+              {
+                key: "projectRoles",
+                label: "Project roles",
+                kind: "policy-picker",
+                required: false,
+                policies: PROJECT_ROLES.map((r) => ({ id: r, label: r })),
+              },
+              {
+                key: "allowedCidrs",
+                label: "Allowed CIDRs",
+                kind: "string-list",
+                required: true,
+                defaultValue: "0.0.0.0/0",
+                description: "Where the key may be used from.",
+              },
+              {
+                key: "expiry",
+                label: "Expires after (days)",
+                kind: "number",
+                required: false,
+                minValue: 1,
+                maxValue: 365,
+                defaultValue: "180",
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`Capella plugin: creating "${typeId}" is not supported`);
       }
-      case T.cidr:
-        return {
-          fields: [
-            ...(await this.clusterField(parentResourceId)),
-            {
-              key: "cidr",
-              label: "CIDR",
-              kind: "text",
-              required: true,
-              placeholder: "203.0.113.0/24",
-            },
-            { key: "comment", label: "Comment", kind: "text", required: false },
-            { key: "expiresAt", label: "Expires (optional)", kind: "datetime", required: false },
-          ],
-        };
-      case T.user: {
-        const projects = (await this.projects()).map((p) => ({ id: p.id, label: p.name ?? p.id }));
-        return {
-          fields: [
-            { key: "email", label: "Email", kind: "text", required: true },
-            { key: "name", label: "Name", kind: "text", required: false },
-            {
-              key: "organizationRoles",
-              label: "Organization roles",
-              kind: "policy-picker",
-              required: true,
-              policies: ORG_ROLES.map((r) => ({ id: r, label: r })),
-              defaultValue: JSON.stringify(["organizationMember"]),
-            },
-            {
-              key: "projectId",
-              label: "Project (optional)",
-              kind: "select",
-              required: false,
-              options: [{ id: "", label: "None" }, ...projects],
-              defaultValue: "",
-            },
-            {
-              key: "projectRoles",
-              label: "Project roles",
-              kind: "policy-picker",
-              required: false,
-              policies: PROJECT_ROLES.map((r) => ({ id: r, label: r })),
-            },
-          ],
-        };
-      }
-      case T.apiKey: {
-        const projects = (await this.projects()).map((p) => ({ id: p.id, label: p.name ?? p.id }));
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "organizationRoles",
-              label: "Organization roles",
-              kind: "policy-picker",
-              required: true,
-              policies: ORG_ROLES.map((r) => ({ id: r, label: r })),
-              defaultValue: JSON.stringify(["organizationMember"]),
-            },
-            {
-              key: "projectId",
-              label: "Project (optional)",
-              kind: "select",
-              required: false,
-              options: [{ id: "", label: "None" }, ...projects],
-              defaultValue: "",
-            },
-            {
-              key: "projectRoles",
-              label: "Project roles",
-              kind: "policy-picker",
-              required: false,
-              policies: PROJECT_ROLES.map((r) => ({ id: r, label: r })),
-            },
-            {
-              key: "allowedCidrs",
-              label: "Allowed CIDRs",
-              kind: "string-list",
-              required: true,
-              defaultValue: "0.0.0.0/0",
-              description: "Where the key may be used from.",
-            },
-            {
-              key: "expiry",
-              label: "Expires after (days)",
-              kind: "number",
-              required: false,
-              minValue: 1,
-              maxValue: 365,
-              defaultValue: "180",
-            },
-          ],
-        };
-      }
-      default:
-        throw new Error(`Capella plugin: creating "${typeId}" is not supported`);
-    }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance | ResourceCreateResult> {
-    this.invalidate();
-    switch (typeId) {
-      case T.project: {
-        const res = await this.req<{ id: string }>("POST", `${this.org}/projects`, {
-          name: (fields["name"] ?? "").trim(),
-          ...(fields["description"] ? { description: fields["description"] } : {}),
-        });
-        return mapProject(accountId, {
-          id: res.id,
-          name: fields["name"] ?? "",
-          description: fields["description"] ?? "",
-        });
-      }
-      case T.cluster: {
-        const projectId = parentResourceId
-          ? externalIdOf(parentResourceId)
-          : (fields["projectId"] ?? "");
-        if (!projectId) throw new Error("Pick a project.");
-        const cloud = fields["cloud"] || "aws";
-        const cloudProvider = {
-          type: cloud,
-          region: fields["region"] ?? "",
-          ...(fields["cidr"] ? { cidr: fields["cidr"].trim() } : {}),
-        };
-        const name = (fields["name"] ?? "").trim();
-        if (fields["tier"] === "free") {
+  ): PluginEffect<ResourceInstance | ResourceCreateResult> {
+    return attempt(async () => {
+      this.invalidate();
+      switch (typeId) {
+        case T.project: {
+          const res = await this.req<{ id: string }>("POST", `${this.org}/projects`, {
+            name: (fields["name"] ?? "").trim(),
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          });
+          return mapProject(accountId, {
+            id: res.id,
+            name: fields["name"] ?? "",
+            description: fields["description"] ?? "",
+          });
+        }
+        case T.cluster: {
+          const projectId = parentResourceId
+            ? externalIdOf(parentResourceId)
+            : (fields["projectId"] ?? "");
+          if (!projectId) throw new Error("Pick a project.");
+          const cloud = fields["cloud"] || "aws";
+          const cloudProvider = {
+            type: cloud,
+            region: fields["region"] ?? "",
+            ...(fields["cidr"] ? { cidr: fields["cidr"].trim() } : {}),
+          };
+          const name = (fields["name"] ?? "").trim();
+          if (fields["tier"] === "free") {
+            const res = await this.req<{ id: string }>(
+              "POST",
+              `${this.projectPath(projectId)}/clusters/freeTier`,
+              { name, cloudProvider },
+            );
+            return mapCluster(accountId, projectId, {
+              id: res.id,
+              name,
+              currentState: "deploying",
+              cloudProvider,
+              support: { plan: "free" },
+            });
+          }
+          const compute = parseCompute(fields["compute"] ?? "");
+          if (!compute) throw new Error("Pick a node size.");
+          const services = csv(fields["services"]);
+          if (!services.includes("data")) throw new Error("A cluster needs the data service.");
+          const group: CpServiceGroup = {
+            node: { compute, disk: defaultDisk(cloud, int(fields["storage"] || "50", "Disk", 50)) },
+            numOfNodes: int(fields["nodes"], "Nodes", 1, 27),
+            services,
+          };
           const res = await this.req<{ id: string }>(
             "POST",
-            `${this.projectPath(projectId)}/clusters/freeTier`,
-            { name, cloudProvider },
+            `${this.projectPath(projectId)}/clusters`,
+            {
+              name,
+              cloudProvider,
+              serviceGroups: [group],
+              availability: { type: fields["availability"] || "multi" },
+              support: {
+                plan: fields["supportPlan"] || "developer pro",
+                ...(fields["timezone"] ? { timezone: fields["timezone"] } : {}),
+              },
+              ...(fields["version"]
+                ? { couchbaseServer: { version: fields["version"].trim() } }
+                : {}),
+            },
           );
           return mapCluster(accountId, projectId, {
             id: res.id,
             name,
             currentState: "deploying",
             cloudProvider,
-            support: { plan: "free" },
+            serviceGroups: [group],
           });
         }
-        const compute = parseCompute(fields["compute"] ?? "");
-        if (!compute) throw new Error("Pick a node size.");
-        const services = csv(fields["services"]);
-        if (!services.includes("data")) throw new Error("A cluster needs the data service.");
-        const group: CpServiceGroup = {
-          node: { compute, disk: defaultDisk(cloud, int(fields["storage"] || "50", "Disk", 50)) },
-          numOfNodes: int(fields["nodes"], "Nodes", 1, 27),
-          services,
-        };
-        const res = await this.req<{ id: string }>(
-          "POST",
-          `${this.projectPath(projectId)}/clusters`,
-          {
-            name,
-            cloudProvider,
-            serviceGroups: [group],
-            availability: { type: fields["availability"] || "multi" },
-            support: {
-              plan: fields["supportPlan"] || "developer pro",
-              ...(fields["timezone"] ? { timezone: fields["timezone"] } : {}),
-            },
-            ...(fields["version"]
-              ? { couchbaseServer: { version: fields["version"].trim() } }
-              : {}),
-          },
-        );
-        return mapCluster(accountId, projectId, {
-          id: res.id,
-          name,
-          currentState: "deploying",
-          cloudProvider,
-          serviceGroups: [group],
-        });
-      }
-      case T.appService: {
-        const [p, c] = this.parentCluster(fields, parentResourceId);
-        const compute = parseCompute(fields["compute"] ?? "2/4");
-        const res = await this.req<{ id: string }>("POST", `${this.sub(p, c)}/appservices`, {
-          name: (fields["name"] ?? "").trim(),
-          ...(fields["description"] ? { description: fields["description"] } : {}),
-          nodes: int(fields["nodes"] || "2", "Nodes", 2, 12),
-          ...(compute ? { compute } : {}),
-        });
-        return mapAppService(accountId, p, {
-          id: res.id,
-          name: fields["name"] ?? "",
-          clusterId: c,
-          currentState: "deploying",
-        });
-      }
-      case T.bucket: {
-        const [p, c] = this.parentCluster(fields, parentResourceId);
-        await this.clustersOf(p);
-        const free = this.freeTier.get(c) === true;
-        const body: Record<string, unknown> = {
-          name: (fields["name"] ?? "").trim(),
-          memoryAllocationInMb: int(fields["memoryAllocationInMb"] || "100", "Memory quota", 100),
-        };
-        if (!free) {
-          if (fields["type"]) body["type"] = fields["type"];
-          if (fields["storageBackend"] && fields["type"] !== "ephemeral")
-            body["storageBackend"] = fields["storageBackend"];
-          if (fields["replicas"]) body["replicas"] = Number(fields["replicas"]);
-          if (fields["durabilityLevel"]) body["durabilityLevel"] = fields["durabilityLevel"];
-          if (fields["timeToLiveInSeconds"])
-            body["timeToLiveInSeconds"] = Number(fields["timeToLiveInSeconds"]);
-          const flush = boolish(fields["flushEnabled"]);
-          if (flush !== undefined) body["flush"] = flush;
-        }
-        const res = await this.req<{ id: string }>(
-          "POST",
-          `${this.sub(p, c)}/buckets${free ? "/freeTier" : ""}`,
-          body,
-        );
-        return mapBucket(accountId, p, c, { id: res.id, name: String(body["name"]) });
-      }
-      case T.scope: {
-        if (!parentResourceId) throw new Error("Create scopes from a bucket's page.");
-        const [p, c, b] = splitId(externalIdOf(parentResourceId), 3) as [string, string, string];
-        const name = (fields["name"] ?? "").trim();
-        await this.req("POST", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes`, {
-          name,
-        });
-        return instance(
-          accountId,
-          T.scope,
-          joinId(p, c, b, name),
-          name,
-          compact({ name, collections: 0 }),
-          {
-            typeId: T.bucket,
-            externalId: joinId(p, c, b),
-          },
-        );
-      }
-      case T.collection: {
-        if (!parentResourceId) throw new Error("Create collections from a scope's page.");
-        const [p, c, b, s] = splitId(externalIdOf(parentResourceId), 4) as [
-          string,
-          string,
-          string,
-          string,
-        ];
-        const name = (fields["name"] ?? "").trim();
-        const body: Record<string, unknown> = { name };
-        if (fields["maxTTL"]) body["maxTTL"] = Number(fields["maxTTL"]);
-        await this.req(
-          "POST",
-          `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections`,
-          body,
-        );
-        return instance(
-          accountId,
-          T.collection,
-          joinId(p, c, b, s, name),
-          name,
-          compact({ name, scope: s, maxTTL: fields["maxTTL"] }),
-          {
-            typeId: T.scope,
-            externalId: joinId(p, c, b, s),
-          },
-        );
-      }
-      case T.credential: {
-        const [p, c] = this.parentCluster(fields, parentResourceId);
-        const buckets = csv(fields["buckets"]);
-        const password = fields["password"]?.trim() || generatePassword();
-        const res = await this.req<{ id: string; password?: string }>(
-          "POST",
-          `${this.sub(p, c)}/users`,
-          {
+        case T.appService: {
+          const [p, c] = this.parentCluster(fields, parentResourceId);
+          const compute = parseCompute(fields["compute"] ?? "2/4");
+          const res = await this.req<{ id: string }>("POST", `${this.sub(p, c)}/appservices`, {
             name: (fields["name"] ?? "").trim(),
-            password,
-            credentialType: "basic",
-            access: [
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            nodes: int(fields["nodes"] || "2", "Nodes", 2, 12),
+            ...(compute ? { compute } : {}),
+          });
+          return mapAppService(accountId, p, {
+            id: res.id,
+            name: fields["name"] ?? "",
+            clusterId: c,
+            currentState: "deploying",
+          });
+        }
+        case T.bucket: {
+          const [p, c] = this.parentCluster(fields, parentResourceId);
+          await this.clustersOf(p);
+          const free = this.freeTier.get(c) === true;
+          const body: Record<string, unknown> = {
+            name: (fields["name"] ?? "").trim(),
+            memoryAllocationInMb: int(fields["memoryAllocationInMb"] || "100", "Memory quota", 100),
+          };
+          if (!free) {
+            if (fields["type"]) body["type"] = fields["type"];
+            if (fields["storageBackend"] && fields["type"] !== "ephemeral")
+              body["storageBackend"] = fields["storageBackend"];
+            if (fields["replicas"]) body["replicas"] = Number(fields["replicas"]);
+            if (fields["durabilityLevel"]) body["durabilityLevel"] = fields["durabilityLevel"];
+            if (fields["timeToLiveInSeconds"])
+              body["timeToLiveInSeconds"] = Number(fields["timeToLiveInSeconds"]);
+            const flush = boolish(fields["flushEnabled"]);
+            if (flush !== undefined) body["flush"] = flush;
+          }
+          const res = await this.req<{ id: string }>(
+            "POST",
+            `${this.sub(p, c)}/buckets${free ? "/freeTier" : ""}`,
+            body,
+          );
+          return mapBucket(accountId, p, c, { id: res.id, name: String(body["name"]) });
+        }
+        case T.scope: {
+          if (!parentResourceId) throw new Error("Create scopes from a bucket's page.");
+          const [p, c, b] = splitId(externalIdOf(parentResourceId), 3) as [string, string, string];
+          const name = (fields["name"] ?? "").trim();
+          await this.req("POST", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes`, {
+            name,
+          });
+          return instance(
+            accountId,
+            T.scope,
+            joinId(p, c, b, name),
+            name,
+            compact({ name, collections: 0 }),
+            {
+              typeId: T.bucket,
+              externalId: joinId(p, c, b),
+            },
+          );
+        }
+        case T.collection: {
+          if (!parentResourceId) throw new Error("Create collections from a scope's page.");
+          const [p, c, b, s] = splitId(externalIdOf(parentResourceId), 4) as [
+            string,
+            string,
+            string,
+            string,
+          ];
+          const name = (fields["name"] ?? "").trim();
+          const body: Record<string, unknown> = { name };
+          if (fields["maxTTL"]) body["maxTTL"] = Number(fields["maxTTL"]);
+          await this.req(
+            "POST",
+            `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections`,
+            body,
+          );
+          return instance(
+            accountId,
+            T.collection,
+            joinId(p, c, b, s, name),
+            name,
+            compact({ name, scope: s, maxTTL: fields["maxTTL"] }),
+            {
+              typeId: T.scope,
+              externalId: joinId(p, c, b, s),
+            },
+          );
+        }
+        case T.credential: {
+          const [p, c] = this.parentCluster(fields, parentResourceId);
+          const buckets = csv(fields["buckets"]);
+          const password = fields["password"]?.trim() || generatePassword();
+          const res = await this.req<{ id: string; password?: string }>(
+            "POST",
+            `${this.sub(p, c)}/users`,
+            {
+              name: (fields["name"] ?? "").trim(),
+              password,
+              credentialType: "basic",
+              access: [
+                {
+                  privileges:
+                    fields["access"] === "read" ? ["data_reader"] : ["data_reader", "data_writer"],
+                  ...(buckets.length
+                    ? { resources: { buckets: buckets.map((name) => ({ name })) } }
+                    : {}),
+                },
+              ],
+            },
+          );
+          const r = mapCredential(accountId, p, c, { id: res.id, name: fields["name"] ?? "" });
+          await this.services?.secrets?.setPlaintext?.(
+            r.id,
+            PASSWORD_SECRET,
+            res.password || password,
+          );
+          return r;
+        }
+        case T.cidr: {
+          const [p, c] = this.parentCluster(fields, parentResourceId);
+          const cidr = (fields["cidr"] ?? "").trim();
+          const res = await this.req<{ id: string }>("POST", `${this.sub(p, c)}/allowedcidrs`, {
+            cidr,
+            ...(fields["comment"] ? { comment: fields["comment"] } : {}),
+            ...(fields["expiresAt"] ? { expiresAt: fields["expiresAt"] } : {}),
+          });
+          return mapCidr(accountId, p, c, {
+            id: res.id,
+            cidr,
+            comment: fields["comment"] ?? "",
+            status: "active",
+          });
+        }
+        case T.user: {
+          const email = (fields["email"] ?? "").trim();
+          const roles = csv(fields["organizationRoles"]);
+          const projectRoles = csv(fields["projectRoles"]);
+          const res = await this.req<{ id?: string }>("POST", `${this.org}/users`, {
+            email,
+            ...(fields["name"] ? { name: fields["name"] } : {}),
+            organizationRoles: roles.length ? roles : ["organizationMember"],
+            ...(fields["projectId"] && projectRoles.length
+              ? { resources: [{ type: "project", id: fields["projectId"], roles: projectRoles }] }
+              : {}),
+          });
+          return mapUser(
+            accountId,
+            { id: res?.id ?? email, email, status: "not-verified", organizationRoles: roles },
+            await this.projectNames(),
+          );
+        }
+        case T.apiKey: {
+          const roles = csv(fields["organizationRoles"]);
+          const projectRoles = csv(fields["projectRoles"]);
+          const res = await this.req<{ id: string; token: string }>("POST", `${this.org}/apikeys`, {
+            name: (fields["name"] ?? "").trim(),
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            organizationRoles: roles.length ? roles : ["organizationMember"],
+            ...(fields["projectId"] && projectRoles.length
+              ? { resources: [{ type: "project", id: fields["projectId"], roles: projectRoles }] }
+              : {}),
+            allowedCIDRs: csv(fields["allowedCidrs"]).length
+              ? csv(fields["allowedCidrs"])
+              : ["0.0.0.0/0"],
+            ...(fields["expiry"] ? { expiry: Number(fields["expiry"]) } : {}),
+          });
+          const r = mapApiKey(
+            accountId,
+            { id: res.id, name: fields["name"] ?? "", organizationRoles: roles },
+            await this.projectNames(),
+          );
+          r.resolvedOutputs["token"] = res.token;
+          return {
+            resource: r,
+            warnings: [
               {
-                privileges:
-                  fields["access"] === "read" ? ["data_reader"] : ["data_reader", "data_writer"],
-                ...(buckets.length
-                  ? { resources: { buckets: buckets.map((name) => ({ name })) } }
-                  : {}),
+                code: "token-shown-once",
+                message:
+                  "Copy the API key's token from its outputs now: Capella will not show it again.",
               },
             ],
-          },
-        );
-        const r = mapCredential(accountId, p, c, { id: res.id, name: fields["name"] ?? "" });
-        await this.services?.secrets?.setPlaintext?.(
-          r.id,
-          PASSWORD_SECRET,
-          res.password || password,
-        );
-        return r;
+          };
+        }
+        default:
+          throw new Error(`Capella plugin: creating "${typeId}" is not supported`);
       }
-      case T.cidr: {
-        const [p, c] = this.parentCluster(fields, parentResourceId);
-        const cidr = (fields["cidr"] ?? "").trim();
-        const res = await this.req<{ id: string }>("POST", `${this.sub(p, c)}/allowedcidrs`, {
-          cidr,
-          ...(fields["comment"] ? { comment: fields["comment"] } : {}),
-          ...(fields["expiresAt"] ? { expiresAt: fields["expiresAt"] } : {}),
-        });
-        return mapCidr(accountId, p, c, {
-          id: res.id,
-          cidr,
-          comment: fields["comment"] ?? "",
-          status: "active",
-        });
-      }
-      case T.user: {
-        const email = (fields["email"] ?? "").trim();
-        const roles = csv(fields["organizationRoles"]);
-        const projectRoles = csv(fields["projectRoles"]);
-        const res = await this.req<{ id?: string }>("POST", `${this.org}/users`, {
-          email,
-          ...(fields["name"] ? { name: fields["name"] } : {}),
-          organizationRoles: roles.length ? roles : ["organizationMember"],
-          ...(fields["projectId"] && projectRoles.length
-            ? { resources: [{ type: "project", id: fields["projectId"], roles: projectRoles }] }
-            : {}),
-        });
-        return mapUser(
-          accountId,
-          { id: res?.id ?? email, email, status: "not-verified", organizationRoles: roles },
-          await this.projectNames(),
-        );
-      }
-      case T.apiKey: {
-        const roles = csv(fields["organizationRoles"]);
-        const projectRoles = csv(fields["projectRoles"]);
-        const res = await this.req<{ id: string; token: string }>("POST", `${this.org}/apikeys`, {
-          name: (fields["name"] ?? "").trim(),
-          ...(fields["description"] ? { description: fields["description"] } : {}),
-          organizationRoles: roles.length ? roles : ["organizationMember"],
-          ...(fields["projectId"] && projectRoles.length
-            ? { resources: [{ type: "project", id: fields["projectId"], roles: projectRoles }] }
-            : {}),
-          allowedCIDRs: csv(fields["allowedCidrs"]).length
-            ? csv(fields["allowedCidrs"])
-            : ["0.0.0.0/0"],
-          ...(fields["expiry"] ? { expiry: Number(fields["expiry"]) } : {}),
-        });
-        const r = mapApiKey(
-          accountId,
-          { id: res.id, name: fields["name"] ?? "", organizationRoles: roles },
-          await this.projectNames(),
-        );
-        r.resolvedOutputs["token"] = res.token;
-        return {
-          resource: r,
-          warnings: [
-            {
-              code: "token-shown-once",
-              message:
-                "Copy the API key's token from its outputs now: Capella will not show it again.",
-            },
-          ],
-        };
-      }
-      default:
-        throw new Error(`Capella plugin: creating "${typeId}" is not supported`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Update / delete
   // -------------------------------------------------------------------------
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    this.invalidate();
-    switch (typeId) {
-      case T.project: {
-        const current = await this.getResource(typeId, resourceId, accountId);
-        await this.req("PUT", this.projectPath(ext), {
-          name: fields["name"] ?? current.fields["name"],
-          description: fields["description"] ?? current.fields["description"] ?? "",
-        });
-        break;
-      }
-      case T.cluster: {
-        const [p, c] = splitId(ext, 2) as [string, string];
-        await this.clustersOf(p);
-        const cluster = await this.req<CpCluster>("GET", this.clusterPath(p, c));
-        if (fields["deletionProtection"] !== undefined) {
-          await this.req("PUT", `${this.sub(p, c)}/deletionProtection`, {
-            deletionProtection: boolish(fields["deletionProtection"]) ?? false,
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      this.invalidate();
+      switch (typeId) {
+        case T.project: {
+          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          await this.req("PUT", this.projectPath(ext), {
+            name: fields["name"] ?? current.fields["name"],
+            description: fields["description"] ?? current.fields["description"] ?? "",
           });
+          break;
         }
-        const touched = [
-          "name",
-          "description",
-          "supportPlan",
-          "supportTimezone",
-          "nodes",
-          "compute",
-        ].some((k) => fields[k] !== undefined);
-        if (touched) {
-          if (isFreeTier(cluster)) {
-            await this.req("PUT", this.clusterPath(p, c), {
-              name: fields["name"] ?? cluster.name,
-              description: fields["description"] ?? cluster.description ?? "",
-            });
-          } else {
-            const groups = (cluster.serviceGroups ?? []).map((g) => ({ ...g }));
-            const idx = Math.max(
-              0,
-              groups.findIndex((g) => g.services?.includes("data")),
-            );
-            const g = groups[idx];
-            if (g && (fields["nodes"] !== undefined || fields["compute"] !== undefined)) {
-              if (fields["nodes"]) g.numOfNodes = int(fields["nodes"], "Nodes", 1, 27);
-              if (fields["compute"]) {
-                const compute = parseCompute(fields["compute"]);
-                if (!compute) throw new Error("Pick a node size from the list.");
-                g.node = { ...g.node, compute };
-              }
-            }
-            await this.req("PUT", this.clusterPath(p, c), {
-              name: fields["name"] ?? cluster.name,
-              description: fields["description"] ?? cluster.description ?? "",
-              support: {
-                plan: fields["supportPlan"] ?? cluster.support?.plan,
-                ...((fields["supportTimezone"] ?? cluster.support?.timezone)
-                  ? { timezone: fields["supportTimezone"] ?? cluster.support?.timezone }
-                  : {}),
-              },
-              serviceGroups: groups,
+        case T.cluster: {
+          const [p, c] = splitId(ext, 2) as [string, string];
+          await this.clustersOf(p);
+          const cluster = await this.req<CpCluster>("GET", this.clusterPath(p, c));
+          if (fields["deletionProtection"] !== undefined) {
+            await this.req("PUT", `${this.sub(p, c)}/deletionProtection`, {
+              deletionProtection: boolish(fields["deletionProtection"]) ?? false,
             });
           }
+          const touched = [
+            "name",
+            "description",
+            "supportPlan",
+            "supportTimezone",
+            "nodes",
+            "compute",
+          ].some((k) => fields[k] !== undefined);
+          if (touched) {
+            if (isFreeTier(cluster)) {
+              await this.req("PUT", this.clusterPath(p, c), {
+                name: fields["name"] ?? cluster.name,
+                description: fields["description"] ?? cluster.description ?? "",
+              });
+            } else {
+              const groups = (cluster.serviceGroups ?? []).map((g) => ({ ...g }));
+              const idx = Math.max(
+                0,
+                groups.findIndex((g) => g.services?.includes("data")),
+              );
+              const g = groups[idx];
+              if (g && (fields["nodes"] !== undefined || fields["compute"] !== undefined)) {
+                if (fields["nodes"]) g.numOfNodes = int(fields["nodes"], "Nodes", 1, 27);
+                if (fields["compute"]) {
+                  const compute = parseCompute(fields["compute"]);
+                  if (!compute) throw new Error("Pick a node size from the list.");
+                  g.node = { ...g.node, compute };
+                }
+              }
+              await this.req("PUT", this.clusterPath(p, c), {
+                name: fields["name"] ?? cluster.name,
+                description: fields["description"] ?? cluster.description ?? "",
+                support: {
+                  plan: fields["supportPlan"] ?? cluster.support?.plan,
+                  ...((fields["supportTimezone"] ?? cluster.support?.timezone)
+                    ? { timezone: fields["supportTimezone"] ?? cluster.support?.timezone }
+                    : {}),
+                },
+                serviceGroups: groups,
+              });
+            }
+          }
+          break;
         }
-        break;
-      }
-      case T.appService: {
-        const [p, c, a] = splitId(ext, 3) as [string, string, string];
-        const current = (await this.appServices()).find((x) => x.id === a);
-        if (!current) throw notFound(`App Service ${a}`);
-        const compute = fields["compute"] ? parseCompute(fields["compute"]) : current.compute;
-        await this.req("PUT", `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}`, {
-          nodes: fields["nodes"] ? int(fields["nodes"], "Nodes", 2, 12) : current.nodes,
-          compute,
-        });
-        break;
-      }
-      case T.bucket: {
-        const [p, c, b] = splitId(ext, 3) as [string, string, string];
-        await this.clustersOf(p);
-        const free = this.freeTier.get(c) === true;
-        const current = (await this.bucketsOf({ projectId: p, clusterId: c, free })).find(
-          (x) => x.id === b,
-        );
-        if (!current) throw notFound(`bucket ${b}`);
-        if (free) {
-          await this.req("PUT", `${this.sub(p, c)}/buckets/freeTier/${encodeURIComponent(b)}`, {
-            memoryAllocationInMb: fields["memoryAllocationInMb"]
-              ? Number(fields["memoryAllocationInMb"])
-              : current.memoryAllocationInMb,
+        case T.appService: {
+          const [p, c, a] = splitId(ext, 3) as [string, string, string];
+          const current = (await this.appServices()).find((x) => x.id === a);
+          if (!current) throw notFound(`App Service ${a}`);
+          const compute = fields["compute"] ? parseCompute(fields["compute"]) : current.compute;
+          await this.req("PUT", `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}`, {
+            nodes: fields["nodes"] ? int(fields["nodes"], "Nodes", 2, 12) : current.nodes,
+            compute,
           });
-        } else {
-          await this.req("PUT", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}`, {
-            memoryAllocationInMb: fields["memoryAllocationInMb"]
-              ? int(fields["memoryAllocationInMb"], "Memory quota", 100)
-              : current.memoryAllocationInMb,
-            durabilityLevel: fields["durabilityLevel"] ?? current.durabilityLevel,
-            replicas: fields["replicas"] ? Number(fields["replicas"]) : current.replicas,
-            timeToLiveInSeconds:
-              fields["timeToLiveInSeconds"] !== undefined && fields["timeToLiveInSeconds"] !== ""
-                ? Number(fields["timeToLiveInSeconds"])
-                : (current.timeToLiveInSeconds ?? 0),
-            flushEnabled:
-              boolish(fields["flushEnabled"]) ?? current.flushEnabled ?? current.flush ?? false,
-          });
+          break;
         }
-        break;
-      }
-      case T.collection: {
-        const [p, c, b, s, name] = splitId(ext, 5) as [string, string, string, string, string];
-        if (fields["maxTTL"] !== undefined && fields["maxTTL"] !== "") {
-          await this.req(
-            "PUT",
-            `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections/${encodeURIComponent(name)}`,
-            {
-              maxTTL: Number(fields["maxTTL"]),
-            },
+        case T.bucket: {
+          const [p, c, b] = splitId(ext, 3) as [string, string, string];
+          await this.clustersOf(p);
+          const free = this.freeTier.get(c) === true;
+          const current = (await this.bucketsOf({ projectId: p, clusterId: c, free })).find(
+            (x) => x.id === b,
           );
+          if (!current) throw notFound(`bucket ${b}`);
+          if (free) {
+            await this.req("PUT", `${this.sub(p, c)}/buckets/freeTier/${encodeURIComponent(b)}`, {
+              memoryAllocationInMb: fields["memoryAllocationInMb"]
+                ? Number(fields["memoryAllocationInMb"])
+                : current.memoryAllocationInMb,
+            });
+          } else {
+            await this.req("PUT", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}`, {
+              memoryAllocationInMb: fields["memoryAllocationInMb"]
+                ? int(fields["memoryAllocationInMb"], "Memory quota", 100)
+                : current.memoryAllocationInMb,
+              durabilityLevel: fields["durabilityLevel"] ?? current.durabilityLevel,
+              replicas: fields["replicas"] ? Number(fields["replicas"]) : current.replicas,
+              timeToLiveInSeconds:
+                fields["timeToLiveInSeconds"] !== undefined && fields["timeToLiveInSeconds"] !== ""
+                  ? Number(fields["timeToLiveInSeconds"])
+                  : (current.timeToLiveInSeconds ?? 0),
+              flushEnabled:
+                boolish(fields["flushEnabled"]) ?? current.flushEnabled ?? current.flush ?? false,
+            });
+          }
+          break;
         }
-        break;
+        case T.collection: {
+          const [p, c, b, s, name] = splitId(ext, 5) as [string, string, string, string, string];
+          if (fields["maxTTL"] !== undefined && fields["maxTTL"] !== "") {
+            await this.req(
+              "PUT",
+              `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections/${encodeURIComponent(name)}`,
+              {
+                maxTTL: Number(fields["maxTTL"]),
+              },
+            );
+          }
+          break;
+        }
+        case T.credential:
+          if (fields["password"]) await this.resetPassword(resourceId, fields["password"]);
+          break;
+        default:
+          throw new Error(`Capella plugin: updating "${typeId}" is not supported`);
       }
-      case T.credential:
-        if (fields["password"]) await this.resetPassword(resourceId, fields["password"]);
-        break;
-      default:
-        throw new Error(`Capella plugin: updating "${typeId}" is not supported`);
-    }
-    this.invalidate();
-    return this.getResource(typeId, resourceId, accountId);
+      this.invalidate();
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 
   private async resetPassword(resourceId: string, requested: string) {
@@ -1554,409 +1585,423 @@ export class CapellaClient implements PluginClient {
     return { ok: true, message: "Password reset. The connection string output uses the new one." };
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    this.invalidate();
-    const three = () => splitId(ext, 3) as [string, string, string];
-    switch (typeId) {
-      case T.project:
-        await this.req("DELETE", this.projectPath(ext));
-        return;
-      case T.cluster: {
-        const [p, c] = splitId(ext, 2) as [string, string];
-        await this.clustersOf(p);
-        await this.req("DELETE", this.clusterPath(p, c));
-        return;
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      this.invalidate();
+      const three = () => splitId(ext, 3) as [string, string, string];
+      switch (typeId) {
+        case T.project:
+          await this.req("DELETE", this.projectPath(ext));
+          return;
+        case T.cluster: {
+          const [p, c] = splitId(ext, 2) as [string, string];
+          await this.clustersOf(p);
+          await this.req("DELETE", this.clusterPath(p, c));
+          return;
+        }
+        case T.appService: {
+          const [p, c, a] = three();
+          await this.req("DELETE", `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}`);
+          return;
+        }
+        case T.bucket: {
+          const [p, c, b] = three();
+          await this.clustersOf(p);
+          await this.req(
+            "DELETE",
+            `${this.sub(p, c)}/buckets/${this.freeTier.get(c) ? "freeTier/" : ""}${encodeURIComponent(b)}`,
+          );
+          return;
+        }
+        case T.scope: {
+          const [p, c, b, s] = splitId(ext, 4) as [string, string, string, string];
+          await this.req(
+            "DELETE",
+            `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}`,
+          );
+          return;
+        }
+        case T.collection: {
+          const [p, c, b, s, n] = splitId(ext, 5) as [string, string, string, string, string];
+          await this.req(
+            "DELETE",
+            `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections/${encodeURIComponent(n)}`,
+          );
+          return;
+        }
+        case T.credential: {
+          const [p, c, id] = three();
+          await this.req("DELETE", `${this.sub(p, c)}/users/${encodeURIComponent(id)}`);
+          return;
+        }
+        case T.cidr: {
+          const [p, c, id] = three();
+          await this.req("DELETE", `${this.sub(p, c)}/allowedcidrs/${encodeURIComponent(id)}`);
+          return;
+        }
+        case T.backup: {
+          const [p, c, id] = three();
+          await this.req("DELETE", `${this.sub(p, c)}/backups/${encodeURIComponent(id)}`);
+          return;
+        }
+        case T.replication: {
+          const [p, c, id] = three();
+          await this.req("DELETE", `${this.sub(p, c)}/replications/${encodeURIComponent(id)}`);
+          return;
+        }
+        case T.networkPeer: {
+          const [p, c, id] = three();
+          await this.req("DELETE", `${this.sub(p, c)}/networkPeers/${encodeURIComponent(id)}`);
+          return;
+        }
+        case T.user:
+          await this.req("DELETE", `${this.org}/users/${encodeURIComponent(ext)}`);
+          return;
+        case T.apiKey:
+          await this.req("DELETE", `${this.org}/apikeys/${encodeURIComponent(ext)}`);
+          return;
+        default:
+          throw new Error(`Capella plugin: deleting "${typeId}" is not supported`);
       }
-      case T.appService: {
-        const [p, c, a] = three();
-        await this.req("DELETE", `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}`);
-        return;
-      }
-      case T.bucket: {
-        const [p, c, b] = three();
-        await this.clustersOf(p);
-        await this.req(
-          "DELETE",
-          `${this.sub(p, c)}/buckets/${this.freeTier.get(c) ? "freeTier/" : ""}${encodeURIComponent(b)}`,
-        );
-        return;
-      }
-      case T.scope: {
-        const [p, c, b, s] = splitId(ext, 4) as [string, string, string, string];
-        await this.req(
-          "DELETE",
-          `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}`,
-        );
-        return;
-      }
-      case T.collection: {
-        const [p, c, b, s, n] = splitId(ext, 5) as [string, string, string, string, string];
-        await this.req(
-          "DELETE",
-          `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections/${encodeURIComponent(n)}`,
-        );
-        return;
-      }
-      case T.credential: {
-        const [p, c, id] = three();
-        await this.req("DELETE", `${this.sub(p, c)}/users/${encodeURIComponent(id)}`);
-        return;
-      }
-      case T.cidr: {
-        const [p, c, id] = three();
-        await this.req("DELETE", `${this.sub(p, c)}/allowedcidrs/${encodeURIComponent(id)}`);
-        return;
-      }
-      case T.backup: {
-        const [p, c, id] = three();
-        await this.req("DELETE", `${this.sub(p, c)}/backups/${encodeURIComponent(id)}`);
-        return;
-      }
-      case T.replication: {
-        const [p, c, id] = three();
-        await this.req("DELETE", `${this.sub(p, c)}/replications/${encodeURIComponent(id)}`);
-        return;
-      }
-      case T.networkPeer: {
-        const [p, c, id] = three();
-        await this.req("DELETE", `${this.sub(p, c)}/networkPeers/${encodeURIComponent(id)}`);
-        return;
-      }
-      case T.user:
-        await this.req("DELETE", `${this.org}/users/${encodeURIComponent(ext)}`);
-        return;
-      case T.apiKey:
-        await this.req("DELETE", `${this.org}/apikeys/${encodeURIComponent(ext)}`);
-        return;
-      default:
-        throw new Error(`Capella plugin: deleting "${typeId}" is not supported`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    this.invalidate();
-    if (typeId === T.cluster && (actionId === "turn-on" || actionId === "turn-off")) {
-      const [p, c] = splitId(ext, 2) as [string, string];
-      await this.clustersOf(p);
-      if (actionId === "turn-on") {
-        await this.req(
-          "POST",
-          `${this.clusterPath(p, c)}/activationState`,
-          this.freeTier.get(c) ? undefined : { turnOnLinkedAppService: true },
-        );
-      } else {
-        await this.req("DELETE", `${this.clusterPath(p, c)}/activationState`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      this.invalidate();
+      if (typeId === T.cluster && (actionId === "turn-on" || actionId === "turn-off")) {
+        const [p, c] = splitId(ext, 2) as [string, string];
+        await this.clustersOf(p);
+        if (actionId === "turn-on") {
+          await this.req(
+            "POST",
+            `${this.clusterPath(p, c)}/activationState`,
+            this.freeTier.get(c) ? undefined : { turnOnLinkedAppService: true },
+          );
+        } else {
+          await this.req("DELETE", `${this.clusterPath(p, c)}/activationState`);
+        }
+        return;
       }
-      return;
-    }
-    if (typeId === T.cluster && actionId === "remove-schedule") {
-      const [p, c] = splitId(ext, 2) as [string, string];
-      await this.req("DELETE", `${this.sub(p, c)}/onOffSchedule`);
-      return;
-    }
-    if (typeId === T.appService && (actionId === "turn-on" || actionId === "turn-off")) {
-      const [p, c, a] = splitId(ext, 3) as [string, string, string];
-      await this.req(
-        actionId === "turn-on" ? "POST" : "DELETE",
-        `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}/activationState`,
-      );
-      return;
-    }
-    if (typeId === T.bucket && (actionId === "flush" || actionId === "backup")) {
-      const [p, c, b] = splitId(ext, 3) as [string, string, string];
-      if (actionId === "flush")
-        await this.req("PUT", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/flush`);
-      else await this.req("POST", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backups`);
-      return;
-    }
-    if (typeId === T.replication && (actionId === "pause" || actionId === "resume")) {
-      const [p, c, id] = splitId(ext, 3) as [string, string, string];
-      await this.req(
-        actionId === "resume" ? "POST" : "DELETE",
-        `${this.sub(p, c)}/replications/${encodeURIComponent(id)}/activationStatus`,
-      );
-      return;
-    }
-    if (actionId === "revoke" && (typeId === T.user || typeId === T.apiKey)) {
-      await this.deleteResource(typeId, resourceId, accountId);
-      return;
-    }
-    throw new Error(`Capella plugin: unknown action "${actionId}" for "${typeId}"`);
+      if (typeId === T.cluster && actionId === "remove-schedule") {
+        const [p, c] = splitId(ext, 2) as [string, string];
+        await this.req("DELETE", `${this.sub(p, c)}/onOffSchedule`);
+        return;
+      }
+      if (typeId === T.appService && (actionId === "turn-on" || actionId === "turn-off")) {
+        const [p, c, a] = splitId(ext, 3) as [string, string, string];
+        await this.req(
+          actionId === "turn-on" ? "POST" : "DELETE",
+          `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}/activationState`,
+        );
+        return;
+      }
+      if (typeId === T.bucket && (actionId === "flush" || actionId === "backup")) {
+        const [p, c, b] = splitId(ext, 3) as [string, string, string];
+        if (actionId === "flush")
+          await this.req("PUT", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/flush`);
+        else await this.req("POST", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backups`);
+        return;
+      }
+      if (typeId === T.replication && (actionId === "pause" || actionId === "resume")) {
+        const [p, c, id] = splitId(ext, 3) as [string, string, string];
+        await this.req(
+          actionId === "resume" ? "POST" : "DELETE",
+          `${this.sub(p, c)}/replications/${encodeURIComponent(id)}/activationStatus`,
+        );
+        return;
+      }
+      if (actionId === "revoke" && (typeId === T.user || typeId === T.apiKey)) {
+        await runPluginEffect(this.deleteResource(typeId, resourceId, accountId));
+        return;
+      }
+      throw new Error(`Capella plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const form = decodePromptArgs(args);
-    const ext = externalIdOf(resourceId);
-    this.invalidate();
-    if (typeId === T.cluster) {
-      const [p, c] = splitId(ext, 2) as [string, string];
-      switch (command) {
-        case "set-schedule": {
-          const onDays = new Set(csv(form["days"]));
-          const from = int(form["fromHour"], "Start hour", 0, 23);
-          const to = int(form["toHour"], "End hour", 1, 24);
-          if (to <= from) throw new Error("The off hour must be after the on hour.");
-          const allDay = from === 0 && to === 24;
-          const days = [
-            "monday",
-            "tuesday",
-            "wednesday",
-            "thursday",
-            "friday",
-            "saturday",
-            "sunday",
-          ].map((day) =>
-            !onDays.has(day)
-              ? { day, state: "off" }
-              : allDay
-                ? { day, state: "on" }
-                : {
-                    day,
-                    state: "custom",
-                    from: { hour: from, minute: 0 },
-                    to: { hour: to === 24 ? 0 : to, minute: 0 },
-                  },
-          );
-          const body = { timezone: form["timezone"] || "US/Eastern", days };
-          const path = `${this.sub(p, c)}/onOffSchedule`;
-          try {
-            await this.req("PUT", path, body);
-          } catch (err) {
-            if (statusOf(err) !== 404) throw err;
-            await this.req("POST", path, body);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const form = decodePromptArgs(args);
+      const ext = externalIdOf(resourceId);
+      this.invalidate();
+      if (typeId === T.cluster) {
+        const [p, c] = splitId(ext, 2) as [string, string];
+        switch (command) {
+          case "set-schedule": {
+            const onDays = new Set(csv(form["days"]));
+            const from = int(form["fromHour"], "Start hour", 0, 23);
+            const to = int(form["toHour"], "End hour", 1, 24);
+            if (to <= from) throw new Error("The off hour must be after the on hour.");
+            const allDay = from === 0 && to === 24;
+            const days = [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday",
+              "saturday",
+              "sunday",
+            ].map((day) =>
+              !onDays.has(day)
+                ? { day, state: "off" }
+                : allDay
+                  ? { day, state: "on" }
+                  : {
+                      day,
+                      state: "custom",
+                      from: { hour: from, minute: 0 },
+                      to: { hour: to === 24 ? 0 : to, minute: 0 },
+                    },
+            );
+            const body = { timezone: form["timezone"] || "US/Eastern", days };
+            const path = `${this.sub(p, c)}/onOffSchedule`;
+            try {
+              await this.req("PUT", path, body);
+            } catch (err) {
+              if (statusOf(err) !== 404) throw err;
+              await this.req("POST", path, body);
+            }
+            return { ok: true, message: "Schedule saved." };
           }
-          return { ok: true, message: "Schedule saved." };
-        }
-        case "set-audit": {
-          const current = await this.req<{ disabledUsers?: unknown[]; enabledEventIDs?: number[] }>(
-            "GET",
-            `${this.sub(p, c)}/auditLog`,
-          ).catch(() => ({}) as { disabledUsers?: unknown[]; enabledEventIDs?: number[] });
-          await this.req("PUT", `${this.sub(p, c)}/auditLog`, {
-            auditEnabled: form["enabled"] === "true",
-            disabledUsers: current.disabledUsers ?? [],
-            enabledEventIDs: current.enabledEventIDs ?? [],
-          });
-          return { ok: true, message: "Audit logging updated." };
-        }
-        case "load-sample":
-          await this.req("POST", `${this.sub(p, c)}/sampleBuckets`, {
-            name: form["name"] || "travel-sample",
-          });
-          return { ok: true, message: "Sample bucket is loading." };
-      }
-    }
-    if (typeId === T.bucket && command === "set-backup-schedule") {
-      const [p, c, b] = splitId(ext, 3) as [string, string, string];
-      const body = {
-        type: "weekly",
-        weeklySchedule: {
-          dayOfWeek: form["dayOfWeek"] || "sunday",
-          startAt: int(form["startAt"] || "0", "Start hour", 0, 23),
-          incrementalEvery: Number(form["incrementalEvery"] || 24),
-          retentionTime: form["retentionTime"] || "30days",
-          costOptimizedRetention: form["costOptimizedRetention"] === "true",
-        },
-      };
-      const path = `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backup/schedules`;
-      try {
-        await this.req("PUT", path, body);
-      } catch (err) {
-        if (statusOf(err) !== 404) throw err;
-        await this.req("POST", path, body);
-      }
-      return { ok: true, message: "Backup schedule saved." };
-    }
-    if (typeId === T.backup && command === "restore") {
-      const [p, c, id] = splitId(ext, 3) as [string, string, string];
-      const [, target] = splitId(form["targetClusterId"] ?? "", 2) as [string, string];
-      const services = csv(form["services"]);
-      await this.req("POST", `${this.sub(p, c)}/backups/${encodeURIComponent(id)}/restore`, {
-        targetClusterID: target,
-        sourceClusterID: c,
-        backupID: id,
-        services: services.length ? services : ["data"],
-        forceUpdates: form["forceUpdates"] === "true",
-      });
-      return { ok: true, message: "Restore started." };
-    }
-    if (typeId === T.credential && command === "reset-password") {
-      return this.resetPassword(resourceId, form["password"] ?? "");
-    }
-    if (typeId === T.apiKey && command === "rotate") {
-      const res = await this.req<{ token?: string }>(
-        "POST",
-        `${this.org}/apikeys/${encodeURIComponent(ext)}/rotate`,
-        {},
-      );
-      return { ok: true, message: `New token (shown once): ${res?.token ?? ""}` };
-    }
-    if (typeId === T.user && command === "set-roles") {
-      const user = (await capellaList<CpUser>(this.ctx, `${this.org}/users`)).find(
-        (u) => u.id === ext,
-      );
-      if (!user) throw notFound(`user ${ext}`);
-      const wanted = csv(form["organizationRoles"]);
-      const current = user.organizationRoles ?? [];
-      const ops: Array<Record<string, unknown>> = [];
-      const add = wanted.filter((r) => !current.includes(r));
-      const remove = current.filter((r) => !wanted.includes(r));
-      if (add.length) ops.push({ op: "add", path: "/organizationRoles", value: add });
-      if (remove.length) ops.push({ op: "remove", path: "/organizationRoles", value: remove });
-      const projectId = form["projectId"];
-      if (projectId) {
-        const roles = csv(form["projectRoles"]);
-        const has = (user.resources ?? []).some((r) => r.id === projectId);
-        if (!roles.length) {
-          if (has) ops.push({ op: "remove", path: `/resources/${projectId}` });
-        } else {
-          if (has) ops.push({ op: "remove", path: `/resources/${projectId}` });
-          ops.push({
-            op: "add",
-            path: `/resources/${projectId}`,
-            value: { id: projectId, type: "project", roles },
-          });
+          case "set-audit": {
+            const current = await this.req<{
+              disabledUsers?: unknown[];
+              enabledEventIDs?: number[];
+            }>("GET", `${this.sub(p, c)}/auditLog`).catch(
+              () => ({}) as { disabledUsers?: unknown[]; enabledEventIDs?: number[] },
+            );
+            await this.req("PUT", `${this.sub(p, c)}/auditLog`, {
+              auditEnabled: form["enabled"] === "true",
+              disabledUsers: current.disabledUsers ?? [],
+              enabledEventIDs: current.enabledEventIDs ?? [],
+            });
+            return { ok: true, message: "Audit logging updated." };
+          }
+          case "load-sample":
+            await this.req("POST", `${this.sub(p, c)}/sampleBuckets`, {
+              name: form["name"] || "travel-sample",
+            });
+            return { ok: true, message: "Sample bucket is loading." };
         }
       }
-      if (!ops.length) return { ok: true, message: "Nothing changed." };
-      await this.req("PATCH", `${this.org}/users/${encodeURIComponent(ext)}`, ops);
-      return { ok: true, message: "Roles updated." };
-    }
-    throw new Error(`Capella plugin: command "${command}" is not supported for "${typeId}"`);
+      if (typeId === T.bucket && command === "set-backup-schedule") {
+        const [p, c, b] = splitId(ext, 3) as [string, string, string];
+        const body = {
+          type: "weekly",
+          weeklySchedule: {
+            dayOfWeek: form["dayOfWeek"] || "sunday",
+            startAt: int(form["startAt"] || "0", "Start hour", 0, 23),
+            incrementalEvery: Number(form["incrementalEvery"] || 24),
+            retentionTime: form["retentionTime"] || "30days",
+            costOptimizedRetention: form["costOptimizedRetention"] === "true",
+          },
+        };
+        const path = `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backup/schedules`;
+        try {
+          await this.req("PUT", path, body);
+        } catch (err) {
+          if (statusOf(err) !== 404) throw err;
+          await this.req("POST", path, body);
+        }
+        return { ok: true, message: "Backup schedule saved." };
+      }
+      if (typeId === T.backup && command === "restore") {
+        const [p, c, id] = splitId(ext, 3) as [string, string, string];
+        const [, target] = splitId(form["targetClusterId"] ?? "", 2) as [string, string];
+        const services = csv(form["services"]);
+        await this.req("POST", `${this.sub(p, c)}/backups/${encodeURIComponent(id)}/restore`, {
+          targetClusterID: target,
+          sourceClusterID: c,
+          backupID: id,
+          services: services.length ? services : ["data"],
+          forceUpdates: form["forceUpdates"] === "true",
+        });
+        return { ok: true, message: "Restore started." };
+      }
+      if (typeId === T.credential && command === "reset-password") {
+        return this.resetPassword(resourceId, form["password"] ?? "");
+      }
+      if (typeId === T.apiKey && command === "rotate") {
+        const res = await this.req<{ token?: string }>(
+          "POST",
+          `${this.org}/apikeys/${encodeURIComponent(ext)}/rotate`,
+          {},
+        );
+        return { ok: true, message: `New token (shown once): ${res?.token ?? ""}` };
+      }
+      if (typeId === T.user && command === "set-roles") {
+        const user = (await capellaList<CpUser>(this.ctx, `${this.org}/users`)).find(
+          (u) => u.id === ext,
+        );
+        if (!user) throw notFound(`user ${ext}`);
+        const wanted = csv(form["organizationRoles"]);
+        const current = user.organizationRoles ?? [];
+        const ops: Array<Record<string, unknown>> = [];
+        const add = wanted.filter((r) => !current.includes(r));
+        const remove = current.filter((r) => !wanted.includes(r));
+        if (add.length) ops.push({ op: "add", path: "/organizationRoles", value: add });
+        if (remove.length) ops.push({ op: "remove", path: "/organizationRoles", value: remove });
+        const projectId = form["projectId"];
+        if (projectId) {
+          const roles = csv(form["projectRoles"]);
+          const has = (user.resources ?? []).some((r) => r.id === projectId);
+          if (!roles.length) {
+            if (has) ops.push({ op: "remove", path: `/resources/${projectId}` });
+          } else {
+            if (has) ops.push({ op: "remove", path: `/resources/${projectId}` });
+            ops.push({
+              op: "add",
+              path: `/resources/${projectId}`,
+              value: { id: projectId, type: "project", roles },
+            });
+          }
+        }
+        if (!ops.length) return { ok: true, message: "Nothing changed." };
+        await this.req("PATCH", `${this.org}/users/${encodeURIComponent(ext)}`, ops);
+        return { ok: true, message: "Roles updated." };
+      }
+      throw new Error(`Capella plugin: command "${command}" is not supported for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Observability
   // -------------------------------------------------------------------------
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<MetricSeries[]> {
-    const now = Date.now();
-    const point = (label: string, unit: string, value: unknown): MetricSeries[] =>
-      typeof value === "number" && Number.isFinite(value)
-        ? [{ label, unit, points: [{ timestamp: now, value }] }]
-        : [];
-    if (resourceTypeId === T.cluster) {
-      const r = await this.getResource(resourceTypeId, resourceId, accountId);
-      const used = r.fields["memoryUsedMb"];
-      const total = r.fields["memoryTotalMb"];
-      return [
-        ...point("Bucket memory allocated", "MB", used),
-        ...point("Bucket memory available", "MB", total),
-        ...(typeof used === "number" && typeof total === "number" && total > 0
-          ? point("Bucket memory allocated (%)", "%", Math.round((used / total) * 1000) / 10)
-          : []),
-      ];
-    }
-    if (resourceTypeId === T.bucket) {
-      const r = await this.getResource(resourceTypeId, resourceId, accountId);
-      return [
-        ...point("Items", "items", r.fields["itemCount"]),
-        ...point("Ops/sec", "ops/s", r.fields["opsPerSecond"]),
-        ...point("Disk used", "MiB", r.fields["diskUsedMib"]),
-        ...point("Memory used", "MiB", r.fields["memoryUsedMib"]),
-      ];
-    }
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const now = Date.now();
+      const point = (label: string, unit: string, value: unknown): MetricSeries[] =>
+        typeof value === "number" && Number.isFinite(value)
+          ? [{ label, unit, points: [{ timestamp: now, value }] }]
+          : [];
+      if (resourceTypeId === T.cluster) {
+        const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+        const used = r.fields["memoryUsedMb"];
+        const total = r.fields["memoryTotalMb"];
+        return [
+          ...point("Bucket memory allocated", "MB", used),
+          ...point("Bucket memory available", "MB", total),
+          ...(typeof used === "number" && typeof total === "number" && total > 0
+            ? point("Bucket memory allocated (%)", "%", Math.round((used / total) * 1000) / 10)
+            : []),
+        ];
+      }
+      if (resourceTypeId === T.bucket) {
+        const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+        return [
+          ...point("Items", "items", r.fields["itemCount"]),
+          ...point("Ops/sec", "ops/s", r.fields["opsPerSecond"]),
+          ...point("Disk used", "MiB", r.fields["diskUsedMib"]),
+          ...point("Memory used", "MiB", r.fields["memoryUsedMib"]),
+        ];
+      }
+      return [];
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    const s = String(f["state"] ?? f["status"] ?? "");
-    const variant: DashboardStat["variant"] =
-      s === "healthy"
-        ? "status-healthy"
-        : /failed|offline/.test(s)
-          ? "status-error"
-          : s
-            ? "status-degraded"
-            : "default";
-    if (resourceTypeId === T.cluster) {
-      return [
-        { label: "State", value: s, variant },
-        { label: "Nodes", value: String(f["totalNodes"] ?? "") },
-        { label: "Region", value: String(f["region"] ?? "") },
-        { label: "Version", value: String(f["version"] ?? "") },
-      ];
-    }
-    if (resourceTypeId === T.bucket) {
-      return [
-        { label: "Items", value: String(f["itemCount"] ?? "") },
-        { label: "Ops/sec", value: String(f["opsPerSecond"] ?? "") },
-        {
-          label: "Memory",
-          value: `${f["memoryUsedMib"] ?? "?"} / ${f["memoryAllocationInMb"] ?? "?"} MB`,
-        },
-      ];
-    }
-    return [{ label: "Status", value: s || "Active", variant }];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      const s = String(f["state"] ?? f["status"] ?? "");
+      const variant: DashboardStat["variant"] =
+        s === "healthy"
+          ? "status-healthy"
+          : /failed|offline/.test(s)
+            ? "status-error"
+            : s
+              ? "status-degraded"
+              : "default";
+      if (resourceTypeId === T.cluster) {
+        return [
+          { label: "State", value: s, variant },
+          { label: "Nodes", value: String(f["totalNodes"] ?? "") },
+          { label: "Region", value: String(f["region"] ?? "") },
+          { label: "Version", value: String(f["version"] ?? "") },
+        ];
+      }
+      if (resourceTypeId === T.bucket) {
+        return [
+          { label: "Items", value: String(f["itemCount"] ?? "") },
+          { label: "Ops/sec", value: String(f["opsPerSecond"] ?? "") },
+          {
+            label: "Memory",
+            value: `${f["memoryUsedMib"] ?? "?"} / ${f["memoryAllocationInMb"] ?? "?"} MB`,
+          },
+        ];
+      }
+      return [{ label: "Status", value: s || "Active", variant }];
+    });
   }
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const containers = ["All events", "Warnings and critical"];
-    const active =
-      params.container && containers.includes(params.container) ? params.container : "All events";
-    const ext = externalIdOf(resourceId);
-    const query: Array<[string, string | number | undefined]> = [
-      ["sortBy", "timestamp"],
-      ["sortDirection", "desc"],
-      ["perPage", Math.min(Math.max(params.tailLines ?? 100, 1), 100)],
-      ["page", 1],
-    ];
-    if (typeId === T.cluster) query.push(["clusterIds", splitId(ext, 2)[1]]);
-    else if (typeId === T.project) query.push(["projectIds", ext]);
-    if (active !== "All events") {
-      query.push(["severityLevels", "warning"], ["severityLevels", "critical"]);
-    }
-    const res = await this.req<{
-      data?: Array<{
-        timestamp?: string;
-        severity?: string;
-        key?: string;
-        summary?: string;
-        userEmail?: string;
-        clusterName?: string;
-      }>;
-    }>("GET", `${this.org}/events`, undefined, query);
-    const text = (res?.data ?? [])
-      .slice()
-      .reverse()
-      .map(
-        (e) =>
-          `${(e.timestamp ?? "").replace("T", " ").replace(/(\.\d+)?Z$/, "")}  ${(e.severity ?? "").padEnd(8)}  ${e.key ?? ""}${e.summary ? `  ${e.summary}` : ""}${e.userEmail ? `  [${e.userEmail}]` : ""}\n`,
-      )
-      .join("");
-    return { text: text || "No events.\n", containers, activeContainer: active };
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const containers = ["All events", "Warnings and critical"];
+      const active =
+        params.container && containers.includes(params.container) ? params.container : "All events";
+      const ext = externalIdOf(resourceId);
+      const query: Array<[string, string | number | undefined]> = [
+        ["sortBy", "timestamp"],
+        ["sortDirection", "desc"],
+        ["perPage", Math.min(Math.max(params.tailLines ?? 100, 1), 100)],
+        ["page", 1],
+      ];
+      if (typeId === T.cluster) query.push(["clusterIds", splitId(ext, 2)[1]]);
+      else if (typeId === T.project) query.push(["projectIds", ext]);
+      if (active !== "All events") {
+        query.push(["severityLevels", "warning"], ["severityLevels", "critical"]);
+      }
+      const res = await this.req<{
+        data?: Array<{
+          timestamp?: string;
+          severity?: string;
+          key?: string;
+          summary?: string;
+          userEmail?: string;
+          clusterName?: string;
+        }>;
+      }>("GET", `${this.org}/events`, undefined, query);
+      const text = (res?.data ?? [])
+        .slice()
+        .reverse()
+        .map(
+          (e) =>
+            `${(e.timestamp ?? "").replace("T", " ").replace(/(\.\d+)?Z$/, "")}  ${(e.severity ?? "").padEnd(8)}  ${e.key ?? ""}${e.summary ? `  ${e.summary}` : ""}${e.userEmail ? `  [${e.userEmail}]` : ""}\n`,
+        )
+        .join("");
+      return { text: text || "No events.\n", containers, activeContainer: active };
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1969,107 +2014,111 @@ export class CapellaClient implements PluginClient {
    * clusters do not account for (App Services, analytics, AI services) is the
    * organization total minus the cluster rows, left without a resource.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    const refs = (await this.clusterRefs()).filter((r) => !r.free);
-    const rows: CostRow[] = [];
-    const amountOf = (cat: { currencySpend?: number | null; creditSpend?: number | null }) =>
-      typeof cat.currencySpend === "number"
-        ? cat.currencySpend
-        : typeof cat.creditSpend === "number"
-          ? cat.creditSpend
-          : 0;
-    for (const chunk of monthChunks(range.fromDate, range.toDate)) {
-      const body = { startDate: chunk.start, endDate: chunk.end };
-      const clusterTotals = new Map<string, number>();
-      for (const ref of refs) {
-        const res = await this.req<CpBilling>(
-          "POST",
-          `${this.sub(ref.projectId, ref.clusterId)}/billing`,
-          body,
-        ).catch((err: unknown) => {
-          if (isUnavailable(err)) return undefined;
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      const refs = (await this.clusterRefs()).filter((r) => !r.free);
+      const rows: CostRow[] = [];
+      const amountOf = (cat: { currencySpend?: number | null; creditSpend?: number | null }) =>
+        typeof cat.currencySpend === "number"
+          ? cat.currencySpend
+          : typeof cat.creditSpend === "number"
+            ? cat.creditSpend
+            : 0;
+      for (const chunk of monthChunks(range.fromDate, range.toDate)) {
+        const body = { startDate: chunk.start, endDate: chunk.end };
+        const clusterTotals = new Map<string, number>();
+        for (const ref of refs) {
+          const res = await this.req<CpBilling>(
+            "POST",
+            `${this.sub(ref.projectId, ref.clusterId)}/billing`,
+            body,
+          ).catch((err: unknown) => {
+            if (isUnavailable(err)) return undefined;
+            throw err;
+          });
+          const currency = res?.data?.billingCurrency ?? "USD";
+          for (const period of res?.data?.periods ?? []) {
+            const date = period.startDate;
+            if (!date || period.endDate !== date) continue;
+            for (const cat of period.categories ?? []) {
+              const amount = amountOf(cat);
+              if (!amount || !cat.category) continue;
+              const key = `${date}|${cat.category}`;
+              clusterTotals.set(key, (clusterTotals.get(key) ?? 0) + amount);
+              rows.push({
+                date,
+                service: BILLING_CATEGORIES[cat.category] ?? cat.category,
+                ...(ref.region ? { region: ref.region } : {}),
+                resourceId: ref.clusterId,
+                tags: { project: ref.projectId, ...(ref.name ? { cluster: ref.name } : {}) },
+                currency,
+                amount,
+              });
+            }
+          }
+        }
+        let org: CpBilling | undefined;
+        try {
+          org = await this.req<CpBilling>("POST", `${this.org}/billing`, body);
+        } catch (err) {
+          const s = statusOf(err);
+          if (s === 403) {
+            throw new Error("Capella cost data needs an API key with the Organization Owner role.");
+          }
           throw err;
-        });
-        const currency = res?.data?.billingCurrency ?? "USD";
-        for (const period of res?.data?.periods ?? []) {
+        }
+        const currency = org?.data?.billingCurrency ?? "USD";
+        for (const period of org?.data?.periods ?? []) {
           const date = period.startDate;
           if (!date || period.endDate !== date) continue;
           for (const cat of period.categories ?? []) {
-            const amount = amountOf(cat);
-            if (!amount || !cat.category) continue;
-            const key = `${date}|${cat.category}`;
-            clusterTotals.set(key, (clusterTotals.get(key) ?? 0) + amount);
+            if (!cat.category) continue;
+            const rest = amountOf(cat) - (clusterTotals.get(`${date}|${cat.category}`) ?? 0);
+            if (rest <= 0.005) continue;
             rows.push({
               date,
               service: BILLING_CATEGORIES[cat.category] ?? cat.category,
-              ...(ref.region ? { region: ref.region } : {}),
-              resourceId: ref.clusterId,
-              tags: { project: ref.projectId, ...(ref.name ? { cluster: ref.name } : {}) },
               currency,
-              amount,
+              amount: Math.round(rest * 10000) / 10000,
             });
           }
         }
       }
-      let org: CpBilling | undefined;
+      return rows.filter((r) => r.date >= range.fromDate && r.date <= range.toDate);
+    });
+  }
+
+  fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      let res: {
+        data?: Array<{
+          id: string;
+          creditName?: string;
+          expirationDate?: string;
+          total?: number;
+          remaining?: number;
+        }>;
+      };
       try {
-        org = await this.req<CpBilling>("POST", `${this.org}/billing`, body);
+        res = await this.req("GET", `${this.org}/billing/prePaidCredits`, undefined, [
+          ["perPage", 100],
+        ]);
       } catch (err) {
-        const s = statusOf(err);
-        if (s === 403) {
-          throw new Error("Capella cost data needs an API key with the Organization Owner role.");
+        if (statusOf(err) === 403) {
+          throw new CreditAccessError(
+            "Reading prepaid credits needs an API key with the Organization Owner role.",
+          );
         }
         throw err;
       }
-      const currency = org?.data?.billingCurrency ?? "USD";
-      for (const period of org?.data?.periods ?? []) {
-        const date = period.startDate;
-        if (!date || period.endDate !== date) continue;
-        for (const cat of period.categories ?? []) {
-          if (!cat.category) continue;
-          const rest = amountOf(cat) - (clusterTotals.get(`${date}|${cat.category}`) ?? 0);
-          if (rest <= 0.005) continue;
-          rows.push({
-            date,
-            service: BILLING_CATEGORIES[cat.category] ?? cat.category,
-            currency,
-            amount: Math.round(rest * 10000) / 10000,
-          });
-        }
-      }
-    }
-    return rows.filter((r) => r.date >= range.fromDate && r.date <= range.toDate);
-  }
-
-  async fetchCreditBalance(_accountId: string): Promise<CreditBalance[]> {
-    let res: {
-      data?: Array<{
-        id: string;
-        creditName?: string;
-        expirationDate?: string;
-        total?: number;
-        remaining?: number;
-      }>;
-    };
-    try {
-      res = await this.req("GET", `${this.org}/billing/prePaidCredits`, undefined, [
-        ["perPage", 100],
-      ]);
-    } catch (err) {
-      if (statusOf(err) === 403) {
-        throw new CreditAccessError(
-          "Reading prepaid credits needs an API key with the Organization Owner role.",
-        );
-      }
-      throw err;
-    }
-    return (res?.data ?? []).map((c) => ({
-      key: c.id,
-      label: c.creditName ?? "Prepaid credits",
-      remaining: c.remaining ?? 0,
-      currency: "USD",
-      ...(typeof c.total === "number" ? { granted: c.total } : {}),
-      ...(c.expirationDate ? { expiresAt: c.expirationDate } : {}),
-    }));
+      return (res?.data ?? []).map((c) => ({
+        key: c.id,
+        label: c.creditName ?? "Prepaid credits",
+        remaining: c.remaining ?? 0,
+        currency: "USD",
+        ...(typeof c.total === "number" ? { granted: c.total } : {}),
+        ...(c.expirationDate ? { expiresAt: c.expirationDate } : {}),
+      }));
+    });
   }
 }

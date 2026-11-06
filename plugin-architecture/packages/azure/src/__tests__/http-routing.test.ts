@@ -4,6 +4,7 @@
  * The first half is what makes bastion routing and custom CA trust reach
  * Azure at all; the second is what keeps the renderer and the tests working.
  */
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 import type { HttpHostServices } from "@infrawrench/plugin-base";
@@ -135,7 +136,7 @@ describe("AzureClient routing", () => {
       [/login\.microsoftonline\.com/, { body: TOKEN_BODY }],
       [/resourcegroups/, { body: '{"value":[]}' }],
     ]);
-    const client = new AzureClient(creds, [], { http });
+    const client = hostClient(new AzureClient(creds, [], { http }));
     await client.listResources("azure-resource-group", "acct");
 
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -155,7 +156,7 @@ describe("AzureClient routing", () => {
         jsonResponse({ access_token: "arm-tok", expires_in: 3600, token_type: "Bearer" }),
       )
       .mockResolvedValue(jsonResponse({ value: [] }));
-    const client = new AzureClient(creds);
+    const client = hostClient(new AzureClient(creds));
     await client.listResources("azure-resource-group", "acct");
 
     expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
@@ -169,7 +170,7 @@ describe("AzureClient routing", () => {
       [/login\.microsoftonline\.com/, { body: TOKEN_BODY }],
       [/resourcegroups/, { status: 403, body: "AuthorizationFailed" }],
     ]);
-    const client = new AzureClient(creds, [], { http });
+    const client = hostClient(new AzureClient(creds, [], { http }));
     await expect(client.listResources("azure-resource-group", "acct")).rejects.toThrow(
       "Azure API 403: AuthorizationFailed",
     );
@@ -196,7 +197,7 @@ describe("AzureClient routing", () => {
         },
       ],
     ]);
-    const client = new AzureClient(creds, [], { http });
+    const client = hostClient(new AzureClient(creds, [], { http }));
     await expect(
       client.invokeAction("azure-vm", "acct:azure-vm:rg1/vm1", "start", "acct"),
     ).rejects.toThrow("Azure API POST 409: Conflict");
@@ -210,7 +211,7 @@ describe("AzureClient routing", () => {
         { body: '<?xml version="1.0"?><EnumerationResults><Blobs/></EnumerationResults>' },
       ],
     ]);
-    const client = new AzureClient(creds, [], { http });
+    const client = hostClient(new AzureClient(creds, [], { http }));
     await client.deleteStorageObject("acct1", "container/blob.txt");
 
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -231,7 +232,7 @@ describe("AzureClient routing", () => {
       [/_catalog/, { body: '{"repositories":["app"]}' }],
       [/_tags/, { body: '{"tags":[{"name":"v1","digest":"sha256:abc"}]}' }],
     ]);
-    const client = new AzureClient(creds, [], { http });
+    const client = hostClient(new AzureClient(creds, [], { http }));
     const result = await client.listArtifacts(
       "azure-container-registry",
       "acct:azure-container-registry:rg1/reg1",
@@ -270,7 +271,7 @@ describe("AzureClient routing", () => {
       ],
       [/servicebus\.windows\.net/, { status: 201, body: "" }],
     ]);
-    const client = new AzureClient(creds, [], { http });
+    const client = hostClient(new AzureClient(creds, [], { http }));
     await client.publishMessage("azure-service-bus", "acct:azure-service-bus:rg1/ns1", "acct", {
       body: "hello",
       extras: { entity: "q1" },

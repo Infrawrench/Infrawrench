@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -6,11 +8,13 @@ import { OpenRouterClient } from "../client.js";
 
 runPluginRenderingTests(plugin);
 
-function client(withInferenceKey = true): OpenRouterClient {
-  return new OpenRouterClient({
-    managementKey: "sk-or-v1-management",
-    ...(withInferenceKey ? { apiKey: "sk-or-v1-inference" } : {}),
-  });
+function client(withInferenceKey = true): HostedMethods<OpenRouterClient> {
+  return hostClient(
+    new OpenRouterClient({
+      managementKey: "sk-or-v1-management",
+      ...(withInferenceKey ? { apiKey: "sk-or-v1-inference" } : {}),
+    }),
+  );
 }
 
 function resource(

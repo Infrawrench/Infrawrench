@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { clickhouseBusinessMetricSource } from "./business-metric-source.js";
 import { ClickHouseClient } from "./client.js";
@@ -13,9 +18,9 @@ import { PostgresResourceType } from "./resources/postgres.js";
 import { clickhouseTerraformExport } from "./terraform.js";
 import { clickhouseRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "clickhouse",
-  version: "0.1.0",
+  egressHosts: [],
   displayName: "ClickHouse",
   description:
     "Manage ClickHouse Cloud: services, ClickPipes, backups, Managed Postgres, API keys and members. Create, scale, and query your ClickHouse databases.",
@@ -29,9 +34,7 @@ const manifest: PluginManifest = {
       <rect x="60" y="0" width="10" height="80" rx="2" fill="#151515"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKeyId",
       label: "Cloud API Key ID",
@@ -88,7 +91,7 @@ const manifest: PluginManifest = {
       placeholder: "password",
     },
     caCertCredentialField,
-  ],
+  ]),
   // ClickHouse Cloud usageCost API: daily per-entity spend broken down by
   // cost category (compute, storage, backup, data transfer, ClickPipes).
   // Amounts are CHC credits converted at the $1-per-CHC list price, so
@@ -110,7 +113,9 @@ const manifest: PluginManifest = {
   // run with readonly=1 on the service configured for SQL.
   businessMetricSource: clickhouseBusinessMetricSource,
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ServiceResourceType,
@@ -122,11 +127,19 @@ const resourceTypes: ResourceTypeDefinition[] = [
   MemberResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new ClickHouseClient(credentials, services),
+  testCredentials: {
+    apiKeyId: "test-key-id",
+    apiKeySecret: "test-key-secret",
+    organizationId: "12345678-1234-1234-1234-123456789abc",
+    chHost: "test.us-east-1.aws.clickhouse.cloud",
+    chUser: "default",
+    chPassword: "test-password",
+  },
   parseStatusFeed,
   terraformExport: clickhouseTerraformExport,
   remediationCommands: clickhouseRemediationCommands,
-};
+});

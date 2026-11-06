@@ -1,4 +1,10 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { AZURE_FOCUS } from "./focus-services.js";
 import { AzureClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -45,9 +51,15 @@ import { ManagedRedisResourceType } from "./resources/managed-redis.js";
 import { AIServicesAccountResourceType } from "./resources/ai-services.js";
 import { AZURE_TRANSFER_RATES } from "./transfer-rates.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "azure",
-  version: "0.1.0",
+  egressHosts: [
+    "*.azure.com",
+    "*.windows.net",
+    "*.microsoftonline.com",
+    "management.azure.com",
+    "login.microsoftonline.com",
+  ],
   displayName: "Microsoft Azure",
   description:
     "Manage Azure infrastructure: VMs, AKS, SQL, Cosmos DB, Storage, Functions, and more",
@@ -57,8 +69,6 @@ const manifest: PluginManifest = {
       <path d="M22.379 23.343a1.62 1.62 0 0 0 1.536-2.14v.002L17.35 1.76A1.62 1.62 0 0 0 15.816.657H8.184A1.62 1.62 0 0 0 6.65 1.76L.086 21.204a1.62 1.62 0 0 0 1.536 2.139h4.741a1.62 1.62 0 0 0 1.535-1.103l.977-2.892 4.947 3.675c.28.208.618.32.966.32m-3.084-12.531 3.624 10.739a.54.54 0 0 1-.51.713v-.001h-.03a.54.54 0 0 1-.322-.106l-9.287-6.9h4.853m6.313 7.006c.116-.326.13-.694.007-1.058L9.79 1.76a1.722 1.722 0 0 0-.007-.02h6.034a.54.54 0 0 1 .512.366l6.562 19.445a.54.54 0 0 1-.338.684"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -72,7 +82,7 @@ const manifest: PluginManifest = {
         "https://portal.azure.com/#view/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/~/RegisteredApps",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "tenantId",
       label: "Tenant ID",
@@ -101,7 +111,7 @@ const manifest: PluginManifest = {
       sensitive: false,
       placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     },
-  ],
+  ]),
   rateLimit: { capacity: 100, refillPerSecond: 5 },
   // Cost Management Query API (Daily) at subscription scope, in three passes:
   // consumption grouped by ServiceName + ResourceLocation over ActualCost, the
@@ -134,7 +144,10 @@ const manifest: PluginManifest = {
   // Microsoft.BillingBenefits savings-plan list. Needs the service principal
   // to hold Reader (or Reservations Reader / Savings plan Reader) on them:
   // surfaced in the plugin docs.
-  commitments: { kinds: ["reservation", "savings_plan"] },
+  commitments: {
+    kinds: ["reservation", "savings_plan"],
+    discount: { min: 0.36, max: 0.72, basis: "range" },
+  },
   // Container image findings from Microsoft Defender for Cloud: individual
   // `SoftwareUpdate` recommendations on `.containerimage` resources, read
   // through Azure Resource Graph (the grouped sub-assessment model retired
@@ -158,7 +171,9 @@ const manifest: PluginManifest = {
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on
   // this provider's network. A price list, not a capability: schedules nothing.
   transferRates: AZURE_TRANSFER_RATES,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ResourceGroupResourceType,
@@ -200,12 +215,18 @@ const resourceTypes: ResourceTypeDefinition[] = [
   AIServicesAccountResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new AzureClient(credentials, resourceTypes, services),
+  testCredentials: {
+    tenantId: "test-tenant-id",
+    clientId: "test-client-id",
+    clientSecret: "test-client-secret",
+    subscriptionId: "test-subscription-id",
+  },
   parseStatusFeed,
-  fetchPriceCatalog,
+  fetchPriceCatalog: attemptFn(fetchPriceCatalog),
   terraformExport: azureTerraformExport,
   remediationCommands: azureRemediationCommands,
-};
+});

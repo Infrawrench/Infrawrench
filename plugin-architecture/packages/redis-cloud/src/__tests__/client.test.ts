@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RedisCloudClient } from "../client.js";
 import { completed, mockFetch } from "./helpers.js";
@@ -86,7 +87,7 @@ function baseRoutes() {
 }
 
 function client() {
-  const c = new RedisCloudClient({ accountKey: "a", userKey: "u" });
+  const c = hostClient(new RedisCloudClient({ accountKey: "a", userKey: "u" }));
   c.ctx.sleep = async () => {};
   return c;
 }

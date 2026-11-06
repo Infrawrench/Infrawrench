@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { resolveUrls, statusOf } from "../api.js";
@@ -69,7 +70,7 @@ describe("DynatraceClient", () => {
       }
       return undefined;
     });
-    const client = new DynatraceClient(CREDS, { http });
+    const client = hostClient(new DynatraceClient(CREDS, { http }));
     const hosts = await client.listResources("host", "acct");
     expect(hosts.map((h) => h.externalId)).toEqual(["HOST-1", "HOST-2"]);
     expect(hosts[0]?.fields["osType"]).toBe("LINUX");
@@ -90,7 +91,7 @@ describe("DynatraceClient", () => {
           }
         : { status: 500, body: { error: { code: 500, message: "boom" } } },
     );
-    const client = new DynatraceClient(CREDS, { http });
+    const client = hostClient(new DynatraceClient(CREDS, { http }));
     expect(await client.listResources("slo", "acct")).toEqual([]);
     const err = await client.listResources("problem", "acct").catch((e: unknown) => e);
     expect(statusOf(err)).toBe(500);
@@ -115,7 +116,7 @@ describe("DynatraceClient", () => {
       }
       return undefined;
     });
-    const client = new DynatraceClient(CREDS, { http });
+    const client = hostClient(new DynatraceClient(CREDS, { http }));
     const created = await client.createResource("alerting-profile", "acct", {
       name: "On-call",
       delayAvailability: "0",
@@ -161,7 +162,7 @@ describe("DynatraceClient", () => {
           : { body: monitor }
         : undefined,
     );
-    const client = new DynatraceClient(CREDS, { http });
+    const client = hostClient(new DynatraceClient(CREDS, { http }));
     await client.invokeAction(
       "synthetic-monitor",
       "acct:synthetic-monitor:SYNTHETIC_TEST-1",
@@ -182,7 +183,7 @@ describe("DynatraceClient", () => {
     const { http, calls } = makeHttp((_url, method) =>
       method === "POST" ? { body: {} } : undefined,
     );
-    const client = new DynatraceClient(CREDS, { http });
+    const client = hostClient(new DynatraceClient(CREDS, { http }));
     await client.executeNoSqlCommand("problem", "acct:problem:-123_456V2", "acct", "close", [
       JSON.stringify({ message: "fixed" }),
     ]);
@@ -203,7 +204,9 @@ describe("DynatraceClient", () => {
       }
       return undefined;
     });
-    const client = new DynatraceClient({ ...CREDS, platformToken: "dt0s16.X.Y" }, { http });
+    const client = hostClient(
+      new DynatraceClient({ ...CREDS, platformToken: "dt0s16.X.Y" }, { http }),
+    );
     const res = await client.executeQuery("r", "acct", "fetch logs");
     expect(res.rows).toEqual([{ a: 1, b: '{"c":2}' }]);
     expect(calls[0]?.url.origin).toBe("https://abc12345.apps.dynatrace.com");
@@ -212,7 +215,7 @@ describe("DynatraceClient", () => {
   });
 
   it("refuses DQL without a platform token", async () => {
-    const client = new DynatraceClient(CREDS);
+    const client = hostClient(new DynatraceClient(CREDS));
     await expect(client.executeQuery("r", "acct", "fetch logs")).rejects.toThrow(/platform token/);
   });
 
@@ -258,14 +261,16 @@ describe("DynatraceClient", () => {
       }
       return undefined;
     });
-    const client = new DynatraceClient(
-      {
-        ...CREDS,
-        accountUuid: "acc-1",
-        oauthClientId: "dt0s02.ID",
-        oauthClientSecret: "dt0s02.ID.S",
-      },
-      { http },
+    const client = hostClient(
+      new DynatraceClient(
+        {
+          ...CREDS,
+          accountUuid: "acc-1",
+          oauthClientId: "dt0s02.ID",
+          oauthClientSecret: "dt0s02.ID.S",
+        },
+        { http },
+      ),
     );
     const rows = await client.fetchCostData("acct", {
       fromDate: "2026-10-01",
@@ -288,7 +293,7 @@ describe("DynatraceClient", () => {
   });
 
   it("explains missing cost credentials", async () => {
-    const client = new DynatraceClient(CREDS);
+    const client = hostClient(new DynatraceClient(CREDS));
     await expect(
       client.fetchCostData("acct", { fromDate: "2026-10-01", toDate: "2026-10-02" }),
     ).rejects.toThrow(/OAuth client/);
@@ -302,7 +307,7 @@ describe("preflight", () => {
         ? { body: { name: "iw", owner: "me@x", scopes: ["entities.read", "metrics.read"] } }
         : undefined,
     );
-    const ctx = new DynatraceClient(CREDS, { http }).context;
+    const ctx = hostClient(new DynatraceClient(CREDS, { http })).context;
     const res = await verifyDynatraceCredentials(ctx);
     expect(res.identity).toBe("iw · me@x");
     expect(res.checks.find((c) => c.capabilityId === "entities")?.status).toBe("ok");

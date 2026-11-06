@@ -1,20 +1,20 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { PROMETHEUS_BUSINESS_METRIC_SOURCE } from "./business-metric-source.js";
 import { PROM_PREFLIGHT, PromClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "prometheus",
-  version: "0.1.0",
+  // Prometheus is self-hosted: the server and Alertmanager URLs are user-supplied, so there is no fixed egress host (same as kubernetes).
+  egressHosts: [],
   displayName: "Prometheus",
   description:
     "Self-hosted Prometheus, or a compatible endpoint (Thanos, Mimir, Cortex, VictoriaMetrics): PromQL queries, scrape targets, rules and alerts, TSDB status and admin tools, and Alertmanager silences and alerts.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "url",
       label: "Prometheus URL",
@@ -59,14 +59,17 @@ const manifest: PluginManifest = {
       placeholder: "http://alertmanager.internal:9093",
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: PROM_PREFLIGHT,
   businessMetricSource: PROMETHEUS_BUSINESS_METRIC_SOURCE,
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new PromClient(credentials, services),
-};
+  testCredentials: { url: "http://prometheus.internal:9090" },
+});

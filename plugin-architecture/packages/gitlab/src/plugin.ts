@@ -1,9 +1,11 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
   PreflightDeclaration,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
@@ -65,16 +67,15 @@ const preflight: PreflightDeclaration = {
   ],
 };
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "gitlab",
-  version: "0.1.0",
+  // GitLab.com only; self-managed instances are user-supplied hosts and are not bastion-routed
+  egressHosts: ["gitlab.com"],
   displayName: "GitLab",
   description:
     "GitLab.com or self-managed GitLab. Manage groups, projects, CI/CD pipelines with job logs, runners, environments and deployments, protected branches, CI/CD variables, pipeline schedules, container and package registries, deploy keys and tokens, webhooks, releases and members, with pipeline, job and compute-minute metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "url",
       label: "GitLab URL",
@@ -107,7 +108,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   quotas: {
     label: "Usage Quotas",
     increaseUrl: "https://customers.gitlab.com/",
@@ -150,7 +151,9 @@ const manifest: PluginManifest = {
   ],
   // GitLab.com allows 2,000 authenticated API requests a minute per user.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 function contextFrom(credentials: Record<string, string>, services?: HostServices): GitLabContext {
   const token = (credentials["token"] ?? "").trim();
@@ -198,13 +201,14 @@ async function listCredentialOptions(
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: gitlabDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new GitLabClient(credentials, services),
+  testCredentials: { url: "https://gitlab.com", token: "glpat-test-token" },
   parseStatusFeed,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   terraformExport: gitlabTerraformExport,
   remediationCommands: gitlabRemediationCommands,
   seatRemediationCommands: gitlabSeatRemediationCommands,
@@ -219,4 +223,4 @@ export const plugin: Plugin = {
       return err instanceof Error ? err.message : String(err);
     }
   },
-};
+});

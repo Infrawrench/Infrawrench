@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HoneycombClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -8,16 +9,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { honeycombTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "honeycomb",
-  version: "0.1.0",
+  // Honeycomb US and EU API hosts (configuration and management keys share them).
+  egressHosts: ["api.honeycomb.io", "api.eu1.honeycomb.io"],
   displayName: "Honeycomb",
   description:
     "Observability for distributed systems. Manage Honeycomb environments, datasets and their settings, columns, derived columns, triggers, SLOs and burn alerts, boards, markers, recipients and API keys, and chart event volume, latency, error rate and SLO compliance through the Query Data API.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "region",
       label: "Region",
@@ -63,18 +63,26 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: HONEYCOMB_PREFLIGHT,
   statusFeed,
   // Query results are limited to 10 runs a minute per key; listing fans out
   // per dataset, so keep the bucket modest.
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new HoneycombClient(credentials, services),
+  testCredentials: {
+    region: "us1",
+    managementKeyId: "hcxmk_test",
+    managementKeySecret: "test-secret",
+    configurationKey: "test-config-key",
+  },
   parseStatusFeed,
   terraformExport: honeycombTerraformExport,
-};
+});

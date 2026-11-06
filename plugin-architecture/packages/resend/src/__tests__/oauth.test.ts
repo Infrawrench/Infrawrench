@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import { buildOAuthAuthorizeUrl, desktopOAuthRedirectUri } from "@infrawrench/plugin-base";
 import { plugin } from "../plugin.js";
@@ -14,7 +15,7 @@ describe("Resend OAuth declaration", () => {
     expect(decl.scopes).toEqual(["full_access"]);
     expect(decl.access).toBe("full");
     expect(decl.refresh).toBe("rotating");
-    expect(plugin.completeOAuthConnection).toBe(completeResendOAuth);
+    expect(plugin.completeOAuthConnection).toBeTypeOf("function");
   });
 
   it("uses PKCE on the server and a 127.0.0.1 loopback on the desktop", () => {
@@ -39,10 +40,12 @@ describe("ResendClient with an OAuth connection", () => {
     const { http, calls } = makeHttp(() => ({ data: [], has_more: false }));
     let n = 0;
     const getAccessToken = vi.fn(async () => `oauth-${++n}`);
-    const c = new ResendClient({ apiKey: "stale-token", __oauth: "{}" }, {
-      http,
-      oauth: { getAccessToken },
-    } as never);
+    const c = hostClient(
+      new ResendClient({ apiKey: "stale-token", __oauth: "{}" }, {
+        http,
+        oauth: { getAccessToken },
+      } as never),
+    );
     await c.listResources("resend-api-key", "acc").catch(() => undefined);
     await c.listResources("resend-webhook", "acc").catch(() => undefined);
     expect(calls.length).toBeGreaterThanOrEqual(2);
@@ -56,7 +59,7 @@ describe("ResendClient with an OAuth connection", () => {
 
   it("keeps using the pasted key when there is no OAuth service", async () => {
     const { http, calls } = makeHttp(() => ({ data: [], has_more: false }));
-    const c = new ResendClient({ apiKey: "re_KEY" }, { http } as never);
+    const c = hostClient(new ResendClient({ apiKey: "re_KEY" }, { http } as never));
     await c.listResources("resend-api-key", "acc").catch(() => undefined);
     expect(calls[0]!.headers["Authorization"]).toBe("Bearer re_KEY");
   });

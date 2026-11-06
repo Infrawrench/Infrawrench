@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -191,7 +194,7 @@ export class TwilioClient implements PluginClient {
     Cached<Map<string, { sid: string; name: string; count: number }>> | undefined;
   private readonly priceCache = new Map<string, Promise<CountryNumberPrices | null>>();
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const accountSid = (credentials["accountSid"] ?? "").trim();
     const apiKeySid = (credentials["apiKeySid"] ?? "").trim();
     const apiKeySecret = (credentials["apiKeySecret"] ?? "").trim();
@@ -337,58 +340,60 @@ export class TwilioClient implements PluginClient {
     }
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    const main = accountPath(this.ctx.accountSid);
-    switch (typeId) {
-      case "account":
-        return [await this.loadAccount(accountId)];
-      case "subaccount": {
-        const subs = (await this.subaccounts()) ?? [];
-        return subs.filter((s) => s.status !== "closed").map((s) => mapSubaccount(accountId, s));
-      }
-      case "phone-number":
-        return this.listPhoneNumbers(accountId);
-      case "messaging-service":
-        return this.scoped(async () => {
-          const [services, membership] = await Promise.all([
-            this.fetchMessagingServices(),
-            this.messagingMembership(),
-          ]);
-          return services.map((s) =>
-            mapMessagingService(accountId, s, membership.get(`service:${s.sid}`)?.count),
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      const main = accountPath(this.ctx.accountSid);
+      switch (typeId) {
+        case "account":
+          return [await this.loadAccount(accountId)];
+        case "subaccount": {
+          const subs = (await this.subaccounts()) ?? [];
+          return subs.filter((s) => s.status !== "closed").map((s) => mapSubaccount(accountId, s));
+        }
+        case "phone-number":
+          return this.listPhoneNumbers(accountId);
+        case "messaging-service":
+          return this.scoped(async () => {
+            const [services, membership] = await Promise.all([
+              this.fetchMessagingServices(),
+              this.messagingMembership(),
+            ]);
+            return services.map((s) =>
+              mapMessagingService(accountId, s, membership.get(`service:${s.sid}`)?.count),
+            );
+          });
+        case "verify-service":
+          return this.scoped(async () =>
+            (await listV1<TwVerifyService>(this.ctx, VERIFY_HOST, "/v2/Services", "services")).map(
+              (s) => mapVerifyService(accountId, s),
+            ),
           );
-        });
-      case "verify-service":
-        return this.scoped(async () =>
-          (await listV1<TwVerifyService>(this.ctx, VERIFY_HOST, "/v2/Services", "services")).map(
-            (s) => mapVerifyService(accountId, s),
-          ),
-        );
-      case "twiml-app":
-        return this.scoped(async () =>
-          (
-            await list2010<TwApplication>(this.ctx, `${main}/Applications.json`, "applications")
-          ).map((a) => mapApplication(accountId, a)),
-        );
-      case "usage-trigger":
-        return this.scoped(async () =>
-          (
-            await list2010<TwUsageTrigger>(
-              this.ctx,
-              `${main}/Usage/Triggers.json`,
-              "usage_triggers",
-            )
-          ).map((t) => mapUsageTrigger(accountId, t)),
-        );
-      case "api-key":
-        return this.scoped(async () =>
-          (await list2010<TwKey>(this.ctx, `${main}/Keys.json`, "keys")).map((k) =>
-            mapKey(accountId, k, this.ctx.username),
-          ),
-        );
-      default:
-        throw new Error(`Twilio plugin: unknown resource type "${typeId}"`);
-    }
+        case "twiml-app":
+          return this.scoped(async () =>
+            (
+              await list2010<TwApplication>(this.ctx, `${main}/Applications.json`, "applications")
+            ).map((a) => mapApplication(accountId, a)),
+          );
+        case "usage-trigger":
+          return this.scoped(async () =>
+            (
+              await list2010<TwUsageTrigger>(
+                this.ctx,
+                `${main}/Usage/Triggers.json`,
+                "usage_triggers",
+              )
+            ).map((t) => mapUsageTrigger(accountId, t)),
+          );
+        case "api-key":
+          return this.scoped(async () =>
+            (await list2010<TwKey>(this.ctx, `${main}/Keys.json`, "keys")).map((k) =>
+              mapKey(accountId, k, this.ctx.username),
+            ),
+          );
+        default:
+          throw new Error(`Twilio plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private async loadAccount(accountId: string): Promise<ResourceInstance> {
@@ -485,94 +490,100 @@ export class TwilioClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    const main = accountPath(this.ctx.accountSid);
-    switch (typeId) {
-      case "account": {
-        const base = await this.loadAccount(accountId);
-        const [thisMonth, lastMonth] = await Promise.all([
-          fetchPeriodSpend(this.ctx, this.ctx.accountSid, "ThisMonth", true).catch(() => undefined),
-          fetchPeriodSpend(this.ctx, this.ctx.accountSid, "LastMonth", true).catch(() => undefined),
-        ]);
-        return withSpend(base, thisMonth, lastMonth);
-      }
-      case "subaccount": {
-        const a = await twilioFetch<TwAccount>(this.ctx, API_HOST, `${accountPath(id)}.json`);
-        const spend =
-          this.ctx.authMode === "auth-token"
-            ? await fetchPeriodSpend(this.ctx, id, "ThisMonth", false).catch(() => undefined)
-            : undefined;
-        return withSpend(mapSubaccount(accountId, a), spend, undefined);
-      }
-      case "verify-service": {
-        const s = await twilioFetch<TwVerifyService>(
-          this.ctx,
-          VERIFY_HOST,
-          `/v2/Services/${encodeURIComponent(id)}`,
-        );
-        const r = mapVerifyService(accountId, s);
-        const summary = await this.verifySummary(id).catch(() => undefined);
-        return summary
-          ? {
-              ...r,
-              resolvedOutputs: {
-                ...r.resolvedOutputs,
-                [VERIFY_SUMMARY_KEY]: JSON.stringify(summary),
-              },
-            }
-          : r;
-      }
-      case "messaging-service": {
-        const [s, membership] = await Promise.all([
-          twilioFetch<TwMessagingService>(
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const main = accountPath(this.ctx.accountSid);
+      switch (typeId) {
+        case "account": {
+          const base = await this.loadAccount(accountId);
+          const [thisMonth, lastMonth] = await Promise.all([
+            fetchPeriodSpend(this.ctx, this.ctx.accountSid, "ThisMonth", true).catch(
+              () => undefined,
+            ),
+            fetchPeriodSpend(this.ctx, this.ctx.accountSid, "LastMonth", true).catch(
+              () => undefined,
+            ),
+          ]);
+          return withSpend(base, thisMonth, lastMonth);
+        }
+        case "subaccount": {
+          const a = await twilioFetch<TwAccount>(this.ctx, API_HOST, `${accountPath(id)}.json`);
+          const spend =
+            this.ctx.authMode === "auth-token"
+              ? await fetchPeriodSpend(this.ctx, id, "ThisMonth", false).catch(() => undefined)
+              : undefined;
+          return withSpend(mapSubaccount(accountId, a), spend, undefined);
+        }
+        case "verify-service": {
+          const s = await twilioFetch<TwVerifyService>(
             this.ctx,
-            MESSAGING_HOST,
-            `/v1/Services/${encodeURIComponent(id)}`,
-          ),
-          this.messagingMembership(),
-        ]);
-        return mapMessagingService(accountId, s, membership.get(`service:${id}`)?.count);
+            VERIFY_HOST,
+            `/v2/Services/${encodeURIComponent(id)}`,
+          );
+          const r = mapVerifyService(accountId, s);
+          const summary = await this.verifySummary(id).catch(() => undefined);
+          return summary
+            ? {
+                ...r,
+                resolvedOutputs: {
+                  ...r.resolvedOutputs,
+                  [VERIFY_SUMMARY_KEY]: JSON.stringify(summary),
+                },
+              }
+            : r;
+        }
+        case "messaging-service": {
+          const [s, membership] = await Promise.all([
+            twilioFetch<TwMessagingService>(
+              this.ctx,
+              MESSAGING_HOST,
+              `/v1/Services/${encodeURIComponent(id)}`,
+            ),
+            this.messagingMembership(),
+          ]);
+          return mapMessagingService(accountId, s, membership.get(`service:${id}`)?.count);
+        }
+        case "twiml-app":
+          return mapApplication(
+            accountId,
+            await twilioFetch<TwApplication>(
+              this.ctx,
+              API_HOST,
+              `${main}/Applications/${encodeURIComponent(id)}.json`,
+            ),
+          );
+        case "usage-trigger":
+          return mapUsageTrigger(
+            accountId,
+            await twilioFetch<TwUsageTrigger>(
+              this.ctx,
+              API_HOST,
+              `${main}/Usage/Triggers/${encodeURIComponent(id)}.json`,
+            ),
+          );
+        case "api-key":
+          return mapKey(
+            accountId,
+            await twilioFetch<TwKey>(
+              this.ctx,
+              API_HOST,
+              `${main}/Keys/${encodeURIComponent(id)}.json`,
+            ),
+            this.ctx.username,
+          );
+        default:
+          break;
       }
-      case "twiml-app":
-        return mapApplication(
-          accountId,
-          await twilioFetch<TwApplication>(
-            this.ctx,
-            API_HOST,
-            `${main}/Applications/${encodeURIComponent(id)}.json`,
-          ),
-        );
-      case "usage-trigger":
-        return mapUsageTrigger(
-          accountId,
-          await twilioFetch<TwUsageTrigger>(
-            this.ctx,
-            API_HOST,
-            `${main}/Usage/Triggers/${encodeURIComponent(id)}.json`,
-          ),
-        );
-      case "api-key":
-        return mapKey(
-          accountId,
-          await twilioFetch<TwKey>(
-            this.ctx,
-            API_HOST,
-            `${main}/Keys/${encodeURIComponent(id)}.json`,
-          ),
-          this.ctx.username,
-        );
-      default:
-        break;
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === id);
-    if (!found) throw new Error(`Twilio plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === id);
+      if (!found) throw new Error(`Twilio plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
   private async verifySummary(serviceSid: string): Promise<VerifySummary> {
@@ -599,256 +610,268 @@ export class TwilioClient implements PluginClient {
     };
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`Twilio plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(`Twilio plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics, costs and balance
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r =
-      resourceTypeId === "account"
-        ? await this.loadAccount(accountId)
-        : await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    switch (resourceTypeId) {
-      case "account":
-        return [
-          { label: "Balance", value: money(f["balance"], String(f["currency"] ?? "USD")) || "—" },
-          {
-            label: "This month",
-            value: money(f["monthToDate"], String(f["priceUnit"] ?? "USD")) || "—",
-          },
-        ];
-      case "phone-number":
-        return [
-          { label: "Type", value: String(f["type"] ?? "—") },
-          {
-            label: "Monthly",
-            value: money(f["monthlyPrice"], String(f["priceUnit"] ?? "USD")) || "—",
-          },
-        ];
-      case "usage-trigger": {
-        const p = triggerProgress(f);
-        return [
-          {
-            label: "Of threshold",
-            value: p !== undefined ? `${Math.round(p * 100)}%` : "—",
-            variant:
-              p === undefined
-                ? "default"
-                : p >= 1
-                  ? "status-error"
-                  : p >= 0.8
-                    ? "status-degraded"
-                    : "status-healthy",
-          },
-          { label: "Repeats", value: String(f["recurring"] ?? "—") },
-        ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r =
+        resourceTypeId === "account"
+          ? await this.loadAccount(accountId)
+          : await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      switch (resourceTypeId) {
+        case "account":
+          return [
+            { label: "Balance", value: money(f["balance"], String(f["currency"] ?? "USD")) || "—" },
+            {
+              label: "This month",
+              value: money(f["monthToDate"], String(f["priceUnit"] ?? "USD")) || "—",
+            },
+          ];
+        case "phone-number":
+          return [
+            { label: "Type", value: String(f["type"] ?? "—") },
+            {
+              label: "Monthly",
+              value: money(f["monthlyPrice"], String(f["priceUnit"] ?? "USD")) || "—",
+            },
+          ];
+        case "usage-trigger": {
+          const p = triggerProgress(f);
+          return [
+            {
+              label: "Of threshold",
+              value: p !== undefined ? `${Math.round(p * 100)}%` : "—",
+              variant:
+                p === undefined
+                  ? "default"
+                  : p >= 1
+                    ? "status-error"
+                    : p >= 0.8
+                      ? "status-degraded"
+                      : "status-healthy",
+            },
+            { label: "Repeats", value: String(f["recurring"] ?? "—") },
+          ];
+        }
+        case "subaccount":
+          return [{ label: "Status", value: String(f["status"] ?? "—") }];
+        default:
+          return [];
       }
-      case "subaccount":
-        return [{ label: "Status", value: String(f["status"] ?? "—") }];
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const range = rangeOrDefault(timeRange);
-    if (resourceTypeId === "account") {
-      return usageSeries(this.ctx, this.ctx.accountSid, true, range);
-    }
-    if (resourceTypeId === "subaccount") {
-      if (this.ctx.authMode !== "auth-token") return [];
-      return usageSeries(this.ctx, externalIdOf(resourceId), false, range).catch((err) => {
-        if (isAccessDenied(err)) return [];
-        throw err;
-      });
-    }
-    return [];
-  }
-
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    const subs = await this.subaccountRefs().catch(() => null);
-    return fetchTwilioCostData(this.ctx, range, subs);
-  }
-
-  async fetchCreditBalance(_accountId: string): Promise<CreditBalance[]> {
-    try {
-      const b = await twilioFetch<TwBalance>(
-        this.ctx,
-        API_HOST,
-        `${accountPath(this.ctx.accountSid)}/Balance.json`,
-      );
-      const remaining = num(b.balance);
-      if (remaining === undefined) return [];
-      const currency = (b.currency ?? "USD").toUpperCase();
-      return [{ key: currency, label: `Account balance (${currency})`, remaining, currency }];
-    } catch (err) {
-      if (isAccessDenied(err)) {
-        throw new CreditAccessError(
-          "This Twilio credential cannot read the account balance. Use the auth token or a Main API key.",
-          {
-            label: "Manage API keys",
-            url: "https://console.twilio.com/us1/account/keys-credentials/api-keys",
-          },
-        );
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const range = rangeOrDefault(timeRange);
+      if (resourceTypeId === "account") {
+        return usageSeries(this.ctx, this.ctx.accountSid, true, range);
       }
-      throw err;
-    }
+      if (resourceTypeId === "subaccount") {
+        if (this.ctx.authMode !== "auth-token") return [];
+        return usageSeries(this.ctx, externalIdOf(resourceId), false, range).catch((err) => {
+          if (isAccessDenied(err)) return [];
+          throw err;
+        });
+      }
+      return [];
+    });
+  }
+
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      const subs = await this.subaccountRefs().catch(() => null);
+      return fetchTwilioCostData(this.ctx, range, subs);
+    });
+  }
+
+  fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      try {
+        const b = await twilioFetch<TwBalance>(
+          this.ctx,
+          API_HOST,
+          `${accountPath(this.ctx.accountSid)}/Balance.json`,
+        );
+        const remaining = num(b.balance);
+        if (remaining === undefined) return [];
+        const currency = (b.currency ?? "USD").toUpperCase();
+        return [{ key: currency, label: `Account balance (${currency})`, remaining, currency }];
+      } catch (err) {
+        if (isAccessDenied(err)) {
+          throw new CreditAccessError(
+            "This Twilio credential cannot read the account balance. Use the auth token or a Main API key.",
+            {
+              label: "Manage API keys",
+              url: "https://console.twilio.com/us1/account/keys-credentials/api-keys",
+            },
+          );
+        }
+        throw err;
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create / update / delete
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    const methodOptions = [
-      { id: "POST", label: "POST" },
-      { id: "GET", label: "GET" },
-    ];
-    const text = (
-      key: string,
-      label: string,
-      opts: Partial<CreateFieldConfig> = {},
-    ): CreateFieldConfig => ({ key, label, kind: "text", required: false, ...opts });
-    const toggle = (key: string, label: string, description?: string): CreateFieldConfig => ({
-      key,
-      label,
-      kind: "select",
-      required: false,
-      defaultValue: "",
-      options: [
-        { id: "", label: "Twilio default" },
-        { id: "true", label: "On" },
-        { id: "false", label: "Off" },
-      ],
-      ...(description ? { description } : {}),
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const methodOptions = [
+        { id: "POST", label: "POST" },
+        { id: "GET", label: "GET" },
+      ];
+      const text = (
+        key: string,
+        label: string,
+        opts: Partial<CreateFieldConfig> = {},
+      ): CreateFieldConfig => ({ key, label, kind: "text", required: false, ...opts });
+      const toggle = (key: string, label: string, description?: string): CreateFieldConfig => ({
+        key,
+        label,
+        kind: "select",
+        required: false,
+        defaultValue: "",
+        options: [
+          { id: "", label: "Twilio default" },
+          { id: "true", label: "On" },
+          { id: "false", label: "Off" },
+        ],
+        ...(description ? { description } : {}),
+      });
+      switch (typeId) {
+        case "usage-trigger":
+          return { fields: await this.usageTriggerFields(methodOptions) };
+        case "subaccount":
+          return {
+            fields: [
+              text("friendlyName", "Name", {
+                required: true,
+                description: "Up to 64 characters. Needs the auth token or a Main API key.",
+              }),
+            ],
+          };
+        case "messaging-service":
+          return {
+            fields: [
+              text("friendlyName", "Name", { required: true, description: "Up to 64 characters." }),
+              {
+                key: "usecase",
+                label: "Use case",
+                kind: "select",
+                required: false,
+                defaultValue: "undeclared",
+                options: [
+                  "notifications",
+                  "marketing",
+                  "verification",
+                  "discussion",
+                  "poll",
+                  "undeclared",
+                ].map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) })),
+              },
+              text("inboundRequestUrl", "Inbound webhook URL", {
+                placeholder: "https://example.com/sms",
+              }),
+              text("statusCallback", "Delivery status callback URL"),
+              toggle(
+                "stickySender",
+                "Sticky sender",
+                "Keep sending to a recipient from the same number.",
+              ),
+              toggle("smartEncoding", "Smart encoding", "Keep messages in cheaper GSM-7 segments."),
+              toggle("areaCodeGeomatch", "Area code geomatch"),
+            ],
+          };
+        case "verify-service":
+          return {
+            fields: [
+              text("friendlyName", "Name", {
+                required: true,
+                description: "Shown in the verification message. Up to 30 characters.",
+              }),
+              {
+                key: "codeLength",
+                label: "Code length",
+                kind: "number",
+                required: false,
+                defaultValue: "6",
+                minValue: 4,
+                maxValue: 10,
+              },
+              toggle("lookupEnabled", "Look up numbers first"),
+              toggle("skipSmsToLandlines", "Skip SMS to landlines"),
+              toggle("doNotShareWarningEnabled", "Do-not-share warning"),
+            ],
+          };
+        case "twiml-app":
+          return {
+            fields: [
+              text("friendlyName", "Name", { required: true, description: "Up to 64 characters." }),
+              text("voiceUrl", "Voice URL", { placeholder: "https://example.com/voice" }),
+              {
+                key: "voiceMethod",
+                label: "Voice method",
+                kind: "select",
+                required: false,
+                defaultValue: "POST",
+                options: methodOptions,
+              },
+              text("smsUrl", "Messaging URL", { placeholder: "https://example.com/sms" }),
+              {
+                key: "smsMethod",
+                label: "Messaging method",
+                kind: "select",
+                required: false,
+                defaultValue: "POST",
+                options: methodOptions,
+              },
+              text("statusCallback", "Call status callback URL"),
+            ],
+          };
+        case "api-key":
+          return {
+            fields: [
+              text("friendlyName", "Name", {
+                required: true,
+                description:
+                  "Creates a Standard API key on the main account. The secret is shown once, in the key's outputs.",
+              }),
+            ],
+          };
+        default:
+          throw new Error(`Twilio plugin: "${typeId}" cannot be created from Infrawrench`);
+      }
     });
-    switch (typeId) {
-      case "usage-trigger":
-        return { fields: await this.usageTriggerFields(methodOptions) };
-      case "subaccount":
-        return {
-          fields: [
-            text("friendlyName", "Name", {
-              required: true,
-              description: "Up to 64 characters. Needs the auth token or a Main API key.",
-            }),
-          ],
-        };
-      case "messaging-service":
-        return {
-          fields: [
-            text("friendlyName", "Name", { required: true, description: "Up to 64 characters." }),
-            {
-              key: "usecase",
-              label: "Use case",
-              kind: "select",
-              required: false,
-              defaultValue: "undeclared",
-              options: [
-                "notifications",
-                "marketing",
-                "verification",
-                "discussion",
-                "poll",
-                "undeclared",
-              ].map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) })),
-            },
-            text("inboundRequestUrl", "Inbound webhook URL", {
-              placeholder: "https://example.com/sms",
-            }),
-            text("statusCallback", "Delivery status callback URL"),
-            toggle(
-              "stickySender",
-              "Sticky sender",
-              "Keep sending to a recipient from the same number.",
-            ),
-            toggle("smartEncoding", "Smart encoding", "Keep messages in cheaper GSM-7 segments."),
-            toggle("areaCodeGeomatch", "Area code geomatch"),
-          ],
-        };
-      case "verify-service":
-        return {
-          fields: [
-            text("friendlyName", "Name", {
-              required: true,
-              description: "Shown in the verification message. Up to 30 characters.",
-            }),
-            {
-              key: "codeLength",
-              label: "Code length",
-              kind: "number",
-              required: false,
-              defaultValue: "6",
-              minValue: 4,
-              maxValue: 10,
-            },
-            toggle("lookupEnabled", "Look up numbers first"),
-            toggle("skipSmsToLandlines", "Skip SMS to landlines"),
-            toggle("doNotShareWarningEnabled", "Do-not-share warning"),
-          ],
-        };
-      case "twiml-app":
-        return {
-          fields: [
-            text("friendlyName", "Name", { required: true, description: "Up to 64 characters." }),
-            text("voiceUrl", "Voice URL", { placeholder: "https://example.com/voice" }),
-            {
-              key: "voiceMethod",
-              label: "Voice method",
-              kind: "select",
-              required: false,
-              defaultValue: "POST",
-              options: methodOptions,
-            },
-            text("smsUrl", "Messaging URL", { placeholder: "https://example.com/sms" }),
-            {
-              key: "smsMethod",
-              label: "Messaging method",
-              kind: "select",
-              required: false,
-              defaultValue: "POST",
-              options: methodOptions,
-            },
-            text("statusCallback", "Call status callback URL"),
-          ],
-        };
-      case "api-key":
-        return {
-          fields: [
-            text("friendlyName", "Name", {
-              required: true,
-              description:
-                "Creates a Standard API key on the main account. The secret is shown once, in the key's outputs.",
-            }),
-          ],
-        };
-      default:
-        throw new Error(`Twilio plugin: "${typeId}" cannot be created from Infrawrench`);
-    }
   }
 
   /** The usage-trigger form: the category picker lists what Twilio meters on this account. */
@@ -950,239 +973,260 @@ export class TwilioClient implements PluginClient {
     ];
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const main = accountPath(this.ctx.accountSid);
-    const name = (fields["friendlyName"] ?? "").trim();
-    switch (typeId) {
-      case "usage-trigger": {
-        const value = (fields["triggerValue"] ?? "").trim();
-        if (!value || !Number.isFinite(Number(value)) || Number(value) < 0) {
-          throw new Error("Twilio plugin: the threshold must be a number of zero or more");
-        }
-        const callback = (fields["callbackUrl"] ?? "").trim();
-        if (!/^https?:\/\//i.test(callback)) {
-          throw new Error("Twilio plugin: the webhook URL must start with https:// or http://");
-        }
-        const recurring = (fields["recurring"] ?? "").trim();
-        const t = await twilioFetch<TwUsageTrigger>(
-          this.ctx,
-          API_HOST,
-          `${main}/Usage/Triggers.json`,
-          {
-            form: {
-              UsageCategory: (fields["usageCategory"] ?? TOTAL_CATEGORY).trim() || TOTAL_CATEGORY,
-              TriggerBy: (fields["triggerBy"] ?? "price").trim() || "price",
-              TriggerValue: value,
-              CallbackUrl: callback,
-              CallbackMethod: (fields["callbackMethod"] ?? "POST").trim() || "POST",
-              ...(recurring ? { Recurring: recurring } : {}),
-              ...(name ? { FriendlyName: name } : {}),
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const main = accountPath(this.ctx.accountSid);
+      const name = (fields["friendlyName"] ?? "").trim();
+      switch (typeId) {
+        case "usage-trigger": {
+          const value = (fields["triggerValue"] ?? "").trim();
+          if (!value || !Number.isFinite(Number(value)) || Number(value) < 0) {
+            throw new Error("Twilio plugin: the threshold must be a number of zero or more");
+          }
+          const callback = (fields["callbackUrl"] ?? "").trim();
+          if (!/^https?:\/\//i.test(callback)) {
+            throw new Error("Twilio plugin: the webhook URL must start with https:// or http://");
+          }
+          const recurring = (fields["recurring"] ?? "").trim();
+          const t = await twilioFetch<TwUsageTrigger>(
+            this.ctx,
+            API_HOST,
+            `${main}/Usage/Triggers.json`,
+            {
+              form: {
+                UsageCategory: (fields["usageCategory"] ?? TOTAL_CATEGORY).trim() || TOTAL_CATEGORY,
+                TriggerBy: (fields["triggerBy"] ?? "price").trim() || "price",
+                TriggerValue: value,
+                CallbackUrl: callback,
+                CallbackMethod: (fields["callbackMethod"] ?? "POST").trim() || "POST",
+                ...(recurring ? { Recurring: recurring } : {}),
+                ...(name ? { FriendlyName: name } : {}),
+              },
             },
-          },
-        );
-        return mapUsageTrigger(accountId, t);
+          );
+          return mapUsageTrigger(accountId, t);
+        }
+        case "subaccount":
+          return mapSubaccount(
+            accountId,
+            await twilioFetch<TwAccount>(this.ctx, API_HOST, "/2010-04-01/Accounts.json", {
+              form: { FriendlyName: name },
+            }),
+          );
+        case "messaging-service": {
+          const s = await twilioFetch<TwMessagingService>(
+            this.ctx,
+            MESSAGING_HOST,
+            "/v1/Services",
+            {
+              form: toForm(fields, MESSAGING_FORM),
+            },
+          );
+          return mapMessagingService(accountId, s, 0);
+        }
+        case "verify-service":
+          return mapVerifyService(
+            accountId,
+            await twilioFetch<TwVerifyService>(this.ctx, VERIFY_HOST, "/v2/Services", {
+              form: toForm(fields, VERIFY_FORM),
+            }),
+          );
+        case "twiml-app":
+          return mapApplication(
+            accountId,
+            await twilioFetch<TwApplication>(this.ctx, API_HOST, `${main}/Applications.json`, {
+              form: toForm(fields, APP_FORM),
+            }),
+          );
+        case "api-key":
+          return mapKey(
+            accountId,
+            await twilioFetch<TwKey>(this.ctx, API_HOST, `${main}/Keys.json`, {
+              form: { FriendlyName: name },
+            }),
+            this.ctx.username,
+          );
+        default:
+          throw new Error(`Twilio plugin: "${typeId}" cannot be created from Infrawrench`);
       }
-      case "subaccount":
-        return mapSubaccount(
-          accountId,
-          await twilioFetch<TwAccount>(this.ctx, API_HOST, "/2010-04-01/Accounts.json", {
-            form: { FriendlyName: name },
-          }),
-        );
-      case "messaging-service": {
-        const s = await twilioFetch<TwMessagingService>(this.ctx, MESSAGING_HOST, "/v1/Services", {
-          form: toForm(fields, MESSAGING_FORM),
-        });
-        return mapMessagingService(accountId, s, 0);
-      }
-      case "verify-service":
-        return mapVerifyService(
-          accountId,
-          await twilioFetch<TwVerifyService>(this.ctx, VERIFY_HOST, "/v2/Services", {
-            form: toForm(fields, VERIFY_FORM),
-          }),
-        );
-      case "twiml-app":
-        return mapApplication(
-          accountId,
-          await twilioFetch<TwApplication>(this.ctx, API_HOST, `${main}/Applications.json`, {
-            form: toForm(fields, APP_FORM),
-          }),
-        );
-      case "api-key":
-        return mapKey(
-          accountId,
-          await twilioFetch<TwKey>(this.ctx, API_HOST, `${main}/Keys.json`, {
-            form: { FriendlyName: name },
-          }),
-          this.ctx.username,
-        );
-      default:
-        throw new Error(`Twilio plugin: "${typeId}" cannot be created from Infrawrench`);
-    }
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = encodeURIComponent(externalIdOf(resourceId));
-    const main = accountPath(this.ctx.accountSid);
-    switch (typeId) {
-      case "subaccount": {
-        const form: Record<string, FormValue> = {};
-        if ("friendlyName" in fields) form["FriendlyName"] = (fields["friendlyName"] ?? "").trim();
-        if ("status" in fields) {
-          const status = (fields["status"] ?? "").trim();
-          if (status !== "active" && status !== "suspended") {
-            throw new Error(
-              "Twilio plugin: a subaccount's status can be active or suspended; delete it to close it",
-            );
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = encodeURIComponent(externalIdOf(resourceId));
+      const main = accountPath(this.ctx.accountSid);
+      switch (typeId) {
+        case "subaccount": {
+          const form: Record<string, FormValue> = {};
+          if ("friendlyName" in fields)
+            form["FriendlyName"] = (fields["friendlyName"] ?? "").trim();
+          if ("status" in fields) {
+            const status = (fields["status"] ?? "").trim();
+            if (status !== "active" && status !== "suspended") {
+              throw new Error(
+                "Twilio plugin: a subaccount's status can be active or suspended; delete it to close it",
+              );
+            }
+            form["Status"] = status;
           }
-          form["Status"] = status;
-        }
-        return mapSubaccount(
-          accountId,
-          await twilioFetch<TwAccount>(this.ctx, API_HOST, `/2010-04-01/Accounts/${id}.json`, {
-            form,
-          }),
-        );
-      }
-      case "phone-number": {
-        const r = await this.getResource(typeId, resourceId, accountId);
-        const owner = String(r.fields["ownerAccountSid"] ?? this.ctx.accountSid);
-        await twilioFetch<TwPhoneNumber>(
-          this.ctx,
-          API_HOST,
-          `${accountPath(owner)}/IncomingPhoneNumbers/${id}.json`,
-          { form: toForm(fields, PHONE_FORM) },
-        );
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "messaging-service":
-        await twilioFetch<TwMessagingService>(this.ctx, MESSAGING_HOST, `/v1/Services/${id}`, {
-          form: toForm(fields, MESSAGING_FORM),
-        });
-        return this.getResource(typeId, resourceId, accountId);
-      case "verify-service":
-        await twilioFetch<TwVerifyService>(this.ctx, VERIFY_HOST, `/v2/Services/${id}`, {
-          form: toForm(fields, VERIFY_FORM),
-        });
-        return this.getResource(typeId, resourceId, accountId);
-      case "twiml-app":
-        return mapApplication(
-          accountId,
-          await twilioFetch<TwApplication>(this.ctx, API_HOST, `${main}/Applications/${id}.json`, {
-            form: toForm(fields, APP_FORM),
-          }),
-        );
-      case "usage-trigger":
-        return mapUsageTrigger(
-          accountId,
-          await twilioFetch<TwUsageTrigger>(
-            this.ctx,
-            API_HOST,
-            `${main}/Usage/Triggers/${id}.json`,
-            {
-              form: toForm(fields, {
-                friendlyName: "FriendlyName",
-                callbackUrl: "CallbackUrl",
-                callbackMethod: "CallbackMethod",
-              }),
-            },
-          ),
-        );
-      case "api-key":
-        return mapKey(
-          accountId,
-          await twilioFetch<TwKey>(this.ctx, API_HOST, `${main}/Keys/${id}.json`, {
-            form: toForm(fields, { friendlyName: "FriendlyName" }),
-          }),
-          this.ctx.username,
-        );
-      default:
-        throw new Error(`Twilio plugin: "${typeId}" cannot be edited from Infrawrench`);
-    }
-  }
-
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const raw = externalIdOf(resourceId);
-    const id = encodeURIComponent(raw);
-    const main = accountPath(this.ctx.accountSid);
-    switch (typeId) {
-      case "subaccount":
-        // Twilio has no DELETE for accounts: closing is permanent and releases its numbers.
-        await twilioFetch<TwAccount>(this.ctx, API_HOST, `/2010-04-01/Accounts/${id}.json`, {
-          form: { Status: "closed" },
-        });
-        return;
-      case "phone-number": {
-        const r = await this.getResource(typeId, resourceId, accountId);
-        const owner = String(r.fields["ownerAccountSid"] ?? this.ctx.accountSid);
-        await twilioFetch<unknown>(
-          this.ctx,
-          API_HOST,
-          `${accountPath(owner)}/IncomingPhoneNumbers/${id}.json`,
-          {
-            method: "DELETE",
-          },
-        );
-        return;
-      }
-      case "messaging-service":
-        await twilioFetch<unknown>(this.ctx, MESSAGING_HOST, `/v1/Services/${id}`, {
-          method: "DELETE",
-        });
-        return;
-      case "verify-service":
-        await twilioFetch<unknown>(this.ctx, VERIFY_HOST, `/v2/Services/${id}`, {
-          method: "DELETE",
-        });
-        return;
-      case "twiml-app":
-        await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Applications/${id}.json`, {
-          method: "DELETE",
-        });
-        return;
-      case "usage-trigger":
-        await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Usage/Triggers/${id}.json`, {
-          method: "DELETE",
-        });
-        return;
-      case "api-key":
-        if (raw === this.ctx.username) {
-          throw new Error(
-            "This is the API key this connection signs in with. Change the account's credentials first, then delete it.",
+          return mapSubaccount(
+            accountId,
+            await twilioFetch<TwAccount>(this.ctx, API_HOST, `/2010-04-01/Accounts/${id}.json`, {
+              form,
+            }),
           );
         }
-        await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Keys/${id}.json`, {
-          method: "DELETE",
-        });
-        return;
-      default:
-        throw new Error(`Twilio plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
+        case "phone-number": {
+          const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const owner = String(r.fields["ownerAccountSid"] ?? this.ctx.accountSid);
+          await twilioFetch<TwPhoneNumber>(
+            this.ctx,
+            API_HOST,
+            `${accountPath(owner)}/IncomingPhoneNumbers/${id}.json`,
+            { form: toForm(fields, PHONE_FORM) },
+          );
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "messaging-service":
+          await twilioFetch<TwMessagingService>(this.ctx, MESSAGING_HOST, `/v1/Services/${id}`, {
+            form: toForm(fields, MESSAGING_FORM),
+          });
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        case "verify-service":
+          await twilioFetch<TwVerifyService>(this.ctx, VERIFY_HOST, `/v2/Services/${id}`, {
+            form: toForm(fields, VERIFY_FORM),
+          });
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        case "twiml-app":
+          return mapApplication(
+            accountId,
+            await twilioFetch<TwApplication>(
+              this.ctx,
+              API_HOST,
+              `${main}/Applications/${id}.json`,
+              {
+                form: toForm(fields, APP_FORM),
+              },
+            ),
+          );
+        case "usage-trigger":
+          return mapUsageTrigger(
+            accountId,
+            await twilioFetch<TwUsageTrigger>(
+              this.ctx,
+              API_HOST,
+              `${main}/Usage/Triggers/${id}.json`,
+              {
+                form: toForm(fields, {
+                  friendlyName: "FriendlyName",
+                  callbackUrl: "CallbackUrl",
+                  callbackMethod: "CallbackMethod",
+                }),
+              },
+            ),
+          );
+        case "api-key":
+          return mapKey(
+            accountId,
+            await twilioFetch<TwKey>(this.ctx, API_HOST, `${main}/Keys/${id}.json`, {
+              form: toForm(fields, { friendlyName: "FriendlyName" }),
+            }),
+            this.ctx.username,
+          );
+        default:
+          throw new Error(`Twilio plugin: "${typeId}" cannot be edited from Infrawrench`);
+      }
+    });
   }
 
-  async invokeAction(
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const raw = externalIdOf(resourceId);
+      const id = encodeURIComponent(raw);
+      const main = accountPath(this.ctx.accountSid);
+      switch (typeId) {
+        case "subaccount":
+          // Twilio has no DELETE for accounts: closing is permanent and releases its numbers.
+          await twilioFetch<TwAccount>(this.ctx, API_HOST, `/2010-04-01/Accounts/${id}.json`, {
+            form: { Status: "closed" },
+          });
+          return;
+        case "phone-number": {
+          const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const owner = String(r.fields["ownerAccountSid"] ?? this.ctx.accountSid);
+          await twilioFetch<unknown>(
+            this.ctx,
+            API_HOST,
+            `${accountPath(owner)}/IncomingPhoneNumbers/${id}.json`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        }
+        case "messaging-service":
+          await twilioFetch<unknown>(this.ctx, MESSAGING_HOST, `/v1/Services/${id}`, {
+            method: "DELETE",
+          });
+          return;
+        case "verify-service":
+          await twilioFetch<unknown>(this.ctx, VERIFY_HOST, `/v2/Services/${id}`, {
+            method: "DELETE",
+          });
+          return;
+        case "twiml-app":
+          await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Applications/${id}.json`, {
+            method: "DELETE",
+          });
+          return;
+        case "usage-trigger":
+          await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Usage/Triggers/${id}.json`, {
+            method: "DELETE",
+          });
+          return;
+        case "api-key":
+          if (raw === this.ctx.username) {
+            throw new Error(
+              "This is the API key this connection signs in with. Change the account's credentials first, then delete it.",
+            );
+          }
+          await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Keys/${id}.json`, {
+            method: "DELETE",
+          });
+          return;
+        default:
+          throw new Error(`Twilio plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      }
+    });
+  }
+
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    if (typeId === "subaccount" && (actionId === "suspend" || actionId === "reactivate")) {
-      await this.updateResource(typeId, resourceId, accountId, {
-        status: actionId === "suspend" ? "suspended" : "active",
-      });
-      return;
-    }
-    throw new Error(`Twilio plugin: unknown action "${actionId}" for "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "subaccount" && (actionId === "suspend" || actionId === "reactivate")) {
+        await runPluginEffect(
+          this.updateResource(typeId, resourceId, accountId, {
+            status: actionId === "suspend" ? "suspended" : "active",
+          }),
+        );
+        return;
+      }
+      throw new Error(`Twilio plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------

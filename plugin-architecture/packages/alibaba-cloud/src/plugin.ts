@@ -1,8 +1,11 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AliApi } from "./api.js";
@@ -17,16 +20,15 @@ import { alibabaRemediationCommands } from "./remediation.js";
 const ACCESS_KEY_DOCS =
   "https://www.alibabacloud.com/help/en/ram/user-guide/create-an-accesskey-pair";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "alibaba-cloud",
-  version: "0.1.0",
+  // Every OpenAPI product and OSS live under aliyuncs.com (regional and central endpoints); the status feed is on status.alibabacloud.com
+  egressHosts: ["*.aliyuncs.com", "status.alibabacloud.com"],
   displayName: "Alibaba Cloud",
   description:
     "Alibaba Cloud (international site). ECS instances, disks, snapshots, VPCs, vSwitches, security groups, Elastic IPs, Classic and Application Load Balancers, ApsaraDB RDS, Tair (Redis), OSS buckets, ACK clusters, Function Compute, Alibaba Cloud DNS and RAM users across every region, with CloudMonitor metrics, daily billed spend, the account balance and Quota Center limits.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accessKeyId",
       label: "AccessKey ID",
@@ -65,7 +67,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   // DescribeInstanceBill, DAILY: PretaxAmount (after discounts and coupons)
   // per product, region and instance, with resource tags. 18 months of
   // history; the current month is provisional until the 3rd of the next.
@@ -86,7 +88,9 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 8 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listRegionOptions(
   credentials: Record<string, string>,
@@ -115,15 +119,22 @@ async function listRegionOptions(
     }));
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new AlibabaCloudClient(credentials, services),
+  testCredentials: {
+    accessKeyId: "LTAI5ttest",
+    accessKeySecret: "test-secret",
+    region: "ap-southeast-1",
+  },
   parseStatusFeed,
   terraformExport: alibabaTerraformExport,
   remediationCommands: alibabaRemediationCommands,
-  async listCredentialOptions(fieldKey, credentials, services) {
-    if (fieldKey !== "regions") return [];
-    return listRegionOptions(credentials, services);
+  listCredentialOptions(fieldKey, credentials, services) {
+    return attempt(async () => {
+      if (fieldKey !== "regions") return [];
+      return listRegionOptions(credentials, services);
+    });
   },
-};
+});

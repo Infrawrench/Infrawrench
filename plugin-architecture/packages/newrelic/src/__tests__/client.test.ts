@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { NewRelicClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -17,13 +18,13 @@ const ACCOUNTS = {
 
 function client(route: Parameters<typeof makeHttp>[0]) {
   const { http, calls } = makeHttp(route);
-  return { c: new NewRelicClient(creds, { http } as never), calls };
+  return { c: hostClient(new NewRelicClient(creds, { http } as never)), calls };
 }
 
 describe("credential options", () => {
   it("lists the key's accounts for the usage account picker, in the chosen region", async () => {
     const { http, calls } = makeHttp(() => ACCOUNTS);
-    const options = await plugin.listCredentialOptions!(
+    const options = await hostPlugin(plugin).listCredentialOptions!(
       "accountId",
       { region: "jp", apiKey: "NRAK-X" },
       { http } as never,
@@ -41,7 +42,9 @@ describe("credential options", () => {
       errors: [{ message: "Invalid API key", extensions: { errorClass: "UNAUTHORIZED" } }],
     }));
     await expect(
-      plugin.listCredentialOptions!("accountId", { apiKey: "NRAK-X" }, { http } as never),
+      hostPlugin(plugin).listCredentialOptions!("accountId", { apiKey: "NRAK-X" }, {
+        http,
+      } as never),
     ).rejects.toThrow(/user key/);
   });
 
@@ -182,7 +185,7 @@ describe("NewRelicClient mutations", () => {
   });
 
   it("asks for a usage account before collecting cost", async () => {
-    const c = new NewRelicClient({ apiKey: "NRAK-TEST" });
+    const c = hostClient(new NewRelicClient({ apiKey: "NRAK-TEST" }));
     await expect(
       c.fetchCostData("acct", { fromDate: "2026-09-01", toDate: "2026-09-02" }),
     ).rejects.toThrow(/usage account/);

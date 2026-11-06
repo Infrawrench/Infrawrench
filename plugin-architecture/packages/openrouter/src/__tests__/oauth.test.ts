@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { OAuthTokenError } from "@infrawrench/plugin-base";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenRouterClient } from "../client.js";
@@ -49,7 +50,7 @@ describe("exchangeOAuthCode", () => {
 
   it("posts the code and verifier as JSON and returns the key", async () => {
     const { doFetch, seen } = fakeFetch(200, { key: "sk-or-v1-new", user_id: "u1" });
-    const tokens = await plugin.exchangeOAuthCode!({
+    const tokens = await hostPlugin(plugin).exchangeOAuthCode!({
       code: "c1",
       codeVerifier: "v1",
       redirectUri: "http://localhost:43118/oauth/callback",
@@ -70,7 +71,7 @@ describe("exchangeOAuthCode", () => {
 
   it("raises a token error when OpenRouter refuses the code", async () => {
     const { doFetch } = fakeFetch(400, { error: { message: "Invalid code" } });
-    const run = plugin.exchangeOAuthCode!({
+    const run = hostPlugin(plugin).exchangeOAuthCode!({
       code: "bad",
       redirectUri: "x",
       client: { clientId: "", auth: "none" },
@@ -84,7 +85,7 @@ describe("exchangeOAuthCode", () => {
 describe("inference-key-only accounts", () => {
   it("lists no management-only objects instead of failing", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
-    const c = new OpenRouterClient({ apiKey: "sk-or-v1-inference" });
+    const c = hostClient(new OpenRouterClient({ apiKey: "sk-or-v1-inference" }));
     for (const type of ["api-key", "guardrail", "workspace", "byok-credential"]) {
       expect(await c.listResources(type, "acc")).toEqual([]);
     }

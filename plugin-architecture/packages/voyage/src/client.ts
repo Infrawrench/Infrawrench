@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   ChatMessage,
@@ -136,7 +139,7 @@ export class VoyageClient implements PluginClient {
   private readonly caCert: string;
   private readonly http: HttpHostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Voyage plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -161,31 +164,33 @@ export class VoyageClient implements PluginClient {
   }
 
   /** `GET /files?limit=1`: authenticated and free, unlike an embedding call. */
-  async verifyCredentials(): Promise<PreflightResult> {
-    try {
-      await this.fetch("/files?limit=1");
-      return { checks: [{ capabilityId: "api", status: "ok" }] };
-    } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 401 || status === 403) {
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      try {
+        await this.fetch("/files?limit=1");
+        return { checks: [{ capabilityId: "api", status: "ok" }] };
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 401 || status === 403) {
+          return {
+            checks: [
+              {
+                capabilityId: "api",
+                status: "missing",
+                missingPermissions: [{ id: "api-key", label: "A valid Voyage AI API key" }],
+                message: "Voyage AI rejected the API key.",
+                helpLink: { label: "Manage API keys", url: `${DASHBOARD}/organization/api-keys` },
+              },
+            ],
+          };
+        }
         return {
           checks: [
-            {
-              capabilityId: "api",
-              status: "missing",
-              missingPermissions: [{ id: "api-key", label: "A valid Voyage AI API key" }],
-              message: "Voyage AI rejected the API key.",
-              helpLink: { label: "Manage API keys", url: `${DASHBOARD}/organization/api-keys` },
-            },
+            { capabilityId: "api", status: "unknown", message: String((err as Error).message) },
           ],
         };
       }
-      return {
-        checks: [
-          { capabilityId: "api", status: "unknown", message: String((err as Error).message) },
-        ],
-      };
-    }
+    });
   }
 
   private instance(
@@ -212,34 +217,36 @@ export class VoyageClient implements PluginClient {
     };
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "voyage-model":
-        return VOYAGE_MODELS.map((m) =>
-          this.instance(
-            accountId,
-            typeId,
-            m.id,
-            m.id,
-            {
-              modelId: m.id,
-              kind: m.kind,
-              contextLength: m.contextLength ?? "",
-              dimensions: m.dimensions ?? "",
-              pricePerMillion: m.pricePerMillion,
-              generation: m.generation,
-              description: m.description,
-            },
-            { modelId: m.id, endpoint: `${API_BASE}${endpointFor(m.kind)}` },
-          ),
-        );
-      case "voyage-batch":
-        return (await this.paged<Batch>("/batches")).map((b) => this.mapBatch(accountId, b));
-      case "voyage-file":
-        return (await this.paged<VoyageFile>("/files")).map((f) => this.mapFile(accountId, f));
-      default:
-        throw new Error(`Voyage plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "voyage-model":
+          return VOYAGE_MODELS.map((m) =>
+            this.instance(
+              accountId,
+              typeId,
+              m.id,
+              m.id,
+              {
+                modelId: m.id,
+                kind: m.kind,
+                contextLength: m.contextLength ?? "",
+                dimensions: m.dimensions ?? "",
+                pricePerMillion: m.pricePerMillion,
+                generation: m.generation,
+                description: m.description,
+              },
+              { modelId: m.id, endpoint: `${API_BASE}${endpointFor(m.kind)}` },
+            ),
+          );
+        case "voyage-batch":
+          return (await this.paged<Batch>("/batches")).map((b) => this.mapBatch(accountId, b));
+        case "voyage-file":
+          return (await this.paged<VoyageFile>("/files")).map((f) => this.mapFile(accountId, f));
+        default:
+          throw new Error(`Voyage plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /** `limit≤100` + `after=<last_id>` while `has_more`. */
@@ -306,160 +313,177 @@ export class VoyageClient implements PluginClient {
     );
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    if (typeId === "voyage-batch")
-      return this.mapBatch(
-        accountId,
-        await this.fetch<Batch>(`/batches/${encodeURIComponent(id)}`),
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      if (typeId === "voyage-batch")
+        return this.mapBatch(
+          accountId,
+          await this.fetch<Batch>(`/batches/${encodeURIComponent(id)}`),
+        );
+      if (typeId === "voyage-file")
+        return this.mapFile(
+          accountId,
+          await this.fetch<VoyageFile>(`/files/${encodeURIComponent(id)}`),
+        );
+      const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
+        (r) => r.externalId === id,
       );
-    if (typeId === "voyage-file")
-      return this.mapFile(
-        accountId,
-        await this.fetch<VoyageFile>(`/files/${encodeURIComponent(id)}`),
-      );
-    const found = (await this.listResources(typeId, accountId)).find((r) => r.externalId === id);
-    if (!found)
-      throw Object.assign(new Error(`Voyage plugin: ${typeId}/${id} not found`), { status: 404 });
-    return found;
+      if (!found)
+        throw Object.assign(new Error(`Voyage plugin: ${typeId}/${id} not found`), { status: 404 });
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+    });
   }
 
   // ------------------------------------------------------------- create
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "voyage-batch") throw new Error(`Voyage plugin: ${typeId} cannot be created`);
-    const files = (await this.paged<VoyageFile>("/files").catch(() => [] as VoyageFile[])).filter(
-      (f) => (f.purpose ?? "batch") === "batch",
-    );
-    const fileOptions = files.map((f) => ({
-      id: s(f.id),
-      label: f.filename || s(f.id),
-      ...(f.bytes ? { description: formatBytes(f.bytes) } : {}),
-    }));
-    const modelField = (kind: VoyageKind, endpoint: string): CreateFieldConfig => {
-      const options = VOYAGE_MODELS.filter((m) => m.kind === kind).map((m) => ({
-        id: m.id,
-        label: m.id,
-        description: `$${m.pricePerMillion} / 1M tokens · ${m.description}`,
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId !== "voyage-batch") throw new Error(`Voyage plugin: ${typeId} cannot be created`);
+      const files = (await this.paged<VoyageFile>("/files").catch(() => [] as VoyageFile[])).filter(
+        (f) => (f.purpose ?? "batch") === "batch",
+      );
+      const fileOptions = files.map((f) => ({
+        id: s(f.id),
+        label: f.filename || s(f.id),
+        ...(f.bytes ? { description: formatBytes(f.bytes) } : {}),
       }));
-      return {
-        key: `model:${kind}`,
-        label: "Model",
-        kind: "select",
-        required: true,
-        options,
-        ...(options[0] ? { defaultValue: options[0].id } : {}),
-        showWhen: { fieldKey: "endpoint", fieldValue: endpoint },
+      const modelField = (kind: VoyageKind, endpoint: string): CreateFieldConfig => {
+        const options = VOYAGE_MODELS.filter((m) => m.kind === kind).map((m) => ({
+          id: m.id,
+          label: m.id,
+          description: `$${m.pricePerMillion} / 1M tokens · ${m.description}`,
+        }));
+        return {
+          key: `model:${kind}`,
+          label: "Model",
+          kind: "select",
+          required: true,
+          options,
+          ...(options[0] ? { defaultValue: options[0].id } : {}),
+          showWhen: { fieldKey: "endpoint", fieldValue: endpoint },
+        };
       };
-    };
-    return {
-      fields: [
-        {
-          key: "inputFileId",
-          label: "Input File",
-          kind: "select",
-          required: true,
-          options: fileOptions,
-          ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
-          description: fileOptions.length
-            ? 'A JSONL file uploaded with purpose "batch".'
-            : "No batch files uploaded yet. Upload a JSONL request file to Voyage first.",
-        },
-        {
-          key: "endpoint",
-          label: "Endpoint",
-          kind: "select",
-          required: true,
-          defaultValue: "/v1/embeddings",
-          options: BATCH_ENDPOINTS.map((e) => ({ id: e.id, label: e.label })),
-        },
-        ...BATCH_ENDPOINTS.map((e) => modelField(e.kind, e.id)),
-        {
-          key: "metadata",
-          label: "Metadata (optional)",
-          kind: "text",
-          multiline: true,
-          required: false,
-          placeholder: "corpus=company policies",
-          description: "Up to 16 key=value lines, kept on the batch for your own tracking.",
-        },
-      ],
-    };
+      return {
+        fields: [
+          {
+            key: "inputFileId",
+            label: "Input File",
+            kind: "select",
+            required: true,
+            options: fileOptions,
+            ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
+            description: fileOptions.length
+              ? 'A JSONL file uploaded with purpose "batch".'
+              : "No batch files uploaded yet. Upload a JSONL request file to Voyage first.",
+          },
+          {
+            key: "endpoint",
+            label: "Endpoint",
+            kind: "select",
+            required: true,
+            defaultValue: "/v1/embeddings",
+            options: BATCH_ENDPOINTS.map((e) => ({ id: e.id, label: e.label })),
+          },
+          ...BATCH_ENDPOINTS.map((e) => modelField(e.kind, e.id)),
+          {
+            key: "metadata",
+            label: "Metadata (optional)",
+            kind: "text",
+            multiline: true,
+            required: false,
+            placeholder: "corpus=company policies",
+            description: "Up to 16 key=value lines, kept on the batch for your own tracking.",
+          },
+        ],
+      };
+    });
   }
 
   /** `POST /batches {input_file_id, endpoint, completion_window: "12h", request_params: {model}}` */
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "voyage-batch") throw new Error(`Voyage plugin: ${typeId} cannot be created`);
-    const endpoint = fields["endpoint"] || "/v1/embeddings";
-    const kind = BATCH_ENDPOINTS.find((e) => e.id === endpoint)?.kind ?? "embedding";
-    const model = fields[`model:${kind}`] || fields["model"];
-    if (!fields["inputFileId"] || !model)
-      throw new Error("Voyage plugin: pick an input file and a model");
-    const metadata: Record<string, string> = {};
-    for (const line of (fields["metadata"] ?? "").split("\n")) {
-      const at = line.indexOf("=");
-      if (at > 0)
-        metadata[line.slice(0, at).trim().slice(0, 64)] = line
-          .slice(at + 1)
-          .trim()
-          .slice(0, 512);
-    }
-    const created = await this.fetch<Batch>("/batches", {
-      method: "POST",
-      body: JSON.stringify({
-        input_file_id: fields["inputFileId"],
-        endpoint,
-        // The only window Voyage accepts today.
-        completion_window: "12h",
-        request_params: { model },
-        ...(Object.keys(metadata).length ? { metadata } : {}),
-      }),
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "voyage-batch") throw new Error(`Voyage plugin: ${typeId} cannot be created`);
+      const endpoint = fields["endpoint"] || "/v1/embeddings";
+      const kind = BATCH_ENDPOINTS.find((e) => e.id === endpoint)?.kind ?? "embedding";
+      const model = fields[`model:${kind}`] || fields["model"];
+      if (!fields["inputFileId"] || !model)
+        throw new Error("Voyage plugin: pick an input file and a model");
+      const metadata: Record<string, string> = {};
+      for (const line of (fields["metadata"] ?? "").split("\n")) {
+        const at = line.indexOf("=");
+        if (at > 0)
+          metadata[line.slice(0, at).trim().slice(0, 64)] = line
+            .slice(at + 1)
+            .trim()
+            .slice(0, 512);
+      }
+      const created = await this.fetch<Batch>("/batches", {
+        method: "POST",
+        body: JSON.stringify({
+          input_file_id: fields["inputFileId"],
+          endpoint,
+          // The only window Voyage accepts today.
+          completion_window: "12h",
+          request_params: { model },
+          ...(Object.keys(metadata).length ? { metadata } : {}),
+        }),
+      });
+      return this.mapBatch(accountId, created);
     });
-    return this.mapBatch(accountId, created);
   }
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    if (typeId !== "voyage-file") throw new Error(`Voyage plugin: ${typeId} cannot be deleted`);
-    await this.fetch(`/files/${encodeURIComponent(externalIdOf(resourceId, accountId, typeId))}`, {
-      method: "DELETE",
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId !== "voyage-file") throw new Error(`Voyage plugin: ${typeId} cannot be deleted`);
+      await this.fetch(
+        `/files/${encodeURIComponent(externalIdOf(resourceId, accountId, typeId))}`,
+        {
+          method: "DELETE",
+        },
+      );
     });
   }
 
   /** `POST /batches/{id}/cancel`: only from validating or in_progress. */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    if (typeId === "voyage-batch" && actionId === "cancel") {
-      await this.fetch(
-        `/batches/${encodeURIComponent(externalIdOf(resourceId, accountId, typeId))}/cancel`,
-        {
-          method: "POST",
-        },
-      );
-      return;
-    }
-    throw new Error(`Voyage plugin: unknown action "${actionId}" for ${typeId}`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "voyage-batch" && actionId === "cancel") {
+        await this.fetch(
+          `/batches/${encodeURIComponent(externalIdOf(resourceId, accountId, typeId))}/cancel`,
+          {
+            method: "POST",
+          },
+        );
+        return;
+      }
+      throw new Error(`Voyage plugin: unknown action "${actionId}" for ${typeId}`);
+    });
   }
 
   // --------------------------------------------------------- playground
@@ -469,7 +493,7 @@ export class VoyageClient implements PluginClient {
    * message and report the vector; rerankers treat its first line as the
    * query and the rest as documents and return them ranked.
    */
-  async *streamChatMessage(
+  private async *streamChatMessageIterable(
     typeId: string,
     resourceId: string,
     accountId: string,
@@ -548,6 +572,17 @@ export class VoyageClient implements PluginClient {
     } catch (err) {
       yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    messages: ChatMessage[],
+  ) {
+    return attemptStream(() =>
+      this.streamChatMessageIterable(typeId, resourceId, accountId, messages),
+    );
   }
 
   // ------------------------------------------------------------- render

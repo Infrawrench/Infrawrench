@@ -1,3 +1,6 @@
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import Dockerode from "dockerode";
 import { urlDialTarget, type DialTarget, type DockerNodeDriver } from "@infrawrench/plugin-base";
 
@@ -31,91 +34,101 @@ export const driver = {
   id: "docker",
   dialTargets,
 
-  async command(
+  command(
     dockerHost: string,
     op: string,
     params: Record<string, unknown> = {},
-  ): Promise<unknown> {
-    const docker = makeClient(dockerHost);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const docker = makeClient(dockerHost);
 
-    switch (op) {
-      case "version":
-        return docker.version();
-      case "listContainers":
-        return docker.listContainers({ all: true });
-      case "inspectContainer":
-        return docker.getContainer(params["id"] as string).inspect();
-      case "startContainer":
-        await docker.getContainer(params["id"] as string).start();
-        return { ok: true };
-      case "stopContainer":
-        await docker.getContainer(params["id"] as string).stop();
-        return { ok: true };
-      case "restartContainer":
-        await docker.getContainer(params["id"] as string).restart();
-        return { ok: true };
-      case "listImages":
-        return docker.listImages({ all: false });
-      case "listVolumes": {
-        const result = await docker.listVolumes();
-        return result.Volumes ?? [];
-      }
-      case "listNetworks":
-        return docker.listNetworks();
-      case "createContainer": {
-        const image = params["image"] as string;
-
-        // Pull the image first so we get a clear error if it doesn't exist
-        try {
-          const stream = await docker.pull(image);
-          await new Promise<void>((resolve, reject) => {
-            docker.modem.followProgress(stream, (err: Error | null) =>
-              err ? reject(err) : resolve(),
-            );
-          });
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e);
-          throw new Error(`Failed to pull image "${image}": ${msg}`, { cause: e });
+      switch (op) {
+        case "version":
+          return docker.version();
+        case "listContainers":
+          return docker.listContainers({ all: true });
+        case "inspectContainer":
+          return docker.getContainer(params["id"] as string).inspect();
+        case "startContainer":
+          await docker.getContainer(params["id"] as string).start();
+          return { ok: true };
+        case "stopContainer":
+          await docker.getContainer(params["id"] as string).stop();
+          return { ok: true };
+        case "restartContainer":
+          await docker.getContainer(params["id"] as string).restart();
+          return { ok: true };
+        case "listImages":
+          return docker.listImages({ all: false });
+        case "listVolumes": {
+          const result = await docker.listVolumes();
+          return result.Volumes ?? [];
         }
+        case "listNetworks":
+          return docker.listNetworks();
+        case "createContainer": {
+          const image = params["image"] as string;
 
-        const container = await docker.createContainer({
-          Image: image,
-          name: params["name"] as string | undefined,
-          ExposedPorts: params["exposedPorts"] as Record<string, object> | undefined,
-          HostConfig: params["hostConfig"] as Dockerode.HostConfig | undefined,
-        });
-        if (params["start"]) await container.start();
-        return container.inspect();
+          // Pull the image first so we get a clear error if it doesn't exist
+          try {
+            const stream = await docker.pull(image);
+            await new Promise<void>((resolve, reject) => {
+              docker.modem.followProgress(stream, (err: Error | null) =>
+                err ? reject(err) : resolve(),
+              );
+            });
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            throw new Error(`Failed to pull image "${image}": ${msg}`, { cause: e });
+          }
+
+          const container = await docker.createContainer({
+            Image: image,
+            name: params["name"] as string | undefined,
+            ExposedPorts: params["exposedPorts"] as Record<string, object> | undefined,
+            HostConfig: params["hostConfig"] as Dockerode.HostConfig | undefined,
+          });
+          if (params["start"]) await container.start();
+          return container.inspect();
+        }
+        case "createVolume":
+          return docker.createVolume({
+            Name: params["name"] as string,
+            Driver: params["driver"] as string | undefined,
+          });
+        case "createNetwork":
+          return docker.createNetwork({
+            Name: params["name"] as string,
+            Driver: params["driver"] as string | undefined,
+            Internal: Boolean(params["internal"]),
+          });
+        case "removeContainer": {
+          await docker.getContainer(params["id"] as string).remove({ force: true });
+          return { ok: true };
+        }
+        case "removeImage": {
+          await docker.getImage(params["id"] as string).remove({ force: true });
+          return { ok: true };
+        }
+        case "removeVolume": {
+          await docker.getVolume(params["name"] as string).remove();
+          return { ok: true };
+        }
+        case "removeNetwork": {
+          await docker.getNetwork(params["id"] as string).remove();
+          return { ok: true };
+        }
+        default:
+          throw new Error(`Docker driver: unknown op "${op}"`);
       }
-      case "createVolume":
-        return docker.createVolume({
-          Name: params["name"] as string,
-          Driver: params["driver"] as string | undefined,
-        });
-      case "createNetwork":
-        return docker.createNetwork({
-          Name: params["name"] as string,
-          Driver: params["driver"] as string | undefined,
-          Internal: Boolean(params["internal"]),
-        });
-      case "removeContainer": {
-        await docker.getContainer(params["id"] as string).remove({ force: true });
-        return { ok: true };
-      }
-      case "removeImage": {
-        await docker.getImage(params["id"] as string).remove({ force: true });
-        return { ok: true };
-      }
-      case "removeVolume": {
-        await docker.getVolume(params["name"] as string).remove();
-        return { ok: true };
-      }
-      case "removeNetwork": {
-        await docker.getNetwork(params["id"] as string).remove();
-        return { ok: true };
-      }
-      default:
-        throw new Error(`Docker driver: unknown op "${op}"`);
-    }
+    });
   },
 } satisfies DockerNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { docker: driver },
+  server: { docker: driver },
+});

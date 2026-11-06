@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { errorText, QdrantApi } from "./api.js";
@@ -14,16 +16,15 @@ import { qdrantTerraformExport } from "./terraform.js";
 import { qdrantRemediationCommands } from "./remediation.js";
 import type { QcAccount } from "./types.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "qdrant-cloud",
-  version: "0.1.0",
+  // cluster database endpoints are per-cluster subdomains of cloud.qdrant.io (port 6333); hybrid clusters use the customer's own endpoint
+  egressHosts: ["api.cloud.qdrant.io", "*.cloud.qdrant.io"],
   displayName: "Qdrant Cloud",
   description:
     "Managed Qdrant vector database. Create, resize, scale, upgrade, suspend and restart clusters with region and package pickers; manage database API keys, backups, backup schedules and restores, hybrid cloud environments and collections. Billed spend from Qdrant's metering, credits, quotas, cluster metrics, logs and alerts.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "Cloud Management Key",
@@ -45,7 +46,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiKey"] },
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * `GET /api/metering/v1/accounts/{id}/meterings/{year}/{month}`: billed
    * metering windows per cluster and billable entity (cluster, extra disk,
@@ -56,7 +57,9 @@ const manifest: PluginManifest = {
   credits: { label: "Qdrant Cloud credits", topUpUrl: "https://cloud.qdrant.io/billing" },
   quotas: { label: "Account quotas", increaseUrl: "https://qdrant.tech/documentation/support/" },
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -77,13 +80,17 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) =>
     new QdrantCloudClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: {
+    apiKey: "test-qdrant-management-key",
+    accountId: "00000000-0000-0000-0000-000000000001",
+  },
   parseStatusFeed,
   terraformExport: qdrantTerraformExport,
   remediationCommands: qdrantRemediationCommands,
-  listCredentialOptions,
-};
+  listCredentialOptions: attemptFn(listCredentialOptions),
+});

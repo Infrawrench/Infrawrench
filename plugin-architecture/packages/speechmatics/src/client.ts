@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -363,7 +366,7 @@ export class SpeechmaticsClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Speechmatics plugin: missing apiKey credential");
     const region = (credentials["region"] ?? "eu1").trim().toLowerCase();
@@ -621,21 +624,23 @@ export class SpeechmaticsClient implements PluginClient {
   /* Listing                                                                  */
   /* ---------------------------------------------------------------------- */
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case ACCOUNT_TYPE:
-        // Exactly one, always, including on an account whose jobs have all
-        // expired and which has no management token.
-        return [await this.buildAccount(accountId)];
-      case "job":
-        return this.listJobs(accountId);
-      case "project":
-        return this.listProjects(accountId);
-      case "api-key":
-        return this.listApiKeys(accountId);
-      default:
-        throw new Error(`Speechmatics plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case ACCOUNT_TYPE:
+          // Exactly one, always, including on an account whose jobs have all
+          // expired and which has no management token.
+          return [await this.buildAccount(accountId)];
+        case "job":
+          return this.listJobs(accountId);
+        case "project":
+          return this.listProjects(accountId);
+        case "api-key":
+          return this.listApiKeys(accountId);
+        default:
+          throw new Error(`Speechmatics plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -865,121 +870,129 @@ export class SpeechmaticsClient implements PluginClient {
   /* Reads                                                                    */
   /* ---------------------------------------------------------------------- */
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === ACCOUNT_TYPE) return this.buildAccount(accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === ACCOUNT_TYPE) return this.buildAccount(accountId);
 
-    if (typeId === "job") {
-      const jobId = this.externalId(resourceId);
-      // `GET /v2/jobs/{jobid}`: https://docs.speechmatics.com/batch.yaml
-      const [detail, discovery] = await Promise.all([
-        this.fetch<RetrieveJobResponse>(`/jobs/${encodeURIComponent(jobId)}`),
-        // `renderDetail` is synchronous, so the Speech tab's pickers have to be
-        // resolved here and smuggled through `resolvedOutputs`.
-        this.fetchDiscoverySafe(),
-      ]);
-      if (!detail?.job) throw new Error(`Speechmatics plugin: job ${jobId} not found`);
-      const instance = this.mapJob(detail.job, accountId);
-      instance.resolvedOutputs[DISCOVERY_STASH_KEY] = JSON.stringify(discovery);
-      return instance;
-    }
+      if (typeId === "job") {
+        const jobId = this.externalId(resourceId);
+        // `GET /v2/jobs/{jobid}`: https://docs.speechmatics.com/batch.yaml
+        const [detail, discovery] = await Promise.all([
+          this.fetch<RetrieveJobResponse>(`/jobs/${encodeURIComponent(jobId)}`),
+          // `renderDetail` is synchronous, so the Speech tab's pickers have to be
+          // resolved here and smuggled through `resolvedOutputs`.
+          this.fetchDiscoverySafe(),
+        ]);
+        if (!detail?.job) throw new Error(`Speechmatics plugin: job ${jobId} not found`);
+        const instance = this.mapJob(detail.job, accountId);
+        instance.resolvedOutputs[DISCOVERY_STASH_KEY] = JSON.stringify(discovery);
+        return instance;
+      }
 
-    if (typeId === "project") {
-      // `GET /projects/{project_id}` on the Management API.
-      const projectId = this.externalId(resourceId);
-      const project = await this.managementFetch<ManagementProject>(
-        `/projects/${encodeURIComponent(projectId)}`,
-      );
-      return this.mapProject(project, accountId);
-    }
+      if (typeId === "project") {
+        // `GET /projects/{project_id}` on the Management API.
+        const projectId = this.externalId(resourceId);
+        const project = await this.managementFetch<ManagementProject>(
+          `/projects/${encodeURIComponent(projectId)}`,
+        );
+        return this.mapProject(project, accountId);
+      }
 
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) {
-      throw new Error(`Speechmatics plugin: resource ${typeId}/${resourceId} not found`);
-    }
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) {
+        throw new Error(`Speechmatics plugin: resource ${typeId}/${resourceId} not found`);
+      }
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    // Region and the transcript URL are derivable without a round trip.
-    if (typeId === ACCOUNT_TYPE) {
-      if (outputKey === "region") return this.region;
-      if (outputKey === "endpoint") return this.baseUrl;
-    }
-    if (typeId === "job") {
-      const jobId = this.externalId(resourceId);
-      if (outputKey === "jobId") return jobId;
-      if (outputKey === "region") return this.region;
-      if (outputKey === "transcriptUrl") return this.jobTranscriptUrl(jobId);
-    }
-    if (typeId === "project" && outputKey === "projectId") return this.externalId(resourceId);
-    if (typeId === "api-key" && outputKey === "apiKeyId") return this.externalId(resourceId);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      // Region and the transcript URL are derivable without a round trip.
+      if (typeId === ACCOUNT_TYPE) {
+        if (outputKey === "region") return this.region;
+        if (outputKey === "endpoint") return this.baseUrl;
+      }
+      if (typeId === "job") {
+        const jobId = this.externalId(resourceId);
+        if (outputKey === "jobId") return jobId;
+        if (outputKey === "region") return this.region;
+        if (outputKey === "transcriptUrl") return this.jobTranscriptUrl(jobId);
+      }
+      if (typeId === "project" && outputKey === "projectId") return this.externalId(resourceId);
+      if (typeId === "api-key" && outputKey === "apiKeyId") return this.externalId(resourceId);
 
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
 
-    throw new Error(
-      `Speechmatics plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+      throw new Error(
+        `Speechmatics plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
-    switch (resourceTypeId) {
-      case ACCOUNT_TYPE:
-        return [
-          { label: "Region", value: String(f["region"] ?? "") },
-          { label: "Hours (30d)", value: String(f["usageHours"] ?? 0) },
-          { label: "Billable jobs (30d)", value: String(f["usageJobs"] ?? 0) },
-          { label: "Language packs", value: String(f["languagePacks"] ?? 0) },
-        ];
-      case "job": {
-        const status = String(f["status"] ?? "");
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant:
-              status === "done"
-                ? "status-healthy"
-                : status === "rejected"
-                  ? "status-error"
-                  : "default",
-          },
-          { label: "Duration", value: formatDuration(Number(f["durationSeconds"] ?? 0)) },
-          { label: "Model", value: String(f["model"] || "—") },
-          { label: "Region", value: String(f["region"] ?? "") },
-        ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
+      switch (resourceTypeId) {
+        case ACCOUNT_TYPE:
+          return [
+            { label: "Region", value: String(f["region"] ?? "") },
+            { label: "Hours (30d)", value: String(f["usageHours"] ?? 0) },
+            { label: "Billable jobs (30d)", value: String(f["usageJobs"] ?? 0) },
+            { label: "Language packs", value: String(f["languagePacks"] ?? 0) },
+          ];
+        case "job": {
+          const status = String(f["status"] ?? "");
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "done"
+                  ? "status-healthy"
+                  : status === "rejected"
+                    ? "status-error"
+                    : "default",
+            },
+            { label: "Duration", value: formatDuration(Number(f["durationSeconds"] ?? 0)) },
+            { label: "Model", value: String(f["model"] || "—") },
+            { label: "Region", value: String(f["region"] ?? "") },
+          ];
+        }
+        case "project":
+          return [
+            { label: "Project ID", value: String(f["projectId"] ?? "") },
+            { label: "Default", value: f["isDefault"] ? "Yes" : "No" },
+            { label: "Active", value: f["isActive"] ? "Yes" : "No" },
+          ];
+        case "api-key":
+          return [
+            { label: "Key ID", value: String(f["apiKeyId"] ?? "") },
+            { label: "Created", value: String(f["createdAt"] || "—") },
+          ];
+        default:
+          return [];
       }
-      case "project":
-        return [
-          { label: "Project ID", value: String(f["projectId"] ?? "") },
-          { label: "Default", value: f["isDefault"] ? "Yes" : "No" },
-          { label: "Active", value: f["isActive"] ? "Yes" : "No" },
-        ];
-      case "api-key":
-        return [
-          { label: "Key ID", value: String(f["apiKeyId"] ?? "") },
-          { label: "Created", value: String(f["createdAt"] || "—") },
-        ];
-      default:
-        return [];
-    }
+    });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -994,94 +1007,96 @@ export class SpeechmaticsClient implements PluginClient {
    * time series means asking several times. The range is split into at most
    * ten whole-day buckets, requested in parallel.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    // `/usage` is account-wide, so the series belongs to the account view as
-    // much as to a job, and the account is the one that always exists.
-    if (resourceTypeId !== "job" && resourceTypeId !== ACCOUNT_TYPE) return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      // `/usage` is account-wide, so the series belongs to the account view as
+      // much as to a job, and the account is the one that always exists.
+      if (resourceTypeId !== "job" && resourceTypeId !== ACCOUNT_TYPE) return [];
 
-    const dayMs = 86_400_000;
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 30 * dayMs;
-    const totalDays = Math.max(1, Math.ceil((endMs - startMs) / dayMs));
-    const buckets = Math.min(totalDays, 10);
-    const daysPerBucket = Math.ceil(totalDays / buckets);
+      const dayMs = 86_400_000;
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 30 * dayMs;
+      const totalDays = Math.max(1, Math.ceil((endMs - startMs) / dayMs));
+      const buckets = Math.min(totalDays, 10);
+      const daysPerBucket = Math.ceil(totalDays / buckets);
 
-    const windows: Array<{ startMs: number; since: string; until: string }> = [];
-    for (let i = 0; i < buckets; i++) {
-      const bucketStart = startMs + i * daysPerBucket * dayMs;
-      if (bucketStart > endMs) break;
-      const bucketEnd = Math.min(bucketStart + (daysPerBucket - 1) * dayMs, endMs);
-      windows.push({
-        startMs: bucketStart,
-        since: isoDate(bucketStart),
-        until: isoDate(bucketEnd),
-      });
-    }
+      const windows: Array<{ startMs: number; since: string; until: string }> = [];
+      for (let i = 0; i < buckets; i++) {
+        const bucketStart = startMs + i * daysPerBucket * dayMs;
+        if (bucketStart > endMs) break;
+        const bucketEnd = Math.min(bucketStart + (daysPerBucket - 1) * dayMs, endMs);
+        windows.push({
+          startMs: bucketStart,
+          since: isoDate(bucketStart),
+          until: isoDate(bucketEnd),
+        });
+      }
 
-    const responses = await Promise.all(
-      windows.map(async (w) => {
-        try {
-          const params = new URLSearchParams({ since: w.since, until: w.until });
-          return await this.fetch<UsageResponse>(`/usage?${params.toString()}`);
-        } catch {
-          return undefined;
+      const responses = await Promise.all(
+        windows.map(async (w) => {
+          try {
+            const params = new URLSearchParams({ since: w.since, until: w.until });
+            return await this.fetch<UsageResponse>(`/usage?${params.toString()}`);
+          } catch {
+            return undefined;
+          }
+        }),
+      );
+
+      const hours: MetricSeries = { label: "Transcription hours", unit: "h", points: [] };
+      const counts: MetricSeries = { label: "Billable jobs", unit: "jobs", points: [] };
+      // Hours split by `mode` (batch vs real-time) and by operating point
+      // (standard vs enhanced), the two axes the rate card prices on. Read from
+      // `details`, the per-language rows that carry both.
+      const byMode = new Map<string, Map<number, number>>();
+      const byOperatingPoint = new Map<string, Map<number, number>>();
+      const add = (into: Map<string, Map<number, number>>, key: string, at: number, v: number) => {
+        if (!key) return;
+        const points = into.get(key) ?? new Map<number, number>();
+        points.set(at, (points.get(at) ?? 0) + v);
+        into.set(key, points);
+      };
+      const answered: number[] = [];
+      responses.forEach((usage, i) => {
+        const window = windows[i];
+        if (!window || !usage) return;
+        answered.push(window.startMs);
+        const rows = usage.summary?.length ? usage.summary : (usage.details ?? []);
+        let totalHours = 0;
+        let totalCount = 0;
+        for (const row of rows) {
+          totalHours += row.duration_hrs ?? 0;
+          totalCount += row.count ?? 0;
         }
-      }),
-    );
+        hours.points.push({ timestamp: window.startMs, value: Number(totalHours.toFixed(3)) });
+        counts.points.push({ timestamp: window.startMs, value: totalCount });
+        for (const row of usage.details ?? []) {
+          const h = row.duration_hrs ?? 0;
+          add(byMode, normalizeMode(row.mode), window.startMs, h);
+          add(byOperatingPoint, normalizeOperatingPoint(row), window.startMs, h);
+        }
+      });
 
-    const hours: MetricSeries = { label: "Transcription hours", unit: "h", points: [] };
-    const counts: MetricSeries = { label: "Billable jobs", unit: "jobs", points: [] };
-    // Hours split by `mode` (batch vs real-time) and by operating point
-    // (standard vs enhanced), the two axes the rate card prices on. Read from
-    // `details`, the per-language rows that carry both.
-    const byMode = new Map<string, Map<number, number>>();
-    const byOperatingPoint = new Map<string, Map<number, number>>();
-    const add = (into: Map<string, Map<number, number>>, key: string, at: number, v: number) => {
-      if (!key) return;
-      const points = into.get(key) ?? new Map<number, number>();
-      points.set(at, (points.get(at) ?? 0) + v);
-      into.set(key, points);
-    };
-    const answered: number[] = [];
-    responses.forEach((usage, i) => {
-      const window = windows[i];
-      if (!window || !usage) return;
-      answered.push(window.startMs);
-      const rows = usage.summary?.length ? usage.summary : (usage.details ?? []);
-      let totalHours = 0;
-      let totalCount = 0;
-      for (const row of rows) {
-        totalHours += row.duration_hrs ?? 0;
-        totalCount += row.count ?? 0;
-      }
-      hours.points.push({ timestamp: window.startMs, value: Number(totalHours.toFixed(3)) });
-      counts.points.push({ timestamp: window.startMs, value: totalCount });
-      for (const row of usage.details ?? []) {
-        const h = row.duration_hrs ?? 0;
-        add(byMode, normalizeMode(row.mode), window.startMs, h);
-        add(byOperatingPoint, normalizeOperatingPoint(row), window.startMs, h);
-      }
+      // A split only adds information when it has more than one side.
+      const splits = (into: Map<string, Map<number, number>>): MetricSeries[] =>
+        into.size < 2
+          ? []
+          : [...into.keys()].sort().map((key) => ({
+              label: `Transcription hours: ${key}`,
+              unit: "h",
+              points: answered.map((timestamp) => ({
+                timestamp,
+                value: Number((into.get(key)!.get(timestamp) ?? 0).toFixed(3)),
+              })),
+            }));
+
+      return [hours, counts, ...splits(byMode), ...splits(byOperatingPoint)];
     });
-
-    // A split only adds information when it has more than one side.
-    const splits = (into: Map<string, Map<number, number>>): MetricSeries[] =>
-      into.size < 2
-        ? []
-        : [...into.keys()].sort().map((key) => ({
-            label: `Transcription hours: ${key}`,
-            unit: "h",
-            points: answered.map((timestamp) => ({
-              timestamp,
-              value: Number((into.get(key)!.get(timestamp) ?? 0).toFixed(3)),
-            })),
-          }));
-
-    return [hours, counts, ...splits(byMode), ...splits(byOperatingPoint)];
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1099,204 +1114,214 @@ export class SpeechmaticsClient implements PluginClient {
    * daily buckets) and surfaces the `client_ref` temporary-key 403 as a
    * `CostSetupError` the host shows against the account.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchSpeechmaticsCostData(
-      {
-        region: this.region,
-        apiKey: this.apiKey,
-        http: this.services?.http,
-        caCert: this.caCert || undefined,
-      },
-      range,
-    );
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchSpeechmaticsCostData(
+        {
+          region: this.region,
+          apiKey: this.apiKey,
+          http: this.services?.http,
+          caCert: this.caCert || undefined,
+        },
+        range,
+      );
+    });
   }
 
   /* ---------------------------------------------------------------------- */
   /* Mutations                                                                */
   /* ---------------------------------------------------------------------- */
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    if (typeId === "project") {
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "description",
-            label: "Description",
-            kind: "text",
-            required: false,
-            description: "What the project is for. Speechmatics only accepts this at creation.",
-          },
-        ],
-      };
-    }
-
-    if (typeId === "api-key") {
-      const projectField: CreateResourceConfig["fields"] = [];
-      if (!parentResourceId) {
-        const projects = await this.managementFetch<ManagementProject[]>("/projects").catch(
-          () => [] as ManagementProject[],
-        );
-        const options = (projects ?? []).map((p) => ({
-          id: String(p.project_id),
-          label: p.is_default
-            ? `${p.name ?? p.project_id} (default)`
-            : (p.name ?? String(p.project_id)),
-        }));
-        const preferred = (projects ?? []).find((p) => p.is_default) ?? projects?.[0];
-        projectField.push({
-          key: "projectId",
-          label: "Project",
-          kind: "select",
-          required: true,
-          options,
-          ...(preferred ? { defaultValue: String(preferred.project_id) } : {}),
-        });
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "project") {
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "description",
+              label: "Description",
+              kind: "text",
+              required: false,
+              description: "What the project is for. Speechmatics only accepts this at creation.",
+            },
+          ],
+        };
       }
-      return {
-        fields: [
-          ...projectField,
-          {
-            key: "name",
-            label: "Name",
-            kind: "text",
-            required: false,
-            description: "Display name shown in the Portal (up to 120 characters).",
-          },
-          {
-            key: "type",
-            label: "Product",
+
+      if (typeId === "api-key") {
+        const projectField: CreateResourceConfig["fields"] = [];
+        if (!parentResourceId) {
+          const projects = await this.managementFetch<ManagementProject[]>("/projects").catch(
+            () => [] as ManagementProject[],
+          );
+          const options = (projects ?? []).map((p) => ({
+            id: String(p.project_id),
+            label: p.is_default
+              ? `${p.name ?? p.project_id} (default)`
+              : (p.name ?? String(p.project_id)),
+          }));
+          const preferred = (projects ?? []).find((p) => p.is_default) ?? projects?.[0];
+          projectField.push({
+            key: "projectId",
+            label: "Project",
             kind: "select",
             required: true,
-            options: API_KEY_PRODUCTS.map((p) => ({ id: p.id, label: p.label })),
-            defaultValue: "batch",
-            description:
-              "Which Speechmatics product the key can call. The au1 region is batch-only, so a realtime key cannot be used there.",
-          },
-          {
-            key: "clientRef",
-            label: "Client Reference",
-            kind: "text",
-            required: false,
-            description:
-              "Optional end-user reference. A batch key with one can only see jobs created with the same reference, and cannot read usage.",
-          },
-        ],
-      };
-    }
+            options,
+            ...(preferred ? { defaultValue: String(preferred.project_id) } : {}),
+          });
+        }
+        return {
+          fields: [
+            ...projectField,
+            {
+              key: "name",
+              label: "Name",
+              kind: "text",
+              required: false,
+              description: "Display name shown in the Portal (up to 120 characters).",
+            },
+            {
+              key: "type",
+              label: "Product",
+              kind: "select",
+              required: true,
+              options: API_KEY_PRODUCTS.map((p) => ({ id: p.id, label: p.label })),
+              defaultValue: "batch",
+              description:
+                "Which Speechmatics product the key can call. The au1 region is batch-only, so a realtime key cannot be used there.",
+            },
+            {
+              key: "clientRef",
+              label: "Client Reference",
+              kind: "text",
+              required: false,
+              description:
+                "Optional end-user reference. A batch key with one can only see jobs created with the same reference, and cannot read usage.",
+            },
+          ],
+        };
+      }
 
-    throw new Error(`Speechmatics plugin: no create config for type "${typeId}"`);
+      throw new Error(`Speechmatics plugin: no create config for type "${typeId}"`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "project") {
-      // `POST /projects` (`CreateProjectRequest`: `name` required).
-      const name = (fields["name"] ?? "").trim();
-      if (!name) throw new Error("Speechmatics plugin: a project name is required");
-      const body: Record<string, unknown> = { name };
-      const description = (fields["description"] ?? "").trim();
-      if (description) body["description"] = description;
-      const project = await this.managementFetch<ManagementProject>("/projects", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      return this.mapProject(project, accountId);
-    }
-
-    if (typeId === "api-key") {
-      // `POST /api-keys?type=`: a permanent key, because `ttl` is omitted.
-      const projectId = parentResourceId
-        ? this.externalId(parentResourceId)
-        : (fields["projectId"] ?? "");
-      const numericProject = Number(projectId);
-      if (!projectId || !Number.isInteger(numericProject)) {
-        throw new Error("Speechmatics plugin: pick the project the key belongs to");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "project") {
+        // `POST /projects` (`CreateProjectRequest`: `name` required).
+        const name = (fields["name"] ?? "").trim();
+        if (!name) throw new Error("Speechmatics plugin: a project name is required");
+        const body: Record<string, unknown> = { name };
+        const description = (fields["description"] ?? "").trim();
+        if (description) body["description"] = description;
+        const project = await this.managementFetch<ManagementProject>("/projects", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        return this.mapProject(project, accountId);
       }
-      const type = API_KEY_PRODUCTS.some((p) => p.id === fields["type"])
-        ? (fields["type"] as string)
-        : "batch";
-      const body: Record<string, unknown> = { project_id: numericProject };
-      const name = (fields["name"] ?? "").trim();
-      if (name) body["name"] = name.slice(0, 120);
-      const clientRef = (fields["clientRef"] ?? "").trim();
-      if (clientRef) body["client_ref"] = clientRef;
-      const created = await this.managementFetch<CreatedApiKey>(
-        `/api-keys?${new URLSearchParams({ type }).toString()}`,
-        { method: "POST", body: JSON.stringify(body) },
-      );
-      const instance = this.mapApiKey(
-        {
-          apikey_id: created.apikey_id,
-          ...(name ? { name } : {}),
-          ...(clientRef ? { client_ref: clientRef } : {}),
-          created_at: new Date().toISOString(),
-        },
-        accountId,
-        { project_id: numericProject },
-      );
-      instance.fields["product"] = type;
-      // The key value is returned exactly once, on this response.
-      instance.resolvedOutputs["apiKey"] = created.key_value;
-      return instance;
-    }
 
-    throw new Error(`Speechmatics plugin: cannot create type "${typeId}"`);
+      if (typeId === "api-key") {
+        // `POST /api-keys?type=`: a permanent key, because `ttl` is omitted.
+        const projectId = parentResourceId
+          ? this.externalId(parentResourceId)
+          : (fields["projectId"] ?? "");
+        const numericProject = Number(projectId);
+        if (!projectId || !Number.isInteger(numericProject)) {
+          throw new Error("Speechmatics plugin: pick the project the key belongs to");
+        }
+        const type = API_KEY_PRODUCTS.some((p) => p.id === fields["type"])
+          ? (fields["type"] as string)
+          : "batch";
+        const body: Record<string, unknown> = { project_id: numericProject };
+        const name = (fields["name"] ?? "").trim();
+        if (name) body["name"] = name.slice(0, 120);
+        const clientRef = (fields["clientRef"] ?? "").trim();
+        if (clientRef) body["client_ref"] = clientRef;
+        const created = await this.managementFetch<CreatedApiKey>(
+          `/api-keys?${new URLSearchParams({ type }).toString()}`,
+          { method: "POST", body: JSON.stringify(body) },
+        );
+        const instance = this.mapApiKey(
+          {
+            apikey_id: created.apikey_id,
+            ...(name ? { name } : {}),
+            ...(clientRef ? { client_ref: clientRef } : {}),
+            created_at: new Date().toISOString(),
+          },
+          accountId,
+          { project_id: numericProject },
+        );
+        instance.fields["product"] = type;
+        // The key value is returned exactly once, on this response.
+        instance.resolvedOutputs["apiKey"] = created.key_value;
+        return instance;
+      }
+
+      throw new Error(`Speechmatics plugin: cannot create type "${typeId}"`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "project") {
-      // `PUT /projects/{project_id}` (`UpdateProjectRequest`): `name` is the
-      // only property the API accepts.
-      const projectId = this.externalId(resourceId);
-      const name = (fields["name"] ?? "").trim();
-      if (!name) return this.getResource("project", resourceId, accountId);
-      const project = await this.managementFetch<ManagementProject>(
-        `/projects/${encodeURIComponent(projectId)}`,
-        { method: "PUT", body: JSON.stringify({ name }) },
-      );
-      return this.mapProject(project, accountId);
-    }
-    throw new Error(`Speechmatics plugin: cannot update type "${typeId}"`);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "project") {
+        // `PUT /projects/{project_id}` (`UpdateProjectRequest`): `name` is the
+        // only property the API accepts.
+        const projectId = this.externalId(resourceId);
+        const name = (fields["name"] ?? "").trim();
+        if (!name) return runPluginEffect(this.getResource("project", resourceId, accountId));
+        const project = await this.managementFetch<ManagementProject>(
+          `/projects/${encodeURIComponent(projectId)}`,
+          { method: "PUT", body: JSON.stringify({ name }) },
+        );
+        return this.mapProject(project, accountId);
+      }
+      throw new Error(`Speechmatics plugin: cannot update type "${typeId}"`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId === "project") {
-      // `DELETE /projects/{project_id}`: 204, or 403 when the workspace has
-      // outstanding payments.
-      const projectId = this.externalId(resourceId);
-      await this.managementFetch<unknown>(`/projects/${encodeURIComponent(projectId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "job") {
-      // `DELETE /v2/jobs/{jobid}?force=true`: without `force` a still-running
-      // job answers HTTP 423 Locked instead of being removed.
-      const jobId = this.externalId(resourceId);
-      await this.fetch<unknown>(`/jobs/${encodeURIComponent(jobId)}?force=true`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "api-key") {
-      // `DELETE /api-keys/{apikey_id}` on the Management API.
-      const keyId = this.externalId(resourceId);
-      await this.managementFetch<unknown>(`/api-keys/${encodeURIComponent(keyId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    throw new Error(`Speechmatics plugin: deleteResource not supported for type "${typeId}"`);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "project") {
+        // `DELETE /projects/{project_id}`: 204, or 403 when the workspace has
+        // outstanding payments.
+        const projectId = this.externalId(resourceId);
+        await this.managementFetch<unknown>(`/projects/${encodeURIComponent(projectId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      if (typeId === "job") {
+        // `DELETE /v2/jobs/{jobid}?force=true`: without `force` a still-running
+        // job answers HTTP 423 Locked instead of being removed.
+        const jobId = this.externalId(resourceId);
+        await this.fetch<unknown>(`/jobs/${encodeURIComponent(jobId)}?force=true`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      if (typeId === "api-key") {
+        // `DELETE /api-keys/{apikey_id}` on the Management API.
+        const keyId = this.externalId(resourceId);
+        await this.managementFetch<unknown>(`/api-keys/${encodeURIComponent(keyId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      throw new Error(`Speechmatics plugin: deleteResource not supported for type "${typeId}"`);
+    });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1310,50 +1335,52 @@ export class SpeechmaticsClient implements PluginClient {
    * bastion egress and any custom CA, the same trade the other speech
    * plugins make for their playground calls.
    */
-  async synthesizeSpeech(
+  synthesizeSpeech(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    if (typeId !== ACCOUNT_TYPE && typeId !== "job") {
-      throw new Error(`Speechmatics plugin: speech synthesis is not available on "${typeId}"`);
-    }
-    const text = payload.text.trim();
-    if (!text) throw new Error("Speechmatics plugin: nothing to synthesize");
-    const voice = TTS_VOICES.some((v) => v.id === payload.voiceId)
-      ? (payload.voiceId as string)
-      : DEFAULT_TTS_VOICE;
-
-    const started = Date.now();
-    const res = await fetch(
-      `${TTS_BASE_URL}/generate/${encodeURIComponent(voice)}?output_format=wav_16000`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      },
-    );
-    if (!res.ok) {
-      const body = await res.text();
-      if (res.status === 401 || res.status === 403) {
-        throw new Error(
-          `Speechmatics refused text to speech for this key (HTTP ${res.status}). Text to speech needs a key created for that product; create one from the API Keys list with Product set to "Text to speech". ${body}`,
-        );
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      if (typeId !== ACCOUNT_TYPE && typeId !== "job") {
+        throw new Error(`Speechmatics plugin: speech synthesis is not available on "${typeId}"`);
       }
-      throw new Error(`${VENDOR} API error ${res.status} for /generate/${voice}: ${body}`);
-    }
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const elapsedMs = Date.now() - started;
-    // 16-bit mono at 16 kHz after the 44-byte WAV header.
-    const seconds = Math.max(0, bytes.byteLength - 44) / 2 / 16_000;
-    return {
-      audioBase64: bytesToBase64(bytes),
-      mimeType: "audio/wav",
-      fileName: `speechmatics-${voice}-${started}.wav`,
-      summary: `${text.length.toLocaleString()} characters · ${voice} · ${seconds.toFixed(1)} s audio · ${elapsedMs} ms`,
-      characters: text.length,
-    };
+      const text = payload.text.trim();
+      if (!text) throw new Error("Speechmatics plugin: nothing to synthesize");
+      const voice = TTS_VOICES.some((v) => v.id === payload.voiceId)
+        ? (payload.voiceId as string)
+        : DEFAULT_TTS_VOICE;
+
+      const started = Date.now();
+      const res = await fetch(
+        `${TTS_BASE_URL}/generate/${encodeURIComponent(voice)}?output_format=wav_16000`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        },
+      );
+      if (!res.ok) {
+        const body = await res.text();
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(
+            `Speechmatics refused text to speech for this key (HTTP ${res.status}). Text to speech needs a key created for that product; create one from the API Keys list with Product set to "Text to speech". ${body}`,
+          );
+        }
+        throw new Error(`${VENDOR} API error ${res.status} for /generate/${voice}: ${body}`);
+      }
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const elapsedMs = Date.now() - started;
+      // 16-bit mono at 16 kHz after the 44-byte WAV header.
+      const seconds = Math.max(0, bytes.byteLength - 44) / 2 / 16_000;
+      return {
+        audioBase64: bytesToBase64(bytes),
+        mimeType: "audio/wav",
+        fileName: `speechmatics-${voice}-${started}.wav`,
+        summary: `${text.length.toLocaleString()} characters · ${voice} · ${seconds.toFixed(1)} s audio · ${elapsedMs} ms`,
+        characters: text.length,
+      };
+    });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1366,37 +1393,39 @@ export class SpeechmaticsClient implements PluginClient {
    * with the job (404/410 after seven days), which is reported as text rather
    * than thrown so the tab explains itself.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "job") {
-      throw new Error(`Speechmatics plugin: logs are not available on "${typeId}"`);
-    }
-    const jobId = this.externalId(resourceId);
-    let text: string;
-    try {
-      text = await this.fetchText(`/jobs/${encodeURIComponent(jobId)}/log`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (/API error (404|410)/.test(message)) {
-        text =
-          "No log is available for this job. Speechmatics deletes job logs with the job, seven days after it ran.\n";
-      } else {
-        throw error;
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "job") {
+        throw new Error(`Speechmatics plugin: logs are not available on "${typeId}"`);
       }
-    }
-    const tail = params.tailLines && params.tailLines > 0 ? params.tailLines : undefined;
-    const lines = text.split("\n");
-    if (lines[lines.length - 1] === "") lines.pop();
-    const kept = tail ? lines.slice(-tail) : lines;
-    return {
-      text: kept.length > 0 ? `${kept.join("\n")}\n` : "",
-      containers: ["job"],
-      activeContainer: "job",
-    };
+      const jobId = this.externalId(resourceId);
+      let text: string;
+      try {
+        text = await this.fetchText(`/jobs/${encodeURIComponent(jobId)}/log`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/API error (404|410)/.test(message)) {
+          text =
+            "No log is available for this job. Speechmatics deletes job logs with the job, seven days after it ran.\n";
+        } else {
+          throw error;
+        }
+      }
+      const tail = params.tailLines && params.tailLines > 0 ? params.tailLines : undefined;
+      const lines = text.split("\n");
+      if (lines[lines.length - 1] === "") lines.pop();
+      const kept = tail ? lines.slice(-tail) : lines;
+      return {
+        text: kept.length > 0 ? `${kept.join("\n")}\n` : "",
+        containers: ["job"],
+        activeContainer: "job",
+      };
+    });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1412,127 +1441,129 @@ export class SpeechmaticsClient implements PluginClient {
    * under `txt`. Embedding is documented as best-effort, so everything after
    * that is the fallback.
    */
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    // The two types that carry the panel, and nothing else: the account (which
-    // always exists) and a job (where it reads as "run this one again"). The
-    // guard stays explicit rather than accepting any type.
-    if (typeId !== ACCOUNT_TYPE && typeId !== "job") {
-      throw new Error(`Speechmatics plugin: transcribeAudio not supported for type "${typeId}"`);
-    }
-    if (!payload.audioBase64) throw new Error("Speechmatics plugin: no audio supplied");
-
-    const startedAt = Date.now();
-    const deadline = startedAt + TOTAL_TIMEOUT_MS;
-
-    const audio = base64ToBytes(payload.audioBase64);
-    if (audio.length === 0) throw new Error("Speechmatics plugin: decoded audio is empty");
-    if (audio.length > MAX_AUDIO_BYTES) {
-      throw new Error(
-        `Speechmatics plugin: clip is ${audio.length} bytes; the multipart job endpoint rejects anything over 1 GB`,
-      );
-    }
-
-    const model = payload.modelId || "enhanced";
-    // melia-1 is documented as batch-only and as requiring `"language": "multi"`.
-    const language = model === MELIA_MODEL ? MULTILINGUAL_LANGUAGE : payload.language || "en";
-    const configJson = JSON.stringify({
-      type: "transcription",
-      transcription_config: { language, model },
-    });
-
-    const mimeType = payload.mimeType || "application/octet-stream";
-    const fileName = payload.fileName || `clip.${extensionForMime(mimeType)}`;
-
-    const created = await this.submitJob(
-      configJson,
-      audio,
-      fileName,
-      mimeType,
-      `?wait=${SYNC_WAIT_SECONDS}&format=txt`,
-    );
-    const jobId = created.id;
-    if (!jobId) throw new Error("Speechmatics plugin: job submission returned no id");
-
-    // The sync-mode status enum is `created | done | rejected | deleted`: a
-    // different set to the async lifecycle enum on `GET /jobs/{id}`.
-    if (created.status === "rejected") {
-      throw new Error(`Speechmatics job ${jobId} was rejected before it could be transcribed`);
-    }
-    if (created.status === "deleted") {
-      throw new Error(`Speechmatics job ${jobId} was deleted before it could finish`);
-    }
-
-    let text = typeof created.txt === "string" ? created.txt : undefined;
-
-    if (text === undefined) {
-      // Either `wait` elapsed with the job still running, or the transcript
-      // simply was not embedded: both land here.
-      const finalStatus = await this.waitForTerminalStatus(jobId, deadline);
-      if (finalStatus === "rejected") {
-        throw new Error(`Speechmatics job ${jobId} was rejected by the transcriber`);
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      // The two types that carry the panel, and nothing else: the account (which
+      // always exists) and a job (where it reads as "run this one again"). The
+      // guard stays explicit rather than accepting any type.
+      if (typeId !== ACCOUNT_TYPE && typeId !== "job") {
+        throw new Error(`Speechmatics plugin: transcribeAudio not supported for type "${typeId}"`);
       }
-      if (finalStatus === "expired" || finalStatus === "deleted") {
+      if (!payload.audioBase64) throw new Error("Speechmatics plugin: no audio supplied");
+
+      const startedAt = Date.now();
+      const deadline = startedAt + TOTAL_TIMEOUT_MS;
+
+      const audio = base64ToBytes(payload.audioBase64);
+      if (audio.length === 0) throw new Error("Speechmatics plugin: decoded audio is empty");
+      if (audio.length > MAX_AUDIO_BYTES) {
         throw new Error(
-          `Speechmatics job ${jobId} is no longer available (status "${finalStatus}")`,
+          `Speechmatics plugin: clip is ${audio.length} bytes; the multipart job endpoint rejects anything over 1 GB`,
         );
       }
-      // Format is a query parameter here, not an Accept header.
-      text = await this.fetchText(`/jobs/${encodeURIComponent(jobId)}/transcript?format=txt`);
-    }
 
-    // Best-effort enrichment: json-v2 carries word timings, per-word
-    // confidence, speaker labels and the clip's measured duration.
-    let words: TranscriptWord[] | undefined;
-    let confidence: number | undefined;
-    let durationSeconds: number | undefined;
-    let detectedLanguage: string | undefined;
-    try {
-      const jsonV2 = await this.fetch<TranscriptJsonV2>(
-        `/jobs/${encodeURIComponent(jobId)}/transcript?format=json-v2`,
+      const model = payload.modelId || "enhanced";
+      // melia-1 is documented as batch-only and as requiring `"language": "multi"`.
+      const language = model === MELIA_MODEL ? MULTILINGUAL_LANGUAGE : payload.language || "en";
+      const configJson = JSON.stringify({
+        type: "transcription",
+        transcription_config: { language, model },
+      });
+
+      const mimeType = payload.mimeType || "application/octet-stream";
+      const fileName = payload.fileName || `clip.${extensionForMime(mimeType)}`;
+
+      const created = await this.submitJob(
+        configJson,
+        audio,
+        fileName,
+        mimeType,
+        `?wait=${SYNC_WAIT_SECONDS}&format=txt`,
       );
-      const extracted = extractWords(jsonV2);
-      if (extracted.words.length > 0) words = extracted.words;
-      confidence = extracted.confidence;
-      durationSeconds = jsonV2.job?.duration;
-      detectedLanguage = detectLanguage(jsonV2);
-    } catch {
-      // Timings are a bonus; the plain text stands on its own.
-    }
+      const jobId = created.id;
+      if (!jobId) throw new Error("Speechmatics plugin: job submission returned no id");
 
-    // "auto" and "multi" are instructions to the recogniser, not languages. If
-    // nothing was actually identified, report no language rather than handing
-    // the panel back the string it was asked with.
-    const reportedLanguage =
-      detectedLanguage ??
-      (language === MULTILINGUAL_LANGUAGE || language === "auto" ? undefined : language);
+      // The sync-mode status enum is `created | done | rejected | deleted`: a
+      // different set to the async lifecycle enum on `GET /jobs/{id}`.
+      if (created.status === "rejected") {
+        throw new Error(`Speechmatics job ${jobId} was rejected before it could be transcribed`);
+      }
+      if (created.status === "deleted") {
+        throw new Error(`Speechmatics job ${jobId} was deleted before it could finish`);
+      }
 
-    const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-    const summaryParts = [
-      `job ${jobId}`,
-      `model ${model}`,
-      `language ${reportedLanguage ?? "not identified"}`,
-      `${this.region} region`,
-    ];
-    if (typeof durationSeconds === "number") {
-      summaryParts.push(`${formatDuration(durationSeconds)} audio`);
-    }
-    summaryParts.push(`${elapsedSeconds}s round trip`);
-    summaryParts.push("transcript expires in 7 days");
+      let text = typeof created.txt === "string" ? created.txt : undefined;
 
-    return {
-      text: (text ?? "").trim(),
-      summary: summaryParts.join(" · "),
-      requestId: jobId,
-      ...(reportedLanguage !== undefined ? { language: reportedLanguage } : {}),
-      ...(durationSeconds !== undefined ? { durationSeconds } : {}),
-      ...(confidence !== undefined ? { confidence } : {}),
-      ...(words ? { words } : {}),
-    };
+      if (text === undefined) {
+        // Either `wait` elapsed with the job still running, or the transcript
+        // simply was not embedded: both land here.
+        const finalStatus = await this.waitForTerminalStatus(jobId, deadline);
+        if (finalStatus === "rejected") {
+          throw new Error(`Speechmatics job ${jobId} was rejected by the transcriber`);
+        }
+        if (finalStatus === "expired" || finalStatus === "deleted") {
+          throw new Error(
+            `Speechmatics job ${jobId} is no longer available (status "${finalStatus}")`,
+          );
+        }
+        // Format is a query parameter here, not an Accept header.
+        text = await this.fetchText(`/jobs/${encodeURIComponent(jobId)}/transcript?format=txt`);
+      }
+
+      // Best-effort enrichment: json-v2 carries word timings, per-word
+      // confidence, speaker labels and the clip's measured duration.
+      let words: TranscriptWord[] | undefined;
+      let confidence: number | undefined;
+      let durationSeconds: number | undefined;
+      let detectedLanguage: string | undefined;
+      try {
+        const jsonV2 = await this.fetch<TranscriptJsonV2>(
+          `/jobs/${encodeURIComponent(jobId)}/transcript?format=json-v2`,
+        );
+        const extracted = extractWords(jsonV2);
+        if (extracted.words.length > 0) words = extracted.words;
+        confidence = extracted.confidence;
+        durationSeconds = jsonV2.job?.duration;
+        detectedLanguage = detectLanguage(jsonV2);
+      } catch {
+        // Timings are a bonus; the plain text stands on its own.
+      }
+
+      // "auto" and "multi" are instructions to the recogniser, not languages. If
+      // nothing was actually identified, report no language rather than handing
+      // the panel back the string it was asked with.
+      const reportedLanguage =
+        detectedLanguage ??
+        (language === MULTILINGUAL_LANGUAGE || language === "auto" ? undefined : language);
+
+      const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+      const summaryParts = [
+        `job ${jobId}`,
+        `model ${model}`,
+        `language ${reportedLanguage ?? "not identified"}`,
+        `${this.region} region`,
+      ];
+      if (typeof durationSeconds === "number") {
+        summaryParts.push(`${formatDuration(durationSeconds)} audio`);
+      }
+      summaryParts.push(`${elapsedSeconds}s round trip`);
+      summaryParts.push("transcript expires in 7 days");
+
+      return {
+        text: (text ?? "").trim(),
+        summary: summaryParts.join(" · "),
+        requestId: jobId,
+        ...(reportedLanguage !== undefined ? { language: reportedLanguage } : {}),
+        ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+        ...(confidence !== undefined ? { confidence } : {}),
+        ...(words ? { words } : {}),
+      };
+    });
   }
 
   /** Poll `GET /v2/jobs/{id}` until it lands on a terminal status. */

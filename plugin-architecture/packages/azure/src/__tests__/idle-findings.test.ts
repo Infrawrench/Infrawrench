@@ -1,9 +1,6 @@
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
 import { describe, expect, it, vi } from "vitest";
-import {
-  pluginManifestSchema,
-  type IdleScanRequest,
-  type IdleScanResource,
-} from "@infrawrench/plugin-base";
+import { type IdleScanRequest, type IdleScanResource } from "@infrawrench/plugin-base";
 import {
   appGatewayMonthly,
   armResourceId,
@@ -123,7 +120,7 @@ const agw = res("front", "azure-app-gateway", {
 describe("declaration", () => {
   it("is on the manifest, validates, and names declared types", () => {
     expect(plugin.manifest.idleFindings).toBe(AZURE_IDLE_FINDINGS);
-    expect(pluginManifestSchema.safeParse(plugin.manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, plugin.manifest).success).toBe(true);
     const types = new Set(plugin.resourceTypes.map((t) => t.id));
     for (const rule of AZURE_IDLE_FINDINGS.rules)
       for (const id of rule.resourceTypeIds) expect(types.has(id)).toBe(true);

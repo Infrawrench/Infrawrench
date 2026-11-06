@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluateOrphanRule } from "@infrawrench/plugin-base";
 import { SnowflakeClient } from "../client.js";
@@ -36,7 +37,7 @@ describe("listing", () => {
     const { statements } = mockSnowflake((s) =>
       s === "SHOW WAREHOUSES" ? showWarehouses() : undefined,
     );
-    const client = new SnowflakeClient(CREDS);
+    const client = hostClient(new SnowflakeClient(CREDS));
     const list = await client.listResources(TYPE.warehouse, "acc");
     expect(statements).toEqual(["SHOW WAREHOUSES"]);
     expect(list.map((r) => r.id)).toEqual([
@@ -64,7 +65,9 @@ describe("listing", () => {
         message: "Insufficient privileges to operate on account",
       }),
     );
-    expect(await new SnowflakeClient(CREDS).listResources(TYPE.user, "acc")).toEqual([]);
+    expect(await hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.user, "acc")).toEqual(
+      [],
+    );
   });
 });
 
@@ -73,7 +76,7 @@ describe("actions", () => {
     const { statements } = mockSnowflake(() =>
       jsonResponse(200, resultSet([{ name: "status" }], [["ok"]])),
     );
-    const client = new SnowflakeClient(CREDS);
+    const client = hostClient(new SnowflakeClient(CREDS));
     const id = "acc:snowflake-warehouse:ETL_WH";
     await client.executeNoSqlCommand(TYPE.warehouse, id, "acc", "resize", [
       JSON.stringify({ size: "SMALL" }),
@@ -99,7 +102,7 @@ describe("actions", () => {
 
   it("runs SQL editor statements in the resource's context", async () => {
     const { bodies } = mockSnowflake(() => jsonResponse(200, resultSet([{ name: "X" }], [["1"]])));
-    const client = new SnowflakeClient(CREDS);
+    const client = hostClient(new SnowflakeClient(CREDS));
     const res = await client.executeQuery(
       "acc:snowflake-schema:ANALYTICS.STAGING",
       "acc",
@@ -134,7 +137,7 @@ describe("resource monitors", () => {
         return jsonResponse(200, resultSet([{ name: "s" }], []));
       return undefined;
     });
-    await new SnowflakeClient(CREDS).updateResource(
+    await hostClient(new SnowflakeClient(CREDS)).updateResource(
       TYPE.resourceMonitor,
       "acc:snowflake-resource-monitor:LIMIT",
       "acc",
@@ -195,13 +198,16 @@ describe("credential pickers", () => {
     mockSnowflake(() =>
       jsonResponse(200, resultSet([{ name: "ROLES" }], [['["SYSADMIN","PUBLIC","ANALYST"]']])),
     );
-    const options = await plugin.listCredentialOptions!("role", CREDS);
+    const options = await hostPlugin(plugin).listCredentialOptions!("role", CREDS);
     expect(options.map((o) => o.id)).toEqual(["ANALYST", "PUBLIC", "SYSADMIN"]);
   });
 
   it("lists warehouses as the chosen role", async () => {
     const { bodies } = mockSnowflake(() => showWarehouses());
-    const options = await plugin.listCredentialOptions!("warehouse", { ...CREDS, role: "ANALYST" });
+    const options = await hostPlugin(plugin).listCredentialOptions!("warehouse", {
+      ...CREDS,
+      role: "ANALYST",
+    });
     expect(options[0]).toEqual({ id: "ETL_WH", label: "ETL_WH", description: "Large, started" });
     expect(bodies[0]).toMatchObject({ role: "ANALYST" });
   });

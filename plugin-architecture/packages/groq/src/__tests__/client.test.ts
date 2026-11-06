@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GroqClient } from "../client.js";
 
@@ -43,7 +44,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new GroqClient({ apiKey: "gsk_test" });
+  return hostClient(new GroqClient({ apiKey: "gsk_test" }));
 }
 
 beforeEach(() => {

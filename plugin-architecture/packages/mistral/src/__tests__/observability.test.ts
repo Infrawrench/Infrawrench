@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MistralClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -29,7 +30,7 @@ function installFetch(handler: (url: string, body: Record<string, unknown>) => R
   return calls;
 }
 
-const client = () => new MistralClient({ apiKey: "test-key" });
+const client = () => hostClient(new MistralClient({ apiKey: "test-key" }));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -223,19 +224,21 @@ describe("logs", () => {
 describe("metrics contract", () => {
   it("renders Metrics and Logs tabs on exactly the metric-capable types", () => {
     for (const type of plugin.resourceTypes) {
-      const schema = plugin.createClient({ apiKey: "k" }).renderDetail({
-        id: `${ACCOUNT}:${type.id}:x`,
-        pluginId: "mistral",
-        resourceTypeId: type.id,
-        accountId: ACCOUNT,
-        displayName: "x",
-        externalId: "x",
-        fields: {},
-        resolvedOutputs: {},
-        secretStates: [],
-        createdAt: "",
-        updatedAt: "",
-      });
+      const schema = hostPlugin(plugin)
+        .createClient({ apiKey: "k" })
+        .renderDetail({
+          id: `${ACCOUNT}:${type.id}:x`,
+          pluginId: "mistral",
+          resourceTypeId: type.id,
+          accountId: ACCOUNT,
+          displayName: "x",
+          externalId: "x",
+          fields: {},
+          resolvedOutputs: {},
+          secretStates: [],
+          createdAt: "",
+          updatedAt: "",
+        });
       expect(Boolean(schema.metricsCapability)).toBe(type.supportsMetrics === true);
       expect(Boolean(schema.logs)).toBe(type.supportsMetrics === true);
     }

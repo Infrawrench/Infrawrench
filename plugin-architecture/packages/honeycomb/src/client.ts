@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -228,7 +231,7 @@ export class HoneycombClient implements PluginClient {
   private authCache: Promise<HnyAuth> | undefined;
   private teamCache: Promise<string> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const region: HoneycombRegion = resolveRegion(credentials["region"]);
     const configurationKey = (credentials["configurationKey"] ?? "").trim();
     let keyId = (credentials["managementKeyId"] ?? "").trim();
@@ -453,101 +456,103 @@ export class HoneycombClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "environment":
-        return (await this.environments(accountId)).map((e) => this.mapEnv(accountId, e));
-      case "dataset":
-        return this.perEnv(accountId, async (env, key) => {
-          const sets = await this.datasets(env);
-          return mapPooled(sets, POOL, async (d) => {
-            const defs = await v1<HnyDatasetDefinitions>(
-              this.ctx,
-              key,
-              `/1/dataset_definitions/${ds(d.slug ?? "")}`,
-            ).catch(() => undefined);
-            return mapDataset(accountId, env, d, defs);
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "environment":
+          return (await this.environments(accountId)).map((e) => this.mapEnv(accountId, e));
+        case "dataset":
+          return this.perEnv(accountId, async (env, key) => {
+            const sets = await this.datasets(env);
+            return mapPooled(sets, POOL, async (d) => {
+              const defs = await v1<HnyDatasetDefinitions>(
+                this.ctx,
+                key,
+                `/1/dataset_definitions/${ds(d.slug ?? "")}`,
+              ).catch(() => undefined);
+              return mapDataset(accountId, env, d, defs);
+            });
           });
-        });
-      case "column":
-        return this.perDataset(accountId, false, async (env, key, dataset) =>
-          (await v1<HnyColumn[]>(this.ctx, key, `/1/columns/${ds(dataset)}`)).map((c) =>
-            mapColumn(accountId, env, dataset, c),
-          ),
-        );
-      case "derived-column":
-        return this.perDataset(accountId, true, async (env, key, dataset) =>
-          (await v1<HnyDerivedColumn[]>(this.ctx, key, `/1/derived_columns/${ds(dataset)}`)).map(
-            (c) => mapDerivedColumn(accountId, env, dataset, c),
-          ),
-        );
-      case "trigger":
-        return this.perDataset(accountId, true, async (env, key, dataset) =>
-          (await v1<HnyTrigger[]>(this.ctx, key, `/1/triggers/${ds(dataset)}`)).map((t) =>
-            mapTrigger(accountId, env, dataset, t),
-          ),
-        );
-      case "slo":
-        return this.perDataset(accountId, true, async (env, key, dataset) =>
-          (await v1<HnySlo[]>(this.ctx, key, `/1/slos/${ds(dataset)}`)).map((s) =>
-            mapSlo(accountId, env, dataset, s),
-          ),
-        );
-      case "burn-alert":
-        return this.listBurnAlerts(accountId);
-      case "board":
-        return this.perEnv(accountId, async (env, key) =>
-          (await v1<HnyBoard[]>(this.ctx, key, "/1/boards")).map((b) =>
-            mapBoard(accountId, env, b),
-          ),
-        );
-      case "board-view":
-        return this.perEnv(accountId, async (env, key) => {
-          const boards = await v1<HnyBoard[]>(this.ctx, key, "/1/boards");
-          const views = await mapPooled(boards, POOL, async (b) =>
-            b.id
-              ? (
-                  await v1<HnyBoardView[]>(
-                    this.ctx,
-                    key,
-                    `/1/boards/${encodeURIComponent(b.id)}/views`,
-                  ).catch(() => [] as HnyBoardView[])
-                ).map((v) => mapBoardView(accountId, env, b.id as string, v))
-              : [],
+        case "column":
+          return this.perDataset(accountId, false, async (env, key, dataset) =>
+            (await v1<HnyColumn[]>(this.ctx, key, `/1/columns/${ds(dataset)}`)).map((c) =>
+              mapColumn(accountId, env, dataset, c),
+            ),
           );
-          return views.flat();
-        });
-      case "marker":
-        return this.perDataset(accountId, true, async (env, key, dataset) => {
-          const markers = await v1<HnyMarker[]>(this.ctx, key, `/1/markers/${ds(dataset)}`);
-          return [...(markers ?? [])]
-            .sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0))
-            .slice(0, MAX_MARKERS_PER_DATASET)
-            .map((m) => mapMarker(accountId, env, dataset, m));
-        });
-      case "marker-setting":
-        return this.perDataset(accountId, true, async (env, key, dataset) =>
-          (await v1<HnyMarkerSetting[]>(this.ctx, key, `/1/marker_settings/${ds(dataset)}`)).map(
-            (m) => mapMarkerSetting(accountId, env, dataset, m),
-          ),
-        );
-      case "saved-query":
-        return this.perDataset(accountId, true, async (env, key, dataset) =>
-          (
-            await v1<HnyQueryAnnotation[]>(this.ctx, key, `/1/query_annotations/${ds(dataset)}`)
-          ).map((a) => mapSavedQuery(accountId, env, dataset, a)),
-        );
-      case "recipient":
-        return this.listRecipients(accountId);
-      case "signal":
-        return this.perEnv(accountId, async (env, key) =>
-          (await this.fetchSignals(key)).map((s) => mapSignal(accountId, env, s)),
-        );
-      case "api-key":
-        return this.listApiKeys(accountId);
-      default:
-        throw new Error(`Honeycomb plugin: unknown resource type "${typeId}"`);
-    }
+        case "derived-column":
+          return this.perDataset(accountId, true, async (env, key, dataset) =>
+            (await v1<HnyDerivedColumn[]>(this.ctx, key, `/1/derived_columns/${ds(dataset)}`)).map(
+              (c) => mapDerivedColumn(accountId, env, dataset, c),
+            ),
+          );
+        case "trigger":
+          return this.perDataset(accountId, true, async (env, key, dataset) =>
+            (await v1<HnyTrigger[]>(this.ctx, key, `/1/triggers/${ds(dataset)}`)).map((t) =>
+              mapTrigger(accountId, env, dataset, t),
+            ),
+          );
+        case "slo":
+          return this.perDataset(accountId, true, async (env, key, dataset) =>
+            (await v1<HnySlo[]>(this.ctx, key, `/1/slos/${ds(dataset)}`)).map((s) =>
+              mapSlo(accountId, env, dataset, s),
+            ),
+          );
+        case "burn-alert":
+          return this.listBurnAlerts(accountId);
+        case "board":
+          return this.perEnv(accountId, async (env, key) =>
+            (await v1<HnyBoard[]>(this.ctx, key, "/1/boards")).map((b) =>
+              mapBoard(accountId, env, b),
+            ),
+          );
+        case "board-view":
+          return this.perEnv(accountId, async (env, key) => {
+            const boards = await v1<HnyBoard[]>(this.ctx, key, "/1/boards");
+            const views = await mapPooled(boards, POOL, async (b) =>
+              b.id
+                ? (
+                    await v1<HnyBoardView[]>(
+                      this.ctx,
+                      key,
+                      `/1/boards/${encodeURIComponent(b.id)}/views`,
+                    ).catch(() => [] as HnyBoardView[])
+                  ).map((v) => mapBoardView(accountId, env, b.id as string, v))
+                : [],
+            );
+            return views.flat();
+          });
+        case "marker":
+          return this.perDataset(accountId, true, async (env, key, dataset) => {
+            const markers = await v1<HnyMarker[]>(this.ctx, key, `/1/markers/${ds(dataset)}`);
+            return [...(markers ?? [])]
+              .sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0))
+              .slice(0, MAX_MARKERS_PER_DATASET)
+              .map((m) => mapMarker(accountId, env, dataset, m));
+          });
+        case "marker-setting":
+          return this.perDataset(accountId, true, async (env, key, dataset) =>
+            (await v1<HnyMarkerSetting[]>(this.ctx, key, `/1/marker_settings/${ds(dataset)}`)).map(
+              (m) => mapMarkerSetting(accountId, env, dataset, m),
+            ),
+          );
+        case "saved-query":
+          return this.perDataset(accountId, true, async (env, key, dataset) =>
+            (
+              await v1<HnyQueryAnnotation[]>(this.ctx, key, `/1/query_annotations/${ds(dataset)}`)
+            ).map((a) => mapSavedQuery(accountId, env, dataset, a)),
+          );
+        case "recipient":
+          return this.listRecipients(accountId);
+        case "signal":
+          return this.perEnv(accountId, async (env, key) =>
+            (await this.fetchSignals(key)).map((s) => mapSignal(accountId, env, s)),
+          );
+        case "api-key":
+          return this.listApiKeys(accountId);
+        default:
+          throw new Error(`Honeycomb plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private mapEnv(accountId: string, e: EnvAccess): ResourceInstance {
@@ -564,7 +569,7 @@ export class HoneycombClient implements PluginClient {
   }
 
   private async listBurnAlerts(accountId: string): Promise<ResourceInstance[]> {
-    const slos = await this.listResources("slo", accountId);
+    const slos = await runPluginEffect(this.listResources("slo", accountId));
     const out = await mapPooled(slos, POOL, async (slo) => {
       const [envSlug, dataset, sloId] = (slo.externalId ?? "").split("/");
       if (!envSlug || !dataset || !sloId) return [];
@@ -653,319 +658,333 @@ export class HoneycombClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    const [a = "", b = "", c = ""] = ext.split("/");
-    switch (typeId) {
-      case "environment":
-        return this.mapEnv(accountId, await this.env(accountId, ext));
-      case "dataset": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const [d, defs] = await Promise.all([
-          v1<HnyDataset>(this.ctx, key, `/1/datasets/${ds(b)}`),
-          v1<HnyDatasetDefinitions>(this.ctx, key, `/1/dataset_definitions/${ds(b)}`).catch(
-            () => undefined,
-          ),
-        ]);
-        return mapDataset(accountId, env, d, defs);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const [a = "", b = "", c = ""] = ext.split("/");
+      switch (typeId) {
+        case "environment":
+          return this.mapEnv(accountId, await this.env(accountId, ext));
+        case "dataset": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const [d, defs] = await Promise.all([
+            v1<HnyDataset>(this.ctx, key, `/1/datasets/${ds(b)}`),
+            v1<HnyDatasetDefinitions>(this.ctx, key, `/1/dataset_definitions/${ds(b)}`).catch(
+              () => undefined,
+            ),
+          ]);
+          return mapDataset(accountId, env, d, defs);
+        }
+        case "column": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const col = await v1<HnyColumn>(
+            this.ctx,
+            key,
+            `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
+          );
+          return mapColumn(accountId, env, b, col);
+        }
+        case "derived-column": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const col = await v1<HnyDerivedColumn>(
+            this.ctx,
+            key,
+            `/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`,
+          );
+          return mapDerivedColumn(accountId, env, b, col);
+        }
+        case "trigger": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const t = await v1<HnyTrigger>(
+            this.ctx,
+            key,
+            `/1/triggers/${ds(b)}/${encodeURIComponent(c)}`,
+          );
+          return mapTrigger(accountId, env, b, t);
+        }
+        case "slo": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const path = `/1/slos/${ds(b)}/${encodeURIComponent(c)}`;
+          // `detailed` (compliance, budget, burn rate) is Enterprise-only.
+          const s = await v1<HnySlo>(this.ctx, key, path, { query: { detailed: true } }).catch(
+            (err) => {
+              if (statusOf(err) === 404) throw err;
+              return v1<HnySlo>(this.ctx, key, path);
+            },
+          );
+          return mapSlo(accountId, env, b, s);
+        }
+        case "burn-alert": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const alert = await v1<HnyBurnAlert>(
+            this.ctx,
+            key,
+            `/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`,
+          );
+          return mapBurnAlert(accountId, env, b, alert.slo?.id ?? "", alert);
+        }
+        case "board": {
+          const { env, key } = await this.keyFor(accountId, a);
+          return mapBoard(
+            accountId,
+            env,
+            await v1<HnyBoard>(this.ctx, key, `/1/boards/${encodeURIComponent(b)}`),
+          );
+        }
+        case "board-view": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const view = await v1<HnyBoardView>(
+            this.ctx,
+            key,
+            `/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`,
+          );
+          return mapBoardView(accountId, env, b, view);
+        }
+        case "saved-query": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const ann = await v1<HnyQueryAnnotation>(
+            this.ctx,
+            key,
+            `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`,
+          );
+          const spec = ann.query_id
+            ? await v1<HnyQuerySpec>(
+                this.ctx,
+                key,
+                `/1/queries/${ds(b)}/${encodeURIComponent(ann.query_id)}`,
+              ).catch(() => undefined)
+            : undefined;
+          return mapSavedQuery(accountId, env, b, ann, spec);
+        }
+        case "recipient": {
+          const r = await v1<HnyRecipient>(
+            this.ctx,
+            await this.recipientKey(accountId),
+            `/1/recipients/${encodeURIComponent(ext)}`,
+          );
+          return mapRecipient(accountId, r);
+        }
+        case "signal": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const s = await v1<HnySignal>(this.ctx, key, `/1/signals/${encodeURIComponent(b)}`);
+          return mapSignal(accountId, env, s);
+        }
+        case "api-key": {
+          const team = await this.teamSlug();
+          const res = await v2<{ data?: JsonApiResource<HnyApiKeyAttrs> }>(
+            this.ctx,
+            `/2/teams/${encodeURIComponent(team)}/api-keys/${encodeURIComponent(ext)}`,
+          );
+          if (!res.data) break;
+          const envs = await this.environments(accountId);
+          const slugById = new Map(envs.filter((e) => e.id).map((e) => [e.id as string, e.slug]));
+          return mapApiKey(accountId, this.keyRef(res.data), slugById);
+        }
+        default:
+          break;
       }
-      case "column": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const col = await v1<HnyColumn>(
-          this.ctx,
-          key,
-          `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
-        );
-        return mapColumn(accountId, env, b, col);
-      }
-      case "derived-column": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const col = await v1<HnyDerivedColumn>(
-          this.ctx,
-          key,
-          `/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`,
-        );
-        return mapDerivedColumn(accountId, env, b, col);
-      }
-      case "trigger": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const t = await v1<HnyTrigger>(
-          this.ctx,
-          key,
-          `/1/triggers/${ds(b)}/${encodeURIComponent(c)}`,
-        );
-        return mapTrigger(accountId, env, b, t);
-      }
-      case "slo": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const path = `/1/slos/${ds(b)}/${encodeURIComponent(c)}`;
-        // `detailed` (compliance, budget, burn rate) is Enterprise-only.
-        const s = await v1<HnySlo>(this.ctx, key, path, { query: { detailed: true } }).catch(
-          (err) => {
-            if (statusOf(err) === 404) throw err;
-            return v1<HnySlo>(this.ctx, key, path);
-          },
-        );
-        return mapSlo(accountId, env, b, s);
-      }
-      case "burn-alert": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const alert = await v1<HnyBurnAlert>(
-          this.ctx,
-          key,
-          `/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`,
-        );
-        return mapBurnAlert(accountId, env, b, alert.slo?.id ?? "", alert);
-      }
-      case "board": {
-        const { env, key } = await this.keyFor(accountId, a);
-        return mapBoard(
-          accountId,
-          env,
-          await v1<HnyBoard>(this.ctx, key, `/1/boards/${encodeURIComponent(b)}`),
-        );
-      }
-      case "board-view": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const view = await v1<HnyBoardView>(
-          this.ctx,
-          key,
-          `/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`,
-        );
-        return mapBoardView(accountId, env, b, view);
-      }
-      case "saved-query": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const ann = await v1<HnyQueryAnnotation>(
-          this.ctx,
-          key,
-          `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`,
-        );
-        const spec = ann.query_id
-          ? await v1<HnyQuerySpec>(
-              this.ctx,
-              key,
-              `/1/queries/${ds(b)}/${encodeURIComponent(ann.query_id)}`,
-            ).catch(() => undefined)
-          : undefined;
-        return mapSavedQuery(accountId, env, b, ann, spec);
-      }
-      case "recipient": {
-        const r = await v1<HnyRecipient>(
-          this.ctx,
-          await this.recipientKey(accountId),
-          `/1/recipients/${encodeURIComponent(ext)}`,
-        );
-        return mapRecipient(accountId, r);
-      }
-      case "signal": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const s = await v1<HnySignal>(this.ctx, key, `/1/signals/${encodeURIComponent(b)}`);
-        return mapSignal(accountId, env, s);
-      }
-      case "api-key": {
-        const team = await this.teamSlug();
-        const res = await v2<{ data?: JsonApiResource<HnyApiKeyAttrs> }>(
-          this.ctx,
-          `/2/teams/${encodeURIComponent(team)}/api-keys/${encodeURIComponent(ext)}`,
-        );
-        if (!res.data) break;
-        const envs = await this.environments(accountId);
-        const slugById = new Map(envs.filter((e) => e.id).map((e) => [e.id as string, e.slug]));
-        return mapApiKey(accountId, this.keyRef(res.data), slugById);
-      }
-      default:
-        break;
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === ext);
-    if (!found) throw new Error(`Honeycomb plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === ext);
+      if (!found) throw new Error(`Honeycomb plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "api-key" && outputKey === "key") {
-      const secret = await this.storedSecret(resourceId, API_KEY_SECRET_FIELD);
-      if (secret) return secret;
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "api-key" && outputKey === "key") {
+        const secret = await this.storedSecret(resourceId, API_KEY_SECRET_FIELD);
+        if (secret) return secret;
+        throw new Error(
+          "Honeycomb shows a key's secret only once, when it is created. Only keys created from Infrawrench have it stored.",
+        );
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
       throw new Error(
-        "Honeycomb shows a key's secret only once, when it is created. Only keys created from Infrawrench have it stored.",
+        `Honeycomb plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
       );
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`Honeycomb plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (resource.resourceTypeId !== "recipient" || !resource.externalId) return resource;
-    const triggers = await v1<HnyTrigger[]>(
-      this.ctx,
-      await this.recipientKey(resource.accountId),
-      `/1/recipients/${encodeURIComponent(resource.externalId)}/triggers`,
-    );
-    const rows = (triggers ?? []).map((t) => ({
-      name: t.name ?? t.id,
-      dataset: t.dataset_slug ?? "",
-    }));
-    return {
-      ...resource,
-      fields: { ...resource.fields, triggerCount: rows.length },
-      resolvedOutputs: {
-        ...resource.resolvedOutputs,
-        [RECIPIENT_TRIGGERS_KEY]: JSON.stringify(rows),
-      },
-    };
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (resource.resourceTypeId !== "recipient" || !resource.externalId) return resource;
+      const triggers = await v1<HnyTrigger[]>(
+        this.ctx,
+        await this.recipientKey(resource.accountId),
+        `/1/recipients/${encodeURIComponent(resource.externalId)}/triggers`,
+      );
+      const rows = (triggers ?? []).map((t) => ({
+        name: t.name ?? t.id,
+        dataset: t.dataset_slug ?? "",
+      }));
+      return {
+        ...resource,
+        fields: { ...resource.fields, triggerCount: rows.length },
+        resolvedOutputs: {
+          ...resource.resolvedOutputs,
+          [RECIPIENT_TRIGGERS_KEY]: JSON.stringify(rows),
+        },
+      };
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats and metrics
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    switch (resourceTypeId) {
-      case "trigger":
-        return [
-          {
-            label: "State",
-            value:
-              f["disabled"] === true ? "Disabled" : f["triggered"] === true ? "Triggered" : "OK",
-            variant:
-              f["disabled"] === true
-                ? "default"
-                : f["triggered"] === true
-                  ? "status-error"
-                  : "status-healthy",
-          },
-          {
-            label: "Threshold",
-            value:
-              `${String(f["thresholdOp"] ?? "")} ${String(f["thresholdValue"] ?? "")}`.trim() ||
-              "—",
-          },
-        ];
-      case "slo":
-        return [
-          {
-            label: "Target",
-            value: f["targetPercent"] !== undefined ? `${String(f["targetPercent"])}%` : "—",
-          },
-          {
-            label: "Budget left",
-            value: f["budgetRemaining"] !== undefined ? `${String(f["budgetRemaining"])}%` : "—",
-          },
-        ];
-      case "dataset":
-        return [
-          { label: "Columns", value: String(f["columnCount"] ?? "—") },
-          {
-            label: "Last event",
-            value: String(f["lastWrittenAt"] ?? "—")
-              .slice(0, 16)
-              .replace("T", " "),
-          },
-        ];
-      default:
-        return [];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      switch (resourceTypeId) {
+        case "trigger":
+          return [
+            {
+              label: "State",
+              value:
+                f["disabled"] === true ? "Disabled" : f["triggered"] === true ? "Triggered" : "OK",
+              variant:
+                f["disabled"] === true
+                  ? "default"
+                  : f["triggered"] === true
+                    ? "status-error"
+                    : "status-healthy",
+            },
+            {
+              label: "Threshold",
+              value:
+                `${String(f["thresholdOp"] ?? "")} ${String(f["thresholdValue"] ?? "")}`.trim() ||
+                "—",
+            },
+          ];
+        case "slo":
+          return [
+            {
+              label: "Target",
+              value: f["targetPercent"] !== undefined ? `${String(f["targetPercent"])}%` : "—",
+            },
+            {
+              label: "Budget left",
+              value: f["budgetRemaining"] !== undefined ? `${String(f["budgetRemaining"])}%` : "—",
+            },
+          ];
+        case "dataset":
+          return [
+            { label: "Columns", value: String(f["columnCount"] ?? "—") },
+            {
+              label: "Last event",
+              value: String(f["lastWrittenAt"] ?? "—")
+                .slice(0, 16)
+                .replace("T", " "),
+            },
+          ];
+        default:
+          return [];
+      }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const ext = externalIdOf(resourceId);
-    const [a = "", b = "", c = ""] = ext.split("/");
-    switch (resourceTypeId) {
-      case "environment": {
-        const { key } = await this.keyFor(accountId, ext);
-        return environmentSeries(
-          this.ctx,
-          key,
-          rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
-        );
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const [a = "", b = "", c = ""] = ext.split("/");
+      switch (resourceTypeId) {
+        case "environment": {
+          const { key } = await this.keyFor(accountId, ext);
+          return environmentSeries(
+            this.ctx,
+            key,
+            rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
+          );
+        }
+        case "dataset": {
+          const { key } = await this.keyFor(accountId, a);
+          const defs = await v1<HnyDatasetDefinitions>(
+            this.ctx,
+            key,
+            `/1/dataset_definitions/${ds(b)}`,
+          ).catch(() => ({}) as HnyDatasetDefinitions);
+          const duration = defs["duration_ms"]?.name;
+          const error = defs["error"]?.name;
+          return datasetSeries(
+            this.ctx,
+            key,
+            b,
+            { ...(duration ? { duration } : {}), ...(error ? { error } : {}) },
+            rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
+          );
+        }
+        case "trigger": {
+          const { key } = await this.keyFor(accountId, a);
+          const t = await v1<HnyTrigger>(
+            this.ctx,
+            key,
+            `/1/triggers/${ds(b)}/${encodeURIComponent(c)}`,
+          );
+          const queryId = t.query_id ?? t.query?.id;
+          if (!queryId) return [];
+          return storedQuerySeries(
+            this.ctx,
+            key,
+            b,
+            queryId,
+            rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
+            t.threshold ?? undefined,
+          );
+        }
+        case "saved-query": {
+          const { key } = await this.keyFor(accountId, a);
+          const ann = await v1<HnyQueryAnnotation>(
+            this.ctx,
+            key,
+            `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`,
+          );
+          if (!ann.query_id) return [];
+          return storedQuerySeries(
+            this.ctx,
+            key,
+            b,
+            ann.query_id,
+            rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
+          );
+        }
+        case "slo": {
+          const { key } = await this.keyFor(accountId, a);
+          return sloSeries(this.ctx, key, b, c, rangeOrDefault(timeRange, SLO_METRICS_WINDOW_MS));
+        }
+        default:
+          return [];
       }
-      case "dataset": {
-        const { key } = await this.keyFor(accountId, a);
-        const defs = await v1<HnyDatasetDefinitions>(
-          this.ctx,
-          key,
-          `/1/dataset_definitions/${ds(b)}`,
-        ).catch(() => ({}) as HnyDatasetDefinitions);
-        const duration = defs["duration_ms"]?.name;
-        const error = defs["error"]?.name;
-        return datasetSeries(
-          this.ctx,
-          key,
-          b,
-          { ...(duration ? { duration } : {}), ...(error ? { error } : {}) },
-          rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
-        );
-      }
-      case "trigger": {
-        const { key } = await this.keyFor(accountId, a);
-        const t = await v1<HnyTrigger>(
-          this.ctx,
-          key,
-          `/1/triggers/${ds(b)}/${encodeURIComponent(c)}`,
-        );
-        const queryId = t.query_id ?? t.query?.id;
-        if (!queryId) return [];
-        return storedQuerySeries(
-          this.ctx,
-          key,
-          b,
-          queryId,
-          rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
-          t.threshold ?? undefined,
-        );
-      }
-      case "saved-query": {
-        const { key } = await this.keyFor(accountId, a);
-        const ann = await v1<HnyQueryAnnotation>(
-          this.ctx,
-          key,
-          `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`,
-        );
-        if (!ann.query_id) return [];
-        return storedQuerySeries(
-          this.ctx,
-          key,
-          b,
-          ann.query_id,
-          rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
-        );
-      }
-      case "slo": {
-        const { key } = await this.keyFor(accountId, a);
-        return sloSeries(this.ctx, key, b, c, rangeOrDefault(timeRange, SLO_METRICS_WINDOW_MS));
-      }
-      default:
-        return [];
-    }
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return verifyHoneycombCredentials(this.ctx, this.configurationKey);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyHoneycombCredentials(this.ctx, this.configurationKey);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1103,540 +1122,554 @@ export class HoneycombClient implements PluginClient {
     ];
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    // Creating from a parent's page is the only way the form learns the
-    // account, and so the only way it can reach environments connected with
-    // a stored key; from the sidebar it sees the account key's environment.
-    const accountId = parentResourceId?.split(":")[0] ?? "";
-    const parentEnv =
-      parentResourceId?.split(":")[1] === "environment"
-        ? externalIdOf(parentResourceId)
-        : undefined;
-    switch (typeId) {
-      case "environment":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "staging" },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "color",
-              label: "Color",
-              kind: "select",
-              required: false,
-              defaultValue: "",
-              options: [
-                opt("", "Random"),
-                ...[
-                  "blue",
-                  "green",
-                  "gold",
-                  "red",
-                  "purple",
-                  "lightBlue",
-                  "lightGreen",
-                  "lightGold",
-                  "lightRed",
-                  "lightPurple",
-                ].map((c) => opt(c)),
-              ],
-            },
-            {
-              key: "connect",
-              label: "Connect it",
-              kind: "select",
-              required: false,
-              defaultValue: "true",
-              options: [
-                opt("true", "Yes, create a configuration key for Infrawrench"),
-                opt("false", "No"),
-              ],
-            },
-          ],
-        };
-      case "dataset":
-        return {
-          fields: [
-            ...(parentResourceId
-              ? []
-              : [
-                  {
-                    key: "environment",
-                    label: "Environment",
-                    kind: "select" as const,
-                    required: true,
-                    options: await this.connectedEnvOptions(accountId),
-                  },
-                ]),
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "checkout-service",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "expandJsonDepth",
-              label: "JSON unpacking depth",
-              kind: "number",
-              required: false,
-              defaultValue: "0",
-              minValue: 0,
-              maxValue: 10,
-            },
-          ],
-        };
-      case "column":
-        return {
-          fields: [
-            ...(parentResourceId
-              ? []
-              : [
-                  {
-                    key: "target",
-                    label: "Dataset",
-                    kind: "select" as const,
-                    required: true,
-                    options: await this.targetOptions(false, accountId, parentEnv),
-                  },
-                ]),
-            {
-              key: "keyName",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "user.plan",
-            },
-            {
-              key: "type",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "string",
-              options: ["string", "integer", "float", "boolean", "histogram"].map((t) => opt(t)),
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "hidden",
-              label: "Hidden",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [opt("false", "No"), opt("true", "Yes")],
-            },
-          ],
-        };
-      case "derived-column":
-        return {
-          fields: [
-            {
-              key: "target",
-              label: "Dataset",
-              kind: "select",
-              required: true,
-              options: await this.targetOptions(true, accountId, parentEnv),
-            },
-            { key: "alias", label: "Alias", kind: "text", required: true, placeholder: "is_error" },
-            {
-              key: "expression",
-              label: "Expression",
-              kind: "text",
-              multiline: true,
-              required: true,
-              placeholder: "IF(GTE($http.status_code, 500), 1, 0)",
-              description: "A derived column formula. See Honeycomb's derived column reference.",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case "trigger":
-        return {
-          fields: [
-            {
-              key: "target",
-              label: "Dataset",
-              kind: "select",
-              required: true,
-              options: await this.targetOptions(true, accountId, parentEnv),
-            },
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-            ...this.queryBuilderFields(true),
-            {
-              key: "thresholdOp",
-              label: "Alert when the result is",
-              kind: "select",
-              required: true,
-              defaultValue: ">",
-              options: [">", ">=", "<", "<="].map((o) => opt(o)),
-            },
-            { key: "thresholdValue", label: "Threshold", kind: "number", required: true },
-            {
-              key: "frequency",
-              label: "Check every",
-              kind: "select",
-              required: true,
-              defaultValue: "900",
-              options: [
-                opt("60", "1 minute"),
-                opt("300", "5 minutes"),
-                opt("900", "15 minutes"),
-                opt("1800", "30 minutes"),
-                opt("3600", "1 hour"),
-                opt("21600", "6 hours"),
-                opt("86400", "1 day"),
-              ],
-            },
-            {
-              key: "alertType",
-              label: "Notify",
-              kind: "select",
-              required: false,
-              defaultValue: "on_change",
-              options: [
-                opt("on_change", "When it fires and when it resolves"),
-                opt("on_true", "On every evaluation over the threshold"),
-                opt("on_group_change", "Per group, when a group fires or resolves"),
-              ],
-            },
-            {
-              key: "recipientId",
-              label: "Recipient",
-              kind: "select",
-              required: false,
-              defaultValue: "",
-              options: [opt("", "None"), ...(await this.recipientOptions(accountId))],
-            },
-          ],
-        };
-      case "slo": {
-        const derived = await this.listResources("derived-column", accountId).catch(
-          () => [] as ResourceInstance[],
-        );
-        return {
-          fields: [
-            {
-              key: "sli",
-              label: "SLI derived column",
-              kind: "select",
-              required: true,
-              description:
-                "A derived column that is true (or 1) for good events. Environment-wide ones need datasets below.",
-              options: derived
-                .filter((d) => !parentEnv || d.fields["environment"] === parentEnv)
-                .map((d) =>
-                  opt(
-                    d.externalId ?? d.id,
-                    `${String(d.fields["environment"] ?? "")}: ${String(d.fields["alias"] ?? d.displayName)} (${String(d.fields["dataset"] || "all datasets")})`,
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      // Creating from a parent's page is the only way the form learns the
+      // account, and so the only way it can reach environments connected with
+      // a stored key; from the sidebar it sees the account key's environment.
+      const accountId = parentResourceId?.split(":")[0] ?? "";
+      const parentEnv =
+        parentResourceId?.split(":")[1] === "environment"
+          ? externalIdOf(parentResourceId)
+          : undefined;
+      switch (typeId) {
+        case "environment":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "staging" },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "color",
+                label: "Color",
+                kind: "select",
+                required: false,
+                defaultValue: "",
+                options: [
+                  opt("", "Random"),
+                  ...[
+                    "blue",
+                    "green",
+                    "gold",
+                    "red",
+                    "purple",
+                    "lightBlue",
+                    "lightGreen",
+                    "lightGold",
+                    "lightRed",
+                    "lightPurple",
+                  ].map((c) => opt(c)),
+                ],
+              },
+              {
+                key: "connect",
+                label: "Connect it",
+                kind: "select",
+                required: false,
+                defaultValue: "true",
+                options: [
+                  opt("true", "Yes, create a configuration key for Infrawrench"),
+                  opt("false", "No"),
+                ],
+              },
+            ],
+          };
+        case "dataset":
+          return {
+            fields: [
+              ...(parentResourceId
+                ? []
+                : [
+                    {
+                      key: "environment",
+                      label: "Environment",
+                      kind: "select" as const,
+                      required: true,
+                      options: await this.connectedEnvOptions(accountId),
+                    },
+                  ]),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "checkout-service",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "expandJsonDepth",
+                label: "JSON unpacking depth",
+                kind: "number",
+                required: false,
+                defaultValue: "0",
+                minValue: 0,
+                maxValue: 10,
+              },
+            ],
+          };
+        case "column":
+          return {
+            fields: [
+              ...(parentResourceId
+                ? []
+                : [
+                    {
+                      key: "target",
+                      label: "Dataset",
+                      kind: "select" as const,
+                      required: true,
+                      options: await this.targetOptions(false, accountId, parentEnv),
+                    },
+                  ]),
+              {
+                key: "keyName",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "user.plan",
+              },
+              {
+                key: "type",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "string",
+                options: ["string", "integer", "float", "boolean", "histogram"].map((t) => opt(t)),
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "hidden",
+                label: "Hidden",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [opt("false", "No"), opt("true", "Yes")],
+              },
+            ],
+          };
+        case "derived-column":
+          return {
+            fields: [
+              {
+                key: "target",
+                label: "Dataset",
+                kind: "select",
+                required: true,
+                options: await this.targetOptions(true, accountId, parentEnv),
+              },
+              {
+                key: "alias",
+                label: "Alias",
+                kind: "text",
+                required: true,
+                placeholder: "is_error",
+              },
+              {
+                key: "expression",
+                label: "Expression",
+                kind: "text",
+                multiline: true,
+                required: true,
+                placeholder: "IF(GTE($http.status_code, 500), 1, 0)",
+                description: "A derived column formula. See Honeycomb's derived column reference.",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case "trigger":
+          return {
+            fields: [
+              {
+                key: "target",
+                label: "Dataset",
+                kind: "select",
+                required: true,
+                options: await this.targetOptions(true, accountId, parentEnv),
+              },
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+              ...this.queryBuilderFields(true),
+              {
+                key: "thresholdOp",
+                label: "Alert when the result is",
+                kind: "select",
+                required: true,
+                defaultValue: ">",
+                options: [">", ">=", "<", "<="].map((o) => opt(o)),
+              },
+              { key: "thresholdValue", label: "Threshold", kind: "number", required: true },
+              {
+                key: "frequency",
+                label: "Check every",
+                kind: "select",
+                required: true,
+                defaultValue: "900",
+                options: [
+                  opt("60", "1 minute"),
+                  opt("300", "5 minutes"),
+                  opt("900", "15 minutes"),
+                  opt("1800", "30 minutes"),
+                  opt("3600", "1 hour"),
+                  opt("21600", "6 hours"),
+                  opt("86400", "1 day"),
+                ],
+              },
+              {
+                key: "alertType",
+                label: "Notify",
+                kind: "select",
+                required: false,
+                defaultValue: "on_change",
+                options: [
+                  opt("on_change", "When it fires and when it resolves"),
+                  opt("on_true", "On every evaluation over the threshold"),
+                  opt("on_group_change", "Per group, when a group fires or resolves"),
+                ],
+              },
+              {
+                key: "recipientId",
+                label: "Recipient",
+                kind: "select",
+                required: false,
+                defaultValue: "",
+                options: [opt("", "None"), ...(await this.recipientOptions(accountId))],
+              },
+            ],
+          };
+        case "slo": {
+          const derived = await runPluginEffect(
+            this.listResources("derived-column", accountId),
+          ).catch(() => [] as ResourceInstance[]);
+          return {
+            fields: [
+              {
+                key: "sli",
+                label: "SLI derived column",
+                kind: "select",
+                required: true,
+                description:
+                  "A derived column that is true (or 1) for good events. Environment-wide ones need datasets below.",
+                options: derived
+                  .filter((d) => !parentEnv || d.fields["environment"] === parentEnv)
+                  .map((d) =>
+                    opt(
+                      d.externalId ?? d.id,
+                      `${String(d.fields["environment"] ?? "")}: ${String(d.fields["alias"] ?? d.displayName)} (${String(d.fields["dataset"] || "all datasets")})`,
+                    ),
                   ),
-                ),
-            },
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "targetPercent",
-              label: "Target (%)",
-              kind: "number",
-              required: true,
-              defaultValue: "99.9",
-              minValue: 0,
-              maxValue: 100,
-              stepValue: 0.01,
-            },
-            {
-              key: "timePeriodDays",
-              label: "Window (days)",
-              kind: "number",
-              required: true,
-              defaultValue: "30",
-              minValue: 1,
-              maxValue: 90,
-            },
-            {
-              key: "datasets",
-              label: "Datasets",
-              kind: "text",
-              required: false,
-              placeholder: "frontend, backend",
-              description:
-                "Only for environment-wide SLIs: comma-separated dataset slugs to evaluate the SLO on.",
-            },
-          ],
-        };
+              },
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "targetPercent",
+                label: "Target (%)",
+                kind: "number",
+                required: true,
+                defaultValue: "99.9",
+                minValue: 0,
+                maxValue: 100,
+                stepValue: 0.01,
+              },
+              {
+                key: "timePeriodDays",
+                label: "Window (days)",
+                kind: "number",
+                required: true,
+                defaultValue: "30",
+                minValue: 1,
+                maxValue: 90,
+              },
+              {
+                key: "datasets",
+                label: "Datasets",
+                kind: "text",
+                required: false,
+                placeholder: "frontend, backend",
+                description:
+                  "Only for environment-wide SLIs: comma-separated dataset slugs to evaluate the SLO on.",
+              },
+            ],
+          };
+        }
+        case "burn-alert":
+          return {
+            fields: [
+              ...(parentResourceId
+                ? []
+                : [
+                    {
+                      key: "slo",
+                      label: "SLO",
+                      kind: "select" as const,
+                      required: true,
+                      options: (
+                        await runPluginEffect(this.listResources("slo", accountId)).catch(
+                          () => [] as ResourceInstance[],
+                        )
+                      ).map((s) => opt(s.externalId ?? s.id, s.displayName)),
+                    },
+                  ]),
+              {
+                key: "alertType",
+                label: "Kind",
+                kind: "select",
+                required: true,
+                defaultValue: "exhaustion_time",
+                options: [
+                  opt("exhaustion_time", "Budget will run out within a time"),
+                  opt("budget_rate", "Budget drops faster than a rate"),
+                ],
+              },
+              {
+                key: "exhaustionMinutes",
+                label: "Exhaustion time (minutes)",
+                kind: "number",
+                required: false,
+                defaultValue: "240",
+                showWhen: { fieldKey: "alertType", fieldValue: "exhaustion_time" },
+              },
+              {
+                key: "budgetRateWindowMinutes",
+                label: "Window (minutes)",
+                kind: "number",
+                required: false,
+                defaultValue: "60",
+                showWhen: { fieldKey: "alertType", fieldValue: "budget_rate" },
+              },
+              {
+                key: "budgetRateDecreasePercent",
+                label: "Budget decrease (%)",
+                kind: "number",
+                required: false,
+                defaultValue: "1",
+                stepValue: 0.0001,
+                showWhen: { fieldKey: "alertType", fieldValue: "budget_rate" },
+              },
+              {
+                key: "recipientId",
+                label: "Recipient",
+                kind: "select",
+                required: true,
+                options: await this.recipientOptions(accountId),
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case "board":
+          return {
+            fields: [
+              ...(parentEnv
+                ? []
+                : [
+                    {
+                      key: "environment",
+                      label: "Environment",
+                      kind: "select" as const,
+                      required: true,
+                      options: await this.connectedEnvOptions(accountId),
+                    },
+                  ]),
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case "board-view":
+          return {
+            fields: [
+              ...(parentResourceId
+                ? []
+                : [
+                    {
+                      key: "board",
+                      label: "Board",
+                      kind: "select" as const,
+                      required: true,
+                      options: (
+                        await runPluginEffect(this.listResources("board", accountId)).catch(
+                          () => [] as ResourceInstance[],
+                        )
+                      ).map((b) => opt(b.externalId ?? b.id, b.displayName)),
+                    },
+                  ]),
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "filterColumn",
+                label: "Filter column",
+                kind: "text",
+                required: true,
+                placeholder: "service.name",
+              },
+              {
+                key: "filterOp",
+                label: "Matches",
+                kind: "select",
+                required: true,
+                defaultValue: "=",
+                options: FILTER_OPS.map((o) => opt(o)),
+              },
+              { key: "filterValue", label: "Value", kind: "text", required: false },
+            ],
+          };
+        case "marker":
+          return {
+            fields: [
+              {
+                key: "target",
+                label: "Dataset",
+                kind: "select",
+                required: true,
+                options: await this.targetOptions(true, accountId, parentEnv),
+              },
+              {
+                key: "message",
+                label: "Message",
+                kind: "text",
+                required: true,
+                placeholder: "Deploy v1.42",
+              },
+              { key: "type", label: "Type", kind: "text", required: false, placeholder: "deploy" },
+              { key: "url", label: "Link", kind: "text", required: false },
+              {
+                key: "startTime",
+                label: "Start",
+                kind: "datetime",
+                required: false,
+                description: "Leave empty for now.",
+              },
+              {
+                key: "endTime",
+                label: "End",
+                kind: "datetime",
+                required: false,
+                description: "Optional: makes the marker a span rather than a point.",
+              },
+            ],
+          };
+        case "marker-setting":
+          return {
+            fields: [
+              {
+                key: "target",
+                label: "Dataset",
+                kind: "select",
+                required: true,
+                options: await this.targetOptions(true, accountId, parentEnv),
+              },
+              {
+                key: "type",
+                label: "Marker type",
+                kind: "text",
+                required: true,
+                placeholder: "deploy",
+              },
+              {
+                key: "color",
+                label: "Color",
+                kind: "text",
+                required: true,
+                placeholder: "#F96E10",
+              },
+            ],
+          };
+        case "saved-query":
+          return {
+            fields: [
+              {
+                key: "target",
+                label: "Dataset",
+                kind: "select",
+                required: true,
+                options: await this.targetOptions(true, accountId, parentEnv),
+              },
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+              ...this.queryBuilderFields(false),
+            ],
+          };
+        case "recipient":
+          return {
+            fields: [
+              {
+                key: "type",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "email",
+                options: [
+                  opt("email", "Email"),
+                  opt("slack", "Slack channel"),
+                  opt("pagerduty", "PagerDuty"),
+                  opt("webhook", "Webhook"),
+                  opt("msteams_workflow", "Microsoft Teams workflow"),
+                ],
+              },
+              {
+                key: "target",
+                label: "Address, channel or name",
+                kind: "text",
+                required: true,
+                description:
+                  "Email: the address. Slack: #channel or @user (the Slack app must be installed in Honeycomb). PagerDuty, webhook and Teams: a name for the recipient.",
+              },
+              {
+                key: "url",
+                label: "URL",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "type", fieldValues: ["webhook", "msteams_workflow"] },
+              },
+              {
+                key: "secret",
+                label: "Integration key or secret",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "type", fieldValues: ["pagerduty", "webhook"] },
+                description:
+                  "PagerDuty: the Events API v2 integration key. Webhook: an optional shared secret.",
+              },
+            ],
+          };
+        case "api-key": {
+          const envs = await this.environments(accountId).catch(() => [] as EnvAccess[]);
+          return {
+            fields: [
+              {
+                key: "environment",
+                label: "Environment",
+                kind: "select",
+                required: true,
+                options: envs.filter((e) => e.id).map((e) => opt(e.id as string, e.name)),
+              },
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "keyType",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "ingest",
+                options: [
+                  opt("ingest", "Ingest (send telemetry)"),
+                  opt("configuration", "Configuration (manage the environment)"),
+                ],
+              },
+              {
+                key: "permissions",
+                label: "Permissions",
+                kind: "policy-picker",
+                required: false,
+                description: "Ingest keys only honour Create datasets.",
+                policies: API_KEY_PERMISSIONS.map((p) => ({
+                  id: p.id,
+                  label: p.label,
+                  category: p.ingest ? "Ingest and configuration" : "Configuration keys",
+                })),
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`Honeycomb plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "burn-alert":
-        return {
-          fields: [
-            ...(parentResourceId
-              ? []
-              : [
-                  {
-                    key: "slo",
-                    label: "SLO",
-                    kind: "select" as const,
-                    required: true,
-                    options: (
-                      await this.listResources("slo", accountId).catch(
-                        () => [] as ResourceInstance[],
-                      )
-                    ).map((s) => opt(s.externalId ?? s.id, s.displayName)),
-                  },
-                ]),
-            {
-              key: "alertType",
-              label: "Kind",
-              kind: "select",
-              required: true,
-              defaultValue: "exhaustion_time",
-              options: [
-                opt("exhaustion_time", "Budget will run out within a time"),
-                opt("budget_rate", "Budget drops faster than a rate"),
-              ],
-            },
-            {
-              key: "exhaustionMinutes",
-              label: "Exhaustion time (minutes)",
-              kind: "number",
-              required: false,
-              defaultValue: "240",
-              showWhen: { fieldKey: "alertType", fieldValue: "exhaustion_time" },
-            },
-            {
-              key: "budgetRateWindowMinutes",
-              label: "Window (minutes)",
-              kind: "number",
-              required: false,
-              defaultValue: "60",
-              showWhen: { fieldKey: "alertType", fieldValue: "budget_rate" },
-            },
-            {
-              key: "budgetRateDecreasePercent",
-              label: "Budget decrease (%)",
-              kind: "number",
-              required: false,
-              defaultValue: "1",
-              stepValue: 0.0001,
-              showWhen: { fieldKey: "alertType", fieldValue: "budget_rate" },
-            },
-            {
-              key: "recipientId",
-              label: "Recipient",
-              kind: "select",
-              required: true,
-              options: await this.recipientOptions(accountId),
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case "board":
-        return {
-          fields: [
-            ...(parentEnv
-              ? []
-              : [
-                  {
-                    key: "environment",
-                    label: "Environment",
-                    kind: "select" as const,
-                    required: true,
-                    options: await this.connectedEnvOptions(accountId),
-                  },
-                ]),
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case "board-view":
-        return {
-          fields: [
-            ...(parentResourceId
-              ? []
-              : [
-                  {
-                    key: "board",
-                    label: "Board",
-                    kind: "select" as const,
-                    required: true,
-                    options: (
-                      await this.listResources("board", accountId).catch(
-                        () => [] as ResourceInstance[],
-                      )
-                    ).map((b) => opt(b.externalId ?? b.id, b.displayName)),
-                  },
-                ]),
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "filterColumn",
-              label: "Filter column",
-              kind: "text",
-              required: true,
-              placeholder: "service.name",
-            },
-            {
-              key: "filterOp",
-              label: "Matches",
-              kind: "select",
-              required: true,
-              defaultValue: "=",
-              options: FILTER_OPS.map((o) => opt(o)),
-            },
-            { key: "filterValue", label: "Value", kind: "text", required: false },
-          ],
-        };
-      case "marker":
-        return {
-          fields: [
-            {
-              key: "target",
-              label: "Dataset",
-              kind: "select",
-              required: true,
-              options: await this.targetOptions(true, accountId, parentEnv),
-            },
-            {
-              key: "message",
-              label: "Message",
-              kind: "text",
-              required: true,
-              placeholder: "Deploy v1.42",
-            },
-            { key: "type", label: "Type", kind: "text", required: false, placeholder: "deploy" },
-            { key: "url", label: "Link", kind: "text", required: false },
-            {
-              key: "startTime",
-              label: "Start",
-              kind: "datetime",
-              required: false,
-              description: "Leave empty for now.",
-            },
-            {
-              key: "endTime",
-              label: "End",
-              kind: "datetime",
-              required: false,
-              description: "Optional: makes the marker a span rather than a point.",
-            },
-          ],
-        };
-      case "marker-setting":
-        return {
-          fields: [
-            {
-              key: "target",
-              label: "Dataset",
-              kind: "select",
-              required: true,
-              options: await this.targetOptions(true, accountId, parentEnv),
-            },
-            {
-              key: "type",
-              label: "Marker type",
-              kind: "text",
-              required: true,
-              placeholder: "deploy",
-            },
-            { key: "color", label: "Color", kind: "text", required: true, placeholder: "#F96E10" },
-          ],
-        };
-      case "saved-query":
-        return {
-          fields: [
-            {
-              key: "target",
-              label: "Dataset",
-              kind: "select",
-              required: true,
-              options: await this.targetOptions(true, accountId, parentEnv),
-            },
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-            ...this.queryBuilderFields(false),
-          ],
-        };
-      case "recipient":
-        return {
-          fields: [
-            {
-              key: "type",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "email",
-              options: [
-                opt("email", "Email"),
-                opt("slack", "Slack channel"),
-                opt("pagerduty", "PagerDuty"),
-                opt("webhook", "Webhook"),
-                opt("msteams_workflow", "Microsoft Teams workflow"),
-              ],
-            },
-            {
-              key: "target",
-              label: "Address, channel or name",
-              kind: "text",
-              required: true,
-              description:
-                "Email: the address. Slack: #channel or @user (the Slack app must be installed in Honeycomb). PagerDuty, webhook and Teams: a name for the recipient.",
-            },
-            {
-              key: "url",
-              label: "URL",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "type", fieldValues: ["webhook", "msteams_workflow"] },
-            },
-            {
-              key: "secret",
-              label: "Integration key or secret",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "type", fieldValues: ["pagerduty", "webhook"] },
-              description:
-                "PagerDuty: the Events API v2 integration key. Webhook: an optional shared secret.",
-            },
-          ],
-        };
-      case "api-key": {
-        const envs = await this.environments(accountId).catch(() => [] as EnvAccess[]);
-        return {
-          fields: [
-            {
-              key: "environment",
-              label: "Environment",
-              kind: "select",
-              required: true,
-              options: envs.filter((e) => e.id).map((e) => opt(e.id as string, e.name)),
-            },
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "keyType",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "ingest",
-              options: [
-                opt("ingest", "Ingest (send telemetry)"),
-                opt("configuration", "Configuration (manage the environment)"),
-              ],
-            },
-            {
-              key: "permissions",
-              label: "Permissions",
-              kind: "policy-picker",
-              required: false,
-              description: "Ingest keys only honour Create datasets.",
-              policies: API_KEY_PERMISSIONS.map((p) => ({
-                id: p.id,
-                label: p.label,
-                category: p.ingest ? "Ingest and configuration" : "Configuration keys",
-              })),
-            },
-          ],
-        };
-      }
-      default:
-        throw new Error(`Honeycomb plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1656,218 +1689,223 @@ export class HoneycombClient implements PluginClient {
     return { env, key, dataset };
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "environment":
-        return this.createEnvironment(accountId, fields);
-      case "dataset": {
-        const envSlug =
-          trimmed(fields, "environment") ||
-          (parentResourceId ? externalIdOf(parentResourceId) : "");
-        const { env, key } = await this.keyFor(accountId, envSlug);
-        const depth = numberOr(fields["expandJsonDepth"]);
-        const d = await v1<HnyDataset>(this.ctx, key, "/1/datasets", {
-          method: "POST",
-          body: JSON.stringify({
-            name: trimmed(fields, "name"),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            ...(depth !== undefined ? { expand_json_depth: depth } : {}),
-          }),
-        });
-        this.datasetCache.delete(env.slug);
-        return mapDataset(accountId, env, d);
-      }
-      case "column": {
-        const { env, key, dataset } = await this.target(accountId, fields, parentResourceId);
-        const c = await v1<HnyColumn>(this.ctx, key, `/1/columns/${ds(dataset)}`, {
-          method: "POST",
-          body: JSON.stringify({
-            key_name: trimmed(fields, "keyName"),
-            type: trimmed(fields, "type") || "string",
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            hidden: boolField(fields["hidden"]),
-          }),
-        });
-        return mapColumn(accountId, env, dataset, c);
-      }
-      case "derived-column": {
-        const { env, key, dataset } = await this.target(accountId, fields, undefined);
-        const c = await v1<HnyDerivedColumn>(this.ctx, key, `/1/derived_columns/${ds(dataset)}`, {
-          method: "POST",
-          body: JSON.stringify({
-            alias: trimmed(fields, "alias"),
-            expression: trimmed(fields, "expression"),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-          }),
-        });
-        return mapDerivedColumn(accountId, env, dataset, c);
-      }
-      case "trigger": {
-        const { env, key, dataset } = await this.target(accountId, fields, undefined);
-        const recipientId = trimmed(fields, "recipientId");
-        const t = await v1<HnyTrigger>(this.ctx, key, `/1/triggers/${ds(dataset)}`, {
-          method: "POST",
-          body: JSON.stringify({
-            name: trimmed(fields, "name"),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            query: builderSpec(fields, { forTrigger: true }),
-            threshold: {
-              op: trimmed(fields, "thresholdOp") || ">",
-              value: numberOr(fields["thresholdValue"], 0),
-            },
-            frequency: numberOr(fields["frequency"], 900),
-            alert_type: trimmed(fields, "alertType") || "on_change",
-            disabled: false,
-            ...(recipientId ? { recipients: [{ id: recipientId }] } : {}),
-          }),
-        });
-        return mapTrigger(accountId, env, dataset, t);
-      }
-      case "slo":
-        return this.createSlo(accountId, fields);
-      case "burn-alert": {
-        const sloExt =
-          trimmed(fields, "slo") || (parentResourceId ? externalIdOf(parentResourceId) : "");
-        const [envSlug = "", dataset = "", sloId = ""] = sloExt.split("/");
-        if (!sloId) throw new Error("Pick an SLO.");
-        const { env, key } = await this.keyFor(accountId, envSlug);
-        const recipientId = trimmed(fields, "recipientId");
-        if (!recipientId)
-          throw new Error("Pick a recipient: Honeycomb requires one per burn alert.");
-        const kind = trimmed(fields, "alertType") || "exhaustion_time";
-        const body: Record<string, unknown> = {
-          alert_type: kind,
-          slo: { id: sloId },
-          recipients: [{ id: recipientId }],
-          ...(fields["description"] ? { description: fields["description"] } : {}),
-        };
-        if (kind === "budget_rate") {
-          body["budget_rate_window_minutes"] = numberOr(fields["budgetRateWindowMinutes"], 60);
-          body["budget_rate_decrease_threshold_per_million"] = Math.round(
-            (numberOr(fields["budgetRateDecreasePercent"], 1) as number) * 10_000,
-          );
-        } else {
-          body["exhaustion_minutes"] = numberOr(fields["exhaustionMinutes"], 240);
-        }
-        const b = await v1<HnyBurnAlert>(this.ctx, key, `/1/burn_alerts/${ds(dataset)}`, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        return mapBurnAlert(accountId, env, dataset, sloId, b);
-      }
-      case "board": {
-        const envSlug =
-          trimmed(fields, "environment") ||
-          (parentResourceId ? externalIdOf(parentResourceId) : "");
-        const { env, key } = await this.keyFor(accountId, envSlug);
-        const b = await v1<HnyBoard>(this.ctx, key, "/1/boards", {
-          method: "POST",
-          body: JSON.stringify({
-            name: trimmed(fields, "name"),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            type: "flexible",
-            layout_generation: "auto",
-            panels: [],
-            tags: [],
-          }),
-        });
-        return mapBoard(accountId, env, b);
-      }
-      case "board-view": {
-        const boardExt =
-          trimmed(fields, "board") || (parentResourceId ? externalIdOf(parentResourceId) : "");
-        const [envSlug = "", boardId = ""] = boardExt.split("/");
-        const { env, key } = await this.keyFor(accountId, envSlug);
-        const op = trimmed(fields, "filterOp") || "=";
-        const value = filterValue(op, fields["filterValue"] ?? "");
-        const v = await v1<HnyBoardView>(
-          this.ctx,
-          key,
-          `/1/boards/${encodeURIComponent(boardId)}/views`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              name: trimmed(fields, "name"),
-              filters: [
-                {
-                  column: trimmed(fields, "filterColumn"),
-                  operation: op,
-                  ...(value !== undefined ? { value } : {}),
-                },
-              ],
-            }),
-          },
-        );
-        return mapBoardView(accountId, env, boardId, v);
-      }
-      case "marker": {
-        const { env, key, dataset } = await this.target(accountId, fields, undefined);
-        const start = trimmed(fields, "startTime");
-        const end = trimmed(fields, "endTime");
-        const m = await v1<HnyMarker>(this.ctx, key, `/1/markers/${ds(dataset)}`, {
-          method: "POST",
-          body: JSON.stringify({
-            message: trimmed(fields, "message"),
-            ...(fields["type"] ? { type: trimmed(fields, "type") } : {}),
-            ...(fields["url"] ? { url: trimmed(fields, "url") } : {}),
-            ...(start ? { start_time: Math.floor(Date.parse(start) / 1000) } : {}),
-            ...(end ? { end_time: Math.floor(Date.parse(end) / 1000) } : {}),
-          }),
-        });
-        return mapMarker(accountId, env, dataset, m);
-      }
-      case "marker-setting": {
-        const { env, key, dataset } = await this.target(accountId, fields, undefined);
-        const m = await v1<HnyMarkerSetting>(this.ctx, key, `/1/marker_settings/${ds(dataset)}`, {
-          method: "POST",
-          body: JSON.stringify({ type: trimmed(fields, "type"), color: trimmed(fields, "color") }),
-        });
-        return mapMarkerSetting(accountId, env, dataset, m);
-      }
-      case "saved-query": {
-        const { env, key, dataset } = await this.target(accountId, fields, undefined);
-        const spec = builderSpec(fields, { forTrigger: false });
-        const query = await v1<HnyQuerySpec>(this.ctx, key, `/1/queries/${ds(dataset)}`, {
-          method: "POST",
-          body: JSON.stringify(spec),
-        });
-        const ann = await v1<HnyQueryAnnotation>(
-          this.ctx,
-          key,
-          `/1/query_annotations/${ds(dataset)}`,
-          {
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "environment":
+          return this.createEnvironment(accountId, fields);
+        case "dataset": {
+          const envSlug =
+            trimmed(fields, "environment") ||
+            (parentResourceId ? externalIdOf(parentResourceId) : "");
+          const { env, key } = await this.keyFor(accountId, envSlug);
+          const depth = numberOr(fields["expandJsonDepth"]);
+          const d = await v1<HnyDataset>(this.ctx, key, "/1/datasets", {
             method: "POST",
             body: JSON.stringify({
               name: trimmed(fields, "name"),
               ...(fields["description"] ? { description: fields["description"] } : {}),
-              query_id: query.id,
+              ...(depth !== undefined ? { expand_json_depth: depth } : {}),
             }),
-          },
-        );
-        return mapSavedQuery(accountId, env, dataset, ann, query);
-      }
-      case "recipient": {
-        const r = await v1<HnyRecipient>(
-          this.ctx,
-          await this.recipientKey(accountId),
-          "/1/recipients",
-          {
+          });
+          this.datasetCache.delete(env.slug);
+          return mapDataset(accountId, env, d);
+        }
+        case "column": {
+          const { env, key, dataset } = await this.target(accountId, fields, parentResourceId);
+          const c = await v1<HnyColumn>(this.ctx, key, `/1/columns/${ds(dataset)}`, {
             method: "POST",
-            body: JSON.stringify(recipientBody(trimmed(fields, "type"), fields)),
-          },
-        );
-        return mapRecipient(accountId, r);
+            body: JSON.stringify({
+              key_name: trimmed(fields, "keyName"),
+              type: trimmed(fields, "type") || "string",
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              hidden: boolField(fields["hidden"]),
+            }),
+          });
+          return mapColumn(accountId, env, dataset, c);
+        }
+        case "derived-column": {
+          const { env, key, dataset } = await this.target(accountId, fields, undefined);
+          const c = await v1<HnyDerivedColumn>(this.ctx, key, `/1/derived_columns/${ds(dataset)}`, {
+            method: "POST",
+            body: JSON.stringify({
+              alias: trimmed(fields, "alias"),
+              expression: trimmed(fields, "expression"),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+            }),
+          });
+          return mapDerivedColumn(accountId, env, dataset, c);
+        }
+        case "trigger": {
+          const { env, key, dataset } = await this.target(accountId, fields, undefined);
+          const recipientId = trimmed(fields, "recipientId");
+          const t = await v1<HnyTrigger>(this.ctx, key, `/1/triggers/${ds(dataset)}`, {
+            method: "POST",
+            body: JSON.stringify({
+              name: trimmed(fields, "name"),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              query: builderSpec(fields, { forTrigger: true }),
+              threshold: {
+                op: trimmed(fields, "thresholdOp") || ">",
+                value: numberOr(fields["thresholdValue"], 0),
+              },
+              frequency: numberOr(fields["frequency"], 900),
+              alert_type: trimmed(fields, "alertType") || "on_change",
+              disabled: false,
+              ...(recipientId ? { recipients: [{ id: recipientId }] } : {}),
+            }),
+          });
+          return mapTrigger(accountId, env, dataset, t);
+        }
+        case "slo":
+          return this.createSlo(accountId, fields);
+        case "burn-alert": {
+          const sloExt =
+            trimmed(fields, "slo") || (parentResourceId ? externalIdOf(parentResourceId) : "");
+          const [envSlug = "", dataset = "", sloId = ""] = sloExt.split("/");
+          if (!sloId) throw new Error("Pick an SLO.");
+          const { env, key } = await this.keyFor(accountId, envSlug);
+          const recipientId = trimmed(fields, "recipientId");
+          if (!recipientId)
+            throw new Error("Pick a recipient: Honeycomb requires one per burn alert.");
+          const kind = trimmed(fields, "alertType") || "exhaustion_time";
+          const body: Record<string, unknown> = {
+            alert_type: kind,
+            slo: { id: sloId },
+            recipients: [{ id: recipientId }],
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          };
+          if (kind === "budget_rate") {
+            body["budget_rate_window_minutes"] = numberOr(fields["budgetRateWindowMinutes"], 60);
+            body["budget_rate_decrease_threshold_per_million"] = Math.round(
+              (numberOr(fields["budgetRateDecreasePercent"], 1) as number) * 10_000,
+            );
+          } else {
+            body["exhaustion_minutes"] = numberOr(fields["exhaustionMinutes"], 240);
+          }
+          const b = await v1<HnyBurnAlert>(this.ctx, key, `/1/burn_alerts/${ds(dataset)}`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+          return mapBurnAlert(accountId, env, dataset, sloId, b);
+        }
+        case "board": {
+          const envSlug =
+            trimmed(fields, "environment") ||
+            (parentResourceId ? externalIdOf(parentResourceId) : "");
+          const { env, key } = await this.keyFor(accountId, envSlug);
+          const b = await v1<HnyBoard>(this.ctx, key, "/1/boards", {
+            method: "POST",
+            body: JSON.stringify({
+              name: trimmed(fields, "name"),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              type: "flexible",
+              layout_generation: "auto",
+              panels: [],
+              tags: [],
+            }),
+          });
+          return mapBoard(accountId, env, b);
+        }
+        case "board-view": {
+          const boardExt =
+            trimmed(fields, "board") || (parentResourceId ? externalIdOf(parentResourceId) : "");
+          const [envSlug = "", boardId = ""] = boardExt.split("/");
+          const { env, key } = await this.keyFor(accountId, envSlug);
+          const op = trimmed(fields, "filterOp") || "=";
+          const value = filterValue(op, fields["filterValue"] ?? "");
+          const v = await v1<HnyBoardView>(
+            this.ctx,
+            key,
+            `/1/boards/${encodeURIComponent(boardId)}/views`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                name: trimmed(fields, "name"),
+                filters: [
+                  {
+                    column: trimmed(fields, "filterColumn"),
+                    operation: op,
+                    ...(value !== undefined ? { value } : {}),
+                  },
+                ],
+              }),
+            },
+          );
+          return mapBoardView(accountId, env, boardId, v);
+        }
+        case "marker": {
+          const { env, key, dataset } = await this.target(accountId, fields, undefined);
+          const start = trimmed(fields, "startTime");
+          const end = trimmed(fields, "endTime");
+          const m = await v1<HnyMarker>(this.ctx, key, `/1/markers/${ds(dataset)}`, {
+            method: "POST",
+            body: JSON.stringify({
+              message: trimmed(fields, "message"),
+              ...(fields["type"] ? { type: trimmed(fields, "type") } : {}),
+              ...(fields["url"] ? { url: trimmed(fields, "url") } : {}),
+              ...(start ? { start_time: Math.floor(Date.parse(start) / 1000) } : {}),
+              ...(end ? { end_time: Math.floor(Date.parse(end) / 1000) } : {}),
+            }),
+          });
+          return mapMarker(accountId, env, dataset, m);
+        }
+        case "marker-setting": {
+          const { env, key, dataset } = await this.target(accountId, fields, undefined);
+          const m = await v1<HnyMarkerSetting>(this.ctx, key, `/1/marker_settings/${ds(dataset)}`, {
+            method: "POST",
+            body: JSON.stringify({
+              type: trimmed(fields, "type"),
+              color: trimmed(fields, "color"),
+            }),
+          });
+          return mapMarkerSetting(accountId, env, dataset, m);
+        }
+        case "saved-query": {
+          const { env, key, dataset } = await this.target(accountId, fields, undefined);
+          const spec = builderSpec(fields, { forTrigger: false });
+          const query = await v1<HnyQuerySpec>(this.ctx, key, `/1/queries/${ds(dataset)}`, {
+            method: "POST",
+            body: JSON.stringify(spec),
+          });
+          const ann = await v1<HnyQueryAnnotation>(
+            this.ctx,
+            key,
+            `/1/query_annotations/${ds(dataset)}`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                name: trimmed(fields, "name"),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+                query_id: query.id,
+              }),
+            },
+          );
+          return mapSavedQuery(accountId, env, dataset, ann, query);
+        }
+        case "recipient": {
+          const r = await v1<HnyRecipient>(
+            this.ctx,
+            await this.recipientKey(accountId),
+            "/1/recipients",
+            {
+              method: "POST",
+              body: JSON.stringify(recipientBody(trimmed(fields, "type"), fields)),
+            },
+          );
+          return mapRecipient(accountId, r);
+        }
+        case "api-key":
+          return this.createApiKey(accountId, fields);
+        default:
+          throw new Error(`Honeycomb plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "api-key":
-        return this.createApiKey(accountId, fields);
-      default:
-        throw new Error(`Honeycomb plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   private async createEnvironment(accountId: string, fields: Record<string, string>) {
@@ -2017,314 +2055,329 @@ export class HoneycombClient implements PluginClient {
   // Update
   // -------------------------------------------------------------------------
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    const [a = "", b = "", c = ""] = ext.split("/");
-    switch (typeId) {
-      case "environment": {
-        if (fields[CONFIG_KEY_FIELD]?.trim()) {
-          const key = fields[CONFIG_KEY_FIELD].trim();
-          const auth = await v1<HnyAuth>(this.ctx, key, "/1/auth");
-          if (auth.type === "ingest")
-            throw new Error("That is an ingest key. Paste a configuration key.");
-          await this.storeSecret(resourceId, CONFIG_KEY_FIELD, key);
-          this.envCache = undefined;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const [a = "", b = "", c = ""] = ext.split("/");
+      switch (typeId) {
+        case "environment": {
+          if (fields[CONFIG_KEY_FIELD]?.trim()) {
+            const key = fields[CONFIG_KEY_FIELD].trim();
+            const auth = await v1<HnyAuth>(this.ctx, key, "/1/auth");
+            if (auth.type === "ingest")
+              throw new Error("That is an ingest key. Paste a configuration key.");
+            await this.storeSecret(resourceId, CONFIG_KEY_FIELD, key);
+            this.envCache = undefined;
+          }
+          const attrs: Record<string, unknown> = {};
+          if ("name" in fields) attrs["name"] = fields["name"];
+          if ("description" in fields) attrs["description"] = fields["description"];
+          if ("color" in fields && fields["color"]) attrs["color"] = fields["color"];
+          if ("deleteProtected" in fields) {
+            attrs["settings"] = { delete_protected: boolField(fields["deleteProtected"]) };
+          }
+          if (Object.keys(attrs).length > 0) {
+            const env = await this.env(accountId, ext);
+            if (!env.id)
+              throw new Error("Editing an environment needs a management key on the account.");
+            const team = await this.teamSlug();
+            await v2(
+              this.ctx,
+              `/2/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(env.id)}`,
+              {
+                method: "PATCH",
+                body: JSON.stringify({
+                  data: { id: env.id, type: "environments", attributes: attrs },
+                }),
+              },
+            );
+            this.envCache = undefined;
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        const attrs: Record<string, unknown> = {};
-        if ("name" in fields) attrs["name"] = fields["name"];
-        if ("description" in fields) attrs["description"] = fields["description"];
-        if ("color" in fields && fields["color"]) attrs["color"] = fields["color"];
-        if ("deleteProtected" in fields) {
-          attrs["settings"] = { delete_protected: boolField(fields["deleteProtected"]) };
-        }
-        if (Object.keys(attrs).length > 0) {
-          const env = await this.env(accountId, ext);
-          if (!env.id)
-            throw new Error("Editing an environment needs a management key on the account.");
-          const team = await this.teamSlug();
-          await v2(
-            this.ctx,
-            `/2/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(env.id)}`,
-            {
-              method: "PATCH",
+        case "dataset": {
+          const { key } = await this.keyFor(accountId, a);
+          const settingsChanged = ["description", "expandJsonDepth", "deleteProtected"].some(
+            (k) => k in fields,
+          );
+          if (settingsChanged) {
+            const current = await v1<HnyDataset>(this.ctx, key, `/1/datasets/${ds(b)}`);
+            await v1(this.ctx, key, `/1/datasets/${ds(b)}`, {
+              method: "PUT",
               body: JSON.stringify({
-                data: { id: env.id, type: "environments", attributes: attrs },
+                description:
+                  "description" in fields ? fields["description"] : (current.description ?? ""),
+                expand_json_depth:
+                  "expandJsonDepth" in fields
+                    ? (numberOr(fields["expandJsonDepth"], 0) as number)
+                    : (current.expand_json_depth ?? 0),
+                settings: {
+                  delete_protected:
+                    "deleteProtected" in fields
+                      ? boolField(fields["deleteProtected"])
+                      : (current.settings?.delete_protected ?? false),
+                },
+              }),
+            });
+          }
+          const defs: Record<string, { name: string }> = {};
+          for (const k of DEFINITION_KEYS) {
+            if (`def_${k}` in fields) defs[k] = { name: (fields[`def_${k}`] ?? "").trim() };
+          }
+          if (Object.keys(defs).length > 0) {
+            await v1(this.ctx, key, `/1/dataset_definitions/${ds(b)}`, {
+              method: "PATCH",
+              body: JSON.stringify(defs),
+            });
+          }
+          this.datasetCache.delete(a);
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "column": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const current = await v1<HnyColumn>(
+            this.ctx,
+            key,
+            `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
+          );
+          const updated = await v1<HnyColumn>(
+            this.ctx,
+            key,
+            `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                key_name: current.key_name,
+                type: fields["type"] || current.type,
+                description:
+                  "description" in fields ? fields["description"] : (current.description ?? ""),
+                hidden:
+                  "hidden" in fields ? boolField(fields["hidden"]) : (current.hidden ?? false),
               }),
             },
           );
-          this.envCache = undefined;
+          return mapColumn(accountId, env, b, updated);
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "dataset": {
-        const { key } = await this.keyFor(accountId, a);
-        const settingsChanged = ["description", "expandJsonDepth", "deleteProtected"].some(
-          (k) => k in fields,
-        );
-        if (settingsChanged) {
-          const current = await v1<HnyDataset>(this.ctx, key, `/1/datasets/${ds(b)}`);
-          await v1(this.ctx, key, `/1/datasets/${ds(b)}`, {
+        case "derived-column": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const path = `/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`;
+          const current = await v1<HnyDerivedColumn>(this.ctx, key, path);
+          const updated = await v1<HnyDerivedColumn>(this.ctx, key, path, {
             method: "PUT",
             body: JSON.stringify({
+              alias: current.alias,
+              expression: "expression" in fields ? fields["expression"] : current.expression,
               description:
                 "description" in fields ? fields["description"] : (current.description ?? ""),
-              expand_json_depth:
-                "expandJsonDepth" in fields
-                  ? (numberOr(fields["expandJsonDepth"], 0) as number)
-                  : (current.expand_json_depth ?? 0),
-              settings: {
-                delete_protected:
-                  "deleteProtected" in fields
-                    ? boolField(fields["deleteProtected"])
-                    : (current.settings?.delete_protected ?? false),
-              },
             }),
           });
+          return mapDerivedColumn(accountId, env, b, updated);
         }
-        const defs: Record<string, { name: string }> = {};
-        for (const k of DEFINITION_KEYS) {
-          if (`def_${k}` in fields) defs[k] = { name: (fields[`def_${k}`] ?? "").trim() };
-        }
-        if (Object.keys(defs).length > 0) {
-          await v1(this.ctx, key, `/1/dataset_definitions/${ds(b)}`, {
-            method: "PATCH",
-            body: JSON.stringify(defs),
+        case "trigger":
+          return this.updateTrigger(accountId, a, b, c, (t) => {
+            if ("name" in fields) t.name = fields["name"] ?? "";
+            if ("description" in fields) t.description = fields["description"] ?? "";
+            if (
+              "thresholdOp" in fields ||
+              "thresholdValue" in fields ||
+              "exceededLimit" in fields
+            ) {
+              const limit = numberOr(fields["exceededLimit"], t.threshold?.exceeded_limit);
+              t.threshold = {
+                op: fields["thresholdOp"] || t.threshold?.op || ">",
+                value: numberOr(fields["thresholdValue"], t.threshold?.value ?? 0) as number,
+                ...(limit !== undefined ? { exceeded_limit: limit } : {}),
+              };
+            }
+            if ("frequency" in fields) {
+              const freq = numberOr(fields["frequency"], t.frequency);
+              if (freq !== undefined) t.frequency = freq;
+            }
+            if ("alertType" in fields && fields["alertType"]) t.alert_type = fields["alertType"];
           });
-        }
-        this.datasetCache.delete(a);
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "column": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const current = await v1<HnyColumn>(
-          this.ctx,
-          key,
-          `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
-        );
-        const updated = await v1<HnyColumn>(
-          this.ctx,
-          key,
-          `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
-          {
+        case "slo": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const path = `/1/slos/${ds(b)}/${encodeURIComponent(c)}`;
+          const current = await v1<HnySlo>(this.ctx, key, path);
+          const updated = await v1<HnySlo>(this.ctx, key, path, {
             method: "PUT",
             body: JSON.stringify({
-              key_name: current.key_name,
-              type: fields["type"] || current.type,
+              name: "name" in fields ? fields["name"] : current.name,
               description:
                 "description" in fields ? fields["description"] : (current.description ?? ""),
-              hidden: "hidden" in fields ? boolField(fields["hidden"]) : (current.hidden ?? false),
+              sli: current.sli,
+              time_period_days:
+                "timePeriodDays" in fields
+                  ? numberOr(fields["timePeriodDays"], current.time_period_days)
+                  : current.time_period_days,
+              target_per_million:
+                "targetPercent" in fields
+                  ? Math.round((numberOr(fields["targetPercent"], 0) as number) * 10_000)
+                  : current.target_per_million,
+              tags: current.tags ?? [],
+              ...(b === ALL_DATASETS ? { dataset_slugs: current.dataset_slugs ?? [] } : {}),
             }),
-          },
-        );
-        return mapColumn(accountId, env, b, updated);
-      }
-      case "derived-column": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const path = `/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`;
-        const current = await v1<HnyDerivedColumn>(this.ctx, key, path);
-        const updated = await v1<HnyDerivedColumn>(this.ctx, key, path, {
-          method: "PUT",
-          body: JSON.stringify({
-            alias: current.alias,
-            expression: "expression" in fields ? fields["expression"] : current.expression,
-            description:
-              "description" in fields ? fields["description"] : (current.description ?? ""),
-          }),
-        });
-        return mapDerivedColumn(accountId, env, b, updated);
-      }
-      case "trigger":
-        return this.updateTrigger(accountId, a, b, c, (t) => {
-          if ("name" in fields) t.name = fields["name"] ?? "";
-          if ("description" in fields) t.description = fields["description"] ?? "";
-          if ("thresholdOp" in fields || "thresholdValue" in fields || "exceededLimit" in fields) {
-            const limit = numberOr(fields["exceededLimit"], t.threshold?.exceeded_limit);
-            t.threshold = {
-              op: fields["thresholdOp"] || t.threshold?.op || ">",
-              value: numberOr(fields["thresholdValue"], t.threshold?.value ?? 0) as number,
-              ...(limit !== undefined ? { exceeded_limit: limit } : {}),
-            };
-          }
-          if ("frequency" in fields) {
-            const freq = numberOr(fields["frequency"], t.frequency);
-            if (freq !== undefined) t.frequency = freq;
-          }
-          if ("alertType" in fields && fields["alertType"]) t.alert_type = fields["alertType"];
-        });
-      case "slo": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const path = `/1/slos/${ds(b)}/${encodeURIComponent(c)}`;
-        const current = await v1<HnySlo>(this.ctx, key, path);
-        const updated = await v1<HnySlo>(this.ctx, key, path, {
-          method: "PUT",
-          body: JSON.stringify({
-            name: "name" in fields ? fields["name"] : current.name,
-            description:
-              "description" in fields ? fields["description"] : (current.description ?? ""),
-            sli: current.sli,
-            time_period_days:
-              "timePeriodDays" in fields
-                ? numberOr(fields["timePeriodDays"], current.time_period_days)
-                : current.time_period_days,
-            target_per_million:
-              "targetPercent" in fields
-                ? Math.round((numberOr(fields["targetPercent"], 0) as number) * 10_000)
-                : current.target_per_million,
-            tags: current.tags ?? [],
-            ...(b === ALL_DATASETS ? { dataset_slugs: current.dataset_slugs ?? [] } : {}),
-          }),
-        });
-        return mapSlo(accountId, env, sloDatasetPath(updated, b), updated);
-      }
-      case "burn-alert": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const path = `/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`;
-        const current = await v1<HnyBurnAlert>(this.ctx, key, path);
-        const body: Record<string, unknown> = {
-          alert_type: current.alert_type,
-          slo: current.slo,
-          description:
-            "description" in fields ? fields["description"] : (current.description ?? ""),
-          recipients: (current.recipients ?? []).map((r) => ({ id: r.id })),
-        };
-        if (current.alert_type === "budget_rate") {
-          body["budget_rate_window_minutes"] = numberOr(
-            fields["budgetRateWindowMinutes"],
-            current.budget_rate_window_minutes,
-          );
-          body["budget_rate_decrease_threshold_per_million"] =
-            "budgetRateDecreasePercent" in fields
-              ? Math.round((numberOr(fields["budgetRateDecreasePercent"], 0) as number) * 10_000)
-              : current.budget_rate_decrease_threshold_per_million;
-        } else {
-          body["exhaustion_minutes"] = numberOr(
-            fields["exhaustionMinutes"],
-            current.exhaustion_minutes,
-          );
+          });
+          return mapSlo(accountId, env, sloDatasetPath(updated, b), updated);
         }
-        const updated = await v1<HnyBurnAlert>(this.ctx, key, path, {
-          method: "PUT",
-          body: JSON.stringify(body),
-        });
-        return mapBurnAlert(accountId, env, b, current.slo?.id ?? "", updated);
-      }
-      case "board": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const path = `/1/boards/${encodeURIComponent(b)}`;
-        const current = await v1<HnyBoard>(this.ctx, key, path);
-        const { id: _id, links: _links, ...rest } = current;
-        const updated = await v1<HnyBoard>(this.ctx, key, path, {
-          method: "PUT",
-          body: JSON.stringify({
-            ...rest,
+        case "burn-alert": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const path = `/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`;
+          const current = await v1<HnyBurnAlert>(this.ctx, key, path);
+          const body: Record<string, unknown> = {
+            alert_type: current.alert_type,
+            slo: current.slo,
+            description:
+              "description" in fields ? fields["description"] : (current.description ?? ""),
+            recipients: (current.recipients ?? []).map((r) => ({ id: r.id })),
+          };
+          if (current.alert_type === "budget_rate") {
+            body["budget_rate_window_minutes"] = numberOr(
+              fields["budgetRateWindowMinutes"],
+              current.budget_rate_window_minutes,
+            );
+            body["budget_rate_decrease_threshold_per_million"] =
+              "budgetRateDecreasePercent" in fields
+                ? Math.round((numberOr(fields["budgetRateDecreasePercent"], 0) as number) * 10_000)
+                : current.budget_rate_decrease_threshold_per_million;
+          } else {
+            body["exhaustion_minutes"] = numberOr(
+              fields["exhaustionMinutes"],
+              current.exhaustion_minutes,
+            );
+          }
+          const updated = await v1<HnyBurnAlert>(this.ctx, key, path, {
+            method: "PUT",
+            body: JSON.stringify(body),
+          });
+          return mapBurnAlert(accountId, env, b, current.slo?.id ?? "", updated);
+        }
+        case "board": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const path = `/1/boards/${encodeURIComponent(b)}`;
+          const current = await v1<HnyBoard>(this.ctx, key, path);
+          const { id: _id, links: _links, ...rest } = current;
+          const updated = await v1<HnyBoard>(this.ctx, key, path, {
+            method: "PUT",
+            body: JSON.stringify({
+              ...rest,
+              ...("name" in fields ? { name: fields["name"] } : {}),
+              ...("description" in fields ? { description: fields["description"] } : {}),
+              tags: current.tags ?? [],
+            }),
+          });
+          return mapBoard(accountId, env, updated);
+        }
+        case "board-view": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const path = `/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`;
+          const current = await v1<HnyBoardView>(this.ctx, key, path);
+          const updated = await v1<HnyBoardView>(this.ctx, key, path, {
+            method: "PUT",
+            body: JSON.stringify({
+              name: fields["name"] ?? current.name,
+              filters: current.filters ?? [],
+            }),
+          });
+          return mapBoardView(accountId, env, b, updated);
+        }
+        case "marker": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const list = await v1<HnyMarker[]>(this.ctx, key, `/1/markers/${ds(b)}`);
+          const current = (list ?? []).find((m) => m.id === c);
+          if (!current) throw new Error("Marker not found");
+          const updated = await v1<HnyMarker>(
+            this.ctx,
+            key,
+            `/1/markers/${ds(b)}/${encodeURIComponent(c)}`,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                ...(current.start_time ? { start_time: current.start_time } : {}),
+                ...(current.end_time ? { end_time: current.end_time } : {}),
+                message: "message" in fields ? fields["message"] : current.message,
+                type: "type" in fields ? fields["type"] : current.type,
+                url: "url" in fields ? fields["url"] : current.url,
+              }),
+            },
+          );
+          return mapMarker(accountId, env, b, updated);
+        }
+        case "marker-setting": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const list = await v1<HnyMarkerSetting[]>(this.ctx, key, `/1/marker_settings/${ds(b)}`);
+          const current = (list ?? []).find((m) => m.id === c);
+          const updated = await v1<HnyMarkerSetting>(
+            this.ctx,
+            key,
+            `/1/marker_settings/${ds(b)}/${encodeURIComponent(c)}`,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                type: current?.type,
+                color: fields["color"] ?? current?.color,
+              }),
+            },
+          );
+          return mapMarkerSetting(accountId, env, b, updated);
+        }
+        case "saved-query": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const path = `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`;
+          const current = await v1<HnyQueryAnnotation>(this.ctx, key, path);
+          const updated = await v1<HnyQueryAnnotation>(this.ctx, key, path, {
+            method: "PUT",
+            body: JSON.stringify({
+              name: "name" in fields ? fields["name"] : current.name,
+              description:
+                "description" in fields ? fields["description"] : (current.description ?? ""),
+              query_id: current.query_id,
+            }),
+          });
+          return mapSavedQuery(accountId, env, b, updated);
+        }
+        case "recipient": {
+          const key = await this.recipientKey(accountId);
+          const path = `/1/recipients/${encodeURIComponent(ext)}`;
+          const current = await v1<HnyRecipient>(this.ctx, key, path);
+          const merged: Record<string, string> = {
+            target: "target" in fields ? (fields["target"] ?? "") : recipientTarget(current),
+            url: "url" in fields ? (fields["url"] ?? "") : (current.details?.webhook_url ?? ""),
+            secret: fields["secret"] ?? "",
+          };
+          const body = recipientBody(current.type ?? "", merged, current);
+          const updated = await v1<HnyRecipient>(this.ctx, key, path, {
+            method: "PUT",
+            body: JSON.stringify(body),
+          });
+          return mapRecipient(accountId, updated);
+        }
+        case "signal": {
+          const { env, key } = await this.keyFor(accountId, a);
+          const updated = await v1<HnySignal>(
+            this.ctx,
+            key,
+            `/1/signals/${encodeURIComponent(b)}`,
+            {
+              method: "PUT",
+              body: JSON.stringify({ sensitivity: fields["sensitivity"] || "medium" }),
+            },
+          );
+          return mapSignal(accountId, env, updated);
+        }
+        case "api-key":
+          return this.patchApiKey(accountId, ext, {
             ...("name" in fields ? { name: fields["name"] } : {}),
-            ...("description" in fields ? { description: fields["description"] } : {}),
-            tags: current.tags ?? [],
-          }),
-        });
-        return mapBoard(accountId, env, updated);
+          });
+        default:
+          throw new Error(`Honeycomb plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-      case "board-view": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const path = `/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`;
-        const current = await v1<HnyBoardView>(this.ctx, key, path);
-        const updated = await v1<HnyBoardView>(this.ctx, key, path, {
-          method: "PUT",
-          body: JSON.stringify({
-            name: fields["name"] ?? current.name,
-            filters: current.filters ?? [],
-          }),
-        });
-        return mapBoardView(accountId, env, b, updated);
-      }
-      case "marker": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const list = await v1<HnyMarker[]>(this.ctx, key, `/1/markers/${ds(b)}`);
-        const current = (list ?? []).find((m) => m.id === c);
-        if (!current) throw new Error("Marker not found");
-        const updated = await v1<HnyMarker>(
-          this.ctx,
-          key,
-          `/1/markers/${ds(b)}/${encodeURIComponent(c)}`,
-          {
-            method: "PUT",
-            body: JSON.stringify({
-              ...(current.start_time ? { start_time: current.start_time } : {}),
-              ...(current.end_time ? { end_time: current.end_time } : {}),
-              message: "message" in fields ? fields["message"] : current.message,
-              type: "type" in fields ? fields["type"] : current.type,
-              url: "url" in fields ? fields["url"] : current.url,
-            }),
-          },
-        );
-        return mapMarker(accountId, env, b, updated);
-      }
-      case "marker-setting": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const list = await v1<HnyMarkerSetting[]>(this.ctx, key, `/1/marker_settings/${ds(b)}`);
-        const current = (list ?? []).find((m) => m.id === c);
-        const updated = await v1<HnyMarkerSetting>(
-          this.ctx,
-          key,
-          `/1/marker_settings/${ds(b)}/${encodeURIComponent(c)}`,
-          {
-            method: "PUT",
-            body: JSON.stringify({ type: current?.type, color: fields["color"] ?? current?.color }),
-          },
-        );
-        return mapMarkerSetting(accountId, env, b, updated);
-      }
-      case "saved-query": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const path = `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`;
-        const current = await v1<HnyQueryAnnotation>(this.ctx, key, path);
-        const updated = await v1<HnyQueryAnnotation>(this.ctx, key, path, {
-          method: "PUT",
-          body: JSON.stringify({
-            name: "name" in fields ? fields["name"] : current.name,
-            description:
-              "description" in fields ? fields["description"] : (current.description ?? ""),
-            query_id: current.query_id,
-          }),
-        });
-        return mapSavedQuery(accountId, env, b, updated);
-      }
-      case "recipient": {
-        const key = await this.recipientKey(accountId);
-        const path = `/1/recipients/${encodeURIComponent(ext)}`;
-        const current = await v1<HnyRecipient>(this.ctx, key, path);
-        const merged: Record<string, string> = {
-          target: "target" in fields ? (fields["target"] ?? "") : recipientTarget(current),
-          url: "url" in fields ? (fields["url"] ?? "") : (current.details?.webhook_url ?? ""),
-          secret: fields["secret"] ?? "",
-        };
-        const body = recipientBody(current.type ?? "", merged, current);
-        const updated = await v1<HnyRecipient>(this.ctx, key, path, {
-          method: "PUT",
-          body: JSON.stringify(body),
-        });
-        return mapRecipient(accountId, updated);
-      }
-      case "signal": {
-        const { env, key } = await this.keyFor(accountId, a);
-        const updated = await v1<HnySignal>(this.ctx, key, `/1/signals/${encodeURIComponent(b)}`, {
-          method: "PUT",
-          body: JSON.stringify({ sensitivity: fields["sensitivity"] || "medium" }),
-        });
-        return mapSignal(accountId, env, updated);
-      }
-      case "api-key":
-        return this.patchApiKey(accountId, ext, {
-          ...("name" in fields ? { name: fields["name"] } : {}),
-        });
-      default:
-        throw new Error(`Honeycomb plugin: "${typeId}" cannot be edited from Infrawrench`);
-    }
+    });
   }
 
   private async updateTrigger(
@@ -2351,124 +2404,130 @@ export class HoneycombClient implements PluginClient {
       method: "PATCH",
       body: JSON.stringify({ data: { id, type: "api-keys", attributes: attrs } }),
     });
-    return this.getResource("api-key", resourceIdFor(accountId, "api-key", id), accountId);
+    return runPluginEffect(
+      this.getResource("api-key", resourceIdFor(accountId, "api-key", id), accountId),
+    );
   }
 
   // -------------------------------------------------------------------------
   // Delete
   // -------------------------------------------------------------------------
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    const [a = "", b = "", c = ""] = ext.split("/");
-    const del = async (path: string) => {
-      const { key } = await this.keyFor(accountId, a);
-      await v1(this.ctx, key, path, { method: "DELETE" });
-    };
-    switch (typeId) {
-      case "environment": {
-        const env = await this.env(accountId, ext);
-        if (!env.id)
-          throw new Error("Deleting an environment needs a management key on the account.");
-        const team = await this.teamSlug();
-        await v2(
-          this.ctx,
-          `/2/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(env.id)}`,
-          {
-            method: "DELETE",
-          },
-        );
-        this.envCache = undefined;
-        return;
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const [a = "", b = "", c = ""] = ext.split("/");
+      const del = async (path: string) => {
+        const { key } = await this.keyFor(accountId, a);
+        await v1(this.ctx, key, path, { method: "DELETE" });
+      };
+      switch (typeId) {
+        case "environment": {
+          const env = await this.env(accountId, ext);
+          if (!env.id)
+            throw new Error("Deleting an environment needs a management key on the account.");
+          const team = await this.teamSlug();
+          await v2(
+            this.ctx,
+            `/2/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(env.id)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          this.envCache = undefined;
+          return;
+        }
+        case "dataset":
+          await del(`/1/datasets/${ds(b)}`);
+          this.datasetCache.delete(a);
+          return;
+        case "column":
+          return del(`/1/columns/${ds(b)}/${encodeURIComponent(c)}`);
+        case "derived-column":
+          return del(`/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`);
+        case "trigger":
+          return del(`/1/triggers/${ds(b)}/${encodeURIComponent(c)}`);
+        case "slo":
+          return del(`/1/slos/${ds(b)}/${encodeURIComponent(c)}`);
+        case "burn-alert":
+          return del(`/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`);
+        case "board":
+          return del(`/1/boards/${encodeURIComponent(b)}`);
+        case "board-view":
+          return del(`/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`);
+        case "marker":
+          return del(`/1/markers/${ds(b)}/${encodeURIComponent(c)}`);
+        case "marker-setting":
+          return del(`/1/marker_settings/${ds(b)}/${encodeURIComponent(c)}`);
+        case "saved-query":
+          return del(`/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`);
+        case "recipient":
+          await v1(
+            this.ctx,
+            await this.recipientKey(accountId),
+            `/1/recipients/${encodeURIComponent(ext)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        case "api-key": {
+          const team = await this.teamSlug();
+          await v2(
+            this.ctx,
+            `/2/teams/${encodeURIComponent(team)}/api-keys/${encodeURIComponent(ext)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        }
+        default:
+          throw new Error(`Honeycomb plugin: "${typeId}" cannot be deleted from Infrawrench`);
       }
-      case "dataset":
-        await del(`/1/datasets/${ds(b)}`);
-        this.datasetCache.delete(a);
-        return;
-      case "column":
-        return del(`/1/columns/${ds(b)}/${encodeURIComponent(c)}`);
-      case "derived-column":
-        return del(`/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`);
-      case "trigger":
-        return del(`/1/triggers/${ds(b)}/${encodeURIComponent(c)}`);
-      case "slo":
-        return del(`/1/slos/${ds(b)}/${encodeURIComponent(c)}`);
-      case "burn-alert":
-        return del(`/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`);
-      case "board":
-        return del(`/1/boards/${encodeURIComponent(b)}`);
-      case "board-view":
-        return del(`/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`);
-      case "marker":
-        return del(`/1/markers/${ds(b)}/${encodeURIComponent(c)}`);
-      case "marker-setting":
-        return del(`/1/marker_settings/${ds(b)}/${encodeURIComponent(c)}`);
-      case "saved-query":
-        return del(`/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`);
-      case "recipient":
-        await v1(
-          this.ctx,
-          await this.recipientKey(accountId),
-          `/1/recipients/${encodeURIComponent(ext)}`,
-          {
-            method: "DELETE",
-          },
-        );
-        return;
-      case "api-key": {
-        const team = await this.teamSlug();
-        await v2(
-          this.ctx,
-          `/2/teams/${encodeURIComponent(team)}/api-keys/${encodeURIComponent(ext)}`,
-          {
-            method: "DELETE",
-          },
-        );
-        return;
-      }
-      default:
-        throw new Error(`Honeycomb plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    const [a = "", b = "", c = ""] = ext.split("/");
-    if (typeId === "environment" && actionId === "connect") {
-      const env = await this.env(accountId, ext);
-      if (!env.id)
-        throw new Error("Connect environment needs a management key with api-keys:write.");
-      await this.connectEnvironment(accountId, env.slug, env.id);
-      return;
-    }
-    if (typeId === "trigger" && (actionId === "enable" || actionId === "disable")) {
-      await this.updateTrigger(accountId, a, b, c, (t) => {
-        t.disabled = actionId === "disable";
-      });
-      return;
-    }
-    if (typeId === "signal" && (actionId === "enable" || actionId === "disable")) {
-      const { key } = await this.keyFor(accountId, a);
-      await v1(this.ctx, key, `/1/signals/${encodeURIComponent(b)}`, {
-        method: "PUT",
-        body: JSON.stringify({ enabled: actionId === "enable" }),
-      });
-      return;
-    }
-    if (typeId === "api-key" && (actionId === "enable" || actionId === "disable")) {
-      await this.patchApiKey(accountId, ext, { disabled: actionId === "disable" });
-      return;
-    }
-    throw new Error(`Honeycomb plugin: unknown action "${actionId}" for "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const [a = "", b = "", c = ""] = ext.split("/");
+      if (typeId === "environment" && actionId === "connect") {
+        const env = await this.env(accountId, ext);
+        if (!env.id)
+          throw new Error("Connect environment needs a management key with api-keys:write.");
+        await this.connectEnvironment(accountId, env.slug, env.id);
+        return;
+      }
+      if (typeId === "trigger" && (actionId === "enable" || actionId === "disable")) {
+        await this.updateTrigger(accountId, a, b, c, (t) => {
+          t.disabled = actionId === "disable";
+        });
+        return;
+      }
+      if (typeId === "signal" && (actionId === "enable" || actionId === "disable")) {
+        const { key } = await this.keyFor(accountId, a);
+        await v1(this.ctx, key, `/1/signals/${encodeURIComponent(b)}`, {
+          method: "PUT",
+          body: JSON.stringify({ enabled: actionId === "enable" }),
+        });
+        return;
+      }
+      if (typeId === "api-key" && (actionId === "enable" || actionId === "disable")) {
+        await this.patchApiKey(accountId, ext, { disabled: actionId === "disable" });
+        return;
+      }
+      throw new Error(`Honeycomb plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------

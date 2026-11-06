@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockQuery = vi.fn();
@@ -10,9 +11,12 @@ vi.mock("pg", () => ({
 }));
 
 import { Pool } from "pg";
-import { driver, serverDriver } from "../driver.js";
+import { driver as contractDriver, serverDriver as contractServerDriver } from "../driver.js";
 import { serverPostgresConnectionStringError } from "../uri-policy.js";
 import { plugin } from "../plugin.js";
+
+const driver = hostDriver(contractDriver);
+const serverDriver = hostDriver(contractServerDriver);
 
 describe("serverPostgresConnectionStringError", () => {
   it("accepts ordinary connection strings", () => {

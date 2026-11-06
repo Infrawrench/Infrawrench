@@ -29,7 +29,7 @@ export const InstanceResourceType = rt({
     f("securityGroupId", "Security Group", { required: false, editable: false }),
     f("tags", "Tags", { required: false, description: "Comma-separated" }),
   ],
-  outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP")],
+  outputs: [o("publicIp", "Public IP", { dnsValue: "ipv4" }), o("privateIp", "Private IP")],
   iconKey: "instance",
   // Sleep/wake schedules: serverAction poweron / poweroff. A powered-off
   // instance stops compute billing (volumes and reserved IPs keep billing).

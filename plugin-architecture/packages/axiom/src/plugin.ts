@@ -1,8 +1,11 @@
+import type { PluginEffect } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { axFetch } from "./api.js";
@@ -14,16 +17,15 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { axiomTerraformExport } from "./terraform.js";
 import type { AxOrg } from "./types.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "axiom",
-  version: "0.1.0",
+  // Management API plus the edge deployments (us-east-1.aws.edge.axiom.co, eu-central-1.aws.edge.axiom.co) that APL queries run on.
+  egressHosts: ["api.axiom.co", "*.edge.axiom.co"],
   displayName: "Axiom",
   description:
     "Event, log, trace and metrics storage queried with APL. Manage Axiom datasets, fields, virtual fields, monitors, notifiers, dashboards, views, saved queries, annotations, API tokens and users, query datasets with APL, tail their events, and chart ingest, query compute and plan limits.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "token",
       label: "API Token",
@@ -44,7 +46,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["token"], emptyLabel: "The token's organization" },
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: AXIOM_PREFLIGHT,
   statusFeed,
   quotas: {
@@ -53,36 +55,41 @@ const manifest: PluginManifest = {
     partial: true,
   },
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new AxiomClient(credentials, services),
+  testCredentials: { token: "xaat-test-token" },
   parseStatusFeed,
   terraformExport: axiomTerraformExport,
-  async listCredentialOptions(
+  listCredentialOptions(
     fieldKey: string,
     credentials: Record<string, string>,
     services?: HostServices,
-  ): Promise<CredentialFieldOption[]> {
-    if (fieldKey !== "orgId") return [];
-    const token = (credentials["token"] ?? "").trim();
-    if (!token) return [];
-    const orgs = await axFetch<AxOrg[]>(
-      {
-        token,
-        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-        ...(services?.http ? { http: services.http } : {}),
-      },
-      "/v2/orgs",
-    );
-    return (orgs ?? [])
-      .filter((o) => o.id)
-      .map((o) => ({
-        id: o.id as string,
-        label: o.name ?? (o.id as string),
-        description: o.id as string,
-      }));
+  ): PluginEffect<CredentialFieldOption[]> {
+    return attempt(async () => {
+      if (fieldKey !== "orgId") return [];
+      const token = (credentials["token"] ?? "").trim();
+      if (!token) return [];
+      const orgs = await axFetch<AxOrg[]>(
+        {
+          token,
+          ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+          ...(services?.http ? { http: services.http } : {}),
+        },
+        "/v2/orgs",
+      );
+      return (orgs ?? [])
+        .filter((o) => o.id)
+        .map((o) => ({
+          id: o.id as string,
+          label: o.name ?? (o.id as string),
+          description: o.id as string,
+        }));
+    });
   },
-};
+});

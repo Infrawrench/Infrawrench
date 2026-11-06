@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
@@ -7,7 +8,7 @@ import { plugin } from "../plugin.js";
 runPluginRenderingTests(plugin);
 
 function client(adminApiKey = "") {
-  return new MistralClient({ apiKey: "test-key", adminApiKey });
+  return hostClient(new MistralClient({ apiKey: "test-key", adminApiKey }));
 }
 
 function resource(

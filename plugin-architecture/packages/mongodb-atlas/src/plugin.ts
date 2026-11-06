@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { contextFromCredentials, isPermissionError, listOrgs } from "./api.js";
@@ -13,16 +15,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { mongodbAtlasTerraformExport } from "./terraform.js";
 import { mongodbAtlasRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "mongodb-atlas",
-  version: "0.1.0",
+  egressHosts: ["cloud.mongodb.com"],
   displayName: "MongoDB Atlas",
   description:
     "MongoDB's managed database cloud. Track spend by service, project and cluster, and manage clusters, database users, the IP access list, backups, alerts, search indexes, online archives and private endpoints.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "clientId",
       label: "Client ID or Public Key",
@@ -52,7 +52,7 @@ const manifest: PluginManifest = {
       placeholder: "Organization ID",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Invoice line items: SKU category -> service, `{groupId}/{clusterName}`
     // -> resource, project/cluster/SKU/cloud and Atlas resource tags -> tags.
@@ -65,7 +65,9 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /**
  * Options for the organization picker: every organization the credential can
@@ -96,12 +98,17 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new MongoDBAtlasClient(credentials, services),
+  testCredentials: {
+    clientId: "mdb_sa_id_test",
+    clientSecret: "mdb_sa_sk_test",
+    orgId: "5f0000000000000000000001",
+  },
   parseStatusFeed,
   terraformExport: mongodbAtlasTerraformExport,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   remediationCommands: mongodbAtlasRemediationCommands,
-};
+});

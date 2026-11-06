@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -137,7 +140,7 @@ export class HcpTerraformClient implements PluginClient {
   private poolsCache: Promise<Doc<A>[]> | undefined;
   private varsetsCache: Promise<Doc<A>[]> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiToken"] ?? "").trim();
     if (!token) throw new Error("HCP Terraform plugin: missing apiToken credential");
     this.org = (credentials["organization"] ?? "").trim();
@@ -324,114 +327,117 @@ export class HcpTerraformClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "organization":
-        return [await this.organizationResource(accountId)];
-      case "project": {
-        this.projectsCache = undefined;
-        const [projects, ws] = await Promise.all([
-          this.projects(),
-          this.workspaces().catch(() => undefined),
-        ]);
-        return projects.map((p) =>
-          mapProject(
-            accountId,
-            this.org,
-            p,
-            this.url(`projects/${p.id}`),
-            ws ? ws.data.filter((w) => relId(w, "project") === p.id).length : undefined,
-          ),
-        );
-      }
-      case "workspace": {
-        this.workspacesCache = undefined;
-        this.healthCache = undefined;
-        const [ws, health] = await Promise.all([this.workspaces(), this.health()]);
-        return ws.data.map((w) => this.workspaceDoc(accountId, w, ws.included, health));
-      }
-      case "run":
-        return this.recentRuns(accountId);
-      case "variable":
-        return this.perWorkspace(async (w) =>
-          (await tfList<A>(this.ctx, `/workspaces/${enc(w.id)}/vars`)).data.map((v) =>
-            mapVariable(accountId, w.id, s(w.attributes["name"]), v),
-          ),
-        );
-      case "state-output":
-        return this.perWorkspace(async (w) =>
-          (
-            await tfList<A>(this.ctx, `/workspaces/${enc(w.id)}/current-state-version-outputs`)
-          ).data.map((o) => mapOutput(accountId, w.id, s(w.attributes["name"]), o)),
-        );
-      case "variable-set":
-        this.varsetsCache = undefined;
-        return (await this.varsets()).map((v) => mapVarset(accountId, this.org, v));
-      case "varset-variable": {
-        const out: ResourceInstance[] = [];
-        for (const vs of await this.varsets()) {
-          const vars = await tfList<A>(this.ctx, `/varsets/${enc(vs.id)}/relationships/vars`).catch(
-            () => undefined,
-          );
-          out.push(
-            ...(vars?.data ?? []).map((v) =>
-              mapVarsetVariable(accountId, vs.id, s(vs.attributes["name"]), v),
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "organization":
+          return [await this.organizationResource(accountId)];
+        case "project": {
+          this.projectsCache = undefined;
+          const [projects, ws] = await Promise.all([
+            this.projects(),
+            this.workspaces().catch(() => undefined),
+          ]);
+          return projects.map((p) =>
+            mapProject(
+              accountId,
+              this.org,
+              p,
+              this.url(`projects/${p.id}`),
+              ws ? ws.data.filter((w) => relId(w, "project") === p.id).length : undefined,
             ),
           );
         }
-        return out;
-      }
-      case "agent-pool":
-        this.poolsCache = undefined;
-        return (await this.pools()).map((p) => mapAgentPool(accountId, this.org, p));
-      case "agent": {
-        const out: ResourceInstance[] = [];
-        for (const p of await this.pools()) {
-          const agents = await tfList<A>(this.ctx, `/agent-pools/${enc(p.id)}/agents`).catch(
-            () => undefined,
-          );
-          out.push(
-            ...(agents?.data ?? []).map((a) =>
-              mapAgent(accountId, p.id, s(p.attributes["name"]), a),
+        case "workspace": {
+          this.workspacesCache = undefined;
+          this.healthCache = undefined;
+          const [ws, health] = await Promise.all([this.workspaces(), this.health()]);
+          return ws.data.map((w) => this.workspaceDoc(accountId, w, ws.included, health));
+        }
+        case "run":
+          return this.recentRuns(accountId);
+        case "variable":
+          return this.perWorkspace(async (w) =>
+            (await tfList<A>(this.ctx, `/workspaces/${enc(w.id)}/vars`)).data.map((v) =>
+              mapVariable(accountId, w.id, s(w.attributes["name"]), v),
             ),
           );
-        }
-        return out;
-      }
-      case "agent-token": {
-        const out: ResourceInstance[] = [];
-        for (const p of await this.pools()) {
-          const tokens = await tfList<A>(
-            this.ctx,
-            `/agent-pools/${enc(p.id)}/authentication-tokens`,
-          ).catch(() => undefined);
-          out.push(
-            ...(tokens?.data ?? []).map((t) =>
-              mapAgentToken(accountId, p.id, s(p.attributes["name"]), t),
-            ),
+        case "state-output":
+          return this.perWorkspace(async (w) =>
+            (
+              await tfList<A>(this.ctx, `/workspaces/${enc(w.id)}/current-state-version-outputs`)
+            ).data.map((o) => mapOutput(accountId, w.id, s(w.attributes["name"]), o)),
           );
+        case "variable-set":
+          this.varsetsCache = undefined;
+          return (await this.varsets()).map((v) => mapVarset(accountId, this.org, v));
+        case "varset-variable": {
+          const out: ResourceInstance[] = [];
+          for (const vs of await this.varsets()) {
+            const vars = await tfList<A>(
+              this.ctx,
+              `/varsets/${enc(vs.id)}/relationships/vars`,
+            ).catch(() => undefined);
+            out.push(
+              ...(vars?.data ?? []).map((v) =>
+                mapVarsetVariable(accountId, vs.id, s(vs.attributes["name"]), v),
+              ),
+            );
+          }
+          return out;
         }
-        return out;
+        case "agent-pool":
+          this.poolsCache = undefined;
+          return (await this.pools()).map((p) => mapAgentPool(accountId, this.org, p));
+        case "agent": {
+          const out: ResourceInstance[] = [];
+          for (const p of await this.pools()) {
+            const agents = await tfList<A>(this.ctx, `/agent-pools/${enc(p.id)}/agents`).catch(
+              () => undefined,
+            );
+            out.push(
+              ...(agents?.data ?? []).map((a) =>
+                mapAgent(accountId, p.id, s(p.attributes["name"]), a),
+              ),
+            );
+          }
+          return out;
+        }
+        case "agent-token": {
+          const out: ResourceInstance[] = [];
+          for (const p of await this.pools()) {
+            const tokens = await tfList<A>(
+              this.ctx,
+              `/agent-pools/${enc(p.id)}/authentication-tokens`,
+            ).catch(() => undefined);
+            out.push(
+              ...(tokens?.data ?? []).map((t) =>
+                mapAgentToken(accountId, p.id, s(p.attributes["name"]), t),
+              ),
+            );
+          }
+          return out;
+        }
+        case "policy-set":
+          return this.orgList(`${this.base}/policy-sets`, (d) =>
+            mapPolicySet(accountId, this.org, d),
+          );
+        case "team":
+          return this.orgList(`${this.base}/teams`, (d) => mapTeam(accountId, this.org, d));
+        case "run-task":
+          return this.orgList(`${this.base}/tasks`, (d) => mapRunTask(accountId, this.org, d));
+        case "registry-module":
+          return this.orgList(`${this.base}/registry-modules`, (d) =>
+            mapRegistryModule(accountId, this.org, d),
+          );
+        case "registry-provider":
+          return this.orgList(`${this.base}/registry-providers`, (d) =>
+            mapRegistryProvider(accountId, this.org, d),
+          );
+        default:
+          throw new Error(`HCP Terraform plugin: unknown resource type "${typeId}"`);
       }
-      case "policy-set":
-        return this.orgList(`${this.base}/policy-sets`, (d) =>
-          mapPolicySet(accountId, this.org, d),
-        );
-      case "team":
-        return this.orgList(`${this.base}/teams`, (d) => mapTeam(accountId, this.org, d));
-      case "run-task":
-        return this.orgList(`${this.base}/tasks`, (d) => mapRunTask(accountId, this.org, d));
-      case "registry-module":
-        return this.orgList(`${this.base}/registry-modules`, (d) =>
-          mapRegistryModule(accountId, this.org, d),
-        );
-      case "registry-provider":
-        return this.orgList(`${this.base}/registry-providers`, (d) =>
-          mapRegistryProvider(accountId, this.org, d),
-        );
-      default:
-        throw new Error(`HCP Terraform plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   /** An organization list that answers 404 when the feature is not in the plan. */
@@ -549,141 +555,143 @@ export class HcpTerraformClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "organization":
-        return this.organizationResource(accountId);
-      case "project": {
-        const p = (await tfGet<A>(this.ctx, `/projects/${enc(id)}`)).data;
-        const count = await tfCount(this.ctx, `${this.base}/workspaces`, {
-          "filter[project][id]": id,
-        }).catch(() => undefined);
-        return mapProject(accountId, this.org, p, this.url(`projects/${p.id}`), count);
-      }
-      case "workspace":
-        return this.workspaceDetail(accountId, id);
-      case "run": {
-        const res = await tfGet<A>(this.ctx, `/runs/${enc(id)}`, { include: "plan,workspace" });
-        const ws = (res.included ?? []).find((d) => d.type === "workspaces");
-        const plan = (res.included ?? []).find((d) => d.type === "plans") as Doc<A> | undefined;
-        const wsName = ws ? s((ws.attributes as A)["name"]) : undefined;
-        const wsId = relId(res.data, "workspace");
-        return mapRun(
-          accountId,
-          res.data,
-          wsId ? { id: wsId, name: wsName ?? wsId } : undefined,
-          plan,
-          this.url(`workspaces/${wsName ?? ""}/runs/${res.data.id}`),
-        );
-      }
-      case "variable": {
-        const [wsId, varId] = splitFirst(id);
-        const [vars, ws] = await Promise.all([
-          tfList<A>(this.ctx, `/workspaces/${enc(wsId)}/vars`),
-          tfGet<A>(this.ctx, `/workspaces/${enc(wsId)}`),
-        ]);
-        const v = vars.data.find((x) => x.id === varId);
-        if (!v) throw new TfApiError(404, `HCP Terraform plugin: variable ${varId} not found`);
-        return mapVariable(accountId, wsId, s(ws.data.attributes["name"]), v);
-      }
-      case "state-output": {
-        const [wsId, name] = splitFirst(id);
-        const [outs, ws] = await Promise.all([
-          tfList<A>(this.ctx, `/workspaces/${enc(wsId)}/current-state-version-outputs`),
-          tfGet<A>(this.ctx, `/workspaces/${enc(wsId)}`),
-        ]);
-        const o = outs.data.find((x) => x.attributes["name"] === name);
-        if (!o)
-          throw new TfApiError(
-            404,
-            `HCP Terraform plugin: output "${name}" is not in the current state`,
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "organization":
+          return this.organizationResource(accountId);
+        case "project": {
+          const p = (await tfGet<A>(this.ctx, `/projects/${enc(id)}`)).data;
+          const count = await tfCount(this.ctx, `${this.base}/workspaces`, {
+            "filter[project][id]": id,
+          }).catch(() => undefined);
+          return mapProject(accountId, this.org, p, this.url(`projects/${p.id}`), count);
+        }
+        case "workspace":
+          return this.workspaceDetail(accountId, id);
+        case "run": {
+          const res = await tfGet<A>(this.ctx, `/runs/${enc(id)}`, { include: "plan,workspace" });
+          const ws = (res.included ?? []).find((d) => d.type === "workspaces");
+          const plan = (res.included ?? []).find((d) => d.type === "plans") as Doc<A> | undefined;
+          const wsName = ws ? s((ws.attributes as A)["name"]) : undefined;
+          const wsId = relId(res.data, "workspace");
+          return mapRun(
+            accountId,
+            res.data,
+            wsId ? { id: wsId, name: wsName ?? wsId } : undefined,
+            plan,
+            this.url(`workspaces/${wsName ?? ""}/runs/${res.data.id}`),
           );
-        return mapOutput(accountId, wsId, s(ws.data.attributes["name"]), o);
+        }
+        case "variable": {
+          const [wsId, varId] = splitFirst(id);
+          const [vars, ws] = await Promise.all([
+            tfList<A>(this.ctx, `/workspaces/${enc(wsId)}/vars`),
+            tfGet<A>(this.ctx, `/workspaces/${enc(wsId)}`),
+          ]);
+          const v = vars.data.find((x) => x.id === varId);
+          if (!v) throw new TfApiError(404, `HCP Terraform plugin: variable ${varId} not found`);
+          return mapVariable(accountId, wsId, s(ws.data.attributes["name"]), v);
+        }
+        case "state-output": {
+          const [wsId, name] = splitFirst(id);
+          const [outs, ws] = await Promise.all([
+            tfList<A>(this.ctx, `/workspaces/${enc(wsId)}/current-state-version-outputs`),
+            tfGet<A>(this.ctx, `/workspaces/${enc(wsId)}`),
+          ]);
+          const o = outs.data.find((x) => x.attributes["name"] === name);
+          if (!o)
+            throw new TfApiError(
+              404,
+              `HCP Terraform plugin: output "${name}" is not in the current state`,
+            );
+          return mapOutput(accountId, wsId, s(ws.data.attributes["name"]), o);
+        }
+        case "variable-set": {
+          const v = (await tfGet<A>(this.ctx, `/varsets/${enc(id)}`)).data;
+          return stash(mapVarset(accountId, this.org, v), {
+            [DETAIL_KEYS.workspaces]: await this.workspaceOptions(),
+            [DETAIL_KEYS.projects]: await this.projectOptions(),
+          });
+        }
+        case "varset-variable": {
+          const [vsId, varId] = splitFirst(id);
+          const [vs, vars] = await Promise.all([
+            tfGet<A>(this.ctx, `/varsets/${enc(vsId)}`),
+            tfList<A>(this.ctx, `/varsets/${enc(vsId)}/relationships/vars`),
+          ]);
+          const v = vars.data.find((x) => x.id === varId);
+          if (!v) throw new TfApiError(404, `HCP Terraform plugin: variable ${varId} not found`);
+          return mapVarsetVariable(accountId, vsId, s(vs.data.attributes["name"]), v);
+        }
+        case "agent-pool":
+          return mapAgentPool(
+            accountId,
+            this.org,
+            (await tfGet<A>(this.ctx, `/agent-pools/${enc(id)}`)).data,
+          );
+        case "agent": {
+          const [poolId, agentId] = splitFirst(id);
+          const [a, p] = await Promise.all([
+            tfGet<A>(this.ctx, `/agents/${enc(agentId)}`),
+            tfGet<A>(this.ctx, `/agent-pools/${enc(poolId)}`).catch(() => undefined),
+          ]);
+          return mapAgent(accountId, poolId, p ? s(p.data.attributes["name"]) : "", a.data);
+        }
+        case "agent-token": {
+          const [poolId, tokenId] = splitFirst(id);
+          const [t, p] = await Promise.all([
+            tfGet<A>(this.ctx, `/authentication-tokens/${enc(tokenId)}`),
+            tfGet<A>(this.ctx, `/agent-pools/${enc(poolId)}`).catch(() => undefined),
+          ]);
+          return mapAgentToken(accountId, poolId, p ? s(p.data.attributes["name"]) : "", t.data);
+        }
+        case "policy-set": {
+          const p = (await tfGet<A>(this.ctx, `/policy-sets/${enc(id)}`)).data;
+          return stash(mapPolicySet(accountId, this.org, p), {
+            [DETAIL_KEYS.workspaces]: await this.workspaceOptions(),
+            [DETAIL_KEYS.projects]: await this.projectOptions(),
+          });
+        }
+        case "team":
+          return mapTeam(accountId, this.org, (await tfGet<A>(this.ctx, `/teams/${enc(id)}`)).data);
+        case "run-task":
+          return mapRunTask(
+            accountId,
+            this.org,
+            (await tfGet<A>(this.ctx, `/tasks/${enc(id)}`)).data,
+          );
+        case "registry-module":
+          return mapRegistryModule(
+            accountId,
+            this.org,
+            (
+              await tfGet<A>(
+                this.ctx,
+                `${this.base}/registry-modules/${id.split("/").map(enc).join("/")}`,
+              )
+            ).data,
+          );
+        case "registry-provider":
+          return mapRegistryProvider(
+            accountId,
+            this.org,
+            (
+              await tfGet<A>(
+                this.ctx,
+                `${this.base}/registry-providers/${id.split("/").map(enc).join("/")}`,
+              )
+            ).data,
+          );
+        default:
+          throw new Error(`HCP Terraform plugin: unknown resource type "${typeId}"`);
       }
-      case "variable-set": {
-        const v = (await tfGet<A>(this.ctx, `/varsets/${enc(id)}`)).data;
-        return stash(mapVarset(accountId, this.org, v), {
-          [DETAIL_KEYS.workspaces]: await this.workspaceOptions(),
-          [DETAIL_KEYS.projects]: await this.projectOptions(),
-        });
-      }
-      case "varset-variable": {
-        const [vsId, varId] = splitFirst(id);
-        const [vs, vars] = await Promise.all([
-          tfGet<A>(this.ctx, `/varsets/${enc(vsId)}`),
-          tfList<A>(this.ctx, `/varsets/${enc(vsId)}/relationships/vars`),
-        ]);
-        const v = vars.data.find((x) => x.id === varId);
-        if (!v) throw new TfApiError(404, `HCP Terraform plugin: variable ${varId} not found`);
-        return mapVarsetVariable(accountId, vsId, s(vs.data.attributes["name"]), v);
-      }
-      case "agent-pool":
-        return mapAgentPool(
-          accountId,
-          this.org,
-          (await tfGet<A>(this.ctx, `/agent-pools/${enc(id)}`)).data,
-        );
-      case "agent": {
-        const [poolId, agentId] = splitFirst(id);
-        const [a, p] = await Promise.all([
-          tfGet<A>(this.ctx, `/agents/${enc(agentId)}`),
-          tfGet<A>(this.ctx, `/agent-pools/${enc(poolId)}`).catch(() => undefined),
-        ]);
-        return mapAgent(accountId, poolId, p ? s(p.data.attributes["name"]) : "", a.data);
-      }
-      case "agent-token": {
-        const [poolId, tokenId] = splitFirst(id);
-        const [t, p] = await Promise.all([
-          tfGet<A>(this.ctx, `/authentication-tokens/${enc(tokenId)}`),
-          tfGet<A>(this.ctx, `/agent-pools/${enc(poolId)}`).catch(() => undefined),
-        ]);
-        return mapAgentToken(accountId, poolId, p ? s(p.data.attributes["name"]) : "", t.data);
-      }
-      case "policy-set": {
-        const p = (await tfGet<A>(this.ctx, `/policy-sets/${enc(id)}`)).data;
-        return stash(mapPolicySet(accountId, this.org, p), {
-          [DETAIL_KEYS.workspaces]: await this.workspaceOptions(),
-          [DETAIL_KEYS.projects]: await this.projectOptions(),
-        });
-      }
-      case "team":
-        return mapTeam(accountId, this.org, (await tfGet<A>(this.ctx, `/teams/${enc(id)}`)).data);
-      case "run-task":
-        return mapRunTask(
-          accountId,
-          this.org,
-          (await tfGet<A>(this.ctx, `/tasks/${enc(id)}`)).data,
-        );
-      case "registry-module":
-        return mapRegistryModule(
-          accountId,
-          this.org,
-          (
-            await tfGet<A>(
-              this.ctx,
-              `${this.base}/registry-modules/${id.split("/").map(enc).join("/")}`,
-            )
-          ).data,
-        );
-      case "registry-provider":
-        return mapRegistryProvider(
-          accountId,
-          this.org,
-          (
-            await tfGet<A>(
-              this.ctx,
-              `${this.base}/registry-providers/${id.split("/").map(enc).join("/")}`,
-            )
-          ).data,
-        );
-      default:
-        throw new Error(`HCP Terraform plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   private async workspaceDetail(accountId: string, id: string): Promise<ResourceInstance> {
@@ -770,169 +778,185 @@ export class HcpTerraformClient implements PluginClient {
     });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "state-output" && outputKey === "value") {
-      const [wsId, name] = splitFirst(externalIdOf(resourceId));
-      const outs = await tfList<A>(
-        this.ctx,
-        `/workspaces/${enc(wsId)}/current-state-version-outputs`,
-      );
-      const o = outs.data.find((x) => x.attributes["name"] === name);
-      if (!o)
-        throw new Error(
-          `HCP Terraform plugin: output "${name}" is not in the workspace's current state`,
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "state-output" && outputKey === "value") {
+        const [wsId, name] = splitFirst(externalIdOf(resourceId));
+        const outs = await tfList<A>(
+          this.ctx,
+          `/workspaces/${enc(wsId)}/current-state-version-outputs`,
         );
-      if (o.attributes["sensitive"] !== true) return outputText(o.attributes["value"]);
-      // The current-outputs list hides sensitive values; the single-output read returns them.
-      const full = await tfGet<A>(this.ctx, `/state-version-outputs/${enc(o.id)}`);
-      return outputText(full.data.attributes["value"]);
-    }
-    if (typeId === "agent-token" && outputKey === "token") {
-      const value = await this.secrets?.getPlaintext(resourceId, "token");
-      if (value) return value;
+        const o = outs.data.find((x) => x.attributes["name"] === name);
+        if (!o)
+          throw new Error(
+            `HCP Terraform plugin: output "${name}" is not in the workspace's current state`,
+          );
+        if (o.attributes["sensitive"] !== true) return outputText(o.attributes["value"]);
+        // The current-outputs list hides sensitive values; the single-output read returns them.
+        const full = await tfGet<A>(this.ctx, `/state-version-outputs/${enc(o.id)}`);
+        return outputText(full.data.attributes["value"]);
+      }
+      if (typeId === "agent-token" && outputKey === "token") {
+        const value = await this.secrets?.getPlaintext(resourceId, "token");
+        if (value) return value;
+        throw new Error(
+          "HCP Terraform only shows an agent token when it is created. This token was not created from Infrawrench; use Get credentials on its agent pool for a new one.",
+        );
+      }
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const v = r.resolvedOutputs[outputKey] ?? r.fields[outputKey];
+      if (v !== undefined) return String(v);
       throw new Error(
-        "HCP Terraform only shows an agent token when it is created. This token was not created from Infrawrench; use Get credentials on its agent pool for a new one.",
+        `HCP Terraform plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
       );
-    }
-    const r = await this.getResource(typeId, resourceId, accountId);
-    const v = r.resolvedOutputs[outputKey] ?? r.fields[outputKey];
-    if (v !== undefined) return String(v);
-    throw new Error(
-      `HCP Terraform plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics, logs, cost, quotas
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    const n = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US") : "—");
-    switch (resourceTypeId) {
-      case "organization":
-        return [
-          { label: "Workspaces", value: n(f["workspaceCount"]) },
-          { label: "RUM", value: n(f["rumCount"]) },
-          {
-            label: "Drifted",
-            value: n(f["driftedWorkspaces"]),
-            variant: Number(f["driftedWorkspaces"] ?? 0) > 0 ? "status-degraded" : "default",
-          },
-        ];
-      case "workspace":
-        return [
-          { label: "Resources", value: n(f["resourceCount"]) },
-          { label: "Run", value: String(f["currentRunStatus"] ?? "—") },
-          {
-            label: "Drift",
-            value:
-              f["drifted"] === true
-                ? `${n(f["resourcesDrifted"])} resources`
-                : f["drifted"] === false
-                  ? "None"
-                  : "—",
-            variant: f["drifted"] === true ? "status-degraded" : "default",
-          },
-        ];
-      default:
-        return [];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      const n = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US") : "—");
+      switch (resourceTypeId) {
+        case "organization":
+          return [
+            { label: "Workspaces", value: n(f["workspaceCount"]) },
+            { label: "RUM", value: n(f["rumCount"]) },
+            {
+              label: "Drifted",
+              value: n(f["driftedWorkspaces"]),
+              variant: Number(f["driftedWorkspaces"] ?? 0) > 0 ? "status-degraded" : "default",
+            },
+          ];
+        case "workspace":
+          return [
+            { label: "Resources", value: n(f["resourceCount"]) },
+            { label: "Run", value: String(f["currentRunStatus"] ?? "—") },
+            {
+              label: "Drift",
+              value:
+                f["drifted"] === true
+                  ? `${n(f["resourcesDrifted"])} resources`
+                  : f["drifted"] === false
+                    ? "None"
+                    : "—",
+              variant: f["drifted"] === true ? "status-degraded" : "default",
+            },
+          ];
+        default:
+          return [];
+      }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const range = rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS);
-    switch (resourceTypeId) {
-      case "organization":
-        return runMetrics(this.ctx, `${this.base}/runs`, range);
-      case "workspace":
-        return runMetrics(this.ctx, `/workspaces/${enc(externalIdOf(resourceId))}/runs`, range);
-      default:
-        return [];
-    }
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const range = rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS);
+      switch (resourceTypeId) {
+        case "organization":
+          return runMetrics(this.ctx, `${this.base}/runs`, range);
+        case "workspace":
+          return runMetrics(this.ctx, `/workspaces/${enc(externalIdOf(resourceId))}/runs`, range);
+        default:
+          return [];
+      }
+    });
   }
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "run") throw new Error(`HCP Terraform plugin: no logs for "${typeId}"`);
-    const run = (await tfGet<A>(this.ctx, `/runs/${enc(externalIdOf(resourceId))}`)).data;
-    const planId = relId(run, "plan");
-    const applyId = relId(run, "apply");
-    const status = s(run.attributes["status"]);
-    const hasApply =
-      Boolean(applyId) && ["applying", "applied", "errored", "apply_queued"].includes(status);
-    const containers = hasApply ? ["plan", "apply"] : ["plan"];
-    const active =
-      params.container && containers.includes(params.container)
-        ? params.container
-        : containers[containers.length - 1]!;
-    const phaseId = active === "apply" ? applyId : planId;
-    let text = "";
-    if (phaseId) {
-      const phase = (
-        await tfGet<A>(this.ctx, `/${active === "apply" ? "applies" : "plans"}/${enc(phaseId)}`)
-      ).data;
-      const url = s(phase.attributes["log-read-url"]);
-      if (url) {
-        try {
-          text = await tfRaw(this.ctx, url, { anonymous: true });
-        } catch (err) {
-          if (statusOf(err) !== 404) throw err;
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "run") throw new Error(`HCP Terraform plugin: no logs for "${typeId}"`);
+      const run = (await tfGet<A>(this.ctx, `/runs/${enc(externalIdOf(resourceId))}`)).data;
+      const planId = relId(run, "plan");
+      const applyId = relId(run, "apply");
+      const status = s(run.attributes["status"]);
+      const hasApply =
+        Boolean(applyId) && ["applying", "applied", "errored", "apply_queued"].includes(status);
+      const containers = hasApply ? ["plan", "apply"] : ["plan"];
+      const active =
+        params.container && containers.includes(params.container)
+          ? params.container
+          : containers[containers.length - 1]!;
+      const phaseId = active === "apply" ? applyId : planId;
+      let text = "";
+      if (phaseId) {
+        const phase = (
+          await tfGet<A>(this.ctx, `/${active === "apply" ? "applies" : "plans"}/${enc(phaseId)}`)
+        ).data;
+        const url = s(phase.attributes["log-read-url"]);
+        if (url) {
+          try {
+            text = await tfRaw(this.ctx, url, { anonymous: true });
+          } catch (err) {
+            if (statusOf(err) !== 404) throw err;
+          }
         }
       }
-    }
-    const lines = Math.min(MAX_LOG_LINES, Math.max(1, params.tailLines ?? 500));
-    return { text: tailLines(cleanTerraformLog(text), lines), containers, activeContainer: active };
+      const lines = Math.min(MAX_LOG_LINES, Math.max(1, params.tailLines ?? 500));
+      return {
+        text: tailLines(cleanTerraformLog(text), lines),
+        containers,
+        activeContainer: active,
+      };
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchInvoiceCost(this.ctx, this.org, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchInvoiceCost(this.ctx, this.org, range);
+    });
   }
 
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    let ent: A;
-    try {
-      ent = (await tfGet<A>(this.ctx, `${this.base}/entitlement-set`)).data.attributes;
-    } catch (err) {
-      if (statusOf(err) === 401 || statusOf(err) === 403 || statusOf(err) === 404) {
-        throw new QuotaAccessError(
-          "The token cannot read the organization's entitlements; use a user or owners team token.",
-        );
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      let ent: A;
+      try {
+        ent = (await tfGet<A>(this.ctx, `${this.base}/entitlement-set`)).data.attributes;
+      } catch (err) {
+        if (statusOf(err) === 401 || statusOf(err) === 403 || statusOf(err) === 404) {
+          throw new QuotaAccessError(
+            "The token cannot read the organization's entitlements; use a user or owners team token.",
+          );
+        }
+        throw err;
       }
-      throw err;
-    }
-    const out: QuotaUsage[] = [];
-    const add = async (key: string, name: string, path: string, unit: string) => {
-      const limit = ent[key];
-      if (typeof limit !== "number") return;
-      const used = await tfCount(this.ctx, path);
-      if (used === undefined) return;
-      out.push({ id: key, service: "HCP Terraform", name, limit, used, unit });
-    };
-    await add("user-limit", "Users", `${this.base}/organization-memberships`, "users");
-    await add("policy-set-limit", "Policy sets", `${this.base}/policy-sets`, "policy sets");
-    await add("policy-limit", "Policies", `${this.base}/policies`, "policies");
-    await add("run-task-limit", "Run tasks", `${this.base}/tasks`, "run tasks");
-    return out;
+      const out: QuotaUsage[] = [];
+      const add = async (key: string, name: string, path: string, unit: string) => {
+        const limit = ent[key];
+        if (typeof limit !== "number") return;
+        const used = await tfCount(this.ctx, path);
+        if (used === undefined) return;
+        out.push({ id: key, service: "HCP Terraform", name, limit, used, unit });
+      };
+      await add("user-limit", "Users", `${this.base}/organization-memberships`, "users");
+      await add("policy-set-limit", "Policy sets", `${this.base}/policy-sets`, "policy sets");
+      await add("policy-limit", "Policies", `${this.base}/policies`, "policies");
+      await add("run-task-limit", "Run tasks", `${this.base}/tasks`, "run tasks");
+      return out;
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1022,351 +1046,359 @@ export class HcpTerraformClient implements PluginClient {
     ];
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "project":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "networking" },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case "workspace": {
-        const [projects, pools, oauth] = await Promise.all([
-          this.projectOptions(),
-          this.pools().catch(() => [] as Doc<A>[]),
-          this.oauthTokenOptions(),
-        ]);
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "networking-prod",
-            },
-            ...this.parentField("project", "Project", projects, parentResourceId),
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "terraformVersion",
-              label: "Terraform version",
-              kind: "text",
-              required: false,
-              placeholder: "~> 1.9",
-              description: "Leave empty for the latest release.",
-            },
-            {
-              key: "executionMode",
-              label: "Execution mode",
-              kind: "select",
-              required: true,
-              defaultValue: "remote",
-              options: [
-                { id: "remote", label: "Remote", description: "Runs on HCP Terraform." },
-                ...(pools.length > 0
-                  ? [
-                      {
-                        id: "agent",
-                        label: "Agent",
-                        description: "Runs on an agent pool you host.",
-                      },
-                    ]
-                  : []),
-                {
-                  id: "local",
-                  label: "Local",
-                  description: "Runs elsewhere; HCP Terraform only stores state.",
-                },
-              ],
-            },
-            ...(pools.length > 0
-              ? [
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "project":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "networking",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case "workspace": {
+          const [projects, pools, oauth] = await Promise.all([
+            this.projectOptions(),
+            this.pools().catch(() => [] as Doc<A>[]),
+            this.oauthTokenOptions(),
+          ]);
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "networking-prod",
+              },
+              ...this.parentField("project", "Project", projects, parentResourceId),
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "terraformVersion",
+                label: "Terraform version",
+                kind: "text",
+                required: false,
+                placeholder: "~> 1.9",
+                description: "Leave empty for the latest release.",
+              },
+              {
+                key: "executionMode",
+                label: "Execution mode",
+                kind: "select",
+                required: true,
+                defaultValue: "remote",
+                options: [
+                  { id: "remote", label: "Remote", description: "Runs on HCP Terraform." },
+                  ...(pools.length > 0
+                    ? [
+                        {
+                          id: "agent",
+                          label: "Agent",
+                          description: "Runs on an agent pool you host.",
+                        },
+                      ]
+                    : []),
                   {
-                    key: "agentPool",
-                    label: "Agent pool",
-                    kind: "select" as const,
-                    required: true,
-                    defaultValue: pools[0]!.id,
-                    showWhen: { fieldKey: "executionMode", fieldValue: "agent" },
-                    options: pools.map((p) => ({ id: p.id, label: s(p.attributes["name"]) })),
+                    id: "local",
+                    label: "Local",
+                    description: "Runs elsewhere; HCP Terraform only stores state.",
                   },
-                ]
-              : []),
-            {
-              key: "autoApply",
-              label: "Apply automatically",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "No, wait for confirmation" },
-                { id: "true", label: "Yes, after a successful plan" },
-              ],
-            },
-            {
-              key: "workingDirectory",
-              label: "Working directory",
-              kind: "text",
-              required: false,
-              placeholder: "envs/prod",
-            },
-            ...(oauth.length > 0
-              ? [
-                  {
-                    key: "oauthToken",
-                    label: "VCS connection",
-                    kind: "select" as const,
-                    required: false,
-                    defaultValue: "",
-                    options: [
-                      { id: "", label: "None: CLI or API driven" },
-                      ...oauth.map((o) => ({ id: o.id, label: o.name })),
-                    ],
-                  },
-                  {
-                    key: "repository",
-                    label: "Repository",
-                    kind: "text" as const,
-                    required: false,
-                    placeholder: "acme/infrastructure",
-                    description: "org/repo on the VCS connection.",
-                    showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
-                  },
-                  {
-                    key: "branch",
-                    label: "Branch",
-                    kind: "text" as const,
-                    required: false,
-                    placeholder: "main",
-                    showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
-                  },
-                ]
-              : []),
-          ],
-        };
+                ],
+              },
+              ...(pools.length > 0
+                ? [
+                    {
+                      key: "agentPool",
+                      label: "Agent pool",
+                      kind: "select" as const,
+                      required: true,
+                      defaultValue: pools[0]!.id,
+                      showWhen: { fieldKey: "executionMode", fieldValue: "agent" },
+                      options: pools.map((p) => ({ id: p.id, label: s(p.attributes["name"]) })),
+                    },
+                  ]
+                : []),
+              {
+                key: "autoApply",
+                label: "Apply automatically",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "No, wait for confirmation" },
+                  { id: "true", label: "Yes, after a successful plan" },
+                ],
+              },
+              {
+                key: "workingDirectory",
+                label: "Working directory",
+                kind: "text",
+                required: false,
+                placeholder: "envs/prod",
+              },
+              ...(oauth.length > 0
+                ? [
+                    {
+                      key: "oauthToken",
+                      label: "VCS connection",
+                      kind: "select" as const,
+                      required: false,
+                      defaultValue: "",
+                      options: [
+                        { id: "", label: "None: CLI or API driven" },
+                        ...oauth.map((o) => ({ id: o.id, label: o.name })),
+                      ],
+                    },
+                    {
+                      key: "repository",
+                      label: "Repository",
+                      kind: "text" as const,
+                      required: false,
+                      placeholder: "acme/infrastructure",
+                      description: "org/repo on the VCS connection.",
+                      showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
+                    },
+                    {
+                      key: "branch",
+                      label: "Branch",
+                      kind: "text" as const,
+                      required: false,
+                      placeholder: "main",
+                      showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
+                    },
+                  ]
+                : []),
+            ],
+          };
+        }
+        case "run":
+          return {
+            fields: [
+              ...this.parentField(
+                "workspace",
+                "Workspace",
+                await this.workspaceOptions(),
+                parentResourceId,
+              ),
+              RUN_KIND_FIELD,
+              ...RUN_EXTRA_FIELDS,
+            ],
+          };
+        case "variable":
+          return {
+            fields: [
+              ...this.parentField(
+                "workspace",
+                "Workspace",
+                await this.workspaceOptions(),
+                parentResourceId,
+              ),
+              ...this.variableFields(),
+            ],
+          };
+        case "varset-variable": {
+          const sets = parentResourceId
+            ? []
+            : (await this.varsets().catch(() => [] as Doc<A>[])).map((v) => ({
+                id: v.id,
+                name: s(v.attributes["name"]),
+              }));
+          return {
+            fields: [
+              ...this.parentField("varset", "Variable set", sets, parentResourceId),
+              ...this.variableFields(),
+            ],
+          };
+        }
+        case "variable-set":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "aws-credentials",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "global",
+                label: "Scope",
+                kind: "select",
+                required: true,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "Chosen workspaces and projects" },
+                  { id: "true", label: "Every workspace in the organization" },
+                ],
+              },
+              {
+                key: "priority",
+                label: "Priority",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "Workspace variables win" },
+                  { id: "true", label: "This set wins and cannot be overridden" },
+                ],
+              },
+            ],
+          };
+        case "agent-pool":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "on-prem" },
+              {
+                key: "organizationScoped",
+                label: "Available to",
+                kind: "select",
+                required: true,
+                defaultValue: "true",
+                options: [
+                  { id: "true", label: "Every workspace" },
+                  { id: "false", label: "Only workspaces you allow later" },
+                ],
+              },
+            ],
+          };
+        case "agent-token": {
+          const pools = parentResourceId
+            ? []
+            : (await this.pools().catch(() => [] as Doc<A>[])).map((p) => ({
+                id: p.id,
+                name: s(p.attributes["name"]),
+              }));
+          return {
+            fields: [
+              ...this.parentField("pool", "Agent pool", pools, parentResourceId),
+              {
+                key: "description",
+                label: "Description",
+                kind: "text",
+                required: true,
+                placeholder: "k8s agents",
+              },
+            ],
+          };
+        }
+        case "policy-set": {
+          const oauth = await this.oauthTokenOptions();
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "baseline" },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "kind",
+                label: "Framework",
+                kind: "select",
+                required: true,
+                defaultValue: "sentinel",
+                options: [
+                  { id: "sentinel", label: "Sentinel" },
+                  { id: "opa", label: "Open Policy Agent" },
+                ],
+              },
+              {
+                key: "global",
+                label: "Scope",
+                kind: "select",
+                required: true,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "Chosen workspaces and projects" },
+                  { id: "true", label: "Every workspace" },
+                ],
+              },
+              ...(oauth.length > 0
+                ? [
+                    {
+                      key: "oauthToken",
+                      label: "Policies from VCS",
+                      kind: "select" as const,
+                      required: false,
+                      defaultValue: "",
+                      options: [
+                        { id: "", label: "None: upload versions later" },
+                        ...oauth.map((o) => ({ id: o.id, label: o.name })),
+                      ],
+                    },
+                    {
+                      key: "repository",
+                      label: "Repository",
+                      kind: "text" as const,
+                      required: false,
+                      placeholder: "acme/policies",
+                      showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
+                    },
+                    {
+                      key: "branch",
+                      label: "Branch",
+                      kind: "text" as const,
+                      required: false,
+                      showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
+                    },
+                    {
+                      key: "policiesPath",
+                      label: "Policies path",
+                      kind: "text" as const,
+                      required: false,
+                      placeholder: "sentinel/",
+                      showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
+                    },
+                  ]
+                : []),
+            ],
+          };
+        }
+        case "team":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "platform" },
+              {
+                key: "visibility",
+                label: "Visibility",
+                kind: "select",
+                required: true,
+                defaultValue: "organization",
+                options: [
+                  { id: "organization", label: "Visible to the organization" },
+                  { id: "secret", label: "Secret: members and owners only" },
+                ],
+              },
+            ],
+          };
+        case "run-task":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "security-scan",
+              },
+              {
+                key: "url",
+                label: "Endpoint URL",
+                kind: "text",
+                required: true,
+                placeholder: "https://scanner.example.com/hook",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              { key: "hmacKey", label: "HMAC key", kind: "password", required: false },
+            ],
+          };
+        default:
+          throw new Error(`HCP Terraform plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "run":
-        return {
-          fields: [
-            ...this.parentField(
-              "workspace",
-              "Workspace",
-              await this.workspaceOptions(),
-              parentResourceId,
-            ),
-            RUN_KIND_FIELD,
-            ...RUN_EXTRA_FIELDS,
-          ],
-        };
-      case "variable":
-        return {
-          fields: [
-            ...this.parentField(
-              "workspace",
-              "Workspace",
-              await this.workspaceOptions(),
-              parentResourceId,
-            ),
-            ...this.variableFields(),
-          ],
-        };
-      case "varset-variable": {
-        const sets = parentResourceId
-          ? []
-          : (await this.varsets().catch(() => [] as Doc<A>[])).map((v) => ({
-              id: v.id,
-              name: s(v.attributes["name"]),
-            }));
-        return {
-          fields: [
-            ...this.parentField("varset", "Variable set", sets, parentResourceId),
-            ...this.variableFields(),
-          ],
-        };
-      }
-      case "variable-set":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "aws-credentials",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "global",
-              label: "Scope",
-              kind: "select",
-              required: true,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "Chosen workspaces and projects" },
-                { id: "true", label: "Every workspace in the organization" },
-              ],
-            },
-            {
-              key: "priority",
-              label: "Priority",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "Workspace variables win" },
-                { id: "true", label: "This set wins and cannot be overridden" },
-              ],
-            },
-          ],
-        };
-      case "agent-pool":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "on-prem" },
-            {
-              key: "organizationScoped",
-              label: "Available to",
-              kind: "select",
-              required: true,
-              defaultValue: "true",
-              options: [
-                { id: "true", label: "Every workspace" },
-                { id: "false", label: "Only workspaces you allow later" },
-              ],
-            },
-          ],
-        };
-      case "agent-token": {
-        const pools = parentResourceId
-          ? []
-          : (await this.pools().catch(() => [] as Doc<A>[])).map((p) => ({
-              id: p.id,
-              name: s(p.attributes["name"]),
-            }));
-        return {
-          fields: [
-            ...this.parentField("pool", "Agent pool", pools, parentResourceId),
-            {
-              key: "description",
-              label: "Description",
-              kind: "text",
-              required: true,
-              placeholder: "k8s agents",
-            },
-          ],
-        };
-      }
-      case "policy-set": {
-        const oauth = await this.oauthTokenOptions();
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "baseline" },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "kind",
-              label: "Framework",
-              kind: "select",
-              required: true,
-              defaultValue: "sentinel",
-              options: [
-                { id: "sentinel", label: "Sentinel" },
-                { id: "opa", label: "Open Policy Agent" },
-              ],
-            },
-            {
-              key: "global",
-              label: "Scope",
-              kind: "select",
-              required: true,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "Chosen workspaces and projects" },
-                { id: "true", label: "Every workspace" },
-              ],
-            },
-            ...(oauth.length > 0
-              ? [
-                  {
-                    key: "oauthToken",
-                    label: "Policies from VCS",
-                    kind: "select" as const,
-                    required: false,
-                    defaultValue: "",
-                    options: [
-                      { id: "", label: "None: upload versions later" },
-                      ...oauth.map((o) => ({ id: o.id, label: o.name })),
-                    ],
-                  },
-                  {
-                    key: "repository",
-                    label: "Repository",
-                    kind: "text" as const,
-                    required: false,
-                    placeholder: "acme/policies",
-                    showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
-                  },
-                  {
-                    key: "branch",
-                    label: "Branch",
-                    kind: "text" as const,
-                    required: false,
-                    showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
-                  },
-                  {
-                    key: "policiesPath",
-                    label: "Policies path",
-                    kind: "text" as const,
-                    required: false,
-                    placeholder: "sentinel/",
-                    showWhen: { fieldKey: "oauthToken", fieldValuesNot: [""] },
-                  },
-                ]
-              : []),
-          ],
-        };
-      }
-      case "team":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "platform" },
-            {
-              key: "visibility",
-              label: "Visibility",
-              kind: "select",
-              required: true,
-              defaultValue: "organization",
-              options: [
-                { id: "organization", label: "Visible to the organization" },
-                { id: "secret", label: "Secret: members and owners only" },
-              ],
-            },
-          ],
-        };
-      case "run-task":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "security-scan",
-            },
-            {
-              key: "url",
-              label: "Endpoint URL",
-              kind: "text",
-              required: true,
-              placeholder: "https://scanner.example.com/hook",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            { key: "hmacKey", label: "HMAC key", kind: "password", required: false },
-          ],
-        };
-      default:
-        throw new Error(`HCP Terraform plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   private varAttributes(fields: Record<string, string>, create: boolean): Record<string, unknown> {
@@ -1383,51 +1415,167 @@ export class HcpTerraformClient implements PluginClient {
     return attrs;
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceCreateReturn> {
-    const parent = parentResourceId ? externalIdOf(parentResourceId) : undefined;
-    const need = (key: string, label: string) => {
-      const v = (fields[key] ?? "").trim();
-      if (!v) throw new Error(`HCP Terraform plugin: "${label}" is required`);
-      return v;
-    };
-    const opt = (key: string) => (fields[key] ?? "").trim();
-    switch (typeId) {
-      case "project": {
-        const p = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `${this.base}/projects`,
-          doc("projects", {
-            name: need("name", "Name"),
-            ...(opt("description") ? { description: opt("description") } : {}),
-          }),
-        );
-        this.projectsCache = undefined;
-        return mapProject(accountId, this.org, p!, this.url(`projects/${p!.id}`), 0);
-      }
-      case "workspace": {
-        const project = opt("project") || parent;
-        const mode = opt("executionMode") || "remote";
-        const oauth = opt("oauthToken");
-        const w = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `${this.base}/workspaces`,
-          doc(
-            "workspaces",
-            {
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      const parent = parentResourceId ? externalIdOf(parentResourceId) : undefined;
+      const need = (key: string, label: string) => {
+        const v = (fields[key] ?? "").trim();
+        if (!v) throw new Error(`HCP Terraform plugin: "${label}" is required`);
+        return v;
+      };
+      const opt = (key: string) => (fields[key] ?? "").trim();
+      switch (typeId) {
+        case "project": {
+          const p = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `${this.base}/projects`,
+            doc("projects", {
               name: need("name", "Name"),
               ...(opt("description") ? { description: opt("description") } : {}),
-              ...(opt("terraformVersion") ? { "terraform-version": opt("terraformVersion") } : {}),
-              "execution-mode": mode,
-              ...(mode === "agent" ? { "agent-pool-id": need("agentPool", "Agent pool") } : {}),
-              "auto-apply": bool(fields["autoApply"]),
-              ...(opt("workingDirectory") ? { "working-directory": opt("workingDirectory") } : {}),
+            }),
+          );
+          this.projectsCache = undefined;
+          return mapProject(accountId, this.org, p!, this.url(`projects/${p!.id}`), 0);
+        }
+        case "workspace": {
+          const project = opt("project") || parent;
+          const mode = opt("executionMode") || "remote";
+          const oauth = opt("oauthToken");
+          const w = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `${this.base}/workspaces`,
+            doc(
+              "workspaces",
+              {
+                name: need("name", "Name"),
+                ...(opt("description") ? { description: opt("description") } : {}),
+                ...(opt("terraformVersion")
+                  ? { "terraform-version": opt("terraformVersion") }
+                  : {}),
+                "execution-mode": mode,
+                ...(mode === "agent" ? { "agent-pool-id": need("agentPool", "Agent pool") } : {}),
+                "auto-apply": bool(fields["autoApply"]),
+                ...(opt("workingDirectory")
+                  ? { "working-directory": opt("workingDirectory") }
+                  : {}),
+                ...(oauth
+                  ? {
+                      "vcs-repo": {
+                        "oauth-token-id": oauth,
+                        identifier: need("repository", "Repository"),
+                        ...(opt("branch") ? { branch: opt("branch") } : {}),
+                      },
+                    }
+                  : {}),
+                "source-name": "Infrawrench",
+              },
+              project ? { project: { data: { type: "projects", id: project } } } : undefined,
+            ),
+          );
+          this.workspacesCache = undefined;
+          return this.workspaceDoc(accountId, w!, []);
+        }
+        case "run": {
+          const ws = opt("workspace") || parent || need("workspace", "Workspace");
+          const r = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            "/runs",
+            doc("runs", runAttributes(fields), {
+              workspace: { data: { type: "workspaces", id: ws } },
+            }),
+          );
+          return runPluginEffect(this.getResource("run", `${accountId}:run:${r!.id}`, accountId));
+        }
+        case "variable": {
+          const ws = opt("workspace") || parent || need("workspace", "Workspace");
+          const v = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `/workspaces/${enc(ws)}/vars`,
+            doc("vars", this.varAttributes(fields, true)),
+          );
+          const w = await tfGet<A>(this.ctx, `/workspaces/${enc(ws)}`).catch(() => undefined);
+          return mapVariable(accountId, ws, w ? s(w.data.attributes["name"]) : "", v!);
+        }
+        case "varset-variable": {
+          const vs = opt("varset") || parent || need("varset", "Variable set");
+          const v = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `/varsets/${enc(vs)}/relationships/vars`,
+            doc("vars", this.varAttributes(fields, true)),
+          );
+          return mapVarsetVariable(accountId, vs, "", v!);
+        }
+        case "variable-set": {
+          const v = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `${this.base}/varsets`,
+            doc("varsets", {
+              name: need("name", "Name"),
+              ...(opt("description") ? { description: opt("description") } : {}),
+              global: bool(fields["global"]),
+              priority: bool(fields["priority"]),
+            }),
+          );
+          this.varsetsCache = undefined;
+          return mapVarset(accountId, this.org, v!);
+        }
+        case "agent-pool": {
+          const p = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `${this.base}/agent-pools`,
+            doc("agent-pools", {
+              name: need("name", "Name"),
+              "organization-scoped": fields["organizationScoped"] !== "false",
+            }),
+          );
+          this.poolsCache = undefined;
+          return mapAgentPool(accountId, this.org, p!);
+        }
+        case "agent-token": {
+          const pool = opt("pool") || parent || need("pool", "Agent pool");
+          const t = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `/agent-pools/${enc(pool)}/authentication-tokens`,
+            doc("authentication-tokens", { description: need("description", "Description") }),
+          );
+          const resource = mapAgentToken(accountId, pool, "", t!);
+          const token = s(t!.attributes["token"]);
+          const warnings = [];
+          if (token && this.secrets?.setPlaintext) {
+            await this.secrets.setPlaintext(resource.id, "token", token);
+          } else {
+            warnings.push({
+              code: "token-not-kept",
+              message:
+                "The token was created, but its value could not be kept: HCP Terraform shows it only once. Revoke it and use Get credentials on the agent pool to see a new token's value.",
+            });
+          }
+          return { resource, warnings };
+        }
+        case "policy-set": {
+          const oauth = opt("oauthToken");
+          const p = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `${this.base}/policy-sets`,
+            doc("policy-sets", {
+              name: need("name", "Name"),
+              ...(opt("description") ? { description: opt("description") } : {}),
+              kind: opt("kind") || "sentinel",
+              global: bool(fields["global"]),
               ...(oauth
                 ? {
                     "vcs-repo": {
@@ -1435,592 +1583,493 @@ export class HcpTerraformClient implements PluginClient {
                       identifier: need("repository", "Repository"),
                       ...(opt("branch") ? { branch: opt("branch") } : {}),
                     },
+                    ...(opt("policiesPath") ? { "policies-path": opt("policiesPath") } : {}),
                   }
                 : {}),
-              "source-name": "Infrawrench",
-            },
-            project ? { project: { data: { type: "projects", id: project } } } : undefined,
-          ),
-        );
-        this.workspacesCache = undefined;
-        return this.workspaceDoc(accountId, w!, []);
-      }
-      case "run": {
-        const ws = opt("workspace") || parent || need("workspace", "Workspace");
-        const r = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          "/runs",
-          doc("runs", runAttributes(fields), {
-            workspace: { data: { type: "workspaces", id: ws } },
-          }),
-        );
-        return this.getResource("run", `${accountId}:run:${r!.id}`, accountId);
-      }
-      case "variable": {
-        const ws = opt("workspace") || parent || need("workspace", "Workspace");
-        const v = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `/workspaces/${enc(ws)}/vars`,
-          doc("vars", this.varAttributes(fields, true)),
-        );
-        const w = await tfGet<A>(this.ctx, `/workspaces/${enc(ws)}`).catch(() => undefined);
-        return mapVariable(accountId, ws, w ? s(w.data.attributes["name"]) : "", v!);
-      }
-      case "varset-variable": {
-        const vs = opt("varset") || parent || need("varset", "Variable set");
-        const v = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `/varsets/${enc(vs)}/relationships/vars`,
-          doc("vars", this.varAttributes(fields, true)),
-        );
-        return mapVarsetVariable(accountId, vs, "", v!);
-      }
-      case "variable-set": {
-        const v = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `${this.base}/varsets`,
-          doc("varsets", {
-            name: need("name", "Name"),
-            ...(opt("description") ? { description: opt("description") } : {}),
-            global: bool(fields["global"]),
-            priority: bool(fields["priority"]),
-          }),
-        );
-        this.varsetsCache = undefined;
-        return mapVarset(accountId, this.org, v!);
-      }
-      case "agent-pool": {
-        const p = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `${this.base}/agent-pools`,
-          doc("agent-pools", {
-            name: need("name", "Name"),
-            "organization-scoped": fields["organizationScoped"] !== "false",
-          }),
-        );
-        this.poolsCache = undefined;
-        return mapAgentPool(accountId, this.org, p!);
-      }
-      case "agent-token": {
-        const pool = opt("pool") || parent || need("pool", "Agent pool");
-        const t = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `/agent-pools/${enc(pool)}/authentication-tokens`,
-          doc("authentication-tokens", { description: need("description", "Description") }),
-        );
-        const resource = mapAgentToken(accountId, pool, "", t!);
-        const token = s(t!.attributes["token"]);
-        const warnings = [];
-        if (token && this.secrets?.setPlaintext) {
-          await this.secrets.setPlaintext(resource.id, "token", token);
-        } else {
-          warnings.push({
-            code: "token-not-kept",
-            message:
-              "The token was created, but its value could not be kept: HCP Terraform shows it only once. Revoke it and use Get credentials on the agent pool to see a new token's value.",
-          });
+            }),
+          );
+          return mapPolicySet(accountId, this.org, p!);
         }
-        return { resource, warnings };
+        case "team": {
+          const t = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `${this.base}/teams`,
+            doc("teams", {
+              name: need("name", "Name"),
+              visibility: opt("visibility") || "organization",
+            }),
+          );
+          return mapTeam(accountId, this.org, t!);
+        }
+        case "run-task": {
+          const t = await tfWrite<A>(
+            this.ctx,
+            "POST",
+            `${this.base}/tasks`,
+            doc("tasks", {
+              name: need("name", "Name"),
+              url: need("url", "Endpoint URL"),
+              category: "task",
+              ...(opt("description") ? { description: opt("description") } : {}),
+              ...(fields["hmacKey"] ? { "hmac-key": fields["hmacKey"] } : {}),
+              enabled: true,
+            }),
+          );
+          return mapRunTask(accountId, this.org, t!);
+        }
+        default:
+          throw new Error(`HCP Terraform plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "policy-set": {
-        const oauth = opt("oauthToken");
-        const p = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `${this.base}/policy-sets`,
-          doc("policy-sets", {
-            name: need("name", "Name"),
-            ...(opt("description") ? { description: opt("description") } : {}),
-            kind: opt("kind") || "sentinel",
-            global: bool(fields["global"]),
-            ...(oauth
-              ? {
-                  "vcs-repo": {
-                    "oauth-token-id": oauth,
-                    identifier: need("repository", "Repository"),
-                    ...(opt("branch") ? { branch: opt("branch") } : {}),
-                  },
-                  ...(opt("policiesPath") ? { "policies-path": opt("policiesPath") } : {}),
-                }
-              : {}),
-          }),
-        );
-        return mapPolicySet(accountId, this.org, p!);
-      }
-      case "team": {
-        const t = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `${this.base}/teams`,
-          doc("teams", {
-            name: need("name", "Name"),
-            visibility: opt("visibility") || "organization",
-          }),
-        );
-        return mapTeam(accountId, this.org, t!);
-      }
-      case "run-task": {
-        const t = await tfWrite<A>(
-          this.ctx,
-          "POST",
-          `${this.base}/tasks`,
-          doc("tasks", {
-            name: need("name", "Name"),
-            url: need("url", "Endpoint URL"),
-            category: "task",
-            ...(opt("description") ? { description: opt("description") } : {}),
-            ...(fields["hmacKey"] ? { "hmac-key": fields["hmacKey"] } : {}),
-            enabled: true,
-          }),
-        );
-        return mapRunTask(accountId, this.org, t!);
-      }
-      default:
-        throw new Error(`HCP Terraform plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Update
   // -------------------------------------------------------------------------
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    const has = (k: string) => k in fields;
-    const text = (k: string) => (fields[k] ?? "").trim();
-    const pick = (
-      map: Record<string, string>,
-      kinds: Record<string, "bool" | "text" | "nullable">,
-    ) => {
-      const attrs: Record<string, unknown> = {};
-      for (const [field, attr] of Object.entries(map)) {
-        if (!has(field)) continue;
-        const kind = kinds[field] ?? "text";
-        attrs[attr] =
-          kind === "bool"
-            ? bool(fields[field])
-            : kind === "nullable"
-              ? text(field) || null
-              : text(field);
-      }
-      return attrs;
-    };
-    switch (typeId) {
-      case "organization": {
-        const attrs = pick(
-          {
-            email: "email",
-            defaultExecutionMode: "default-execution-mode",
-            costEstimationEnabled: "cost-estimation-enabled",
-            assessmentsEnforced: "assessments-enforced",
-            allowForceDeleteWorkspaces: "allow-force-delete-workspaces",
-          },
-          {
-            costEstimationEnabled: "bool",
-            assessmentsEnforced: "bool",
-            allowForceDeleteWorkspaces: "bool",
-          },
-        );
-        if (Object.keys(attrs).length > 0) {
-          await tfWrite(this.ctx, "PATCH", this.base, doc("organizations", attrs));
-          this.orgCache = undefined;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const has = (k: string) => k in fields;
+      const text = (k: string) => (fields[k] ?? "").trim();
+      const pick = (
+        map: Record<string, string>,
+        kinds: Record<string, "bool" | "text" | "nullable">,
+      ) => {
+        const attrs: Record<string, unknown> = {};
+        for (const [field, attr] of Object.entries(map)) {
+          if (!has(field)) continue;
+          const kind = kinds[field] ?? "text";
+          attrs[attr] =
+            kind === "bool"
+              ? bool(fields[field])
+              : kind === "nullable"
+                ? text(field) || null
+                : text(field);
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "project": {
-        const attrs = pick(
-          {
-            name: "name",
-            description: "description",
-            defaultExecutionMode: "default-execution-mode",
-            autoDestroyActivityDuration: "auto-destroy-activity-duration",
-          },
-          { autoDestroyActivityDuration: "nullable" },
-        );
-        if (Object.keys(attrs).length > 0)
-          await tfWrite(this.ctx, "PATCH", `/projects/${enc(id)}`, doc("projects", attrs));
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "workspace": {
-        const attrs = pick(
-          {
-            name: "name",
-            description: "description",
-            terraformVersion: "terraform-version",
-            executionMode: "execution-mode",
-            workingDirectory: "working-directory",
-            autoApply: "auto-apply",
-            autoApplyRunTrigger: "auto-apply-run-trigger",
-            assessmentsEnabled: "assessments-enabled",
-            allowDestroyPlan: "allow-destroy-plan",
-            speculativeEnabled: "speculative-enabled",
-            fileTriggersEnabled: "file-triggers-enabled",
-            queueAllRuns: "queue-all-runs",
-            globalRemoteState: "global-remote-state",
-            autoDestroyAt: "auto-destroy-at",
-            autoDestroyActivityDuration: "auto-destroy-activity-duration",
-          },
-          {
-            autoApply: "bool",
-            autoApplyRunTrigger: "bool",
-            assessmentsEnabled: "bool",
-            allowDestroyPlan: "bool",
-            speculativeEnabled: "bool",
-            fileTriggersEnabled: "bool",
-            queueAllRuns: "bool",
-            globalRemoteState: "bool",
-            autoDestroyAt: "nullable",
-            autoDestroyActivityDuration: "nullable",
-          },
-        );
-        if (attrs["execution-mode"] === "agent") {
-          throw new Error(
-            "HCP Terraform plugin: switch to agent execution with the Execution action, which also picks the agent pool",
+        return attrs;
+      };
+      switch (typeId) {
+        case "organization": {
+          const attrs = pick(
+            {
+              email: "email",
+              defaultExecutionMode: "default-execution-mode",
+              costEstimationEnabled: "cost-estimation-enabled",
+              assessmentsEnforced: "assessments-enforced",
+              allowForceDeleteWorkspaces: "allow-force-delete-workspaces",
+            },
+            {
+              costEstimationEnabled: "bool",
+              assessmentsEnforced: "bool",
+              allowForceDeleteWorkspaces: "bool",
+            },
           );
+          if (Object.keys(attrs).length > 0) {
+            await tfWrite(this.ctx, "PATCH", this.base, doc("organizations", attrs));
+            this.orgCache = undefined;
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        if (Object.keys(attrs).length > 0) {
-          await tfWrite(this.ctx, "PATCH", `/workspaces/${enc(id)}`, doc("workspaces", attrs));
-          this.workspacesCache = undefined;
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "variable": {
-        const [ws, varId] = splitFirst(id);
-        const attrs = this.varAttributes(fields, false);
-        if (Object.keys(attrs).length > 0) {
-          await tfWrite(
-            this.ctx,
-            "PATCH",
-            `/workspaces/${enc(ws)}/vars/${enc(varId)}`,
-            doc("vars", attrs, undefined, varId),
+        case "project": {
+          const attrs = pick(
+            {
+              name: "name",
+              description: "description",
+              defaultExecutionMode: "default-execution-mode",
+              autoDestroyActivityDuration: "auto-destroy-activity-duration",
+            },
+            { autoDestroyActivityDuration: "nullable" },
           );
+          if (Object.keys(attrs).length > 0)
+            await tfWrite(this.ctx, "PATCH", `/projects/${enc(id)}`, doc("projects", attrs));
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "varset-variable": {
-        const [vs, varId] = splitFirst(id);
-        const attrs = this.varAttributes(fields, false);
-        if (Object.keys(attrs).length > 0) {
-          await tfWrite(
-            this.ctx,
-            "PATCH",
-            `/varsets/${enc(vs)}/relationships/vars/${enc(varId)}`,
-            doc("vars", attrs),
+        case "workspace": {
+          const attrs = pick(
+            {
+              name: "name",
+              description: "description",
+              terraformVersion: "terraform-version",
+              executionMode: "execution-mode",
+              workingDirectory: "working-directory",
+              autoApply: "auto-apply",
+              autoApplyRunTrigger: "auto-apply-run-trigger",
+              assessmentsEnabled: "assessments-enabled",
+              allowDestroyPlan: "allow-destroy-plan",
+              speculativeEnabled: "speculative-enabled",
+              fileTriggersEnabled: "file-triggers-enabled",
+              queueAllRuns: "queue-all-runs",
+              globalRemoteState: "global-remote-state",
+              autoDestroyAt: "auto-destroy-at",
+              autoDestroyActivityDuration: "auto-destroy-activity-duration",
+            },
+            {
+              autoApply: "bool",
+              autoApplyRunTrigger: "bool",
+              assessmentsEnabled: "bool",
+              allowDestroyPlan: "bool",
+              speculativeEnabled: "bool",
+              fileTriggersEnabled: "bool",
+              queueAllRuns: "bool",
+              globalRemoteState: "bool",
+              autoDestroyAt: "nullable",
+              autoDestroyActivityDuration: "nullable",
+            },
           );
+          if (attrs["execution-mode"] === "agent") {
+            throw new Error(
+              "HCP Terraform plugin: switch to agent execution with the Execution action, which also picks the agent pool",
+            );
+          }
+          if (Object.keys(attrs).length > 0) {
+            await tfWrite(this.ctx, "PATCH", `/workspaces/${enc(id)}`, doc("workspaces", attrs));
+            this.workspacesCache = undefined;
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "variable-set": {
-        const attrs = pick(
-          { name: "name", description: "description", global: "global", priority: "priority" },
-          { global: "bool", priority: "bool" },
-        );
-        if (Object.keys(attrs).length > 0)
-          await tfWrite(this.ctx, "PATCH", `/varsets/${enc(id)}`, doc("varsets", attrs));
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "agent-pool": {
-        const attrs = pick(
-          { name: "name", organizationScoped: "organization-scoped" },
-          { organizationScoped: "bool" },
-        );
-        if (Object.keys(attrs).length > 0)
-          await tfWrite(this.ctx, "PATCH", `/agent-pools/${enc(id)}`, doc("agent-pools", attrs));
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "policy-set": {
-        const attrs = pick(
-          {
-            name: "name",
-            description: "description",
-            global: "global",
-            overridable: "overridable",
-            agentEnabled: "agent-enabled",
-            policyToolVersion: "policy-tool-version",
-            policiesPath: "policies-path",
-          },
-          { global: "bool", overridable: "bool", agentEnabled: "bool" },
-        );
-        if (Object.keys(attrs).length > 0)
-          await tfWrite(this.ctx, "PATCH", `/policy-sets/${enc(id)}`, doc("policy-sets", attrs));
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "team": {
-        const attrs = pick(
-          {
-            name: "name",
-            visibility: "visibility",
-            ssoTeamId: "sso-team-id",
-            allowMemberTokenManagement: "allow-member-token-management",
-          },
-          { allowMemberTokenManagement: "bool" },
-        );
-        const access: Record<string, boolean> = {};
-        for (const k of TEAM_ACCESS_FLAGS) if (has(camel(k))) access[k] = bool(fields[camel(k)]);
-        if (Object.keys(access).length > 0) attrs["organization-access"] = access;
-        if (Object.keys(attrs).length > 0)
-          await tfWrite(this.ctx, "PATCH", `/teams/${enc(id)}`, doc("teams", attrs));
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "run-task": {
-        const attrs = pick(
-          { name: "name", url: "url", description: "description", enabled: "enabled" },
-          { enabled: "bool" },
-        );
-        if (fields["hmacKey"]) attrs["hmac-key"] = fields["hmacKey"];
-        if (Object.keys(attrs).length > 0) {
-          await tfWrite(
-            this.ctx,
-            "PATCH",
-            `/tasks/${enc(id)}`,
-            doc("tasks", { ...attrs, category: "task" }),
+        case "variable": {
+          const [ws, varId] = splitFirst(id);
+          const attrs = this.varAttributes(fields, false);
+          if (Object.keys(attrs).length > 0) {
+            await tfWrite(
+              this.ctx,
+              "PATCH",
+              `/workspaces/${enc(ws)}/vars/${enc(varId)}`,
+              doc("vars", attrs, undefined, varId),
+            );
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "varset-variable": {
+          const [vs, varId] = splitFirst(id);
+          const attrs = this.varAttributes(fields, false);
+          if (Object.keys(attrs).length > 0) {
+            await tfWrite(
+              this.ctx,
+              "PATCH",
+              `/varsets/${enc(vs)}/relationships/vars/${enc(varId)}`,
+              doc("vars", attrs),
+            );
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "variable-set": {
+          const attrs = pick(
+            { name: "name", description: "description", global: "global", priority: "priority" },
+            { global: "bool", priority: "bool" },
           );
+          if (Object.keys(attrs).length > 0)
+            await tfWrite(this.ctx, "PATCH", `/varsets/${enc(id)}`, doc("varsets", attrs));
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
+        case "agent-pool": {
+          const attrs = pick(
+            { name: "name", organizationScoped: "organization-scoped" },
+            { organizationScoped: "bool" },
+          );
+          if (Object.keys(attrs).length > 0)
+            await tfWrite(this.ctx, "PATCH", `/agent-pools/${enc(id)}`, doc("agent-pools", attrs));
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "policy-set": {
+          const attrs = pick(
+            {
+              name: "name",
+              description: "description",
+              global: "global",
+              overridable: "overridable",
+              agentEnabled: "agent-enabled",
+              policyToolVersion: "policy-tool-version",
+              policiesPath: "policies-path",
+            },
+            { global: "bool", overridable: "bool", agentEnabled: "bool" },
+          );
+          if (Object.keys(attrs).length > 0)
+            await tfWrite(this.ctx, "PATCH", `/policy-sets/${enc(id)}`, doc("policy-sets", attrs));
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "team": {
+          const attrs = pick(
+            {
+              name: "name",
+              visibility: "visibility",
+              ssoTeamId: "sso-team-id",
+              allowMemberTokenManagement: "allow-member-token-management",
+            },
+            { allowMemberTokenManagement: "bool" },
+          );
+          const access: Record<string, boolean> = {};
+          for (const k of TEAM_ACCESS_FLAGS) if (has(camel(k))) access[k] = bool(fields[camel(k)]);
+          if (Object.keys(access).length > 0) attrs["organization-access"] = access;
+          if (Object.keys(attrs).length > 0)
+            await tfWrite(this.ctx, "PATCH", `/teams/${enc(id)}`, doc("teams", attrs));
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "run-task": {
+          const attrs = pick(
+            { name: "name", url: "url", description: "description", enabled: "enabled" },
+            { enabled: "bool" },
+          );
+          if (fields["hmacKey"]) attrs["hmac-key"] = fields["hmacKey"];
+          if (Object.keys(attrs).length > 0) {
+            await tfWrite(
+              this.ctx,
+              "PATCH",
+              `/tasks/${enc(id)}`,
+              doc("tasks", { ...attrs, category: "task" }),
+            );
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        default:
+          throw new Error(`HCP Terraform plugin: cannot edit "${typeId}" from Infrawrench`);
       }
-      default:
-        throw new Error(`HCP Terraform plugin: cannot edit "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Delete
   // -------------------------------------------------------------------------
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = externalIdOf(resourceId);
-    const del = (path: string) => tfWrite(this.ctx, "DELETE", path);
-    switch (typeId) {
-      case "project":
-        await del(`/projects/${enc(id)}`);
-        this.projectsCache = undefined;
-        return;
-      case "workspace":
-        // Safe delete refuses while the workspace still manages resources, so
-        // an Infrawrench delete never orphans live infrastructure.
-        await tfWrite(this.ctx, "POST", `/workspaces/${enc(id)}/actions/safe-delete`);
-        this.workspacesCache = undefined;
-        return;
-      case "variable": {
-        const [ws, v] = splitFirst(id);
-        await del(`/workspaces/${enc(ws)}/vars/${enc(v)}`);
-        return;
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const del = (path: string) => tfWrite(this.ctx, "DELETE", path);
+      switch (typeId) {
+        case "project":
+          await del(`/projects/${enc(id)}`);
+          this.projectsCache = undefined;
+          return;
+        case "workspace":
+          // Safe delete refuses while the workspace still manages resources, so
+          // an Infrawrench delete never orphans live infrastructure.
+          await tfWrite(this.ctx, "POST", `/workspaces/${enc(id)}/actions/safe-delete`);
+          this.workspacesCache = undefined;
+          return;
+        case "variable": {
+          const [ws, v] = splitFirst(id);
+          await del(`/workspaces/${enc(ws)}/vars/${enc(v)}`);
+          return;
+        }
+        case "varset-variable": {
+          const [vs, v] = splitFirst(id);
+          await del(`/varsets/${enc(vs)}/relationships/vars/${enc(v)}`);
+          return;
+        }
+        case "variable-set":
+          await del(`/varsets/${enc(id)}`);
+          this.varsetsCache = undefined;
+          return;
+        case "agent-pool":
+          await del(`/agent-pools/${enc(id)}`);
+          this.poolsCache = undefined;
+          return;
+        case "agent":
+          await del(`/agents/${enc(splitFirst(id)[1])}`);
+          return;
+        case "agent-token":
+          await del(`/authentication-tokens/${enc(splitFirst(id)[1])}`);
+          return;
+        case "policy-set":
+          await del(`/policy-sets/${enc(id)}`);
+          return;
+        case "team":
+          await del(`/teams/${enc(id)}`);
+          return;
+        case "run-task":
+          await del(`/tasks/${enc(id)}`);
+          return;
+        case "registry-module":
+          await del(`${this.base}/registry-modules/${id.split("/").map(enc).join("/")}`);
+          return;
+        case "registry-provider":
+          await del(`${this.base}/registry-providers/${id.split("/").map(enc).join("/")}`);
+          return;
+        default:
+          throw new Error(`HCP Terraform plugin: cannot delete "${typeId}" from Infrawrench`);
       }
-      case "varset-variable": {
-        const [vs, v] = splitFirst(id);
-        await del(`/varsets/${enc(vs)}/relationships/vars/${enc(v)}`);
-        return;
-      }
-      case "variable-set":
-        await del(`/varsets/${enc(id)}`);
-        this.varsetsCache = undefined;
-        return;
-      case "agent-pool":
-        await del(`/agent-pools/${enc(id)}`);
-        this.poolsCache = undefined;
-        return;
-      case "agent":
-        await del(`/agents/${enc(splitFirst(id)[1])}`);
-        return;
-      case "agent-token":
-        await del(`/authentication-tokens/${enc(splitFirst(id)[1])}`);
-        return;
-      case "policy-set":
-        await del(`/policy-sets/${enc(id)}`);
-        return;
-      case "team":
-        await del(`/teams/${enc(id)}`);
-        return;
-      case "run-task":
-        await del(`/tasks/${enc(id)}`);
-        return;
-      case "registry-module":
-        await del(`${this.base}/registry-modules/${id.split("/").map(enc).join("/")}`);
-        return;
-      case "registry-provider":
-        await del(`${this.base}/registry-providers/${id.split("/").map(enc).join("/")}`);
-        return;
-      default:
-        throw new Error(`HCP Terraform plugin: cannot delete "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "workspace" && (actionId === "unlock" || actionId === "force-unlock")) {
-      await tfWrite(this.ctx, "POST", `/workspaces/${enc(id)}/actions/${actionId}`);
-      return;
-    }
-    if (typeId === "run" && actionId === "force-cancel") {
-      await tfWrite(this.ctx, "POST", `/runs/${enc(id)}/actions/force-cancel`, {});
-      return;
-    }
-    throw new Error(`HCP Terraform plugin: unknown action "${actionId}" for "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "workspace" && (actionId === "unlock" || actionId === "force-unlock")) {
+        await tfWrite(this.ctx, "POST", `/workspaces/${enc(id)}/actions/${actionId}`);
+        return;
+      }
+      if (typeId === "run" && actionId === "force-cancel") {
+        await tfWrite(this.ctx, "POST", `/runs/${enc(id)}/actions/force-cancel`, {});
+        return;
+      }
+      throw new Error(`HCP Terraform plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const id = externalIdOf(resourceId);
-    const vals = parseFormArg(args[0]);
-    const comment = (vals["comment"] ?? "").trim();
-    switch (command) {
-      case "queueRun":
-        if (typeId !== "workspace") break;
-        await tfWrite(
-          this.ctx,
-          "POST",
-          "/runs",
-          doc("runs", runAttributes(vals), {
-            workspace: { data: { type: "workspaces", id } },
-          }),
-        );
-        return null;
-      case "lock":
-        if (typeId !== "workspace") break;
-        await tfWrite(this.ctx, "POST", `/workspaces/${enc(id)}/actions/lock`, {
-          reason: (vals["reason"] ?? "").trim() || "Locked from Infrawrench",
-        });
-        return null;
-      case "moveProject":
-        if (typeId !== "workspace") break;
-        if (!vals["projectId"]) throw new Error("HCP Terraform plugin: choose a project");
-        await tfWrite(
-          this.ctx,
-          "PATCH",
-          `/workspaces/${enc(id)}`,
-          doc(
-            "workspaces",
-            {},
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const vals = parseFormArg(args[0]);
+      const comment = (vals["comment"] ?? "").trim();
+      switch (command) {
+        case "queueRun":
+          if (typeId !== "workspace") break;
+          await tfWrite(
+            this.ctx,
+            "POST",
+            "/runs",
+            doc("runs", runAttributes(vals), {
+              workspace: { data: { type: "workspaces", id } },
+            }),
+          );
+          return null;
+        case "lock":
+          if (typeId !== "workspace") break;
+          await tfWrite(this.ctx, "POST", `/workspaces/${enc(id)}/actions/lock`, {
+            reason: (vals["reason"] ?? "").trim() || "Locked from Infrawrench",
+          });
+          return null;
+        case "moveProject":
+          if (typeId !== "workspace") break;
+          if (!vals["projectId"]) throw new Error("HCP Terraform plugin: choose a project");
+          await tfWrite(
+            this.ctx,
+            "PATCH",
+            `/workspaces/${enc(id)}`,
+            doc(
+              "workspaces",
+              {},
+              {
+                project: { data: { type: "projects", id: vals["projectId"] } },
+              },
+            ),
+          );
+          return null;
+        case "setExecution": {
+          if (typeId !== "workspace") break;
+          const mode = vals["mode"] || "remote";
+          if (mode === "agent" && !vals["agentPoolId"])
+            throw new Error("HCP Terraform plugin: choose an agent pool");
+          await tfWrite(
+            this.ctx,
+            "PATCH",
+            `/workspaces/${enc(id)}`,
+            doc("workspaces", {
+              "execution-mode": mode,
+              ...(mode === "agent" ? { "agent-pool-id": vals["agentPoolId"] } : {}),
+            }),
+          );
+          return null;
+        }
+        case "applyRun":
+        case "discardRun":
+        case "cancelRun": {
+          if (typeId !== "run") break;
+          const verb =
+            command === "applyRun" ? "apply" : command === "discardRun" ? "discard" : "cancel";
+          await tfWrite(
+            this.ctx,
+            "POST",
+            `/runs/${enc(id)}/actions/${verb}`,
+            comment ? { comment } : {},
+          );
+          return null;
+        }
+        case "attach":
+        case "attachProject": {
+          if (typeId !== "variable-set" && typeId !== "policy-set") break;
+          const kind = command === "attach" ? "workspaces" : "projects";
+          const target = command === "attach" ? vals["workspaceId"] : vals["projectId"];
+          if (!target) throw new Error("HCP Terraform plugin: choose what to apply it to");
+          const base =
+            typeId === "variable-set" ? `/varsets/${enc(id)}` : `/policy-sets/${enc(id)}`;
+          await tfWrite(
+            this.ctx,
+            vals["op"] === "remove" ? "DELETE" : "POST",
+            `${base}/relationships/${kind}`,
             {
-              project: { data: { type: "projects", id: vals["projectId"] } },
+              data: [{ type: kind, id: target }],
             },
-          ),
-        );
-        return null;
-      case "setExecution": {
-        if (typeId !== "workspace") break;
-        const mode = vals["mode"] || "remote";
-        if (mode === "agent" && !vals["agentPoolId"])
-          throw new Error("HCP Terraform plugin: choose an agent pool");
-        await tfWrite(
-          this.ctx,
-          "PATCH",
-          `/workspaces/${enc(id)}`,
-          doc("workspaces", {
-            "execution-mode": mode,
-            ...(mode === "agent" ? { "agent-pool-id": vals["agentPoolId"] } : {}),
-          }),
-        );
-        return null;
+          );
+          return null;
+        }
       }
-      case "applyRun":
-      case "discardRun":
-      case "cancelRun": {
-        if (typeId !== "run") break;
-        const verb =
-          command === "applyRun" ? "apply" : command === "discardRun" ? "discard" : "cancel";
-        await tfWrite(
-          this.ctx,
-          "POST",
-          `/runs/${enc(id)}/actions/${verb}`,
-          comment ? { comment } : {},
-        );
-        return null;
-      }
-      case "attach":
-      case "attachProject": {
-        if (typeId !== "variable-set" && typeId !== "policy-set") break;
-        const kind = command === "attach" ? "workspaces" : "projects";
-        const target = command === "attach" ? vals["workspaceId"] : vals["projectId"];
-        if (!target) throw new Error("HCP Terraform plugin: choose what to apply it to");
-        const base = typeId === "variable-set" ? `/varsets/${enc(id)}` : `/policy-sets/${enc(id)}`;
-        await tfWrite(
-          this.ctx,
-          vals["op"] === "remove" ? "DELETE" : "POST",
-          `${base}/relationships/${kind}`,
-          {
-            data: [{ type: kind, id: target }],
-          },
-        );
-        return null;
-      }
-    }
-    throw new Error(`HCP Terraform plugin: unknown command "${command}" for "${typeId}"`);
+      throw new Error(`HCP Terraform plugin: unknown command "${command}" for "${typeId}"`);
+    });
   }
 
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     _accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "workspace" && (formatId === "state" || formatId === "state-json")) {
-      const sv = (await tfGet<A>(this.ctx, `/workspaces/${enc(id)}/current-state-version`)).data;
-      const url = s(
-        sv.attributes[
-          formatId === "state" ? "hosted-state-download-url" : "hosted-json-state-download-url"
-        ],
-      );
-      if (!url)
-        throw new Error("HCP Terraform did not return a download URL for this state version");
-      const content = await tfRaw(this.ctx, url, { anonymous: true });
-      const name = (await tfGet<A>(this.ctx, `/workspaces/${enc(id)}`).catch(() => undefined))?.data
-        .attributes["name"];
-      return {
-        content,
-        filename: `${s(name) || id}${formatId === "state" ? ".tfstate" : ".state.json"}`,
-        mimeType: "application/json",
-        warning:
-          "State files can contain secrets (passwords, keys, tokens) in plain text. Store this file as carefully as the credentials it may hold.",
-      };
-    }
-    if (typeId === "agent-pool" && formatId === "agent-token") {
-      const t = await tfWrite<A>(
-        this.ctx,
-        "POST",
-        `/agent-pools/${enc(id)}/authentication-tokens`,
-        doc("authentication-tokens", {
-          description: `Infrawrench ${new Date().toISOString().slice(0, 10)}`,
-        }),
-      );
-      const token = s(t?.attributes["token"]);
-      if (!token) throw new Error("HCP Terraform did not return the new agent token");
-      return {
-        content: token,
-        filename: "tfc-agent-token.txt",
-        mimeType: "text/plain",
-        fields: [{ label: "Token", value: token, sensitive: true, hint: "Only shown once" }],
-        warning:
-          "Save this token now: it is not shown again. Run the agent with TFC_AGENT_TOKEN set to it.",
-      };
-    }
-    throw new Error(`HCP Terraform plugin: cannot export "${formatId}" for "${typeId}"`);
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "workspace" && (formatId === "state" || formatId === "state-json")) {
+        const sv = (await tfGet<A>(this.ctx, `/workspaces/${enc(id)}/current-state-version`)).data;
+        const url = s(
+          sv.attributes[
+            formatId === "state" ? "hosted-state-download-url" : "hosted-json-state-download-url"
+          ],
+        );
+        if (!url)
+          throw new Error("HCP Terraform did not return a download URL for this state version");
+        const content = await tfRaw(this.ctx, url, { anonymous: true });
+        const name = (await tfGet<A>(this.ctx, `/workspaces/${enc(id)}`).catch(() => undefined))
+          ?.data.attributes["name"];
+        return {
+          content,
+          filename: `${s(name) || id}${formatId === "state" ? ".tfstate" : ".state.json"}`,
+          mimeType: "application/json",
+          warning:
+            "State files can contain secrets (passwords, keys, tokens) in plain text. Store this file as carefully as the credentials it may hold.",
+        };
+      }
+      if (typeId === "agent-pool" && formatId === "agent-token") {
+        const t = await tfWrite<A>(
+          this.ctx,
+          "POST",
+          `/agent-pools/${enc(id)}/authentication-tokens`,
+          doc("authentication-tokens", {
+            description: `Infrawrench ${new Date().toISOString().slice(0, 10)}`,
+          }),
+        );
+        const token = s(t?.attributes["token"]);
+        if (!token) throw new Error("HCP Terraform did not return the new agent token");
+        return {
+          content: token,
+          filename: "tfc-agent-token.txt",
+          mimeType: "text/plain",
+          fields: [{ label: "Token", value: token, sensitive: true, hint: "Only shown once" }],
+          warning:
+            "Save this token now: it is not shown again. Run the agent with TFC_AGENT_TOKEN set to it.",
+        };
+      }
+      throw new Error(`HCP Terraform plugin: cannot export "${formatId}" for "${typeId}"`);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

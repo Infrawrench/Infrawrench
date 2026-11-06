@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { listOwnerOptions } from "../owners.js";
@@ -52,7 +53,7 @@ describe("completeOAuthConnection", () => {
         ],
       },
     });
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "server",
       fetch: doFetch,
     });
@@ -71,7 +72,7 @@ describe("completeOAuthConnection", () => {
         ],
       },
     });
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "server",
       fetch: doFetch,
     });
@@ -81,7 +82,7 @@ describe("completeOAuthConnection", () => {
 
   it("still succeeds when the identity calls fail", async () => {
     const { doFetch } = fakeFetch({}, { "/user": 500, "/user/installations": 403 });
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "server",
       fetch: doFetch,
     });

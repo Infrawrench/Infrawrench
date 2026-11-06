@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DynatraceClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,21 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { dynatraceTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "dynatrace",
-  version: "0.1.0",
+  // SaaS environment API (live) and Grail (apps); SSO + Account Management API for DPS cost. Managed clusters and ActiveGates are user-supplied hosts.
+  egressHosts: [
+    "*.live.dynatrace.com",
+    "*.apps.dynatrace.com",
+    "*.dynatracelabs.com",
+    "sso.dynatrace.com",
+    "api.dynatrace.com",
+  ],
   displayName: "Dynatrace",
   description:
     "Full-stack observability. Browse hosts, services, process groups, web applications and Kubernetes clusters with their metrics and logs, triage problems, manage SLOs, synthetic monitors, alerting profiles, maintenance windows and access tokens, run DQL against Grail, and track platform subscription cost.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "environmentUrl",
       label: "Environment URL",
@@ -80,7 +86,7 @@ const manifest: PluginManifest = {
       placeholder: "dt0s02.ABC123.…",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // DPS daily cost per capability for this environment
     // (`/sub/v2/accounts/{a}/subscriptions/{s}/environments/cost`). One record
@@ -92,13 +98,19 @@ const manifest: PluginManifest = {
   preflight: DYNATRACE_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new DynatraceClient(credentials, services),
+  testCredentials: {
+    environmentUrl: "https://abc12345.live.dynatrace.com",
+    apiToken: "dt0c01.TEST.SECRET",
+  },
   parseStatusFeed,
   policyTemplate: dynatracePolicyTemplate,
   terraformExport: dynatraceTerraformExport,
-};
+});

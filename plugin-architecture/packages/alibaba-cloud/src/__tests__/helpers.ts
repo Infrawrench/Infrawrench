@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { AlibabaCloudClient } from "../client.js";
 
 export interface Recorded {
@@ -51,15 +52,17 @@ export function makeClient(
       return { status: reply.status ?? 200, headers: {}, body: text };
     },
   };
-  const client = new AlibabaCloudClient(
-    {
-      accessKeyId: "LTAI5ttest",
-      accessKeySecret: "secret",
-      region: "ap-southeast-1",
-      regions: "ap-southeast-1, eu-central-1",
-      ...creds,
-    },
-    { http } as never,
+  const client = hostClient(
+    new AlibabaCloudClient(
+      {
+        accessKeyId: "LTAI5ttest",
+        accessKeySecret: "secret",
+        region: "ap-southeast-1",
+        regions: "ap-southeast-1, eu-central-1",
+        ...creds,
+      },
+      { http } as never,
+    ),
   );
   return { client, calls };
 }

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { NomadApiError, normaliseAddress } from "../api.js";
 import { durationNs, NomadClient, parseItems, parsePolicyList } from "../client.js";
@@ -10,9 +11,11 @@ const ACCOUNT = "acct";
 function client(route: (call: Call) => unknown, creds: Record<string, string> = {}) {
   const { http, calls } = makeHttp(route);
   return {
-    c: new NomadClient(
-      { address: "nomad.example.com:4646/ui/", token: "tok", region: "eu", ...creds },
-      { http } as never,
+    c: hostClient(
+      new NomadClient(
+        { address: "nomad.example.com:4646/ui/", token: "tok", region: "eu", ...creds },
+        { http } as never,
+      ),
     ),
     calls,
   };

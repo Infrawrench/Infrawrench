@@ -51,7 +51,42 @@ export function namespacePeerGroup(namespaces: ResourceInstance[], costs?: CostI
     resourceTypeId: "k8s-namespace" as const,
     iconKey: "folder",
     pluginId: "kubernetes" as const,
+    role: "namespace" as const,
     items,
+  };
+}
+
+/**
+ * A resource the user just created, as a row of its group, shown until the next
+ * listing replaces it with one that knows its cost.
+ */
+export function peerPaneResource(resource: ResourceInstance): PeerPaneResource {
+  const namespace = String(resource.fields["namespace"] ?? "");
+  const image = String(resource.fields["image"] ?? "");
+  const status = String(resource.fields["status"] ?? "");
+  const replicas = resource.fields["replicas"];
+  const isPod = resource.resourceTypeId === "k8s-pod";
+
+  return {
+    id: resource.id,
+    pluginId: resource.pluginId,
+    resourceTypeId: resource.resourceTypeId,
+    displayName: resource.displayName,
+    subtitle:
+      resource.resourceTypeId === "k8s-namespace"
+        ? "Active"
+        : isPod
+          ? [namespace, image].filter(Boolean).join(" · ")
+          : [namespace, replicas != null ? `${String(replicas)} replicas` : ""]
+              .filter(Boolean)
+              .join(" · "),
+    fields: resource.fields,
+    namespace,
+    ...(isPod ? { status: mapPeerStatus(status), supportsExec: true } : {}),
+    ...(resource.externalId ? { externalId: resource.externalId } : {}),
+    ...(resource.fields["containerName"]
+      ? { containerName: String(resource.fields["containerName"]) }
+      : {}),
   };
 }
 
@@ -215,6 +250,7 @@ export function servicePeerGroup(items: ResourceInstance[]) {
     resourceTypeId: "k8s-service" as const,
     iconKey: "service",
     pluginId: "kubernetes" as const,
+    role: "service" as const,
     items: items.map((s): PeerPaneResource => ({
       id: s.id,
       pluginId: s.pluginId,

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { CursorClient, parseDollarLimit, validateRepoUrl } from "../client.js";
 import { TeamMemberResourceType } from "../resource-types.js";
@@ -89,7 +90,9 @@ function client(extra: Route = () => undefined, credentials: Record<string, stri
         return { status: 404, body: { error: "not found" } };
     }
   });
-  const c = new CursorClient({ apiKey: "crsr_test", ...credentials }, { http } as never);
+  const c = hostClient(
+    new CursorClient({ apiKey: "crsr_test", ...credentials }, { http } as never),
+  );
   c.setRetryDelayMs(0);
   return { c, calls };
 }

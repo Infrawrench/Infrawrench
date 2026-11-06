@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { OktaClient } from "../client.js";
@@ -50,7 +51,9 @@ function services(handler: (call: Call) => Reply): HostServices {
 }
 
 function ssws(handler: (call: Call) => Reply) {
-  return new OktaClient({ orgUrl: "acme-admin.okta.com", apiToken: "tok" }, services(handler));
+  return hostClient(
+    new OktaClient({ orgUrl: "acme-admin.okta.com", apiToken: "tok" }, services(handler)),
+  );
 }
 
 function decodeJwt(jwt: string): {
@@ -68,8 +71,8 @@ beforeEach(() => {
 
 describe("credentials", () => {
   it("needs an API token or a service app key", () => {
-    expect(() => new OktaClient({ orgUrl: ORG })).toThrow(/API token/);
-    expect(() => new OktaClient({ orgUrl: ORG, clientId: "x" })).toThrow(/private key/);
+    expect(() => hostClient(new OktaClient({ orgUrl: ORG }))).toThrow(/API token/);
+    expect(() => hostClient(new OktaClient({ orgUrl: ORG, clientId: "x" }))).toThrow(/private key/);
   });
 
   it("maps the admin console host to the org host", () => {
@@ -193,31 +196,33 @@ describe("OAuth service app with DPoP", () => {
     )) as CryptoKeyPair;
     const jwk = { ...(await crypto.subtle.exportKey("jwk", pair.privateKey)), kid: "key-1" };
     let tokenCalls = 0;
-    const client = new OktaClient(
-      {
-        orgUrl: ORG,
-        clientId: "0oaclient",
-        privateKey: JSON.stringify(jwk),
-        scopes: "okta.users.read",
-      },
-      services((call) => {
-        if (call.url.endsWith("/oauth2/v1/token")) {
-          tokenCalls++;
-          if (tokenCalls === 1)
-            return {
-              status: 400,
-              body: { error: "invalid_dpop_proof", error_description: "DPoP proof required" },
-            };
-          if (tokenCalls === 2)
-            return {
-              status: 400,
-              body: { error: "use_dpop_nonce" },
-              headers: { "dpop-nonce": "n-1" },
-            };
-          return { body: { access_token: "at-1", token_type: "DPoP", expires_in: 3600 } };
-        }
-        return { body: { id: "u1", status: "ACTIVE", profile: { login: "a@b.c" } } };
-      }),
+    const client = hostClient(
+      new OktaClient(
+        {
+          orgUrl: ORG,
+          clientId: "0oaclient",
+          privateKey: JSON.stringify(jwk),
+          scopes: "okta.users.read",
+        },
+        services((call) => {
+          if (call.url.endsWith("/oauth2/v1/token")) {
+            tokenCalls++;
+            if (tokenCalls === 1)
+              return {
+                status: 400,
+                body: { error: "invalid_dpop_proof", error_description: "DPoP proof required" },
+              };
+            if (tokenCalls === 2)
+              return {
+                status: 400,
+                body: { error: "use_dpop_nonce" },
+                headers: { "dpop-nonce": "n-1" },
+              };
+            return { body: { access_token: "at-1", token_type: "DPoP", expires_in: 3600 } };
+          }
+          return { body: { id: "u1", status: "ACTIVE", profile: { login: "a@b.c" } } };
+        }),
+      ),
     );
     await client.getResource("user", `${ACCOUNT}:user:u1`, ACCOUNT);
 

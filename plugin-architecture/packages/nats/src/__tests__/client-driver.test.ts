@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { NatsClient } from "../client.js";
 import { AUTH_PREFIX, decodeAuthArgs } from "../connection.js";
@@ -62,9 +63,11 @@ function client(
       return route(cmd, rest);
     },
   };
-  const c = new NatsClient(
-    { servers: "nats://nats.internal:4222", natsUser: "alice", natsPassword: "pw", ...creds },
-    { kv } as never,
+  const c = hostClient(
+    new NatsClient(
+      { servers: "nats://nats.internal:4222", natsUser: "alice", natsPassword: "pw", ...creds },
+      { kv } as never,
+    ),
   );
   return { c, sent };
 }
@@ -338,9 +341,11 @@ describe("browsers", () => {
 
 describe("without a server URL", () => {
   it("says what to add instead of failing obscurely", async () => {
-    const c = new NatsClient({ url: "http://nats.internal:8222" }, {
-      kv: { command: async () => null },
-    } as never);
+    const c = hostClient(
+      new NatsClient({ url: "http://nats.internal:8222" }, {
+        kv: { command: async () => null },
+      } as never),
+    );
     await expect(
       c.createResource("nats-stream", ACCOUNT, { name: "X", subjects: "x" }),
     ).rejects.toThrow("add the server URL");
@@ -360,6 +365,6 @@ describe("without a server URL", () => {
   });
 
   it("needs one of the two URLs", () => {
-    expect(() => new NatsClient({})).toThrow("server URL");
+    expect(() => hostClient(new NatsClient({}))).toThrow("server URL");
   });
 });

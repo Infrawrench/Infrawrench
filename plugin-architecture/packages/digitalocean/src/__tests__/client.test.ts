@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DigitalOceanClient } from "../client.js";
 
@@ -49,7 +50,7 @@ const ACC = "acc1";
 const creds = { apiToken: "tok" };
 
 function newClient(extraCreds: Record<string, string> = {}) {
-  return new DigitalOceanClient({ ...creds, ...extraCreds });
+  return hostClient(new DigitalOceanClient({ ...creds, ...extraCreds }));
 }
 
 afterEach(() => {
@@ -58,7 +59,7 @@ afterEach(() => {
 
 describe("DigitalOceanClient constructor", () => {
   it("throws without an apiToken", () => {
-    expect(() => new DigitalOceanClient({})).toThrow(/missing apiToken/);
+    expect(() => hostClient(new DigitalOceanClient({}))).toThrow(/missing apiToken/);
   });
   it("constructs with an apiToken", () => {
     expect(newClient()).toBeInstanceOf(DigitalOceanClient);

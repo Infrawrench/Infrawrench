@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockQuery = vi.fn();
@@ -14,8 +15,10 @@ vi.mock("mysql2/promise", () => ({
   ),
 }));
 
-import { driver } from "../driver.js";
+import { driver as contractDriver } from "../driver.js";
 import { createConnection } from "mysql2/promise";
+
+const driver = hostDriver(contractDriver);
 
 describe("mysql driver caCert branch", () => {
   beforeEach(() => {

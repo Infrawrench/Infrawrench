@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { FastlyClient, parseKeys, purgePathFor } from "../client.js";
 import { evaluate, scopesOf } from "../preflight.js";
@@ -63,7 +64,7 @@ function route(url: URL, method: string) {
 
 function client() {
   const { http, calls } = makeHttp(route);
-  return { c: new FastlyClient({ apiToken: "test-token" }, { http } as never), calls };
+  return { c: hostClient(new FastlyClient({ apiToken: "test-token" }, { http } as never)), calls };
 }
 
 describe("listing", () => {

@@ -85,9 +85,9 @@ export const LinodeInstanceResourceType = rt({
     f("created", "Created", { required: false, editable: false }),
   ],
   outputs: [
-    o("ipv4", "Public IPv4"),
+    o("ipv4", "Public IPv4", { dnsValue: "ipv4" }),
     o("ipv4Private", "Private IPv4"),
-    o("ipv6", "IPv6"),
+    o("ipv6", "IPv6", { dnsValue: "ipv6" }),
     o("linodeId", "Linode ID", { hidden: true }),
   ],
   dependsOn: [

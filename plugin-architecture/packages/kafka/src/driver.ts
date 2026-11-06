@@ -1,3 +1,6 @@
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import { Kafka, logLevel, type KafkaConfig, type SASLOptions } from "kafkajs";
 import { hostPortDialTarget, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
@@ -205,32 +208,30 @@ export const driver = {
   id: "kafka",
   dialTargets,
 
-  async command(
-    connectionString: string,
-    cmd: string,
-    args: (string | number)[],
-  ): Promise<unknown> {
-    if (cmd === "produce") {
-      return runProduceCommand(connectionString, args);
-    }
-    // Retry once: pooled admin clients go stale when the broker closes an idle
-    // socket, so the first op after a pause can fail with "Closed connection".
-    // Dropping the entry and reconnecting recovers transparently.
-    for (let attempt = 0; ; attempt++) {
-      const entry = getAdmin(connectionString);
-      try {
-        await entry.connected;
-        return await runAdminCommand(entry.admin, cmd, args);
-      } catch (err) {
-        if (attempt === 0 && isStaleConnectionError(err)) {
-          dropAdmin(connectionString);
-          continue;
-        }
-        throw describeFailure(err, connectionString);
-      } finally {
-        scheduleEviction(connectionString);
+  command(connectionString: string, cmd: string, args: (string | number)[]): PluginEffect<unknown> {
+    return attempt(async () => {
+      if (cmd === "produce") {
+        return runProduceCommand(connectionString, args);
       }
-    }
+      // Retry once: pooled admin clients go stale when the broker closes an idle
+      // socket, so the first op after a pause can fail with "Closed connection".
+      // Dropping the entry and reconnecting recovers transparently.
+      for (let attempt = 0; ; attempt++) {
+        const entry = getAdmin(connectionString);
+        try {
+          await entry.connected;
+          return await runAdminCommand(entry.admin, cmd, args);
+        } catch (err) {
+          if (attempt === 0 && isStaleConnectionError(err)) {
+            dropAdmin(connectionString);
+            continue;
+          }
+          throw describeFailure(err, connectionString);
+        } finally {
+          scheduleEviction(connectionString);
+        }
+      }
+    });
   },
 } satisfies KvNodeDriver;
 
@@ -361,3 +362,11 @@ async function runAdminCommand(
       throw new Error(`Kafka driver: unknown command "${cmd}"`);
   }
 }
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { kv: driver },
+  server: { kv: driver },
+});

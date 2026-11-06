@@ -1,3 +1,6 @@
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type { MongoClient } from "mongodb";
 import { hostPortDialTarget, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
@@ -147,178 +150,176 @@ export const driver = {
   id: "mongodb",
   dialTargets,
 
-  async command(
-    connectionString: string,
-    cmd: string,
-    args: (string | number)[],
-  ): Promise<unknown> {
-    const mongo = await loadMongo();
-    const { ObjectId } = mongo;
-    const client = getClient(mongo, connectionString);
+  command(connectionString: string, cmd: string, args: (string | number)[]): PluginEffect<unknown> {
+    return attempt(async () => {
+      const mongo = await loadMongo();
+      const { ObjectId } = mongo;
+      const client = getClient(mongo, connectionString);
 
-    try {
-      const dbName = String(args[0] ?? "test");
-      const db = client.db(dbName);
+      try {
+        const dbName = String(args[0] ?? "test");
+        const db = client.db(dbName);
 
-      switch (cmd) {
-        case "listDatabases": {
-          const admin = client.db("admin");
-          return admin.command({ listDatabases: 1 });
-        }
-
-        case "listCollections": {
-          const collections = await db.listCollections().toArray();
-          return collections.map((c) => c.name).sort();
-        }
-
-        case "createCollection": {
-          const collName = String(args[1] ?? "");
-          if (!collName) throw new Error("createCollection requires a collection name");
-          await db.createCollection(collName);
-          return { ok: true };
-        }
-
-        case "dbStats": {
-          return db.command({ dbStats: 1 });
-        }
-
-        case "serverVersion": {
-          const info = await db.command({ buildInfo: 1 });
-          return info.version ?? "";
-        }
-
-        case "collectionStats": {
-          const collName = String(args[1] ?? "");
-          if (!collName) throw new Error("collectionStats requires a collection name");
-          const coll = db.collection(collName);
-          try {
-            const stats = (await db.command({ collStats: collName })) as {
-              count?: number;
-              size?: number;
-              avgObjSize?: number;
-              storageSize?: number;
-              nindexes?: number;
-              totalIndexSize?: number;
-            };
-            return {
-              count: stats.count ?? 0,
-              size: stats.size ?? 0,
-              avgObjSize: stats.avgObjSize ?? 0,
-              storageSize: stats.storageSize ?? 0,
-              nindexes: stats.nindexes ?? 0,
-              totalIndexSize: stats.totalIndexSize ?? 0,
-            };
-          } catch {
-            // Atlas free-tier and restricted accounts can deny collStats; keep
-            // the query surface useful with driver-level estimates.
+        switch (cmd) {
+          case "listDatabases": {
+            const admin = client.db("admin");
+            return admin.command({ listDatabases: 1 });
           }
-          const [count, indexes] = await Promise.all([
-            coll.estimatedDocumentCount().catch(() => coll.countDocuments()),
-            coll
-              .indexes()
-              .then((idx) => idx.length)
-              .catch(() => 0),
-          ]);
-          return {
-            count,
-            size: 0,
-            avgObjSize: 0,
-            storageSize: 0,
-            nindexes: indexes,
-            totalIndexSize: 0,
-          };
-        }
 
-        case "find": {
-          const collection = String(args[1] ?? "");
-          if (!collection) throw new Error("find requires a collection name");
-          const filter = deserializeFilter(ObjectId, args[2] ? JSON.parse(String(args[2])) : {});
-          const skip = Number(args[3] ?? 0);
-          const limit = Number(args[4] ?? 50);
-          const docs = await db
-            .collection(collection)
-            .find(filter as Record<string, unknown>)
-            .skip(skip)
-            .limit(limit)
-            .toArray();
-          return docs.map((doc) => serializeDoc(ObjectId, doc));
-        }
+          case "listCollections": {
+            const collections = await db.listCollections().toArray();
+            return collections.map((c) => c.name).sort();
+          }
 
-        case "countDocuments": {
-          const collection = String(args[1] ?? "");
-          if (!collection) throw new Error("countDocuments requires a collection name");
-          const filter = deserializeFilter(ObjectId, args[2] ? JSON.parse(String(args[2])) : {});
-          return db.collection(collection).countDocuments(filter as Record<string, unknown>);
-        }
+          case "createCollection": {
+            const collName = String(args[1] ?? "");
+            if (!collName) throw new Error("createCollection requires a collection name");
+            await db.createCollection(collName);
+            return { ok: true };
+          }
 
-        case "insertOne": {
-          const collection = String(args[1] ?? "");
-          if (!collection) throw new Error("insertOne requires a collection name");
-          const doc = JSON.parse(String(args[2] ?? "{}"));
-          const result = await db.collection(collection).insertOne(doc);
-          return { insertedId: result.insertedId.toHexString() };
-        }
+          case "dbStats": {
+            return db.command({ dbStats: 1 });
+          }
 
-        case "updateOne": {
-          const collection = String(args[1] ?? "");
-          if (!collection) throw new Error("updateOne requires a collection name");
-          const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
-          const update = JSON.parse(String(args[3] ?? "{}"));
-          const result = await db
-            .collection(collection)
-            .updateOne(filter as Record<string, unknown>, update);
-          return { modifiedCount: result.modifiedCount, matchedCount: result.matchedCount };
-        }
+          case "serverVersion": {
+            const info = await db.command({ buildInfo: 1 });
+            return info.version ?? "";
+          }
 
-        case "deleteOne": {
-          const collection = String(args[1] ?? "");
-          if (!collection) throw new Error("deleteOne requires a collection name");
-          const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
-          const result = await db
-            .collection(collection)
-            .deleteOne(filter as Record<string, unknown>);
-          return { deletedCount: result.deletedCount };
-        }
+          case "collectionStats": {
+            const collName = String(args[1] ?? "");
+            if (!collName) throw new Error("collectionStats requires a collection name");
+            const coll = db.collection(collName);
+            try {
+              const stats = (await db.command({ collStats: collName })) as {
+                count?: number;
+                size?: number;
+                avgObjSize?: number;
+                storageSize?: number;
+                nindexes?: number;
+                totalIndexSize?: number;
+              };
+              return {
+                count: stats.count ?? 0,
+                size: stats.size ?? 0,
+                avgObjSize: stats.avgObjSize ?? 0,
+                storageSize: stats.storageSize ?? 0,
+                nindexes: stats.nindexes ?? 0,
+                totalIndexSize: stats.totalIndexSize ?? 0,
+              };
+            } catch {
+              // Atlas free-tier and restricted accounts can deny collStats; keep
+              // the query surface useful with driver-level estimates.
+            }
+            const [count, indexes] = await Promise.all([
+              coll.estimatedDocumentCount().catch(() => coll.countDocuments()),
+              coll
+                .indexes()
+                .then((idx) => idx.length)
+                .catch(() => 0),
+            ]);
+            return {
+              count,
+              size: 0,
+              avgObjSize: 0,
+              storageSize: 0,
+              nindexes: indexes,
+              totalIndexSize: 0,
+            };
+          }
 
-        case "deleteMany": {
-          const collection = String(args[1] ?? "");
-          if (!collection) throw new Error("deleteMany requires a collection name");
-          const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
-          const result = await db
-            .collection(collection)
-            .deleteMany(filter as Record<string, unknown>);
-          return { deletedCount: result.deletedCount };
-        }
+          case "find": {
+            const collection = String(args[1] ?? "");
+            if (!collection) throw new Error("find requires a collection name");
+            const filter = deserializeFilter(ObjectId, args[2] ? JSON.parse(String(args[2])) : {});
+            const skip = Number(args[3] ?? 0);
+            const limit = Number(args[4] ?? 50);
+            const docs = await db
+              .collection(collection)
+              .find(filter as Record<string, unknown>)
+              .skip(skip)
+              .limit(limit)
+              .toArray();
+            return docs.map((doc) => serializeDoc(ObjectId, doc));
+          }
 
-        case "dropCollection": {
-          const collName = String(args[1] ?? "");
-          if (!collName) throw new Error("dropCollection requires a collection name");
-          await db.collection(collName).drop();
-          return { ok: true };
-        }
+          case "countDocuments": {
+            const collection = String(args[1] ?? "");
+            if (!collection) throw new Error("countDocuments requires a collection name");
+            const filter = deserializeFilter(ObjectId, args[2] ? JSON.parse(String(args[2])) : {});
+            return db.collection(collection).countDocuments(filter as Record<string, unknown>);
+          }
 
-        case "replaceOne": {
-          const collection = String(args[1] ?? "");
-          if (!collection) throw new Error("replaceOne requires a collection name");
-          const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
-          const replacement = JSON.parse(String(args[3] ?? "{}"));
-          const result = await db
-            .collection(collection)
-            .replaceOne(filter as Record<string, unknown>, replacement);
-          return { modifiedCount: result.modifiedCount, matchedCount: result.matchedCount };
-        }
+          case "insertOne": {
+            const collection = String(args[1] ?? "");
+            if (!collection) throw new Error("insertOne requires a collection name");
+            const doc = JSON.parse(String(args[2] ?? "{}"));
+            const result = await db.collection(collection).insertOne(doc);
+            return { insertedId: result.insertedId.toHexString() };
+          }
 
-        case "dropDatabase": {
-          await db.dropDatabase();
-          return { ok: true };
-        }
+          case "updateOne": {
+            const collection = String(args[1] ?? "");
+            if (!collection) throw new Error("updateOne requires a collection name");
+            const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
+            const update = JSON.parse(String(args[3] ?? "{}"));
+            const result = await db
+              .collection(collection)
+              .updateOne(filter as Record<string, unknown>, update);
+            return { modifiedCount: result.modifiedCount, matchedCount: result.matchedCount };
+          }
 
-        default:
-          throw new Error(`MongoDB driver: unknown command "${cmd}"`);
+          case "deleteOne": {
+            const collection = String(args[1] ?? "");
+            if (!collection) throw new Error("deleteOne requires a collection name");
+            const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
+            const result = await db
+              .collection(collection)
+              .deleteOne(filter as Record<string, unknown>);
+            return { deletedCount: result.deletedCount };
+          }
+
+          case "deleteMany": {
+            const collection = String(args[1] ?? "");
+            if (!collection) throw new Error("deleteMany requires a collection name");
+            const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
+            const result = await db
+              .collection(collection)
+              .deleteMany(filter as Record<string, unknown>);
+            return { deletedCount: result.deletedCount };
+          }
+
+          case "dropCollection": {
+            const collName = String(args[1] ?? "");
+            if (!collName) throw new Error("dropCollection requires a collection name");
+            await db.collection(collName).drop();
+            return { ok: true };
+          }
+
+          case "replaceOne": {
+            const collection = String(args[1] ?? "");
+            if (!collection) throw new Error("replaceOne requires a collection name");
+            const filter = deserializeFilter(ObjectId, JSON.parse(String(args[2] ?? "{}")));
+            const replacement = JSON.parse(String(args[3] ?? "{}"));
+            const result = await db
+              .collection(collection)
+              .replaceOne(filter as Record<string, unknown>, replacement);
+            return { modifiedCount: result.modifiedCount, matchedCount: result.matchedCount };
+          }
+
+          case "dropDatabase": {
+            await db.dropDatabase();
+            return { ok: true };
+          }
+
+          default:
+            throw new Error(`MongoDB driver: unknown command "${cmd}"`);
+        }
+      } finally {
+        releaseClient(connectionString);
       }
-    } finally {
-      releaseClient(connectionString);
-    }
+    });
   },
 } satisfies KvNodeDriver;
 
@@ -367,13 +368,19 @@ export const serverDriver = {
     if (error) throw new Error(error);
     return dialTargets(connectionString);
   },
-  async command(
-    connectionString: string,
-    cmd: string,
-    args: (string | number)[],
-  ): Promise<unknown> {
-    const error = await serverMongoConnectionStringError(connectionString);
-    if (error) throw new Error(error);
-    return driver.command(connectionString, cmd, args);
+  command(connectionString: string, cmd: string, args: (string | number)[]): PluginEffect<unknown> {
+    return attempt(async () => {
+      const error = await serverMongoConnectionStringError(connectionString);
+      if (error) throw new Error(error);
+      return runPluginEffect(driver.command(connectionString, cmd, args));
+    });
   },
 } satisfies KvNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { kv: driver },
+  server: { kv: serverDriver },
+});

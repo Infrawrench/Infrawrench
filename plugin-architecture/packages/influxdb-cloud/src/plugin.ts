@@ -1,8 +1,11 @@
+import type { PluginEffect } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { REGIONS, hostFor, influxJson } from "./api.js";
 import { InfluxClient } from "./client.js";
@@ -11,16 +14,15 @@ import { influxRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "influxdb-cloud",
-  version: "0.1.0",
+  // InfluxDB Cloud regional v2 API hosts and the Cloud Dedicated Management API
+  egressHosts: ["*.cloud2.influxdata.com", "console.influxdata.com"],
   displayName: "InfluxDB Cloud",
   description:
     "Manage InfluxDB Cloud and Cloud Serverless buckets, API tokens, tasks, checks, notification rules and endpoints, dashboards and Telegraf configs, query buckets with InfluxQL or Flux, and manage InfluxDB 3 Cloud Dedicated databases and tokens.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "region",
       label: "Region",
@@ -78,32 +80,37 @@ const manifest: PluginManifest = {
       optional: true,
       advanced: true,
     },
-  ],
+  ]),
   quotas: { label: "Plan limits", partial: true },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new InfluxClient(credentials, services),
+  testCredentials: { region: "us-east-1-1", token: "test-influx-token", orgId: "org1" },
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   remediationCommands: influxRemediationCommands,
-  async listCredentialOptions(
+  listCredentialOptions(
     fieldKey: string,
     credentials: Record<string, string>,
     services?: HostServices,
-  ): Promise<CredentialFieldOption[]> {
-    if (fieldKey !== "orgId") return [];
-    const region = (credentials["region"] ?? "").trim();
-    const token = (credentials["token"] ?? "").trim();
-    if (!region || !token) throw new Error("Pick the region and enter the token first.");
-    const res = await influxJson<{ orgs?: Array<{ id: string; name?: string }> }>(
-      services?.http ? { http: services.http } : {},
-      "GET",
-      `${hostFor(region)}/api/v2/orgs`,
-      `Token ${token}`,
-    );
-    return (res?.orgs ?? []).map((o) => ({ id: o.id, label: o.name ?? o.id, description: o.id }));
+  ): PluginEffect<CredentialFieldOption[]> {
+    return attempt(async () => {
+      if (fieldKey !== "orgId") return [];
+      const region = (credentials["region"] ?? "").trim();
+      const token = (credentials["token"] ?? "").trim();
+      if (!region || !token) throw new Error("Pick the region and enter the token first.");
+      const res = await influxJson<{ orgs?: Array<{ id: string; name?: string }> }>(
+        services?.http ? { http: services.http } : {},
+        "GET",
+        `${hostFor(region)}/api/v2/orgs`,
+        `Token ${token}`,
+      );
+      return (res?.orgs ?? []).map((o) => ({ id: o.id, label: o.name ?? o.id, description: o.id }));
+    });
   },
-};
+});

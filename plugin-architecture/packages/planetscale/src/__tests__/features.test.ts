@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { PlanetScaleClient } from "../client.js";
 import { planetscaleTerraformExport } from "../terraform.js";
@@ -7,11 +8,13 @@ const ACCOUNT = "acct1";
 const DB = "/v1/organizations/myorg/databases";
 
 function client() {
-  return new PlanetScaleClient({
-    serviceTokenId: "tid",
-    serviceTokenSecret: "tsecret",
-    organizationName: "myorg",
-  });
+  return hostClient(
+    new PlanetScaleClient({
+      serviceTokenId: "tid",
+      serviceTokenSecret: "tsecret",
+      organizationName: "myorg",
+    }),
+  );
 }
 
 function response(json: unknown, status = 200): Response {

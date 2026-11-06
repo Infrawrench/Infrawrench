@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { HuggingFaceClient, jobSpecFrom } from "../client.js";
@@ -100,7 +101,9 @@ describe("listing", () => {
       }
       throw new Error(`unrouted ${req.url}`);
     });
-    const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
     const items = await client.listResources("hf-model", ACCOUNT);
     expect(items.map((i) => i.externalId)).toEqual(["acme/a", "acme/b"]);
     expect(items[0]?.fields["visibility"]).toBe("private");
@@ -142,7 +145,9 @@ describe("listing", () => {
       if (req.url.includes("cursor=2")) return { body: { items: [], nextCursor: null } };
       throw new Error(`unrouted ${req.url}`);
     });
-    const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
     const [ep] = await client.listResources("hf-inference-endpoint", ACCOUNT);
     expect(ep?.fields["pricePerHour"]).toBe(0.5);
     expect(ep?.fields["container"]).toBe("Text Generation Inference");
@@ -153,13 +158,17 @@ describe("listing", () => {
 
   it("reads a namespace without endpoint billing as no endpoints", async () => {
     const { http } = host(() => ({ status: 401, body: { error: "no billing" } }));
-    const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
     expect(await client.listResources("hf-inference-endpoint", ACCOUNT)).toEqual([]);
   });
 
   it("attaches the HTTP status to thrown errors", async () => {
     const { http } = host(() => ({ status: 500, body: { error: "boom" } }));
-    const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
     await expect(client.listResources("hf-model", ACCOUNT)).rejects.toMatchObject({
       status: 500,
       message: expect.stringContaining("boom"),
@@ -171,7 +180,7 @@ describe("listing", () => {
       if (req.url.endsWith("/api/whoami-v2")) return { body: { name: "alice", orgs: [] } };
       return { body: [] };
     });
-    const client = new HuggingFaceClient({ apiToken: "hf_x" }, { http });
+    const client = hostClient(new HuggingFaceClient({ apiToken: "hf_x" }, { http }));
     await client.listResources("hf-space", ACCOUNT);
     expect(calls[1]?.url).toContain("/api/spaces?author=alice");
     // A user namespace has no service accounts and makes no org call.
@@ -186,7 +195,9 @@ describe("mutations", () => {
       if (req.method === "POST") return { body: { name: "chat", status: { state: "pending" } } };
       return { body: {} };
     });
-    const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
     await client.createResource("hf-inference-endpoint", ACCOUNT, {
       name: "chat",
       source: "custom",
@@ -211,7 +222,9 @@ describe("mutations", () => {
 
   it("rejects an invalid endpoint name before calling the API", async () => {
     const { http, calls } = host(() => ({ body: {} }));
-    const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
     await expect(
       client.createResource("hf-inference-endpoint", ACCOUNT, {
         name: "Bad_Name",
@@ -223,7 +236,9 @@ describe("mutations", () => {
 
   it("deletes a repository through /api/repos/delete with its owner", async () => {
     const { http, calls } = host(() => ({ body: {} }));
-    const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
     await client.deleteResource("hf-dataset", `${ACCOUNT}:hf-dataset:acme/data`, ACCOUNT);
     const del = calls.find((c) => c.method === "DELETE");
     expect(del?.url).toBe("https://huggingface.co/api/repos/delete");
@@ -236,7 +251,9 @@ describe("mutations", () => {
 
   it("removes a Space secret from a table-row action", async () => {
     const { http, calls } = host(() => ({ body: {} }));
-    const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
     await client.invokeAction(
       "hf-space",
       `${ACCOUNT}:hf-space:acme/app`,
@@ -393,7 +410,7 @@ describe("namespace picker", () => {
         orgs: [{ name: "acme", plan: "team", roleInOrg: "admin" }],
       },
     }));
-    const options = await plugin.listCredentialOptions!(
+    const options = await hostPlugin(plugin).listCredentialOptions!(
       "namespace",
       { apiToken: "hf_x" },
       { http },

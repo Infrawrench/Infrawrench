@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BasetenClient } from "../client.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
@@ -10,7 +11,7 @@ import { installFetch, route, state } from "./helpers.js";
 const ACC = "acc-1";
 
 function client() {
-  return new BasetenClient({ apiKey: "b10_test.key" }, RESOURCE_TYPES);
+  return hostClient(new BasetenClient({ apiKey: "b10_test.key" }, RESOURCE_TYPES));
 }
 
 const deployment = (over: Record<string, unknown> = {}) => ({
@@ -74,7 +75,7 @@ describe("auth", () => {
   });
 
   it("throws without a key", () => {
-    expect(() => new BasetenClient({}, RESOURCE_TYPES)).toThrow(/apiKey/);
+    expect(() => hostClient(new BasetenClient({}, RESOURCE_TYPES))).toThrow(/apiKey/);
   });
 });
 

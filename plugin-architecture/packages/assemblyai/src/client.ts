@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -214,7 +217,7 @@ export class AssemblyAIClient implements PluginClient {
   /** Voice agents, their sessions and webhooks, and the LLM Gateway catalogue. */
   private readonly voice: VoiceAgentSurface;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("AssemblyAI plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -302,64 +305,70 @@ export class AssemblyAIClient implements PluginClient {
   // Resource surface
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    // Exactly one account, always, including on a key that has never
-    // transcribed anything. That is the point of it.
-    if (typeId === ACCOUNT_TYPE) return [await this.buildAccount(accountId)];
-    if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.list(typeId, accountId);
-    if (typeId !== TRANSCRIPT_TYPE) {
-      throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
-    }
-    const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
-    const items = data.transcripts ?? [];
-
-    // The list endpoint only returns id/status/created/completed/audio_url/error.
-    // Model, duration, language and confidence live on the full record, so
-    // hydrate each one: bounded, and tolerant of individual failures so one
-    // purged transcript doesn't blank the whole listing.
-    const hydrated = await mapWithConcurrency(items, HYDRATE_CONCURRENCY, async (item) => {
-      try {
-        return await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(item.id)}`);
-      } catch {
-        return item as Transcript;
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      // Exactly one account, always, including on a key that has never
+      // transcribed anything. That is the point of it.
+      if (typeId === ACCOUNT_TYPE) return [await this.buildAccount(accountId)];
+      if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.list(typeId, accountId);
+      if (typeId !== TRANSCRIPT_TYPE) {
+        throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
       }
-    });
+      const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
+      const items = data.transcripts ?? [];
 
-    return hydrated.map((t) => this.mapTranscript(t, accountId));
+      // The list endpoint only returns id/status/created/completed/audio_url/error.
+      // Model, duration, language and confidence live on the full record, so
+      // hydrate each one: bounded, and tolerant of individual failures so one
+      // purged transcript doesn't blank the whole listing.
+      const hydrated = await mapWithConcurrency(items, HYDRATE_CONCURRENCY, async (item) => {
+        try {
+          return await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(item.id)}`);
+        } catch {
+          return item as Transcript;
+        }
+      });
+
+      return hydrated.map((t) => this.mapTranscript(t, accountId));
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === ACCOUNT_TYPE) return this.buildAccount(accountId);
-    if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.get(typeId, resourceId, accountId);
-    if (typeId !== TRANSCRIPT_TYPE) {
-      throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
-    }
-    const id = transcriptIdOf(resourceId);
-    const data = await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(id)}`);
-    return this.mapTranscript(data, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === ACCOUNT_TYPE) return this.buildAccount(accountId);
+      if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.get(typeId, resourceId, accountId);
+      if (typeId !== TRANSCRIPT_TYPE) {
+        throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
+      }
+      const id = transcriptIdOf(resourceId);
+      const data = await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(id)}`);
+      return this.mapTranscript(data, accountId);
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId !== TRANSCRIPT_TYPE && typeId !== ACCOUNT_TYPE && !VOICE_AGENT_TYPES.has(typeId)) {
-      throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value === undefined) {
-      throw new Error(
-        `AssemblyAI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-      );
-    }
-    return value;
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId !== TRANSCRIPT_TYPE && typeId !== ACCOUNT_TYPE && !VOICE_AGENT_TYPES.has(typeId)) {
+        throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value === undefined) {
+        throw new Error(
+          `AssemblyAI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+        );
+      }
+      return value;
+    });
   }
 
   /**
@@ -367,55 +376,63 @@ export class AssemblyAIClient implements PluginClient {
    * /v2/upload, the stored media alongside it.
    * https://www.assemblyai.com/docs/api-reference/transcripts/delete
    */
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.remove(typeId, resourceId);
-    if (typeId !== TRANSCRIPT_TYPE) {
-      throw new Error(`AssemblyAI plugin: deleteResource not supported for type "${typeId}"`);
-    }
-    const id = transcriptIdOf(resourceId);
-    await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(id)}`, { method: "DELETE" });
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (VOICE_AGENT_TYPES.has(typeId)) return this.voice.remove(typeId, resourceId);
+      if (typeId !== TRANSCRIPT_TYPE) {
+        throw new Error(`AssemblyAI plugin: deleteResource not supported for type "${typeId}"`);
+      }
+      const id = transcriptIdOf(resourceId);
+      await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const fields = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const fields = resource.fields;
 
-    if (VOICE_AGENT_TYPES.has(resourceTypeId)) return this.voice.stats(resource);
+      if (VOICE_AGENT_TYPES.has(resourceTypeId)) return this.voice.stats(resource);
 
-    if (resourceTypeId === ACCOUNT_TYPE) {
-      const failed = Number(fields["erroredTranscripts"] ?? 0);
+      if (resourceTypeId === ACCOUNT_TYPE) {
+        const failed = Number(fields["erroredTranscripts"] ?? 0);
+        return [
+          { label: "Transcripts sampled", value: String(fields["sampledTranscripts"] ?? 0) },
+          { label: "Completed", value: String(fields["completedTranscripts"] ?? 0) },
+          {
+            label: "Failed",
+            value: String(failed),
+            variant: failed > 0 ? "status-degraded" : "default",
+          },
+          { label: "Region", value: String(fields["region"] ?? "") },
+        ];
+      }
+
+      const status = String(fields["status"] ?? "");
       return [
-        { label: "Transcripts sampled", value: String(fields["sampledTranscripts"] ?? 0) },
-        { label: "Completed", value: String(fields["completedTranscripts"] ?? 0) },
         {
-          label: "Failed",
-          value: String(failed),
-          variant: failed > 0 ? "status-degraded" : "default",
+          label: "Status",
+          value: status,
+          variant:
+            status === "completed"
+              ? "status-healthy"
+              : status === "error"
+                ? "status-error"
+                : "status-degraded",
         },
-        { label: "Region", value: String(fields["region"] ?? "") },
+        { label: "Model", value: String(fields["speechModel"] ?? "—") },
+        { label: "Duration", value: formatDuration(Number(fields["audioDuration"] ?? 0)) },
+        { label: "Language", value: String(fields["languageCode"] ?? "—") },
       ];
-    }
-
-    const status = String(fields["status"] ?? "");
-    return [
-      {
-        label: "Status",
-        value: status,
-        variant:
-          status === "completed"
-            ? "status-healthy"
-            : status === "error"
-              ? "status-error"
-              : "status-degraded",
-      },
-      { label: "Model", value: String(fields["speechModel"] ?? "—") },
-      { label: "Duration", value: formatDuration(Number(fields["audioDuration"] ?? 0)) },
-      { label: "Language", value: String(fields["languageCode"] ?? "—") },
-    ];
+    });
   }
 
   /**
@@ -423,26 +440,28 @@ export class AssemblyAIClient implements PluginClient {
    * call is fetched here and stashed as a JSON blob under a
    * `__doubleUnderscore__` output key for the renderer to parse back out.
    */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (resource.resourceTypeId !== TRANSCRIPT_TYPE) return resource;
-    const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
-    const items = data.transcripts ?? [];
-    // The list endpoint doesn't carry audio_duration, so the only honest
-    // cheap number here is how many jobs are in the retention window and how
-    // they landed. Anything spend-shaped would need per-transcript fan-out.
-    const counts = { completed: 0, error: 0, pending: 0 };
-    for (const item of items) {
-      if (item.status === "completed") counts.completed += 1;
-      else if (item.status === "error") counts.error += 1;
-      else counts.pending += 1;
-    }
-    return {
-      ...resource,
-      resolvedOutputs: {
-        ...resource.resolvedOutputs,
-        __recentActivity__: JSON.stringify({ sampled: items.length, ...counts }),
-      },
-    };
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (resource.resourceTypeId !== TRANSCRIPT_TYPE) return resource;
+      const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
+      const items = data.transcripts ?? [];
+      // The list endpoint doesn't carry audio_duration, so the only honest
+      // cheap number here is how many jobs are in the retention window and how
+      // they landed. Anything spend-shaped would need per-transcript fan-out.
+      const counts = { completed: 0, error: 0, pending: 0 };
+      for (const item of items) {
+        if (item.status === "completed") counts.completed += 1;
+        else if (item.status === "error") counts.error += 1;
+        else counts.pending += 1;
+      }
+      return {
+        ...resource,
+        resolvedOutputs: {
+          ...resource.resolvedOutputs,
+          __recentActivity__: JSON.stringify({ sampled: items.length, ...counts }),
+        },
+      };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -455,44 +474,52 @@ export class AssemblyAIClient implements PluginClient {
   // Voice agents and webhooks: create, edit, metrics
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    return this.voice.createConfig(typeId);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return this.voice.createConfig(typeId);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    return this.voice.create(typeId, accountId, fields);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return this.voice.create(typeId, accountId, fields);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    return this.voice.update(typeId, resourceId, accountId, fields);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return this.voice.update(typeId, resourceId, accountId, fields);
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId === ACCOUNT_TYPE) {
-      const [jobs, sessions] = await Promise.all([
-        this.transcriptJobSeries(timeRange),
-        // Voice Agent API access is separate from transcription; a key
-        // without it still gets the transcript charts.
-        this.voice.accountMetrics(timeRange).catch(() => [] as MetricSeries[]),
-      ]);
-      return [...jobs, ...sessions.filter((s) => s.points.some((p) => p.value !== 0))];
-    }
-    if (resourceTypeId !== VOICE_AGENT_TYPE) return [];
-    return this.voice.metrics(resourceId, timeRange);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId === ACCOUNT_TYPE) {
+        const [jobs, sessions] = await Promise.all([
+          this.transcriptJobSeries(timeRange),
+          // Voice Agent API access is separate from transcription; a key
+          // without it still gets the transcript charts.
+          this.voice.accountMetrics(timeRange).catch(() => [] as MetricSeries[]),
+        ]);
+        return [...jobs, ...sessions.filter((s) => s.points.some((p) => p.value !== 0))];
+      }
+      if (resourceTypeId !== VOICE_AGENT_TYPE) return [];
+      return this.voice.metrics(resourceId, timeRange);
+    });
   }
 
   /**
@@ -809,85 +836,89 @@ export class AssemblyAIClient implements PluginClient {
    * Chromium, mp4 on Safari): AssemblyAI sniffs the container itself, so the
    * bytes go up untouched and the type is only used for the summary line.
    */
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    // Both hosts of the Speech tab, and nothing else: the guard stays explicit
-    // about which types are valid rather than accepting anything.
-    if (typeId !== ACCOUNT_TYPE && typeId !== TRANSCRIPT_TYPE) {
-      throw new Error(`AssemblyAI plugin: transcribeAudio not supported for type "${typeId}"`);
-    }
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      // Both hosts of the Speech tab, and nothing else: the guard stays explicit
+      // about which types are valid rather than accepting anything.
+      if (typeId !== ACCOUNT_TYPE && typeId !== TRANSCRIPT_TYPE) {
+        throw new Error(`AssemblyAI plugin: transcribeAudio not supported for type "${typeId}"`);
+      }
 
-    const startedAt = Date.now();
-    const bytes = base64ToBytes(payload.audioBase64);
-    if (bytes.length === 0) throw new Error("AssemblyAI plugin: empty audio payload");
-    if (bytes.length > MAX_AUDIO_BYTES) {
-      throw new Error(
-        `AssemblyAI plugin: clip is ${formatBytes(bytes.length)}, above this panel's ${formatBytes(MAX_AUDIO_BYTES)} limit.`,
-      );
-    }
+      const startedAt = Date.now();
+      const bytes = base64ToBytes(payload.audioBase64);
+      if (bytes.length === 0) throw new Error("AssemblyAI plugin: empty audio payload");
+      if (bytes.length > MAX_AUDIO_BYTES) {
+        throw new Error(
+          `AssemblyAI plugin: clip is ${formatBytes(bytes.length)}, above this panel's ${formatBytes(MAX_AUDIO_BYTES)} limit.`,
+        );
+      }
 
-    const audioUrl = await this.uploadAudio(bytes);
+      const audioUrl = await this.uploadAudio(bytes);
 
-    const model = payload.modelId ?? DEFAULT_MODEL;
-    const body: Record<string, unknown> = {
-      audio_url: audioUrl,
-      // `speech_models` is an array of models in priority order, replacing the
-      // deprecated singular `speech_model`. Asking for Universal-3.5 Pro also
-      // lists Universal-2 behind it (matching AssemblyAI's own default) so a
-      // language outside 3.5 Pro's 18 still transcribes instead of erroring.
-      speech_models: model === DEFAULT_MODEL ? [DEFAULT_MODEL, "universal-2"] : [model],
-      punctuate: true,
-      format_text: true,
-      // Diarization requires punctuate: true, which is set above.
-      speaker_labels: true,
-    };
-    const language = payload.language ?? AUTO_LANGUAGE;
-    if (language === AUTO_LANGUAGE) {
-      body["language_detection"] = true;
-    } else {
-      // ISO-639-1 with an underscored region (`en_us`), not `en-US`.
-      body["language_code"] = language;
-    }
+      const model = payload.modelId ?? DEFAULT_MODEL;
+      const body: Record<string, unknown> = {
+        audio_url: audioUrl,
+        // `speech_models` is an array of models in priority order, replacing the
+        // deprecated singular `speech_model`. Asking for Universal-3.5 Pro also
+        // lists Universal-2 behind it (matching AssemblyAI's own default) so a
+        // language outside 3.5 Pro's 18 still transcribes instead of erroring.
+        speech_models: model === DEFAULT_MODEL ? [DEFAULT_MODEL, "universal-2"] : [model],
+        punctuate: true,
+        format_text: true,
+        // Diarization requires punctuate: true, which is set above.
+        speaker_labels: true,
+      };
+      const language = payload.language ?? AUTO_LANGUAGE;
+      if (language === AUTO_LANGUAGE) {
+        body["language_detection"] = true;
+      } else {
+        // ISO-639-1 with an underscored region (`en_us`), not `en-US`.
+        body["language_code"] = language;
+      }
 
-    const submitted = await this.fetch<Transcript>("/v2/transcript", {
-      method: "POST",
-      body: JSON.stringify(body),
+      const submitted = await this.fetch<Transcript>("/v2/transcript", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if (!submitted.id) throw new Error("AssemblyAI plugin: /v2/transcript returned no job id");
+
+      const finished = await this.pollTranscript(submitted.id);
+      const elapsedSeconds = (Date.now() - startedAt) / 1000;
+
+      const words: TranscriptWord[] = (finished.words ?? []).map((w) => ({
+        text: w.text ?? "",
+        // The API reports word boundaries in milliseconds; the panel wants seconds.
+        ...(typeof w.start === "number" ? { start: w.start / 1000 } : {}),
+        ...(typeof w.end === "number" ? { end: w.end / 1000 } : {}),
+        ...(w.speaker ? { speaker: w.speaker } : {}),
+      }));
+
+      const duration = finished.audio_duration ?? undefined;
+      const summaryParts = [
+        `Model ${modelOf(finished) || model}`,
+        duration != null ? `${formatDuration(duration)} of audio` : null,
+        `${words.length} words`,
+        finished.confidence != null
+          ? `${(finished.confidence * 100).toFixed(1)}% confidence`
+          : null,
+        `${elapsedSeconds.toFixed(1)}s round trip`,
+      ].filter((part): part is string => part !== null);
+
+      return {
+        text: finished.text ?? "",
+        summary: summaryParts.join(" · "),
+        ...(finished.language_code ? { language: finished.language_code } : {}),
+        ...(duration != null ? { durationSeconds: duration } : {}),
+        ...(finished.confidence != null ? { confidence: finished.confidence } : {}),
+        ...(words.length > 0 ? { words } : {}),
+        requestId: finished.id,
+      };
     });
-    if (!submitted.id) throw new Error("AssemblyAI plugin: /v2/transcript returned no job id");
-
-    const finished = await this.pollTranscript(submitted.id);
-    const elapsedSeconds = (Date.now() - startedAt) / 1000;
-
-    const words: TranscriptWord[] = (finished.words ?? []).map((w) => ({
-      text: w.text ?? "",
-      // The API reports word boundaries in milliseconds; the panel wants seconds.
-      ...(typeof w.start === "number" ? { start: w.start / 1000 } : {}),
-      ...(typeof w.end === "number" ? { end: w.end / 1000 } : {}),
-      ...(w.speaker ? { speaker: w.speaker } : {}),
-    }));
-
-    const duration = finished.audio_duration ?? undefined;
-    const summaryParts = [
-      `Model ${modelOf(finished) || model}`,
-      duration != null ? `${formatDuration(duration)} of audio` : null,
-      `${words.length} words`,
-      finished.confidence != null ? `${(finished.confidence * 100).toFixed(1)}% confidence` : null,
-      `${elapsedSeconds.toFixed(1)}s round trip`,
-    ].filter((part): part is string => part !== null);
-
-    return {
-      text: finished.text ?? "",
-      summary: summaryParts.join(" · "),
-      ...(finished.language_code ? { language: finished.language_code } : {}),
-      ...(duration != null ? { durationSeconds: duration } : {}),
-      ...(finished.confidence != null ? { confidence: finished.confidence } : {}),
-      ...(words.length > 0 ? { words } : {}),
-      requestId: finished.id,
-    };
   }
 
   /**

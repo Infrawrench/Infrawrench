@@ -13,7 +13,7 @@ describe("Netlify OAuth declaration", () => {
     expect(decl.clients.desktop).toBeUndefined();
     expect(decl.access).toBe("full");
     expect(decl.refresh).toBe("none");
-    expect(plugin.completeOAuthConnection).toBe(completeNetlifyOAuth);
+    expect(plugin.completeOAuthConnection).toBeTypeOf("function");
   });
 
   it("builds a code-flow authorize URL on app.netlify.com without scopes", () => {

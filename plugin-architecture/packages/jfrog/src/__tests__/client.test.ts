@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { JfrogApiError, normaliseBaseUrl } from "../api.js";
 import { JfrogClient, tokenIdFromJwt } from "../client.js";
@@ -15,7 +16,7 @@ const creds = { baseUrl: "acme.jfrog.io/ui/", accessToken: "tok" };
 
 function client(route: (call: Call) => unknown) {
   const { http, calls } = makeHttp(route);
-  return { c: new JfrogClient(creds, { http } as never), calls };
+  return { c: hostClient(new JfrogClient(creds, { http } as never)), calls };
 }
 
 function jwt(claims: Record<string, unknown>): string {
@@ -242,7 +243,7 @@ describe("storage browser", () => {
   });
 
   it("points remote repositories at their cache", () => {
-    const c = new JfrogClient(creds);
+    const c = hostClient(new JfrogClient(creds));
     const detail = c.renderDetail({
       id: `${ACCOUNT}:jfrog-repository:npm-remote`,
       pluginId: "jfrog",

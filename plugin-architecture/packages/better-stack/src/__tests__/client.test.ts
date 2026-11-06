@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
@@ -18,7 +19,7 @@ function client(
 ) {
   const { http, calls } = makeHttp(route);
   const secrets = memorySecrets();
-  const c = new BetterStackClient(creds, { http, secrets } as unknown as HostServices);
+  const c = hostClient(new BetterStackClient(creds, { http, secrets } as unknown as HostServices));
   return { c, calls, secrets, http };
 }
 
@@ -150,10 +151,12 @@ describe("actions", () => {
         return http.request(req);
       },
     };
-    const c = new BetterStackClient({ apiToken: "tok" }, {
-      http: wrapped,
-      secrets,
-    } as unknown as HostServices);
+    const c = hostClient(
+      new BetterStackClient({ apiToken: "tok" }, {
+        http: wrapped,
+        secrets,
+      } as unknown as HostServices),
+    );
     const before = await c.getLogs("source", "acc:source:7", ACCOUNT, { tailLines: 10 });
     expect(before.text).toContain("Connect SQL access");
     await c.invokeAction("source", "acc:source:7", "connect-sql", ACCOUNT);

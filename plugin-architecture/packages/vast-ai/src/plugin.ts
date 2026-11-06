@@ -1,20 +1,19 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { VastClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { vastRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "vast-ai",
-  version: "0.1.0",
+  egressHosts: ["console.vast.ai"],
   displayName: "Vast.ai",
   description:
     "GPU marketplace. Rent instances from a live offer search, start, stop, reboot and rebid them, and manage templates, volumes, SSH keys, Serverless endpoints and account environment variables, plus billed charges and credit.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -25,7 +24,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Vast.ai API keys", url: "https://cloud.vast.ai/manage-keys/" },
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Billed spend from Vast's per-contract charges (GPU, storage, bandwidth,
    * volumes), allocated to days by each charge item's time span.
@@ -39,11 +38,14 @@ const manifest: PluginManifest = {
     label: "Vast.ai credit",
     topUpUrl: "https://cloud.vast.ai/billing/",
   },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new VastClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "test-vast-key" },
   remediationCommands: vastRemediationCommands,
-};
+});

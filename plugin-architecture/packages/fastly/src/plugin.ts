@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { FastlyClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,14 @@ import { FASTLY_PREFLIGHT, fastlyPolicyTemplate } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "fastly",
-  version: "0.1.0",
+  egressHosts: ["api.fastly.com", "rt.fastly.com"],
   displayName: "Fastly",
   description:
     "Edge cloud and CDN. Track spend by product, chart requests, bandwidth, cache hit ratio and errors per service, purge cache, activate versions, and manage services, domains, backends, logging, stores, TLS certificates and API tokens.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -29,7 +28,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Invoices API: product → service, the invoice region → region, and the
     // product line and group as tags. Monthly only, dated to the 1st: posted
@@ -47,12 +46,15 @@ const manifest: PluginManifest = {
   preflight: FASTLY_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new FastlyClient(credentials, services),
+  testCredentials: { apiToken: "test-fastly-token" },
   parseStatusFeed,
   policyTemplate: fastlyPolicyTemplate,
-};
+});

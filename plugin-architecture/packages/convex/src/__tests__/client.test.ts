@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { ConvexApiError, statusOf } from "../api.js";
@@ -40,7 +41,7 @@ function fake(routes: Route[]) {
       },
     },
   };
-  return { client: new ConvexClient({ accessToken: "tok" }, services), calls };
+  return { client: hostClient(new ConvexClient({ accessToken: "tok" }, services)), calls };
 }
 
 const on =

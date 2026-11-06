@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { GCP_IDLE_FINDINGS } from "./idle-findings.js";
 import { GCP_FOCUS } from "./focus-services.js";
 import { GcpClient } from "./client.js";
@@ -67,9 +72,9 @@ import { InstanceTemplateResourceType } from "./resources/instance-template.js";
 import { GCP_TRANSFER_RATES } from "./transfer-rates.js";
 import { GCP_JIT_ACCESS } from "./jit-access.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "gcp",
-  version: "0.1.0",
+  egressHosts: ["*.googleapis.com", "*.google.com"],
   displayName: "Google Cloud",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#4285F4"/>
@@ -77,8 +82,6 @@ const manifest: PluginManifest = {
       <path d="M12.19 2.38a9.344 9.344 0 0 0-9.234 6.893c.053-.02-.055.013 0 0-3.875 2.551-3.922 8.11-.247 10.941l.006-.007-.007.03a6.717 6.717 0 0 0 4.077 1.356h5.173l.03.03h5.192c6.687.053 9.376-8.605 3.835-12.35a9.365 9.365 0 0 0-2.821-4.552l-.043.043.006-.05A9.344 9.344 0 0 0 12.19 2.38zm-.358 4.146c1.244-.04 2.518.368 3.486 1.15a5.186 5.186 0 0 1 1.862 4.078v.518c3.53-.07 3.53 5.262 0 5.193h-5.193l-.008.009v-.04H6.785a2.59 2.59 0 0 1-1.067-.23h.001a2.597 2.597 0 1 1 3.437-3.437l3.013-3.012A6.747 6.747 0 0 0 8.11 8.24c.018-.01.04-.026.054-.023a5.186 5.186 0 0 1 3.67-1.69z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -91,7 +94,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://console.cloud.google.com/iam-admin/serviceaccounts",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "serviceAccountJson",
       label: "Service Account Key (JSON)",
@@ -125,7 +128,7 @@ const manifest: PluginManifest = {
         url: "https://cloud.google.com/billing/docs/how-to/export-data-bigquery",
       },
     },
-  ],
+  ]),
   rateLimit: { capacity: 100, refillPerSecond: 5 },
   // Static declaration: costs are advertised unconditionally; fetchCostData
   // throws a user-actionable error when billingExportTable isn't configured,
@@ -141,7 +144,7 @@ const manifest: PluginManifest = {
   },
   // Committed-use discounts via compute.regionCommitments.aggregatedList.
   // Needs compute.commitments.list (in roles/compute.viewer).
-  commitments: { kinds: ["committed_use"] },
+  commitments: { kinds: ["committed_use"], discount: { max: 0.55, basis: "upper_bound" } },
   // Compute Engine quotas via compute.projects.get + compute.regions.list.
   // Needs compute.projects.get and compute.regions.list (both in
   // roles/compute.viewer, which the account already needs to list anything).
@@ -184,7 +187,9 @@ const manifest: PluginManifest = {
   // project (Project IAM Admin), iam.roles.list for the picker and
   // resourcemanager.projects.list to offer more than the key's own project.
   jitAccess: GCP_JIT_ACCESS,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   // Projects
@@ -261,12 +266,25 @@ const resourceTypes: ResourceTypeDefinition[] = [
   AlertPolicyResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new GcpClient(credentials, resourceTypes, services),
+  testCredentials: {
+    serviceAccountJson: JSON.stringify({
+      type: "service_account",
+      project_id: "test",
+      private_key_id: "test-key-id",
+      private_key: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----\n",
+      client_email: "test@test.iam.gserviceaccount.com",
+      client_id: "1234567890",
+      auth_uri: "https://accounts.google.com/o/oauth2/auth",
+      token_uri: "https://oauth2.googleapis.com/token",
+    }),
+    project: "test-project",
+  },
   parseStatusFeed,
   policyTemplate: buildGcpPolicyTemplate,
   terraformExport: gcpTerraformExport,
   remediationCommands: gcpRemediationCommands,
-};
+});

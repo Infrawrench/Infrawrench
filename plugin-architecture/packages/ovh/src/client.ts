@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   PluginClient,
@@ -162,7 +165,7 @@ export class OvhClient implements PluginClient {
   private readonly resourceTypes: ResourceTypeDefinition[];
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     resourceTypes: ResourceTypeDefinition[] = [],
     services?: HostServices,
   ) {
@@ -306,957 +309,978 @@ export class OvhClient implements PluginClient {
     };
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "instance":
-        return this.listInstances(accountId);
-      case "managed-kube":
-        return this.listManagedKubeClusters(accountId);
-      case "managed-db":
-        return this.listManagedDatabases(accountId);
-      case "volume":
-        return this.listVolumes(accountId);
-      case "object-storage-bucket":
-        return this.listObjectStorageBuckets(accountId);
-      case "load-balancer":
-        return this.listLoadBalancers(accountId);
-      case "private-network":
-        return this.listPrivateNetworks(accountId);
-      case "floating-ip":
-        return this.listFloatingIps(accountId);
-      case "gateway":
-        return this.listGateways(accountId);
-      case "octavia-load-balancer":
-        return extras.listOctaviaLoadBalancers(this.api, accountId);
-      case "volume-snapshot":
-        return extras.listVolumeSnapshots(this.api, accountId);
-      case "container-registry":
-        return extras.listRegistries(this.api, accountId);
-      default:
-        throw new Error(`OVH plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "instance":
+          return this.listInstances(accountId);
+        case "managed-kube":
+          return this.listManagedKubeClusters(accountId);
+        case "managed-db":
+          return this.listManagedDatabases(accountId);
+        case "volume":
+          return this.listVolumes(accountId);
+        case "object-storage-bucket":
+          return this.listObjectStorageBuckets(accountId);
+        case "load-balancer":
+          return this.listLoadBalancers(accountId);
+        case "private-network":
+          return this.listPrivateNetworks(accountId);
+        case "floating-ip":
+          return this.listFloatingIps(accountId);
+        case "gateway":
+          return this.listGateways(accountId);
+        case "octavia-load-balancer":
+          return extras.listOctaviaLoadBalancers(this.api, accountId);
+        case "volume-snapshot":
+          return extras.listVolumeSnapshots(this.api, accountId);
+        case "container-registry":
+          return extras.listRegistries(this.api, accountId);
+        default:
+          throw new Error(`OVH plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`OVH plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`OVH plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "nodeHourlyRates") {
-      // The Kubernetes peer asks every managed-cluster type what its nodes
-      // cost per hour, so it can derive per-namespace and per-workload spend.
-      // OVHcloud publishes no pricing API this plugin reads today.
-      // Returning "" is the honest answer and makes the peer show capacity and
-      // efficiency without money rather than inventing a price. It must return
-      // rather than fall through: the host resolves every credentialMapping
-      // before building the peer client, so a throw here would take the whole
-      // Kubernetes tab down.
-      return "";
-    }
-
-    if (typeId === "managed-kube" && outputKey === "kubeconfig") {
-      const externalId = resourceId.split(":").pop();
-      if (!externalId) throw new Error("Cannot parse cluster ID");
-      const data = await this.ovhFetch<{ content: string }>(
-        this.cloudPath(`/kube/${externalId}/kubeconfig`),
-        { method: "POST", body: JSON.stringify({}) },
-      );
-      return data.content;
-    }
-
-    if (typeId === "managed-db") {
-      const externalId = resourceId.split(":").pop();
-      if (!externalId) throw new Error("Cannot parse database service ID");
-      const svc = await this.ovhFetch<OvhDatabaseService>(
-        this.cloudPath(`/database/service/${externalId}`),
-      );
-      const endpoint = svc.endpoints?.[0];
-      const engine = String(svc.engine ?? "");
-      switch (outputKey) {
-        case "connectionString": {
-          const uri = endpoint?.uri ?? "";
-          if (engine === "kafka") return normalizeKafkaUri(uri);
-          return uri;
-        }
-        case "host":
-          return endpoint?.domain ?? "";
-        case "port":
-          return String(endpoint?.port ?? "");
-        case "username": {
-          const users = await this.ovhFetch<Array<{ username: string }>>(
-            this.cloudPath(`/database/service/${externalId}/user`),
-          );
-          return users[0]?.username ?? "";
-        }
-        case "password":
-          // Password must be reset/retrieved separately: cannot be read from the API after creation
-          return "";
-        case "database":
-          return svc.description ?? "";
-      }
-    }
-
-    // For instance outputs, re-fetch the resource to get IPs
-    if (typeId === "instance") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      return resource.resolvedOutputs[outputKey] ?? "";
-    }
-
-    if (typeId === "object-storage-bucket" && outputKey === "endpoint") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const region = String(resource.fields["region"] ?? "");
-      return region ? `https://s3.${region.toLowerCase()}.io.cloud.ovh.net` : "";
-    }
-
-    if (typeId === "load-balancer" && outputKey === "address") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      return resource.resolvedOutputs[outputKey] ?? "";
-    }
-
-    if (
-      (typeId === "octavia-load-balancer" || typeId === "container-registry") &&
-      outputKey in OUTPUT_KEYS_BY_TYPE
-    ) {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      return resource.resolvedOutputs[outputKey] ?? "";
-    }
-
-    if (typeId === "floating-ip" && outputKey === "ip") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      return resource.resolvedOutputs[outputKey] ?? "";
-    }
-
-    throw new Error(`OVH plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
-  }
-
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "instance") {
-      const [flavorsData, imagesData, regionsData] = await Promise.all([
-        this.ovhFetch<OvhFlavor[]>(this.cloudPath("/flavor")),
-        this.ovhFetch<OvhImage[]>(this.cloudPath("/image")),
-        this.listUpRegions(),
-      ]);
-
-      const regions = this.toRegionOptions(regionsData);
-
-      // Group flavors by type (e.g. "General Purpose", "CPU", "RAM", "GPU")
-      const sizesByCategory = new Map<string, SizeOption[]>();
-      for (const f of flavorsData) {
-        if (!f.available) continue;
-        const cat = f.type ?? "General Purpose";
-        if (!sizesByCategory.has(cat)) sizesByCategory.set(cat, []);
-        sizesByCategory.get(cat)!.push({
-          id: f.id,
-          label: f.name,
-          vcpus: f.vcpus,
-          memoryMb: f.ram,
-          diskGb: f.disk,
-          category: cat,
-        });
-      }
-      const sizes = [...sizesByCategory.values()].flat();
-
-      // Build image list grouped by OS type
-      const imageMap = new Map<string, ImageOption[]>();
-      // Only show active, non-deprecated images
-      for (const img of imagesData) {
-        if (img.status !== "active") continue;
-        const osCat = img.type ?? "linux";
-        const groupLabel = osCat.charAt(0).toUpperCase() + osCat.slice(1);
-        if (!imageMap.has(groupLabel)) imageMap.set(groupLabel, []);
-        imageMap.get(groupLabel)!.push({
-          id: img.id,
-          label: img.name,
-          category: groupLabel,
-        });
-      }
-      const images: ImageOption[] = [...imageMap.values()].flat();
-      const defaultImage =
-        images.find((i) => i.label.toLowerCase().includes("ubuntu"))?.id ?? images[0]?.id;
-
-      const firstRegion = regions[0]?.id;
-      const firstSize = sizes[0]?.id;
-
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions,
-            ...(firstRegion ? { defaultValue: firstRegion } : {}),
-          },
-          {
-            key: "flavorId",
-            label: "Size",
-            kind: "size-picker",
-            required: true,
-            sizes,
-            ...(firstSize ? { defaultValue: firstSize } : {}),
-          },
-          {
-            key: "imageId",
-            label: "Image",
-            kind: "image-picker",
-            required: true,
-            images,
-            ...(defaultImage ? { defaultValue: defaultImage } : {}),
-          },
-          { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
-        ],
-      };
-    }
-
-    if (typeId === "managed-kube") {
-      const [regionsData, flavorsData] = await Promise.all([
-        this.listUpRegions(),
-        this.ovhFetch<OvhFlavor[]>(this.cloudPath("/flavor")).catch(() => [] as OvhFlavor[]),
-      ]);
-      const regions = this.toRegionOptions(regionsData);
-
-      // Group flavors by name (across regions) so the picker shows one row per
-      // commercial type. OVH's node pool API takes `flavorName` (e.g. "b3-8"),
-      // not the per-region flavor id.
-      const sizesByName = new Map<string, SizeOption>();
-      for (const f of flavorsData) {
-        if (!f.available) continue;
-        if (sizesByName.has(f.name)) continue;
-        sizesByName.set(f.name, {
-          id: f.name,
-          label: f.name,
-          vcpus: f.vcpus,
-          memoryMb: f.ram,
-          diskGb: f.disk,
-          category: f.type ?? "General Purpose",
-        });
-      }
-      const sizes = [...sizesByName.values()];
-
-      const defaultRegion = regions[0]?.id;
-      const defaultSize = sizes.find((s) => s.id === "b3-8")?.id ?? sizes[0]?.id;
-
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions,
-            ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
-          },
-          {
-            key: "version",
-            label: "Kubernetes Version",
-            kind: "select",
-            required: true,
-            options: extras.KUBE_VERSIONS.map((v) => ({ id: v, label: v })),
-            defaultValue: extras.KUBE_VERSIONS[0]!,
-          },
-          {
-            key: "updatePolicy",
-            label: "Update Policy",
-            kind: "select",
-            required: false,
-            defaultValue: "ALWAYS_UPDATE",
-            options: [
-              { id: "ALWAYS_UPDATE", label: "Always update (security patches applied promptly)" },
-              { id: "MINIMAL_DOWNTIME", label: "Minimal downtime" },
-              { id: "NEVER_UPDATE", label: "Never update automatically" },
-            ],
-          },
-          {
-            key: "flavor",
-            label: "Node Flavor",
-            kind: "size-picker",
-            required: true,
-            sizes,
-            ...(defaultSize ? { defaultValue: defaultSize } : {}),
-          },
-          {
-            key: "nodeCount",
-            label: "Node Count",
-            kind: "number",
-            required: true,
-            defaultValue: "3",
-            minValue: 1,
-            stepValue: 1,
-            description: "Initial number of nodes in the default node pool.",
-          },
-        ],
-      };
-    }
-
-    if (typeId === "container-registry") return extras.registryCreateConfig(this.api);
-
-    if (typeId === "managed-db") {
-      // Prefer the live capabilities catalogue; the static form below is the
-      // fallback when the consumer key cannot read it.
-      const live = await extras.databaseCreateConfig(this.api);
-      if (live) return live;
-      return {
-        fields: [
-          { key: "description", label: "Name / Description", kind: "text", required: true },
-          {
-            key: "engine",
-            label: "Engine",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "postgresql", label: "PostgreSQL" },
-              { id: "mysql", label: "MySQL" },
-              { id: "mongodb", label: "MongoDB" },
-              { id: "redis", label: "Redis" },
-              { id: "kafka", label: "Kafka" },
-              { id: "opensearch", label: "OpenSearch" },
-            ],
-            defaultValue: "postgresql",
-          },
-          {
-            key: "version",
-            label: "Version",
-            kind: "text",
-            required: true,
-            defaultValue: "16",
-            description: "Engine version, e.g. 16 for PostgreSQL 16",
-          },
-          {
-            key: "plan",
-            label: "Plan",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "essential", label: "Essential" },
-              { id: "business", label: "Business" },
-              { id: "enterprise", label: "Enterprise" },
-            ],
-            defaultValue: "essential",
-          },
-          {
-            // The full flavor list varies by region/engine/plan and OVH adds
-            // new generations frequently: we keep this as text rather than a
-            // curated select to avoid offering a flavor that errors at order
-            // time. The capabilities endpoint
-            // (/cloud/project/$pid/database/capabilities) returns the
-            // currently-orderable set if we ever wire it through.
-            key: "flavor",
-            label: "Flavor",
-            kind: "text",
-            required: true,
-            defaultValue: "db1-7",
-            description:
-              "Node flavor, e.g. db1-4, db1-7, db1-15. Available flavors depend on engine/plan/region.",
-          },
-          {
-            key: "nodeCount",
-            label: "Node Count",
-            kind: "number",
-            required: true,
-            defaultValue: "1",
-            minValue: 1,
-          },
-          {
-            key: "region",
-            label: "Region",
-            kind: "text",
-            required: true,
-            defaultValue: "GRA",
-            description: "Database node region, e.g. GRA, SBG, BHS.",
-          },
-        ],
-      };
-    }
-
-    if (typeId === "volume") {
-      const regionsData = await this.listUpRegions();
-      const regions = this.toRegionOptions(regionsData);
-      const defaultRegion = regions[0]?.id;
-      return {
-        fields: [
-          { key: "name", label: "Volume Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions,
-            ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
-          },
-          {
-            key: "size",
-            label: "Size",
-            kind: "disk-slider",
-            required: true,
-            minGb: 10,
-            maxGb: 4000,
-            defaultGb: 100,
-            stepGb: 10,
-          },
-          {
-            key: "type",
-            label: "Type",
-            kind: "select",
-            required: true,
-            defaultValue: "classic",
-            options: [
-              { id: "classic", label: "Classic (HDD)" },
-              { id: "high-speed", label: "High Speed (SSD)" },
-              { id: "high-speed-gen2", label: "High Speed Gen2 (NVMe)" },
-              { id: "classic-luks", label: "Classic · LUKS encrypted" },
-              { id: "high-speed-luks", label: "High Speed · LUKS encrypted" },
-              { id: "high-speed-gen2-luks", label: "High Speed Gen2 · LUKS encrypted" },
-              { id: "classic-multiattach", label: "Classic · Multi-attach" },
-            ],
-          },
-        ],
-      };
-    }
-
-    if (typeId === "object-storage-bucket") {
-      const regionsData = await this.listUpRegions();
-      const regions = this.toRegionOptions(regionsData);
-      const defaultRegion = regions[0]?.id;
-      return {
-        fields: [
-          { key: "name", label: "Bucket Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions,
-            ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
-          },
-        ],
-      };
-    }
-
-    if (typeId === "load-balancer") {
-      const regions = await this.ovhFetch<string[]>(
-        this.cloudPath("/capabilities/loadbalancer/region"),
-      ).catch(async () => {
-        return this.listUpRegions();
-      });
-      const regionOptions = regions.map((id) => {
-        const info = OvhClient.REGION_INFO[id];
-        return {
-          id,
-          label: id,
-          ...(info ? { location: info.location, flag: info.flag } : {}),
-        };
-      });
-      const defaultRegion = regionOptions[0]?.id;
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions: regionOptions,
-            ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
-          },
-          {
-            key: "size",
-            label: "Size",
-            kind: "select",
-            required: true,
-            defaultValue: "SMALL",
-            options: [
-              { id: "SMALL", label: "Small" },
-              { id: "MEDIUM", label: "Medium" },
-              { id: "LARGE", label: "Large" },
-            ],
-          },
-          { key: "description", label: "Description", kind: "text", required: false },
-        ],
-      };
-    }
-
-    if (typeId === "private-network") {
-      const regionsData = await this.listUpRegions();
-      const regions = this.toRegionOptions(regionsData);
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: false,
-            regions,
-            description: "Optional. Leave empty to let OVH activate the network in all regions.",
-          },
-          {
-            key: "vlanId",
-            label: "VLAN ID",
-            kind: "number",
-            required: false,
-            minValue: 0,
-            maxValue: 4095,
-            description: "Optional VLAN ID. 0 means no VLAN.",
-          },
-        ],
-      };
-    }
-
-    throw new Error(`No create config for type "${typeId}"`);
-  }
-
-  async createResource(
-    typeId: string,
-    accountId: string,
-    fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "instance") {
-      // Upload SSH key if provided
-      let sshKeyId: string | undefined;
-      const sshPub = fields["sshPublicKey"];
-      if (sshPub) {
-        try {
-          const comment = sshPub.trim().split(" ")[2] ?? "infrawrench";
-          const keyData = await this.ovhFetch<{ id: string }>(this.cloudPath("/sshkey"), {
-            method: "POST",
-            body: JSON.stringify({ name: comment, publicKey: sshPub.trim() }),
-          }).catch(async () => {
-            // Key may already exist: find it
-            const keys = await this.ovhFetch<Array<{ id: string; publicKey: string }>>(
-              this.cloudPath("/sshkey"),
-            );
-            return keys.find((k) => k.publicKey.trim() === sshPub.trim());
-          });
-          sshKeyId = keyData?.id;
-        } catch {
-          /* skip SSH key if upload fails */
-        }
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "nodeHourlyRates") {
+        // The Kubernetes peer asks every managed-cluster type what its nodes
+        // cost per hour, so it can derive per-namespace and per-workload spend.
+        // OVHcloud publishes no pricing API this plugin reads today.
+        // Returning "" is the honest answer and makes the peer show capacity and
+        // efficiency without money rather than inventing a price. It must return
+        // rather than fall through: the host resolves every credentialMapping
+        // before building the peer client, so a throw here would take the whole
+        // Kubernetes tab down.
+        return "";
       }
 
-      const body: Record<string, unknown> = {
-        name: fields["name"],
-        flavorId: fields["flavorId"],
-        imageId: fields["imageId"],
-        region: fields["region"],
-        ...(sshKeyId ? { sshKeyId } : {}),
-      };
-
-      const instance = await this.ovhFetch<OvhInstance>(this.cloudPath("/instance"), {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-
-      const publicIp =
-        instance.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 4)?.ip ?? "";
-      const privateIp =
-        instance.ipAddresses?.find((ip) => ip.type === "private" && ip.version === 4)?.ip ?? "";
-
-      return {
-        id: `${accountId}:instance:${instance.id}`,
-        pluginId: "ovh",
-        resourceTypeId: "instance",
-        accountId,
-        displayName: instance.name,
-        fields: {
-          name: instance.name,
-          region: instance.region,
-          flavorName: instance.flavor?.name ?? fields["flavorId"] ?? "",
-          imageName: instance.image?.name ?? fields["imageId"] ?? "",
-          status: instance.status,
-          sshUsername: ovhSshUsername(instance.image?.name ?? ""),
-          networkIds: [
-            ...new Set(
-              (instance.ipAddresses ?? []).map((ip) => ip.networkId ?? "").filter(Boolean),
-            ),
-          ].join(", "),
-        },
-        resolvedOutputs: { ipv4: publicIp, ipv4Private: privateIp },
-        secretStates: [],
-        externalId: instance.id,
-        createdAt: instance.created ?? new Date().toISOString(),
-        updatedAt: instance.created ?? new Date().toISOString(),
-      };
-    }
-
-    if (typeId === "managed-kube") {
-      const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
-      const nodeCount =
-        Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
-      const flavorName = fields["flavor"] ?? "b3-8";
-      const clusterName = fields["name"] ?? "";
-
-      const body = {
-        name: clusterName,
-        region: fields["region"],
-        version: fields["version"] ?? extras.KUBE_VERSIONS[0],
-        ...(fields["updatePolicy"] ? { updatePolicy: fields["updatePolicy"] } : {}),
-      };
-
-      const cluster = await this.ovhFetch<OvhKubeCluster>(this.cloudPath("/kube"), {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-
-      // OVH lets us create node pools immediately after the cluster POST:
-      // unlike EKS, the cluster doesn't need to be ACTIVE first.
-      const poolName = `${clusterName || "cluster"}-default-pool`
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, "-")
-        .slice(0, 40);
-      let nodePoolCount = 0;
-      try {
-        await this.ovhFetch<OvhKubeNodePool>(this.cloudPath(`/kube/${cluster.id}/nodepool`), {
-          method: "POST",
-          body: JSON.stringify({
-            name: poolName,
-            flavorName,
-            desiredNodes: nodeCount,
-            monthlyBilled: false,
-            autoscale: false,
-            antiAffinity: false,
-          }),
-        });
-        nodePoolCount = 1;
-      } catch (e) {
-        // Surface the failure but keep the cluster: the user can add a pool by hand
-        const msg = e instanceof Error ? e.message : String(e);
-        throw new Error(
-          `Cluster ${clusterName} created but node pool creation failed: ${msg}. Delete the cluster and retry, or add a node pool via the OVH console.`,
-          { cause: e },
+      if (typeId === "managed-kube" && outputKey === "kubeconfig") {
+        const externalId = resourceId.split(":").pop();
+        if (!externalId) throw new Error("Cannot parse cluster ID");
+        const data = await this.ovhFetch<{ content: string }>(
+          this.cloudPath(`/kube/${externalId}/kubeconfig`),
+          { method: "POST", body: JSON.stringify({}) },
         );
+        return data.content;
       }
 
-      return {
-        id: `${accountId}:managed-kube:${cluster.id}`,
-        pluginId: "ovh",
-        resourceTypeId: "managed-kube",
-        accountId,
-        displayName: cluster.name ?? fields["name"] ?? "OVH Kubernetes",
-        fields: {
-          name: cluster.name ?? fields["name"] ?? "",
-          region: cluster.region ?? fields["region"] ?? "",
-          version: cluster.version ?? fields["version"] ?? "",
-          status: cluster.status ?? "INSTALLING",
-          flavor: flavorName,
-          nodeCount,
-          nodePoolCount,
-          nodesUrl: cluster.nodesUrl ?? "",
-          privateNetworkId: cluster.privateNetworkId ?? "",
-          nodesSubnetId: cluster.nodesSubnetId ?? "",
-          loadBalancersSubnetId: cluster.loadBalancersSubnetId ?? "",
-        },
-        resolvedOutputs: {
-          clusterUrl: cluster.url ?? "",
-        },
-        secretStates: [],
-        externalId: cluster.id,
-        createdAt: cluster.createdAt ?? new Date().toISOString(),
-        updatedAt: cluster.updatedAt ?? cluster.createdAt ?? new Date().toISOString(),
-      };
-    }
-
-    if (typeId === "managed-db") {
-      const engine = fields["engine"] ?? "postgresql";
-      const nodeCount = Math.max(1, Number(fields["nodeCount"] ?? 1) || 1);
-      const region = fields["region"] ?? "GRA";
-      const flavor = fields["flavor"] ?? "db1-7";
-      const data = await this.ovhFetch<OvhDatabaseService>(
-        this.cloudPath(this.databaseEnginePath(engine)),
-        {
-          method: "POST",
-          body: JSON.stringify({
-            description: fields["description"] ?? "",
-            version: fields["version"] ?? "16",
-            plan: fields["plan"] ?? "essential",
-            nodesPattern: {
-              flavor,
-              number: nodeCount,
-              region,
-            },
-          }),
-        },
-      );
-      const now = new Date().toISOString();
-      return {
-        id: `${accountId}:managed-db:${data.id}`,
-        pluginId: "ovh",
-        resourceTypeId: "managed-db",
-        accountId,
-        displayName: this.serviceDisplayName({ ...data, engine }),
-        fields: {
-          description: data.description ?? "",
-          engine: data.engine ?? fields["engine"] ?? "",
-          version: data.version ?? fields["version"] ?? "",
-          plan: data.plan ?? fields["plan"] ?? "",
-          region: data.nodes?.[0]?.region ?? region,
-          flavor: data.flavor ?? flavor,
-          nodeCount: data.nodeNumber ?? data.nodes?.length ?? nodeCount,
-          status: data.status ?? "CREATING",
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: data.id,
-        createdAt: data.createdAt ?? now,
-        updatedAt: data.updatedAt ?? data.createdAt ?? now,
-      };
-    }
-
-    if (typeId === "volume") {
-      const data = await this.ovhFetch<{
-        id: string;
-        name?: string;
-        region: string;
-        size: number;
-        type: string;
-        status?: string;
-        bootable?: boolean;
-        attachedTo?: string[];
-        creationDate?: string;
-      }>(this.cloudPath("/volume"), {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"],
-          region: fields["region"],
-          size: Number(fields["size"] ?? 100),
-          type: fields["type"] ?? "classic",
-        }),
-      });
-      const now = new Date().toISOString();
-      return {
-        id: `${accountId}:volume:${data.id}`,
-        pluginId: "ovh",
-        resourceTypeId: "volume",
-        accountId,
-        displayName: data.name ?? fields["name"] ?? data.id,
-        fields: {
-          name: data.name ?? fields["name"] ?? "",
-          region: data.region,
-          sizeGb: data.size,
-          type: data.type,
-          status: data.status ?? "creating",
-          bootable: data.bootable ?? false,
-          attachedTo: (data.attachedTo ?? []).join(","),
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: data.id,
-        createdAt: data.creationDate ?? now,
-        updatedAt: now,
-      };
-    }
-
-    if (typeId === "object-storage-bucket") {
-      const region = fields["region"] ?? "";
-      const data = await this.ovhFetch<OvhStorageContainer>(
-        this.cloudPath(`/region/${enc(region)}/storage`),
-        {
-          method: "POST",
-          body: JSON.stringify({ name: fields["name"] ?? "" }),
-        },
-      );
-      return this.mapObjectStorageBucket(data, region, accountId);
-    }
-
-    if (typeId === "load-balancer") {
-      const data = await this.ovhFetch<OvhLoadBalancer>(this.cloudPath("/loadbalancer"), {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"] ?? "",
-          region: fields["region"] ?? "",
-          size: fields["size"] ?? "SMALL",
-          ...(fields["description"] ? { description: fields["description"] } : {}),
-        }),
-      });
-      return this.mapLoadBalancer(data, accountId);
-    }
-
-    if (typeId === "container-registry") return extras.createRegistry(this.api, accountId, fields);
-
-    if (typeId === "private-network") {
-      const region = fields["region"] ?? "";
-      const vlanId = fields["vlanId"];
-      const data = await this.ovhFetch<OvhPrivateNetwork>(this.cloudPath("/network/private"), {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"] ?? "",
-          ...(region ? { regions: [region] } : {}),
-          ...(vlanId ? { vlanId: Number(vlanId) } : {}),
-        }),
-      });
-      return this.mapPrivateNetwork(data, accountId);
-    }
-
-    throw new Error(`OVH plugin: createResource not supported for type "${typeId}"`);
-  }
-
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = resourceId.split(":").pop();
-    if (!externalId) throw new Error("Cannot parse resource ID");
-
-    switch (typeId) {
-      case "instance":
-        await this.ovhFetch<unknown>(this.cloudPath(`/instance/${externalId}`), {
-          method: "DELETE",
-        });
-        break;
-      case "managed-kube":
-        await this.ovhFetch<unknown>(this.cloudPath(`/kube/${externalId}`), { method: "DELETE" });
-        break;
-      case "managed-db": {
+      if (typeId === "managed-db") {
+        const externalId = resourceId.split(":").pop();
+        if (!externalId) throw new Error("Cannot parse database service ID");
         const svc = await this.ovhFetch<OvhDatabaseService>(
           this.cloudPath(`/database/service/${externalId}`),
         );
-        await this.ovhFetch<unknown>(
-          this.cloudPath(`${this.databaseEnginePath(svc.engine ?? "")}/${externalId}`),
-          { method: "DELETE" },
-        );
-        break;
+        const endpoint = svc.endpoints?.[0];
+        const engine = String(svc.engine ?? "");
+        switch (outputKey) {
+          case "connectionString": {
+            const uri = endpoint?.uri ?? "";
+            if (engine === "kafka") return normalizeKafkaUri(uri);
+            return uri;
+          }
+          case "host":
+            return endpoint?.domain ?? "";
+          case "port":
+            return String(endpoint?.port ?? "");
+          case "username": {
+            const users = await this.ovhFetch<Array<{ username: string }>>(
+              this.cloudPath(`/database/service/${externalId}/user`),
+            );
+            return users[0]?.username ?? "";
+          }
+          case "password":
+            // Password must be reset/retrieved separately: cannot be read from the API after creation
+            return "";
+          case "database":
+            return svc.description ?? "";
+        }
       }
-      case "volume":
-        await this.ovhFetch<unknown>(this.cloudPath(`/volume/${externalId}`), { method: "DELETE" });
-        break;
-      case "object-storage-bucket": {
-        const [region, ...nameParts] = externalId.split("/");
-        const name = nameParts.join("/");
-        if (!region || !name) throw new Error("Cannot parse object storage bucket ID");
-        await this.ovhFetch<unknown>(
-          this.cloudPath(`/region/${enc(region)}/storage/${enc(name)}`),
-          {
-            method: "DELETE",
-          },
-        );
-        break;
+
+      // For instance outputs, re-fetch the resource to get IPs
+      if (typeId === "instance") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        return resource.resolvedOutputs[outputKey] ?? "";
       }
-      case "load-balancer":
-        await this.ovhFetch<unknown>(this.cloudPath(`/loadbalancer/${enc(externalId)}`), {
-          method: "DELETE",
-        });
-        break;
-      case "private-network":
-        await this.ovhFetch<unknown>(this.cloudPath(`/network/private/${enc(externalId)}`), {
-          method: "DELETE",
-        });
-        break;
-      case "floating-ip": {
-        const [region, floatingIpId] = externalId.split("/");
-        if (!region || !floatingIpId) throw new Error("Cannot parse floating IP ID");
-        await this.ovhFetch<unknown>(
-          this.cloudPath(`/region/${enc(region)}/floatingip/${enc(floatingIpId)}`),
-          { method: "DELETE" },
-        );
-        break;
+
+      if (typeId === "object-storage-bucket" && outputKey === "endpoint") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const region = String(resource.fields["region"] ?? "");
+        return region ? `https://s3.${region.toLowerCase()}.io.cloud.ovh.net` : "";
       }
-      case "gateway": {
-        const [region, gatewayId] = externalId.split("/");
-        if (!region || !gatewayId) throw new Error("Cannot parse gateway ID");
-        await this.ovhFetch<unknown>(
-          this.cloudPath(`/region/${enc(region)}/gateway/${enc(gatewayId)}`),
-          { method: "DELETE" },
-        );
-        break;
+
+      if (typeId === "load-balancer" && outputKey === "address") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        return resource.resolvedOutputs[outputKey] ?? "";
       }
-      case "octavia-load-balancer":
-        await extras.deleteOctaviaLoadBalancer(this.api, resourceId);
-        break;
-      case "volume-snapshot":
-        await extras.deleteVolumeSnapshot(this.api, resourceId);
-        break;
-      case "container-registry":
-        await extras.deleteRegistry(this.api, resourceId);
-        break;
-      default:
-        throw new Error(`OVH plugin: deleteResource not supported for type "${typeId}"`);
-    }
+
+      if (
+        (typeId === "octavia-load-balancer" || typeId === "container-registry") &&
+        outputKey in OUTPUT_KEYS_BY_TYPE
+      ) {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        return resource.resolvedOutputs[outputKey] ?? "";
+      }
+
+      if (typeId === "floating-ip" && outputKey === "ip") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        return resource.resolvedOutputs[outputKey] ?? "";
+      }
+
+      throw new Error(`OVH plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async attachResource(
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "instance") {
+        const [flavorsData, imagesData, regionsData] = await Promise.all([
+          this.ovhFetch<OvhFlavor[]>(this.cloudPath("/flavor")),
+          this.ovhFetch<OvhImage[]>(this.cloudPath("/image")),
+          this.listUpRegions(),
+        ]);
+
+        const regions = this.toRegionOptions(regionsData);
+
+        // Group flavors by type (e.g. "General Purpose", "CPU", "RAM", "GPU")
+        const sizesByCategory = new Map<string, SizeOption[]>();
+        for (const f of flavorsData) {
+          if (!f.available) continue;
+          const cat = f.type ?? "General Purpose";
+          if (!sizesByCategory.has(cat)) sizesByCategory.set(cat, []);
+          sizesByCategory.get(cat)!.push({
+            id: f.id,
+            label: f.name,
+            vcpus: f.vcpus,
+            memoryMb: f.ram,
+            diskGb: f.disk,
+            category: cat,
+          });
+        }
+        const sizes = [...sizesByCategory.values()].flat();
+
+        // Build image list grouped by OS type
+        const imageMap = new Map<string, ImageOption[]>();
+        // Only show active, non-deprecated images
+        for (const img of imagesData) {
+          if (img.status !== "active") continue;
+          const osCat = img.type ?? "linux";
+          const groupLabel = osCat.charAt(0).toUpperCase() + osCat.slice(1);
+          if (!imageMap.has(groupLabel)) imageMap.set(groupLabel, []);
+          imageMap.get(groupLabel)!.push({
+            id: img.id,
+            label: img.name,
+            category: groupLabel,
+          });
+        }
+        const images: ImageOption[] = [...imageMap.values()].flat();
+        const defaultImage =
+          images.find((i) => i.label.toLowerCase().includes("ubuntu"))?.id ?? images[0]?.id;
+
+        const firstRegion = regions[0]?.id;
+        const firstSize = sizes[0]?.id;
+
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions,
+              ...(firstRegion ? { defaultValue: firstRegion } : {}),
+            },
+            {
+              key: "flavorId",
+              label: "Size",
+              kind: "size-picker",
+              required: true,
+              sizes,
+              ...(firstSize ? { defaultValue: firstSize } : {}),
+            },
+            {
+              key: "imageId",
+              label: "Image",
+              kind: "image-picker",
+              required: true,
+              images,
+              ...(defaultImage ? { defaultValue: defaultImage } : {}),
+            },
+            { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
+          ],
+        };
+      }
+
+      if (typeId === "managed-kube") {
+        const [regionsData, flavorsData] = await Promise.all([
+          this.listUpRegions(),
+          this.ovhFetch<OvhFlavor[]>(this.cloudPath("/flavor")).catch(() => [] as OvhFlavor[]),
+        ]);
+        const regions = this.toRegionOptions(regionsData);
+
+        // Group flavors by name (across regions) so the picker shows one row per
+        // commercial type. OVH's node pool API takes `flavorName` (e.g. "b3-8"),
+        // not the per-region flavor id.
+        const sizesByName = new Map<string, SizeOption>();
+        for (const f of flavorsData) {
+          if (!f.available) continue;
+          if (sizesByName.has(f.name)) continue;
+          sizesByName.set(f.name, {
+            id: f.name,
+            label: f.name,
+            vcpus: f.vcpus,
+            memoryMb: f.ram,
+            diskGb: f.disk,
+            category: f.type ?? "General Purpose",
+          });
+        }
+        const sizes = [...sizesByName.values()];
+
+        const defaultRegion = regions[0]?.id;
+        const defaultSize = sizes.find((s) => s.id === "b3-8")?.id ?? sizes[0]?.id;
+
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions,
+              ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+            },
+            {
+              key: "version",
+              label: "Kubernetes Version",
+              kind: "select",
+              required: true,
+              options: extras.KUBE_VERSIONS.map((v) => ({ id: v, label: v })),
+              defaultValue: extras.KUBE_VERSIONS[0]!,
+            },
+            {
+              key: "updatePolicy",
+              label: "Update Policy",
+              kind: "select",
+              required: false,
+              defaultValue: "ALWAYS_UPDATE",
+              options: [
+                { id: "ALWAYS_UPDATE", label: "Always update (security patches applied promptly)" },
+                { id: "MINIMAL_DOWNTIME", label: "Minimal downtime" },
+                { id: "NEVER_UPDATE", label: "Never update automatically" },
+              ],
+            },
+            {
+              key: "flavor",
+              label: "Node Flavor",
+              kind: "size-picker",
+              required: true,
+              sizes,
+              ...(defaultSize ? { defaultValue: defaultSize } : {}),
+            },
+            {
+              key: "nodeCount",
+              label: "Node Count",
+              kind: "number",
+              required: true,
+              defaultValue: "3",
+              minValue: 1,
+              stepValue: 1,
+              description: "Initial number of nodes in the default node pool.",
+            },
+          ],
+        };
+      }
+
+      if (typeId === "container-registry") return extras.registryCreateConfig(this.api);
+
+      if (typeId === "managed-db") {
+        // Prefer the live capabilities catalogue; the static form below is the
+        // fallback when the consumer key cannot read it.
+        const live = await extras.databaseCreateConfig(this.api);
+        if (live) return live;
+        return {
+          fields: [
+            { key: "description", label: "Name / Description", kind: "text", required: true },
+            {
+              key: "engine",
+              label: "Engine",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "postgresql", label: "PostgreSQL" },
+                { id: "mysql", label: "MySQL" },
+                { id: "mongodb", label: "MongoDB" },
+                { id: "redis", label: "Redis" },
+                { id: "kafka", label: "Kafka" },
+                { id: "opensearch", label: "OpenSearch" },
+              ],
+              defaultValue: "postgresql",
+            },
+            {
+              key: "version",
+              label: "Version",
+              kind: "text",
+              required: true,
+              defaultValue: "16",
+              description: "Engine version, e.g. 16 for PostgreSQL 16",
+            },
+            {
+              key: "plan",
+              label: "Plan",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "essential", label: "Essential" },
+                { id: "business", label: "Business" },
+                { id: "enterprise", label: "Enterprise" },
+              ],
+              defaultValue: "essential",
+            },
+            {
+              // The full flavor list varies by region/engine/plan and OVH adds
+              // new generations frequently: we keep this as text rather than a
+              // curated select to avoid offering a flavor that errors at order
+              // time. The capabilities endpoint
+              // (/cloud/project/$pid/database/capabilities) returns the
+              // currently-orderable set if we ever wire it through.
+              key: "flavor",
+              label: "Flavor",
+              kind: "text",
+              required: true,
+              defaultValue: "db1-7",
+              description:
+                "Node flavor, e.g. db1-4, db1-7, db1-15. Available flavors depend on engine/plan/region.",
+            },
+            {
+              key: "nodeCount",
+              label: "Node Count",
+              kind: "number",
+              required: true,
+              defaultValue: "1",
+              minValue: 1,
+            },
+            {
+              key: "region",
+              label: "Region",
+              kind: "text",
+              required: true,
+              defaultValue: "GRA",
+              description: "Database node region, e.g. GRA, SBG, BHS.",
+            },
+          ],
+        };
+      }
+
+      if (typeId === "volume") {
+        const regionsData = await this.listUpRegions();
+        const regions = this.toRegionOptions(regionsData);
+        const defaultRegion = regions[0]?.id;
+        return {
+          fields: [
+            { key: "name", label: "Volume Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions,
+              ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+            },
+            {
+              key: "size",
+              label: "Size",
+              kind: "disk-slider",
+              required: true,
+              minGb: 10,
+              maxGb: 4000,
+              defaultGb: 100,
+              stepGb: 10,
+            },
+            {
+              key: "type",
+              label: "Type",
+              kind: "select",
+              required: true,
+              defaultValue: "classic",
+              options: [
+                { id: "classic", label: "Classic (HDD)" },
+                { id: "high-speed", label: "High Speed (SSD)" },
+                { id: "high-speed-gen2", label: "High Speed Gen2 (NVMe)" },
+                { id: "classic-luks", label: "Classic · LUKS encrypted" },
+                { id: "high-speed-luks", label: "High Speed · LUKS encrypted" },
+                { id: "high-speed-gen2-luks", label: "High Speed Gen2 · LUKS encrypted" },
+                { id: "classic-multiattach", label: "Classic · Multi-attach" },
+              ],
+            },
+          ],
+        };
+      }
+
+      if (typeId === "object-storage-bucket") {
+        const regionsData = await this.listUpRegions();
+        const regions = this.toRegionOptions(regionsData);
+        const defaultRegion = regions[0]?.id;
+        return {
+          fields: [
+            { key: "name", label: "Bucket Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions,
+              ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+            },
+          ],
+        };
+      }
+
+      if (typeId === "load-balancer") {
+        const regions = await this.ovhFetch<string[]>(
+          this.cloudPath("/capabilities/loadbalancer/region"),
+        ).catch(async () => {
+          return this.listUpRegions();
+        });
+        const regionOptions = regions.map((id) => {
+          const info = OvhClient.REGION_INFO[id];
+          return {
+            id,
+            label: id,
+            ...(info ? { location: info.location, flag: info.flag } : {}),
+          };
+        });
+        const defaultRegion = regionOptions[0]?.id;
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions: regionOptions,
+              ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+            },
+            {
+              key: "size",
+              label: "Size",
+              kind: "select",
+              required: true,
+              defaultValue: "SMALL",
+              options: [
+                { id: "SMALL", label: "Small" },
+                { id: "MEDIUM", label: "Medium" },
+                { id: "LARGE", label: "Large" },
+              ],
+            },
+            { key: "description", label: "Description", kind: "text", required: false },
+          ],
+        };
+      }
+
+      if (typeId === "private-network") {
+        const regionsData = await this.listUpRegions();
+        const regions = this.toRegionOptions(regionsData);
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: false,
+              regions,
+              description: "Optional. Leave empty to let OVH activate the network in all regions.",
+            },
+            {
+              key: "vlanId",
+              label: "VLAN ID",
+              kind: "number",
+              required: false,
+              minValue: 0,
+              maxValue: 4095,
+              description: "Optional VLAN ID. 0 means no VLAN.",
+            },
+          ],
+        };
+      }
+
+      throw new Error(`No create config for type "${typeId}"`);
+    });
+  }
+
+  createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "instance") {
+        // Upload SSH key if provided
+        let sshKeyId: string | undefined;
+        const sshPub = fields["sshPublicKey"];
+        if (sshPub) {
+          try {
+            const comment = sshPub.trim().split(" ")[2] ?? "infrawrench";
+            const keyData = await this.ovhFetch<{ id: string }>(this.cloudPath("/sshkey"), {
+              method: "POST",
+              body: JSON.stringify({ name: comment, publicKey: sshPub.trim() }),
+            }).catch(async () => {
+              // Key may already exist: find it
+              const keys = await this.ovhFetch<Array<{ id: string; publicKey: string }>>(
+                this.cloudPath("/sshkey"),
+              );
+              return keys.find((k) => k.publicKey.trim() === sshPub.trim());
+            });
+            sshKeyId = keyData?.id;
+          } catch {
+            /* skip SSH key if upload fails */
+          }
+        }
+
+        const body: Record<string, unknown> = {
+          name: fields["name"],
+          flavorId: fields["flavorId"],
+          imageId: fields["imageId"],
+          region: fields["region"],
+          ...(sshKeyId ? { sshKeyId } : {}),
+        };
+
+        const instance = await this.ovhFetch<OvhInstance>(this.cloudPath("/instance"), {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+
+        const publicIp =
+          instance.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 4)?.ip ?? "";
+        const privateIp =
+          instance.ipAddresses?.find((ip) => ip.type === "private" && ip.version === 4)?.ip ?? "";
+
+        return {
+          id: `${accountId}:instance:${instance.id}`,
+          pluginId: "ovh",
+          resourceTypeId: "instance",
+          accountId,
+          displayName: instance.name,
+          fields: {
+            name: instance.name,
+            region: instance.region,
+            flavorName: instance.flavor?.name ?? fields["flavorId"] ?? "",
+            imageName: instance.image?.name ?? fields["imageId"] ?? "",
+            status: instance.status,
+            sshUsername: ovhSshUsername(instance.image?.name ?? ""),
+            networkIds: [
+              ...new Set(
+                (instance.ipAddresses ?? []).map((ip) => ip.networkId ?? "").filter(Boolean),
+              ),
+            ].join(", "),
+          },
+          resolvedOutputs: { ipv4: publicIp, ipv4Private: privateIp },
+          secretStates: [],
+          externalId: instance.id,
+          createdAt: instance.created ?? new Date().toISOString(),
+          updatedAt: instance.created ?? new Date().toISOString(),
+        };
+      }
+
+      if (typeId === "managed-kube") {
+        const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
+        const nodeCount =
+          Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
+        const flavorName = fields["flavor"] ?? "b3-8";
+        const clusterName = fields["name"] ?? "";
+
+        const body = {
+          name: clusterName,
+          region: fields["region"],
+          version: fields["version"] ?? extras.KUBE_VERSIONS[0],
+          ...(fields["updatePolicy"] ? { updatePolicy: fields["updatePolicy"] } : {}),
+        };
+
+        const cluster = await this.ovhFetch<OvhKubeCluster>(this.cloudPath("/kube"), {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+
+        // OVH lets us create node pools immediately after the cluster POST:
+        // unlike EKS, the cluster doesn't need to be ACTIVE first.
+        const poolName = `${clusterName || "cluster"}-default-pool`
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-")
+          .slice(0, 40);
+        let nodePoolCount = 0;
+        try {
+          await this.ovhFetch<OvhKubeNodePool>(this.cloudPath(`/kube/${cluster.id}/nodepool`), {
+            method: "POST",
+            body: JSON.stringify({
+              name: poolName,
+              flavorName,
+              desiredNodes: nodeCount,
+              monthlyBilled: false,
+              autoscale: false,
+              antiAffinity: false,
+            }),
+          });
+          nodePoolCount = 1;
+        } catch (e) {
+          // Surface the failure but keep the cluster: the user can add a pool by hand
+          const msg = e instanceof Error ? e.message : String(e);
+          throw new Error(
+            `Cluster ${clusterName} created but node pool creation failed: ${msg}. Delete the cluster and retry, or add a node pool via the OVH console.`,
+            { cause: e },
+          );
+        }
+
+        return {
+          id: `${accountId}:managed-kube:${cluster.id}`,
+          pluginId: "ovh",
+          resourceTypeId: "managed-kube",
+          accountId,
+          displayName: cluster.name ?? fields["name"] ?? "OVH Kubernetes",
+          fields: {
+            name: cluster.name ?? fields["name"] ?? "",
+            region: cluster.region ?? fields["region"] ?? "",
+            version: cluster.version ?? fields["version"] ?? "",
+            status: cluster.status ?? "INSTALLING",
+            flavor: flavorName,
+            nodeCount,
+            nodePoolCount,
+            nodesUrl: cluster.nodesUrl ?? "",
+            privateNetworkId: cluster.privateNetworkId ?? "",
+            nodesSubnetId: cluster.nodesSubnetId ?? "",
+            loadBalancersSubnetId: cluster.loadBalancersSubnetId ?? "",
+          },
+          resolvedOutputs: {
+            clusterUrl: cluster.url ?? "",
+          },
+          secretStates: [],
+          externalId: cluster.id,
+          createdAt: cluster.createdAt ?? new Date().toISOString(),
+          updatedAt: cluster.updatedAt ?? cluster.createdAt ?? new Date().toISOString(),
+        };
+      }
+
+      if (typeId === "managed-db") {
+        const engine = fields["engine"] ?? "postgresql";
+        const nodeCount = Math.max(1, Number(fields["nodeCount"] ?? 1) || 1);
+        const region = fields["region"] ?? "GRA";
+        const flavor = fields["flavor"] ?? "db1-7";
+        const data = await this.ovhFetch<OvhDatabaseService>(
+          this.cloudPath(this.databaseEnginePath(engine)),
+          {
+            method: "POST",
+            body: JSON.stringify({
+              description: fields["description"] ?? "",
+              version: fields["version"] ?? "16",
+              plan: fields["plan"] ?? "essential",
+              nodesPattern: {
+                flavor,
+                number: nodeCount,
+                region,
+              },
+            }),
+          },
+        );
+        const now = new Date().toISOString();
+        return {
+          id: `${accountId}:managed-db:${data.id}`,
+          pluginId: "ovh",
+          resourceTypeId: "managed-db",
+          accountId,
+          displayName: this.serviceDisplayName({ ...data, engine }),
+          fields: {
+            description: data.description ?? "",
+            engine: data.engine ?? fields["engine"] ?? "",
+            version: data.version ?? fields["version"] ?? "",
+            plan: data.plan ?? fields["plan"] ?? "",
+            region: data.nodes?.[0]?.region ?? region,
+            flavor: data.flavor ?? flavor,
+            nodeCount: data.nodeNumber ?? data.nodes?.length ?? nodeCount,
+            status: data.status ?? "CREATING",
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: data.id,
+          createdAt: data.createdAt ?? now,
+          updatedAt: data.updatedAt ?? data.createdAt ?? now,
+        };
+      }
+
+      if (typeId === "volume") {
+        const data = await this.ovhFetch<{
+          id: string;
+          name?: string;
+          region: string;
+          size: number;
+          type: string;
+          status?: string;
+          bootable?: boolean;
+          attachedTo?: string[];
+          creationDate?: string;
+        }>(this.cloudPath("/volume"), {
+          method: "POST",
+          body: JSON.stringify({
+            name: fields["name"],
+            region: fields["region"],
+            size: Number(fields["size"] ?? 100),
+            type: fields["type"] ?? "classic",
+          }),
+        });
+        const now = new Date().toISOString();
+        return {
+          id: `${accountId}:volume:${data.id}`,
+          pluginId: "ovh",
+          resourceTypeId: "volume",
+          accountId,
+          displayName: data.name ?? fields["name"] ?? data.id,
+          fields: {
+            name: data.name ?? fields["name"] ?? "",
+            region: data.region,
+            sizeGb: data.size,
+            type: data.type,
+            status: data.status ?? "creating",
+            bootable: data.bootable ?? false,
+            attachedTo: (data.attachedTo ?? []).join(","),
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: data.id,
+          createdAt: data.creationDate ?? now,
+          updatedAt: now,
+        };
+      }
+
+      if (typeId === "object-storage-bucket") {
+        const region = fields["region"] ?? "";
+        const data = await this.ovhFetch<OvhStorageContainer>(
+          this.cloudPath(`/region/${enc(region)}/storage`),
+          {
+            method: "POST",
+            body: JSON.stringify({ name: fields["name"] ?? "" }),
+          },
+        );
+        return this.mapObjectStorageBucket(data, region, accountId);
+      }
+
+      if (typeId === "load-balancer") {
+        const data = await this.ovhFetch<OvhLoadBalancer>(this.cloudPath("/loadbalancer"), {
+          method: "POST",
+          body: JSON.stringify({
+            name: fields["name"] ?? "",
+            region: fields["region"] ?? "",
+            size: fields["size"] ?? "SMALL",
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+          }),
+        });
+        return this.mapLoadBalancer(data, accountId);
+      }
+
+      if (typeId === "container-registry")
+        return extras.createRegistry(this.api, accountId, fields);
+
+      if (typeId === "private-network") {
+        const region = fields["region"] ?? "";
+        const vlanId = fields["vlanId"];
+        const data = await this.ovhFetch<OvhPrivateNetwork>(this.cloudPath("/network/private"), {
+          method: "POST",
+          body: JSON.stringify({
+            name: fields["name"] ?? "",
+            ...(region ? { regions: [region] } : {}),
+            ...(vlanId ? { vlanId: Number(vlanId) } : {}),
+          }),
+        });
+        return this.mapPrivateNetwork(data, accountId);
+      }
+
+      throw new Error(`OVH plugin: createResource not supported for type "${typeId}"`);
+    });
+  }
+
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").pop();
+      if (!externalId) throw new Error("Cannot parse resource ID");
+
+      switch (typeId) {
+        case "instance":
+          await this.ovhFetch<unknown>(this.cloudPath(`/instance/${externalId}`), {
+            method: "DELETE",
+          });
+          break;
+        case "managed-kube":
+          await this.ovhFetch<unknown>(this.cloudPath(`/kube/${externalId}`), { method: "DELETE" });
+          break;
+        case "managed-db": {
+          const svc = await this.ovhFetch<OvhDatabaseService>(
+            this.cloudPath(`/database/service/${externalId}`),
+          );
+          await this.ovhFetch<unknown>(
+            this.cloudPath(`${this.databaseEnginePath(svc.engine ?? "")}/${externalId}`),
+            { method: "DELETE" },
+          );
+          break;
+        }
+        case "volume":
+          await this.ovhFetch<unknown>(this.cloudPath(`/volume/${externalId}`), {
+            method: "DELETE",
+          });
+          break;
+        case "object-storage-bucket": {
+          const [region, ...nameParts] = externalId.split("/");
+          const name = nameParts.join("/");
+          if (!region || !name) throw new Error("Cannot parse object storage bucket ID");
+          await this.ovhFetch<unknown>(
+            this.cloudPath(`/region/${enc(region)}/storage/${enc(name)}`),
+            {
+              method: "DELETE",
+            },
+          );
+          break;
+        }
+        case "load-balancer":
+          await this.ovhFetch<unknown>(this.cloudPath(`/loadbalancer/${enc(externalId)}`), {
+            method: "DELETE",
+          });
+          break;
+        case "private-network":
+          await this.ovhFetch<unknown>(this.cloudPath(`/network/private/${enc(externalId)}`), {
+            method: "DELETE",
+          });
+          break;
+        case "floating-ip": {
+          const [region, floatingIpId] = externalId.split("/");
+          if (!region || !floatingIpId) throw new Error("Cannot parse floating IP ID");
+          await this.ovhFetch<unknown>(
+            this.cloudPath(`/region/${enc(region)}/floatingip/${enc(floatingIpId)}`),
+            { method: "DELETE" },
+          );
+          break;
+        }
+        case "gateway": {
+          const [region, gatewayId] = externalId.split("/");
+          if (!region || !gatewayId) throw new Error("Cannot parse gateway ID");
+          await this.ovhFetch<unknown>(
+            this.cloudPath(`/region/${enc(region)}/gateway/${enc(gatewayId)}`),
+            { method: "DELETE" },
+          );
+          break;
+        }
+        case "octavia-load-balancer":
+          await extras.deleteOctaviaLoadBalancer(this.api, resourceId);
+          break;
+        case "volume-snapshot":
+          await extras.deleteVolumeSnapshot(this.api, resourceId);
+          break;
+        case "container-registry":
+          await extras.deleteRegistry(this.api, resourceId);
+          break;
+        default:
+          throw new Error(`OVH plugin: deleteResource not supported for type "${typeId}"`);
+      }
+    });
+  }
+
+  attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
     targetTypeId: string,
     targetResourceId: string,
     accountId: string,
-  ): Promise<void> {
-    if (sourceTypeId === "volume" && targetTypeId === "instance") {
-      const [volume, instance] = await Promise.all([
-        this.getResource(sourceTypeId, sourceResourceId, accountId),
-        this.getResource(targetTypeId, targetResourceId, accountId),
-      ]);
-      const volumeRegion = String(volume.fields["region"] ?? "");
-      const instanceRegion = String(instance.fields["region"] ?? "");
-      if (volumeRegion && instanceRegion && volumeRegion !== instanceRegion) {
-        throw new Error(
-          `Volume region ${volumeRegion} does not match instance region ${instanceRegion}. Volumes must be in the same region as the instance.`,
-        );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (sourceTypeId === "volume" && targetTypeId === "instance") {
+        const [volume, instance] = await Promise.all([
+          runPluginEffect(this.getResource(sourceTypeId, sourceResourceId, accountId)),
+          runPluginEffect(this.getResource(targetTypeId, targetResourceId, accountId)),
+        ]);
+        const volumeRegion = String(volume.fields["region"] ?? "");
+        const instanceRegion = String(instance.fields["region"] ?? "");
+        if (volumeRegion && instanceRegion && volumeRegion !== instanceRegion) {
+          throw new Error(
+            `Volume region ${volumeRegion} does not match instance region ${instanceRegion}. Volumes must be in the same region as the instance.`,
+          );
+        }
+        const volumeId = volume.externalId ?? sourceResourceId.split(":").pop();
+        const instanceId = instance.externalId ?? targetResourceId.split(":").pop();
+        if (!volumeId || !instanceId) {
+          throw new Error("Cannot determine volume or instance id for attachment");
+        }
+        await this.ovhFetch(this.cloudPath(`/volume/${volumeId}/attach`), {
+          method: "POST",
+          body: JSON.stringify({ instanceId }),
+        });
+        return;
       }
-      const volumeId = volume.externalId ?? sourceResourceId.split(":").pop();
-      const instanceId = instance.externalId ?? targetResourceId.split(":").pop();
-      if (!volumeId || !instanceId) {
-        throw new Error("Cannot determine volume or instance id for attachment");
-      }
-      await this.ovhFetch(this.cloudPath(`/volume/${volumeId}/attach`), {
-        method: "POST",
-        body: JSON.stringify({ instanceId }),
-      });
-      return;
-    }
-    throw new Error(
-      `OVH plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
-    );
+      throw new Error(
+        `OVH plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
+      );
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    if (typeId === "instance" && extras.INSTANCE_ACTIONS.has(actionId)) {
-      return extras.invokeInstanceAction(this.api, resourceId, actionId);
-    }
-    if (typeId === "volume" && actionId === "snapshot") {
-      return extras.snapshotVolume(this.api, resourceId);
-    }
-    if (typeId === "managed-kube" && extras.KUBE_ACTIONS.has(actionId)) {
-      return extras.invokeKubeAction(this.api, resourceId, actionId);
-    }
-    throw new Error(`OVH plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "instance" && extras.INSTANCE_ACTIONS.has(actionId)) {
+        return extras.invokeInstanceAction(this.api, resourceId, actionId);
+      }
+      if (typeId === "volume" && actionId === "snapshot") {
+        return extras.snapshotVolume(this.api, resourceId);
+      }
+      if (typeId === "managed-kube" && extras.KUBE_ACTIONS.has(actionId)) {
+        return extras.invokeKubeAction(this.api, resourceId, actionId);
+      }
+      throw new Error(`OVH plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const current = await this.getResource(typeId, resourceId, accountId);
-    switch (typeId) {
-      case "instance":
-        return extras.updateInstance(this.api, current, fields);
-      case "volume":
-        return extras.updateVolume(this.api, current, fields);
-      case "managed-kube":
-        return extras.updateKube(this.api, current, fields);
-      case "managed-db":
-        return extras.updateDatabase(this.api, current, fields);
-      case "octavia-load-balancer":
-        return extras.updateOctaviaLoadBalancer(this.api, current, fields);
-      default:
-        throw new Error(`OVH plugin: updateResource not supported for type "${typeId}"`);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      switch (typeId) {
+        case "instance":
+          return extras.updateInstance(this.api, current, fields);
+        case "volume":
+          return extras.updateVolume(this.api, current, fields);
+        case "managed-kube":
+          return extras.updateKube(this.api, current, fields);
+        case "managed-db":
+          return extras.updateDatabase(this.api, current, fields);
+        case "octavia-load-balancer":
+          return extras.updateOctaviaLoadBalancer(this.api, current, fields);
+        default:
+          throw new Error(`OVH plugin: updateResource not supported for type "${typeId}"`);
+      }
+    });
   }
 
   // Managed databases are the only OVH Public Cloud resources with a metrics API:
@@ -1265,73 +1289,75 @@ export class OvhClient implements PluginClient {
   // have /instance/{id}/monitoring but OVH removed it from the API (404s today);
   // everything else only exists in the separate Metrics Data Platform, which needs
   // its own token and endpoint and is out of scope for this single-credential plugin.
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "managed-db") return [];
-    const externalId = resourceId.split(":").pop();
-    if (!externalId) return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "managed-db") return [];
+      const externalId = resourceId.split(":").pop();
+      if (!externalId) return [];
 
-    // The metric routes embed the engine in the path, which the resource id
-    // doesn't carry: resolve it from the service first.
-    const svc = await this.ovhFetch<OvhDatabaseService>(
-      this.cloudPath(`/database/service/${enc(externalId)}`),
-    );
-    const engine = (svc.engine ?? "").trim().toLowerCase();
-    if (!engine) return [];
-    const metricBase = this.cloudPath(
-      `${this.databaseEnginePath(engine)}/${enc(externalId)}/metric`,
-    );
+      // The metric routes embed the engine in the path, which the resource id
+      // doesn't carry: resolve it from the service first.
+      const svc = await this.ovhFetch<OvhDatabaseService>(
+        this.cloudPath(`/database/service/${enc(externalId)}`),
+      );
+      const engine = (svc.engine ?? "").trim().toLowerCase();
+      if (!engine) return [];
+      const metricBase = this.cloudPath(
+        `${this.databaseEnginePath(engine)}/${enc(externalId)}/metric`,
+      );
 
-    // The API only supports fixed lookback windows; pick the smallest one that
-    // covers the requested range, then trim points back down to the range.
-    const now = Date.now();
-    const startMs = timeRange?.startMs ?? now - 3_600_000;
-    const spanMs = (timeRange?.endMs ?? now) - startMs;
-    let period: string;
-    if (spanMs <= 3_600_000) period = "lastHour";
-    else if (spanMs <= 86_400_000) period = "lastDay";
-    else if (spanMs <= 7 * 86_400_000) period = "lastWeek";
-    else if (spanMs <= 31 * 86_400_000) period = "lastMonth";
-    else period = "lastYear";
+      // The API only supports fixed lookback windows; pick the smallest one that
+      // covers the requested range, then trim points back down to the range.
+      const now = Date.now();
+      const startMs = timeRange?.startMs ?? now - 3_600_000;
+      const spanMs = (timeRange?.endMs ?? now) - startMs;
+      let period: string;
+      if (spanMs <= 3_600_000) period = "lastHour";
+      else if (spanMs <= 86_400_000) period = "lastDay";
+      else if (spanMs <= 7 * 86_400_000) period = "lastWeek";
+      else if (spanMs <= 31 * 86_400_000) period = "lastMonth";
+      else period = "lastYear";
 
-    let metricNames: string[];
-    try {
-      metricNames = await this.ovhFetch<string[]>(metricBase);
-    } catch {
-      // Not ready yet (Client::Conflict::ServiceNotReady) or no metric access.
-      return [];
-    }
+      let metricNames: string[];
+      try {
+        metricNames = await this.ovhFetch<string[]>(metricBase);
+      } catch {
+        // Not ready yet (Client::Conflict::ServiceNotReady) or no metric access.
+        return [];
+      }
 
-    const results = await Promise.all(
-      metricNames.slice(0, OvhClient.DB_METRIC_LIMIT).map(async (name) => {
-        try {
-          const metric = await this.ovhFetch<OvhDatabaseMetric>(
-            `${metricBase}/${enc(name)}?period=${enc(period)}`,
-          );
-          const unit = ovhMetricUnit(metric.units ?? "");
-          const hosts = metric.metrics ?? [];
-          return hosts.flatMap((host): MetricSeries[] => {
-            const points = (host.dataPoints ?? [])
-              .map((p) => ({ timestamp: p.timestamp * 1000, value: p.value }))
-              .filter((p) => p.timestamp >= startMs)
-              .sort((a, b) => a.timestamp - b.timestamp);
-            if (points.length === 0) return [];
-            const label =
-              hosts.length > 1
-                ? `${metric.name ?? name} (${host.hostname})`
-                : (metric.name ?? name);
-            return [{ label, unit, points }];
-          });
-        } catch {
-          return [];
-        }
-      }),
-    );
-    return results.flat();
+      const results = await Promise.all(
+        metricNames.slice(0, OvhClient.DB_METRIC_LIMIT).map(async (name) => {
+          try {
+            const metric = await this.ovhFetch<OvhDatabaseMetric>(
+              `${metricBase}/${enc(name)}?period=${enc(period)}`,
+            );
+            const unit = ovhMetricUnit(metric.units ?? "");
+            const hosts = metric.metrics ?? [];
+            return hosts.flatMap((host): MetricSeries[] => {
+              const points = (host.dataPoints ?? [])
+                .map((p) => ({ timestamp: p.timestamp * 1000, value: p.value }))
+                .filter((p) => p.timestamp >= startMs)
+                .sort((a, b) => a.timestamp - b.timestamp);
+              if (points.length === 0) return [];
+              const label =
+                hosts.length > 1
+                  ? `${metric.name ?? name} (${host.hostname})`
+                  : (metric.name ?? name);
+              return [{ label, unit, points }];
+            });
+          } catch {
+            return [];
+          }
+        }),
+      );
+      return results.flat();
+    });
   }
 
   /** Metric-name list order is provider-defined; cap fan-out per fetch. */
@@ -1345,170 +1371,179 @@ export class OvhClient implements PluginClient {
    * only expose a WebSocket tail; until then this is the one pull-based log
    * read on the plain API credential.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const result = (text: string): LogsFetchResult => ({
-      text,
-      containers: [],
-      activeContainer: "",
-    });
-    if (typeId !== "managed-db") return result("");
-    const externalId = resourceId.split(":").pop();
-    if (!externalId) return result("");
-    let entries: Array<{ hostname?: string; message?: string; timestamp?: number }>;
-    try {
-      const svc = await this.ovhFetch<OvhDatabaseService>(
-        this.cloudPath(`/database/service/${enc(externalId)}`),
-      );
-      const engine = (svc.engine ?? "").trim().toLowerCase();
-      if (!engine) return result("");
-      entries = await this.ovhFetch<
-        Array<{ hostname?: string; message?: string; timestamp?: number }>
-      >(this.cloudPath(`${this.databaseEnginePath(engine)}/${enc(externalId)}/logs`));
-    } catch (err) {
-      return result(
-        `Could not read logs from OVHcloud: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-    }
-    const tail = Math.max(params.tailLines ?? 200, 1);
-    const hosts = new Set(entries.map((e) => e.hostname ?? ""));
-    const lines = [...entries]
-      .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
-      .slice(-tail)
-      .map((e) => {
-        const ts = e.timestamp != null ? new Date(e.timestamp * 1000).toISOString() : "?";
-        const host = hosts.size > 1 && e.hostname ? `  [${e.hostname}]` : "";
-        return `${ts}${host}  ${e.message ?? ""}`;
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const result = (text: string): LogsFetchResult => ({
+        text,
+        containers: [],
+        activeContainer: "",
       });
-    return result(
-      lines.length > 0 ? lines.join("\n") + "\n" : "No recent log messages for this cluster.\n",
-    );
+      if (typeId !== "managed-db") return result("");
+      const externalId = resourceId.split(":").pop();
+      if (!externalId) return result("");
+      let entries: Array<{ hostname?: string; message?: string; timestamp?: number }>;
+      try {
+        const svc = await this.ovhFetch<OvhDatabaseService>(
+          this.cloudPath(`/database/service/${enc(externalId)}`),
+        );
+        const engine = (svc.engine ?? "").trim().toLowerCase();
+        if (!engine) return result("");
+        entries = await this.ovhFetch<
+          Array<{ hostname?: string; message?: string; timestamp?: number }>
+        >(this.cloudPath(`${this.databaseEnginePath(engine)}/${enc(externalId)}/logs`));
+      } catch (err) {
+        return result(
+          `Could not read logs from OVHcloud: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+      }
+      const tail = Math.max(params.tailLines ?? 200, 1);
+      const hosts = new Set(entries.map((e) => e.hostname ?? ""));
+      const lines = [...entries]
+        .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+        .slice(-tail)
+        .map((e) => {
+          const ts = e.timestamp != null ? new Date(e.timestamp * 1000).toISOString() : "?";
+          const host = hosts.size > 1 && e.hostname ? `  [${e.hostname}]` : "";
+          return `${ts}${host}  ${e.message ?? ""}`;
+        });
+      return result(
+        lines.length > 0 ? lines.join("\n") + "\n" : "No recent log messages for this cluster.\n",
+      );
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    // Bind preserves the generic signature of the private signed fetch
-    // helper so cost calls carry OVH request signing + bastion routing.
-    return fetchOvhCostData(this.ovhFetch.bind(this), range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      // Bind preserves the generic signature of the private signed fetch
+      // helper so cost calls carry OVH request signing + bastion routing.
+      return fetchOvhCostData(this.ovhFetch.bind(this), range);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (resourceTypeId === "octavia-load-balancer") {
-      return extras.octaviaStats(this.api, resourceId);
-    }
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
-    const ro = resource.resolvedOutputs ?? {};
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "octavia-load-balancer") {
+        return extras.octaviaStats(this.api, resourceId);
+      }
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
+      const ro = resource.resolvedOutputs ?? {};
 
-    switch (resourceTypeId) {
-      case "instance": {
-        const status = String(f.status ?? "unknown");
-        const stats: DashboardStat[] = [
-          {
-            label: "Status",
-            value: status,
-            variant:
-              status === "ACTIVE" || status === "active" || status === "running"
-                ? "status-healthy"
-                : status === "STOPPED" || status === "stopped"
-                  ? "status-error"
-                  : "status-degraded",
-          },
-          { label: "Flavor", value: String(f.flavorName ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-        ];
-        if (ro.publicIp) stats.push({ label: "Public IP", value: String(ro.publicIp) });
-        return stats;
+      switch (resourceTypeId) {
+        case "instance": {
+          const status = String(f.status ?? "unknown");
+          const stats: DashboardStat[] = [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "ACTIVE" || status === "active" || status === "running"
+                  ? "status-healthy"
+                  : status === "STOPPED" || status === "stopped"
+                    ? "status-error"
+                    : "status-degraded",
+            },
+            { label: "Flavor", value: String(f.flavorName ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+          ];
+          if (ro.publicIp) stats.push({ label: "Public IP", value: String(ro.publicIp) });
+          return stats;
+        }
+        case "managed-kube": {
+          const status = String(f.status ?? "unknown");
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "READY" || status === "running" ? "status-healthy" : "status-degraded",
+            },
+            { label: "Version", value: String(f.version ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+            { label: "Nodes", value: String(f.nodeCount ?? 0) },
+          ];
+        }
+        case "managed-db": {
+          const status = String(f.status ?? "unknown");
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "READY" || status === "running" ? "status-healthy" : "status-degraded",
+            },
+            { label: "Engine", value: String(f.engine ?? "") },
+            { label: "Plan", value: String(f.plan ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+          ];
+        }
+        case "volume": {
+          return [
+            { label: "Status", value: String(f.status ?? "") },
+            { label: "Type", value: String(f.type ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+            { label: "Size", value: `${String(f.sizeGb ?? "")} GB` },
+          ];
+        }
+        case "object-storage-bucket": {
+          return [
+            { label: "Region", value: String(f.region ?? "") },
+            { label: "Objects", value: String(f.objectsCount ?? 0) },
+            { label: "Size", value: `${String(f.objectsSizeBytes ?? 0)} bytes` },
+          ];
+        }
+        case "load-balancer": {
+          const status = String(f.status ?? "unknown");
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "ACTIVE" || status === "OK" ? "status-healthy" : "status-degraded",
+            },
+            { label: "Size", value: String(f.size ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+            { label: "Address", value: String(f.address ?? "") },
+          ];
+        }
+        case "private-network": {
+          return [
+            { label: "Status", value: String(f.status ?? "") },
+            { label: "VLAN", value: String(f.vlanId ?? "") },
+            { label: "Regions", value: String(f.regions ?? "") },
+          ];
+        }
+        case "floating-ip": {
+          return [
+            { label: "Status", value: String(f.status ?? "") },
+            { label: "IP", value: String(f.ip ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+            { label: "Associated", value: String(f.associatedEntity ?? "") },
+          ];
+        }
+        case "gateway": {
+          return [
+            { label: "Status", value: String(f.status ?? "") },
+            { label: "Model", value: String(f.model ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+            { label: "Interfaces", value: String(f.interfaces ?? 0) },
+          ];
+        }
+        default:
+          return [];
       }
-      case "managed-kube": {
-        const status = String(f.status ?? "unknown");
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant:
-              status === "READY" || status === "running" ? "status-healthy" : "status-degraded",
-          },
-          { label: "Version", value: String(f.version ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-          { label: "Nodes", value: String(f.nodeCount ?? 0) },
-        ];
-      }
-      case "managed-db": {
-        const status = String(f.status ?? "unknown");
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant:
-              status === "READY" || status === "running" ? "status-healthy" : "status-degraded",
-          },
-          { label: "Engine", value: String(f.engine ?? "") },
-          { label: "Plan", value: String(f.plan ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-        ];
-      }
-      case "volume": {
-        return [
-          { label: "Status", value: String(f.status ?? "") },
-          { label: "Type", value: String(f.type ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-          { label: "Size", value: `${String(f.sizeGb ?? "")} GB` },
-        ];
-      }
-      case "object-storage-bucket": {
-        return [
-          { label: "Region", value: String(f.region ?? "") },
-          { label: "Objects", value: String(f.objectsCount ?? 0) },
-          { label: "Size", value: `${String(f.objectsSizeBytes ?? 0)} bytes` },
-        ];
-      }
-      case "load-balancer": {
-        const status = String(f.status ?? "unknown");
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant: status === "ACTIVE" || status === "OK" ? "status-healthy" : "status-degraded",
-          },
-          { label: "Size", value: String(f.size ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-          { label: "Address", value: String(f.address ?? "") },
-        ];
-      }
-      case "private-network": {
-        return [
-          { label: "Status", value: String(f.status ?? "") },
-          { label: "VLAN", value: String(f.vlanId ?? "") },
-          { label: "Regions", value: String(f.regions ?? "") },
-        ];
-      }
-      case "floating-ip": {
-        return [
-          { label: "Status", value: String(f.status ?? "") },
-          { label: "IP", value: String(f.ip ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-          { label: "Associated", value: String(f.associatedEntity ?? "") },
-        ];
-      }
-      case "gateway": {
-        return [
-          { label: "Status", value: String(f.status ?? "") },
-          { label: "Model", value: String(f.model ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-          { label: "Interfaces", value: String(f.interfaces ?? 0) },
-        ];
-      }
-      default:
-        return [];
-    }
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

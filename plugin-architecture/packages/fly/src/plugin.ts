@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { FlyClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -12,9 +17,9 @@ import { PostgresClusterResourceType } from "./resources/postgres-cluster.js";
 import { flyTerraformExport } from "./terraform.js";
 import { flyRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "fly",
-  version: "0.1.0",
+  egressHosts: ["api.machines.dev", "api.fly.io"],
   displayName: "Fly.io",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#7B3BE2"/>
@@ -24,9 +29,7 @@ const manifest: PluginManifest = {
       <path d="M50 38 L60 45 L60 57 L50 64 L40 57 L40 45 Z" fill="white"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -45,9 +48,11 @@ const manifest: PluginManifest = {
       defaultValue: "personal",
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   AppResourceType,
@@ -59,11 +64,12 @@ const resourceTypes: ResourceTypeDefinition[] = [
   PostgresClusterResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new FlyClient(credentials, resourceTypes, services),
+  testCredentials: { apiToken: "test-fly-token", orgSlug: "personal" },
   parseStatusFeed,
   terraformExport: flyTerraformExport,
   remediationCommands: flyRemediationCommands,
-};
+});

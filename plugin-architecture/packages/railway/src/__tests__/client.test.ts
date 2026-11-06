@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RailwayClient, buildInstanceUpdate, splitId } from "../client.js";
 import { usageToRows, RATES } from "../cost-data.js";
@@ -128,7 +129,7 @@ function standardRoutes(c: Call): unknown {
 }
 
 function client(creds: Record<string, string> = { apiToken: "tok" }) {
-  return new RailwayClient(creds, RESOURCE_TYPES);
+  return hostClient(new RailwayClient(creds, RESOURCE_TYPES));
 }
 
 describe("transport", () => {
@@ -352,8 +353,8 @@ describe("status feed", () => {
 describe("credential options", () => {
   it("lists the token's workspaces", async () => {
     handler = standardRoutes;
-    expect(await plugin.listCredentialOptions!("workspaceId", { apiToken: "t" })).toEqual([
-      { id: "w1", label: "Acme", description: "w1" },
-    ]);
+    expect(
+      await hostPlugin(plugin).listCredentialOptions!("workspaceId", { apiToken: "t" }),
+    ).toEqual([{ id: "w1", label: "Acme", description: "w1" }]);
   });
 });

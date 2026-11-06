@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BasetenClient } from "../client.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
@@ -14,7 +15,7 @@ describe("getLogs", () => {
         { timestamp: "1767225599000000000", message: "first", level: "ERROR" },
       ],
     });
-    const c = new BasetenClient({ apiKey: "k" }, RESOURCE_TYPES);
+    const c = hostClient(new BasetenClient({ apiKey: "k" }, RESOURCE_TYPES));
     const res = await c.getLogs("deployment", "acc:deployment:m-1/d-1", "acc", {
       tailLines: 50,
       container: "Errors only",

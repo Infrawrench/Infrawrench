@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   PluginClient,
@@ -572,7 +575,7 @@ export class NetlifyClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = credentials["accessToken"];
     if (!token) throw new Error("Netlify plugin: missing accessToken credential");
     this.token = token;
@@ -603,170 +606,180 @@ export class NetlifyClient implements PluginClient {
     return results;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "netlify-site":
-        return this.listSites(accountId);
-      case "netlify-deploy":
-        return this.listAllDeploys(accountId);
-      case "netlify-form":
-        return this.listAllForms(accountId);
-      case "netlify-dns-zone":
-        return this.listDnsZones(accountId);
-      case "netlify-dns-record":
-        return this.listAllDnsRecords(accountId);
-      case "netlify-build-hook":
-        return this.listAllBuildHooks(accountId);
-      case "netlify-env-var":
-        return this.listAllEnvVars(accountId);
-      case "netlify-notification-hook":
-        return this.perSite(accountId, async (site) =>
-          ((await this.api.listHooks({ siteId: site.id })) ?? []).map((h) =>
-            this.mapHook(h, accountId, site.id),
-          ),
-        );
-      case "netlify-snippet":
-        return this.perSite(accountId, async (site) =>
-          ((await this.api.listSnippets({ siteId: site.id })) ?? []).map((sn) =>
-            this.mapSnippet(sn, accountId, site.id),
-          ),
-        );
-      case "netlify-database":
-        // Sites without a database answer 404; perSite drops them.
-        return this.perSite(accountId, async (site) => [
-          this.mapDatabase(
-            site,
-            (await this.api.listSiteDatabaseBranches({ siteId: site.id })).branches ?? [],
-            accountId,
-          ),
-        ]);
-      default:
-        throw new Error(`Netlify plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "netlify-site":
+          return this.listSites(accountId);
+        case "netlify-deploy":
+          return this.listAllDeploys(accountId);
+        case "netlify-form":
+          return this.listAllForms(accountId);
+        case "netlify-dns-zone":
+          return this.listDnsZones(accountId);
+        case "netlify-dns-record":
+          return this.listAllDnsRecords(accountId);
+        case "netlify-build-hook":
+          return this.listAllBuildHooks(accountId);
+        case "netlify-env-var":
+          return this.listAllEnvVars(accountId);
+        case "netlify-notification-hook":
+          return this.perSite(accountId, async (site) =>
+            ((await this.api.listHooks({ siteId: site.id })) ?? []).map((h) =>
+              this.mapHook(h, accountId, site.id),
+            ),
+          );
+        case "netlify-snippet":
+          return this.perSite(accountId, async (site) =>
+            ((await this.api.listSnippets({ siteId: site.id })) ?? []).map((sn) =>
+              this.mapSnippet(sn, accountId, site.id),
+            ),
+          );
+        case "netlify-database":
+          // Sites without a database answer 404; perSite drops them.
+          return this.perSite(accountId, async (site) => [
+            this.mapDatabase(
+              site,
+              (await this.api.listSiteDatabaseBranches({ siteId: site.id })).branches ?? [],
+              accountId,
+            ),
+          ]);
+        default:
+          throw new Error(`Netlify plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    // For sites we can fetch directly for freshness
-    if (typeId === "netlify-site") {
-      const siteId = resourceId.split(":").pop() ?? "";
-      const site = await this.api.getSite({ siteId });
-      return this.mapSite(site, accountId);
-    }
-    if (typeId === "netlify-deploy") {
-      const deploy = await this.api.getDeploy({ deployId: resourceId.split(":").pop() ?? "" });
-      return this.mapDeploy(deploy, accountId, deploy.site_id ?? "");
-    }
-    if (typeId === "netlify-database") {
-      const siteId = resourceId.split(":").pop() ?? "";
-      const [site, branches] = await Promise.all([
-        this.api.getSite({ siteId }),
-        this.api.listSiteDatabaseBranches({ siteId }),
-      ]);
-      return this.mapDatabase(site, branches.branches ?? [], accountId);
-    }
-    // For others, look up in the full list
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Netlify plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      // For sites we can fetch directly for freshness
+      if (typeId === "netlify-site") {
+        const siteId = resourceId.split(":").pop() ?? "";
+        const site = await this.api.getSite({ siteId });
+        return this.mapSite(site, accountId);
+      }
+      if (typeId === "netlify-deploy") {
+        const deploy = await this.api.getDeploy({ deployId: resourceId.split(":").pop() ?? "" });
+        return this.mapDeploy(deploy, accountId, deploy.site_id ?? "");
+      }
+      if (typeId === "netlify-database") {
+        const siteId = resourceId.split(":").pop() ?? "";
+        const [site, branches] = await Promise.all([
+          this.api.getSite({ siteId }),
+          this.api.listSiteDatabaseBranches({ siteId }),
+        ]);
+        return this.mapDatabase(site, branches.branches ?? [], accountId);
+      }
+      // For others, look up in the full list
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Netlify plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "netlify-site") {
-      const siteId = resourceId.split(":").pop() ?? "";
-      const site = await this.api.getSite({ siteId });
-      if (outputKey === "siteId") return site.id;
-      if (outputKey === "siteName") return site.name;
-      if (outputKey === "url") return site.url ?? "";
-      if (outputKey === "sslUrl") return site.ssl_url ?? "";
-      if (outputKey === "deployHook") return site.deploy_hook ?? "";
-    }
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "netlify-site") {
+        const siteId = resourceId.split(":").pop() ?? "";
+        const site = await this.api.getSite({ siteId });
+        if (outputKey === "siteId") return site.id;
+        if (outputKey === "siteName") return site.name;
+        if (outputKey === "url") return site.url ?? "";
+        if (outputKey === "sslUrl") return site.ssl_url ?? "";
+        if (outputKey === "deployHook") return site.deploy_hook ?? "";
+      }
 
-    if (typeId === "netlify-deploy") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "deployId") return String(resource.externalId ?? "");
-      if (outputKey === "deployUrl") return String(resource.fields["url"] ?? "");
-    }
+      if (typeId === "netlify-deploy") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "deployId") return String(resource.externalId ?? "");
+        if (outputKey === "deployUrl") return String(resource.fields["url"] ?? "");
+      }
 
-    if (typeId === "netlify-form") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "formId") return String(resource.externalId ?? "");
-      if (outputKey === "formName") return String(resource.fields["name"] ?? "");
-    }
+      if (typeId === "netlify-form") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "formId") return String(resource.externalId ?? "");
+        if (outputKey === "formName") return String(resource.fields["name"] ?? "");
+      }
 
-    if (typeId === "netlify-dns-zone") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "zoneId") return String(resource.externalId ?? "");
-      if (outputKey === "domain") return String(resource.fields["domain"] ?? "");
-    }
+      if (typeId === "netlify-dns-zone") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "zoneId") return String(resource.externalId ?? "");
+        if (outputKey === "domain") return String(resource.fields["domain"] ?? "");
+      }
 
-    if (typeId === "netlify-dns-record") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "recordId") return String(resource.externalId ?? "");
-      if (outputKey === "hostname") return String(resource.fields["name"] ?? "");
-    }
+      if (typeId === "netlify-dns-record") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "recordId") return String(resource.externalId ?? "");
+        if (outputKey === "hostname") return String(resource.fields["name"] ?? "");
+      }
 
-    if (typeId === "netlify-build-hook") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "hookId") return String(resource.externalId ?? "");
-      if (outputKey === "hookUrl") return String(resource.fields["url"] ?? "");
-    }
+      if (typeId === "netlify-build-hook") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "hookId") return String(resource.externalId ?? "");
+        if (outputKey === "hookUrl") return String(resource.fields["url"] ?? "");
+      }
 
-    if (typeId === "netlify-env-var") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "envKey") return String(resource.fields["key"] ?? "");
-    }
+      if (typeId === "netlify-env-var") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        if (outputKey === "envKey") return String(resource.fields["key"] ?? "");
+      }
 
-    if (typeId === "netlify-notification-hook" && outputKey === "hookId") {
-      return splitSiteChild(resourceId).childId;
-    }
+      if (typeId === "netlify-notification-hook" && outputKey === "hookId") {
+        return splitSiteChild(resourceId).childId;
+      }
 
-    if (typeId === "netlify-snippet" && outputKey === "snippetId") {
-      return splitSiteChild(resourceId).childId;
-    }
+      if (typeId === "netlify-snippet" && outputKey === "snippetId") {
+        return splitSiteChild(resourceId).childId;
+      }
 
-    if (typeId === "netlify-database" && outputKey === "connectionString") {
-      const siteId = resourceId.split(":").pop() ?? "";
-      return (await this.api.getSiteDatabase({ siteId })).connection_string ?? "";
-    }
+      if (typeId === "netlify-database" && outputKey === "connectionString") {
+        const siteId = resourceId.split(":").pop() ?? "";
+        return (await this.api.getSiteDatabase({ siteId })).connection_string ?? "";
+      }
 
-    throw new Error(`Netlify plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      throw new Error(`Netlify plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
 
-    switch (resourceTypeId) {
-      case "netlify-site": {
-        const state = String(f["state"] ?? "unknown");
-        const variant =
-          state === "current" ? "status-healthy" : state === "error" ? "status-error" : "default";
-        return [
-          { label: "State", value: state, variant },
-          ...(f["customDomain"] ? [{ label: "Domain", value: String(f["customDomain"]) }] : []),
-          ...(f["framework"] ? [{ label: "Framework", value: String(f["framework"]) }] : []),
-        ];
+      switch (resourceTypeId) {
+        case "netlify-site": {
+          const state = String(f["state"] ?? "unknown");
+          const variant =
+            state === "current" ? "status-healthy" : state === "error" ? "status-error" : "default";
+          return [
+            { label: "State", value: state, variant },
+            ...(f["customDomain"] ? [{ label: "Domain", value: String(f["customDomain"]) }] : []),
+            ...(f["framework"] ? [{ label: "Framework", value: String(f["framework"]) }] : []),
+          ];
+        }
+        case "netlify-dns-zone": {
+          return [{ label: "Domain", value: String(f["domain"] ?? f["name"] ?? "") }];
+        }
+        default:
+          return [];
       }
-      case "netlify-dns-zone": {
-        return [{ label: "Domain", value: String(f["domain"] ?? f["name"] ?? "") }];
-      }
-      default:
-        return [];
-    }
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -864,581 +877,593 @@ export class NetlifyClient implements PluginClient {
     };
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    if (typeId === "netlify-site") {
-      return {
-        fields: [
-          {
-            key: "name",
-            label: "Site Name",
-            kind: "text",
-            required: true,
-            description: "A unique subdomain name (e.g. my-app → my-app.netlify.app)",
-          },
-        ],
-      };
-    }
-
-    if (typeId === "netlify-dns-zone") {
-      return {
-        fields: [
-          {
-            key: "name",
-            label: "Domain Name",
-            kind: "text",
-            required: true,
-            description: "The domain name for the DNS zone (e.g. example.com)",
-          },
-        ],
-      };
-    }
-
-    if (typeId === "netlify-dns-record") {
-      const zoneField = !parentResourceId
-        ? await (async () => {
-            const zones = (await this.api.getDnsZones()) ?? [];
-            const zoneOptions = zones.map((z) => ({
-              id: z.id,
-              label: z.name || z.domain || z.id,
-            }));
-            return [
-              {
-                key: "zoneId",
-                label: "DNS Zone",
-                kind: "select" as const,
-                required: true,
-                options: zoneOptions,
-                ...(zoneOptions[0] ? { defaultValue: zoneOptions[0].id } : {}),
-              },
-            ];
-          })()
-        : [];
-
-      return {
-        fields: [
-          ...zoneField,
-          {
-            key: "type",
-            label: "Record Type",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "A", label: "A" },
-              { id: "AAAA", label: "AAAA" },
-              { id: "CNAME", label: "CNAME" },
-              { id: "MX", label: "MX" },
-              { id: "TXT", label: "TXT" },
-              { id: "NS", label: "NS" },
-              { id: "SRV", label: "SRV" },
-              { id: "CAA", label: "CAA" },
-              { id: "ALIAS", label: "ALIAS" },
-            ],
-            defaultValue: "A",
-          },
-          {
-            key: "hostname",
-            label: "Hostname",
-            kind: "text",
-            required: true,
-            description: "e.g. www or @ for the root",
-          },
-          ...dnsContentField({
-            key: "value",
-            label: "Value",
-            placeholder: "e.g. 192.168.1.1 for A records",
-          }),
-          {
-            key: "ttl",
-            label: "TTL (seconds)",
-            kind: "text",
-            required: false,
-            description: "Time to live; leave blank for default (3600)",
-          },
-        ],
-      };
-    }
-
-    if (typeId === "netlify-build-hook") {
-      const siteField = !parentResourceId
-        ? await (async () => {
-            const sites = await this.paginateAll<NetlifySite>(
-              async (params) => (await this.api.listSites(params)) ?? [],
-            );
-            const siteOptions = sites.map((s) => ({
-              id: s.id,
-              label: s.name || s.id,
-            }));
-            return [
-              {
-                key: "siteId",
-                label: "Site",
-                kind: "select" as const,
-                required: true,
-                options: siteOptions,
-                ...(siteOptions[0] ? { defaultValue: siteOptions[0].id } : {}),
-              },
-            ];
-          })()
-        : [];
-
-      return {
-        fields: [
-          ...siteField,
-          {
-            key: "title",
-            label: "Hook Name",
-            kind: "text",
-            required: true,
-            description: "A descriptive name for this build hook (e.g. CMS publish)",
-          },
-          {
-            key: "branch",
-            label: "Branch",
-            kind: "text",
-            required: false,
-            description: "Git branch to build; defaults to the production branch",
-          },
-        ],
-      };
-    }
-
-    if (typeId === "netlify-env-var") {
-      const siteField = !parentResourceId
-        ? await (async () => {
-            const sites = await this.paginateAll<NetlifySite>(
-              async (params) => (await this.api.listSites(params)) ?? [],
-            );
-            const siteOptions = sites.map((s) => ({
-              id: String(s.id),
-              label: s.name || String(s.id),
-            }));
-            return [
-              {
-                key: "siteId",
-                label: "Site",
-                kind: "select" as const,
-                required: true,
-                options: siteOptions,
-                ...(siteOptions[0] ? { defaultValue: siteOptions[0].id } : {}),
-              },
-            ];
-          })()
-        : [];
-
-      return {
-        fields: [
-          ...siteField,
-          {
-            key: "key",
-            label: "Variable Key",
-            kind: "text",
-            required: true,
-            description: "e.g. DATABASE_URL or API_KEY",
-          },
-          {
-            key: "value",
-            label: "Value",
-            kind: "text",
-            required: true,
-          },
-          {
-            key: "context",
-            label: "Context",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "all", label: "All contexts" },
-              { id: "production", label: "Production only" },
-              { id: "deploy-preview", label: "Deploy previews only" },
-              { id: "branch-deploy", label: "Branch deploys only" },
-              { id: "dev", label: "Local development only" },
-            ],
-            defaultValue: "all",
-          },
-          {
-            key: "isSecret",
-            label: "Contains Secret Values",
-            kind: "select",
-            required: false,
-            defaultValue: "false",
-            description:
-              "Secret values are write-only and masked outside Netlify. They need an explicit context (not All contexts) and cannot use local development.",
-            options: [
-              { id: "false", label: "No" },
-              { id: "true", label: "Yes" },
-            ],
-          },
-          {
-            key: "scopes",
-            label: "Scopes",
-            kind: "policy-picker",
-            required: false,
-            description: "Where the variable is available. Leave empty for all scopes.",
-            policies: [
-              { id: "builds", label: "Builds" },
-              { id: "functions", label: "Functions" },
-              { id: "runtime", label: "Runtime" },
-              { id: "post-processing", label: "Post-processing" },
-            ],
-          },
-        ],
-      };
-    }
-
-    const sitePicker = async (): Promise<CreateResourceConfig["fields"]> => {
-      if (parentResourceId) return [];
-      const sites = await this.paginateAll<NetlifySite>(
-        async (params) => (await this.api.listSites(params)) ?? [],
-      );
-      const options = sites.map((site) => ({ id: site.id, label: site.name || site.id }));
-      return [
-        {
-          key: "siteId",
-          label: "Site",
-          kind: "select",
-          required: true,
-          options,
-          ...(options[0] ? { defaultValue: options[0].id } : {}),
-        },
-      ];
-    };
-
-    if (typeId === "netlify-notification-hook") {
-      let events = DEFAULT_HOOK_EVENTS;
-      try {
-        const types = (await this.api.listHookTypes()) ?? [];
-        const fromApi = [...new Set(types.flatMap((t) => t.events ?? []))];
-        if (fromApi.length > 0) events = fromApi;
-      } catch {
-        /* keep the documented defaults */
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "netlify-site") {
+        return {
+          fields: [
+            {
+              key: "name",
+              label: "Site Name",
+              kind: "text",
+              required: true,
+              description: "A unique subdomain name (e.g. my-app → my-app.netlify.app)",
+            },
+          ],
+        };
       }
-      return {
-        fields: [
-          ...(await sitePicker()),
+
+      if (typeId === "netlify-dns-zone") {
+        return {
+          fields: [
+            {
+              key: "name",
+              label: "Domain Name",
+              kind: "text",
+              required: true,
+              description: "The domain name for the DNS zone (e.g. example.com)",
+            },
+          ],
+        };
+      }
+
+      if (typeId === "netlify-dns-record") {
+        const zoneField = !parentResourceId
+          ? await (async () => {
+              const zones = (await this.api.getDnsZones()) ?? [];
+              const zoneOptions = zones.map((z) => ({
+                id: z.id,
+                label: z.name || z.domain || z.id,
+              }));
+              return [
+                {
+                  key: "zoneId",
+                  label: "DNS Zone",
+                  kind: "select" as const,
+                  required: true,
+                  options: zoneOptions,
+                  ...(zoneOptions[0] ? { defaultValue: zoneOptions[0].id } : {}),
+                },
+              ];
+            })()
+          : [];
+
+        return {
+          fields: [
+            ...zoneField,
+            {
+              key: "type",
+              label: "Record Type",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "A", label: "A" },
+                { id: "AAAA", label: "AAAA" },
+                { id: "CNAME", label: "CNAME" },
+                { id: "MX", label: "MX" },
+                { id: "TXT", label: "TXT" },
+                { id: "NS", label: "NS" },
+                { id: "SRV", label: "SRV" },
+                { id: "CAA", label: "CAA" },
+                { id: "ALIAS", label: "ALIAS" },
+              ],
+              defaultValue: "A",
+            },
+            {
+              key: "hostname",
+              label: "Hostname",
+              kind: "text",
+              required: true,
+              description: "e.g. www or @ for the root",
+            },
+            ...dnsContentField({
+              key: "value",
+              label: "Value",
+              placeholder: "e.g. 192.168.1.1 for A records",
+            }),
+            {
+              key: "ttl",
+              label: "TTL (seconds)",
+              kind: "text",
+              required: false,
+              description: "Time to live; leave blank for default (3600)",
+            },
+          ],
+        };
+      }
+
+      if (typeId === "netlify-build-hook") {
+        const siteField = !parentResourceId
+          ? await (async () => {
+              const sites = await this.paginateAll<NetlifySite>(
+                async (params) => (await this.api.listSites(params)) ?? [],
+              );
+              const siteOptions = sites.map((s) => ({
+                id: s.id,
+                label: s.name || s.id,
+              }));
+              return [
+                {
+                  key: "siteId",
+                  label: "Site",
+                  kind: "select" as const,
+                  required: true,
+                  options: siteOptions,
+                  ...(siteOptions[0] ? { defaultValue: siteOptions[0].id } : {}),
+                },
+              ];
+            })()
+          : [];
+
+        return {
+          fields: [
+            ...siteField,
+            {
+              key: "title",
+              label: "Hook Name",
+              kind: "text",
+              required: true,
+              description: "A descriptive name for this build hook (e.g. CMS publish)",
+            },
+            {
+              key: "branch",
+              label: "Branch",
+              kind: "text",
+              required: false,
+              description: "Git branch to build; defaults to the production branch",
+            },
+          ],
+        };
+      }
+
+      if (typeId === "netlify-env-var") {
+        const siteField = !parentResourceId
+          ? await (async () => {
+              const sites = await this.paginateAll<NetlifySite>(
+                async (params) => (await this.api.listSites(params)) ?? [],
+              );
+              const siteOptions = sites.map((s) => ({
+                id: String(s.id),
+                label: s.name || String(s.id),
+              }));
+              return [
+                {
+                  key: "siteId",
+                  label: "Site",
+                  kind: "select" as const,
+                  required: true,
+                  options: siteOptions,
+                  ...(siteOptions[0] ? { defaultValue: siteOptions[0].id } : {}),
+                },
+              ];
+            })()
+          : [];
+
+        return {
+          fields: [
+            ...siteField,
+            {
+              key: "key",
+              label: "Variable Key",
+              kind: "text",
+              required: true,
+              description: "e.g. DATABASE_URL or API_KEY",
+            },
+            {
+              key: "value",
+              label: "Value",
+              kind: "text",
+              required: true,
+            },
+            {
+              key: "context",
+              label: "Context",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "all", label: "All contexts" },
+                { id: "production", label: "Production only" },
+                { id: "deploy-preview", label: "Deploy previews only" },
+                { id: "branch-deploy", label: "Branch deploys only" },
+                { id: "dev", label: "Local development only" },
+              ],
+              defaultValue: "all",
+            },
+            {
+              key: "isSecret",
+              label: "Contains Secret Values",
+              kind: "select",
+              required: false,
+              defaultValue: "false",
+              description:
+                "Secret values are write-only and masked outside Netlify. They need an explicit context (not All contexts) and cannot use local development.",
+              options: [
+                { id: "false", label: "No" },
+                { id: "true", label: "Yes" },
+              ],
+            },
+            {
+              key: "scopes",
+              label: "Scopes",
+              kind: "policy-picker",
+              required: false,
+              description: "Where the variable is available. Leave empty for all scopes.",
+              policies: [
+                { id: "builds", label: "Builds" },
+                { id: "functions", label: "Functions" },
+                { id: "runtime", label: "Runtime" },
+                { id: "post-processing", label: "Post-processing" },
+              ],
+            },
+          ],
+        };
+      }
+
+      const sitePicker = async (): Promise<CreateResourceConfig["fields"]> => {
+        if (parentResourceId) return [];
+        const sites = await this.paginateAll<NetlifySite>(
+          async (params) => (await this.api.listSites(params)) ?? [],
+        );
+        const options = sites.map((site) => ({ id: site.id, label: site.name || site.id }));
+        return [
           {
-            key: "type",
-            label: "Notify By",
+            key: "siteId",
+            label: "Site",
             kind: "select",
             required: true,
-            defaultValue: "url",
-            options: [
-              { id: "url", label: "HTTP POST request" },
-              { id: "email", label: "Email" },
-              { id: "slack", label: "Slack incoming webhook" },
-            ],
+            options,
+            ...(options[0] ? { defaultValue: options[0].id } : {}),
           },
-          {
-            key: "event",
-            label: "Event",
-            kind: "select",
-            required: true,
-            defaultValue: events[0] ?? "deploy_created",
-            options: events.map((e) => ({ id: e, label: hookEventLabel(e) })),
-          },
-          {
-            key: "target",
-            label: "Destination",
-            kind: "text",
-            required: true,
-            description: "The email address, or the URL to call",
-          },
-        ],
+        ];
       };
-    }
 
-    if (typeId === "netlify-snippet") {
-      return {
-        fields: [
-          ...(await sitePicker()),
-          { key: "title", label: "Title", kind: "text", required: true },
-          {
-            key: "position",
-            label: "Position",
-            kind: "select",
-            required: true,
-            defaultValue: "head",
-            options: [
-              { id: "head", label: "Before </head>" },
-              { id: "footer", label: "Before </body>" },
-            ],
-          },
-          { key: "code", label: "HTML", kind: "code", required: true },
-        ],
-      };
-    }
+      if (typeId === "netlify-notification-hook") {
+        let events = DEFAULT_HOOK_EVENTS;
+        try {
+          const types = (await this.api.listHookTypes()) ?? [];
+          const fromApi = [...new Set(types.flatMap((t) => t.events ?? []))];
+          if (fromApi.length > 0) events = fromApi;
+        } catch {
+          /* keep the documented defaults */
+        }
+        return {
+          fields: [
+            ...(await sitePicker()),
+            {
+              key: "type",
+              label: "Notify By",
+              kind: "select",
+              required: true,
+              defaultValue: "url",
+              options: [
+                { id: "url", label: "HTTP POST request" },
+                { id: "email", label: "Email" },
+                { id: "slack", label: "Slack incoming webhook" },
+              ],
+            },
+            {
+              key: "event",
+              label: "Event",
+              kind: "select",
+              required: true,
+              defaultValue: events[0] ?? "deploy_created",
+              options: events.map((e) => ({ id: e, label: hookEventLabel(e) })),
+            },
+            {
+              key: "target",
+              label: "Destination",
+              kind: "text",
+              required: true,
+              description: "The email address, or the URL to call",
+            },
+          ],
+        };
+      }
 
-    if (typeId === "netlify-database") {
-      // The database is created in the site's functions region.
-      return { fields: await sitePicker() };
-    }
+      if (typeId === "netlify-snippet") {
+        return {
+          fields: [
+            ...(await sitePicker()),
+            { key: "title", label: "Title", kind: "text", required: true },
+            {
+              key: "position",
+              label: "Position",
+              kind: "select",
+              required: true,
+              defaultValue: "head",
+              options: [
+                { id: "head", label: "Before </head>" },
+                { id: "footer", label: "Before </body>" },
+              ],
+            },
+            { key: "code", label: "HTML", kind: "code", required: true },
+          ],
+        };
+      }
 
-    throw new Error(`Netlify plugin: no create config for type "${typeId}"`);
+      if (typeId === "netlify-database") {
+        // The database is created in the site's functions region.
+        return { fields: await sitePicker() };
+      }
+
+      throw new Error(`Netlify plugin: no create config for type "${typeId}"`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
-    if (typeId === "netlify-site") {
-      const site = await this.api.createSite({ body: { name: fields["name"] ?? "" } });
-      return this.mapSite(site, accountId);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const parentExternalId = parentResourceId
+        ? parentResourceId.split(":").slice(2).join(":")
+        : "";
+      if (typeId === "netlify-site") {
+        const site = await this.api.createSite({ body: { name: fields["name"] ?? "" } });
+        return this.mapSite(site, accountId);
+      }
 
-    if (typeId === "netlify-dns-zone") {
-      const zone = await this.api.createDnsZone({ body: { name: fields["name"] ?? "" } });
-      return this.mapDnsZone(zone, accountId);
-    }
+      if (typeId === "netlify-dns-zone") {
+        const zone = await this.api.createDnsZone({ body: { name: fields["name"] ?? "" } });
+        return this.mapDnsZone(zone, accountId);
+      }
 
-    if (typeId === "netlify-dns-record") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId) throw new Error("Netlify plugin: zoneId is required to create a DNS record");
-      const record = await this.api.createDnsRecord({
-        zoneId,
-        body: {
-          type: fields["type"] ?? "",
-          hostname: fields["hostname"] ?? "",
-          value: fields["value"] ?? "",
-          ...(fields["ttl"] ? { ttl: Number(fields["ttl"]) } : {}),
-        },
-      });
-      return this.mapDnsRecord(record, accountId, zoneId);
-    }
-
-    if (typeId === "netlify-build-hook") {
-      const siteId = fields["siteId"] || parentExternalId;
-      if (!siteId) throw new Error("Netlify plugin: siteId is required to create a build hook");
-      const hook = await this.api.createSiteBuildHook({
-        siteId,
-        body: {
-          title: fields["title"] ?? "",
-          ...(fields["branch"] ? { branch: fields["branch"] } : {}),
-        },
-      });
-      return this.mapBuildHook(hook, accountId, siteId);
-    }
-
-    if (typeId === "netlify-env-var") {
-      const siteId = fields["siteId"] || parentExternalId;
-      if (!siteId) throw new Error("Netlify plugin: siteId is required to create an env var");
-      const context = fields["context"] || "all";
-      const isSecret = fields["isSecret"] === "true";
-      const scopes = parseJsonIds(fields["scopes"]);
-      const effectiveScopes =
-        scopes.length > 0 ? scopes : ["builds", "functions", "runtime", "post-processing"];
-      await this.api.createEnvVars({
-        accountId: await this.siteAccountId(siteId),
-        siteId,
-        body: [
-          {
-            key: fields["key"] ?? "",
-            scopes: effectiveScopes,
-            values: [{ context, value: fields["value"] ?? "" }],
-            ...(isSecret ? { is_secret: true } : {}),
+      if (typeId === "netlify-dns-record") {
+        const zoneId = fields["zoneId"] || parentExternalId;
+        if (!zoneId) throw new Error("Netlify plugin: zoneId is required to create a DNS record");
+        const record = await this.api.createDnsRecord({
+          zoneId,
+          body: {
+            type: fields["type"] ?? "",
+            hostname: fields["hostname"] ?? "",
+            value: fields["value"] ?? "",
+            ...(fields["ttl"] ? { ttl: Number(fields["ttl"]) } : {}),
           },
-        ],
-      });
+        });
+        return this.mapDnsRecord(record, accountId, zoneId);
+      }
 
-      const now = new Date().toISOString();
-      return {
-        id: `${accountId}:netlify-env-var:${siteId}/${fields["key"]}`,
-        pluginId: "netlify",
-        resourceTypeId: "netlify-env-var",
-        accountId,
-        displayName: fields["key"] ?? "",
-        fields: {
-          key: fields["key"] ?? "",
-          scopes: effectiveScopes.join(", "),
-          contexts: context,
-          isSecret,
+      if (typeId === "netlify-build-hook") {
+        const siteId = fields["siteId"] || parentExternalId;
+        if (!siteId) throw new Error("Netlify plugin: siteId is required to create a build hook");
+        const hook = await this.api.createSiteBuildHook({
+          siteId,
+          body: {
+            title: fields["title"] ?? "",
+            ...(fields["branch"] ? { branch: fields["branch"] } : {}),
+          },
+        });
+        return this.mapBuildHook(hook, accountId, siteId);
+      }
+
+      if (typeId === "netlify-env-var") {
+        const siteId = fields["siteId"] || parentExternalId;
+        if (!siteId) throw new Error("Netlify plugin: siteId is required to create an env var");
+        const context = fields["context"] || "all";
+        const isSecret = fields["isSecret"] === "true";
+        const scopes = parseJsonIds(fields["scopes"]);
+        const effectiveScopes =
+          scopes.length > 0 ? scopes : ["builds", "functions", "runtime", "post-processing"];
+        await this.api.createEnvVars({
+          accountId: await this.siteAccountId(siteId),
+          siteId,
+          body: [
+            {
+              key: fields["key"] ?? "",
+              scopes: effectiveScopes,
+              values: [{ context, value: fields["value"] ?? "" }],
+              ...(isSecret ? { is_secret: true } : {}),
+            },
+          ],
+        });
+
+        const now = new Date().toISOString();
+        return {
+          id: `${accountId}:netlify-env-var:${siteId}/${fields["key"]}`,
+          pluginId: "netlify",
+          resourceTypeId: "netlify-env-var",
+          accountId,
+          displayName: fields["key"] ?? "",
+          fields: {
+            key: fields["key"] ?? "",
+            scopes: effectiveScopes.join(", "),
+            contexts: context,
+            isSecret,
+            updatedAt: now,
+          },
+          resolvedOutputs: { envKey: fields["key"] ?? "" },
+          secretStates: [],
+          parentResourceId: `${accountId}:netlify-site:${siteId}`,
+          createdAt: now,
           updatedAt: now,
-        },
-        resolvedOutputs: { envKey: fields["key"] ?? "" },
-        secretStates: [],
-        parentResourceId: `${accountId}:netlify-site:${siteId}`,
-        createdAt: now,
-        updatedAt: now,
-      };
-    }
+        };
+      }
 
-    if (typeId === "netlify-notification-hook") {
-      const siteId = fields["siteId"] || parentExternalId;
-      if (!siteId) throw new Error("Netlify plugin: siteId is required to create a notification");
-      const type = fields["type"] || "url";
-      const hook = await this.api.createHook({
-        siteId,
-        body: {
-          type,
-          event: fields["event"] ?? "",
-          data: { [type === "email" ? "email" : "url"]: fields["target"] ?? "" },
-        },
-      });
-      return this.mapHook(hook, accountId, siteId);
-    }
+      if (typeId === "netlify-notification-hook") {
+        const siteId = fields["siteId"] || parentExternalId;
+        if (!siteId) throw new Error("Netlify plugin: siteId is required to create a notification");
+        const type = fields["type"] || "url";
+        const hook = await this.api.createHook({
+          siteId,
+          body: {
+            type,
+            event: fields["event"] ?? "",
+            data: { [type === "email" ? "email" : "url"]: fields["target"] ?? "" },
+          },
+        });
+        return this.mapHook(hook, accountId, siteId);
+      }
 
-    if (typeId === "netlify-snippet") {
-      const siteId = fields["siteId"] || parentExternalId;
-      if (!siteId) throw new Error("Netlify plugin: siteId is required to create a snippet");
-      const snippet = await this.api.createSnippet({
-        siteId,
-        body: {
-          title: fields["title"] ?? "",
-          general: fields["code"] ?? "",
-          general_position: fields["position"] || "head",
-        },
-      });
-      return this.mapSnippet(snippet, accountId, siteId);
-    }
+      if (typeId === "netlify-snippet") {
+        const siteId = fields["siteId"] || parentExternalId;
+        if (!siteId) throw new Error("Netlify plugin: siteId is required to create a snippet");
+        const snippet = await this.api.createSnippet({
+          siteId,
+          body: {
+            title: fields["title"] ?? "",
+            general: fields["code"] ?? "",
+            general_position: fields["position"] || "head",
+          },
+        });
+        return this.mapSnippet(snippet, accountId, siteId);
+      }
 
-    if (typeId === "netlify-database") {
-      const siteId = fields["siteId"] || parentExternalId;
-      if (!siteId) throw new Error("Netlify plugin: siteId is required to create a database");
-      await this.api.createSiteDatabase({ siteId, body: {} });
-      return this.getResource(typeId, `${accountId}:netlify-database:${siteId}`, accountId);
-    }
+      if (typeId === "netlify-database") {
+        const siteId = fields["siteId"] || parentExternalId;
+        if (!siteId) throw new Error("Netlify plugin: siteId is required to create a database");
+        await this.api.createSiteDatabase({ siteId, body: {} });
+        return runPluginEffect(
+          this.getResource(typeId, `${accountId}:netlify-database:${siteId}`, accountId),
+        );
+      }
 
-    throw new Error(`Netlify plugin: createResource not supported for type "${typeId}"`);
+      throw new Error(`Netlify plugin: createResource not supported for type "${typeId}"`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "netlify-site") {
-      const siteId = resourceId.split(":").pop() ?? "";
-      const body: Record<string, unknown> = {};
-      if (fields["name"]) body["name"] = fields["name"];
-      if (fields["forceSsl"] !== undefined) body["force_ssl"] = fields["forceSsl"] === "true";
-      const build: Record<string, unknown> = {};
-      if (fields["buildCommand"] !== undefined) build["cmd"] = fields["buildCommand"];
-      if (fields["publishDir"] !== undefined) build["dir"] = fields["publishDir"];
-      if (fields["functionsDir"] !== undefined) build["functions_dir"] = fields["functionsDir"];
-      if (fields["repoBranch"]) build["repo_branch"] = fields["repoBranch"];
-      if (fields["stopBuilds"] !== undefined)
-        build["stop_builds"] = fields["stopBuilds"] === "true";
-      if (Object.keys(build).length > 0) body["build_settings"] = build;
-      const site = await this.api.updateSite({ siteId, body });
-      return this.mapSite(site, accountId);
-    }
-
-    const { siteId, childId } = splitSiteChild(resourceId);
-
-    if (typeId === "netlify-env-var") {
-      if (fields["newValue"]) {
-        await this.api.setEnvVarValue({
-          accountId: await this.siteAccountId(siteId),
-          siteId,
-          key: childId,
-          body: { context: fields["valueContext"] || "all", value: fields["newValue"] },
-        });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "netlify-site") {
+        const siteId = resourceId.split(":").pop() ?? "";
+        const body: Record<string, unknown> = {};
+        if (fields["name"]) body["name"] = fields["name"];
+        if (fields["forceSsl"] !== undefined) body["force_ssl"] = fields["forceSsl"] === "true";
+        const build: Record<string, unknown> = {};
+        if (fields["buildCommand"] !== undefined) build["cmd"] = fields["buildCommand"];
+        if (fields["publishDir"] !== undefined) build["dir"] = fields["publishDir"];
+        if (fields["functionsDir"] !== undefined) build["functions_dir"] = fields["functionsDir"];
+        if (fields["repoBranch"]) build["repo_branch"] = fields["repoBranch"];
+        if (fields["stopBuilds"] !== undefined)
+          build["stop_builds"] = fields["stopBuilds"] === "true";
+        if (Object.keys(build).length > 0) body["build_settings"] = build;
+        const site = await this.api.updateSite({ siteId, body });
+        return this.mapSite(site, accountId);
       }
-      return this.getResource(typeId, resourceId, accountId);
-    }
 
-    if (typeId === "netlify-build-hook") {
-      await this.api.updateSiteBuildHook({
-        siteId,
-        id: childId,
-        body: {
-          ...(fields["title"] !== undefined ? { title: fields["title"] } : {}),
-          ...(fields["branch"] !== undefined ? { branch: fields["branch"] } : {}),
-        },
-      });
-      return this.getResource(typeId, resourceId, accountId);
-    }
+      const { siteId, childId } = splitSiteChild(resourceId);
 
-    if (typeId === "netlify-notification-hook") {
-      const current = await this.getResource(typeId, resourceId, accountId);
-      const type = String(current.fields["type"] ?? "url");
-      const hook = await this.api.updateHook({
-        hookId: childId,
-        body: {
-          type,
-          event: fields["event"] ?? String(current.fields["event"] ?? ""),
-          data: {
-            [type === "email" ? "email" : "url"]:
-              fields["target"] ?? String(current.fields["target"] ?? ""),
+      if (typeId === "netlify-env-var") {
+        if (fields["newValue"]) {
+          await this.api.setEnvVarValue({
+            accountId: await this.siteAccountId(siteId),
+            siteId,
+            key: childId,
+            body: { context: fields["valueContext"] || "all", value: fields["newValue"] },
+          });
+        }
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
+
+      if (typeId === "netlify-build-hook") {
+        await this.api.updateSiteBuildHook({
+          siteId,
+          id: childId,
+          body: {
+            ...(fields["title"] !== undefined ? { title: fields["title"] } : {}),
+            ...(fields["branch"] !== undefined ? { branch: fields["branch"] } : {}),
           },
-        },
-      });
-      return this.mapHook(hook, accountId, siteId);
-    }
+        });
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
 
-    if (typeId === "netlify-snippet") {
-      const current = await this.getResource(typeId, resourceId, accountId);
-      await this.api.updateSnippet({
-        siteId,
-        snippetId: childId,
-        body: {
-          title: fields["title"] ?? String(current.fields["title"] ?? ""),
-          general: fields["code"] ?? String(current.fields["code"] ?? ""),
-          general_position: fields["position"] ?? String(current.fields["position"] ?? "head"),
-        },
-      });
-      return this.getResource(typeId, resourceId, accountId);
-    }
+      if (typeId === "netlify-notification-hook") {
+        const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const type = String(current.fields["type"] ?? "url");
+        const hook = await this.api.updateHook({
+          hookId: childId,
+          body: {
+            type,
+            event: fields["event"] ?? String(current.fields["event"] ?? ""),
+            data: {
+              [type === "email" ? "email" : "url"]:
+                fields["target"] ?? String(current.fields["target"] ?? ""),
+            },
+          },
+        });
+        return this.mapHook(hook, accountId, siteId);
+      }
 
-    throw new Error(`Netlify plugin: updateResource not supported for type "${typeId}"`);
+      if (typeId === "netlify-snippet") {
+        const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        await this.api.updateSnippet({
+          siteId,
+          snippetId: childId,
+          body: {
+            title: fields["title"] ?? String(current.fields["title"] ?? ""),
+            general: fields["code"] ?? String(current.fields["code"] ?? ""),
+            general_position: fields["position"] ?? String(current.fields["position"] ?? "head"),
+          },
+        });
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
+
+      throw new Error(`Netlify plugin: updateResource not supported for type "${typeId}"`);
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const last = resourceId.split(":").pop() ?? "";
-    if (typeId === "netlify-site") {
-      switch (actionId) {
-        case "build":
-          await this.api.createSiteBuild({ siteId: last });
-          return;
-        case "build-clear-cache":
-          await this.api.createSiteBuild({ siteId: last, clearCache: true });
-          return;
-        case "rollback":
-          await this.api.rollbackSite({ siteId: last });
-          return;
-        case "provision-ssl":
-          await this.api.provisionSiteTls({ siteId: last });
-          return;
-        case "purge-cache":
-          await this.api.purgeCache({ siteId: last });
-          return;
-      }
-    }
-    if (typeId === "netlify-deploy") {
-      switch (actionId) {
-        case "cancel":
-          await this.api.cancelDeploy({ deployId: last });
-          return;
-        case "lock":
-          await this.api.lockDeploy({ deployId: last });
-          return;
-        case "unlock":
-          await this.api.unlockDeploy({ deployId: last });
-          return;
-        case "publish": {
-          const deploy = await this.api.getDeploy({ deployId: last });
-          if (!deploy.site_id) throw new Error("Netlify plugin: deploy has no site");
-          await this.api.restoreSiteDeploy({ siteId: deploy.site_id, deployId: last });
-          return;
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const last = resourceId.split(":").pop() ?? "";
+      if (typeId === "netlify-site") {
+        switch (actionId) {
+          case "build":
+            await this.api.createSiteBuild({ siteId: last });
+            return;
+          case "build-clear-cache":
+            await this.api.createSiteBuild({ siteId: last, clearCache: true });
+            return;
+          case "rollback":
+            await this.api.rollbackSite({ siteId: last });
+            return;
+          case "provision-ssl":
+            await this.api.provisionSiteTls({ siteId: last });
+            return;
+          case "purge-cache":
+            await this.api.purgeCache({ siteId: last });
+            return;
         }
       }
-    }
-    if (typeId === "netlify-notification-hook" && actionId === "enable") {
-      await this.api.enableHook({ hookId: splitSiteChild(resourceId).childId });
-      return;
-    }
-    if (typeId === "netlify-database" && actionId === "snapshot") {
-      await this.api.createSiteDatabaseSnapshot({ siteId: last });
-      return;
-    }
-    throw new Error(`Netlify plugin: invokeAction "${actionId}" not supported for "${typeId}"`);
+      if (typeId === "netlify-deploy") {
+        switch (actionId) {
+          case "cancel":
+            await this.api.cancelDeploy({ deployId: last });
+            return;
+          case "lock":
+            await this.api.lockDeploy({ deployId: last });
+            return;
+          case "unlock":
+            await this.api.unlockDeploy({ deployId: last });
+            return;
+          case "publish": {
+            const deploy = await this.api.getDeploy({ deployId: last });
+            if (!deploy.site_id) throw new Error("Netlify plugin: deploy has no site");
+            await this.api.restoreSiteDeploy({ siteId: deploy.site_id, deployId: last });
+            return;
+          }
+        }
+      }
+      if (typeId === "netlify-notification-hook" && actionId === "enable") {
+        await this.api.enableHook({ hookId: splitSiteChild(resourceId).childId });
+        return;
+      }
+      if (typeId === "netlify-database" && actionId === "snapshot") {
+        await this.api.createSiteDatabaseSnapshot({ siteId: last });
+        return;
+      }
+      throw new Error(`Netlify plugin: invokeAction "${actionId}" not supported for "${typeId}"`);
+    });
   }
 
   /**
@@ -1446,203 +1471,211 @@ export class NetlifyClient implements PluginClient {
    * branches and snapshots. Each is stashed as JSON under a `__…__` field
    * for the synchronous renderer and skipped when its call fails.
    */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const extra: Record<string, string> = {};
-    const stash = async (key: string, load: () => Promise<unknown>) => {
-      try {
-        const value = await load();
-        if (value != null) extra[key] = JSON.stringify(value);
-      } catch {
-        /* optional panel */
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const extra: Record<string, string> = {};
+      const stash = async (key: string, load: () => Promise<unknown>) => {
+        try {
+          const value = await load();
+          if (value != null) extra[key] = JSON.stringify(value);
+        } catch {
+          /* optional panel */
+        }
+      };
+      const last = resource.id.split(":").pop() ?? "";
+      switch (resource.resourceTypeId) {
+        case "netlify-site":
+          await stash("__tls__", () => this.api.getSiteTls({ siteId: last }));
+          break;
+        case "netlify-form":
+          await stash("__submissions__", () =>
+            this.api.listFormSubmissions({ formId: resource.externalId ?? "", perPage: 20 }),
+          );
+          break;
+        case "netlify-database":
+          await Promise.all([
+            stash(
+              "__branches__",
+              async () => (await this.api.listSiteDatabaseBranches({ siteId: last })).branches,
+            ),
+            stash(
+              "__snapshots__",
+              async () => (await this.api.listSiteDatabaseSnapshots({ siteId: last })).snapshots,
+            ),
+          ]);
+          break;
+        default:
+          return resource;
       }
-    };
-    const last = resource.id.split(":").pop() ?? "";
-    switch (resource.resourceTypeId) {
-      case "netlify-site":
-        await stash("__tls__", () => this.api.getSiteTls({ siteId: last }));
-        break;
-      case "netlify-form":
-        await stash("__submissions__", () =>
-          this.api.listFormSubmissions({ formId: resource.externalId ?? "", perPage: 20 }),
-        );
-        break;
-      case "netlify-database":
-        await Promise.all([
-          stash(
-            "__branches__",
-            async () => (await this.api.listSiteDatabaseBranches({ siteId: last })).branches,
-          ),
-          stash(
-            "__snapshots__",
-            async () => (await this.api.listSiteDatabaseSnapshots({ siteId: last })).snapshots,
-          ),
-        ]);
-        break;
-      default:
-        return resource;
-    }
-    return { ...resource, fields: { ...resource.fields, ...extra } };
+      return { ...resource, fields: { ...resource.fields, ...extra } };
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId === "netlify-site") {
-      const siteId = resourceId.split(":").pop();
-      if (!siteId) throw new Error("Netlify plugin: cannot parse site ID");
-      await this.api.deleteSite({ siteId });
-      return;
-    }
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "netlify-site") {
+        const siteId = resourceId.split(":").pop();
+        if (!siteId) throw new Error("Netlify plugin: cannot parse site ID");
+        await this.api.deleteSite({ siteId });
+        return;
+      }
 
-    if (typeId === "netlify-deploy") {
-      const deployId = resourceId.split(":").pop();
-      if (!deployId) throw new Error("Netlify plugin: cannot parse deploy ID");
-      await this.api.deleteDeploy({ deployId });
-      return;
-    }
+      if (typeId === "netlify-deploy") {
+        const deployId = resourceId.split(":").pop();
+        if (!deployId) throw new Error("Netlify plugin: cannot parse deploy ID");
+        await this.api.deleteDeploy({ deployId });
+        return;
+      }
 
-    if (typeId === "netlify-form") {
-      // resource ID format: {accountId}:netlify-form:{siteId}/{formId}
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Netlify plugin: cannot parse form ID");
-      const [siteId, formId] = compound.split("/");
-      if (!siteId || !formId) throw new Error("Netlify plugin: cannot parse form ID");
-      await this.api.deleteSiteForm({ siteId, formId });
-      return;
-    }
+      if (typeId === "netlify-form") {
+        // resource ID format: {accountId}:netlify-form:{siteId}/{formId}
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Netlify plugin: cannot parse form ID");
+        const [siteId, formId] = compound.split("/");
+        if (!siteId || !formId) throw new Error("Netlify plugin: cannot parse form ID");
+        await this.api.deleteSiteForm({ siteId, formId });
+        return;
+      }
 
-    if (typeId === "netlify-dns-zone") {
-      const zoneId = resourceId.split(":").pop();
-      if (!zoneId) throw new Error("Netlify plugin: cannot parse DNS zone ID");
-      await this.api.deleteDnsZone({ zoneId });
-      return;
-    }
+      if (typeId === "netlify-dns-zone") {
+        const zoneId = resourceId.split(":").pop();
+        if (!zoneId) throw new Error("Netlify plugin: cannot parse DNS zone ID");
+        await this.api.deleteDnsZone({ zoneId });
+        return;
+      }
 
-    if (typeId === "netlify-dns-record") {
-      // resource ID format: {accountId}:netlify-dns-record:{zoneId}/{recordId}
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Netlify plugin: cannot parse DNS record ID");
-      const [zoneId, recordId] = compound.split("/");
-      if (!zoneId || !recordId) throw new Error("Netlify plugin: cannot parse DNS record ID");
-      await this.api.deleteDnsRecord({ zoneId, dnsRecordId: recordId });
-      return;
-    }
+      if (typeId === "netlify-dns-record") {
+        // resource ID format: {accountId}:netlify-dns-record:{zoneId}/{recordId}
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Netlify plugin: cannot parse DNS record ID");
+        const [zoneId, recordId] = compound.split("/");
+        if (!zoneId || !recordId) throw new Error("Netlify plugin: cannot parse DNS record ID");
+        await this.api.deleteDnsRecord({ zoneId, dnsRecordId: recordId });
+        return;
+      }
 
-    if (typeId === "netlify-build-hook") {
-      // resource ID format: {accountId}:netlify-build-hook:{siteId}/{hookId}
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Netlify plugin: cannot parse build hook ID");
-      const [siteId, hookId] = compound.split("/");
-      if (!siteId || !hookId) throw new Error("Netlify plugin: cannot parse build hook ID");
-      await this.api.deleteSiteBuildHook({ siteId, id: hookId });
-      return;
-    }
+      if (typeId === "netlify-build-hook") {
+        // resource ID format: {accountId}:netlify-build-hook:{siteId}/{hookId}
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Netlify plugin: cannot parse build hook ID");
+        const [siteId, hookId] = compound.split("/");
+        if (!siteId || !hookId) throw new Error("Netlify plugin: cannot parse build hook ID");
+        await this.api.deleteSiteBuildHook({ siteId, id: hookId });
+        return;
+      }
 
-    if (typeId === "netlify-env-var") {
-      // resource ID format: {accountId}:netlify-env-var:{siteId}/{key}
-      const compound = resourceId.split(":").pop();
-      if (!compound) throw new Error("Netlify plugin: cannot parse env var");
-      const slashIdx = compound.indexOf("/");
-      if (slashIdx < 0) throw new Error("Netlify plugin: cannot parse env var");
-      const siteId = compound.slice(0, slashIdx);
-      const key = compound.slice(slashIdx + 1);
-      await this.api.deleteEnvVar({ accountId: await this.siteAccountId(siteId), siteId, key });
-      return;
-    }
+      if (typeId === "netlify-env-var") {
+        // resource ID format: {accountId}:netlify-env-var:{siteId}/{key}
+        const compound = resourceId.split(":").pop();
+        if (!compound) throw new Error("Netlify plugin: cannot parse env var");
+        const slashIdx = compound.indexOf("/");
+        if (slashIdx < 0) throw new Error("Netlify plugin: cannot parse env var");
+        const siteId = compound.slice(0, slashIdx);
+        const key = compound.slice(slashIdx + 1);
+        await this.api.deleteEnvVar({ accountId: await this.siteAccountId(siteId), siteId, key });
+        return;
+      }
 
-    if (typeId === "netlify-notification-hook") {
-      await this.api.deleteHook({ hookId: splitSiteChild(resourceId).childId });
-      return;
-    }
+      if (typeId === "netlify-notification-hook") {
+        await this.api.deleteHook({ hookId: splitSiteChild(resourceId).childId });
+        return;
+      }
 
-    if (typeId === "netlify-snippet") {
-      const { siteId, childId } = splitSiteChild(resourceId);
-      await this.api.deleteSnippet({ siteId, snippetId: childId });
-      return;
-    }
+      if (typeId === "netlify-snippet") {
+        const { siteId, childId } = splitSiteChild(resourceId);
+        await this.api.deleteSnippet({ siteId, snippetId: childId });
+        return;
+      }
 
-    if (typeId === "netlify-database") {
-      await this.api.deleteSiteDatabase({ siteId: resourceId.split(":").pop() ?? "" });
-      return;
-    }
+      if (typeId === "netlify-database") {
+        await this.api.deleteSiteDatabase({ siteId: resourceId.split(":").pop() ?? "" });
+        return;
+      }
 
-    throw new Error(`Netlify plugin: deleteResource not supported for type "${typeId}"`);
+      throw new Error(`Netlify plugin: deleteResource not supported for type "${typeId}"`);
+    });
   }
 
-  async attachResource(
+  attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
     targetTypeId: string,
     targetResourceId: string,
     accountId: string,
-  ): Promise<void> {
-    if (sourceTypeId === "netlify-dns-zone" && targetTypeId === "netlify-site") {
-      const [zone, site] = await Promise.all([
-        this.getResource(sourceTypeId, sourceResourceId, accountId),
-        this.getResource(targetTypeId, targetResourceId, accountId),
-      ]);
-      const domain = String(zone.fields["domain"] ?? zone.fields["name"] ?? "");
-      const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
-      if (!domain || !siteId) {
-        throw new Error("Cannot determine Netlify DNS zone or site identity for attachment");
-      }
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (sourceTypeId === "netlify-dns-zone" && targetTypeId === "netlify-site") {
+        const [zone, site] = await Promise.all([
+          runPluginEffect(this.getResource(sourceTypeId, sourceResourceId, accountId)),
+          runPluginEffect(this.getResource(targetTypeId, targetResourceId, accountId)),
+        ]);
+        const domain = String(zone.fields["domain"] ?? zone.fields["name"] ?? "");
+        const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
+        if (!domain || !siteId) {
+          throw new Error("Cannot determine Netlify DNS zone or site identity for attachment");
+        }
 
-      const currentSite = await this.api.getSite({ siteId });
-      const customDomain = currentSite.custom_domain ?? "";
-      const domainAliases = currentSite.domain_aliases ?? [];
-      if (customDomain === domain || domainAliases.includes(domain)) return;
+        const currentSite = await this.api.getSite({ siteId });
+        const customDomain = currentSite.custom_domain ?? "";
+        const domainAliases = currentSite.domain_aliases ?? [];
+        if (customDomain === domain || domainAliases.includes(domain)) return;
 
-      if (!customDomain) {
-        await this.api.updateSite({ siteId, body: { custom_domain: domain } });
+        if (!customDomain) {
+          await this.api.updateSite({ siteId, body: { custom_domain: domain } });
+          return;
+        }
+
+        await this.api.updateSite({
+          siteId,
+          body: { domain_aliases: [...domainAliases, domain] },
+        });
         return;
       }
 
-      await this.api.updateSite({
-        siteId,
-        body: { domain_aliases: [...domainAliases, domain] },
-      });
-      return;
-    }
-
-    if (sourceTypeId === "netlify-deploy" && targetTypeId === "netlify-site") {
-      const [deploy, site] = await Promise.all([
-        this.getResource(sourceTypeId, sourceResourceId, accountId),
-        this.getResource(targetTypeId, targetResourceId, accountId),
-      ]);
-      const deployId = String(deploy.externalId ?? sourceResourceId.split(":").pop() ?? "");
-      const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
-      if (!deployId || !siteId) {
-        throw new Error("Cannot determine Netlify deploy or site identity for publishing");
+      if (sourceTypeId === "netlify-deploy" && targetTypeId === "netlify-site") {
+        const [deploy, site] = await Promise.all([
+          runPluginEffect(this.getResource(sourceTypeId, sourceResourceId, accountId)),
+          runPluginEffect(this.getResource(targetTypeId, targetResourceId, accountId)),
+        ]);
+        const deployId = String(deploy.externalId ?? sourceResourceId.split(":").pop() ?? "");
+        const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
+        if (!deployId || !siteId) {
+          throw new Error("Cannot determine Netlify deploy or site identity for publishing");
+        }
+        await this.api.restoreSiteDeploy({ siteId, deployId });
+        return;
       }
-      await this.api.restoreSiteDeploy({ siteId, deployId });
-      return;
-    }
 
-    if (sourceTypeId === "netlify-build-hook" && targetTypeId === "netlify-site") {
-      const [hook, site] = await Promise.all([
-        this.getResource(sourceTypeId, sourceResourceId, accountId),
-        this.getResource(targetTypeId, targetResourceId, accountId),
-      ]);
-      const hookUrl = String(hook.fields["url"] ?? "");
-      const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
-      if (!hookUrl || !siteId) {
-        throw new Error("Cannot determine Netlify build hook URL or site identity for env import");
+      if (sourceTypeId === "netlify-build-hook" && targetTypeId === "netlify-site") {
+        const [hook, site] = await Promise.all([
+          runPluginEffect(this.getResource(sourceTypeId, sourceResourceId, accountId)),
+          runPluginEffect(this.getResource(targetTypeId, targetResourceId, accountId)),
+        ]);
+        const hookUrl = String(hook.fields["url"] ?? "");
+        const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
+        if (!hookUrl || !siteId) {
+          throw new Error(
+            "Cannot determine Netlify build hook URL or site identity for env import",
+          );
+        }
+        await this.api.createEnvVars({
+          accountId: await this.siteAccountId(siteId),
+          siteId,
+          body: [
+            {
+              key: "NETLIFY_BUILD_HOOK_URL",
+              scopes: ["builds", "functions", "runtime", "post-processing"],
+              values: [{ context: "all", value: hookUrl }],
+            },
+          ],
+        });
+        return;
       }
-      await this.api.createEnvVars({
-        accountId: await this.siteAccountId(siteId),
-        siteId,
-        body: [
-          {
-            key: "NETLIFY_BUILD_HOOK_URL",
-            scopes: ["builds", "functions", "runtime", "post-processing"],
-            values: [{ context: "all", value: hookUrl }],
-          },
-        ],
-      });
-      return;
-    }
 
-    throw new Error(
-      `Netlify plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
-    );
+      throw new Error(
+        `Netlify plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
+      );
+    });
   }
 
   /**

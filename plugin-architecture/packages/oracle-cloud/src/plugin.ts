@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { OracleCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -11,16 +12,17 @@ import { ociRemediationCommands } from "./remediation.js";
 
 const API_KEY_DOCS = "https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "oracle-cloud",
-  version: "0.1.0",
+  // Every OCI service host sits under oraclecloud.com (identity, iaas,
+  // database, objectstorage, telemetry, usageapi, usage, limits, query,
+  // containerengine); the public price list is on apexapps.oracle.com.
+  egressHosts: ["*.oraclecloud.com", "apexapps.oracle.com"],
   displayName: "Oracle Cloud",
   description:
     "Oracle Cloud Infrastructure (OCI). Billed spend by service, SKU, region and compartment, Universal Credits burndown, service limits, and Compute, volumes, networking, load balancers, Object Storage, Autonomous Databases, OKE clusters and budgets across every subscribed region.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "tenancyOcid",
       label: "Tenancy OCID",
@@ -66,7 +68,7 @@ const manifest: PluginManifest = {
       regions: HOME_REGION_OPTIONS,
     },
     caCertCredentialField,
-  ],
+  ]),
   // Usage API (POST /20200107/usage), queryType COST, DAILY: OCI's billed
   // amount (`computedAmount`) per service, SKU, region and resource, with the
   // resource's compartment path as a tag. Twelve months of history, up to 48
@@ -93,13 +95,22 @@ const manifest: PluginManifest = {
   statusFeed,
   priceCatalog: ociPriceCatalog,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new OracleCloudClient(credentials, services),
+  testCredentials: {
+    tenancyOcid: "ocid1.tenancy.oc1..aaaaaaaatest",
+    userOcid: "ocid1.user.oc1..aaaaaaaatest",
+    fingerprint: "12:34:56:78:9a:bc:de:f0:12:34:56:78:9a:bc:de:f0",
+    privateKey: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----",
+    region: "us-ashburn-1",
+  },
   parseStatusFeed,
   terraformExport: ociTerraformExport,
   remediationCommands: ociRemediationCommands,
-};
+});

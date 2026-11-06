@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { LambdaCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,14 @@ import { lambdaCloudRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "lambda-cloud",
-  version: "0.1.0",
+  egressHosts: ["cloud.lambda.ai"],
   displayName: "Lambda Cloud",
   description:
     "GPU cloud. On-demand instances with live capacity and price pickers, launch, restart and terminate, persistent filesystems, firewall rulesets and SSH keys.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -26,15 +25,18 @@ const manifest: PluginManifest = {
       helpLink: { label: "Lambda Cloud API keys", url: "https://cloud.lambda.ai/api-keys" },
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) =>
     new LambdaCloudClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "secret_test_key" },
   parseStatusFeed,
   remediationCommands: lambdaCloudRemediationCommands,
-};
+});

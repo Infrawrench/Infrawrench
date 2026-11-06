@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { runPluginContractTests } from "@infrawrench/plugin-base/test-harness";
 import { describe, expect, it } from "vitest";
 import { plugin } from "../plugin.js";
@@ -10,7 +11,7 @@ const creds = {
 runPluginContractTests(plugin, creds);
 
 describe("rendering", () => {
-  const client = plugin.createClient(creds);
+  const client = hostPlugin(plugin).createClient(creds);
   for (const rt of plugin.resourceTypes) {
     it(`renders ${rt.id} without enrichment`, () => {
       const resource = {

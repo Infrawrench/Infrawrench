@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkosClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -36,7 +37,7 @@ function routed(routes: Record<string, unknown>) {
   }) as unknown as typeof fetch);
   const sent = (method: string, path: string) =>
     calls.filter((c) => c.method === method && c.url.split("?")[0] === path);
-  return { calls, sent, client: new WorkosClient({ apiKey: "sk_test_key" }) };
+  return { calls, sent, client: hostClient(new WorkosClient({ apiKey: "sk_test_key" })) };
 }
 
 const list = (data: unknown[]) => ({ object: "list", data, list_metadata: { after: null } });

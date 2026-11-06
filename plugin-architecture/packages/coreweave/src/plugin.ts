@@ -1,4 +1,6 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CoreWeaveClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -9,16 +11,16 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { coreweaveTerraformExport } from "./terraform.js";
 import { coreweaveRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "coreweave",
-  version: "0.1.0",
+  // Cloud API, observability API and every CKS cluster API server
+  // (`{org}-{hash}.k8s.{zone}.coreweave.com`); bucket data is on cwobject.com.
+  egressHosts: ["*.coreweave.com", "cwobject.com", "*.cwobject.com"],
   displayName: "CoreWeave",
   description:
     "GPU cloud. GPU-hours and estimated spend by cluster, instance type and capacity plan, CKS clusters, Node Pools, VPCs, AI Object Storage buckets, GPU utilization, and per-namespace GPU cost.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Access Token",
@@ -42,7 +44,7 @@ const manifest: PluginManifest = {
       placeholder: "gd-8xh100ib-i128=35.50, reserved/gb200-4x=30, storage=0.06",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // FOCUS usage export: product family/service → service, zone → region,
     // cluster id → resource, and SKU, capacity plan, cluster name, GPU model
@@ -59,15 +61,18 @@ const manifest: PluginManifest = {
   // Static list prices from catalog.ts, North American zones only.
   priceCatalog,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CoreWeaveClient(credentials, services),
+  testCredentials: { apiToken: "CW-SECRET-test" },
   parseStatusFeed,
-  fetchPriceCatalog,
+  fetchPriceCatalog: attemptFn(fetchPriceCatalog),
   policyTemplate: coreweavePolicyTemplate,
   terraformExport: coreweaveTerraformExport,
   remediationCommands: coreweaveRemediationCommands,
-};
+});

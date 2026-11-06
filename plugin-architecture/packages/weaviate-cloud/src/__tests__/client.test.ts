@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { normalizeEndpoint, parseCloudHost, WeaviateApiError } from "../api.js";
 import {
@@ -16,10 +17,8 @@ const ACCOUNT = "acct";
 
 function client() {
   const http = fakeHttp();
-  const c = new WeaviateClient(
-    { endpoint: `${HOST}/v1/`, apiKey: "k" },
-    RESOURCE_TYPES,
-    http.services,
+  const c = hostClient(
+    new WeaviateClient({ endpoint: `${HOST}/v1/`, apiKey: "k" }, RESOURCE_TYPES, http.services),
   );
   return { http, c };
 }

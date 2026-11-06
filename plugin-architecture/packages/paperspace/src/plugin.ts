@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { PaperspaceClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { paperspaceRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "paperspace",
-  version: "0.1.0",
+  egressHosts: ["api.paperspace.com"],
   displayName: "Paperspace",
   description:
     "GPU machines from DigitalOcean's Paperspace. Machines with start, stop and resize, snapshots, custom templates, shared drives, private networks, static IPs, startup scripts, projects, container deployments with metrics, and registry credentials.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -29,15 +28,18 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) =>
     new PaperspaceClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "test-paperspace-key" },
   parseStatusFeed,
   remediationCommands: paperspaceRemediationCommands,
-};
+});

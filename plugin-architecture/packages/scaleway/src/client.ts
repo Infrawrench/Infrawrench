@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   ResourceInstance,
@@ -119,7 +122,7 @@ export class ScalewayClient implements PluginClient {
   };
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     resourceTypes: ResourceTypeDefinition[] = [],
     services?: HostServices,
   ) {
@@ -279,773 +282,808 @@ export class ScalewayClient implements PluginClient {
     return res;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "instance":
-        return this.listInstances(accountId);
-      case "kapsule-cluster":
-        return this.listKapsuleClusters(accountId);
-      case "rdb-instance":
-        return this.listManagedDatabases(accountId);
-      case "object-storage-bucket":
-        return this.listObjectStorageBuckets(accountId);
-      case "block-volume":
-        return this.listBlockVolumes(accountId);
-      case "flexible-ip":
-        return this.listFlexibleIps(accountId);
-      case "load-balancer":
-        return products.listLoadBalancers(this.rest, this.zones(), accountId);
-      case "private-network":
-        return products.listPrivateNetworks(this.rest, this.regions(), accountId);
-      case "serverless-container":
-        return products.listContainers(this.rest, this.regions(), accountId);
-      case "serverless-function":
-        return products.listFunctions(this.rest, this.regions(), accountId);
-      case "registry-namespace":
-        return products.listRegistryNamespaces(this.rest, this.regions(), accountId);
-      case "secret":
-        return products.listSecrets(this.rest, this.regions(), accountId);
-      case "dns-zone":
-        return products.listDnsZones(this.rest, accountId);
-      case "dns-record":
-        return products.listDnsRecords(this.rest, accountId);
-      default:
-        throw new Error(`Scaleway plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "instance":
+          return this.listInstances(accountId);
+        case "kapsule-cluster":
+          return this.listKapsuleClusters(accountId);
+        case "rdb-instance":
+          return this.listManagedDatabases(accountId);
+        case "object-storage-bucket":
+          return this.listObjectStorageBuckets(accountId);
+        case "block-volume":
+          return this.listBlockVolumes(accountId);
+        case "flexible-ip":
+          return this.listFlexibleIps(accountId);
+        case "load-balancer":
+          return products.listLoadBalancers(this.rest, this.zones(), accountId);
+        case "private-network":
+          return products.listPrivateNetworks(this.rest, this.regions(), accountId);
+        case "serverless-container":
+          return products.listContainers(this.rest, this.regions(), accountId);
+        case "serverless-function":
+          return products.listFunctions(this.rest, this.regions(), accountId);
+        case "registry-namespace":
+          return products.listRegistryNamespaces(this.rest, this.regions(), accountId);
+        case "secret":
+          return products.listSecrets(this.rest, this.regions(), accountId);
+        case "dns-zone":
+          return products.listDnsZones(this.rest, accountId);
+        case "dns-record":
+          return products.listDnsRecords(this.rest, accountId);
+        default:
+          throw new Error(`Scaleway plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Scaleway plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Scaleway plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (outputKey === "nodeHourlyRates") {
-      // The Kubernetes peer asks every managed-cluster type what its nodes
-      // cost per hour, so it can derive per-namespace and per-workload spend.
-      // Scaleway publishes no pricing API this plugin reads today.
-      // Returning "" is the honest answer and makes the peer show capacity and
-      // efficiency without money rather than inventing a price. It must return
-      // rather than fall through: the host resolves every credentialMapping
-      // before building the peer client, so a throw here would take the whole
-      // Kubernetes tab down.
-      return "";
-    }
-
-    if (typeId === "kapsule-cluster" && outputKey === "kubeconfig") {
-      const externalId = resourceId.split(":").pop()!;
-      // externalId format: {region}/{clusterId}
-      const parts = externalId.split("/");
-      const region = parts[0]! as Region;
-      const clusterId = parts[1]!;
-      // The SDK returns the kubeconfig as a Blob whose body is JSON of the
-      // form {content: base64, ...} (matching the upstream REST response).
-      const blob = await this.k8sApi().getClusterKubeConfig({ region, clusterId });
-      const text = await blob.text();
-      try {
-        const parsed = JSON.parse(text) as { content?: string };
-        return typeof parsed.content === "string" ? atob(parsed.content) : "";
-      } catch {
-        // If the response is already plain YAML, return it as-is.
-        return text;
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (outputKey === "nodeHourlyRates") {
+        // The Kubernetes peer asks every managed-cluster type what its nodes
+        // cost per hour, so it can derive per-namespace and per-workload spend.
+        // Scaleway publishes no pricing API this plugin reads today.
+        // Returning "" is the honest answer and makes the peer show capacity and
+        // efficiency without money rather than inventing a price. It must return
+        // rather than fall through: the host resolves every credentialMapping
+        // before building the peer client, so a throw here would take the whole
+        // Kubernetes tab down.
+        return "";
       }
-    }
 
-    if (typeId === "rdb-instance") {
-      const externalId = resourceId.split(":").pop()!;
-      const parts = externalId.split("/");
-      const region = parts[0]! as Region;
-      const instanceId = parts[1]!;
-      const instance = await this.rdbApi().getInstance({ region, instanceId });
-      const endpoint = instance.endpoints?.[0];
-      switch (outputKey) {
-        case "host":
-          return endpoint?.ip ?? endpoint?.hostname ?? "";
-        case "port":
-          return String(endpoint?.port ?? "");
-        case "username":
-          return ""; // User needs to look up users from the RDB API
-        case "password":
-          return ""; // Password is only shown at creation time
-        case "dbName":
-          return "rdb"; // Default database name
+      if (typeId === "kapsule-cluster" && outputKey === "kubeconfig") {
+        const externalId = resourceId.split(":").pop()!;
+        // externalId format: {region}/{clusterId}
+        const parts = externalId.split("/");
+        const region = parts[0]! as Region;
+        const clusterId = parts[1]!;
+        // The SDK returns the kubeconfig as a Blob whose body is JSON of the
+        // form {content: base64, ...} (matching the upstream REST response).
+        const blob = await this.k8sApi().getClusterKubeConfig({ region, clusterId });
+        const text = await blob.text();
+        try {
+          const parsed = JSON.parse(text) as { content?: string };
+          return typeof parsed.content === "string" ? atob(parsed.content) : "";
+        } catch {
+          // If the response is already plain YAML, return it as-is.
+          return text;
+        }
       }
-    }
 
-    if (typeId === "object-storage-bucket") {
-      if (outputKey === "endpoint") {
-        const resource = await this.getResource(typeId, resourceId, accountId);
-        const region = String(resource.fields["region"] ?? "fr-par");
-        return `https://s3.${region}.scw.cloud`;
+      if (typeId === "rdb-instance") {
+        const externalId = resourceId.split(":").pop()!;
+        const parts = externalId.split("/");
+        const region = parts[0]! as Region;
+        const instanceId = parts[1]!;
+        const instance = await this.rdbApi().getInstance({ region, instanceId });
+        const endpoint = instance.endpoints?.[0];
+        switch (outputKey) {
+          case "host":
+            return endpoint?.ip ?? endpoint?.hostname ?? "";
+          case "port":
+            return String(endpoint?.port ?? "");
+          case "username":
+            return ""; // User needs to look up users from the RDB API
+          case "password":
+            return ""; // Password is only shown at creation time
+          case "dbName":
+            return "rdb"; // Default database name
+        }
       }
-      if (outputKey === "accessKeyId") return this.accessKey;
-      if (outputKey === "secretAccessKey") return this.secretKey;
-    }
 
-    if (SIMPLE_OUTPUT_TYPES.has(typeId)) {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      const value = resource.resolvedOutputs[outputKey];
-      if (value !== undefined) return String(value);
-    }
+      if (typeId === "object-storage-bucket") {
+        if (outputKey === "endpoint") {
+          const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const region = String(resource.fields["region"] ?? "fr-par");
+          return `https://s3.${region}.scw.cloud`;
+        }
+        if (outputKey === "accessKeyId") return this.accessKey;
+        if (outputKey === "secretAccessKey") return this.secretKey;
+      }
 
-    throw new Error(`Scaleway plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      if (SIMPLE_OUTPUT_TYPES.has(typeId)) {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const value = resource.resolvedOutputs[outputKey];
+        if (value !== undefined) return String(value);
+      }
+
+      throw new Error(`Scaleway plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   /** Instance types and their hourly list prices for one zone. */
-  async fetchPriceCatalog(request: PriceCatalogRequest): Promise<PriceCatalogResult> {
-    const api = this.instanceApi();
-    return fetchScalewayPriceCatalog(
-      {
-        listServersTypes: async ({ zone, page, perPage }) => {
-          const data = await api.listServersTypes({ zone: zone as Zone, page, perPage });
-          return { totalCount: data.totalCount, servers: data.servers };
+  fetchPriceCatalog(request: PriceCatalogRequest): PluginEffect<PriceCatalogResult> {
+    return attempt(async () => {
+      const api = this.instanceApi();
+      return fetchScalewayPriceCatalog(
+        {
+          listServersTypes: async ({ zone, page, perPage }) => {
+            const data = await api.listServersTypes({ zone: zone as Zone, page, perPage });
+            return { totalCount: data.totalCount, servers: data.servers };
+          },
         },
-      },
-      request,
-    );
+        request,
+      );
+    });
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    if (typeId === "instance") {
-      return this.getInstanceCreateConfig();
-    }
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "instance") {
+        return this.getInstanceCreateConfig();
+      }
 
-    if (typeId === "flexible-ip") {
-      return {
-        fields: [
-          {
-            key: "zone",
-            label: "Zone",
-            kind: "region-picker",
-            required: true,
-            regions: this.zoneOptions(),
-            defaultValue: "fr-par-1",
-          },
-          {
-            key: "type",
-            label: "Type",
-            kind: "select",
-            required: true,
-            defaultValue: "routed_ipv4",
-            options: [
-              { id: "routed_ipv4", label: "IPv4" },
-              { id: "routed_ipv6", label: "IPv6 (/64)" },
-            ],
-          },
-        ],
-      };
-    }
+      if (typeId === "flexible-ip") {
+        return {
+          fields: [
+            {
+              key: "zone",
+              label: "Zone",
+              kind: "region-picker",
+              required: true,
+              regions: this.zoneOptions(),
+              defaultValue: "fr-par-1",
+            },
+            {
+              key: "type",
+              label: "Type",
+              kind: "select",
+              required: true,
+              defaultValue: "routed_ipv4",
+              options: [
+                { id: "routed_ipv4", label: "IPv4" },
+                { id: "routed_ipv6", label: "IPv6 (/64)" },
+              ],
+            },
+          ],
+        };
+      }
 
-    if (typeId === "load-balancer") {
-      return products.loadBalancerCreateConfig(this.rest, this.zoneOptions());
-    }
+      if (typeId === "load-balancer") {
+        return products.loadBalancerCreateConfig(this.rest, this.zoneOptions());
+      }
 
-    if (typeId === "private-network") {
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions: this.regionOptions(),
-            defaultValue: "fr-par",
-          },
-          {
-            key: "subnets",
-            label: "Subnets",
-            kind: "string-list",
-            required: false,
-            description:
-              "Private CIDR ranges, e.g. 172.16.0.0/22. Leave empty to let Scaleway pick one",
-          },
-        ],
-      };
-    }
+      if (typeId === "private-network") {
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions: this.regionOptions(),
+              defaultValue: "fr-par",
+            },
+            {
+              key: "subnets",
+              label: "Subnets",
+              kind: "string-list",
+              required: false,
+              description:
+                "Private CIDR ranges, e.g. 172.16.0.0/22. Leave empty to let Scaleway pick one",
+            },
+          ],
+        };
+      }
 
-    if (typeId === "registry-namespace") {
-      return {
-        fields: [
-          {
-            key: "name",
-            label: "Name",
-            kind: "text",
-            required: true,
-            description: "Lowercase letters, digits and hyphens; unique across Scaleway",
-          },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions: this.regionOptions(),
-            defaultValue: "fr-par",
-          },
-          { key: "description", label: "Description", kind: "text", required: false },
-          {
-            key: "isPublic",
-            label: "Visibility",
-            kind: "select",
-            required: true,
-            defaultValue: "false",
-            options: [
-              { id: "false", label: "Private" },
-              { id: "true", label: "Public (anyone can pull)" },
-            ],
-          },
-        ],
-      };
-    }
+      if (typeId === "registry-namespace") {
+        return {
+          fields: [
+            {
+              key: "name",
+              label: "Name",
+              kind: "text",
+              required: true,
+              description: "Lowercase letters, digits and hyphens; unique across Scaleway",
+            },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions: this.regionOptions(),
+              defaultValue: "fr-par",
+            },
+            { key: "description", label: "Description", kind: "text", required: false },
+            {
+              key: "isPublic",
+              label: "Visibility",
+              kind: "select",
+              required: true,
+              defaultValue: "false",
+              options: [
+                { id: "false", label: "Private" },
+                { id: "true", label: "Public (anyone can pull)" },
+              ],
+            },
+          ],
+        };
+      }
 
-    if (typeId === "dns-zone") {
-      return {
-        fields: [
-          {
-            key: "domain",
-            label: "Domain",
-            kind: "text",
-            required: true,
-            placeholder: "example.com",
-            description: "A domain registered with Scaleway or an external domain you added",
-          },
-          {
-            key: "subdomain",
-            label: "Subdomain",
-            kind: "text",
-            required: true,
-            description: "Creates the zone <subdomain>.<domain>",
-          },
-        ],
-      };
-    }
+      if (typeId === "dns-zone") {
+        return {
+          fields: [
+            {
+              key: "domain",
+              label: "Domain",
+              kind: "text",
+              required: true,
+              placeholder: "example.com",
+              description: "A domain registered with Scaleway or an external domain you added",
+            },
+            {
+              key: "subdomain",
+              label: "Subdomain",
+              kind: "text",
+              required: true,
+              description: "Creates the zone <subdomain>.<domain>",
+            },
+          ],
+        };
+      }
 
-    if (typeId === "dns-record") {
-      return products.dnsRecordCreateConfig(this.rest, parentResourceId);
-    }
+      if (typeId === "dns-record") {
+        return products.dnsRecordCreateConfig(this.rest, parentResourceId);
+      }
 
-    if (typeId === "kapsule-cluster") {
-      return this.getKapsuleCreateConfig();
-    }
+      if (typeId === "kapsule-cluster") {
+        return this.getKapsuleCreateConfig();
+      }
 
-    if (typeId === "rdb-instance") {
-      return this.getRdbCreateConfig();
-    }
+      if (typeId === "rdb-instance") {
+        return this.getRdbCreateConfig();
+      }
 
-    if (typeId === "object-storage-bucket") {
-      return {
-        fields: [
-          { key: "name", label: "Bucket Name", kind: "text", required: true },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            regions: Object.entries(ScalewayClient.REGION_INFO).map(([id, info]) => ({
-              id,
-              label: id,
-              location: info.location,
-              flag: info.flag,
-            })),
-            defaultValue: "fr-par",
-          },
-        ],
-      };
-    }
+      if (typeId === "object-storage-bucket") {
+        return {
+          fields: [
+            { key: "name", label: "Bucket Name", kind: "text", required: true },
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker",
+              required: true,
+              regions: Object.entries(ScalewayClient.REGION_INFO).map(([id, info]) => ({
+                id,
+                label: id,
+                location: info.location,
+                flag: info.flag,
+              })),
+              defaultValue: "fr-par",
+            },
+          ],
+        };
+      }
 
-    if (typeId === "block-volume") {
-      return {
-        fields: [
-          { key: "name", label: "Volume Name", kind: "text", required: true },
-          {
-            key: "zone",
-            label: "Zone",
-            kind: "region-picker",
-            required: true,
-            regions: Object.entries(ScalewayClient.ZONE_INFO).map(([id, info]) => ({
-              id,
-              label: id,
-              location: info.location,
-              flag: info.flag,
-            })),
-            defaultValue: "fr-par-1",
-          },
-          {
-            key: "sizeGb",
-            label: "Size",
-            kind: "disk-slider",
-            required: true,
-            minGb: 1,
-            maxGb: 10000,
-            defaultGb: 100,
-            stepGb: 1,
-          },
-          {
-            key: "perfIops",
-            label: "Performance (IOPS)",
-            kind: "select",
-            required: true,
-            defaultValue: "5000",
-            options: [
-              { id: "5000", label: "5,000 IOPS" },
-              { id: "15000", label: "15,000 IOPS" },
-            ],
-          },
-        ],
-      };
-    }
+      if (typeId === "block-volume") {
+        return {
+          fields: [
+            { key: "name", label: "Volume Name", kind: "text", required: true },
+            {
+              key: "zone",
+              label: "Zone",
+              kind: "region-picker",
+              required: true,
+              regions: Object.entries(ScalewayClient.ZONE_INFO).map(([id, info]) => ({
+                id,
+                label: id,
+                location: info.location,
+                flag: info.flag,
+              })),
+              defaultValue: "fr-par-1",
+            },
+            {
+              key: "sizeGb",
+              label: "Size",
+              kind: "disk-slider",
+              required: true,
+              minGb: 1,
+              maxGb: 10000,
+              defaultGb: 100,
+              stepGb: 1,
+            },
+            {
+              key: "perfIops",
+              label: "Performance (IOPS)",
+              kind: "select",
+              required: true,
+              defaultValue: "5000",
+              options: [
+                { id: "5000", label: "5,000 IOPS" },
+                { id: "15000", label: "15,000 IOPS" },
+              ],
+            },
+          ],
+        };
+      }
 
-    throw new Error(`No create config for type "${typeId}"`);
+      throw new Error(`No create config for type "${typeId}"`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId === "instance") {
-      const externalId = resourceId.split(":").pop()!;
-      // externalId format: {zone}/{serverId}
-      const parts = externalId.split("/");
-      const zone = parts[0]! as Zone;
-      const serverId = parts[1]!;
-      // Terminate to also release the IP
-      await this.instanceApi().serverAction({ zone, serverId, action: "terminate" });
-      return;
-    }
-
-    if (typeId === "kapsule-cluster") {
-      const externalId = resourceId.split(":").pop()!;
-      const parts = externalId.split("/");
-      const region = parts[0]! as Region;
-      const clusterId = parts[1]!;
-      await this.k8sApi().deleteCluster({ region, clusterId, withAdditionalResources: true });
-      return;
-    }
-
-    if (typeId === "rdb-instance") {
-      const externalId = resourceId.split(":").pop()!;
-      const parts = externalId.split("/");
-      const region = parts[0]! as Region;
-      const instanceId = parts[1]!;
-      await this.rdbApi().deleteInstance({ region, instanceId });
-      return;
-    }
-
-    if (typeId === "object-storage-bucket") {
-      const externalId = resourceId.split(":").pop()!;
-      const parts = externalId.split("/");
-      const region = parts[0]!;
-      const bucketName = parts[1]!;
-      // S3-compatible DeleteBucket: DELETE https://<bucket>.s3.<region>.scw.cloud/
-      await this.objectStorageFetch("DELETE", `${bucketName}.s3.${region}.scw.cloud`, "/", region);
-      return;
-    }
-
-    if (typeId === "block-volume") {
-      const externalId = resourceId.split(":").pop()!;
-      const parts = externalId.split("/");
-      const zone = parts[0]! as Zone;
-      const volumeId = parts[1]!;
-      await this.blockApi().deleteVolume({ zone, volumeId });
-      return;
-    }
-
-    switch (typeId) {
-      case "flexible-ip": {
-        const { location, id } = products.splitScoped(resourceId);
-        await this.instanceApi().deleteIp({ zone: location as Zone, ip: id });
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "instance") {
+        const externalId = resourceId.split(":").pop()!;
+        // externalId format: {zone}/{serverId}
+        const parts = externalId.split("/");
+        const zone = parts[0]! as Zone;
+        const serverId = parts[1]!;
+        // Terminate to also release the IP
+        await this.instanceApi().serverAction({ zone, serverId, action: "terminate" });
         return;
       }
-      case "load-balancer":
-        return products.deleteLoadBalancer(this.rest, resourceId);
-      case "private-network": {
-        const { location, id } = products.splitScoped(resourceId);
-        await this.rest.fetch<unknown>(`/vpc/v2/regions/${location}/private-networks/${id}`, {
-          method: "DELETE",
-        });
+
+      if (typeId === "kapsule-cluster") {
+        const externalId = resourceId.split(":").pop()!;
+        const parts = externalId.split("/");
+        const region = parts[0]! as Region;
+        const clusterId = parts[1]!;
+        await this.k8sApi().deleteCluster({ region, clusterId, withAdditionalResources: true });
         return;
       }
-      case "serverless-container":
-        return products.deleteContainer(this.rest, resourceId);
-      case "serverless-function":
-        return products.deleteFunction(this.rest, resourceId);
-      case "registry-namespace":
-        return products.deleteRegistryNamespace(this.rest, resourceId);
-      case "secret":
-        return products.deleteSecret(this.rest, resourceId);
-      case "dns-zone":
-        return products.deleteDnsZone(this.rest, resourceId);
-      case "dns-record":
-        return products.deleteDnsRecord(this.rest, resourceId);
-    }
 
-    throw new Error(`Scaleway plugin: deleteResource not supported for type "${typeId}"`);
+      if (typeId === "rdb-instance") {
+        const externalId = resourceId.split(":").pop()!;
+        const parts = externalId.split("/");
+        const region = parts[0]! as Region;
+        const instanceId = parts[1]!;
+        await this.rdbApi().deleteInstance({ region, instanceId });
+        return;
+      }
+
+      if (typeId === "object-storage-bucket") {
+        const externalId = resourceId.split(":").pop()!;
+        const parts = externalId.split("/");
+        const region = parts[0]!;
+        const bucketName = parts[1]!;
+        // S3-compatible DeleteBucket: DELETE https://<bucket>.s3.<region>.scw.cloud/
+        await this.objectStorageFetch(
+          "DELETE",
+          `${bucketName}.s3.${region}.scw.cloud`,
+          "/",
+          region,
+        );
+        return;
+      }
+
+      if (typeId === "block-volume") {
+        const externalId = resourceId.split(":").pop()!;
+        const parts = externalId.split("/");
+        const zone = parts[0]! as Zone;
+        const volumeId = parts[1]!;
+        await this.blockApi().deleteVolume({ zone, volumeId });
+        return;
+      }
+
+      switch (typeId) {
+        case "flexible-ip": {
+          const { location, id } = products.splitScoped(resourceId);
+          await this.instanceApi().deleteIp({ zone: location as Zone, ip: id });
+          return;
+        }
+        case "load-balancer":
+          return products.deleteLoadBalancer(this.rest, resourceId);
+        case "private-network": {
+          const { location, id } = products.splitScoped(resourceId);
+          await this.rest.fetch<unknown>(`/vpc/v2/regions/${location}/private-networks/${id}`, {
+            method: "DELETE",
+          });
+          return;
+        }
+        case "serverless-container":
+          return products.deleteContainer(this.rest, resourceId);
+        case "serverless-function":
+          return products.deleteFunction(this.rest, resourceId);
+        case "registry-namespace":
+          return products.deleteRegistryNamespace(this.rest, resourceId);
+        case "secret":
+          return products.deleteSecret(this.rest, resourceId);
+        case "dns-zone":
+          return products.deleteDnsZone(this.rest, resourceId);
+        case "dns-record":
+          return products.deleteDnsRecord(this.rest, resourceId);
+      }
+
+      throw new Error(`Scaleway plugin: deleteResource not supported for type "${typeId}"`);
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    if (typeId === "instance" && INSTANCE_ACTIONS.has(actionId)) {
-      const externalId = resourceId.split(":").pop()!;
-      // externalId format: {zone}/{serverId}
-      const parts = externalId.split("/");
-      const zone = parts[0]! as Zone;
-      const serverId = parts[1]!;
-      await this.instanceApi().serverAction({
-        zone,
-        serverId,
-        action: actionId as "poweron",
-        // `backup` snapshots every volume into a new image; name it after
-        // the moment it was taken so the Console list stays readable.
-        ...(actionId === "backup"
-          ? { name: `infrawrench-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}` }
-          : {}),
-      });
-      return;
-    }
-    if (typeId === "serverless-container" && actionId === "redeploy") {
-      await products.redeployContainer(this.rest, resourceId);
-      return;
-    }
-    if (typeId === "serverless-function" && actionId === "deploy") {
-      await products.deployFunction(this.rest, resourceId);
-      return;
-    }
-    throw new Error(
-      `Scaleway plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
-    );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "instance" && INSTANCE_ACTIONS.has(actionId)) {
+        const externalId = resourceId.split(":").pop()!;
+        // externalId format: {zone}/{serverId}
+        const parts = externalId.split("/");
+        const zone = parts[0]! as Zone;
+        const serverId = parts[1]!;
+        await this.instanceApi().serverAction({
+          zone,
+          serverId,
+          action: actionId as "poweron",
+          // `backup` snapshots every volume into a new image; name it after
+          // the moment it was taken so the Console list stays readable.
+          ...(actionId === "backup"
+            ? { name: `infrawrench-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}` }
+            : {}),
+        });
+        return;
+      }
+      if (typeId === "serverless-container" && actionId === "redeploy") {
+        await products.redeployContainer(this.rest, resourceId);
+        return;
+      }
+      if (typeId === "serverless-function" && actionId === "deploy") {
+        await products.deployFunction(this.rest, resourceId);
+        return;
+      }
+      throw new Error(
+        `Scaleway plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
+      );
+    });
   }
 
-  async attachResource(
+  attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
     targetTypeId: string,
     targetResourceId: string,
     accountId: string,
-  ): Promise<void> {
-    if (sourceTypeId === "block-volume" && targetTypeId === "instance") {
-      const [volume, instance] = await Promise.all([
-        this.getResource(sourceTypeId, sourceResourceId, accountId),
-        this.getResource(targetTypeId, targetResourceId, accountId),
-      ]);
-      const volumeZone = String(volume.fields["zone"] ?? "");
-      const instanceZone = String(instance.fields["zone"] ?? "");
-      if (volumeZone && instanceZone && volumeZone !== instanceZone) {
-        throw new Error(
-          `Volume zone ${volumeZone} does not match instance zone ${instanceZone}. Block volumes must be in the same AZ as the instance.`,
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (sourceTypeId === "block-volume" && targetTypeId === "instance") {
+        const [volume, instance] = await Promise.all([
+          runPluginEffect(this.getResource(sourceTypeId, sourceResourceId, accountId)),
+          runPluginEffect(this.getResource(targetTypeId, targetResourceId, accountId)),
+        ]);
+        const volumeZone = String(volume.fields["zone"] ?? "");
+        const instanceZone = String(instance.fields["zone"] ?? "");
+        if (volumeZone && instanceZone && volumeZone !== instanceZone) {
+          throw new Error(
+            `Volume zone ${volumeZone} does not match instance zone ${instanceZone}. Block volumes must be in the same AZ as the instance.`,
+          );
+        }
+        const instanceExternalId = instance.externalId ?? "";
+        const serverId = instanceExternalId.split("/").pop() ?? "";
+        const volumeExternalId = volume.externalId ?? "";
+        const volumeId = volumeExternalId.split("/").pop() ?? "";
+        if (!serverId || !volumeId || !instanceZone) {
+          throw new Error("Cannot determine zone/instance/volume id for attachment");
+        }
+        await this.instanceApi().attachVolume({
+          zone: instanceZone as Zone,
+          serverId,
+          volumeId,
+        });
+        return;
+      }
+      if (sourceTypeId === "flexible-ip" && targetTypeId === "instance") {
+        const instance = await runPluginEffect(
+          this.getResource(targetTypeId, targetResourceId, accountId),
         );
+        const ip = products.splitScoped(sourceResourceId);
+        const instanceZone = String(instance.fields["zone"] ?? "");
+        if (instanceZone && instanceZone !== ip.location) {
+          throw new Error(
+            `Flexible IP zone ${ip.location} does not match instance zone ${instanceZone}.`,
+          );
+        }
+        const serverId = (instance.externalId ?? "").split("/").pop() ?? "";
+        if (!serverId) throw new Error("Cannot determine instance id for the flexible IP");
+        await this.instanceApi().updateIp({
+          zone: ip.location as Zone,
+          ip: ip.id,
+          server: serverId,
+        });
+        return;
       }
-      const instanceExternalId = instance.externalId ?? "";
-      const serverId = instanceExternalId.split("/").pop() ?? "";
-      const volumeExternalId = volume.externalId ?? "";
-      const volumeId = volumeExternalId.split("/").pop() ?? "";
-      if (!serverId || !volumeId || !instanceZone) {
-        throw new Error("Cannot determine zone/instance/volume id for attachment");
-      }
-      await this.instanceApi().attachVolume({
-        zone: instanceZone as Zone,
-        serverId,
-        volumeId,
-      });
-      return;
-    }
-    if (sourceTypeId === "flexible-ip" && targetTypeId === "instance") {
-      const instance = await this.getResource(targetTypeId, targetResourceId, accountId);
-      const ip = products.splitScoped(sourceResourceId);
-      const instanceZone = String(instance.fields["zone"] ?? "");
-      if (instanceZone && instanceZone !== ip.location) {
-        throw new Error(
-          `Flexible IP zone ${ip.location} does not match instance zone ${instanceZone}.`,
-        );
-      }
-      const serverId = (instance.externalId ?? "").split("/").pop() ?? "";
-      if (!serverId) throw new Error("Cannot determine instance id for the flexible IP");
-      await this.instanceApi().updateIp({ zone: ip.location as Zone, ip: ip.id, server: serverId });
-      return;
-    }
-    throw new Error(
-      `Scaleway plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
-    );
+      throw new Error(
+        `Scaleway plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
+      );
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "instance") {
-      return this.createInstance(accountId, fields);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "instance") {
+        return this.createInstance(accountId, fields);
+      }
 
-    if (typeId === "flexible-ip") {
-      const zone = (fields["zone"] || "fr-par-1") as Zone;
-      const created = await this.instanceApi().createIp({
-        zone,
-        ...(this.defaultProjectId ? { project: this.defaultProjectId } : {}),
-        type: (fields["type"] || "routed_ipv4") as "routed_ipv4" | "routed_ipv6",
-      });
-      if (!created.ip) throw new Error("Scaleway plugin: createIp returned no IP");
-      return this.mapFlexibleIp(created.ip, zone, accountId);
-    }
-    if (typeId === "load-balancer") {
-      return products.createLoadBalancer(this.rest, accountId, fields);
-    }
-    if (typeId === "private-network") {
-      return products.createPrivateNetwork(this.rest, accountId, fields);
-    }
-    if (typeId === "registry-namespace") {
-      return products.createRegistryNamespace(this.rest, accountId, fields);
-    }
-    if (typeId === "dns-zone") return products.createDnsZone(this.rest, accountId, fields);
-    if (typeId === "dns-record") {
-      return products.createDnsRecord(this.rest, accountId, fields, parentResourceId);
-    }
-
-    if (typeId === "kapsule-cluster") {
-      return this.createKapsuleCluster(accountId, fields);
-    }
-
-    if (typeId === "rdb-instance") {
-      const region = (fields["region"] ?? "fr-par") as Region;
-      const created = await this.rdbApi().createInstance({
-        region,
-        name: fields["name"] ?? "",
-        engine: fields["engine"] ?? "PostgreSQL-16",
-        nodeType: fields["nodeType"] ?? "DB-DEV-S",
-        isHaCluster: fields["isHaCluster"] === "true",
-        disableBackup: fields["disableBackup"] === "true",
-        userName: fields["userName"] ?? "admin",
-        password: fields["password"] ?? "",
-        // The original REST payload omitted these; passing 0/false preserves
-        // the same server-side defaults.
-        volumeSize: 0,
-        backupSameRegion: false,
-      });
-      const engine = fields["engine"] ?? "PostgreSQL-16";
-      const [engineName, engineVersion] = engine.split("-");
-      const createdAt = created.createdAt
-        ? created.createdAt.toISOString()
-        : new Date().toISOString();
-      return {
-        id: `${accountId}:rdb-instance:${region}/${created.id}`,
-        pluginId: "scaleway",
-        resourceTypeId: "rdb-instance",
-        accountId,
-        displayName: created.name,
-        fields: {
-          name: created.name,
-          engine: engineName ?? engine,
-          engineVersion: engineVersion ?? "",
-          region,
-          nodeType: fields["nodeType"] ?? "DB-DEV-S",
-          status: created.status ?? "provisioning",
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: `${region}/${created.id}`,
-        createdAt,
-        updatedAt: createdAt,
-      };
-    }
-
-    if (typeId === "object-storage-bucket") {
-      const region = fields["region"] ?? "fr-par";
-      const bucketName = fields["name"] ?? "";
-      // S3-compatible CreateBucket: PUT https://<bucket>.s3.<region>.scw.cloud/
-      await this.objectStorageFetch("PUT", `${bucketName}.s3.${region}.scw.cloud`, "/", region);
-      const now = new Date().toISOString();
-      return {
-        id: `${accountId}:object-storage-bucket:${region}/${bucketName}`,
-        pluginId: "scaleway",
-        resourceTypeId: "object-storage-bucket",
-        accountId,
-        displayName: bucketName,
-        fields: { name: bucketName, region },
-        resolvedOutputs: {
-          endpoint: `https://s3.${region}.scw.cloud`,
-        },
-        secretStates: [],
-        externalId: `${region}/${bucketName}`,
-        createdAt: now,
-        updatedAt: now,
-      };
-    }
-
-    if (typeId === "block-volume") {
-      const zone = (fields["zone"] ?? "fr-par-1") as Zone;
-      const sizeGb = Number(fields["sizeGb"] ?? 100);
-      const perfIops = Number(fields["perfIops"] ?? 5000);
-      const created = await this.blockApi().createVolume({
-        zone,
-        ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
-        name: fields["name"] ?? "",
-        perfIops,
-        fromEmpty: { size: sizeGb * 1_000_000_000 },
-      });
-      const nowIso = new Date().toISOString();
-      const createdAt = created.createdAt ? created.createdAt.toISOString() : nowIso;
-      return {
-        id: `${accountId}:block-volume:${zone}/${created.id}`,
-        pluginId: "scaleway",
-        resourceTypeId: "block-volume",
-        accountId,
-        displayName: created.name ?? fields["name"] ?? created.id,
-        fields: {
-          name: created.name ?? fields["name"] ?? "",
+      if (typeId === "flexible-ip") {
+        const zone = (fields["zone"] || "fr-par-1") as Zone;
+        const created = await this.instanceApi().createIp({
           zone,
-          sizeGb: Math.round(created.size / 1_000_000_000),
-          perfIops: String(perfIops),
-          status: created.status ?? "creating",
-          attachedInstanceId: "",
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: `${zone}/${created.id}`,
-        createdAt,
-        updatedAt: nowIso,
-      };
-    }
+          ...(this.defaultProjectId ? { project: this.defaultProjectId } : {}),
+          type: (fields["type"] || "routed_ipv4") as "routed_ipv4" | "routed_ipv6",
+        });
+        if (!created.ip) throw new Error("Scaleway plugin: createIp returned no IP");
+        return this.mapFlexibleIp(created.ip, zone, accountId);
+      }
+      if (typeId === "load-balancer") {
+        return products.createLoadBalancer(this.rest, accountId, fields);
+      }
+      if (typeId === "private-network") {
+        return products.createPrivateNetwork(this.rest, accountId, fields);
+      }
+      if (typeId === "registry-namespace") {
+        return products.createRegistryNamespace(this.rest, accountId, fields);
+      }
+      if (typeId === "dns-zone") return products.createDnsZone(this.rest, accountId, fields);
+      if (typeId === "dns-record") {
+        return products.createDnsRecord(this.rest, accountId, fields, parentResourceId);
+      }
 
-    throw new Error(`Scaleway plugin: createResource not supported for type "${typeId}"`);
+      if (typeId === "kapsule-cluster") {
+        return this.createKapsuleCluster(accountId, fields);
+      }
+
+      if (typeId === "rdb-instance") {
+        const region = (fields["region"] ?? "fr-par") as Region;
+        const created = await this.rdbApi().createInstance({
+          region,
+          name: fields["name"] ?? "",
+          engine: fields["engine"] ?? "PostgreSQL-16",
+          nodeType: fields["nodeType"] ?? "DB-DEV-S",
+          isHaCluster: fields["isHaCluster"] === "true",
+          disableBackup: fields["disableBackup"] === "true",
+          userName: fields["userName"] ?? "admin",
+          password: fields["password"] ?? "",
+          // The original REST payload omitted these; passing 0/false preserves
+          // the same server-side defaults.
+          volumeSize: 0,
+          backupSameRegion: false,
+        });
+        const engine = fields["engine"] ?? "PostgreSQL-16";
+        const [engineName, engineVersion] = engine.split("-");
+        const createdAt = created.createdAt
+          ? created.createdAt.toISOString()
+          : new Date().toISOString();
+        return {
+          id: `${accountId}:rdb-instance:${region}/${created.id}`,
+          pluginId: "scaleway",
+          resourceTypeId: "rdb-instance",
+          accountId,
+          displayName: created.name,
+          fields: {
+            name: created.name,
+            engine: engineName ?? engine,
+            engineVersion: engineVersion ?? "",
+            region,
+            nodeType: fields["nodeType"] ?? "DB-DEV-S",
+            status: created.status ?? "provisioning",
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: `${region}/${created.id}`,
+          createdAt,
+          updatedAt: createdAt,
+        };
+      }
+
+      if (typeId === "object-storage-bucket") {
+        const region = fields["region"] ?? "fr-par";
+        const bucketName = fields["name"] ?? "";
+        // S3-compatible CreateBucket: PUT https://<bucket>.s3.<region>.scw.cloud/
+        await this.objectStorageFetch("PUT", `${bucketName}.s3.${region}.scw.cloud`, "/", region);
+        const now = new Date().toISOString();
+        return {
+          id: `${accountId}:object-storage-bucket:${region}/${bucketName}`,
+          pluginId: "scaleway",
+          resourceTypeId: "object-storage-bucket",
+          accountId,
+          displayName: bucketName,
+          fields: { name: bucketName, region },
+          resolvedOutputs: {
+            endpoint: `https://s3.${region}.scw.cloud`,
+          },
+          secretStates: [],
+          externalId: `${region}/${bucketName}`,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }
+
+      if (typeId === "block-volume") {
+        const zone = (fields["zone"] ?? "fr-par-1") as Zone;
+        const sizeGb = Number(fields["sizeGb"] ?? 100);
+        const perfIops = Number(fields["perfIops"] ?? 5000);
+        const created = await this.blockApi().createVolume({
+          zone,
+          ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
+          name: fields["name"] ?? "",
+          perfIops,
+          fromEmpty: { size: sizeGb * 1_000_000_000 },
+        });
+        const nowIso = new Date().toISOString();
+        const createdAt = created.createdAt ? created.createdAt.toISOString() : nowIso;
+        return {
+          id: `${accountId}:block-volume:${zone}/${created.id}`,
+          pluginId: "scaleway",
+          resourceTypeId: "block-volume",
+          accountId,
+          displayName: created.name ?? fields["name"] ?? created.id,
+          fields: {
+            name: created.name ?? fields["name"] ?? "",
+            zone,
+            sizeGb: Math.round(created.size / 1_000_000_000),
+            perfIops: String(perfIops),
+            status: created.status ?? "creating",
+            attachedInstanceId: "",
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: `${zone}/${created.id}`,
+          createdAt,
+          updatedAt: nowIso,
+        };
+      }
+
+      throw new Error(`Scaleway plugin: createResource not supported for type "${typeId}"`);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
-    const ro = resource.resolvedOutputs ?? {};
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
+      const ro = resource.resolvedOutputs ?? {};
 
-    switch (resourceTypeId) {
-      case "instance": {
-        const state = String(f.state ?? "unknown");
-        const stats: DashboardStat[] = [
-          {
-            label: "State",
-            value: state,
-            variant:
-              state === "running"
-                ? "status-healthy"
-                : state === "stopped" || state === "off"
-                  ? "status-error"
-                  : "status-degraded",
-          },
-          { label: "Type", value: String(f.commercialType ?? "") },
-          { label: "Zone", value: String(f.zone ?? "") },
-        ];
-        if (ro.publicIp) stats.push({ label: "Public IP", value: String(ro.publicIp) });
-        return stats;
+      switch (resourceTypeId) {
+        case "instance": {
+          const state = String(f.state ?? "unknown");
+          const stats: DashboardStat[] = [
+            {
+              label: "State",
+              value: state,
+              variant:
+                state === "running"
+                  ? "status-healthy"
+                  : state === "stopped" || state === "off"
+                    ? "status-error"
+                    : "status-degraded",
+            },
+            { label: "Type", value: String(f.commercialType ?? "") },
+            { label: "Zone", value: String(f.zone ?? "") },
+          ];
+          if (ro.publicIp) stats.push({ label: "Public IP", value: String(ro.publicIp) });
+          return stats;
+        }
+        case "kapsule-cluster": {
+          const status = String(f.status ?? "unknown");
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "ready" || status === "running" ? "status-healthy" : "status-degraded",
+            },
+            { label: "Version", value: String(f.version ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+            { label: "Nodes", value: String(f.nodeCount ?? 0) },
+          ];
+        }
+        case "rdb-instance": {
+          const status = String(f.status ?? "unknown");
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "ready" || status === "running" ? "status-healthy" : "status-degraded",
+            },
+            { label: "Engine", value: String(f.engine ?? "") },
+            { label: "Node Type", value: String(f.nodeType ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+          ];
+        }
+        case "object-storage-bucket": {
+          return [
+            { label: "Name", value: String(f.name ?? "") },
+            { label: "Region", value: String(f.region ?? "") },
+          ];
+        }
+        case "load-balancer":
+          return [
+            {
+              label: "Status",
+              value: String(f.status ?? ""),
+              variant: f.status === "ready" ? "status-healthy" : "status-degraded",
+            },
+            { label: "Type", value: String(f.type ?? "") },
+            { label: "Frontends", value: String(f.frontendCount ?? 0) },
+            { label: "Backends", value: String(f.backendCount ?? 0) },
+            { label: "IP", value: String(ro.ipv4 || ro.ipv6 || "") },
+          ];
+        case "flexible-ip":
+          return [
+            { label: "Address", value: String(f.address ?? "") },
+            { label: "State", value: String(f.state ?? "") },
+            { label: "Zone", value: String(f.zone ?? "") },
+          ];
+        case "serverless-container":
+        case "serverless-function": {
+          const status = String(f.status ?? "");
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant:
+                status === "ready"
+                  ? "status-healthy"
+                  : status === "error"
+                    ? "status-error"
+                    : "status-degraded",
+            },
+            { label: "Scale", value: `${String(f.minScale ?? 0)}-${String(f.maxScale ?? 0)}` },
+            { label: "Memory", value: `${String(f.memoryMb ?? 0)} MB` },
+            ...(ro.endpoint ? [{ label: "Endpoint", value: String(ro.endpoint) }] : []),
+          ];
+        }
+        case "registry-namespace":
+          return [
+            { label: "Images", value: String(f.imageCount ?? 0) },
+            { label: "Size", value: `${String(f.sizeGb ?? 0)} GB` },
+            { label: "Visibility", value: f.isPublic ? "Public" : "Private" },
+          ];
+        case "dns-zone":
+          return [
+            { label: "Status", value: String(f.status ?? "") },
+            { label: "Nameservers", value: String(f.nameservers ?? "") },
+          ];
+        default:
+          return [];
       }
-      case "kapsule-cluster": {
-        const status = String(f.status ?? "unknown");
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant:
-              status === "ready" || status === "running" ? "status-healthy" : "status-degraded",
-          },
-          { label: "Version", value: String(f.version ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-          { label: "Nodes", value: String(f.nodeCount ?? 0) },
-        ];
-      }
-      case "rdb-instance": {
-        const status = String(f.status ?? "unknown");
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant:
-              status === "ready" || status === "running" ? "status-healthy" : "status-degraded",
-          },
-          { label: "Engine", value: String(f.engine ?? "") },
-          { label: "Node Type", value: String(f.nodeType ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-        ];
-      }
-      case "object-storage-bucket": {
-        return [
-          { label: "Name", value: String(f.name ?? "") },
-          { label: "Region", value: String(f.region ?? "") },
-        ];
-      }
-      case "load-balancer":
-        return [
-          {
-            label: "Status",
-            value: String(f.status ?? ""),
-            variant: f.status === "ready" ? "status-healthy" : "status-degraded",
-          },
-          { label: "Type", value: String(f.type ?? "") },
-          { label: "Frontends", value: String(f.frontendCount ?? 0) },
-          { label: "Backends", value: String(f.backendCount ?? 0) },
-          { label: "IP", value: String(ro.ipv4 || ro.ipv6 || "") },
-        ];
-      case "flexible-ip":
-        return [
-          { label: "Address", value: String(f.address ?? "") },
-          { label: "State", value: String(f.state ?? "") },
-          { label: "Zone", value: String(f.zone ?? "") },
-        ];
-      case "serverless-container":
-      case "serverless-function": {
-        const status = String(f.status ?? "");
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant:
-              status === "ready"
-                ? "status-healthy"
-                : status === "error"
-                  ? "status-error"
-                  : "status-degraded",
-          },
-          { label: "Scale", value: `${String(f.minScale ?? 0)}-${String(f.maxScale ?? 0)}` },
-          { label: "Memory", value: `${String(f.memoryMb ?? 0)} MB` },
-          ...(ro.endpoint ? [{ label: "Endpoint", value: String(ro.endpoint) }] : []),
-        ];
-      }
-      case "registry-namespace":
-        return [
-          { label: "Images", value: String(f.imageCount ?? 0) },
-          { label: "Size", value: `${String(f.sizeGb ?? 0)} GB` },
-          { label: "Visibility", value: f.isPublic ? "Public" : "Private" },
-        ];
-      case "dns-zone":
-        return [
-          { label: "Status", value: String(f.status ?? "") },
-          { label: "Nameservers", value: String(f.nameservers ?? "") },
-        ];
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchScalewayCostData(
-      {
-        secretKey: this.secretKey,
-        projectId: this.defaultProjectId,
-        ...(this.services?.http ? { http: this.services.http } : {}),
-      },
-      range,
-    );
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchScalewayCostData(
+        {
+          secretKey: this.secretKey,
+          projectId: this.defaultProjectId,
+          ...(this.services?.http ? { http: this.services.http } : {}),
+        },
+        range,
+      );
+    });
   }
 
   /**
@@ -1137,195 +1175,197 @@ export class ScalewayClient implements PluginClient {
     }
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    // Managed Databases carry their own metrics route on the RDB API, read
-    // with the IAM secret key, so they chart without a Cockpit token.
-    if (resourceTypeId === "rdb-instance") {
-      return this.fetchRdbMetrics(resourceId, timeRange);
-    }
-
-    // No-op when the Cockpit query token is absent: this is the common case
-    // and must remain side-effect-free so existing tests continue to pass.
-    if (!this.cockpitQueryToken) return [];
-
-    const now = Date.now();
-    const startUnix = Math.floor((timeRange?.startMs ?? now - 3_600_000) / 1000);
-    const endUnix = Math.floor((timeRange?.endMs ?? now) / 1000);
-
-    if (resourceTypeId === "instance") {
-      // externalId format: {zone}/{serverId}  e.g. "fr-par-1/abc-123"
-      const externalId = resourceId.split(":").pop() ?? "";
-      const parts = externalId.split("/");
-      const zone = parts[0] ?? "";
-      const serverId = parts[1] ?? "";
-      if (!zone || !serverId) return [];
-
-      // Map zone → region  (fr-par-1 → fr-par)
-      const region = zone.replace(/-\d+$/, "");
-      const dsUrl = await this.getCockpitDataSource(region);
-      if (!dsUrl) return [];
-
-      // Metric/label names verified against Scaleway's own preconfigured Cockpit
-      // alert rules: the series carry no `scaleway_` prefix and are keyed by
-      // `resource_id` (server UUID), e.g.
-      //   rate(instance_server_cpu_seconds_total[1m]) / instance_server_vcpu_count > 0.9
-      // Only the CPU pair is confirmed; the network names follow the same
-      // convention and fall back gracefully on empty results.
-      const queries: Array<{ promql: string; label: string; unit: string }> = [
-        {
-          promql:
-            `100 * rate(instance_server_cpu_seconds_total{resource_id="${serverId}"}[1m])` +
-            ` / instance_server_vcpu_count{resource_id="${serverId}"}`,
-          label: "CPU Usage",
-          unit: "%",
-        },
-        {
-          promql: `rate(instance_server_network_bytes_total{resource_id="${serverId}",direction="rx"}[1m])`,
-          label: "Network In",
-          unit: "bytes/s",
-        },
-        {
-          promql: `rate(instance_server_network_bytes_total{resource_id="${serverId}",direction="tx"}[1m])`,
-          label: "Network Out",
-          unit: "bytes/s",
-        },
-      ];
-
-      const series = await Promise.all(
-        queries.map((q) =>
-          this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
-        ),
-      );
-      return series.filter((s): s is MetricSeries => s != null);
-    }
-
-    if (resourceTypeId === "kapsule-cluster") {
-      // externalId format: {region}/{clusterId}
-      const externalId = resourceId.split(":").pop() ?? "";
-      const [region, clusterId] = externalId.split("/");
-      if (!region || !clusterId) return [];
-
-      const dsUrl = await this.getCockpitDataSource(region);
-      if (!dsUrl) return [];
-
-      // Kapsule pushes control-plane metrics to the Scaleway Cockpit data
-      // source natively (data-plane metrics need a user-installed Helm chart
-      // and land in a custom data source, not covered here). Series names
-      // and labels verified against Scaleway's preconfigured alert rules:
-      // metrics are `kubernetes_cluster_k8s_shoot_*` gauges keyed by
-      // `resource_name` (the cluster NAME, not its UUID), so resolve the
-      // name first.
-      let clusterName: string;
-      try {
-        const cluster = await this.k8sApi().getCluster({
-          region: region as Region,
-          clusterId,
-        });
-        clusterName = cluster.name;
-      } catch {
-        return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      // Managed Databases carry their own metrics route on the RDB API, read
+      // with the IAM secret key, so they chart without a Cockpit token.
+      if (resourceTypeId === "rdb-instance") {
+        return this.fetchRdbMetrics(resourceId, timeRange);
       }
-      if (!clusterName) return [];
-      const byName = `resource_name="${clusterName}"`;
-      const apiServer = `component="api-server",${byName}`;
 
-      const queries: Array<{ promql: string; label: string; unit: string }> = [
-        {
-          promql: `sum(kubernetes_cluster_k8s_shoot_nodes{${byName}})`,
-          label: "Nodes",
-          unit: "count",
-        },
-        {
-          promql: `sum(kubernetes_cluster_k8s_shoot_nodes_ready{${byName}})`,
-          label: "Nodes Ready",
-          unit: "count",
-        },
-        {
-          promql: `sum(kubernetes_cluster_k8s_shoot_nodes_pods_usage_total{${byName}})`,
-          label: "Pods Running",
-          unit: "count",
-        },
-        {
-          promql:
-            `100 * max(kubernetes_cluster_k8s_shoot_controlplane_cpu_usage{${apiServer}})` +
-            ` / sum(kubernetes_cluster_k8s_shoot_controlplane_cpu_limit{${apiServer}})`,
-          label: "API Server CPU",
-          unit: "%",
-        },
-        {
-          promql:
-            `100 * max(kubernetes_cluster_k8s_shoot_controlplane_memory_usage_bytes{${apiServer}})` +
-            ` / sum(kubernetes_cluster_k8s_shoot_controlplane_memory_limit_bytes{${apiServer}})`,
-          label: "API Server Memory",
-          unit: "%",
-        },
-      ];
+      // No-op when the Cockpit query token is absent: this is the common case
+      // and must remain side-effect-free so existing tests continue to pass.
+      if (!this.cockpitQueryToken) return [];
 
-      const series = await Promise.all(
-        queries.map((q) =>
-          this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
-        ),
-      );
-      return series.filter((s): s is MetricSeries => s != null);
-    }
+      const now = Date.now();
+      const startUnix = Math.floor((timeRange?.startMs ?? now - 3_600_000) / 1000);
+      const endUnix = Math.floor((timeRange?.endMs ?? now) / 1000);
 
-    if (resourceTypeId === "serverless-function" || resourceTypeId === "serverless-container") {
-      // externalId format: {region}/{id}
-      const externalId = resourceId.split(":").pop() ?? "";
-      const [region, id] = externalId.split("/");
-      if (!region || !id) return [];
+      if (resourceTypeId === "instance") {
+        // externalId format: {zone}/{serverId}  e.g. "fr-par-1/abc-123"
+        const externalId = resourceId.split(":").pop() ?? "";
+        const parts = externalId.split("/");
+        const zone = parts[0] ?? "";
+        const serverId = parts[1] ?? "";
+        if (!zone || !serverId) return [];
 
-      const dsUrl = await this.getCockpitDataSource(region);
-      if (!dsUrl) return [];
+        // Map zone → region  (fr-par-1 → fr-par)
+        const region = zone.replace(/-\d+$/, "");
+        const dsUrl = await this.getCockpitDataSource(region);
+        if (!dsUrl) return [];
 
-      // Metric and label names from Scaleway's documented alert queries
-      // (serverless-functions/how-to/configure-alerts-functions and the
-      // containers twin): one series per running instance, keyed by
-      // `resource_id`. `*_cpu_usage_ratio` is alerted on `> 90`, so it is
-      // already a percentage. Averaged across instances like the Cockpit
-      // overview dashboard; the instance count is the number of series.
-      const prefix =
-        resourceTypeId === "serverless-function" ? "serverless_function" : "serverless_container";
-      const sel = `{resource_id="${id}"}`;
-      const queries: Array<{ promql: string; label: string; unit: string }> = [
-        {
-          promql: `avg(${prefix}_cpu_usage_ratio${sel})`,
-          label: "CPU Usage",
-          unit: "%",
-        },
-        {
-          promql: `avg(${prefix}_memory_usage_bytes${sel})`,
-          label: "Memory Usage",
-          unit: "bytes",
-        },
-        {
-          promql:
-            `100 * sum(${prefix}_memory_usage_bytes${sel})` +
-            ` / sum(${prefix}_memory_limit_bytes${sel})`,
-          label: "Memory Utilization",
-          unit: "%",
-        },
-        {
-          promql: `count(${prefix}_memory_usage_bytes${sel})`,
-          label: "Instances",
-          unit: "count",
-        },
-      ];
+        // Metric/label names verified against Scaleway's own preconfigured Cockpit
+        // alert rules: the series carry no `scaleway_` prefix and are keyed by
+        // `resource_id` (server UUID), e.g.
+        //   rate(instance_server_cpu_seconds_total[1m]) / instance_server_vcpu_count > 0.9
+        // Only the CPU pair is confirmed; the network names follow the same
+        // convention and fall back gracefully on empty results.
+        const queries: Array<{ promql: string; label: string; unit: string }> = [
+          {
+            promql:
+              `100 * rate(instance_server_cpu_seconds_total{resource_id="${serverId}"}[1m])` +
+              ` / instance_server_vcpu_count{resource_id="${serverId}"}`,
+            label: "CPU Usage",
+            unit: "%",
+          },
+          {
+            promql: `rate(instance_server_network_bytes_total{resource_id="${serverId}",direction="rx"}[1m])`,
+            label: "Network In",
+            unit: "bytes/s",
+          },
+          {
+            promql: `rate(instance_server_network_bytes_total{resource_id="${serverId}",direction="tx"}[1m])`,
+            label: "Network Out",
+            unit: "bytes/s",
+          },
+        ];
 
-      const series = await Promise.all(
-        queries.map((q) =>
-          this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
-        ),
-      );
-      return series.filter((s): s is MetricSeries => s != null);
-    }
+        const series = await Promise.all(
+          queries.map((q) =>
+            this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
+          ),
+        );
+        return series.filter((s): s is MetricSeries => s != null);
+      }
 
-    return [];
+      if (resourceTypeId === "kapsule-cluster") {
+        // externalId format: {region}/{clusterId}
+        const externalId = resourceId.split(":").pop() ?? "";
+        const [region, clusterId] = externalId.split("/");
+        if (!region || !clusterId) return [];
+
+        const dsUrl = await this.getCockpitDataSource(region);
+        if (!dsUrl) return [];
+
+        // Kapsule pushes control-plane metrics to the Scaleway Cockpit data
+        // source natively (data-plane metrics need a user-installed Helm chart
+        // and land in a custom data source, not covered here). Series names
+        // and labels verified against Scaleway's preconfigured alert rules:
+        // metrics are `kubernetes_cluster_k8s_shoot_*` gauges keyed by
+        // `resource_name` (the cluster NAME, not its UUID), so resolve the
+        // name first.
+        let clusterName: string;
+        try {
+          const cluster = await this.k8sApi().getCluster({
+            region: region as Region,
+            clusterId,
+          });
+          clusterName = cluster.name;
+        } catch {
+          return [];
+        }
+        if (!clusterName) return [];
+        const byName = `resource_name="${clusterName}"`;
+        const apiServer = `component="api-server",${byName}`;
+
+        const queries: Array<{ promql: string; label: string; unit: string }> = [
+          {
+            promql: `sum(kubernetes_cluster_k8s_shoot_nodes{${byName}})`,
+            label: "Nodes",
+            unit: "count",
+          },
+          {
+            promql: `sum(kubernetes_cluster_k8s_shoot_nodes_ready{${byName}})`,
+            label: "Nodes Ready",
+            unit: "count",
+          },
+          {
+            promql: `sum(kubernetes_cluster_k8s_shoot_nodes_pods_usage_total{${byName}})`,
+            label: "Pods Running",
+            unit: "count",
+          },
+          {
+            promql:
+              `100 * max(kubernetes_cluster_k8s_shoot_controlplane_cpu_usage{${apiServer}})` +
+              ` / sum(kubernetes_cluster_k8s_shoot_controlplane_cpu_limit{${apiServer}})`,
+            label: "API Server CPU",
+            unit: "%",
+          },
+          {
+            promql:
+              `100 * max(kubernetes_cluster_k8s_shoot_controlplane_memory_usage_bytes{${apiServer}})` +
+              ` / sum(kubernetes_cluster_k8s_shoot_controlplane_memory_limit_bytes{${apiServer}})`,
+            label: "API Server Memory",
+            unit: "%",
+          },
+        ];
+
+        const series = await Promise.all(
+          queries.map((q) =>
+            this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
+          ),
+        );
+        return series.filter((s): s is MetricSeries => s != null);
+      }
+
+      if (resourceTypeId === "serverless-function" || resourceTypeId === "serverless-container") {
+        // externalId format: {region}/{id}
+        const externalId = resourceId.split(":").pop() ?? "";
+        const [region, id] = externalId.split("/");
+        if (!region || !id) return [];
+
+        const dsUrl = await this.getCockpitDataSource(region);
+        if (!dsUrl) return [];
+
+        // Metric and label names from Scaleway's documented alert queries
+        // (serverless-functions/how-to/configure-alerts-functions and the
+        // containers twin): one series per running instance, keyed by
+        // `resource_id`. `*_cpu_usage_ratio` is alerted on `> 90`, so it is
+        // already a percentage. Averaged across instances like the Cockpit
+        // overview dashboard; the instance count is the number of series.
+        const prefix =
+          resourceTypeId === "serverless-function" ? "serverless_function" : "serverless_container";
+        const sel = `{resource_id="${id}"}`;
+        const queries: Array<{ promql: string; label: string; unit: string }> = [
+          {
+            promql: `avg(${prefix}_cpu_usage_ratio${sel})`,
+            label: "CPU Usage",
+            unit: "%",
+          },
+          {
+            promql: `avg(${prefix}_memory_usage_bytes${sel})`,
+            label: "Memory Usage",
+            unit: "bytes",
+          },
+          {
+            promql:
+              `100 * sum(${prefix}_memory_usage_bytes${sel})` +
+              ` / sum(${prefix}_memory_limit_bytes${sel})`,
+            label: "Memory Utilization",
+            unit: "%",
+          },
+          {
+            promql: `count(${prefix}_memory_usage_bytes${sel})`,
+            label: "Instances",
+            unit: "count",
+          },
+        ];
+
+        const series = await Promise.all(
+          queries.map((q) =>
+            this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
+          ),
+        );
+        return series.filter((s): s is MetricSeries => s != null);
+      }
+
+      return [];
+    });
   }
 
   /**
@@ -1383,67 +1423,69 @@ export class ScalewayClient implements PluginClient {
    * so the selector needs no per-product label. The Cockpit token needs the
    * logs query permission on top of metrics.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const empty = (text: string): LogsFetchResult => ({
-      text,
-      containers: [],
-      activeContainer: "",
-    });
-    if (!SCW_LOG_TYPES.has(typeId)) return empty("");
-    if (!this.cockpitQueryToken) {
-      return empty(
-        "Logs are read from Scaleway Cockpit. Add a Cockpit token with logs query access to this account's credentials to see them here.\n",
-      );
-    }
-    const externalId = resourceId.split(":").pop() ?? "";
-    const [region, id] = externalId.split("/");
-    if (!region || !id) return empty("");
-    const dsUrl = await this.getCockpitDataSource(region, "logs");
-    if (!dsUrl) return empty("No Scaleway logs data source found in Cockpit for this region.\n");
-
-    const limit = Math.min(Math.max(params.tailLines ?? 200, 1), 5000);
-    const endNs = BigInt(Date.now()) * 1_000_000n;
-    // Default Cockpit log retention is 7 days; look back one day for the tail.
-    const startNs = endNs - 86_400_000_000_000n;
-    const qs = new URLSearchParams({
-      query: `{resource_id="${id}"}`,
-      limit: String(limit),
-      start: startNs.toString(),
-      end: endNs.toString(),
-      direction: "backward",
-    });
-    let body: {
-      data?: { result?: Array<{ values?: Array<[string, string]> }> };
-    };
-    try {
-      body = await jsonRestFetch({
-        vendor: "Scaleway",
-        url: `${dsUrl}/loki/api/v1/query_range?${qs.toString()}`,
-        errorPath: "/loki/api/v1/query_range",
-        headers: { Authorization: `Bearer ${this.cockpitQueryToken}` },
-        ...(this.services?.http ? { http: this.services.http } : {}),
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const empty = (text: string): LogsFetchResult => ({
+        text,
+        containers: [],
+        activeContainer: "",
       });
-    } catch (err) {
+      if (!SCW_LOG_TYPES.has(typeId)) return empty("");
+      if (!this.cockpitQueryToken) {
+        return empty(
+          "Logs are read from Scaleway Cockpit. Add a Cockpit token with logs query access to this account's credentials to see them here.\n",
+        );
+      }
+      const externalId = resourceId.split(":").pop() ?? "";
+      const [region, id] = externalId.split("/");
+      if (!region || !id) return empty("");
+      const dsUrl = await this.getCockpitDataSource(region, "logs");
+      if (!dsUrl) return empty("No Scaleway logs data source found in Cockpit for this region.\n");
+
+      const limit = Math.min(Math.max(params.tailLines ?? 200, 1), 5000);
+      const endNs = BigInt(Date.now()) * 1_000_000n;
+      // Default Cockpit log retention is 7 days; look back one day for the tail.
+      const startNs = endNs - 86_400_000_000_000n;
+      const qs = new URLSearchParams({
+        query: `{resource_id="${id}"}`,
+        limit: String(limit),
+        start: startNs.toString(),
+        end: endNs.toString(),
+        direction: "backward",
+      });
+      let body: {
+        data?: { result?: Array<{ values?: Array<[string, string]> }> };
+      };
+      try {
+        body = await jsonRestFetch({
+          vendor: "Scaleway",
+          url: `${dsUrl}/loki/api/v1/query_range?${qs.toString()}`,
+          errorPath: "/loki/api/v1/query_range",
+          headers: { Authorization: `Bearer ${this.cockpitQueryToken}` },
+          ...(this.services?.http ? { http: this.services.http } : {}),
+        });
+      } catch (err) {
+        return empty(
+          `Could not read logs from Cockpit: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+      }
+      const lines = (body.data?.result ?? [])
+        .flatMap((stream) => stream.values ?? [])
+        .map(([ns, line]) => ({ ns: BigInt(ns), line }))
+        .sort((a, b) => (a.ns < b.ns ? -1 : a.ns > b.ns ? 1 : 0))
+        .slice(-limit)
+        .map(({ ns, line }) => `${new Date(Number(ns / 1_000_000n)).toISOString()}  ${line}`);
       return empty(
-        `Could not read logs from Cockpit: ${err instanceof Error ? err.message : String(err)}\n`,
+        lines.length > 0
+          ? lines.join("\n") + "\n"
+          : "No log lines in Cockpit for the last 24 hours.\n",
       );
-    }
-    const lines = (body.data?.result ?? [])
-      .flatMap((stream) => stream.values ?? [])
-      .map(([ns, line]) => ({ ns: BigInt(ns), line }))
-      .sort((a, b) => (a.ns < b.ns ? -1 : a.ns > b.ns ? 1 : 0))
-      .slice(-limit)
-      .map(({ ns, line }) => `${new Date(Number(ns / 1_000_000n)).toISOString()}  ${line}`);
-    return empty(
-      lines.length > 0
-        ? lines.join("\n") + "\n"
-        : "No log lines in Cockpit for the last 24 hours.\n",
-    );
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -1685,45 +1727,47 @@ export class ScalewayClient implements PluginClient {
    * Edit dispatch. SDK-backed types are handled here; the REST products
    * delegate to `products.ts`. `fields` carries only what the user changed.
    */
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const current = await this.getResource(typeId, resourceId, accountId);
-    switch (typeId) {
-      case "instance":
-        return this.updateInstance(current, fields);
-      case "rdb-instance":
-        return this.updateRdbInstance(current, fields);
-      case "kapsule-cluster":
-        return this.updateKapsuleCluster(current, fields);
-      case "flexible-ip": {
-        const { location, id } = products.splitScoped(current.id);
-        const res = await this.instanceApi().updateIp({
-          zone: location as Zone,
-          ip: id,
-          ...(fields["reverse"] !== undefined ? { reverse: fields["reverse"] || null } : {}),
-          ...(fields["tags"] !== undefined ? { tags: splitTags(fields["tags"]) } : {}),
-        });
-        return res.ip ? this.mapFlexibleIp(res.ip, location as Zone, accountId) : current;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      switch (typeId) {
+        case "instance":
+          return this.updateInstance(current, fields);
+        case "rdb-instance":
+          return this.updateRdbInstance(current, fields);
+        case "kapsule-cluster":
+          return this.updateKapsuleCluster(current, fields);
+        case "flexible-ip": {
+          const { location, id } = products.splitScoped(current.id);
+          const res = await this.instanceApi().updateIp({
+            zone: location as Zone,
+            ip: id,
+            ...(fields["reverse"] !== undefined ? { reverse: fields["reverse"] || null } : {}),
+            ...(fields["tags"] !== undefined ? { tags: splitTags(fields["tags"]) } : {}),
+          });
+          return res.ip ? this.mapFlexibleIp(res.ip, location as Zone, accountId) : current;
+        }
+        case "load-balancer":
+          return products.updateLoadBalancer(this.rest, current, fields);
+        case "private-network":
+          return products.renamePrivateNetwork(this.rest, current, fields);
+        case "serverless-container":
+          return products.updateContainer(this.rest, current, fields);
+        case "serverless-function":
+          return products.updateFunction(this.rest, current, fields);
+        case "registry-namespace":
+          return products.updateRegistryNamespace(this.rest, current, fields);
+        case "dns-record":
+          return products.updateDnsRecord(this.rest, current, fields);
+        default:
+          throw new Error(`Scaleway plugin: updateResource not supported for type "${typeId}"`);
       }
-      case "load-balancer":
-        return products.updateLoadBalancer(this.rest, current, fields);
-      case "private-network":
-        return products.renamePrivateNetwork(this.rest, current, fields);
-      case "serverless-container":
-        return products.updateContainer(this.rest, current, fields);
-      case "serverless-function":
-        return products.updateFunction(this.rest, current, fields);
-      case "registry-namespace":
-        return products.updateRegistryNamespace(this.rest, current, fields);
-      case "dns-record":
-        return products.updateDnsRecord(this.rest, current, fields);
-      default:
-        throw new Error(`Scaleway plugin: updateResource not supported for type "${typeId}"`);
-    }
+    });
   }
 
   /**
@@ -2655,55 +2699,71 @@ export class ScalewayClient implements PluginClient {
     };
   }
 
-  async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    const cfg = await this.getObjectStorageConfig(bucket);
-    return listS3Objects(cfg, bucket, prefix);
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      const cfg = await this.getObjectStorageConfig(bucket);
+      return listS3Objects(cfg, bucket, prefix);
+    });
   }
 
-  async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
-    const cfg = await this.getObjectStorageConfig(bucket);
-    return uploadS3Object(cfg, bucket, key, file);
+  uploadStorageObject(bucket: string, key: string, file: File): PluginEffect<void> {
+    return attempt(async () => {
+      const cfg = await this.getObjectStorageConfig(bucket);
+      return uploadS3Object(cfg, bucket, key, file);
+    });
   }
 
-  async makeStorageFolder(bucket: string, key: string): Promise<void> {
-    const cfg = await this.getObjectStorageConfig(bucket);
-    return makeS3Folder(cfg, bucket, key);
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      const cfg = await this.getObjectStorageConfig(bucket);
+      return makeS3Folder(cfg, bucket, key);
+    });
   }
 
-  async deleteStorageObject(bucket: string, key: string): Promise<void> {
-    const cfg = await this.getObjectStorageConfig(bucket);
-    return deleteS3Object(cfg, bucket, key);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      const cfg = await this.getObjectStorageConfig(bucket);
+      return deleteS3Object(cfg, bucket, key);
+    });
   }
 
-  async getManifest(resourceId: string, _accountId: string): Promise<string> {
-    const parts = resourceId.split(":");
-    const typeId = parts[1] ?? "";
-    if (typeId !== "object-storage-bucket") {
-      throw new Error(`Scaleway plugin: getManifest not supported for type "${typeId}"`);
-    }
-    // externalId is `{region}/{bucketName}`: peel the bucket name off.
-    const externalId = parts.slice(2).join(":");
-    const bucket = externalId.includes("/") ? externalId.split("/").slice(1).join("/") : externalId;
-    const cfg = await this.getObjectStorageConfig(bucket);
-    const raw = await getS3BucketPolicy(cfg, bucket);
-    if (!raw) return "";
-    try {
-      return JSON.stringify(JSON.parse(raw), null, 2);
-    } catch {
-      return raw;
-    }
+  getManifest(resourceId: string, _accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      const parts = resourceId.split(":");
+      const typeId = parts[1] ?? "";
+      if (typeId !== "object-storage-bucket") {
+        throw new Error(`Scaleway plugin: getManifest not supported for type "${typeId}"`);
+      }
+      // externalId is `{region}/{bucketName}`: peel the bucket name off.
+      const externalId = parts.slice(2).join(":");
+      const bucket = externalId.includes("/")
+        ? externalId.split("/").slice(1).join("/")
+        : externalId;
+      const cfg = await this.getObjectStorageConfig(bucket);
+      const raw = await getS3BucketPolicy(cfg, bucket);
+      if (!raw) return "";
+      try {
+        return JSON.stringify(JSON.parse(raw), null, 2);
+      } catch {
+        return raw;
+      }
+    });
   }
 
-  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
-    const parts = resourceId.split(":");
-    const typeId = parts[1] ?? "";
-    if (typeId !== "object-storage-bucket") {
-      throw new Error(`Scaleway plugin: applyManifest not supported for type "${typeId}"`);
-    }
-    const externalId = parts.slice(2).join(":");
-    const bucket = externalId.includes("/") ? externalId.split("/").slice(1).join("/") : externalId;
-    const cfg = await this.getObjectStorageConfig(bucket);
-    return putS3BucketPolicy(cfg, bucket, manifest);
+  applyManifest(resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
+    return attempt(async () => {
+      const parts = resourceId.split(":");
+      const typeId = parts[1] ?? "";
+      if (typeId !== "object-storage-bucket") {
+        throw new Error(`Scaleway plugin: applyManifest not supported for type "${typeId}"`);
+      }
+      const externalId = parts.slice(2).join(":");
+      const bucket = externalId.includes("/")
+        ? externalId.split("/").slice(1).join("/")
+        : externalId;
+      const cfg = await this.getObjectStorageConfig(bucket);
+      return putS3BucketPolicy(cfg, bucket, manifest);
+    });
   }
 }
 

@@ -1,20 +1,20 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { NATS_PREFLIGHT, NatsClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { natsTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "nats",
-  version: "0.1.0",
+  // NATS is self-hosted: the monitoring URL is user-supplied, so there is no fixed egress host (same as kubernetes).
+  egressHosts: [],
   displayName: "NATS",
   description:
     "Self-hosted NATS: server health and limits, routes, gateways and leaf nodes, accounts and connections from the monitoring endpoint, and through the client port JetStream streams, consumers, key-value buckets and object stores you can create, edit and delete, a message and key browser, and publish and request/reply.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "servers",
       label: "Server URL",
@@ -130,16 +130,19 @@ const manifest: PluginManifest = {
       description:
         "PEM trust anchor for the server's certificate, used for both the client port and an HTTPS monitoring endpoint. Leave blank to use the system trust store.",
     },
-  ],
+  ]),
   kvDriver: { driver: "nats", credentialKey: "servers" },
   preflight: NATS_PREFLIGHT,
   quotas: { label: "Server limits", partial: true },
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new NatsClient(credentials, services),
+  testCredentials: { url: "http://nats.internal:8222" },
   terraformExport: natsTerraformExport,
-};
+});

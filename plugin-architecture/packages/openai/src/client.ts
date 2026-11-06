@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   CostFetchRange,
@@ -684,7 +687,7 @@ export class OpenAIClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("OpenAI plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -776,54 +779,59 @@ export class OpenAIClient implements PluginClient {
 
   // ---- Listing -------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "model":
-        return this.listModels(accountId);
-      case "fine-tuning-job":
-        return this.listFineTuningJobs(accountId);
-      case "batch":
-        return this.listBatches(accountId);
-      case "file":
-        return this.listFiles(accountId);
-      case "vector-store":
-        return this.listVectorStores(accountId);
-      case "container":
-        return this.listContainers(accountId);
-      case "eval":
-        return this.listEvals(accountId);
-      case "project":
-        return this.listProjects(accountId);
-      case "project-api-key":
-        return this.listProjectApiKeys(accountId);
-      case "organization-user":
-        return this.listOrganizationUsers(accountId);
-      case "invite":
-        return this.listInvites(accountId);
-      case "project-user":
-        return this.listPerProject(accountId, "users", (project, u: ProjectUser, now) =>
-          this.mapProjectUser(accountId, project.id, str(project.name), u, now),
-        );
-      case "project-service-account":
-        return this.listPerProject(
-          accountId,
-          "service_accounts",
-          (project, sa: ProjectServiceAccount, now) =>
-            this.mapProjectServiceAccount(accountId, project.id, str(project.name), sa, now),
-        );
-      case "project-rate-limit":
-        return this.listPerProject(accountId, "rate_limits", (project, rl: ProjectRateLimit, now) =>
-          this.mapProjectRateLimit(accountId, project.id, str(project.name), rl, now),
-        );
-      case "spend-limit":
-        return this.listSpendLimits(accountId);
-      case "spend-alert":
-        return this.listSpendAlerts(accountId);
-      case "admin-api-key":
-        return this.listAdminApiKeys(accountId);
-      default:
-        throw new Error(`OpenAI plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "model":
+          return this.listModels(accountId);
+        case "fine-tuning-job":
+          return this.listFineTuningJobs(accountId);
+        case "batch":
+          return this.listBatches(accountId);
+        case "file":
+          return this.listFiles(accountId);
+        case "vector-store":
+          return this.listVectorStores(accountId);
+        case "container":
+          return this.listContainers(accountId);
+        case "eval":
+          return this.listEvals(accountId);
+        case "project":
+          return this.listProjects(accountId);
+        case "project-api-key":
+          return this.listProjectApiKeys(accountId);
+        case "organization-user":
+          return this.listOrganizationUsers(accountId);
+        case "invite":
+          return this.listInvites(accountId);
+        case "project-user":
+          return this.listPerProject(accountId, "users", (project, u: ProjectUser, now) =>
+            this.mapProjectUser(accountId, project.id, str(project.name), u, now),
+          );
+        case "project-service-account":
+          return this.listPerProject(
+            accountId,
+            "service_accounts",
+            (project, sa: ProjectServiceAccount, now) =>
+              this.mapProjectServiceAccount(accountId, project.id, str(project.name), sa, now),
+          );
+        case "project-rate-limit":
+          return this.listPerProject(
+            accountId,
+            "rate_limits",
+            (project, rl: ProjectRateLimit, now) =>
+              this.mapProjectRateLimit(accountId, project.id, str(project.name), rl, now),
+          );
+        case "spend-limit":
+          return this.listSpendLimits(accountId);
+        case "spend-alert":
+          return this.listSpendAlerts(accountId);
+        case "admin-api-key":
+          return this.listAdminApiKeys(accountId);
+        default:
+          throw new Error(`OpenAI plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -1524,129 +1532,136 @@ export class OpenAIClient implements PluginClient {
 
   // ---- Single-resource reads -----------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    const id = encodeURIComponent(externalId);
-    const now = new Date().toISOString();
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const id = encodeURIComponent(externalId);
+      const now = new Date().toISOString();
 
-    switch (typeId) {
-      case "model":
-        return this.mapModel(accountId, await this.fetch<OpenAIModel>(`/models/${id}`), now);
-      case "fine-tuning-job":
-        return this.mapFineTuningJob(
-          accountId,
-          await this.fetch<FineTuningJob>(`/fine_tuning/jobs/${id}`),
-          now,
-        );
-      case "batch":
-        return this.mapBatch(accountId, await this.fetch<Batch>(`/batches/${id}`), now);
-      case "file":
-        return this.mapFile(accountId, await this.fetch<OpenAIFile>(`/files/${id}`), now);
-      case "vector-store":
-        return this.mapVectorStore(
-          accountId,
-          await this.fetch<VectorStore>(`/vector_stores/${id}`),
-          now,
-        );
-      case "container":
-        return this.mapContainer(accountId, await this.fetch<Container>(`/containers/${id}`), now);
-      case "eval":
-        return this.mapEval(accountId, await this.fetch<EvalObject>(`/evals/${id}`), now);
-      case "project":
-        return this.mapProject(
-          accountId,
-          await this.adminFetch<Project>(`/organization/projects/${id}`),
-          now,
-        );
-      case "project-api-key": {
-        const { projectId, keyId } = splitApiKeyId(externalId);
-        const [key, project] = await Promise.all([
-          this.adminFetch<ProjectApiKey>(
-            `/organization/projects/${encodeURIComponent(projectId)}/api_keys/${encodeURIComponent(keyId)}`,
-          ),
-          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
-        ]);
-        return this.mapProjectApiKey(accountId, projectId, str(project.name), key, now);
+      switch (typeId) {
+        case "model":
+          return this.mapModel(accountId, await this.fetch<OpenAIModel>(`/models/${id}`), now);
+        case "fine-tuning-job":
+          return this.mapFineTuningJob(
+            accountId,
+            await this.fetch<FineTuningJob>(`/fine_tuning/jobs/${id}`),
+            now,
+          );
+        case "batch":
+          return this.mapBatch(accountId, await this.fetch<Batch>(`/batches/${id}`), now);
+        case "file":
+          return this.mapFile(accountId, await this.fetch<OpenAIFile>(`/files/${id}`), now);
+        case "vector-store":
+          return this.mapVectorStore(
+            accountId,
+            await this.fetch<VectorStore>(`/vector_stores/${id}`),
+            now,
+          );
+        case "container":
+          return this.mapContainer(
+            accountId,
+            await this.fetch<Container>(`/containers/${id}`),
+            now,
+          );
+        case "eval":
+          return this.mapEval(accountId, await this.fetch<EvalObject>(`/evals/${id}`), now);
+        case "project":
+          return this.mapProject(
+            accountId,
+            await this.adminFetch<Project>(`/organization/projects/${id}`),
+            now,
+          );
+        case "project-api-key": {
+          const { projectId, keyId } = splitApiKeyId(externalId);
+          const [key, project] = await Promise.all([
+            this.adminFetch<ProjectApiKey>(
+              `/organization/projects/${encodeURIComponent(projectId)}/api_keys/${encodeURIComponent(keyId)}`,
+            ),
+            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+          ]);
+          return this.mapProjectApiKey(accountId, projectId, str(project.name), key, now);
+        }
+        case "organization-user":
+          return this.mapOrganizationUser(
+            accountId,
+            await this.adminFetch<OrganizationUser>(`/organization/users/${id}`),
+            now,
+          );
+        case "invite":
+          return this.mapInvite(
+            accountId,
+            await this.adminFetch<Invite>(`/organization/invites/${id}`),
+            now,
+          );
+        case "project-user": {
+          // GET …/projects/{p}/users/{u}: verified 2026-10-03 (`retrieve-project-user`).
+          const { projectId, keyId: userId } = splitApiKeyId(externalId);
+          const [user, project] = await Promise.all([
+            this.adminFetch<ProjectUser>(
+              `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+            ),
+            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+          ]);
+          return this.mapProjectUser(accountId, projectId, str(project.name), user, now);
+        }
+        case "project-service-account": {
+          // GET …/service_accounts/{id}: verified 2026-10-03
+          // (`retrieve-project-service-account`).
+          const { projectId, keyId: saId } = splitApiKeyId(externalId);
+          const [sa, project] = await Promise.all([
+            this.adminFetch<ProjectServiceAccount>(
+              `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
+            ),
+            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+          ]);
+          return this.mapProjectServiceAccount(accountId, projectId, str(project.name), sa, now);
+        }
+        case "project-rate-limit": {
+          // No single-limit GET exists; read the project's list and pick the row.
+          const { projectId, keyId: rlId } = splitApiKeyId(externalId);
+          const [limits, project] = await Promise.all([
+            this.listAll<ProjectRateLimit>(
+              `/organization/projects/${encodeURIComponent(projectId)}/rate_limits`,
+              {},
+              { admin: true },
+            ),
+            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+          ]);
+          const limit = limits.find((l) => l.id === rlId);
+          if (!limit)
+            throw new Error(`OpenAI plugin: rate limit ${rlId} not found in ${projectId}`);
+          return this.mapProjectRateLimit(accountId, projectId, str(project.name), limit, now);
+        }
+        case "spend-limit": {
+          const scope = externalId;
+          const [limit, name] = await Promise.all([
+            this.adminFetch<SpendLimit>(spendLimitPath(scope)),
+            this.scopeName(scope),
+          ]);
+          return this.mapSpendLimit(accountId, scope, name, limit, now);
+        }
+        case "spend-alert": {
+          const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
+          const [alert, name] = await Promise.all([
+            this.adminFetch<SpendAlert>(`${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`),
+            this.scopeName(scope),
+          ]);
+          return this.mapSpendAlert(accountId, scope, name, alert, now);
+        }
+        case "admin-api-key":
+          return this.mapAdminApiKey(
+            accountId,
+            await this.adminFetch<AdminApiKey>(`/organization/admin_api_keys/${id}`),
+            now,
+          );
+        default:
+          throw new Error(`OpenAI plugin: unknown resource type "${typeId}"`);
       }
-      case "organization-user":
-        return this.mapOrganizationUser(
-          accountId,
-          await this.adminFetch<OrganizationUser>(`/organization/users/${id}`),
-          now,
-        );
-      case "invite":
-        return this.mapInvite(
-          accountId,
-          await this.adminFetch<Invite>(`/organization/invites/${id}`),
-          now,
-        );
-      case "project-user": {
-        // GET …/projects/{p}/users/{u}: verified 2026-10-03 (`retrieve-project-user`).
-        const { projectId, keyId: userId } = splitApiKeyId(externalId);
-        const [user, project] = await Promise.all([
-          this.adminFetch<ProjectUser>(
-            `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
-          ),
-          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
-        ]);
-        return this.mapProjectUser(accountId, projectId, str(project.name), user, now);
-      }
-      case "project-service-account": {
-        // GET …/service_accounts/{id}: verified 2026-10-03
-        // (`retrieve-project-service-account`).
-        const { projectId, keyId: saId } = splitApiKeyId(externalId);
-        const [sa, project] = await Promise.all([
-          this.adminFetch<ProjectServiceAccount>(
-            `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
-          ),
-          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
-        ]);
-        return this.mapProjectServiceAccount(accountId, projectId, str(project.name), sa, now);
-      }
-      case "project-rate-limit": {
-        // No single-limit GET exists; read the project's list and pick the row.
-        const { projectId, keyId: rlId } = splitApiKeyId(externalId);
-        const [limits, project] = await Promise.all([
-          this.listAll<ProjectRateLimit>(
-            `/organization/projects/${encodeURIComponent(projectId)}/rate_limits`,
-            {},
-            { admin: true },
-          ),
-          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
-        ]);
-        const limit = limits.find((l) => l.id === rlId);
-        if (!limit) throw new Error(`OpenAI plugin: rate limit ${rlId} not found in ${projectId}`);
-        return this.mapProjectRateLimit(accountId, projectId, str(project.name), limit, now);
-      }
-      case "spend-limit": {
-        const scope = externalId;
-        const [limit, name] = await Promise.all([
-          this.adminFetch<SpendLimit>(spendLimitPath(scope)),
-          this.scopeName(scope),
-        ]);
-        return this.mapSpendLimit(accountId, scope, name, limit, now);
-      }
-      case "spend-alert": {
-        const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
-        const [alert, name] = await Promise.all([
-          this.adminFetch<SpendAlert>(`${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`),
-          this.scopeName(scope),
-        ]);
-        return this.mapSpendAlert(accountId, scope, name, alert, now);
-      }
-      case "admin-api-key":
-        return this.mapAdminApiKey(
-          accountId,
-          await this.adminFetch<AdminApiKey>(`/organization/admin_api_keys/${id}`),
-          now,
-        );
-      default:
-        throw new Error(`OpenAI plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   /** Display name for a spend scope: "Organization" or the project's name. */
@@ -1658,112 +1673,118 @@ export class OpenAIClient implements PluginClient {
     return str(project.name) || scope;
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    // Ids are already encoded in the resource id: no round-trip needed.
-    if (outputKey === "modelId" && typeId === "model") return externalId;
-    if (outputKey === "jobId" && typeId === "fine-tuning-job") return externalId;
-    if (outputKey === "batchId" && typeId === "batch") return externalId;
-    if (outputKey === "fileId" && typeId === "file") return externalId;
-    if (outputKey === "vectorStoreId" && typeId === "vector-store") return externalId;
-    if (outputKey === "containerId" && typeId === "container") return externalId;
-    if (outputKey === "evalId" && typeId === "eval") return externalId;
-    if (outputKey === "projectId" && typeId === "project") return externalId;
-    if (outputKey === "userId" && typeId === "organization-user") return externalId;
-    if (outputKey === "inviteId" && typeId === "invite") return externalId;
-    if (typeId === "project-api-key") {
-      const { projectId, keyId } = splitApiKeyId(externalId);
-      if (outputKey === "apiKeyId") return keyId;
-      if (outputKey === "projectId") return projectId;
-    }
-    if (typeId === "project-user" || typeId === "project-service-account") {
-      const { projectId, keyId } = splitApiKeyId(externalId);
-      if (outputKey === "projectId") return projectId;
-      if (outputKey === "userId" || outputKey === "serviceAccountId") return keyId;
-    }
-    if (typeId === "spend-alert" && outputKey === "alertId") {
-      return splitApiKeyId(externalId).keyId;
-    }
-    if (typeId === "admin-api-key" && outputKey === "adminKeyId") return externalId;
+      // Ids are already encoded in the resource id: no round-trip needed.
+      if (outputKey === "modelId" && typeId === "model") return externalId;
+      if (outputKey === "jobId" && typeId === "fine-tuning-job") return externalId;
+      if (outputKey === "batchId" && typeId === "batch") return externalId;
+      if (outputKey === "fileId" && typeId === "file") return externalId;
+      if (outputKey === "vectorStoreId" && typeId === "vector-store") return externalId;
+      if (outputKey === "containerId" && typeId === "container") return externalId;
+      if (outputKey === "evalId" && typeId === "eval") return externalId;
+      if (outputKey === "projectId" && typeId === "project") return externalId;
+      if (outputKey === "userId" && typeId === "organization-user") return externalId;
+      if (outputKey === "inviteId" && typeId === "invite") return externalId;
+      if (typeId === "project-api-key") {
+        const { projectId, keyId } = splitApiKeyId(externalId);
+        if (outputKey === "apiKeyId") return keyId;
+        if (outputKey === "projectId") return projectId;
+      }
+      if (typeId === "project-user" || typeId === "project-service-account") {
+        const { projectId, keyId } = splitApiKeyId(externalId);
+        if (outputKey === "projectId") return projectId;
+        if (outputKey === "userId" || outputKey === "serviceAccountId") return keyId;
+      }
+      if (typeId === "spend-alert" && outputKey === "alertId") {
+        return splitApiKeyId(externalId).keyId;
+      }
+      if (typeId === "admin-api-key" && outputKey === "adminKeyId") return externalId;
 
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const fieldKey = OUTPUT_FIELD_MAP[`${typeId}:${outputKey}`];
-    if (fieldKey) return str(resource.fields[fieldKey]);
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const fieldKey = OUTPUT_FIELD_MAP[`${typeId}:${outputKey}`];
+      if (fieldKey) return str(resource.fields[fieldKey]);
 
-    throw new Error(`OpenAI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      throw new Error(`OpenAI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
 
-    switch (resourceTypeId) {
-      case "fine-tuning-job":
-        return [
-          { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
-          { label: "Base Model", value: dash(f["model"]) },
-          { label: "Trained Tokens", value: (num(f["trainedTokens"]) ?? 0).toLocaleString() },
-        ];
-      case "batch":
-        return [
-          { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
-          {
-            label: "Requests",
-            value: `${num(f["requestsCompleted"]) ?? 0} / ${num(f["requestsTotal"]) ?? 0}`,
-          },
-          { label: "Failed", value: String(num(f["requestsFailed"]) ?? 0) },
-        ];
-      case "vector-store":
-        return [
-          { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
-          { label: "Files", value: String(num(f["filesTotal"]) ?? 0) },
-          { label: "Storage", value: formatByteValue(f["usageBytes"]) },
-        ];
-      case "file":
-        return [
-          { label: "Purpose", value: dash(f["purpose"]) },
-          { label: "Size", value: formatByteValue(f["bytes"]) },
-        ];
-      case "project":
-        return [
-          { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
-          { label: "Created", value: dash(f["createdAt"]).slice(0, 10) },
-        ];
-      case "project-rate-limit":
-        return [
-          {
-            label: "Requests / min",
-            value: (num(f["maxRequestsPerMinute"]) ?? 0).toLocaleString(),
-          },
-          { label: "Tokens / min", value: (num(f["maxTokensPerMinute"]) ?? 0).toLocaleString() },
-        ];
-      case "spend-limit":
-        return [
-          { label: "Monthly Limit", value: `$${(num(f["amountUsd"]) ?? 0).toLocaleString()}` },
-          {
-            label: "Enforcement",
-            value: dash(f["enforcement"]),
-            variant: f["enforcement"] === "enforcing" ? "status-error" : "status-healthy",
-          },
-        ];
-      case "spend-alert":
-        return [
-          { label: "Threshold", value: `$${(num(f["thresholdUsd"]) ?? 0).toLocaleString()}` },
-          { label: "Recipients", value: String(parseRecipients(f["recipients"]).length) },
-        ];
-      default:
-        return [];
-    }
+      switch (resourceTypeId) {
+        case "fine-tuning-job":
+          return [
+            { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
+            { label: "Base Model", value: dash(f["model"]) },
+            { label: "Trained Tokens", value: (num(f["trainedTokens"]) ?? 0).toLocaleString() },
+          ];
+        case "batch":
+          return [
+            { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
+            {
+              label: "Requests",
+              value: `${num(f["requestsCompleted"]) ?? 0} / ${num(f["requestsTotal"]) ?? 0}`,
+            },
+            { label: "Failed", value: String(num(f["requestsFailed"]) ?? 0) },
+          ];
+        case "vector-store":
+          return [
+            { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
+            { label: "Files", value: String(num(f["filesTotal"]) ?? 0) },
+            { label: "Storage", value: formatByteValue(f["usageBytes"]) },
+          ];
+        case "file":
+          return [
+            { label: "Purpose", value: dash(f["purpose"]) },
+            { label: "Size", value: formatByteValue(f["bytes"]) },
+          ];
+        case "project":
+          return [
+            { label: "Status", value: dash(f["status"]), variant: statVariant(f["status"]) },
+            { label: "Created", value: dash(f["createdAt"]).slice(0, 10) },
+          ];
+        case "project-rate-limit":
+          return [
+            {
+              label: "Requests / min",
+              value: (num(f["maxRequestsPerMinute"]) ?? 0).toLocaleString(),
+            },
+            { label: "Tokens / min", value: (num(f["maxTokensPerMinute"]) ?? 0).toLocaleString() },
+          ];
+        case "spend-limit":
+          return [
+            { label: "Monthly Limit", value: `$${(num(f["amountUsd"]) ?? 0).toLocaleString()}` },
+            {
+              label: "Enforcement",
+              value: dash(f["enforcement"]),
+              variant: f["enforcement"] === "enforcing" ? "status-error" : "status-healthy",
+            },
+          ];
+        case "spend-alert":
+          return [
+            { label: "Threshold", value: `$${(num(f["thresholdUsd"]) ?? 0).toLocaleString()}` },
+            { label: "Recipients", value: String(parseRecipients(f["recipients"]).length) },
+          ];
+        default:
+          return [];
+      }
+    });
   }
 
   // ---- Detail rendering ----------------------------------------------------
@@ -2459,813 +2480,831 @@ export class OpenAIClient implements PluginClient {
 
   // ---- Create / update / delete -------------------------------------------
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "fine-tuning-job": {
-        const [models, files] = await Promise.all([
-          this.fetch<{ data?: OpenAIModel[] }>("/models"),
-          this.listAll<OpenAIFile>(
-            "/files",
-            { purpose: "fine-tune", order: "desc" },
-            {
-              pageSize: 1000,
-              maxPages: 3,
-            },
-          ),
-        ]);
-        // Only base models can be fine-tuned; a fine-tuned snapshot is `ft:…`.
-        const baseModels = (models.data ?? [])
-          .filter((m) => !m.id.startsWith("ft:"))
-          .map((m) => ({ id: m.id, label: m.id }))
-          .sort((a, b) => a.id.localeCompare(b.id));
-        const fileOptions = files.map((f) => ({
-          id: f.id,
-          label: `${f.filename ?? f.id} (${formatByteValue(f.bytes)})`,
-        }));
-        return {
-          fields: [
-            {
-              key: "model",
-              label: "Base Model",
-              kind: "select",
-              required: true,
-              options: baseModels,
-              description: "Model to fine-tune. Not every base model is eligible.",
-              ...(baseModels[0] ? { defaultValue: baseModels[0].id } : {}),
-            },
-            {
-              key: "training_file",
-              label: "Training File",
-              kind: "select",
-              required: true,
-              options: fileOptions,
-              description:
-                "A JSONL file already uploaded with purpose `fine-tune`. Upload one from the OpenAI dashboard if the list is empty.",
-              ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
-            },
-            {
-              key: "validation_file",
-              label: "Validation File",
-              kind: "select",
-              required: false,
-              options: [{ id: "", label: "None" }, ...fileOptions],
-              defaultValue: "",
-            },
-            {
-              key: "suffix",
-              label: "Model Name Suffix",
-              kind: "text",
-              required: false,
-              description: "Appended to the resulting model id. Up to 64 characters.",
-              placeholder: "support-bot",
-            },
-            {
-              key: "seed",
-              label: "Seed",
-              kind: "number",
-              required: false,
-              description: "Set for reproducible runs. Left blank, OpenAI picks one.",
-            },
-          ],
-        };
-      }
-
-      case "batch": {
-        const files = await this.listAll<OpenAIFile>(
-          "/files",
-          { purpose: "batch", order: "desc" },
-          { pageSize: 1000, maxPages: 3 },
-        );
-        const fileOptions = files.map((f) => ({
-          id: f.id,
-          label: `${f.filename ?? f.id} (${formatByteValue(f.bytes)})`,
-        }));
-        return {
-          fields: [
-            {
-              key: "input_file_id",
-              label: "Input File",
-              kind: "select",
-              required: true,
-              options: fileOptions,
-              description: "A JSONL file uploaded with purpose `batch`, up to 200 MB.",
-              ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
-            },
-            {
-              key: "endpoint",
-              label: "Endpoint",
-              kind: "select",
-              required: true,
-              defaultValue: "/v1/chat/completions",
-              options: [
-                { id: "/v1/responses", label: "/v1/responses" },
-                { id: "/v1/chat/completions", label: "/v1/chat/completions" },
-                { id: "/v1/embeddings", label: "/v1/embeddings" },
-                { id: "/v1/completions", label: "/v1/completions" },
-                { id: "/v1/moderations", label: "/v1/moderations" },
-                { id: "/v1/images/generations", label: "/v1/images/generations" },
-                { id: "/v1/images/edits", label: "/v1/images/edits" },
-                { id: "/v1/videos", label: "/v1/videos" },
-              ],
-              description: "Every request in the file must target this endpoint.",
-            },
-            {
-              key: "completion_window",
-              label: "Completion Window",
-              kind: "select",
-              required: true,
-              defaultValue: "24h",
-              options: [{ id: "24h", label: "24 hours" }],
-              description: "24h is the only window the API accepts today.",
-            },
-          ],
-        };
-      }
-
-      case "vector-store":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "support-faq",
-            },
-            {
-              key: "description",
-              label: "Description",
-              kind: "text",
-              required: false,
-              placeholder: "What this store is for",
-            },
-            {
-              key: "expires_after_days",
-              label: "Expire After (days idle)",
-              kind: "number",
-              required: false,
-              minValue: 1,
-              maxValue: 365,
-              description:
-                "Deletes the store this many days after it was last used. Leave blank to keep it forever.",
-            },
-          ],
-        };
-
-      case "container":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "analysis-sandbox",
-            },
-            {
-              key: "memory_limit",
-              label: "Memory Limit",
-              kind: "select",
-              required: false,
-              defaultValue: "1g",
-              options: [
-                { id: "1g", label: "1 GB" },
-                { id: "4g", label: "4 GB" },
-                { id: "16g", label: "16 GB" },
-                { id: "64g", label: "64 GB" },
-              ],
-            },
-            {
-              key: "expires_after_minutes",
-              label: "Idle Expiry (minutes)",
-              kind: "number",
-              required: false,
-              minValue: 1,
-              description: "Minutes of inactivity before the container is torn down.",
-            },
-          ],
-        };
-
-      case "project":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Project Name",
-              kind: "text",
-              required: true,
-              description:
-                "Appears in usage and cost reports. Projects can be archived, never deleted.",
-              placeholder: "production",
-            },
-            {
-              key: "residency",
-              label: "Data Residency",
-              kind: "select",
-              required: false,
-              defaultValue: "",
-              options: [{ id: "", label: "Organization default" }, ...PROJECT_RESIDENCIES],
-              description:
-                "Where the project's data is stored and processed. Your organization must have access to the region, and it cannot be changed after creation.",
-            },
-          ],
-        };
-
-      case "project-user": {
-        const [projects, users] = await Promise.all([
-          this.fetchProjects(),
-          this.listAll<OrganizationUser>("/organization/users", {}, { admin: true }),
-        ]);
-        const parent = parentProjectId(parentResourceId);
-        return {
-          fields: [
-            parent
-              ? {
-                  key: "project_id",
-                  label: "Project",
-                  kind: "text",
-                  required: true,
-                  hidden: true,
-                  defaultValue: parent,
-                }
-              : {
-                  key: "project_id",
-                  label: "Project",
-                  kind: "select",
-                  required: true,
-                  options: projects
-                    .filter((p) => p.status !== "archived")
-                    .map((p) => ({ id: p.id, label: p.name || p.id, description: p.id })),
-                },
-            {
-              key: "user_id",
-              label: "Member",
-              kind: "select",
-              required: true,
-              options: users
-                .filter((u) => u.is_service_account !== true)
-                .map((u) => ({
-                  id: u.id,
-                  label: u.name || u.email || u.id,
-                  ...(u.email ? { description: u.email } : {}),
-                })),
-              description:
-                "Only existing organization members can be added. Invite new people from Invites first.",
-            },
-            {
-              key: "role",
-              label: "Project Role",
-              kind: "select",
-              required: true,
-              defaultValue: "member",
-              options: [
-                { id: "member", label: "Member" },
-                { id: "owner", label: "Owner" },
-              ],
-            },
-          ],
-        };
-      }
-
-      case "spend-limit":
-      case "spend-alert": {
-        const projects = (await this.fetchProjects()).filter((p) => p.status !== "archived");
-        const scopeOptions = [
-          { id: ORG_SCOPE, label: "Whole organization" },
-          ...projects.map((p) => ({ id: p.id, label: p.name || p.id, description: p.id })),
-        ];
-        const scopeField = {
-          key: "scope",
-          label: "Applies To",
-          kind: "select" as const,
-          required: true,
-          defaultValue: parentProjectId(parentResourceId) ?? ORG_SCOPE,
-          options: scopeOptions,
-        };
-        if (typeId === "spend-limit") {
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "fine-tuning-job": {
+          const [models, files] = await Promise.all([
+            this.fetch<{ data?: OpenAIModel[] }>("/models"),
+            this.listAll<OpenAIFile>(
+              "/files",
+              { purpose: "fine-tune", order: "desc" },
+              {
+                pageSize: 1000,
+                maxPages: 3,
+              },
+            ),
+          ]);
+          // Only base models can be fine-tuned; a fine-tuned snapshot is `ft:…`.
+          const baseModels = (models.data ?? [])
+            .filter((m) => !m.id.startsWith("ft:"))
+            .map((m) => ({ id: m.id, label: m.id }))
+            .sort((a, b) => a.id.localeCompare(b.id));
+          const fileOptions = files.map((f) => ({
+            id: f.id,
+            label: `${f.filename ?? f.id} (${formatByteValue(f.bytes)})`,
+          }));
           return {
             fields: [
               {
-                ...scopeField,
-                description:
-                  "One hard limit per organization and per project. Creating one where a limit already exists replaces it.",
+                key: "model",
+                label: "Base Model",
+                kind: "select",
+                required: true,
+                options: baseModels,
+                description: "Model to fine-tune. Not every base model is eligible.",
+                ...(baseModels[0] ? { defaultValue: baseModels[0].id } : {}),
               },
               {
-                key: "amount_usd",
-                label: "Monthly Limit (USD)",
-                kind: "number",
+                key: "training_file",
+                label: "Training File",
+                kind: "select",
                 required: true,
-                minValue: 0.01,
-                stepValue: 1,
-                placeholder: "500",
+                options: fileOptions,
                 description:
-                  "Requests are refused once spend reaches this amount in a calendar month.",
+                  "A JSONL file already uploaded with purpose `fine-tune`. Upload one from the OpenAI dashboard if the list is empty.",
+                ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
+              },
+              {
+                key: "validation_file",
+                label: "Validation File",
+                kind: "select",
+                required: false,
+                options: [{ id: "", label: "None" }, ...fileOptions],
+                defaultValue: "",
+              },
+              {
+                key: "suffix",
+                label: "Model Name Suffix",
+                kind: "text",
+                required: false,
+                description: "Appended to the resulting model id. Up to 64 characters.",
+                placeholder: "support-bot",
+              },
+              {
+                key: "seed",
+                label: "Seed",
+                kind: "number",
+                required: false,
+                description: "Set for reproducible runs. Left blank, OpenAI picks one.",
               },
             ],
           };
         }
-        return {
-          fields: [
-            scopeField,
-            {
-              key: "threshold_usd",
-              label: "Threshold (USD)",
-              kind: "number",
-              required: true,
-              minValue: 0,
-              stepValue: 1,
-              placeholder: "250",
-              description: "Email when spend for the calendar month crosses this amount.",
-            },
-            {
-              key: "recipients",
-              label: "Recipients",
-              kind: "string-list",
-              required: true,
-              placeholder: "finance@example.com",
-              addLabel: "+ Add recipient",
-            },
-            {
-              key: "subject_prefix",
-              label: "Subject Prefix",
-              kind: "text",
-              required: false,
-              placeholder: "[OpenAI]",
-            },
-          ],
-        };
-      }
 
-      case "invite": {
-        const projects = this.hasAdminKey
-          ? (await this.fetchProjects()).filter((p) => p.status !== "archived")
-          : [];
-        const projectOptions = [
-          { id: "", label: "Default project" },
-          ...projects.map((p) => ({ id: p.id, label: p.name || p.id })),
-        ];
-        return {
-          fields: [
-            {
-              key: "email",
-              label: "Email",
-              kind: "text",
-              required: true,
-              placeholder: "teammate@example.com",
-            },
-            {
-              key: "role",
-              label: "Organization Role",
-              kind: "select",
-              required: true,
-              defaultValue: "reader",
-              options: [
-                { id: "reader", label: "Reader" },
-                { id: "owner", label: "Owner" },
-              ],
-            },
-            {
-              key: "project_id",
-              label: "Grant Access To",
-              kind: "select",
-              required: false,
-              defaultValue: parentProjectId(parentResourceId) ?? "",
-              options: projectOptions,
-              description:
-                "Project membership granted the moment the invite is accepted. Leave on the default project to keep OpenAI's legacy behaviour.",
-            },
-            {
-              key: "project_role",
-              label: "Project Role",
-              kind: "select",
-              required: false,
-              defaultValue: "member",
-              options: [
-                { id: "member", label: "Member" },
-                { id: "owner", label: "Owner" },
-              ],
-              showWhen: { fieldKey: "project_id", fieldValuesNot: [""] },
-            },
-          ],
-        };
-      }
+        case "batch": {
+          const files = await this.listAll<OpenAIFile>(
+            "/files",
+            { purpose: "batch", order: "desc" },
+            { pageSize: 1000, maxPages: 3 },
+          );
+          const fileOptions = files.map((f) => ({
+            id: f.id,
+            label: `${f.filename ?? f.id} (${formatByteValue(f.bytes)})`,
+          }));
+          return {
+            fields: [
+              {
+                key: "input_file_id",
+                label: "Input File",
+                kind: "select",
+                required: true,
+                options: fileOptions,
+                description: "A JSONL file uploaded with purpose `batch`, up to 200 MB.",
+                ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
+              },
+              {
+                key: "endpoint",
+                label: "Endpoint",
+                kind: "select",
+                required: true,
+                defaultValue: "/v1/chat/completions",
+                options: [
+                  { id: "/v1/responses", label: "/v1/responses" },
+                  { id: "/v1/chat/completions", label: "/v1/chat/completions" },
+                  { id: "/v1/embeddings", label: "/v1/embeddings" },
+                  { id: "/v1/completions", label: "/v1/completions" },
+                  { id: "/v1/moderations", label: "/v1/moderations" },
+                  { id: "/v1/images/generations", label: "/v1/images/generations" },
+                  { id: "/v1/images/edits", label: "/v1/images/edits" },
+                  { id: "/v1/videos", label: "/v1/videos" },
+                ],
+                description: "Every request in the file must target this endpoint.",
+              },
+              {
+                key: "completion_window",
+                label: "Completion Window",
+                kind: "select",
+                required: true,
+                defaultValue: "24h",
+                options: [{ id: "24h", label: "24 hours" }],
+                description: "24h is the only window the API accepts today.",
+              },
+            ],
+          };
+        }
 
-      default:
-        throw new Error(`OpenAI plugin: no create config for type "${typeId}"`);
-    }
+        case "vector-store":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "support-faq",
+              },
+              {
+                key: "description",
+                label: "Description",
+                kind: "text",
+                required: false,
+                placeholder: "What this store is for",
+              },
+              {
+                key: "expires_after_days",
+                label: "Expire After (days idle)",
+                kind: "number",
+                required: false,
+                minValue: 1,
+                maxValue: 365,
+                description:
+                  "Deletes the store this many days after it was last used. Leave blank to keep it forever.",
+              },
+            ],
+          };
+
+        case "container":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "analysis-sandbox",
+              },
+              {
+                key: "memory_limit",
+                label: "Memory Limit",
+                kind: "select",
+                required: false,
+                defaultValue: "1g",
+                options: [
+                  { id: "1g", label: "1 GB" },
+                  { id: "4g", label: "4 GB" },
+                  { id: "16g", label: "16 GB" },
+                  { id: "64g", label: "64 GB" },
+                ],
+              },
+              {
+                key: "expires_after_minutes",
+                label: "Idle Expiry (minutes)",
+                kind: "number",
+                required: false,
+                minValue: 1,
+                description: "Minutes of inactivity before the container is torn down.",
+              },
+            ],
+          };
+
+        case "project":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Project Name",
+                kind: "text",
+                required: true,
+                description:
+                  "Appears in usage and cost reports. Projects can be archived, never deleted.",
+                placeholder: "production",
+              },
+              {
+                key: "residency",
+                label: "Data Residency",
+                kind: "select",
+                required: false,
+                defaultValue: "",
+                options: [{ id: "", label: "Organization default" }, ...PROJECT_RESIDENCIES],
+                description:
+                  "Where the project's data is stored and processed. Your organization must have access to the region, and it cannot be changed after creation.",
+              },
+            ],
+          };
+
+        case "project-user": {
+          const [projects, users] = await Promise.all([
+            this.fetchProjects(),
+            this.listAll<OrganizationUser>("/organization/users", {}, { admin: true }),
+          ]);
+          const parent = parentProjectId(parentResourceId);
+          return {
+            fields: [
+              parent
+                ? {
+                    key: "project_id",
+                    label: "Project",
+                    kind: "text",
+                    required: true,
+                    hidden: true,
+                    defaultValue: parent,
+                  }
+                : {
+                    key: "project_id",
+                    label: "Project",
+                    kind: "select",
+                    required: true,
+                    options: projects
+                      .filter((p) => p.status !== "archived")
+                      .map((p) => ({ id: p.id, label: p.name || p.id, description: p.id })),
+                  },
+              {
+                key: "user_id",
+                label: "Member",
+                kind: "select",
+                required: true,
+                options: users
+                  .filter((u) => u.is_service_account !== true)
+                  .map((u) => ({
+                    id: u.id,
+                    label: u.name || u.email || u.id,
+                    ...(u.email ? { description: u.email } : {}),
+                  })),
+                description:
+                  "Only existing organization members can be added. Invite new people from Invites first.",
+              },
+              {
+                key: "role",
+                label: "Project Role",
+                kind: "select",
+                required: true,
+                defaultValue: "member",
+                options: [
+                  { id: "member", label: "Member" },
+                  { id: "owner", label: "Owner" },
+                ],
+              },
+            ],
+          };
+        }
+
+        case "spend-limit":
+        case "spend-alert": {
+          const projects = (await this.fetchProjects()).filter((p) => p.status !== "archived");
+          const scopeOptions = [
+            { id: ORG_SCOPE, label: "Whole organization" },
+            ...projects.map((p) => ({ id: p.id, label: p.name || p.id, description: p.id })),
+          ];
+          const scopeField = {
+            key: "scope",
+            label: "Applies To",
+            kind: "select" as const,
+            required: true,
+            defaultValue: parentProjectId(parentResourceId) ?? ORG_SCOPE,
+            options: scopeOptions,
+          };
+          if (typeId === "spend-limit") {
+            return {
+              fields: [
+                {
+                  ...scopeField,
+                  description:
+                    "One hard limit per organization and per project. Creating one where a limit already exists replaces it.",
+                },
+                {
+                  key: "amount_usd",
+                  label: "Monthly Limit (USD)",
+                  kind: "number",
+                  required: true,
+                  minValue: 0.01,
+                  stepValue: 1,
+                  placeholder: "500",
+                  description:
+                    "Requests are refused once spend reaches this amount in a calendar month.",
+                },
+              ],
+            };
+          }
+          return {
+            fields: [
+              scopeField,
+              {
+                key: "threshold_usd",
+                label: "Threshold (USD)",
+                kind: "number",
+                required: true,
+                minValue: 0,
+                stepValue: 1,
+                placeholder: "250",
+                description: "Email when spend for the calendar month crosses this amount.",
+              },
+              {
+                key: "recipients",
+                label: "Recipients",
+                kind: "string-list",
+                required: true,
+                placeholder: "finance@example.com",
+                addLabel: "+ Add recipient",
+              },
+              {
+                key: "subject_prefix",
+                label: "Subject Prefix",
+                kind: "text",
+                required: false,
+                placeholder: "[OpenAI]",
+              },
+            ],
+          };
+        }
+
+        case "invite": {
+          const projects = this.hasAdminKey
+            ? (await this.fetchProjects()).filter((p) => p.status !== "archived")
+            : [];
+          const projectOptions = [
+            { id: "", label: "Default project" },
+            ...projects.map((p) => ({ id: p.id, label: p.name || p.id })),
+          ];
+          return {
+            fields: [
+              {
+                key: "email",
+                label: "Email",
+                kind: "text",
+                required: true,
+                placeholder: "teammate@example.com",
+              },
+              {
+                key: "role",
+                label: "Organization Role",
+                kind: "select",
+                required: true,
+                defaultValue: "reader",
+                options: [
+                  { id: "reader", label: "Reader" },
+                  { id: "owner", label: "Owner" },
+                ],
+              },
+              {
+                key: "project_id",
+                label: "Grant Access To",
+                kind: "select",
+                required: false,
+                defaultValue: parentProjectId(parentResourceId) ?? "",
+                options: projectOptions,
+                description:
+                  "Project membership granted the moment the invite is accepted. Leave on the default project to keep OpenAI's legacy behaviour.",
+              },
+              {
+                key: "project_role",
+                label: "Project Role",
+                kind: "select",
+                required: false,
+                defaultValue: "member",
+                options: [
+                  { id: "member", label: "Member" },
+                  { id: "owner", label: "Owner" },
+                ],
+                showWhen: { fieldKey: "project_id", fieldValuesNot: [""] },
+              },
+            ],
+          };
+        }
+
+        default:
+          throw new Error(`OpenAI plugin: no create config for type "${typeId}"`);
+      }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const now = new Date().toISOString();
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const now = new Date().toISOString();
 
-    switch (typeId) {
-      case "fine-tuning-job": {
-        // POST /v1/fine_tuning/jobs: verified 2026-07-29 (`createFineTuningJob`).
-        const seed = num(fields["seed"]);
-        const body: Record<string, unknown> = {
-          model: fields["model"],
-          training_file: fields["training_file"],
-          ...(fields["validation_file"] ? { validation_file: fields["validation_file"] } : {}),
-          ...(fields["suffix"] ? { suffix: fields["suffix"] } : {}),
-          ...(seed !== undefined ? { seed } : {}),
-        };
-        const job = await this.fetch<FineTuningJob>("/fine_tuning/jobs", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        return this.mapFineTuningJob(accountId, job, now);
+      switch (typeId) {
+        case "fine-tuning-job": {
+          // POST /v1/fine_tuning/jobs: verified 2026-07-29 (`createFineTuningJob`).
+          const seed = num(fields["seed"]);
+          const body: Record<string, unknown> = {
+            model: fields["model"],
+            training_file: fields["training_file"],
+            ...(fields["validation_file"] ? { validation_file: fields["validation_file"] } : {}),
+            ...(fields["suffix"] ? { suffix: fields["suffix"] } : {}),
+            ...(seed !== undefined ? { seed } : {}),
+          };
+          const job = await this.fetch<FineTuningJob>("/fine_tuning/jobs", {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+          return this.mapFineTuningJob(accountId, job, now);
+        }
+
+        case "batch": {
+          // POST /v1/batches: verified 2026-07-29 (`createBatch`).
+          const batch = await this.fetch<Batch>("/batches", {
+            method: "POST",
+            body: JSON.stringify({
+              input_file_id: fields["input_file_id"],
+              endpoint: fields["endpoint"],
+              completion_window: fields["completion_window"] || "24h",
+            }),
+          });
+          return this.mapBatch(accountId, batch, now);
+        }
+
+        case "vector-store": {
+          // POST /v1/vector_stores: verified 2026-07-29 (`createVectorStore`).
+          const days = num(fields["expires_after_days"]);
+          const store = await this.fetch<VectorStore>("/vector_stores", {
+            method: "POST",
+            body: JSON.stringify({
+              name: fields["name"],
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              ...(days !== undefined && days > 0
+                ? { expires_after: { anchor: "last_active_at", days } }
+                : {}),
+            }),
+          });
+          return this.mapVectorStore(accountId, store, now);
+        }
+
+        case "container": {
+          // POST /v1/containers: verified 2026-07-29 (`CreateContainer`).
+          const minutes = num(fields["expires_after_minutes"]);
+          const container = await this.fetch<Container>("/containers", {
+            method: "POST",
+            body: JSON.stringify({
+              name: fields["name"],
+              ...(fields["memory_limit"] ? { memory_limit: fields["memory_limit"] } : {}),
+              ...(minutes !== undefined && minutes > 0
+                ? { expires_after: { anchor: "last_active_at", minutes } }
+                : {}),
+            }),
+          });
+          return this.mapContainer(accountId, container, now);
+        }
+
+        case "project": {
+          // POST /v1/organization/projects: verified 2026-10-03 (`create-project`).
+          // `residency` replaces the deprecated `geography`.
+          const project = await this.adminFetch<Project>("/organization/projects", {
+            method: "POST",
+            body: JSON.stringify({
+              name: fields["name"],
+              ...(fields["residency"] ? { residency: fields["residency"] } : {}),
+            }),
+          });
+          return this.mapProject(accountId, project, now);
+        }
+
+        case "project-user": {
+          // POST /v1/organization/projects/{p}/users: verified 2026-10-03
+          // (`create-project-user`).
+          const projectId = str(fields["project_id"]);
+          if (!projectId || !fields["user_id"]) throw new Error("Pick a project and a member");
+          const [user, project] = await Promise.all([
+            this.adminFetch<ProjectUser>(
+              `/organization/projects/${encodeURIComponent(projectId)}/users`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  user_id: fields["user_id"],
+                  role: fields["role"] || "member",
+                }),
+              },
+            ),
+            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+          ]);
+          return this.mapProjectUser(accountId, projectId, str(project.name), user, now);
+        }
+
+        case "spend-limit": {
+          // POST /v1/organization/spend_limit or …/projects/{p}/spend_limit:
+          // verified 2026-10-03. Create-or-replace; only USD and month exist.
+          const scope = str(fields["scope"]) || ORG_SCOPE;
+          const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope), {
+            method: "POST",
+            body: JSON.stringify({
+              threshold_amount: dollarsToCents(fields["amount_usd"], "Monthly limit"),
+              currency: "USD",
+              interval: "month",
+            }),
+          });
+          return this.mapSpendLimit(accountId, scope, await this.scopeName(scope), limit, now);
+        }
+
+        case "spend-alert": {
+          // POST /v1/organization/spend_alerts or …/projects/{p}/spend_alerts:
+          // verified 2026-10-03 (`create-organization-spend-alert`,
+          // `create-project-spend-alert`).
+          const scope = str(fields["scope"]) || ORG_SCOPE;
+          const alert = await this.adminFetch<SpendAlert>(spendAlertsPath(scope), {
+            method: "POST",
+            body: JSON.stringify(
+              spendAlertBody(
+                fields["threshold_usd"],
+                fields["recipients"],
+                fields["subject_prefix"],
+              ),
+            ),
+          });
+          return this.mapSpendAlert(accountId, scope, await this.scopeName(scope), alert, now);
+        }
+
+        case "invite": {
+          // POST /v1/organization/invites: verified 2026-07-29 (`inviteUser`).
+          const projectId = fields["project_id"];
+          const invite = await this.adminFetch<Invite>("/organization/invites", {
+            method: "POST",
+            body: JSON.stringify({
+              email: fields["email"],
+              role: fields["role"] || "reader",
+              ...(projectId
+                ? { projects: [{ id: projectId, role: fields["project_role"] || "member" }] }
+                : {}),
+            }),
+          });
+          return this.mapInvite(accountId, invite, now);
+        }
+
+        default:
+          throw new Error(`OpenAI plugin: cannot create type "${typeId}"`);
       }
-
-      case "batch": {
-        // POST /v1/batches: verified 2026-07-29 (`createBatch`).
-        const batch = await this.fetch<Batch>("/batches", {
-          method: "POST",
-          body: JSON.stringify({
-            input_file_id: fields["input_file_id"],
-            endpoint: fields["endpoint"],
-            completion_window: fields["completion_window"] || "24h",
-          }),
-        });
-        return this.mapBatch(accountId, batch, now);
-      }
-
-      case "vector-store": {
-        // POST /v1/vector_stores: verified 2026-07-29 (`createVectorStore`).
-        const days = num(fields["expires_after_days"]);
-        const store = await this.fetch<VectorStore>("/vector_stores", {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"],
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            ...(days !== undefined && days > 0
-              ? { expires_after: { anchor: "last_active_at", days } }
-              : {}),
-          }),
-        });
-        return this.mapVectorStore(accountId, store, now);
-      }
-
-      case "container": {
-        // POST /v1/containers: verified 2026-07-29 (`CreateContainer`).
-        const minutes = num(fields["expires_after_minutes"]);
-        const container = await this.fetch<Container>("/containers", {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"],
-            ...(fields["memory_limit"] ? { memory_limit: fields["memory_limit"] } : {}),
-            ...(minutes !== undefined && minutes > 0
-              ? { expires_after: { anchor: "last_active_at", minutes } }
-              : {}),
-          }),
-        });
-        return this.mapContainer(accountId, container, now);
-      }
-
-      case "project": {
-        // POST /v1/organization/projects: verified 2026-10-03 (`create-project`).
-        // `residency` replaces the deprecated `geography`.
-        const project = await this.adminFetch<Project>("/organization/projects", {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"],
-            ...(fields["residency"] ? { residency: fields["residency"] } : {}),
-          }),
-        });
-        return this.mapProject(accountId, project, now);
-      }
-
-      case "project-user": {
-        // POST /v1/organization/projects/{p}/users: verified 2026-10-03
-        // (`create-project-user`).
-        const projectId = str(fields["project_id"]);
-        if (!projectId || !fields["user_id"]) throw new Error("Pick a project and a member");
-        const [user, project] = await Promise.all([
-          this.adminFetch<ProjectUser>(
-            `/organization/projects/${encodeURIComponent(projectId)}/users`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                user_id: fields["user_id"],
-                role: fields["role"] || "member",
-              }),
-            },
-          ),
-          this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
-        ]);
-        return this.mapProjectUser(accountId, projectId, str(project.name), user, now);
-      }
-
-      case "spend-limit": {
-        // POST /v1/organization/spend_limit or …/projects/{p}/spend_limit:
-        // verified 2026-10-03. Create-or-replace; only USD and month exist.
-        const scope = str(fields["scope"]) || ORG_SCOPE;
-        const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope), {
-          method: "POST",
-          body: JSON.stringify({
-            threshold_amount: dollarsToCents(fields["amount_usd"], "Monthly limit"),
-            currency: "USD",
-            interval: "month",
-          }),
-        });
-        return this.mapSpendLimit(accountId, scope, await this.scopeName(scope), limit, now);
-      }
-
-      case "spend-alert": {
-        // POST /v1/organization/spend_alerts or …/projects/{p}/spend_alerts:
-        // verified 2026-10-03 (`create-organization-spend-alert`,
-        // `create-project-spend-alert`).
-        const scope = str(fields["scope"]) || ORG_SCOPE;
-        const alert = await this.adminFetch<SpendAlert>(spendAlertsPath(scope), {
-          method: "POST",
-          body: JSON.stringify(
-            spendAlertBody(fields["threshold_usd"], fields["recipients"], fields["subject_prefix"]),
-          ),
-        });
-        return this.mapSpendAlert(accountId, scope, await this.scopeName(scope), alert, now);
-      }
-
-      case "invite": {
-        // POST /v1/organization/invites: verified 2026-07-29 (`inviteUser`).
-        const projectId = fields["project_id"];
-        const invite = await this.adminFetch<Invite>("/organization/invites", {
-          method: "POST",
-          body: JSON.stringify({
-            email: fields["email"],
-            role: fields["role"] || "reader",
-            ...(projectId
-              ? { projects: [{ id: projectId, role: fields["project_role"] || "member" }] }
-              : {}),
-          }),
-        });
-        return this.mapInvite(accountId, invite, now);
-      }
-
-      default:
-        throw new Error(`OpenAI plugin: cannot create type "${typeId}"`);
-    }
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    const id = encodeURIComponent(externalId);
-    const now = new Date().toISOString();
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const id = encodeURIComponent(externalId);
+      const now = new Date().toISOString();
 
-    switch (typeId) {
-      case "vector-store": {
-        // POST /v1/vector_stores/{id}: verified 2026-07-29 (`modifyVectorStore`).
-        const store = await this.fetch<VectorStore>(`/vector_stores/${id}`, {
-          method: "POST",
-          body: JSON.stringify({ name: fields["name"] }),
-        });
-        return this.mapVectorStore(accountId, store, now);
-      }
-      case "eval": {
-        // POST /v1/evals/{id}: verified 2026-07-29 (`updateEval`).
-        const item = await this.fetch<EvalObject>(`/evals/${id}`, {
-          method: "POST",
-          body: JSON.stringify({ name: fields["name"] }),
-        });
-        return this.mapEval(accountId, item, now);
-      }
-      case "project": {
-        // POST /v1/organization/projects/{id}: verified 2026-07-29 (`modify-project`).
-        const project = await this.adminFetch<Project>(`/organization/projects/${id}`, {
-          method: "POST",
-          body: JSON.stringify({ name: fields["name"] }),
-        });
-        return this.mapProject(accountId, project, now);
-      }
-      case "organization-user": {
-        // POST /v1/organization/users/{id}: verified 2026-07-29 (`modify-user`).
-        const user = await this.adminFetch<OrganizationUser>(`/organization/users/${id}`, {
-          method: "POST",
-          body: JSON.stringify({ role: fields["role"] }),
-        });
-        return this.mapOrganizationUser(accountId, user, now);
-      }
-      case "project-user": {
-        // POST …/projects/{p}/users/{u}: verified 2026-10-03 (`modify-project-user`).
-        const { projectId, keyId: userId } = splitApiKeyId(externalId);
-        await this.adminFetch<ProjectUser>(
-          `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
-          { method: "POST", body: JSON.stringify({ role: fields["role"] }) },
-        );
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "project-service-account": {
-        // POST …/service_accounts/{id}: verified 2026-10-03
-        // (`update-project-service-account`). Only member/owner are settable.
-        const { projectId, keyId: saId } = splitApiKeyId(externalId);
-        const body: Record<string, unknown> = {};
-        if (fields["name"]) body["name"] = fields["name"];
-        if (fields["role"] === "member" || fields["role"] === "owner")
-          body["role"] = fields["role"];
-        await this.adminFetch<ProjectServiceAccount>(
-          `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
-          { method: "POST", body: JSON.stringify(body) },
-        );
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "project-rate-limit": {
-        // POST …/projects/{p}/rate_limits/{id}: verified 2026-10-03
-        // (`update-project-rate-limits`). Blank fields are left alone.
-        const { projectId, keyId: rlId } = splitApiKeyId(externalId);
-        const body: Record<string, number> = {};
-        for (const [field, apiKey] of RATE_LIMIT_FIELDS) {
-          const value = fields[field];
-          if (value === undefined || str(value).trim() === "") continue;
-          const n = num(value);
-          if (n === undefined || n < 0 || !Number.isInteger(n)) {
-            throw new Error(`OpenAI plugin: ${field} must be a whole number`);
-          }
-          body[apiKey] = n;
-        }
-        const updated = await this.adminFetch<ProjectRateLimit>(
-          `/organization/projects/${encodeURIComponent(projectId)}/rate_limits/${encodeURIComponent(rlId)}`,
-          { method: "POST", body: JSON.stringify(body) },
-        );
-        const project = await this.adminFetch<Project>(
-          `/organization/projects/${encodeURIComponent(projectId)}`,
-        );
-        return this.mapProjectRateLimit(accountId, projectId, str(project.name), updated, now);
-      }
-      case "spend-limit": {
-        const scope = externalId;
-        const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope), {
-          method: "POST",
-          body: JSON.stringify({
-            threshold_amount: dollarsToCents(fields["amountUsd"], "Monthly limit"),
-            currency: "USD",
-            interval: "month",
-          }),
-        });
-        return this.mapSpendLimit(accountId, scope, await this.scopeName(scope), limit, now);
-      }
-      case "spend-alert": {
-        // POST …/spend_alerts/{alert_id}: verified 2026-10-03. The update body
-        // is the full create body, so every field is sent.
-        const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
-        const alert = await this.adminFetch<SpendAlert>(
-          `${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`,
-          {
+      switch (typeId) {
+        case "vector-store": {
+          // POST /v1/vector_stores/{id}: verified 2026-07-29 (`modifyVectorStore`).
+          const store = await this.fetch<VectorStore>(`/vector_stores/${id}`, {
             method: "POST",
-            body: JSON.stringify(
-              spendAlertBody(fields["thresholdUsd"], fields["recipients"], fields["subjectPrefix"]),
-            ),
-          },
-        );
-        return this.mapSpendAlert(accountId, scope, await this.scopeName(scope), alert, now);
+            body: JSON.stringify({ name: fields["name"] }),
+          });
+          return this.mapVectorStore(accountId, store, now);
+        }
+        case "eval": {
+          // POST /v1/evals/{id}: verified 2026-07-29 (`updateEval`).
+          const item = await this.fetch<EvalObject>(`/evals/${id}`, {
+            method: "POST",
+            body: JSON.stringify({ name: fields["name"] }),
+          });
+          return this.mapEval(accountId, item, now);
+        }
+        case "project": {
+          // POST /v1/organization/projects/{id}: verified 2026-07-29 (`modify-project`).
+          const project = await this.adminFetch<Project>(`/organization/projects/${id}`, {
+            method: "POST",
+            body: JSON.stringify({ name: fields["name"] }),
+          });
+          return this.mapProject(accountId, project, now);
+        }
+        case "organization-user": {
+          // POST /v1/organization/users/{id}: verified 2026-07-29 (`modify-user`).
+          const user = await this.adminFetch<OrganizationUser>(`/organization/users/${id}`, {
+            method: "POST",
+            body: JSON.stringify({ role: fields["role"] }),
+          });
+          return this.mapOrganizationUser(accountId, user, now);
+        }
+        case "project-user": {
+          // POST …/projects/{p}/users/{u}: verified 2026-10-03 (`modify-project-user`).
+          const { projectId, keyId: userId } = splitApiKeyId(externalId);
+          await this.adminFetch<ProjectUser>(
+            `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+            { method: "POST", body: JSON.stringify({ role: fields["role"] }) },
+          );
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "project-service-account": {
+          // POST …/service_accounts/{id}: verified 2026-10-03
+          // (`update-project-service-account`). Only member/owner are settable.
+          const { projectId, keyId: saId } = splitApiKeyId(externalId);
+          const body: Record<string, unknown> = {};
+          if (fields["name"]) body["name"] = fields["name"];
+          if (fields["role"] === "member" || fields["role"] === "owner")
+            body["role"] = fields["role"];
+          await this.adminFetch<ProjectServiceAccount>(
+            `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
+            { method: "POST", body: JSON.stringify(body) },
+          );
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "project-rate-limit": {
+          // POST …/projects/{p}/rate_limits/{id}: verified 2026-10-03
+          // (`update-project-rate-limits`). Blank fields are left alone.
+          const { projectId, keyId: rlId } = splitApiKeyId(externalId);
+          const body: Record<string, number> = {};
+          for (const [field, apiKey] of RATE_LIMIT_FIELDS) {
+            const value = fields[field];
+            if (value === undefined || str(value).trim() === "") continue;
+            const n = num(value);
+            if (n === undefined || n < 0 || !Number.isInteger(n)) {
+              throw new Error(`OpenAI plugin: ${field} must be a whole number`);
+            }
+            body[apiKey] = n;
+          }
+          const updated = await this.adminFetch<ProjectRateLimit>(
+            `/organization/projects/${encodeURIComponent(projectId)}/rate_limits/${encodeURIComponent(rlId)}`,
+            { method: "POST", body: JSON.stringify(body) },
+          );
+          const project = await this.adminFetch<Project>(
+            `/organization/projects/${encodeURIComponent(projectId)}`,
+          );
+          return this.mapProjectRateLimit(accountId, projectId, str(project.name), updated, now);
+        }
+        case "spend-limit": {
+          const scope = externalId;
+          const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope), {
+            method: "POST",
+            body: JSON.stringify({
+              threshold_amount: dollarsToCents(fields["amountUsd"], "Monthly limit"),
+              currency: "USD",
+              interval: "month",
+            }),
+          });
+          return this.mapSpendLimit(accountId, scope, await this.scopeName(scope), limit, now);
+        }
+        case "spend-alert": {
+          // POST …/spend_alerts/{alert_id}: verified 2026-10-03. The update body
+          // is the full create body, so every field is sent.
+          const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
+          const alert = await this.adminFetch<SpendAlert>(
+            `${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`,
+            {
+              method: "POST",
+              body: JSON.stringify(
+                spendAlertBody(
+                  fields["thresholdUsd"],
+                  fields["recipients"],
+                  fields["subjectPrefix"],
+                ),
+              ),
+            },
+          );
+          return this.mapSpendAlert(accountId, scope, await this.scopeName(scope), alert, now);
+        }
+        default:
+          throw new Error(`OpenAI plugin: cannot update type "${typeId}"`);
       }
-      default:
-        throw new Error(`OpenAI plugin: cannot update type "${typeId}"`);
-    }
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    const id = encodeURIComponent(externalId);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const id = encodeURIComponent(externalId);
 
-    switch (typeId) {
-      case "file":
-        // DELETE /v1/files/{file_id}: verified 2026-07-29 (`deleteFile`).
-        await this.fetch(`/files/${id}`, { method: "DELETE" });
-        return;
-      case "vector-store":
-        // DELETE /v1/vector_stores/{id}: verified 2026-07-29 (`deleteVectorStore`).
-        await this.fetch(`/vector_stores/${id}`, { method: "DELETE" });
-        return;
-      case "container":
-        // DELETE /v1/containers/{id}: verified 2026-07-29 (`DeleteContainer`).
-        await this.fetch(`/containers/${id}`, { method: "DELETE" });
-        return;
-      case "eval":
-        // DELETE /v1/evals/{id}: verified 2026-07-29 (`deleteEval`).
-        await this.fetch(`/evals/${id}`, { method: "DELETE" });
-        return;
-      case "invite":
-        // DELETE /v1/organization/invites/{id}: verified 2026-07-29 (`delete-invite`).
-        // Rejected once the invite has been accepted.
-        await this.adminFetch(`/organization/invites/${id}`, { method: "DELETE" });
-        return;
-      case "organization-user":
-        // DELETE /v1/organization/users/{id}: verified 2026-07-29 (`delete-user`).
-        await this.adminFetch(`/organization/users/${id}`, { method: "DELETE" });
-        return;
-      case "project-api-key": {
-        // DELETE /v1/organization/projects/{p}/api_keys/{k}: verified 2026-07-29
-        // (`delete-project-api-key`). 400s when the key belongs to a service
-        // account; the service account has to be removed instead.
-        const { projectId, keyId } = splitApiKeyId(externalId);
-        await this.adminFetch(
-          `/organization/projects/${encodeURIComponent(projectId)}/api_keys/${encodeURIComponent(keyId)}`,
-          { method: "DELETE" },
-        );
-        return;
+      switch (typeId) {
+        case "file":
+          // DELETE /v1/files/{file_id}: verified 2026-07-29 (`deleteFile`).
+          await this.fetch(`/files/${id}`, { method: "DELETE" });
+          return;
+        case "vector-store":
+          // DELETE /v1/vector_stores/{id}: verified 2026-07-29 (`deleteVectorStore`).
+          await this.fetch(`/vector_stores/${id}`, { method: "DELETE" });
+          return;
+        case "container":
+          // DELETE /v1/containers/{id}: verified 2026-07-29 (`DeleteContainer`).
+          await this.fetch(`/containers/${id}`, { method: "DELETE" });
+          return;
+        case "eval":
+          // DELETE /v1/evals/{id}: verified 2026-07-29 (`deleteEval`).
+          await this.fetch(`/evals/${id}`, { method: "DELETE" });
+          return;
+        case "invite":
+          // DELETE /v1/organization/invites/{id}: verified 2026-07-29 (`delete-invite`).
+          // Rejected once the invite has been accepted.
+          await this.adminFetch(`/organization/invites/${id}`, { method: "DELETE" });
+          return;
+        case "organization-user":
+          // DELETE /v1/organization/users/{id}: verified 2026-07-29 (`delete-user`).
+          await this.adminFetch(`/organization/users/${id}`, { method: "DELETE" });
+          return;
+        case "project-api-key": {
+          // DELETE /v1/organization/projects/{p}/api_keys/{k}: verified 2026-07-29
+          // (`delete-project-api-key`). 400s when the key belongs to a service
+          // account; the service account has to be removed instead.
+          const { projectId, keyId } = splitApiKeyId(externalId);
+          await this.adminFetch(
+            `/organization/projects/${encodeURIComponent(projectId)}/api_keys/${encodeURIComponent(keyId)}`,
+            { method: "DELETE" },
+          );
+          return;
+        }
+        case "project-user": {
+          // DELETE …/projects/{p}/users/{u}: verified 2026-10-03 (`delete-project-user`).
+          const { projectId, keyId: userId } = splitApiKeyId(externalId);
+          await this.adminFetch(
+            `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+            { method: "DELETE" },
+          );
+          return;
+        }
+        case "project-service-account": {
+          // DELETE …/service_accounts/{id}: verified 2026-10-03
+          // (`delete-project-service-account`). Revokes the account's keys.
+          const { projectId, keyId: saId } = splitApiKeyId(externalId);
+          await this.adminFetch(
+            `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
+            { method: "DELETE" },
+          );
+          return;
+        }
+        case "spend-limit":
+          // DELETE /v1/organization/spend_limit or …/projects/{p}/spend_limit.
+          await this.adminFetch(spendLimitPath(externalId), { method: "DELETE" });
+          return;
+        case "spend-alert": {
+          const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
+          await this.adminFetch(`${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`, {
+            method: "DELETE",
+          });
+          return;
+        }
+        case "admin-api-key":
+          // DELETE /v1/organization/admin_api_keys/{id}: verified 2026-10-03
+          // (`admin-api-keys-delete`).
+          await this.adminFetch(`/organization/admin_api_keys/${id}`, { method: "DELETE" });
+          return;
+        default:
+          throw new Error(`OpenAI plugin: cannot delete type "${typeId}"`);
       }
-      case "project-user": {
-        // DELETE …/projects/{p}/users/{u}: verified 2026-10-03 (`delete-project-user`).
-        const { projectId, keyId: userId } = splitApiKeyId(externalId);
-        await this.adminFetch(
-          `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
-          { method: "DELETE" },
-        );
-        return;
-      }
-      case "project-service-account": {
-        // DELETE …/service_accounts/{id}: verified 2026-10-03
-        // (`delete-project-service-account`). Revokes the account's keys.
-        const { projectId, keyId: saId } = splitApiKeyId(externalId);
-        await this.adminFetch(
-          `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
-          { method: "DELETE" },
-        );
-        return;
-      }
-      case "spend-limit":
-        // DELETE /v1/organization/spend_limit or …/projects/{p}/spend_limit.
-        await this.adminFetch(spendLimitPath(externalId), { method: "DELETE" });
-        return;
-      case "spend-alert": {
-        const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
-        await this.adminFetch(`${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`, {
-          method: "DELETE",
-        });
-        return;
-      }
-      case "admin-api-key":
-        // DELETE /v1/organization/admin_api_keys/{id}: verified 2026-10-03
-        // (`admin-api-keys-delete`).
-        await this.adminFetch(`/organization/admin_api_keys/${id}`, { method: "DELETE" });
-        return;
-      default:
-        throw new Error(`OpenAI plugin: cannot delete type "${typeId}"`);
-    }
+    });
   }
 
   /**
    * Header actions. Everything here maps onto a verb-shaped POST that has no
    * request body.
    */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    const id = encodeURIComponent(externalId);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const id = encodeURIComponent(externalId);
 
-    if (typeId === "fine-tuning-job") {
-      // POST /v1/fine_tuning/jobs/{id}/{cancel,pause,resume}: verified 2026-07-29.
-      const verb =
-        actionId === "cancel-fine-tuning-job"
-          ? "cancel"
-          : actionId === "pause-fine-tuning-job"
-            ? "pause"
-            : actionId === "resume-fine-tuning-job"
-              ? "resume"
-              : "";
-      if (verb) {
-        await this.fetch(`/fine_tuning/jobs/${id}/${verb}`, { method: "POST" });
+      if (typeId === "fine-tuning-job") {
+        // POST /v1/fine_tuning/jobs/{id}/{cancel,pause,resume}: verified 2026-07-29.
+        const verb =
+          actionId === "cancel-fine-tuning-job"
+            ? "cancel"
+            : actionId === "pause-fine-tuning-job"
+              ? "pause"
+              : actionId === "resume-fine-tuning-job"
+                ? "resume"
+                : "";
+        if (verb) {
+          await this.fetch(`/fine_tuning/jobs/${id}/${verb}`, { method: "POST" });
+          return;
+        }
+      }
+
+      if (typeId === "batch" && actionId === "cancel-batch") {
+        // POST /v1/batches/{id}/cancel: verified 2026-07-29 (`cancelBatch`).
+        await this.fetch(`/batches/${id}/cancel`, { method: "POST" });
         return;
       }
-    }
 
-    if (typeId === "batch" && actionId === "cancel-batch") {
-      // POST /v1/batches/{id}/cancel: verified 2026-07-29 (`cancelBatch`).
-      await this.fetch(`/batches/${id}/cancel`, { method: "POST" });
-      return;
-    }
-
-    if (typeId === "model" && actionId === "delete-fine-tuned-model") {
-      // DELETE /v1/models/{model}: verified 2026-07-29 (`deleteModel`). The API
-      // only accepts fine-tuned model ids, so refuse locally rather than letting
-      // a base model produce a confusing 4xx.
-      if (!externalId.startsWith("ft:")) {
-        throw new Error(
-          `OpenAI plugin: "${externalId}" is a base model. Only fine-tuned models (ft:…) owned by your organization can be deleted.`,
-        );
+      if (typeId === "model" && actionId === "delete-fine-tuned-model") {
+        // DELETE /v1/models/{model}: verified 2026-07-29 (`deleteModel`). The API
+        // only accepts fine-tuned model ids, so refuse locally rather than letting
+        // a base model produce a confusing 4xx.
+        if (!externalId.startsWith("ft:")) {
+          throw new Error(
+            `OpenAI plugin: "${externalId}" is a base model. Only fine-tuned models (ft:…) owned by your organization can be deleted.`,
+          );
+        }
+        await this.fetch(`/models/${id}`, { method: "DELETE" });
+        return;
       }
-      await this.fetch(`/models/${id}`, { method: "DELETE" });
-      return;
-    }
 
-    if (typeId === "project" && actionId === "archive-project") {
-      // POST /v1/organization/projects/{id}/archive: verified 2026-07-29.
-      await this.adminFetch(`/organization/projects/${id}/archive`, { method: "POST" });
-      return;
-    }
+      if (typeId === "project" && actionId === "archive-project") {
+        // POST /v1/organization/projects/{id}/archive: verified 2026-07-29.
+        await this.adminFetch(`/organization/projects/${id}/archive`, { method: "POST" });
+        return;
+      }
 
-    throw new Error(`OpenAI plugin: unknown action "${actionId}" for type "${typeId}"`);
+      throw new Error(`OpenAI plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
   /**
@@ -3273,67 +3312,70 @@ export class OpenAIClient implements PluginClient {
    * (`create-project-service-account`). This is the only route in the whole API
    * that hands back a usable secret key, and it does so exactly once.
    */
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     _accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId === "project-service-account" && formatId === "service-account-api-key") {
-      // POST …/service_accounts/{id}/api_keys: verified 2026-10-03
-      // (`CreateanAPIkeyforaserviceaccount`). The value is returned once.
-      const { projectId, keyId: saId } = splitApiKeyId(externalIdOf(resourceId));
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId === "project-service-account" && formatId === "service-account-api-key") {
+        // POST …/service_accounts/{id}/api_keys: verified 2026-10-03
+        // (`CreateanAPIkeyforaserviceaccount`). The value is returned once.
+        const { projectId, keyId: saId } = splitApiKeyId(externalIdOf(resourceId));
+        const name = `infrawrench-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}`;
+        const created = await this.adminFetch<ServiceAccountApiKeyCreated>(
+          `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}/api_keys`,
+          { method: "POST", body: JSON.stringify({ name }) },
+        );
+        const value = str(created.value);
+        if (!value)
+          throw new Error("OpenAI plugin: the API key was created but no value came back.");
+        return {
+          content: value,
+          filename: `openai-${saId}-api-key.txt`,
+          mimeType: "text/plain",
+          fields: [
+            { label: "API Key ID", value: created.id },
+            { label: "Name", value: str(created.name) || name },
+            { label: "Expires", value: isoOf(created.expires_at) || "never" },
+            { label: "API Key", value, sensitive: true, hint: "Only shown once" },
+          ],
+          warning:
+            "Save this key now. OpenAI never returns it again; the key list only ever shows a redacted value.",
+        };
+      }
+      if (typeId !== "project" || formatId !== "service-account-key") {
+        throw new Error(`OpenAI plugin: no credential format "${formatId}" for type "${typeId}"`);
+      }
+
+      const projectId = externalIdOf(resourceId);
       const name = `infrawrench-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}`;
-      const created = await this.adminFetch<ServiceAccountApiKeyCreated>(
-        `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}/api_keys`,
+      const created = await this.adminFetch<ServiceAccountCreateResponse>(
+        `/organization/projects/${encodeURIComponent(projectId)}/service_accounts`,
         { method: "POST", body: JSON.stringify({ name }) },
       );
-      const value = str(created.value);
-      if (!value) throw new Error("OpenAI plugin: the API key was created but no value came back.");
+
+      const value = str(created.api_key?.value);
+      if (!value) {
+        throw new Error(
+          "OpenAI plugin: the service account was created but no API key came back. Check the project's key settings in the OpenAI dashboard.",
+        );
+      }
+
       return {
         content: value,
-        filename: `openai-${saId}-api-key.txt`,
+        filename: `openai-${projectId}-service-account-key.txt`,
         mimeType: "text/plain",
         fields: [
-          { label: "API Key ID", value: created.id },
-          { label: "Name", value: str(created.name) || name },
-          { label: "Expires", value: isoOf(created.expires_at) || "never" },
+          { label: "Service Account", value: str(created.name) || name },
+          { label: "Service Account ID", value: created.id },
+          { label: "API Key ID", value: str(created.api_key?.id) },
           { label: "API Key", value, sensitive: true, hint: "Only shown once" },
         ],
-        warning:
-          "Save this key now. OpenAI never returns it again; the key list only ever shows a redacted value.",
+        warning: "Save this key now. OpenAI never shows it again.",
       };
-    }
-    if (typeId !== "project" || formatId !== "service-account-key") {
-      throw new Error(`OpenAI plugin: no credential format "${formatId}" for type "${typeId}"`);
-    }
-
-    const projectId = externalIdOf(resourceId);
-    const name = `infrawrench-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}`;
-    const created = await this.adminFetch<ServiceAccountCreateResponse>(
-      `/organization/projects/${encodeURIComponent(projectId)}/service_accounts`,
-      { method: "POST", body: JSON.stringify({ name }) },
-    );
-
-    const value = str(created.api_key?.value);
-    if (!value) {
-      throw new Error(
-        "OpenAI plugin: the service account was created but no API key came back. Check the project's key settings in the OpenAI dashboard.",
-      );
-    }
-
-    return {
-      content: value,
-      filename: `openai-${projectId}-service-account-key.txt`,
-      mimeType: "text/plain",
-      fields: [
-        { label: "Service Account", value: str(created.name) || name },
-        { label: "Service Account ID", value: created.id },
-        { label: "API Key ID", value: str(created.api_key?.id) },
-        { label: "API Key", value, sensitive: true, hint: "Only shown once" },
-      ],
-      warning: "Save this key now. OpenAI never shows it again.",
-    };
+    });
   }
 
   // ---- Metrics and costs ---------------------------------------------------
@@ -3355,80 +3397,82 @@ export class OpenAIClient implements PluginClient {
    * `start_time` is required and in Unix **seconds**; `end_time` is
    * exclusive. All of it lives behind the admin key.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (!this.hasAdminKey) throw new Error(ADMIN_KEY_REQUIRED);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (!this.hasAdminKey) throw new Error(ADMIN_KEY_REQUIRED);
 
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 7 * 24 * 60 * 60 * 1000;
-    const startTime = Math.floor(startMs / 1000);
-    const endTime = Math.ceil(endMs / 1000);
-    const spanDays = Math.max(1, Math.ceil((endTime - startTime) / 86400));
-    const externalId = externalIdOf(resourceId);
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 7 * 24 * 60 * 60 * 1000;
+      const startTime = Math.floor(startMs / 1000);
+      const endTime = Math.ceil(endMs / 1000);
+      const spanDays = Math.max(1, Math.ceil((endTime - startTime) / 86400));
+      const externalId = externalIdOf(resourceId);
 
-    // A model filters on `models`, a key on `api_key_ids` (the bare key id,
-    // not the project-prefixed external id), a member on `user_ids`, a
-    // project on `project_ids` and a vector store on `vector_store_ids`.
-    const filterFor: Record<string, [UsageFilter, string]> = {
-      model: ["models", externalId],
-      "project-api-key": [
-        "api_key_ids",
-        externalId.includes(":") ? splitApiKeyId(externalId).keyId : externalId,
-      ],
-      "organization-user": ["user_ids", externalId],
-      project: ["project_ids", externalId],
-      "vector-store": ["vector_store_ids", externalId],
-    };
-    const filter = filterFor[resourceTypeId];
-    if (!filter) return [];
+      // A model filters on `models`, a key on `api_key_ids` (the bare key id,
+      // not the project-prefixed external id), a member on `user_ids`, a
+      // project on `project_ids` and a vector store on `vector_store_ids`.
+      const filterFor: Record<string, [UsageFilter, string]> = {
+        model: ["models", externalId],
+        "project-api-key": [
+          "api_key_ids",
+          externalId.includes(":") ? splitApiKeyId(externalId).keyId : externalId,
+        ],
+        "organization-user": ["user_ids", externalId],
+        project: ["project_ids", externalId],
+        "vector-store": ["vector_store_ids", externalId],
+      };
+      const filter = filterFor[resourceTypeId];
+      if (!filter) return [];
 
-    // `1h` buckets cap at 168, `1d` at 31: pick whichever fits the window.
-    const hourly = spanDays <= 7;
-    const params = new URLSearchParams({
-      start_time: String(startTime),
-      end_time: String(endTime),
-      bucket_width: hourly ? "1h" : "1d",
-      limit: String(hourly ? Math.min(168, spanDays * 24) : Math.min(31, spanDays)),
-    });
-    appendAll(params, filter[0], [filter[1]]);
-
-    const endpoints = USAGE_ENDPOINTS.filter((endpoint) => endpoint.filters.includes(filter[0]));
-    const results = await Promise.all(
-      endpoints.map(async (endpoint) => {
-        // The completions call (or, for a vector store, the only call) is
-        // the tab's baseline and surfaces its error; the rest are extras.
-        const primary = endpoint.core === true || endpoints.length === 1;
-        const load = this.listUsageBuckets(`/organization/usage/${endpoint.path}`, params);
-        const buckets = primary ? await load : await load.catch(() => null);
-        return buckets ? usageSeries(endpoint, buckets, primary) : [];
-      }),
-    );
-    const usage = results.flat();
-
-    if (resourceTypeId === "project") {
-      // /organization/costs only accepts 1d buckets, limit 1–180.
+      // `1h` buckets cap at 168, `1d` at 31: pick whichever fits the window.
+      const hourly = spanDays <= 7;
       const params = new URLSearchParams({
         start_time: String(startTime),
         end_time: String(endTime),
-        bucket_width: "1d",
-        limit: String(Math.min(180, spanDays)),
+        bucket_width: hourly ? "1h" : "1d",
+        limit: String(hourly ? Math.min(168, spanDays * 24) : Math.min(31, spanDays)),
       });
-      appendAll(params, "project_ids", [externalId]);
+      appendAll(params, filter[0], [filter[1]]);
 
-      const costBuckets = await this.listUsageBuckets("/organization/costs", params);
-      const points: MetricSeriesPoint[] = costBuckets.map((bucket) => {
-        let total = 0;
-        for (const result of bucket.results ?? []) total += result.amount?.value ?? 0;
-        return { timestamp: (bucket.start_time ?? 0) * 1000, value: total };
-      });
-      return [{ label: "Cost", unit: "USD", points }, ...usage];
-    }
+      const endpoints = USAGE_ENDPOINTS.filter((endpoint) => endpoint.filters.includes(filter[0]));
+      const results = await Promise.all(
+        endpoints.map(async (endpoint) => {
+          // The completions call (or, for a vector store, the only call) is
+          // the tab's baseline and surfaces its error; the rest are extras.
+          const primary = endpoint.core === true || endpoints.length === 1;
+          const load = this.listUsageBuckets(`/organization/usage/${endpoint.path}`, params);
+          const buckets = primary ? await load : await load.catch(() => null);
+          return buckets ? usageSeries(endpoint, buckets, primary) : [];
+        }),
+      );
+      const usage = results.flat();
 
-    return usage;
+      if (resourceTypeId === "project") {
+        // /organization/costs only accepts 1d buckets, limit 1–180.
+        const params = new URLSearchParams({
+          start_time: String(startTime),
+          end_time: String(endTime),
+          bucket_width: "1d",
+          limit: String(Math.min(180, spanDays)),
+        });
+        appendAll(params, "project_ids", [externalId]);
+
+        const costBuckets = await this.listUsageBuckets("/organization/costs", params);
+        const points: MetricSeriesPoint[] = costBuckets.map((bucket) => {
+          let total = 0;
+          for (const result of bucket.results ?? []) total += result.amount?.value ?? 0;
+          return { timestamp: (bucket.start_time ?? 0) * 1000, value: total };
+        });
+        return [{ label: "Cost", unit: "USD", points }, ...usage];
+      }
+
+      return usage;
+    });
   }
 
   /**
@@ -3442,70 +3486,74 @@ export class OpenAIClient implements PluginClient {
    * key the events performed on it with `resource_ids[]`. Note the bracketed
    * array keys: unlike the usage endpoints, this one is described that way.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const externalId = externalIdOf(resourceId);
-    const query = new URLSearchParams({
-      limit: String(Math.min(Math.max(params.tailLines ?? 100, 1), 100)),
-    });
-    switch (typeId) {
-      case "project":
-        query.append("project_ids[]", externalId);
-        break;
-      case "organization-user":
-        query.append("actor_ids[]", externalId);
-        break;
-      case "project-service-account":
-        query.append("actor_ids[]", splitApiKeyId(externalId).keyId);
-        break;
-      case "project-api-key":
-        query.append(
-          "resource_ids[]",
-          externalId.includes(":") ? splitApiKeyId(externalId).keyId : externalId,
-        );
-        break;
-      default:
-        throw new Error(`OpenAI plugin: no audit log for type "${typeId}"`);
-    }
-
-    const container = "audit log";
-    const wrap = (lines: string[]) => ({
-      text: lines.map((line) => `${line}\n`).join(""),
-      containers: [container],
-      activeContainer: container,
-    });
-
-    let page: ListEnvelope<AuditLogEntry>;
-    try {
-      page = await this.adminFetch<ListEnvelope<AuditLogEntry>>(
-        `/organization/audit_logs?${query.toString()}`,
-      );
-    } catch (error) {
-      if (error instanceof Error && / 40[03] /.test(error.message)) {
-        return wrap([
-          "OpenAI did not return the audit log. Audit logging has to be enabled once by an organization owner under Settings → Organization → Data controls → Audit logging, and only events after that are recorded.",
-          error.message,
-        ]);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const query = new URLSearchParams({
+        limit: String(Math.min(Math.max(params.tailLines ?? 100, 1), 100)),
+      });
+      switch (typeId) {
+        case "project":
+          query.append("project_ids[]", externalId);
+          break;
+        case "organization-user":
+          query.append("actor_ids[]", externalId);
+          break;
+        case "project-service-account":
+          query.append("actor_ids[]", splitApiKeyId(externalId).keyId);
+          break;
+        case "project-api-key":
+          query.append(
+            "resource_ids[]",
+            externalId.includes(":") ? splitApiKeyId(externalId).keyId : externalId,
+          );
+          break;
+        default:
+          throw new Error(`OpenAI plugin: no audit log for type "${typeId}"`);
       }
-      throw error;
-    }
 
-    // Newest first from the API; reverse into reading order.
-    const lines = (page.data ?? []).reverse().map(formatAuditLog);
-    return wrap(lines.length > 0 ? lines : ["No audit log events for this resource."]);
+      const container = "audit log";
+      const wrap = (lines: string[]) => ({
+        text: lines.map((line) => `${line}\n`).join(""),
+        containers: [container],
+        activeContainer: container,
+      });
+
+      let page: ListEnvelope<AuditLogEntry>;
+      try {
+        page = await this.adminFetch<ListEnvelope<AuditLogEntry>>(
+          `/organization/audit_logs?${query.toString()}`,
+        );
+      } catch (error) {
+        if (error instanceof Error && / 40[03] /.test(error.message)) {
+          return wrap([
+            "OpenAI did not return the audit log. Audit logging has to be enabled once by an organization owner under Settings → Organization → Data controls → Audit logging, and only events after that are recorded.",
+            error.message,
+          ]);
+        }
+        throw error;
+      }
+
+      // Newest first from the API; reverse into reading order.
+      const lines = (page.data ?? []).reverse().map(formatAuditLog);
+      return wrap(lines.length > 0 ? lines : ["No audit log events for this resource."]);
+    });
   }
 
-  async fetchCostData(accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    // Normalized AI dimensions (`ai:provider`, and `ai:model` /
-    // `ai:token_type` where the billing API says), so request logs can be
-    // reconciled against this bill. See plugin-base `ai-requests.ts`.
-    return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), (row) => {
-      const { model, tokenType } = parseOpenAiLineItem(row.service);
-      return { provider: "openai", model, tokenType };
+  fetchCostData(accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      // Normalized AI dimensions (`ai:provider`, and `ai:model` /
+      // `ai:token_type` where the billing API says), so request logs can be
+      // reconciled against this bill. See plugin-base `ai-requests.ts`.
+      return withAiCostTags(await this.fetchUntaggedCostRows(accountId, range), (row) => {
+        const { model, tokenType } = parseOpenAiLineItem(row.service);
+        return { provider: "openai", model, tokenType };
+      });
     });
   }
 
@@ -3568,124 +3616,133 @@ export class OpenAIClient implements PluginClient {
 
   // ---- Speech tab ----------------------------------------------------------
 
-  async synthesizeSpeech(
+  synthesizeSpeech(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    if (typeId !== "model") {
-      throw new Error(`OpenAI plugin: cannot synthesize speech for type "${typeId}"`);
-    }
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      if (typeId !== "model") {
+        throw new Error(`OpenAI plugin: cannot synthesize speech for type "${typeId}"`);
+      }
 
-    // The panel has one model dropdown for both halves, so the selection may
-    // well be a transcription model. Falling back beats a 400.
-    const requested = payload.modelId || externalIdOf(resourceId);
-    const model = isTtsModel(requested) ? requested : DEFAULT_TTS_MODEL;
-    const voice = payload.voiceId || DEFAULT_VOICE;
+      // The panel has one model dropdown for both halves, so the selection may
+      // well be a transcription model. Falling back beats a 400.
+      const requested = payload.modelId || externalIdOf(resourceId);
+      const model = isTtsModel(requested) ? requested : DEFAULT_TTS_MODEL;
+      const voice = payload.voiceId || DEFAULT_VOICE;
 
-    const body: Record<string, unknown> = {
-      model,
-      input: payload.text,
-      voice,
-      // Explicit rather than implied: the browser has to be able to play it
-      // back, and mp3 is the one container every `<audio>` element handles.
-      response_format: "mp3",
-    };
-    // `instructions` and `stream_format` are both documented as unsupported on
-    // tts-1 / tts-1-hd: sending either is a 400, not a silent no-op.
-    if (!LEGACY_TTS_MODELS.has(model)) {
-      body["instructions"] = "Speak clearly and naturally at a normal conversational pace.";
-    }
+      const body: Record<string, unknown> = {
+        model,
+        input: payload.text,
+        voice,
+        // Explicit rather than implied: the browser has to be able to play it
+        // back, and mp3 is the one container every `<audio>` element handles.
+        response_format: "mp3",
+      };
+      // `instructions` and `stream_format` are both documented as unsupported on
+      // tts-1 / tts-1-hd: sending either is a 400, not a silent no-op.
+      if (!LEGACY_TTS_MODELS.has(model)) {
+        body["instructions"] = "Speak clearly and naturally at a normal conversational pace.";
+      }
 
-    const started = Date.now();
-    const { bytes, requestId } = await this.ttsBytes(body);
-    const elapsedMs = Date.now() - started;
+      const started = Date.now();
+      const { bytes, requestId } = await this.ttsBytes(body);
+      const elapsedMs = Date.now() - started;
 
-    const characters = payload.text.length;
-    const note = isTtsModel(requested) ? "" : ` · ${requested} can't synthesize, used ${model}`;
+      const characters = payload.text.length;
+      const note = isTtsModel(requested) ? "" : ` · ${requested} can't synthesize, used ${model}`;
 
-    return {
-      audioBase64: bytesToBase64(bytes),
-      mimeType: "audio/mpeg",
-      fileName: `openai-${voice}.mp3`,
-      summary: `${model} · ${voice} · ${characters.toLocaleString()} characters · mp3 · ${elapsedMs} ms${note}`,
-      characters,
-      ...(requestId ? { requestId } : {}),
-    };
+      return {
+        audioBase64: bytesToBase64(bytes),
+        mimeType: "audio/mpeg",
+        fileName: `openai-${voice}.mp3`,
+        summary: `${model} · ${voice} · ${characters.toLocaleString()} characters · mp3 · ${elapsedMs} ms${note}`,
+        characters,
+        ...(requestId ? { requestId } : {}),
+      };
+    });
   }
 
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    if (typeId !== "model") {
-      throw new Error(`OpenAI plugin: cannot transcribe audio for type "${typeId}"`);
-    }
-
-    const requested = payload.modelId || externalIdOf(resourceId);
-    const model = isSttModel(requested) ? requested : DEFAULT_STT_MODEL;
-
-    // Response format is not a free choice. `verbose_json` (the only shape
-    // that carries word and segment timings) is accepted by whisper-1 alone;
-    // the gpt-4o transcribe family is json-only. The diarize model has its own
-    // `diarized_json`, which is where speaker labels come from. Asking for a
-    // format the model doesn't support is a 400, so the request is built to
-    // match the model rather than hoping for graceful degradation.
-    const wantsVerbose = model === VERBOSE_JSON_MODEL;
-    const wantsDiarized = model === DIARIZE_MODEL;
-    const responseFormat = wantsVerbose ? "verbose_json" : wantsDiarized ? "diarized_json" : "json";
-
-    const started = Date.now();
-    const result = await this.sttTranscribe(payload, model, responseFormat, wantsVerbose);
-    const elapsedMs = Date.now() - started;
-
-    const words: TranscriptWord[] = [];
-    if (wantsVerbose) {
-      for (const word of result.words ?? []) {
-        if (typeof word.word !== "string") continue;
-        words.push({
-          text: word.word,
-          ...(typeof word.start === "number" ? { start: word.start } : {}),
-          ...(typeof word.end === "number" ? { end: word.end } : {}),
-        });
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      if (typeId !== "model") {
+        throw new Error(`OpenAI plugin: cannot transcribe audio for type "${typeId}"`);
       }
-    }
-    if (wantsDiarized) {
-      for (const segment of result.segments ?? []) {
-        if (typeof segment.text !== "string") continue;
-        words.push({
-          text: segment.text,
-          ...(typeof segment.start === "number" ? { start: segment.start } : {}),
-          ...(typeof segment.end === "number" ? { end: segment.end } : {}),
-          ...(segment.speaker ? { speaker: segment.speaker } : {}),
-        });
+
+      const requested = payload.modelId || externalIdOf(resourceId);
+      const model = isSttModel(requested) ? requested : DEFAULT_STT_MODEL;
+
+      // Response format is not a free choice. `verbose_json` (the only shape
+      // that carries word and segment timings) is accepted by whisper-1 alone;
+      // the gpt-4o transcribe family is json-only. The diarize model has its own
+      // `diarized_json`, which is where speaker labels come from. Asking for a
+      // format the model doesn't support is a 400, so the request is built to
+      // match the model rather than hoping for graceful degradation.
+      const wantsVerbose = model === VERBOSE_JSON_MODEL;
+      const wantsDiarized = model === DIARIZE_MODEL;
+      const responseFormat = wantsVerbose
+        ? "verbose_json"
+        : wantsDiarized
+          ? "diarized_json"
+          : "json";
+
+      const started = Date.now();
+      const result = await this.sttTranscribe(payload, model, responseFormat, wantsVerbose);
+      const elapsedMs = Date.now() - started;
+
+      const words: TranscriptWord[] = [];
+      if (wantsVerbose) {
+        for (const word of result.words ?? []) {
+          if (typeof word.word !== "string") continue;
+          words.push({
+            text: word.word,
+            ...(typeof word.start === "number" ? { start: word.start } : {}),
+            ...(typeof word.end === "number" ? { end: word.end } : {}),
+          });
+        }
       }
-    }
+      if (wantsDiarized) {
+        for (const segment of result.segments ?? []) {
+          if (typeof segment.text !== "string") continue;
+          words.push({
+            text: segment.text,
+            ...(typeof segment.start === "number" ? { start: segment.start } : {}),
+            ...(typeof segment.end === "number" ? { end: segment.end } : {}),
+            ...(segment.speaker ? { speaker: segment.speaker } : {}),
+          });
+        }
+      }
 
-    const duration = typeof result.duration === "number" ? result.duration : result.usage?.seconds;
-    const language = result.language ?? result.languages?.[0];
+      const duration =
+        typeof result.duration === "number" ? result.duration : result.usage?.seconds;
+      const language = result.language ?? result.languages?.[0];
 
-    const summary = [
-      model,
-      duration !== undefined ? `${duration.toFixed(1)} s of audio` : undefined,
-      wantsVerbose && words.length > 0 ? `${words.length} word timings` : undefined,
-      wantsDiarized && words.length > 0 ? `${words.length} speaker segments` : undefined,
-      !wantsVerbose && !wantsDiarized ? "no timings (only whisper-1 returns them)" : undefined,
-      `${elapsedMs} ms`,
-    ]
-      .filter((part): part is string => Boolean(part))
-      .join(" · ");
+      const summary = [
+        model,
+        duration !== undefined ? `${duration.toFixed(1)} s of audio` : undefined,
+        wantsVerbose && words.length > 0 ? `${words.length} word timings` : undefined,
+        wantsDiarized && words.length > 0 ? `${words.length} speaker segments` : undefined,
+        !wantsVerbose && !wantsDiarized ? "no timings (only whisper-1 returns them)" : undefined,
+        `${elapsedMs} ms`,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(" · ");
 
-    return {
-      text: str(result.text),
-      summary,
-      ...(language ? { language } : {}),
-      ...(duration !== undefined ? { durationSeconds: duration } : {}),
-      ...(words.length > 0 ? { words } : {}),
-    };
+      return {
+        text: str(result.text),
+        summary,
+        ...(language ? { language } : {}),
+        ...(duration !== undefined ? { durationSeconds: duration } : {}),
+        ...(words.length > 0 ? { words } : {}),
+      };
+    });
   }
 
   /**

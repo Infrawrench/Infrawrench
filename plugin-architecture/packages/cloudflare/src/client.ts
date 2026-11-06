@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   AiRequestLogFetchRange,
   AiRequestLogFetchResult,
@@ -136,7 +139,7 @@ export class CloudflareClient implements PluginClient {
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly oauth: boolean;
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  constructor(credentials: Credentials, resourceTypes: ResourceTypeDefinition[] = []) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Cloudflare plugin: missing apiToken credential");
     this.api = new CloudflareApi(token);
@@ -146,12 +149,16 @@ export class CloudflareClient implements PluginClient {
     this.oauth = Boolean(credentials[OAUTH_CREDENTIAL_KEY]);
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return runCloudflarePreflight(this.api.apiToken, { oauth: this.oauth });
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return runCloudflarePreflight(this.api.apiToken, { oauth: this.oauth });
+    });
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    return withCloudflareErrors(() => this.listResourcesImpl(typeId, accountId));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      return withCloudflareErrors(() => this.listResourcesImpl(typeId, accountId));
+    });
   }
 
   private async listResourcesImpl(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -232,147 +239,153 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = resourceId.split(":").slice(2).join(":");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
 
-    if (dataPlatform.isDataPlatformType(typeId)) {
-      return dataPlatform.getDataPlatform(this.api, typeId, resourceId, accountId);
-    }
-    if (typeId === "zone") {
-      return zoneApi.getZone(this.api, externalId, accountId);
-    }
-    if (typeId === "dns-record") {
-      return dnsRecordApi.getDnsRecord(this.api, externalId, accountId);
-    }
-    if (typeId === "r2-bucket") {
-      return r2Api.getR2Bucket(this.api, externalId, accountId);
-    }
-    if (typeId === "d1-database") {
-      return d1Api.getD1Database(this.api, externalId, accountId);
-    }
-    if (typeId === "queue") {
-      // Fetch the full queue payload (producers/consumers/settings) and
-      // pre-bake the consumer list into resolvedOutputs so the detail
-      // renderer can populate the Consumers tab without an async hop.
-      const queue = await queueApi.getQueue(this.api, accountId, externalId);
-      let consumers: queueApi.QueueConsumer[] = [];
-      try {
-        consumers = await queueApi.listConsumers(this.api, externalId);
-      } catch {
-        // Treat as empty: consumer-list failures shouldn't block the page.
+      if (dataPlatform.isDataPlatformType(typeId)) {
+        return dataPlatform.getDataPlatform(this.api, typeId, resourceId, accountId);
       }
-      queue.resolvedOutputs = {
-        ...queue.resolvedOutputs,
-        __consumers__: JSON.stringify(consumers),
-      };
-      return queue;
-    }
+      if (typeId === "zone") {
+        return zoneApi.getZone(this.api, externalId, accountId);
+      }
+      if (typeId === "dns-record") {
+        return dnsRecordApi.getDnsRecord(this.api, externalId, accountId);
+      }
+      if (typeId === "r2-bucket") {
+        return r2Api.getR2Bucket(this.api, externalId, accountId);
+      }
+      if (typeId === "d1-database") {
+        return d1Api.getD1Database(this.api, externalId, accountId);
+      }
+      if (typeId === "queue") {
+        // Fetch the full queue payload (producers/consumers/settings) and
+        // pre-bake the consumer list into resolvedOutputs so the detail
+        // renderer can populate the Consumers tab without an async hop.
+        const queue = await queueApi.getQueue(this.api, accountId, externalId);
+        let consumers: queueApi.QueueConsumer[] = [];
+        try {
+          consumers = await queueApi.listConsumers(this.api, externalId);
+        } catch {
+          // Treat as empty: consumer-list failures shouldn't block the page.
+        }
+        queue.resolvedOutputs = {
+          ...queue.resolvedOutputs,
+          __consumers__: JSON.stringify(consumers),
+        };
+        return queue;
+      }
 
-    if (typeId === "ai-gateway") {
-      return aiGatewayApi.getAiGateway(this.api, externalId, accountId);
-    }
-    if (typeId === "workflow") {
-      return workflowApi.getWorkflow(this.api, externalId, accountId);
-    }
+      if (typeId === "ai-gateway") {
+        return aiGatewayApi.getAiGateway(this.api, externalId, accountId);
+      }
+      if (typeId === "workflow") {
+        return workflowApi.getWorkflow(this.api, externalId, accountId);
+      }
 
-    // Fallback: list all and find
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Cloudflare plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+      // Fallback: list all and find
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Cloudflare plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (dataPlatform.isDataPlatformType(typeId)) {
-      return dataPlatform.resolveDataPlatformOutput(
-        this.api,
-        typeId,
-        resourceId,
-        outputKey,
-        accountId,
-      );
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    if (typeId === "zone") {
-      if (outputKey === "zoneId") return resource.externalId ?? "";
-      if (outputKey === "nameservers") return String(resource.fields["nameservers"] ?? "");
-    }
-    if (typeId === "worker") {
-      if (outputKey === "workerName")
-        return resource.externalId ?? String(resource.fields["name"] ?? "");
-    }
-    if (typeId === "r2-bucket") {
-      if (outputKey === "bucketName") return String(resource.fields["name"] ?? "");
-      if (outputKey === "publicDevUrl") {
-        const r2dev = await r2Api.getR2DevDomain(
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (dataPlatform.isDataPlatformType(typeId)) {
+        return dataPlatform.resolveDataPlatformOutput(
           this.api,
-          String(resource.fields["name"] ?? ""),
-          String(resource.fields["jurisdiction"] ?? ""),
+          typeId,
+          resourceId,
+          outputKey,
+          accountId,
         );
-        return r2dev.enabled && r2dev.domain ? `https://${r2dev.domain}` : "";
       }
-      if (outputKey === "s3Endpoint") {
-        const cfAccountId = await this.api.getAccountId();
-        return `https://${cfAccountId}.r2.cloudflarestorage.com`;
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      if (typeId === "zone") {
+        if (outputKey === "zoneId") return resource.externalId ?? "";
+        if (outputKey === "nameservers") return String(resource.fields["nameservers"] ?? "");
       }
-    }
-    if (typeId === "kv-namespace") {
-      if (outputKey === "namespaceId") return resource.externalId ?? "";
-    }
-    if (typeId === "d1-database") {
-      if (outputKey === "databaseId") return resource.externalId ?? "";
-    }
-    if (typeId === "queue") {
-      if (outputKey === "queueId") return resource.externalId ?? "";
-      if (outputKey === "queueName") return String(resource.fields["name"] ?? "");
-    }
-    if (typeId === "tunnel") {
-      if (outputKey === "tunnelId") return resource.externalId ?? "";
-      if (outputKey === "tunnelToken") {
-        return await tunnelApi.getTunnelToken(this.api, String(resource.externalId ?? ""));
+      if (typeId === "worker") {
+        if (outputKey === "workerName")
+          return resource.externalId ?? String(resource.fields["name"] ?? "");
       }
-    }
-    if (typeId === "access-application") {
-      if (outputKey === "aud") return String(resource.resolvedOutputs["aud"] ?? "");
-    }
-    if (typeId === "hyperdrive") {
-      if (outputKey === "hyperdriveId") return resource.externalId ?? "";
-    }
-    if (typeId === "turnstile-widget") {
-      if (outputKey === "siteKey") return resource.externalId ?? "";
-      if (outputKey === "secretKey") {
-        return turnstileApi.getWidgetSecret(this.api, String(resource.externalId ?? ""));
+      if (typeId === "r2-bucket") {
+        if (outputKey === "bucketName") return String(resource.fields["name"] ?? "");
+        if (outputKey === "publicDevUrl") {
+          const r2dev = await r2Api.getR2DevDomain(
+            this.api,
+            String(resource.fields["name"] ?? ""),
+            String(resource.fields["jurisdiction"] ?? ""),
+          );
+          return r2dev.enabled && r2dev.domain ? `https://${r2dev.domain}` : "";
+        }
+        if (outputKey === "s3Endpoint") {
+          const cfAccountId = await this.api.getAccountId();
+          return `https://${cfAccountId}.r2.cloudflarestorage.com`;
+        }
       }
-    }
-    if (typeId === "vectorize-index") {
-      if (outputKey === "indexName") return resource.externalId ?? "";
-    }
-    if (typeId === "ai-gateway") {
-      if (outputKey === "gatewayId") return resource.externalId ?? "";
-    }
-    if (typeId === "ai-search") {
-      if (outputKey === "instanceId") return resource.externalId ?? "";
-    }
-    if (typeId === "durable-object-namespace") {
-      if (outputKey === "namespaceId") return resource.externalId ?? "";
-    }
-    if (typeId === "workflow") {
-      if (outputKey === "workflowName") return resource.externalId ?? "";
-    }
-    if (typeId === "secrets-store-secret") {
-      if (outputKey === "secretName") return String(resource.fields["name"] ?? "");
-      if (outputKey === "storeId") return String(resource.fields["storeId"] ?? "");
-    }
-    throw new Error(`Cloudflare plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      if (typeId === "kv-namespace") {
+        if (outputKey === "namespaceId") return resource.externalId ?? "";
+      }
+      if (typeId === "d1-database") {
+        if (outputKey === "databaseId") return resource.externalId ?? "";
+      }
+      if (typeId === "queue") {
+        if (outputKey === "queueId") return resource.externalId ?? "";
+        if (outputKey === "queueName") return String(resource.fields["name"] ?? "");
+      }
+      if (typeId === "tunnel") {
+        if (outputKey === "tunnelId") return resource.externalId ?? "";
+        if (outputKey === "tunnelToken") {
+          return await tunnelApi.getTunnelToken(this.api, String(resource.externalId ?? ""));
+        }
+      }
+      if (typeId === "access-application") {
+        if (outputKey === "aud") return String(resource.resolvedOutputs["aud"] ?? "");
+      }
+      if (typeId === "hyperdrive") {
+        if (outputKey === "hyperdriveId") return resource.externalId ?? "";
+      }
+      if (typeId === "turnstile-widget") {
+        if (outputKey === "siteKey") return resource.externalId ?? "";
+        if (outputKey === "secretKey") {
+          return turnstileApi.getWidgetSecret(this.api, String(resource.externalId ?? ""));
+        }
+      }
+      if (typeId === "vectorize-index") {
+        if (outputKey === "indexName") return resource.externalId ?? "";
+      }
+      if (typeId === "ai-gateway") {
+        if (outputKey === "gatewayId") return resource.externalId ?? "";
+      }
+      if (typeId === "ai-search") {
+        if (outputKey === "instanceId") return resource.externalId ?? "";
+      }
+      if (typeId === "durable-object-namespace") {
+        if (outputKey === "namespaceId") return resource.externalId ?? "";
+      }
+      if (typeId === "workflow") {
+        if (outputKey === "workflowName") return resource.externalId ?? "";
+      }
+      if (typeId === "secrets-store-secret") {
+        if (outputKey === "secretName") return String(resource.fields["name"] ?? "");
+        if (outputKey === "storeId") return String(resource.fields["storeId"] ?? "");
+      }
+      throw new Error(
+        `Cloudflare plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   /**
@@ -382,116 +395,120 @@ export class CloudflareClient implements PluginClient {
    * we return the un-enriched resource so the page still renders namespace
    * details and metrics.
    */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (dataPlatform.isDataPlatformType(resource.resourceTypeId)) {
-      return dataPlatform.enrichDataPlatform(this.api, resource);
-    }
-    if (resource.resourceTypeId === "worker") {
-      return workerObservabilityApi.enrichWorkerDetail(this.api, resource);
-    }
-    if (resource.resourceTypeId === "ai-gateway") {
-      // The gateway endpoint URL and the Workers AI playground both need data
-      // that isn't on the listed resource: the Cloudflare account id (for the
-      // gateway URL) and the text-generation model catalog (for the model
-      // picker). Fetch both for the synchronous renderer; degrade gracefully.
-      const enriched: Record<string, string> = { ...resource.resolvedOutputs };
-      try {
-        enriched["__cfAccountId__"] = await this.api.getAccountId();
-      } catch {
-        /* no account id: renderer omits the endpoint URL */
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (dataPlatform.isDataPlatformType(resource.resourceTypeId)) {
+        return dataPlatform.enrichDataPlatform(this.api, resource);
       }
-      try {
-        const models = await workersAiApi.listTextGenerationModelNames(this.api);
-        if (models.length > 0) enriched["__models__"] = JSON.stringify(models);
-      } catch {
-        /* no catalog: renderer falls back to a default model */
+      if (resource.resourceTypeId === "worker") {
+        return workerObservabilityApi.enrichWorkerDetail(this.api, resource);
       }
-      return { ...resource, resolvedOutputs: enriched };
-    }
-    if (resource.resourceTypeId === "r2-bucket") {
-      try {
-        const r2dev = await r2Api.getR2DevDomain(
-          this.api,
-          String(resource.fields["name"] ?? resource.externalId ?? ""),
-          String(resource.fields["jurisdiction"] ?? ""),
-        );
-        return {
-          ...resource,
-          resolvedOutputs: {
-            ...resource.resolvedOutputs,
-            __r2dev__: JSON.stringify(r2dev),
-            ...(r2dev.enabled && r2dev.domain ? { publicDevUrl: `https://${r2dev.domain}` } : {}),
-          },
-        };
-      } catch {
-        return resource;
+      if (resource.resourceTypeId === "ai-gateway") {
+        // The gateway endpoint URL and the Workers AI playground both need data
+        // that isn't on the listed resource: the Cloudflare account id (for the
+        // gateway URL) and the text-generation model catalog (for the model
+        // picker). Fetch both for the synchronous renderer; degrade gracefully.
+        const enriched: Record<string, string> = { ...resource.resolvedOutputs };
+        try {
+          enriched["__cfAccountId__"] = await this.api.getAccountId();
+        } catch {
+          /* no account id: renderer omits the endpoint URL */
+        }
+        try {
+          const models = await workersAiApi.listTextGenerationModelNames(this.api);
+          if (models.length > 0) enriched["__models__"] = JSON.stringify(models);
+        } catch {
+          /* no catalog: renderer falls back to a default model */
+        }
+        return { ...resource, resolvedOutputs: enriched };
       }
-    }
-    if (resource.resourceTypeId === "workflow") {
-      const name = resource.externalId ?? "";
-      if (!name) return resource;
-      try {
-        const { instances, truncated } = await workflowApi.listRecentInstances(this.api, name);
-        return {
-          ...resource,
-          resolvedOutputs: {
-            ...resource.resolvedOutputs,
-            __instances__: JSON.stringify(instances),
-            __instancesTruncated__: truncated ? "true" : "false",
-          },
-        };
-      } catch {
-        return resource;
+      if (resource.resourceTypeId === "r2-bucket") {
+        try {
+          const r2dev = await r2Api.getR2DevDomain(
+            this.api,
+            String(resource.fields["name"] ?? resource.externalId ?? ""),
+            String(resource.fields["jurisdiction"] ?? ""),
+          );
+          return {
+            ...resource,
+            resolvedOutputs: {
+              ...resource.resolvedOutputs,
+              __r2dev__: JSON.stringify(r2dev),
+              ...(r2dev.enabled && r2dev.domain ? { publicDevUrl: `https://${r2dev.domain}` } : {}),
+            },
+          };
+        } catch {
+          return resource;
+        }
       }
-    }
-    if (resource.resourceTypeId === "secrets-store-secret") {
-      try {
-        const quota = await secretsStoreApi.getSecretsQuota(this.api);
-        if (!quota) return resource;
-        return {
-          ...resource,
-          resolvedOutputs: { ...resource.resolvedOutputs, __quota__: JSON.stringify(quota) },
-        };
-      } catch {
-        return resource;
+      if (resource.resourceTypeId === "workflow") {
+        const name = resource.externalId ?? "";
+        if (!name) return resource;
+        try {
+          const { instances, truncated } = await workflowApi.listRecentInstances(this.api, name);
+          return {
+            ...resource,
+            resolvedOutputs: {
+              ...resource.resolvedOutputs,
+              __instances__: JSON.stringify(instances),
+              __instancesTruncated__: truncated ? "true" : "false",
+            },
+          };
+        } catch {
+          return resource;
+        }
       }
-    }
-    if (resource.resourceTypeId === "durable-object-namespace") {
-      const namespaceId = resource.externalId ?? "";
-      if (!namespaceId) return resource;
-      try {
-        const { instances, truncated } = await durableObjectApi.listDurableObjectInstances(
-          this.api,
-          namespaceId,
-        );
-        return {
-          ...resource,
-          resolvedOutputs: {
-            ...resource.resolvedOutputs,
-            __instances__: JSON.stringify(instances),
-            __instancesTruncated__: truncated ? "true" : "false",
-          },
-        };
-      } catch {
-        return resource;
+      if (resource.resourceTypeId === "secrets-store-secret") {
+        try {
+          const quota = await secretsStoreApi.getSecretsQuota(this.api);
+          if (!quota) return resource;
+          return {
+            ...resource,
+            resolvedOutputs: { ...resource.resolvedOutputs, __quota__: JSON.stringify(quota) },
+          };
+        } catch {
+          return resource;
+        }
       }
-    }
-    return resource;
+      if (resource.resourceTypeId === "durable-object-namespace") {
+        const namespaceId = resource.externalId ?? "";
+        if (!namespaceId) return resource;
+        try {
+          const { instances, truncated } = await durableObjectApi.listDurableObjectInstances(
+            this.api,
+            namespaceId,
+          );
+          return {
+            ...resource,
+            resolvedOutputs: {
+              ...resource.resolvedOutputs,
+              __instances__: JSON.stringify(instances),
+              __instancesTruncated__: truncated ? "true" : "false",
+            },
+          };
+        } catch {
+          return resource;
+        }
+      }
+      return resource;
+    });
   }
 
   /**
    * Worker Logs tab, backed by the Workers Observability telemetry API. The
    * container dropdown carries the level/outcome filter.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "worker") return { text: "", containers: [], activeContainer: "" };
-    const scriptName = resourceId.split(":").slice(2).join(":");
-    return workerObservabilityApi.fetchWorkerLogs(this.api, scriptName, params);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "worker") return { text: "", containers: [], activeContainer: "" };
+      const scriptName = resourceId.split(":").slice(2).join(":");
+      return workerObservabilityApi.fetchWorkerLogs(this.api, scriptName, params);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -735,21 +752,25 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    const dataPlatformConfig = await dataPlatform.dataPlatformCreateConfig(this.api, typeId);
-    if (dataPlatformConfig) return dataPlatformConfig;
-    return getCreateConfigImpl(this.api, typeId, parentResourceId);
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const dataPlatformConfig = await dataPlatform.dataPlatformCreateConfig(this.api, typeId);
+      if (dataPlatformConfig) return dataPlatformConfig;
+      return getCreateConfigImpl(this.api, typeId, parentResourceId);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    return withCloudflareErrors(() =>
-      this.createResourceImpl(typeId, accountId, fields, parentResourceId),
-    );
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return withCloudflareErrors(() =>
+        this.createResourceImpl(typeId, accountId, fields, parentResourceId),
+      );
+    });
   }
 
   private async createResourceImpl(
@@ -838,15 +859,17 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    return withCloudflareErrors(() =>
-      this.updateResourceImpl(typeId, resourceId, accountId, fields),
-    );
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return withCloudflareErrors(() =>
+        this.updateResourceImpl(typeId, resourceId, accountId, fields),
+      );
+    });
   }
 
   private async updateResourceImpl(
@@ -874,7 +897,7 @@ export class CloudflareClient implements PluginClient {
           fields["ingressService"],
         );
       }
-      return this.getResource(typeId, resourceId, accountId);
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
     }
 
     // Most Cloudflare writes (PUT or required-field PATCH) need the full
@@ -971,7 +994,7 @@ export class CloudflareClient implements PluginClient {
   ): Promise<Record<string, string>> {
     let current: Record<string, string> = {};
     try {
-      const resource = await this.getResource(typeId, resourceId, accountId);
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
       for (const [k, v] of Object.entries(resource.fields)) {
         if (v !== undefined && v !== null) current[k] = String(v);
       }
@@ -981,21 +1004,25 @@ export class CloudflareClient implements PluginClient {
     return { ...current, ...changed };
   }
 
-  async publishMessage(
+  publishMessage(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: PublishMessagePayload,
-  ): Promise<PublishMessageResult> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    if (typeId === "queue") {
-      return withCloudflareErrors(() => queueApi.publishMessage(this.api, externalId, payload));
-    }
-    throw new Error(`Cloudflare plugin: publishMessage not supported for type "${typeId}"`);
+  ): PluginEffect<PublishMessageResult> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      if (typeId === "queue") {
+        return withCloudflareErrors(() => queueApi.publishMessage(this.api, externalId, payload));
+      }
+      throw new Error(`Cloudflare plugin: publishMessage not supported for type "${typeId}"`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    return withCloudflareErrors(() => this.deleteResourceImpl(typeId, resourceId, accountId));
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return withCloudflareErrors(() => this.deleteResourceImpl(typeId, resourceId, accountId));
+    });
   }
 
   private async deleteResourceImpl(
@@ -1074,67 +1101,77 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  async executeQuery(
+  executeQuery(
     resourceId: string,
     _accountId: string,
     sql: string,
-  ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
-    if (dataPlatform.isDataPlatformResourceId(resourceId)) {
-      return withCloudflareErrors(() =>
-        dataPlatform.executeDataPlatformQuery(this.api, resourceId, sql),
-      );
-    }
-    return d1Api.executeD1Query(this.api, resourceId, sql);
+  ): PluginEffect<{ rows: Record<string, unknown>[]; durationMs: number }> {
+    return attempt(async () => {
+      if (dataPlatform.isDataPlatformResourceId(resourceId)) {
+        return withCloudflareErrors(() =>
+          dataPlatform.executeDataPlatformQuery(this.api, resourceId, sql),
+        );
+      }
+      return d1Api.executeD1Query(this.api, resourceId, sql);
+    });
   }
 
-  async introspectResource(resourceId: string, _accountId: string): Promise<SqlTableMeta[]> {
-    if (dataPlatform.isDataPlatformResourceId(resourceId)) {
-      return dataPlatform.introspectDataPlatform(this.api, resourceId);
-    }
-    return d1Api.introspectD1Database(this.api, resourceId);
+  introspectResource(resourceId: string, _accountId: string): PluginEffect<SqlTableMeta[]> {
+    return attempt(async () => {
+      if (dataPlatform.isDataPlatformResourceId(resourceId)) {
+        return dataPlatform.introspectDataPlatform(this.api, resourceId);
+      }
+      return d1Api.introspectD1Database(this.api, resourceId);
+    });
   }
 
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId === "tunnel" && formatId === "tunnel-token") {
-      const resource = await this.getResource(typeId, resourceId, accountId);
-      return tunnelApi.exportTunnelCredential(this.api, resource);
-    }
-    throw new Error(
-      `Cloudflare plugin: exportCredential not supported for type "${typeId}" / format "${formatId}"`,
-    );
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId === "tunnel" && formatId === "tunnel-token") {
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        return tunnelApi.exportTunnelCredential(this.api, resource);
+      }
+      throw new Error(
+        `Cloudflare plugin: exportCredential not supported for type "${typeId}" / format "${formatId}"`,
+      );
+    });
   }
 
-  async getManifest(resourceId: string, _accountId: string): Promise<string> {
-    const parts = resourceId.split(":");
-    const typeId = parts[1];
-    const externalId = parts.slice(2).join(":");
+  getManifest(resourceId: string, _accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      const parts = resourceId.split(":");
+      const typeId = parts[1];
+      const externalId = parts.slice(2).join(":");
 
-    if (typeId === "worker") {
-      return workerApi.getWorkerManifest(this.api, externalId);
-    }
-    if (typeId === "zone") {
-      return zoneApi.getZoneManifest(this.api, externalId);
-    }
-    throw new Error(`Cloudflare plugin: getManifest not supported for type "${typeId}"`);
+      if (typeId === "worker") {
+        return workerApi.getWorkerManifest(this.api, externalId);
+      }
+      if (typeId === "zone") {
+        return zoneApi.getZoneManifest(this.api, externalId);
+      }
+      throw new Error(`Cloudflare plugin: getManifest not supported for type "${typeId}"`);
+    });
   }
 
-  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
-    const parts = resourceId.split(":");
-    const typeId = parts[1];
-    const externalId = parts.slice(2).join(":");
+  applyManifest(resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
+    return attempt(async () => {
+      const parts = resourceId.split(":");
+      const typeId = parts[1];
+      const externalId = parts.slice(2).join(":");
 
-    if (typeId === "zone") {
-      return zoneApi.applyZoneManifest(this.api, externalId, manifest);
-    }
-    if (typeId === "worker") {
-      return workerApi.applyWorkerManifest(this.api, externalId, manifest);
-    }
-    throw new Error(`Cloudflare plugin: applyManifest not supported for type "${typeId}"`);
+      if (typeId === "zone") {
+        return zoneApi.applyZoneManifest(this.api, externalId, manifest);
+      }
+      if (typeId === "worker") {
+        return workerApi.applyWorkerManifest(this.api, externalId, manifest);
+      }
+      throw new Error(`Cloudflare plugin: applyManifest not supported for type "${typeId}"`);
+    });
   }
 
   /**
@@ -1143,299 +1180,347 @@ export class CloudflareClient implements PluginClient {
    * cache purge and DNSSEC toggles, R2 r2.dev public access, and Workflow
    * instance triggers and lifecycle changes.
    */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    if (typeId === "zone" && actionId === "purge-cache-all") {
-      return withCloudflareErrors(() => zoneApi.purgeCacheEverything(this.api, externalId));
-    }
-    if (typeId === "zone" && actionId === "dnssec-enable") {
-      return withCloudflareErrors(() => zoneApi.setDnssec(this.api, externalId, true));
-    }
-    if (typeId === "zone" && actionId === "dnssec-disable") {
-      return withCloudflareErrors(() => zoneApi.setDnssec(this.api, externalId, false));
-    }
-    if (typeId === "r2-bucket" && (actionId === "r2dev-enable" || actionId === "r2dev-disable")) {
-      return withCloudflareErrors(async () => {
-        const bucket = await this.getResource(typeId, resourceId, _accountId);
-        await r2Api.setR2DevDomain(
-          this.api,
-          externalId,
-          actionId === "r2dev-enable",
-          String(bucket.fields["jurisdiction"] ?? ""),
-        );
-      });
-    }
-    if (typeId === "workflow" && actionId === "trigger-instance") {
-      return withCloudflareErrors(async () => {
-        await workflowApi.triggerInstance(this.api, externalId);
-      });
-    }
-    if (typeId === "workflow" && actionId.startsWith("instance-")) {
-      const colon = actionId.indexOf(":");
-      const verb = actionId.slice("instance-".length, colon < 0 ? undefined : colon);
-      const instanceId = colon < 0 ? "" : actionId.slice(colon + 1);
-      const action = workflowApi.WORKFLOW_INSTANCE_ACTIONS.find((a) => a === verb);
-      if (action && instanceId) {
-        return withCloudflareErrors(() =>
-          workflowApi.changeInstanceStatus(this.api, externalId, instanceId, action),
-        );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = resourceId.split(":").slice(2).join(":");
+      if (typeId === "zone" && actionId === "purge-cache-all") {
+        return withCloudflareErrors(() => zoneApi.purgeCacheEverything(this.api, externalId));
       }
-    }
-    throw new Error(`Cloudflare plugin: unknown action "${actionId}" for type "${typeId}"`);
+      if (typeId === "zone" && actionId === "dnssec-enable") {
+        return withCloudflareErrors(() => zoneApi.setDnssec(this.api, externalId, true));
+      }
+      if (typeId === "zone" && actionId === "dnssec-disable") {
+        return withCloudflareErrors(() => zoneApi.setDnssec(this.api, externalId, false));
+      }
+      if (typeId === "r2-bucket" && (actionId === "r2dev-enable" || actionId === "r2dev-disable")) {
+        return withCloudflareErrors(async () => {
+          const bucket = await runPluginEffect(this.getResource(typeId, resourceId, _accountId));
+          await r2Api.setR2DevDomain(
+            this.api,
+            externalId,
+            actionId === "r2dev-enable",
+            String(bucket.fields["jurisdiction"] ?? ""),
+          );
+        });
+      }
+      if (typeId === "workflow" && actionId === "trigger-instance") {
+        return withCloudflareErrors(async () => {
+          await workflowApi.triggerInstance(this.api, externalId);
+        });
+      }
+      if (typeId === "workflow" && actionId.startsWith("instance-")) {
+        const colon = actionId.indexOf(":");
+        const verb = actionId.slice("instance-".length, colon < 0 ? undefined : colon);
+        const instanceId = colon < 0 ? "" : actionId.slice(colon + 1);
+        const action = workflowApi.WORKFLOW_INSTANCE_ACTIONS.find((a) => a === verb);
+        if (action && instanceId) {
+          return withCloudflareErrors(() =>
+            workflowApi.changeInstanceStatus(this.api, externalId, instanceId, action),
+          );
+        }
+      }
+      throw new Error(`Cloudflare plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
-  async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    return r2Api.listR2StorageObjects(this.api, bucket, prefix);
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      return r2Api.listR2StorageObjects(this.api, bucket, prefix);
+    });
   }
 
-  async listKvKeys(
+  listKvKeys(
     _resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     params?: { prefix?: string; cursor?: string; limit?: number },
-  ): Promise<KvListResult> {
-    const namespaceId = resourceId.split(":").pop() ?? "";
-    return kvApi.listKVKeys(this.api, namespaceId, params ?? {});
+  ): PluginEffect<KvListResult> {
+    return attempt(async () => {
+      const namespaceId = resourceId.split(":").pop() ?? "";
+      return kvApi.listKVKeys(this.api, namespaceId, params ?? {});
+    });
   }
 
-  async getKvValue(
+  getKvValue(
     _resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     key: string,
-  ): Promise<string> {
-    const namespaceId = resourceId.split(":").pop() ?? "";
-    return kvApi.getKVValue(this.api, namespaceId, key);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const namespaceId = resourceId.split(":").pop() ?? "";
+      return kvApi.getKVValue(this.api, namespaceId, key);
+    });
   }
 
-  async putKvValue(
+  putKvValue(
     _resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     key: string,
     value: string,
-  ): Promise<void> {
-    const namespaceId = resourceId.split(":").pop() ?? "";
-    return kvApi.putKVValue(this.api, namespaceId, key, value);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const namespaceId = resourceId.split(":").pop() ?? "";
+      return kvApi.putKVValue(this.api, namespaceId, key, value);
+    });
   }
 
-  async deleteKvKey(
+  deleteKvKey(
     _resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     key: string,
-  ): Promise<void> {
-    const namespaceId = resourceId.split(":").pop() ?? "";
-    return kvApi.deleteKVKey(this.api, namespaceId, key);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const namespaceId = resourceId.split(":").pop() ?? "";
+      return kvApi.deleteKVKey(this.api, namespaceId, key);
+    });
   }
 
-  async deleteStorageObject(bucket: string, key: string): Promise<void> {
-    return r2Api.deleteR2StorageObject(this.api, bucket, key);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return r2Api.deleteR2StorageObject(this.api, bucket, key);
+    });
   }
 
-  async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
-    return r2Api.uploadR2StorageObject(this.api, bucket, key, file);
+  uploadStorageObject(bucket: string, key: string, file: File): PluginEffect<void> {
+    return attempt(async () => {
+      return r2Api.uploadR2StorageObject(this.api, bucket, key, file);
+    });
   }
 
-  async makeStorageFolder(bucket: string, key: string): Promise<void> {
-    return r2Api.makeR2StorageFolder(this.api, bucket, key);
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return r2Api.makeR2StorageFolder(this.api, bucket, key);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (resourceTypeId === "zone") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const status = String(resource.fields["status"] ?? "");
-      const plan = String(resource.fields["plan"] ?? "");
-      const variant: DashboardStat["variant"] =
-        status === "active"
-          ? "status-healthy"
-          : status === "pending"
-            ? "status-degraded"
-            : "default";
-      return [
-        { label: "Status", value: status, variant },
-        { label: "Plan", value: plan },
-      ];
-    }
-
-    if (resourceTypeId === "r2-bucket") {
-      const bucketName = resourceId.split(":").slice(2).join(":");
-      // R2 doesn't have a direct stats API, so list objects and sum
-      const objects = await this.listStorageObjects(bucketName, "");
-      let totalSize = 0;
-      let count = 0;
-      for (const obj of objects) {
-        if (!obj.isDirectory) {
-          count++;
-          totalSize += obj.size;
-        }
-      }
-      const units = ["B", "KB", "MB", "GB", "TB"];
-      let size = totalSize;
-      let unitIdx = 0;
-      while (size >= 1024 && unitIdx < units.length - 1) {
-        size /= 1024;
-        unitIdx++;
-      }
-      return [
-        { label: "Objects", value: String(count) },
-        { label: "Size", value: `${size.toFixed(1)} ${units[unitIdx]}` },
-      ];
-    }
-
-    if (resourceTypeId === "worker") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
-      if (f["compatibilityDate"])
-        stats.push({ label: "Compat Date", value: String(f["compatibilityDate"]) });
-      if (f["routes"]) stats.push({ label: "Routes", value: String(f["routes"]) });
-      return stats;
-    }
-
-    if (resourceTypeId === "kv-namespace") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      return [{ label: "Title", value: String(resource.fields["title"] ?? "") }];
-    }
-
-    if (resourceTypeId === "d1-database") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
-      if (f["version"]) stats.push({ label: "Version", value: String(f["version"]) });
-      if (f["numTables"] != null) stats.push({ label: "Tables", value: String(f["numTables"]) });
-      if (f["fileSize"]) stats.push({ label: "Size", value: String(f["fileSize"]) });
-      return stats;
-    }
-
-    if (resourceTypeId === "tunnel") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const status = String(f["status"] ?? "unknown");
-      const variant: DashboardStat["variant"] =
-        status === "healthy" || status === "active"
-          ? "status-healthy"
-          : status === "inactive" || status === "down"
-            ? "status-error"
-            : "status-degraded";
-      return [
-        { label: "Status", value: status, variant },
-        { label: "Type", value: String(f["tunnelType"] ?? "") },
-        ...(f["connectionsCount"] != null
-          ? [{ label: "Connections", value: String(f["connectionsCount"]) }]
-          : []),
-      ];
-    }
-
-    if (resourceTypeId === "hyperdrive") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
-      if (f["originHost"]) stats.push({ label: "Origin", value: String(f["originHost"]) });
-      if (f["database"]) stats.push({ label: "Database", value: String(f["database"]) });
-      return stats;
-    }
-
-    if (resourceTypeId === "queue") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      return [
-        { label: "Name", value: String(f["name"] ?? "") },
-        { label: "Producers", value: String(f["producersTotal"] ?? 0) },
-        { label: "Consumers", value: String(f["consumersTotal"] ?? 0) },
-      ];
-    }
-
-    if (resourceTypeId === "access-application") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const stats: DashboardStat[] = [{ label: "Domain", value: String(f["domain"] ?? "") }];
-      if (f["type"]) stats.push({ label: "Type", value: String(f["type"]) });
-      if (f["sessionDuration"])
-        stats.push({ label: "Session", value: String(f["sessionDuration"]) });
-      return stats;
-    }
-
-    if (resourceTypeId === "workflow") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const errored = Number(f["errored"] ?? 0);
-      return [
-        { label: "Running", value: String(f["running"] ?? 0) },
-        { label: "Queued", value: String(f["queued"] ?? 0) },
-        {
-          label: "Errored",
-          value: String(errored),
-          variant: errored > 0 ? "status-error" : "default",
-        },
-        { label: "Complete", value: String(f["complete"] ?? 0) },
-      ];
-    }
-
-    // Generic fallback for any other resource type
-    {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const f = resource.fields;
-      const stats: DashboardStat[] = [];
-      const statusVal = f["status"] ?? f["state"];
-      if (statusVal != null) {
-        const s = String(statusVal).toLowerCase();
-        stats.push({
-          label: "Status",
-          value: String(statusVal),
-          variant: ["active", "healthy", "enabled", "ready"].some((v) => s.includes(v))
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "zone") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const status = String(resource.fields["status"] ?? "");
+        const plan = String(resource.fields["plan"] ?? "");
+        const variant: DashboardStat["variant"] =
+          status === "active"
             ? "status-healthy"
-            : ["error", "failed", "deleted", "inactive"].some((v) => s.includes(v))
-              ? "status-error"
-              : ["pending", "creating", "updating", "degraded"].some((v) => s.includes(v))
-                ? "status-degraded"
-                : "default",
-        });
+            : status === "pending"
+              ? "status-degraded"
+              : "default";
+        return [
+          { label: "Status", value: status, variant },
+          { label: "Plan", value: plan },
+        ];
       }
-      const typeVal = f["type"] ?? f["kind"];
-      if (typeVal != null) stats.push({ label: "Type", value: String(typeVal) });
-      return stats;
-    }
+
+      if (resourceTypeId === "r2-bucket") {
+        const bucketName = resourceId.split(":").slice(2).join(":");
+        // R2 doesn't have a direct stats API, so list objects and sum
+        const objects = await runPluginEffect(this.listStorageObjects(bucketName, ""));
+        let totalSize = 0;
+        let count = 0;
+        for (const obj of objects) {
+          if (!obj.isDirectory) {
+            count++;
+            totalSize += obj.size;
+          }
+        }
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let size = totalSize;
+        let unitIdx = 0;
+        while (size >= 1024 && unitIdx < units.length - 1) {
+          size /= 1024;
+          unitIdx++;
+        }
+        return [
+          { label: "Objects", value: String(count) },
+          { label: "Size", value: `${size.toFixed(1)} ${units[unitIdx]}` },
+        ];
+      }
+
+      if (resourceTypeId === "worker") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
+        if (f["compatibilityDate"])
+          stats.push({ label: "Compat Date", value: String(f["compatibilityDate"]) });
+        if (f["routes"]) stats.push({ label: "Routes", value: String(f["routes"]) });
+        return stats;
+      }
+
+      if (resourceTypeId === "kv-namespace") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        return [{ label: "Title", value: String(resource.fields["title"] ?? "") }];
+      }
+
+      if (resourceTypeId === "d1-database") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
+        if (f["version"]) stats.push({ label: "Version", value: String(f["version"]) });
+        if (f["numTables"] != null) stats.push({ label: "Tables", value: String(f["numTables"]) });
+        if (f["fileSize"]) stats.push({ label: "Size", value: String(f["fileSize"]) });
+        return stats;
+      }
+
+      if (resourceTypeId === "tunnel") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const status = String(f["status"] ?? "unknown");
+        const variant: DashboardStat["variant"] =
+          status === "healthy" || status === "active"
+            ? "status-healthy"
+            : status === "inactive" || status === "down"
+              ? "status-error"
+              : "status-degraded";
+        return [
+          { label: "Status", value: status, variant },
+          { label: "Type", value: String(f["tunnelType"] ?? "") },
+          ...(f["connectionsCount"] != null
+            ? [{ label: "Connections", value: String(f["connectionsCount"]) }]
+            : []),
+        ];
+      }
+
+      if (resourceTypeId === "hyperdrive") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
+        if (f["originHost"]) stats.push({ label: "Origin", value: String(f["originHost"]) });
+        if (f["database"]) stats.push({ label: "Database", value: String(f["database"]) });
+        return stats;
+      }
+
+      if (resourceTypeId === "queue") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        return [
+          { label: "Name", value: String(f["name"] ?? "") },
+          { label: "Producers", value: String(f["producersTotal"] ?? 0) },
+          { label: "Consumers", value: String(f["consumersTotal"] ?? 0) },
+        ];
+      }
+
+      if (resourceTypeId === "access-application") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const stats: DashboardStat[] = [{ label: "Domain", value: String(f["domain"] ?? "") }];
+        if (f["type"]) stats.push({ label: "Type", value: String(f["type"]) });
+        if (f["sessionDuration"])
+          stats.push({ label: "Session", value: String(f["sessionDuration"]) });
+        return stats;
+      }
+
+      if (resourceTypeId === "workflow") {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const errored = Number(f["errored"] ?? 0);
+        return [
+          { label: "Running", value: String(f["running"] ?? 0) },
+          { label: "Queued", value: String(f["queued"] ?? 0) },
+          {
+            label: "Errored",
+            value: String(errored),
+            variant: errored > 0 ? "status-error" : "default",
+          },
+          { label: "Complete", value: String(f["complete"] ?? 0) },
+        ];
+      }
+
+      // Generic fallback for any other resource type
+      {
+        const resource = await runPluginEffect(
+          this.getResource(resourceTypeId, resourceId, accountId),
+        );
+        const f = resource.fields;
+        const stats: DashboardStat[] = [];
+        const statusVal = f["status"] ?? f["state"];
+        if (statusVal != null) {
+          const s = String(statusVal).toLowerCase();
+          stats.push({
+            label: "Status",
+            value: String(statusVal),
+            variant: ["active", "healthy", "enabled", "ready"].some((v) => s.includes(v))
+              ? "status-healthy"
+              : ["error", "failed", "deleted", "inactive"].some((v) => s.includes(v))
+                ? "status-error"
+                : ["pending", "creating", "updating", "degraded"].some((v) => s.includes(v))
+                  ? "status-degraded"
+                  : "default",
+          });
+        }
+        const typeVal = f["type"] ?? f["kind"];
+        if (typeVal != null) stats.push({ label: "Type", value: String(typeVal) });
+        return stats;
+      }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const range = clampGraphqlRange(resourceTypeId, timeRange);
-    if (dataPlatform.isDataPlatformType(resourceTypeId)) {
-      return dataPlatform.fetchDataPlatformMetrics(this.api, resourceTypeId, resourceId, range);
-    }
-    return fetchMetricSeriesImpl(this.api, resourceTypeId, resourceId, _accountId, range);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const range = clampGraphqlRange(resourceTypeId, timeRange);
+      if (dataPlatform.isDataPlatformType(resourceTypeId)) {
+        return dataPlatform.fetchDataPlatformMetrics(this.api, resourceTypeId, resourceId, range);
+      }
+      return fetchMetricSeriesImpl(this.api, resourceTypeId, resourceId, _accountId, range);
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchCloudflareCostData(this.api, range, { oauth: this.oauth });
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchCloudflareCostData(this.api, range, { oauth: this.oauth });
+    });
   }
 
-  async listAiRequestLogLocations(
+  listAiRequestLogLocations(
     _accountId: string,
     _sourceKindId: string,
-  ): Promise<AiRequestLogLocation[]> {
-    return withCloudflareErrors(() => listCloudflareAiRequestLogLocations(this.api));
+  ): PluginEffect<AiRequestLogLocation[]> {
+    return attempt(async () => {
+      return withCloudflareErrors(() => listCloudflareAiRequestLogLocations(this.api));
+    });
   }
 
-  async fetchAiRequestLogs(
+  fetchAiRequestLogs(
     _accountId: string,
     range: AiRequestLogFetchRange,
-  ): Promise<AiRequestLogFetchResult> {
-    return fetchCloudflareAiRequestLogs(this.api, range);
+  ): PluginEffect<AiRequestLogFetchResult> {
+    return attempt(async () => {
+      return fetchCloudflareAiRequestLogs(this.api, range);
+    });
   }
 
   /**
@@ -1448,7 +1533,7 @@ export class CloudflareClient implements PluginClient {
    * `data: [DONE]`), accumulating `choices[0].delta.content` and capturing
    * the final `usage` block when present.
    */
-  async *streamChatMessage(
+  private async *streamChatMessageIterable(
     typeId: string,
     resourceId: string,
     _accountId: string,
@@ -1547,6 +1632,18 @@ export class CloudflareClient implements PluginClient {
     }
 
     yield* streamOpenAiSseChat(res.body);
+  }
+
+  streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    messages: ChatMessage[],
+    options?: { model?: string },
+  ) {
+    return attemptStream(() =>
+      this.streamChatMessageIterable(typeId, resourceId, _accountId, messages, options),
+    );
   }
 
   /** List DNS records for a specific zone */

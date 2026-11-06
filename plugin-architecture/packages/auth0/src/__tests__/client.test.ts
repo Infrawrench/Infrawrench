@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { Auth0Client } from "../client.js";
@@ -22,7 +24,7 @@ interface Reply {
 
 let calls: Call[] = [];
 
-function client(handler: (call: Call) => Reply): Auth0Client {
+function client(handler: (call: Call) => Reply): HostedMethods<Auth0Client> {
   const services: HostServices = {
     http: {
       request: async (req) => {
@@ -49,9 +51,11 @@ function client(handler: (call: Call) => Reply): Auth0Client {
       },
     },
   };
-  return new Auth0Client(
-    { domain: `https://${DOMAIN}/`, clientId: "cid", clientSecret: "csecret" },
-    services,
+  return hostClient(
+    new Auth0Client(
+      { domain: `https://${DOMAIN}/`, clientId: "cid", clientSecret: "csecret" },
+      services,
+    ),
   );
 }
 

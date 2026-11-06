@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { GroqClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -7,9 +12,9 @@ import { GroqFileResourceType } from "./resources/file.js";
 import { GroqFineTuningResourceType } from "./resources/fine-tuning.js";
 import { GroqModelResourceType } from "./resources/model.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "groq",
-  version: "0.1.0",
+  egressHosts: ["api.groq.com"],
   displayName: "Groq",
   // Groq's own favicon mark (groq.com/favicon.svg): the white "fast-forward"
   // bolt on the #F43E01 brand orange, rescaled from its native 32×32 box.
@@ -19,8 +24,6 @@ const manifest: PluginManifest = {
       <path d="m18.445 4.406-9.468 13.74 7.341.665-1.69 9.578 9.469-13.74-7.342-.664 1.69-9.579Z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -34,7 +37,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://console.groq.com/keys",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -45,9 +48,11 @@ const manifest: PluginManifest = {
       helpLink: { label: "Create an API key", url: "https://console.groq.com/keys" },
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   GroqModelResourceType,
@@ -56,9 +61,10 @@ const resourceTypes: ResourceTypeDefinition[] = [
   GroqFileResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new GroqClient(credentials, services),
+  testCredentials: { apiKey: "gsk_test_groq_key" },
   parseStatusFeed,
-};
+});

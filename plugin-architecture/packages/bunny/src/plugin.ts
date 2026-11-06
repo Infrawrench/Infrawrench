@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { BunnyClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { bunnyTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "bunny",
-  version: "0.1.0",
+  // Edge Storage answers on the zone's regional storage host
+  egressHosts: ["api.bunny.net", "storage.bunnycdn.com", "*.storage.bunnycdn.com"],
   displayName: "bunny.net",
   description:
     "CDN, storage and edge platform. Purge and configure pull zones with hostnames, SSL and edge rules, browse Edge Storage, manage DNS zones and records, Stream libraries, Edge Scripts and Magic Containers apps, and chart traffic, cache hit rate and spend.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "Account API Key",
@@ -27,7 +27,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Account API key", url: "https://dash.bunny.net/account/api-key" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // GET /billing: this month by product (and CDN traffic by billing
     // region), closed months as one MonthlyUsage total each. Dated to the
@@ -62,13 +62,16 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BunnyClient(credentials, services),
+  testCredentials: { apiKey: "test-bunny-api-key" },
   parseStatusFeed,
   terraformExport: bunnyTerraformExport,
   remediationCommands: bunnyRemediationCommands,
-};
+});

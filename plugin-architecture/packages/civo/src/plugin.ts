@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CIVO_PREFLIGHT, CivoClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,15 @@ import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { civoTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "civo",
-  version: "0.1.0",
+  // api.civo.com is the management API; Object Store endpoints are objectstore.<region>.civo.com
+  egressHosts: ["api.civo.com", "*.civo.com"],
   displayName: "Civo",
   description:
     "Civo cloud: instances, volumes and snapshots, Kubernetes (K3s and Talos) with node pools and marketplace apps, managed MySQL and PostgreSQL with backups, load balancers, firewalls, networks, reserved IPs, DNS, Object Stores with a bucket browser, SSH keys, and account quotas.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -30,7 +30,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   quotas: {
     label: "Civo quota",
     increaseUrl: "https://dashboard.civo.com/quota/edit",
@@ -39,13 +39,16 @@ const manifest: PluginManifest = {
   preflight: CIVO_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CivoClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "civotestkey000000000000000000000000000000000000000" },
   terraformExport: civoTerraformExport,
   parseStatusFeed: (body) => parseStatusFeed(body),
   remediationCommands: civoRemediationCommands,
-};
+});

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { evaluateOrphanRule } from "@infrawrench/plugin-base";
 import { DigitalOceanClient } from "../client.js";
@@ -27,7 +28,8 @@ function installFetch(route: (path: string, method: string, body?: string) => un
 }
 
 const ACC = "acc1";
-const newClient = () => new DigitalOceanClient({ apiToken: "tok" }, [ReservedIpResourceType]);
+const newClient = () =>
+  hostClient(new DigitalOceanClient({ apiToken: "tok" }, [ReservedIpResourceType]));
 
 const assignedIp = {
   ip: "45.55.96.47",

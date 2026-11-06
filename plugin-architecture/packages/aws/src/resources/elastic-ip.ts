@@ -13,7 +13,7 @@ export const ElasticIPResourceType = rt({
     f("networkInterfaceId", "Network Interface", { required: false }),
     f("domain", "Domain", { showcase: true, required: false }),
   ],
-  outputs: [o("publicIp", "Public IP")],
+  outputs: [o("publicIp", "Public IP", { dnsValue: "ipv4" })],
   dependsOn: [{ fieldKey: "instanceId", targetTypeId: "ec2-instance", label: "attached to" }],
   supportsCreate: true,
   // associationId covers both instance and bare-ENI associations, so an empty

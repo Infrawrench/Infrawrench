@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ElevenLabsClient } from "../client.js";
 import { usageQueryBody, usageSeriesFor } from "../usage-metrics.js";
@@ -71,7 +72,7 @@ describe("voice and model metrics", () => {
         headers: { "content-type": "application/json" },
       });
     }) as unknown as typeof fetch);
-    const client = new ElevenLabsClient({ apiKey: "k" });
+    const client = hostClient(new ElevenLabsClient({ apiKey: "k" }));
     const series = await client.fetchMetricSeries("voice", `${ACCOUNT}:voice:voice_a`, ACCOUNT, {
       startMs: DAY,
       endMs: DAY + 2 * 86_400_000 - 1,
@@ -98,7 +99,7 @@ describe("agent dashboard stats", () => {
         headers: { "content-type": "application/json" },
       });
     }) as unknown as typeof fetch);
-    const stats = await new ElevenLabsClient({ apiKey: "k" }).fetchDashboardStats(
+    const stats = await hostClient(new ElevenLabsClient({ apiKey: "k" })).fetchDashboardStats(
       "agent",
       `${ACCOUNT}:agent:agent_1`,
       ACCOUNT,

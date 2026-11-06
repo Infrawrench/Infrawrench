@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -332,7 +335,7 @@ export class DeepgramClient implements PluginClient {
   /** Voice Agent configurations and variables, purchases, self-hosted credentials, request log. */
   private readonly extras: DeepgramExtras;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Deepgram plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -366,30 +369,32 @@ export class DeepgramClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "project":
-        return this.listProjects(accountId);
-      case "api-key":
-        return this.listForEachProject(accountId, (p) => this.listApiKeys(accountId, p));
-      case "member":
-        return this.listForEachProject(accountId, (p) => this.listMembers(accountId, p));
-      case "invite":
-        return this.listForEachProject(accountId, (p) => this.listInvites(accountId, p));
-      case "balance":
-        return this.listForEachProject(accountId, (p) => this.listBalances(accountId, p));
-      case "model":
-        return this.listForEachProject(accountId, (p) => this.listModels(accountId, p));
-      case "agent-config":
-      case "agent-variable":
-      case "purchase":
-      case "distribution-credential":
-        return this.listForEachProject(accountId, (p) =>
-          this.extras.listForProject(typeId, accountId, p),
-        );
-      default:
-        throw new Error(`Deepgram plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "project":
+          return this.listProjects(accountId);
+        case "api-key":
+          return this.listForEachProject(accountId, (p) => this.listApiKeys(accountId, p));
+        case "member":
+          return this.listForEachProject(accountId, (p) => this.listMembers(accountId, p));
+        case "invite":
+          return this.listForEachProject(accountId, (p) => this.listInvites(accountId, p));
+        case "balance":
+          return this.listForEachProject(accountId, (p) => this.listBalances(accountId, p));
+        case "model":
+          return this.listForEachProject(accountId, (p) => this.listModels(accountId, p));
+        case "agent-config":
+        case "agent-variable":
+        case "purchase":
+        case "distribution-credential":
+          return this.listForEachProject(accountId, (p) =>
+            this.extras.listForProject(typeId, accountId, p),
+          );
+        default:
+          throw new Error(`Deepgram plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -419,22 +424,24 @@ export class DeepgramClient implements PluginClient {
    * stance `listForEachProject` takes: a member-scoped key sees no balances
    * at all, which is a permission gap rather than a zero balance.
    */
-  async fetchCreditBalance(): Promise<CreditBalance[]> {
-    const projects = await this.fetchProjects();
-    const settled = await Promise.allSettled(
-      projects.map(async (project) => {
-        const data = await this.fetch<DgBalanceList>(
-          `/v1/projects/${encodeURIComponent(project.project_id)}/balances`,
-        );
-        return (data.balances ?? []).map((b): CreditBalance => ({
-          key: `${project.project_id}:${b.balance_id}`,
-          label: `${project.name ?? project.project_id} balance`,
-          remaining: Number(b.amount ?? 0),
-          currency: (b.units ?? "usd").toUpperCase(),
-        }));
-      }),
-    );
-    return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  fetchCreditBalance(): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      const projects = await this.fetchProjects();
+      const settled = await Promise.allSettled(
+        projects.map(async (project) => {
+          const data = await this.fetch<DgBalanceList>(
+            `/v1/projects/${encodeURIComponent(project.project_id)}/balances`,
+          );
+          return (data.balances ?? []).map((b): CreditBalance => ({
+            key: `${project.project_id}:${b.balance_id}`,
+            label: `${project.name ?? project.project_id} balance`,
+            remaining: Number(b.amount ?? 0),
+            currency: (b.units ?? "usd").toUpperCase(),
+          }));
+        }),
+      );
+      return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    });
   }
 
   /** https://developers.deepgram.com/reference/management-api/projects/list */
@@ -681,81 +688,87 @@ export class DeepgramClient implements PluginClient {
   // Single-resource reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "project") {
-      const projectId = externalIdOf(resourceId);
-      const project = await this.fetch<DgProject>(`/v1/projects/${encodeURIComponent(projectId)}`);
-      const instance = this.mapProject(accountId, project);
-      // `renderDetail` is synchronous, so the Speech tab's voice and model
-      // pickers can't do their own round trip. Pre-bake the catalogue here and
-      // stash it as JSON: the Cloudflare queue plugin uses the same
-      // `__doubleUnderscore__` convention for its consumer list.
-      instance.resolvedOutputs = {
-        ...instance.resolvedOutputs,
-        __models__: JSON.stringify(await this.loadSpeechOptions(projectId)),
-      };
-      return instance;
-    }
-
-    if (EXTRA_TYPES.has(typeId)) return this.extras.get(typeId, resourceId, accountId);
-
-    const { projectId, childId } = splitChildId(resourceId);
-
-    if (typeId === "api-key") {
-      // https://developers.deepgram.com/reference/manage/keys/get
-      // Worth the extra call: this is the only read that carries `tags` and
-      // `expiration_date`, both of which the list endpoint omits.
-      const data = await this.fetch<DgApiKeyItem>(
-        `/v1/projects/${encodeURIComponent(projectId)}/keys/${encodeURIComponent(childId)}`,
-      );
-      const member = data.item?.member;
-      const key = member?.api_key;
-      if (key) {
-        const entry: DgApiKeyEntry = { api_key: key, ...(member ? { member } : {}) };
-        return this.mapApiKey(accountId, projectId, entry);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "project") {
+        const projectId = externalIdOf(resourceId);
+        const project = await this.fetch<DgProject>(
+          `/v1/projects/${encodeURIComponent(projectId)}`,
+        );
+        const instance = this.mapProject(accountId, project);
+        // `renderDetail` is synchronous, so the Speech tab's voice and model
+        // pickers can't do their own round trip. Pre-bake the catalogue here and
+        // stash it as JSON: the Cloudflare queue plugin uses the same
+        // `__doubleUnderscore__` convention for its consumer list.
+        instance.resolvedOutputs = {
+          ...instance.resolvedOutputs,
+          __models__: JSON.stringify(await this.loadSpeechOptions(projectId)),
+        };
+        return instance;
       }
-    }
 
-    if (typeId === "balance") {
-      // https://developers.deepgram.com/reference/manage/billing/get
-      // Unlike the list, this returns the bare balance object, unwrapped.
-      const balance = await this.fetch<DgBalance>(
-        `/v1/projects/${encodeURIComponent(projectId)}/balances/${encodeURIComponent(childId)}`,
-      );
-      return this.mapBalance(accountId, projectId, balance);
-    }
+      if (EXTRA_TYPES.has(typeId)) return this.extras.get(typeId, resourceId, accountId);
 
-    // Members, invites and models have no per-item read worth a second code
-    // path: the list already carries every field.
-    const siblings =
-      typeId === "member"
-        ? await this.listMembers(accountId, projectId)
-        : typeId === "invite"
-          ? await this.listInvites(accountId, projectId)
-          : typeId === "model"
-            ? await this.listModels(accountId, projectId)
-            : await this.listResources(typeId, accountId);
-    const found = siblings.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Deepgram plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+      const { projectId, childId } = splitChildId(resourceId);
+
+      if (typeId === "api-key") {
+        // https://developers.deepgram.com/reference/manage/keys/get
+        // Worth the extra call: this is the only read that carries `tags` and
+        // `expiration_date`, both of which the list endpoint omits.
+        const data = await this.fetch<DgApiKeyItem>(
+          `/v1/projects/${encodeURIComponent(projectId)}/keys/${encodeURIComponent(childId)}`,
+        );
+        const member = data.item?.member;
+        const key = member?.api_key;
+        if (key) {
+          const entry: DgApiKeyEntry = { api_key: key, ...(member ? { member } : {}) };
+          return this.mapApiKey(accountId, projectId, entry);
+        }
+      }
+
+      if (typeId === "balance") {
+        // https://developers.deepgram.com/reference/manage/billing/get
+        // Unlike the list, this returns the bare balance object, unwrapped.
+        const balance = await this.fetch<DgBalance>(
+          `/v1/projects/${encodeURIComponent(projectId)}/balances/${encodeURIComponent(childId)}`,
+        );
+        return this.mapBalance(accountId, projectId, balance);
+      }
+
+      // Members, invites and models have no per-item read worth a second code
+      // path: the list already carries every field.
+      const siblings =
+        typeId === "member"
+          ? await this.listMembers(accountId, projectId)
+          : typeId === "invite"
+            ? await this.listInvites(accountId, projectId)
+            : typeId === "model"
+              ? await this.listModels(accountId, projectId)
+              : await runPluginEffect(this.listResources(typeId, accountId));
+      const found = siblings.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Deepgram plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`Deepgram plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(`Deepgram plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -815,78 +828,84 @@ export class DeepgramClient implements PluginClient {
   // Stats and metrics
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (resourceTypeId === "project") {
-      const projectId = externalIdOf(resourceId);
-      const [usage, balances] = await Promise.all([
-        this.fetchUsageBuckets(projectId).catch(() => [] as DgUsageBucket[]),
-        this.listBalances(accountId, projectId).catch(() => [] as ResourceInstance[]),
-      ]);
-      const totals = summariseUsage(usage);
-      const credit = balances.reduce((sum, b) => sum + Number(b.fields["amount"] ?? 0), 0);
-      return [
-        { label: "Requests (30d)", value: totals.requests.toLocaleString() },
-        { label: "Audio Hours (30d)", value: totals.hours.toFixed(2) },
-        { label: "TTS Characters (30d)", value: totals.ttsCharacters.toLocaleString() },
-        ...(totals.agentHours > 0
-          ? [{ label: "Voice Agent Hours (30d)", value: totals.agentHours.toFixed(2) }]
-          : []),
-        ...(balances.length > 0
-          ? [{ label: "Prepaid Balance", value: `$${credit.toFixed(2)}` }]
-          : []),
-      ];
-    }
-
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
-    if (EXTRA_TYPES.has(resourceTypeId)) return this.extras.stats(resource);
-
-    switch (resourceTypeId) {
-      case "api-key": {
-        // Requests this key authenticated in the last 30 days; best effort,
-        // since a member-scoped credential cannot read project usage.
-        const { projectId, childId } = splitChildId(resourceId);
-        const usage = childId
-          ? await this.fetchUsageBuckets(projectId, undefined, { accessor: childId }).catch(
-              () => undefined,
-            )
-          : undefined;
-        const totals = usage ? summariseUsage(usage) : undefined;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "project") {
+        const projectId = externalIdOf(resourceId);
+        const [usage, balances] = await Promise.all([
+          this.fetchUsageBuckets(projectId).catch(() => [] as DgUsageBucket[]),
+          this.listBalances(accountId, projectId).catch(() => [] as ResourceInstance[]),
+        ]);
+        const totals = summariseUsage(usage);
+        const credit = balances.reduce((sum, b) => sum + Number(b.fields["amount"] ?? 0), 0);
         return [
-          ...(totals ? [{ label: "Requests (30d)", value: totals.requests.toLocaleString() }] : []),
-          { label: "Scopes", value: String(f["scopes"] ?? "") || "—" },
-          { label: "Created", value: String(f["created"] ?? "") },
-          { label: "Expires", value: String(f["expirationDate"] ?? "") || "Never" },
+          { label: "Requests (30d)", value: totals.requests.toLocaleString() },
+          { label: "Audio Hours (30d)", value: totals.hours.toFixed(2) },
+          { label: "TTS Characters (30d)", value: totals.ttsCharacters.toLocaleString() },
+          ...(totals.agentHours > 0
+            ? [{ label: "Voice Agent Hours (30d)", value: totals.agentHours.toFixed(2) }]
+            : []),
+          ...(balances.length > 0
+            ? [{ label: "Prepaid Balance", value: `$${credit.toFixed(2)}` }]
+            : []),
         ];
       }
-      case "member":
-        return [
-          { label: "Email", value: String(f["email"] ?? "") },
-          { label: "Scopes", value: String(f["scopes"] ?? "") || "—" },
-        ];
-      case "invite":
-        return [
-          { label: "Email", value: String(f["email"] ?? "") },
-          { label: "Scope", value: String(f["scope"] ?? "") },
-        ];
-      case "balance":
-        return [
-          { label: "Amount", value: String(f["amount"] ?? "0") },
-          { label: "Units", value: String(f["units"] ?? "") },
-        ];
-      case "model":
-        return [
-          { label: "Family", value: String(f["family"] ?? "").toUpperCase() },
-          { label: "Canonical Name", value: String(f["canonicalName"] ?? "") },
-          ...(f["accent"] ? [{ label: "Accent", value: String(f["accent"]) }] : []),
-        ];
-      default:
-        return [];
-    }
+
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
+      if (EXTRA_TYPES.has(resourceTypeId)) return this.extras.stats(resource);
+
+      switch (resourceTypeId) {
+        case "api-key": {
+          // Requests this key authenticated in the last 30 days; best effort,
+          // since a member-scoped credential cannot read project usage.
+          const { projectId, childId } = splitChildId(resourceId);
+          const usage = childId
+            ? await this.fetchUsageBuckets(projectId, undefined, { accessor: childId }).catch(
+                () => undefined,
+              )
+            : undefined;
+          const totals = usage ? summariseUsage(usage) : undefined;
+          return [
+            ...(totals
+              ? [{ label: "Requests (30d)", value: totals.requests.toLocaleString() }]
+              : []),
+            { label: "Scopes", value: String(f["scopes"] ?? "") || "—" },
+            { label: "Created", value: String(f["created"] ?? "") },
+            { label: "Expires", value: String(f["expirationDate"] ?? "") || "Never" },
+          ];
+        }
+        case "member":
+          return [
+            { label: "Email", value: String(f["email"] ?? "") },
+            { label: "Scopes", value: String(f["scopes"] ?? "") || "—" },
+          ];
+        case "invite":
+          return [
+            { label: "Email", value: String(f["email"] ?? "") },
+            { label: "Scope", value: String(f["scope"] ?? "") },
+          ];
+        case "balance":
+          return [
+            { label: "Amount", value: String(f["amount"] ?? "0") },
+            { label: "Units", value: String(f["units"] ?? "") },
+          ];
+        case "model":
+          return [
+            { label: "Family", value: String(f["family"] ?? "").toUpperCase() },
+            { label: "Canonical Name", value: String(f["canonicalName"] ?? "") },
+            ...(f["accent"] ? [{ label: "Accent", value: String(f["accent"]) }] : []),
+          ];
+        default:
+          return [];
+      }
+    });
   }
 
   /**
@@ -926,44 +945,48 @@ export class DeepgramClient implements PluginClient {
    * only the requests it authenticated (`accessor=`), and a model only the
    * requests that ran on it (`model=`, which takes the model's UUID).
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId === "project") {
-      const projectId = externalIdOf(resourceId);
-      const [buckets, byEndpoint, byMethod] = await Promise.all([
-        this.fetchUsageBuckets(projectId, timeRange),
-        // The splits are extras: a failure there must not blank the totals.
-        this.fetchUsageBuckets(projectId, timeRange, { grouping: "endpoint" }).catch(
-          () => [] as DgUsageBucket[],
-        ),
-        this.fetchUsageBuckets(projectId, timeRange, { grouping: "method" }).catch(
-          () => [] as DgUsageBucket[],
-        ),
-      ]);
-      if (buckets.length === 0) return [];
-      return [
-        ...usageSeries(buckets),
-        ...groupedRequestSeries(byEndpoint, (g) => g.endpoint, "Requests"),
-        ...groupedRequestSeries(byMethod, (g) => g.method, "Requests"),
-      ];
-    }
-    if (resourceTypeId === "api-key") {
-      const { projectId, childId } = splitChildId(resourceId);
-      if (!childId) return [];
-      return usageSeries(await this.fetchUsageBuckets(projectId, timeRange, { accessor: childId }));
-    }
-    if (resourceTypeId === "model") {
-      const { projectId } = splitChildId(resourceId);
-      const model = await this.getResource("model", resourceId, accountId);
-      const uuid = String(model.fields["uuid"] ?? "");
-      if (!uuid) return [];
-      return usageSeries(await this.fetchUsageBuckets(projectId, timeRange, { model: uuid }));
-    }
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "project") {
+        const projectId = externalIdOf(resourceId);
+        const [buckets, byEndpoint, byMethod] = await Promise.all([
+          this.fetchUsageBuckets(projectId, timeRange),
+          // The splits are extras: a failure there must not blank the totals.
+          this.fetchUsageBuckets(projectId, timeRange, { grouping: "endpoint" }).catch(
+            () => [] as DgUsageBucket[],
+          ),
+          this.fetchUsageBuckets(projectId, timeRange, { grouping: "method" }).catch(
+            () => [] as DgUsageBucket[],
+          ),
+        ]);
+        if (buckets.length === 0) return [];
+        return [
+          ...usageSeries(buckets),
+          ...groupedRequestSeries(byEndpoint, (g) => g.endpoint, "Requests"),
+          ...groupedRequestSeries(byMethod, (g) => g.method, "Requests"),
+        ];
+      }
+      if (resourceTypeId === "api-key") {
+        const { projectId, childId } = splitChildId(resourceId);
+        if (!childId) return [];
+        return usageSeries(
+          await this.fetchUsageBuckets(projectId, timeRange, { accessor: childId }),
+        );
+      }
+      if (resourceTypeId === "model") {
+        const { projectId } = splitChildId(resourceId);
+        const model = await runPluginEffect(this.getResource("model", resourceId, accountId));
+        const uuid = String(model.fields["uuid"] ?? "");
+        if (!uuid) return [];
+        return usageSeries(await this.fetchUsageBuckets(projectId, timeRange, { model: uuid }));
+      }
+      return [];
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -976,108 +999,112 @@ export class DeepgramClient implements PluginClient {
    * only the credential plus the host HTTP services, so it can be exercised
    * without a client.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchDeepgramCostData(
-      {
-        apiKey: this.apiKey,
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-        ...(this.services?.http ? { http: this.services.http } : {}),
-      },
-      range,
-    );
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchDeepgramCostData(
+        {
+          apiKey: this.apiKey,
+          ...(this.caCert ? { caCert: this.caCert } : {}),
+          ...(this.services?.http ? { http: this.services.http } : {}),
+        },
+        range,
+      );
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create / update / delete
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    const projectField = await this.projectPickerField(parentResourceId);
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const projectField = await this.projectPickerField(parentResourceId);
 
-    if (typeId === "api-key") {
-      return {
-        fields: [
-          ...projectField,
-          {
-            key: "comment",
-            label: "Name",
-            kind: "text",
-            required: true,
-            description: "Deepgram calls this the key's comment. Shown in the console.",
-          },
-          {
-            key: "scopes",
-            label: "Scopes",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "member", label: "member: transcribe, synthesize, read own usage" },
-              { id: "admin", label: "admin: manage keys, members and invites" },
-              { id: "owner", label: "owner: full control, including billing" },
-            ],
-            defaultValue: "member",
-            description: "A key can never be granted a scope wider than the key that created it.",
-          },
-          {
-            key: "tags",
-            label: "Tags",
-            kind: "string-list",
-            required: false,
-            placeholder: "tag",
-            addLabel: "+ Add tag",
-            description: "Free-form labels. Usage can be filtered by tag.",
-          },
-          {
-            key: "expirationDate",
-            label: "Expires",
-            kind: "datetime",
-            datetimeMode: "datetime",
-            required: false,
-            description: "Leave blank for a key that never expires.",
-          },
-        ],
-      };
-    }
+      if (typeId === "api-key") {
+        return {
+          fields: [
+            ...projectField,
+            {
+              key: "comment",
+              label: "Name",
+              kind: "text",
+              required: true,
+              description: "Deepgram calls this the key's comment. Shown in the console.",
+            },
+            {
+              key: "scopes",
+              label: "Scopes",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "member", label: "member: transcribe, synthesize, read own usage" },
+                { id: "admin", label: "admin: manage keys, members and invites" },
+                { id: "owner", label: "owner: full control, including billing" },
+              ],
+              defaultValue: "member",
+              description: "A key can never be granted a scope wider than the key that created it.",
+            },
+            {
+              key: "tags",
+              label: "Tags",
+              kind: "string-list",
+              required: false,
+              placeholder: "tag",
+              addLabel: "+ Add tag",
+              description: "Free-form labels. Usage can be filtered by tag.",
+            },
+            {
+              key: "expirationDate",
+              label: "Expires",
+              kind: "datetime",
+              datetimeMode: "datetime",
+              required: false,
+              description: "Leave blank for a key that never expires.",
+            },
+          ],
+        };
+      }
 
-    if (typeId === "invite") {
-      return {
-        fields: [
-          ...projectField,
-          { key: "email", label: "Email", kind: "text", required: true },
-          {
-            key: "scope",
-            label: "Scope",
-            kind: "select",
-            required: true,
-            options: [
-              { id: "member", label: "member" },
-              { id: "admin", label: "admin" },
-              { id: "owner", label: "owner" },
-            ],
-            defaultValue: "member",
-          },
-        ],
-      };
-    }
+      if (typeId === "invite") {
+        return {
+          fields: [
+            ...projectField,
+            { key: "email", label: "Email", kind: "text", required: true },
+            {
+              key: "scope",
+              label: "Scope",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "member", label: "member" },
+                { id: "admin", label: "admin" },
+                { id: "owner", label: "owner" },
+              ],
+              defaultValue: "member",
+            },
+          ],
+        };
+      }
 
-    if (typeId === "agent-config" || typeId === "agent-variable") {
-      // The agent form's model and voice pickers come from a project's own
-      // entitlements: the parent's when launched from one, else the first.
-      const projectId = parentResourceId
-        ? externalIdOf(parentResourceId)
-        : (await this.fetchProjects().catch(() => [] as DgProject[]))[0]?.project_id;
-      const catalogue = await this.loadSpeechOptions(projectId);
-      const config = await this.extras.createConfig(typeId, {
-        stt: catalogue.stt.map((m) => ({ id: m.id, label: m.label })),
-        tts: catalogue.tts.map((v) => ({
-          id: v.id,
-          label: v.description ? `${v.label} (${v.description})` : v.label,
-        })),
-      });
-      return { ...config, fields: [...projectField, ...config.fields] };
-    }
+      if (typeId === "agent-config" || typeId === "agent-variable") {
+        // The agent form's model and voice pickers come from a project's own
+        // entitlements: the parent's when launched from one, else the first.
+        const projectId = parentResourceId
+          ? externalIdOf(parentResourceId)
+          : (await this.fetchProjects().catch(() => [] as DgProject[]))[0]?.project_id;
+        const catalogue = await this.loadSpeechOptions(projectId);
+        const config = await this.extras.createConfig(typeId, {
+          stt: catalogue.stt.map((m) => ({ id: m.id, label: m.label })),
+          tts: catalogue.tts.map((v) => ({
+            id: v.id,
+            label: v.description ? `${v.label} (${v.description})` : v.label,
+          })),
+        });
+        return { ...config, fields: [...projectField, ...config.fields] };
+      }
 
-    throw new Error(`Deepgram plugin: no create config for type "${typeId}"`);
+      throw new Error(`Deepgram plugin: no create config for type "${typeId}"`);
+    });
   }
 
   /**
@@ -1111,139 +1138,146 @@ export class DeepgramClient implements PluginClient {
     return projectId;
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    const projectId = this.resolveProjectId(fields, parentResourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const projectId = this.resolveProjectId(fields, parentResourceId);
 
-    if (EXTRA_TYPES.has(typeId)) return this.extras.create(typeId, accountId, projectId, fields);
+      if (EXTRA_TYPES.has(typeId)) return this.extras.create(typeId, accountId, projectId, fields);
 
-    if (typeId === "api-key") {
-      // https://developers.deepgram.com/reference/management-api/keys/create
-      const body: Record<string, unknown> = {
-        comment: fields["comment"] ?? "",
-        scopes: [fields["scopes"] ?? "member"],
-      };
-      const tags = (fields["tags"] ?? "")
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-      if (tags.length > 0) body["tags"] = tags;
-      // `expiration_date` is the only expiry field Deepgram documents on this
-      // endpoint (their spec types the body as an untyped two-branch `oneOf`).
-      if (fields["expirationDate"]) body["expiration_date"] = fields["expirationDate"];
+      if (typeId === "api-key") {
+        // https://developers.deepgram.com/reference/management-api/keys/create
+        const body: Record<string, unknown> = {
+          comment: fields["comment"] ?? "",
+          scopes: [fields["scopes"] ?? "member"],
+        };
+        const tags = (fields["tags"] ?? "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+        if (tags.length > 0) body["tags"] = tags;
+        // `expiration_date` is the only expiry field Deepgram documents on this
+        // endpoint (their spec types the body as an untyped two-branch `oneOf`).
+        if (fields["expirationDate"]) body["expiration_date"] = fields["expirationDate"];
 
-      const created = await this.fetch<DgApiKey>(
-        `/v1/projects/${encodeURIComponent(projectId)}/keys`,
-        { method: "POST", body: JSON.stringify(body) },
-      );
-      const instance = this.mapApiKey(accountId, projectId, { api_key: created });
-      // The plaintext key is returned exactly once, on this response.
-      if (created.key) {
-        instance.resolvedOutputs = { ...instance.resolvedOutputs, apiKey: created.key };
+        const created = await this.fetch<DgApiKey>(
+          `/v1/projects/${encodeURIComponent(projectId)}/keys`,
+          { method: "POST", body: JSON.stringify(body) },
+        );
+        const instance = this.mapApiKey(accountId, projectId, { api_key: created });
+        // The plaintext key is returned exactly once, on this response.
+        if (created.key) {
+          instance.resolvedOutputs = { ...instance.resolvedOutputs, apiKey: created.key };
+        }
+        return instance;
       }
-      return instance;
-    }
 
-    if (typeId === "invite") {
-      // https://developers.deepgram.com/reference/management-api/invitations/send
-      const email = fields["email"];
-      if (!email) throw new Error("Deepgram plugin: an email address is required");
-      const scope = fields["scope"] ?? "member";
-      await this.fetch<{ message?: string }>(
-        `/v1/projects/${encodeURIComponent(projectId)}/invites`,
-        { method: "POST", body: JSON.stringify({ email, scope }) },
-      );
-      return this.mapInvite(accountId, projectId, { email, scope });
-    }
+      if (typeId === "invite") {
+        // https://developers.deepgram.com/reference/management-api/invitations/send
+        const email = fields["email"];
+        if (!email) throw new Error("Deepgram plugin: an email address is required");
+        const scope = fields["scope"] ?? "member";
+        await this.fetch<{ message?: string }>(
+          `/v1/projects/${encodeURIComponent(projectId)}/invites`,
+          { method: "POST", body: JSON.stringify({ email, scope }) },
+        );
+        return this.mapInvite(accountId, projectId, { email, scope });
+      }
 
-    throw new Error(`Deepgram plugin: cannot create type "${typeId}"`);
+      throw new Error(`Deepgram plugin: cannot create type "${typeId}"`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (EXTRA_TYPES.has(typeId)) return this.extras.update(typeId, resourceId, accountId, fields);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (EXTRA_TYPES.has(typeId)) return this.extras.update(typeId, resourceId, accountId, fields);
 
-    if (typeId === "project") {
-      // https://developers.deepgram.com/reference/management-api/projects/update
-      const projectId = externalIdOf(resourceId);
-      // `name` is the only documented mutable attribute.
-      const name = fields["name"];
-      if (name === undefined) return this.getResource("project", resourceId, accountId);
-      await this.fetch<{ message?: string }>(`/v1/projects/${encodeURIComponent(projectId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name }),
-      });
-      return this.getResource("project", resourceId, accountId);
-    }
+      if (typeId === "project") {
+        // https://developers.deepgram.com/reference/management-api/projects/update
+        const projectId = externalIdOf(resourceId);
+        // `name` is the only documented mutable attribute.
+        const name = fields["name"];
+        if (name === undefined)
+          return runPluginEffect(this.getResource("project", resourceId, accountId));
+        await this.fetch<{ message?: string }>(`/v1/projects/${encodeURIComponent(projectId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name }),
+        });
+        return runPluginEffect(this.getResource("project", resourceId, accountId));
+      }
 
-    if (typeId === "member") {
-      // https://developers.deepgram.com/reference/manage/members/scopes/update
-      // Roles are expressed as a scope: member | admin | owner.
-      const { projectId, childId } = splitChildId(resourceId);
-      const scope = fields["scopes"];
-      if (!scope) return this.getResource("member", resourceId, accountId);
-      await this.fetch<{ message?: string }>(
-        `/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(childId)}/scopes`,
-        { method: "PUT", body: JSON.stringify({ scope }) },
-      );
-      return this.getResource("member", resourceId, accountId);
-    }
+      if (typeId === "member") {
+        // https://developers.deepgram.com/reference/manage/members/scopes/update
+        // Roles are expressed as a scope: member | admin | owner.
+        const { projectId, childId } = splitChildId(resourceId);
+        const scope = fields["scopes"];
+        if (!scope) return runPluginEffect(this.getResource("member", resourceId, accountId));
+        await this.fetch<{ message?: string }>(
+          `/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(childId)}/scopes`,
+          { method: "PUT", body: JSON.stringify({ scope }) },
+        );
+        return runPluginEffect(this.getResource("member", resourceId, accountId));
+      }
 
-    throw new Error(`Deepgram plugin: cannot update type "${typeId}"`);
+      throw new Error(`Deepgram plugin: cannot update type "${typeId}"`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (EXTRA_TYPES.has(typeId)) return this.extras.remove(typeId, resourceId);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (EXTRA_TYPES.has(typeId)) return this.extras.remove(typeId, resourceId);
 
-    if (typeId === "project") {
-      // https://developers.deepgram.com/reference/manage/projects/delete
-      // Permanent: the project and everything in it.
-      await this.fetch<{ message?: string }>(
-        `/v1/projects/${encodeURIComponent(externalIdOf(resourceId))}`,
-        { method: "DELETE" },
-      );
-      return;
-    }
+      if (typeId === "project") {
+        // https://developers.deepgram.com/reference/manage/projects/delete
+        // Permanent: the project and everything in it.
+        await this.fetch<{ message?: string }>(
+          `/v1/projects/${encodeURIComponent(externalIdOf(resourceId))}`,
+          { method: "DELETE" },
+        );
+        return;
+      }
 
-    const { projectId, childId } = splitChildId(resourceId);
+      const { projectId, childId } = splitChildId(resourceId);
 
-    if (typeId === "api-key") {
-      // https://developers.deepgram.com/reference/management-api/keys/delete
-      await this.fetch<void>(
-        `/v1/projects/${encodeURIComponent(projectId)}/keys/${encodeURIComponent(childId)}`,
-        { method: "DELETE" },
-      );
-      return;
-    }
+      if (typeId === "api-key") {
+        // https://developers.deepgram.com/reference/management-api/keys/delete
+        await this.fetch<void>(
+          `/v1/projects/${encodeURIComponent(projectId)}/keys/${encodeURIComponent(childId)}`,
+          { method: "DELETE" },
+        );
+        return;
+      }
 
-    if (typeId === "invite") {
-      // https://developers.deepgram.com/reference/management-api/invitations/delete
-      // Invites are addressed by email, not by an id.
-      await this.fetch<void>(
-        `/v1/projects/${encodeURIComponent(projectId)}/invites/${encodeURIComponent(childId)}`,
-        { method: "DELETE" },
-      );
-      return;
-    }
+      if (typeId === "invite") {
+        // https://developers.deepgram.com/reference/management-api/invitations/delete
+        // Invites are addressed by email, not by an id.
+        await this.fetch<void>(
+          `/v1/projects/${encodeURIComponent(projectId)}/invites/${encodeURIComponent(childId)}`,
+          { method: "DELETE" },
+        );
+        return;
+      }
 
-    if (typeId === "member") {
-      // https://developers.deepgram.com/reference/management-api/members/delete
-      await this.fetch<void>(
-        `/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(childId)}`,
-        { method: "DELETE" },
-      );
-      return;
-    }
+      if (typeId === "member") {
+        // https://developers.deepgram.com/reference/management-api/members/delete
+        await this.fetch<void>(
+          `/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(childId)}`,
+          { method: "DELETE" },
+        );
+        return;
+      }
 
-    throw new Error(`Deepgram plugin: cannot delete type "${typeId}"`);
+      throw new Error(`Deepgram plugin: cannot delete type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1251,16 +1285,18 @@ export class DeepgramClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   /** The project's Logs tab: its recent API requests, one per line. */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "project") {
-      throw new Error(`Deepgram plugin: logs are not available on "${typeId}"`);
-    }
-    return this.extras.requestLog(externalIdOf(resourceId), params);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "project") {
+        throw new Error(`Deepgram plugin: logs are not available on "${typeId}"`);
+      }
+      return this.extras.requestLog(externalIdOf(resourceId), params);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1310,46 +1346,49 @@ export class DeepgramClient implements PluginClient {
    * JSON body carries nothing but `{"text": "..."}`. mp3 is requested
    * explicitly so the browser's `<audio>` element can always play the result.
    */
-  async synthesizeSpeech(
+  synthesizeSpeech(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    if (typeId !== "project") {
-      throw new Error(`Deepgram plugin: speech synthesis is not available on "${typeId}"`);
-    }
-    const text = payload.text.trim();
-    if (!text) throw new Error("Deepgram plugin: nothing to synthesize");
-    if (text.length > MAX_TTS_CHARACTERS) {
-      throw new Error(
-        `Deepgram accepts at most ${MAX_TTS_CHARACTERS} characters per request (got ${text.length}).`,
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      if (typeId !== "project") {
+        throw new Error(`Deepgram plugin: speech synthesis is not available on "${typeId}"`);
+      }
+      const text = payload.text.trim();
+      if (!text) throw new Error("Deepgram plugin: nothing to synthesize");
+      if (text.length > MAX_TTS_CHARACTERS) {
+        throw new Error(
+          `Deepgram accepts at most ${MAX_TTS_CHARACTERS} characters per request (got ${text.length}).`,
+        );
+      }
+
+      const voice = payload.voiceId || FALLBACK_TTS_VOICE;
+      const params = new URLSearchParams({ model: voice, encoding: "mp3" });
+      const started = Date.now();
+      const { bytes, headers } = await this.speechFetch(
+        `${BASE_URL}/v1/speak?${params.toString()}`,
+        "application/json",
+        JSON.stringify({ text }),
       );
-    }
+      const elapsedMs = Date.now() - started;
 
-    const voice = payload.voiceId || FALLBACK_TTS_VOICE;
-    const params = new URLSearchParams({ model: voice, encoding: "mp3" });
-    const started = Date.now();
-    const { bytes, headers } = await this.speechFetch(
-      `${BASE_URL}/v1/speak?${params.toString()}`,
-      "application/json",
-      JSON.stringify({ text }),
-    );
-    const elapsedMs = Date.now() - started;
+      const requestId = headers.get("dg-request-id") ?? undefined;
+      const modelName = headers.get("dg-model-name") ?? voice;
+      const headerChars = Number(headers.get("dg-char-count") ?? "");
+      const characters =
+        Number.isFinite(headerChars) && headerChars > 0 ? headerChars : text.length;
 
-    const requestId = headers.get("dg-request-id") ?? undefined;
-    const modelName = headers.get("dg-model-name") ?? voice;
-    const headerChars = Number(headers.get("dg-char-count") ?? "");
-    const characters = Number.isFinite(headerChars) && headerChars > 0 ? headerChars : text.length;
-
-    return {
-      audioBase64: bytesToBase64(bytes),
-      mimeType: "audio/mpeg",
-      fileName: `${voice}-${started}.mp3`,
-      summary: `${characters.toLocaleString()} characters · ${modelName} · ${elapsedMs} ms · ${(bytes.byteLength / 1024).toFixed(1)} KB`,
-      characters,
-      ...(requestId ? { requestId } : {}),
-    };
+      return {
+        audioBase64: bytesToBase64(bytes),
+        mimeType: "audio/mpeg",
+        fileName: `${voice}-${started}.mp3`,
+        summary: `${characters.toLocaleString()} characters · ${modelName} · ${elapsedMs} ms · ${(bytes.byteLength / 1024).toFixed(1)} KB`,
+        characters,
+        ...(requestId ? { requestId } : {}),
+      };
+    });
   }
 
   /**
@@ -1363,103 +1402,105 @@ export class DeepgramClient implements PluginClient {
    * `punctuate`, `smart_format`, `diarize` and `utterances` are all on so the
    * result carries speaker labels and per-word timings.
    */
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    if (typeId !== "project") {
-      throw new Error(`Deepgram plugin: transcription is not available on "${typeId}"`);
-    }
-    const audio = base64ToBytes(payload.audioBase64);
-    if (audio.byteLength === 0) throw new Error("Deepgram plugin: the clip is empty");
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      if (typeId !== "project") {
+        throw new Error(`Deepgram plugin: transcription is not available on "${typeId}"`);
+      }
+      const audio = base64ToBytes(payload.audioBase64);
+      if (audio.byteLength === 0) throw new Error("Deepgram plugin: the clip is empty");
 
-    const params = new URLSearchParams({
-      punctuate: "true",
-      smart_format: "true",
-      diarize: "true",
-      utterances: "true",
+      const params = new URLSearchParams({
+        punctuate: "true",
+        smart_format: "true",
+        diarize: "true",
+        utterances: "true",
+      });
+      if (payload.modelId) params.set("model", payload.modelId);
+      else params.set("model", FALLBACK_STT_MODEL);
+      if (payload.language) params.set("language", payload.language);
+
+      const started = Date.now();
+      const { bytes, headers } = await this.speechFetch(
+        `${BASE_URL}/v1/listen?${params.toString()}`,
+        payload.mimeType || "application/octet-stream",
+        audio,
+      );
+      const elapsedMs = Date.now() - started;
+
+      const parsed = JSON.parse(new TextDecoder().decode(bytes)) as DgListenResponse;
+      const channel = parsed.results?.channels?.[0];
+      const alternative = channel?.alternatives?.[0];
+      const utterances = parsed.results?.utterances ?? [];
+
+      // Prefer the utterance words: they carry the diarisation speaker label
+      // for every token. Fall back to the flat alternative word list.
+      const source: DgListenWord[] =
+        utterances.length > 0
+          ? utterances.flatMap((u) =>
+              (u.words ?? []).map((w) => {
+                const speaker = w.speaker ?? u.speaker;
+                return { ...w, ...(speaker !== undefined ? { speaker } : {}) };
+              }),
+            )
+          : (alternative?.words ?? []);
+
+      const words: TranscriptWord[] = source.map((w) => ({
+        text: w.punctuated_word ?? w.word ?? "",
+        ...(typeof w.start === "number" ? { start: w.start } : {}),
+        ...(typeof w.end === "number" ? { end: w.end } : {}),
+        ...(typeof w.speaker === "number" ? { speaker: `Speaker ${w.speaker}` } : {}),
+      }));
+
+      const transcript =
+        utterances.length > 0
+          ? utterances
+              .map((u) => u.transcript ?? "")
+              .filter(Boolean)
+              .join("\n")
+          : (alternative?.transcript ?? "");
+
+      const durationSeconds = parsed.metadata?.duration;
+      const model =
+        Object.values(parsed.metadata?.model_info ?? {})[0]?.name ??
+        payload.modelId ??
+        FALLBACK_STT_MODEL;
+      const speakers = new Set(source.map((w) => w.speaker).filter((s) => typeof s === "number"));
+      const requestId = parsed.metadata?.request_id ?? headers.get("dg-request-id") ?? undefined;
+
+      // Two different shapes answer "what language was this?": `detect_language`
+      // reports `channels[].detected_language`, while `language=multi` reports
+      // `alternatives[].languages` (sorted by word count) and no channel field.
+      const detected =
+        channel?.detected_language ??
+        (alternative?.languages && alternative.languages.length > 0
+          ? alternative.languages.join(", ")
+          : undefined);
+
+      const summaryBits = [
+        durationSeconds !== undefined ? `${durationSeconds.toFixed(1)} s audio` : undefined,
+        `${model}`,
+        speakers.size > 1 ? `${speakers.size} speakers` : undefined,
+        `${elapsedMs} ms`,
+      ].filter(Boolean);
+
+      return {
+        text: transcript,
+        summary: summaryBits.join(" · "),
+        ...(detected ? { language: detected } : {}),
+        ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+        ...(typeof alternative?.confidence === "number"
+          ? { confidence: alternative.confidence }
+          : {}),
+        ...(words.length > 0 ? { words } : {}),
+        ...(requestId ? { requestId } : {}),
+      };
     });
-    if (payload.modelId) params.set("model", payload.modelId);
-    else params.set("model", FALLBACK_STT_MODEL);
-    if (payload.language) params.set("language", payload.language);
-
-    const started = Date.now();
-    const { bytes, headers } = await this.speechFetch(
-      `${BASE_URL}/v1/listen?${params.toString()}`,
-      payload.mimeType || "application/octet-stream",
-      audio,
-    );
-    const elapsedMs = Date.now() - started;
-
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as DgListenResponse;
-    const channel = parsed.results?.channels?.[0];
-    const alternative = channel?.alternatives?.[0];
-    const utterances = parsed.results?.utterances ?? [];
-
-    // Prefer the utterance words: they carry the diarisation speaker label
-    // for every token. Fall back to the flat alternative word list.
-    const source: DgListenWord[] =
-      utterances.length > 0
-        ? utterances.flatMap((u) =>
-            (u.words ?? []).map((w) => {
-              const speaker = w.speaker ?? u.speaker;
-              return { ...w, ...(speaker !== undefined ? { speaker } : {}) };
-            }),
-          )
-        : (alternative?.words ?? []);
-
-    const words: TranscriptWord[] = source.map((w) => ({
-      text: w.punctuated_word ?? w.word ?? "",
-      ...(typeof w.start === "number" ? { start: w.start } : {}),
-      ...(typeof w.end === "number" ? { end: w.end } : {}),
-      ...(typeof w.speaker === "number" ? { speaker: `Speaker ${w.speaker}` } : {}),
-    }));
-
-    const transcript =
-      utterances.length > 0
-        ? utterances
-            .map((u) => u.transcript ?? "")
-            .filter(Boolean)
-            .join("\n")
-        : (alternative?.transcript ?? "");
-
-    const durationSeconds = parsed.metadata?.duration;
-    const model =
-      Object.values(parsed.metadata?.model_info ?? {})[0]?.name ??
-      payload.modelId ??
-      FALLBACK_STT_MODEL;
-    const speakers = new Set(source.map((w) => w.speaker).filter((s) => typeof s === "number"));
-    const requestId = parsed.metadata?.request_id ?? headers.get("dg-request-id") ?? undefined;
-
-    // Two different shapes answer "what language was this?": `detect_language`
-    // reports `channels[].detected_language`, while `language=multi` reports
-    // `alternatives[].languages` (sorted by word count) and no channel field.
-    const detected =
-      channel?.detected_language ??
-      (alternative?.languages && alternative.languages.length > 0
-        ? alternative.languages.join(", ")
-        : undefined);
-
-    const summaryBits = [
-      durationSeconds !== undefined ? `${durationSeconds.toFixed(1)} s audio` : undefined,
-      `${model}`,
-      speakers.size > 1 ? `${speakers.size} speakers` : undefined,
-      `${elapsedMs} ms`,
-    ].filter(Boolean);
-
-    return {
-      text: transcript,
-      summary: summaryBits.join(" · "),
-      ...(detected ? { language: detected } : {}),
-      ...(durationSeconds !== undefined ? { durationSeconds } : {}),
-      ...(typeof alternative?.confidence === "number"
-        ? { confidence: alternative.confidence }
-        : {}),
-      ...(words.length > 0 ? { words } : {}),
-      ...(requestId ? { requestId } : {}),
-    };
   }
 
   // -------------------------------------------------------------------------

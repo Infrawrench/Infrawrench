@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { RailwayApi } from "./api.js";
@@ -20,16 +22,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { railwayDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "railway",
-  version: "0.1.0",
+  egressHosts: ["backboard.railway.com"],
   displayName: "Railway",
   description:
     "Application platform. Manage projects, environments, services, deployments with redeploy and rollback, variables, volumes and backups, domains and TCP proxies, with logs, metrics, usage-based cost estimates, credits and spend limits.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -48,7 +48,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiToken"], emptyLabel: "All workspaces" },
     },
     caCertCredentialField,
-  ],
+  ]),
   // Hobby allows 1,000 requests an hour (Pro 10,000); stay inside the smaller.
   rateLimit: { capacity: 20, refillPerSecond: 0.25 },
   costs: {
@@ -71,7 +71,9 @@ const manifest: PluginManifest = {
   statusFeed,
   // "Connect with Railway". Pasted account and workspace tokens keep working.
   oauth: railwayOAuth,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -99,13 +101,14 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: railwayDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new RailwayClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiToken: "test-token" },
   parseStatusFeed,
-  listCredentialOptions,
-  completeOAuthConnection: completeRailwayOAuth,
+  listCredentialOptions: attemptFn(listCredentialOptions),
+  completeOAuthConnection: attemptFn(completeRailwayOAuth),
   remediationCommands: railwayRemediationCommands,
-};
+});

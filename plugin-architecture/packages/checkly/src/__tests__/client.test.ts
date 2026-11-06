@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { ChecklyApiError } from "../api.js";
@@ -16,7 +17,7 @@ function client(route: Parameters<typeof makeHttp>[0]) {
   const { http, calls } = makeHttp(route);
   const secrets = memorySecrets();
   return {
-    c: new ChecklyClient(creds, { http, secrets } as unknown as HostServices),
+    c: hostClient(new ChecklyClient(creds, { http, secrets } as unknown as HostServices)),
     calls,
     secrets,
   };
@@ -24,7 +25,7 @@ function client(route: Parameters<typeof makeHttp>[0]) {
 
 describe("construction and auth", () => {
   it("needs a key and an account, and sends both", async () => {
-    expect(() => new ChecklyClient({ apiKey: "k" })).toThrow(/accountId/);
+    expect(() => hostClient(new ChecklyClient({ apiKey: "k" }))).toThrow(/accountId/);
     const { c, calls } = client(() => ({ body: [] }));
     await c.listResources("alert-channel", ACCOUNT);
     expect(calls[0]?.headers["Authorization"]).toBe("Bearer cu_key");
@@ -35,7 +36,7 @@ describe("construction and auth", () => {
     const { http, calls } = makeHttp(() => ({
       body: [{ id: "a1", name: "Acme", planDisplayName: "Team" }],
     }));
-    const opts = await plugin.listCredentialOptions!("accountId", { apiKey: "cu_x" }, {
+    const opts = await hostPlugin(plugin).listCredentialOptions!("accountId", { apiKey: "cu_x" }, {
       http,
     } as unknown as HostServices);
     expect(opts).toEqual([{ id: "a1", label: "Acme", description: "Team, a1" }]);

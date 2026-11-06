@@ -1,3 +1,4 @@
+import { runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -710,11 +711,11 @@ export async function openstackCreateResource(
   const warnings: ResourceWarning[] = [];
   const done = async (ext: string): Promise<ResourceCreateResult> => {
     c.invalidate();
-    const resource = await c
-      .getResource(typeId, `${accountId}:${typeId}:${ext}`, accountId)
-      .catch(() =>
-        c.instance(accountId, typeId, ext, fields["name"] ?? ext, { name: fields["name"] ?? "" }),
-      );
+    const resource = await runPluginEffect(
+      c.getResource(typeId, `${accountId}:${typeId}:${ext}`, accountId),
+    ).catch(() =>
+      c.instance(accountId, typeId, ext, fields["name"] ?? ext, { name: fields["name"] ?? "" }),
+    );
     return { resource, warnings };
   };
   const csv = (v: string | undefined) =>

@@ -11,6 +11,14 @@
       },
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./chain": {
+      "types": {
+        "import": "./dist/chain.d.ts",
+        "require": "./dist/chain.d.cts"
+      },
+      "import": "./dist/chain.js",
+      "require": "./dist/chain.cjs"
     }
   },
   "main": "./dist/index.cjs",

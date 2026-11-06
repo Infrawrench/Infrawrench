@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { bytesToHex, hmacSha256 } from "@infrawrench/plugin-base";
@@ -42,7 +43,7 @@ function fakeHttp(handler: (call: Call) => { status: number; body?: unknown }): 
 
 function client(handler: Parameters<typeof fakeHttp>[0], creds: Record<string, string> = {}) {
   const { http, calls } = fakeHttp(handler);
-  return { c: new PagerDutyClient({ apiKey: "k1", ...creds }, { http }), calls };
+  return { c: hostClient(new PagerDutyClient({ apiKey: "k1", ...creds }, { http })), calls };
 }
 
 describe("transport", () => {
@@ -319,7 +320,7 @@ describe("paging: webhooks", () => {
 
   it("accepts a valid v1 signature among several and reads the change", async () => {
     const sig = bytesToHex(await hmacSha256("s3cret", body));
-    const result = await plugin.verifyPagingWebhook!({
+    const result = await hostPlugin(plugin).verifyPagingWebhook!({
       headers: { "x-pagerduty-signature": `v1=deadbeef, v1=${sig}` },
       body,
       secret: "s3cret",

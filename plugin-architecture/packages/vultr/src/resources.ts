@@ -76,9 +76,9 @@ export const InstanceResourceType = rt({
     created(),
   ],
   outputs: [
-    o("ipv4", "Public IPv4"),
+    o("ipv4", "Public IPv4", { dnsValue: "ipv4" }),
     o("ipv4Private", "Private IPv4"),
-    o("ipv6", "IPv6"),
+    o("ipv6", "IPv6", { dnsValue: "ipv6" }),
     o("instanceId", "Instance ID", { hidden: true }),
   ],
   dependsOn: [
@@ -164,7 +164,10 @@ export const BareMetalResourceType = rt({
     tags(),
     created(),
   ],
-  outputs: [o("ipv4", "Public IPv4"), o("ipv6", "IPv6")],
+  outputs: [
+    o("ipv4", "Public IPv4", { dnsValue: "ipv4" }),
+    o("ipv6", "IPv6", { dnsValue: "ipv6" }),
+  ],
   iconKey: "server",
   supportsUpdate: true,
   supportsMetrics: true,
@@ -600,7 +603,7 @@ export const LoadBalancerResourceType = rt({
     f("vpcId", "VPC", { required: false, editable: false }),
     created(),
   ],
-  outputs: [o("ipv4", "IPv4"), o("ipv6", "IPv6")],
+  outputs: [o("ipv4", "IPv4", { dnsValue: "ipv4" }), o("ipv6", "IPv6", { dnsValue: "ipv6" })],
   dependsOn: [
     { fieldKey: "instanceIds", targetTypeId: "instance", label: "routes to" },
     { fieldKey: "vpcId", targetTypeId: "vpc", label: "in" },
@@ -698,7 +701,7 @@ export const ReservedIpResourceType = rt({
       description: "ID of the instance using the address; empty when unattached",
     }),
   ],
-  outputs: [o("ip", "IP Address")],
+  outputs: [o("ip", "IP Address", { dnsValue: "ipv4" })],
   dependsOn: [{ fieldKey: "instanceId", targetTypeId: "instance", label: "attached to" }],
   iconKey: "ip",
   supportsCreate: true,

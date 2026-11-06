@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { EventEmitter, Readable } from "node:stream";
 
@@ -24,7 +25,9 @@ vi.mock("node:https", () => ({
   },
 }));
 
-import { nodeDriver } from "../node-driver.js";
+import { nodeDriver as contractNodeDriver } from "../node-driver.js";
+
+const nodeDriver = hostDriver(contractNodeDriver);
 
 function createMockResponse(statusCode: number): Readable & { statusCode: number } {
   const res = new Readable({ read() {} }) as Readable & { statusCode: number };

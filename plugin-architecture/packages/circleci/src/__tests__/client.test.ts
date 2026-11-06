@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { CircleCIClient, buildParameters, buildTimetable } from "../client.js";
 import { percentile, projectSeriesFrom, workflowRunSeries } from "../metrics.js";
@@ -15,9 +16,11 @@ function client(route: (call: Call) => unknown, credentials: Record<string, stri
     if (call.url.pathname === "/api/v2/me/collaborations") return [GH_ORG];
     return route(call);
   });
-  const c = new CircleCIClient({ apiToken: "TEST_TOKEN", organization: ORG_ID, ...credentials }, {
-    http,
-  } as never);
+  const c = hostClient(
+    new CircleCIClient({ apiToken: "TEST_TOKEN", organization: ORG_ID, ...credentials }, {
+      http,
+    } as never),
+  );
   return { c, calls };
 }
 
@@ -27,9 +30,13 @@ describe("organization picker", () => {
       GH_ORG,
       { id: "", "vcs-type": "bitbucket", name: "Beta", avatar_url: "", slug: "bb/beta" },
     ]);
-    const options = await plugin.listCredentialOptions!("organization", { apiToken: "t" }, {
-      http,
-    } as never);
+    const options = await hostPlugin(plugin).listCredentialOptions!(
+      "organization",
+      { apiToken: "t" },
+      {
+        http,
+      } as never,
+    );
     expect(options).toEqual([
       { id: ORG_ID, label: "Acme", description: "gh/acme" },
       { id: "bb/beta", label: "Beta", description: "bb/beta" },
@@ -37,13 +44,17 @@ describe("organization picker", () => {
   });
 
   it("asks for a token first", async () => {
-    await expect(plugin.listCredentialOptions!("organization", {})).rejects.toThrow(/token first/);
+    await expect(hostPlugin(plugin).listCredentialOptions!("organization", {})).rejects.toThrow(
+      /token first/,
+    );
   });
 
   it("explains a rejected token", async () => {
     const { http } = makeHttp(() => ({ status: 401, body: { message: "Invalid token" } }));
     await expect(
-      plugin.listCredentialOptions!("organization", { apiToken: "t" }, { http } as never),
+      hostPlugin(plugin).listCredentialOptions!("organization", { apiToken: "t" }, {
+        http,
+      } as never),
     ).rejects.toThrow(/personal API token/);
   });
 });

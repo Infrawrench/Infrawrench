@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -306,7 +309,7 @@ export class ElevenLabsClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("ElevenLabs plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -330,51 +333,53 @@ export class ElevenLabsClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "voice": {
-        const voices = await this.fetchVoices();
-        return voices.map((voice) => this.mapVoice(voice, accountId));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "voice": {
+          const voices = await this.fetchVoices();
+          return voices.map((voice) => this.mapVoice(voice, accountId));
+        }
+        case "model": {
+          const models = await this.fetchModels();
+          return models.map((model) => this.mapModel(model, accountId));
+        }
+        case "pronunciation-dictionary": {
+          const dictionaries = await this.fetchPronunciationDictionaries();
+          return dictionaries.map((dictionary) => this.mapDictionary(dictionary, accountId));
+        }
+        case "history-item": {
+          const items = await this.fetchHistory();
+          return items.map((item) => this.mapHistoryItem(item, accountId));
+        }
+        case "agent": {
+          const summaries = await this.fetchAgents();
+          // The summary has no conversation config, so hydrate each agent from
+          // its detail route. Bounded so a workspace with hundreds of agents
+          // still lists quickly; the overflow keeps its summary-only fields
+          // until opened.
+          const details = await mapWithConcurrency(
+            summaries.slice(0, MAX_HYDRATED_AGENTS),
+            5,
+            (summary) =>
+              this.fetchAgent(summary.agent_id).catch((): AgentDetailWire | undefined => undefined),
+          );
+          return summaries.map((summary, index) => mapAgent(summary, details[index], accountId));
+        }
+        case "phone-number": {
+          const phones = await this.fetch<PhoneNumberWire[]>("/v1/convai/phone-numbers");
+          return (Array.isArray(phones) ? phones : []).map((phone) =>
+            mapPhoneNumber(phone, accountId),
+          );
+        }
+        case "knowledge-base-document": {
+          const documents = await this.fetchKnowledgeBase();
+          return documents.map((doc) => mapKnowledgeBaseDocument(doc, accountId));
+        }
+        default:
+          throw new Error(`ElevenLabs plugin: unknown resource type "${typeId}"`);
       }
-      case "model": {
-        const models = await this.fetchModels();
-        return models.map((model) => this.mapModel(model, accountId));
-      }
-      case "pronunciation-dictionary": {
-        const dictionaries = await this.fetchPronunciationDictionaries();
-        return dictionaries.map((dictionary) => this.mapDictionary(dictionary, accountId));
-      }
-      case "history-item": {
-        const items = await this.fetchHistory();
-        return items.map((item) => this.mapHistoryItem(item, accountId));
-      }
-      case "agent": {
-        const summaries = await this.fetchAgents();
-        // The summary has no conversation config, so hydrate each agent from
-        // its detail route. Bounded so a workspace with hundreds of agents
-        // still lists quickly; the overflow keeps its summary-only fields
-        // until opened.
-        const details = await mapWithConcurrency(
-          summaries.slice(0, MAX_HYDRATED_AGENTS),
-          5,
-          (summary) =>
-            this.fetchAgent(summary.agent_id).catch((): AgentDetailWire | undefined => undefined),
-        );
-        return summaries.map((summary, index) => mapAgent(summary, details[index], accountId));
-      }
-      case "phone-number": {
-        const phones = await this.fetch<PhoneNumberWire[]>("/v1/convai/phone-numbers");
-        return (Array.isArray(phones) ? phones : []).map((phone) =>
-          mapPhoneNumber(phone, accountId),
-        );
-      }
-      case "knowledge-base-document": {
-        const documents = await this.fetchKnowledgeBase();
-        return documents.map((doc) => mapKnowledgeBaseDocument(doc, accountId));
-      }
-      default:
-        throw new Error(`ElevenLabs plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   /**
@@ -557,15 +562,17 @@ export class ElevenLabsClient implements PluginClient {
    * be exercised without constructing a client. See that module for the
    * endpoint choice and the deprecation fallback.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchElevenLabsCostData(
-      {
-        apiKey: this.apiKey,
-        caCert: this.caCert,
-        http: this.services?.http,
-      },
-      range,
-    );
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchElevenLabsCostData(
+        {
+          apiKey: this.apiKey,
+          caCert: this.caCert,
+          http: this.services?.http,
+        },
+        range,
+      );
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -724,83 +731,89 @@ export class ElevenLabsClient implements PluginClient {
   // Single resource
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "voice") {
-      // `renderDetail` is synchronous, so everything the Speech tab needs: the
-      // voice picker, the model picker (with each model's real
-      // `maximum_text_length_per_request`) and the quota gauge; is fetched
-      // here and stashed as JSON under `__`-prefixed resolved outputs.
-      const [voices, models, subscription] = await Promise.all([
-        this.fetchVoices(),
-        this.fetchModels().catch((): ElevenLabsModel[] => []),
-        this.fetchSubscription().catch((): ElevenLabsSubscription | null => null),
-      ]);
-      const raw = voices.find((voice) => voice.voice_id === externalId);
-      if (!raw) throw new Error(`ElevenLabs plugin: voice ${externalId} not found`);
-      const instance = this.mapVoice(raw, accountId);
+      if (typeId === "voice") {
+        // `renderDetail` is synchronous, so everything the Speech tab needs: the
+        // voice picker, the model picker (with each model's real
+        // `maximum_text_length_per_request`) and the quota gauge; is fetched
+        // here and stashed as JSON under `__`-prefixed resolved outputs.
+        const [voices, models, subscription] = await Promise.all([
+          this.fetchVoices(),
+          this.fetchModels().catch((): ElevenLabsModel[] => []),
+          this.fetchSubscription().catch((): ElevenLabsSubscription | null => null),
+        ]);
+        const raw = voices.find((voice) => voice.voice_id === externalId);
+        if (!raw) throw new Error(`ElevenLabs plugin: voice ${externalId} not found`);
+        const instance = this.mapVoice(raw, accountId);
 
-      const stashedVoices: StashedVoice[] = voices.map((voice) => ({
-        id: voice.voice_id,
-        label: voice.name ?? voice.voice_id,
-        description: formatLabels(voice.labels) || (voice.category ?? ""),
-      }));
-      const stashedModels: StashedModel[] = models
-        .filter((model) => model.can_do_text_to_speech !== false)
-        .map((model) => ({
-          id: model.model_id,
-          label: model.name ?? model.model_id,
-          description: model.description ?? "",
-          maxCharacters: model.maximum_text_length_per_request ?? FALLBACK_MAX_CHARACTERS,
+        const stashedVoices: StashedVoice[] = voices.map((voice) => ({
+          id: voice.voice_id,
+          label: voice.name ?? voice.voice_id,
+          description: formatLabels(voice.labels) || (voice.category ?? ""),
         }));
+        const stashedModels: StashedModel[] = models
+          .filter((model) => model.can_do_text_to_speech !== false)
+          .map((model) => ({
+            id: model.model_id,
+            label: model.name ?? model.model_id,
+            description: model.description ?? "",
+            maxCharacters: model.maximum_text_length_per_request ?? FALLBACK_MAX_CHARACTERS,
+          }));
 
-      instance.resolvedOutputs["__voices__"] = JSON.stringify(stashedVoices);
-      instance.resolvedOutputs["__models__"] = JSON.stringify(stashedModels);
-      if (subscription && subscription.character_limit != null) {
-        const quota: StashedQuota = {
-          used: subscription.character_count ?? 0,
-          limit: subscription.character_limit,
-          resetUnix: subscription.next_character_count_reset_unix ?? 0,
-          tier: subscription.tier ?? "",
-        };
-        instance.resolvedOutputs["__subscription__"] = JSON.stringify(quota);
+        instance.resolvedOutputs["__voices__"] = JSON.stringify(stashedVoices);
+        instance.resolvedOutputs["__models__"] = JSON.stringify(stashedModels);
+        if (subscription && subscription.character_limit != null) {
+          const quota: StashedQuota = {
+            used: subscription.character_count ?? 0,
+            limit: subscription.character_limit,
+            resetUnix: subscription.next_character_count_reset_unix ?? 0,
+            tier: subscription.tier ?? "",
+          };
+          instance.resolvedOutputs["__subscription__"] = JSON.stringify(quota);
+        }
+        return instance;
       }
-      return instance;
-    }
 
-    if (typeId === "agent") {
-      // The recent-conversations table rides along as JSON because
-      // `renderDetail` cannot call the API.
-      const [detail, conversations] = await Promise.all([
-        this.fetchAgent(externalId),
-        this.fetchConversations(externalId, undefined, 1, 20).catch((): ConversationWire[] => []),
-      ]);
-      const instance = mapAgent(undefined, detail, accountId);
-      instance.resolvedOutputs["__conversations__"] = JSON.stringify(conversations);
-      return instance;
-    }
+      if (typeId === "agent") {
+        // The recent-conversations table rides along as JSON because
+        // `renderDetail` cannot call the API.
+        const [detail, conversations] = await Promise.all([
+          this.fetchAgent(externalId),
+          this.fetchConversations(externalId, undefined, 1, 20).catch((): ConversationWire[] => []),
+        ]);
+        const instance = mapAgent(undefined, detail, accountId);
+        instance.resolvedOutputs["__conversations__"] = JSON.stringify(conversations);
+        return instance;
+      }
 
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((resource) => resource.id === resourceId);
-    if (!found) throw new Error(`ElevenLabs plugin: resource ${typeId}/${externalId} not found`);
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((resource) => resource.id === resourceId);
+      if (!found) throw new Error(`ElevenLabs plugin: resource ${typeId}/${externalId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`ElevenLabs plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(
+        `ElevenLabs plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   /**
@@ -817,39 +830,42 @@ export class ElevenLabsClient implements PluginClient {
    * https://elevenlabs.io/docs/api-reference/knowledge-base/delete
    * https://elevenlabs.io/docs/api-reference/pronunciation-dictionaries/update
    */
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    if (!externalId) throw new Error(`ElevenLabs plugin: cannot parse resource id "${resourceId}"`);
-    if (typeId === "voice") {
-      await this.fetch<unknown>(`/v1/voices/${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    const deletePaths: Record<string, string> = {
-      "history-item": "/v1/history/",
-      agent: "/v1/convai/agents/",
-      "phone-number": "/v1/convai/phone-numbers/",
-      "knowledge-base-document": "/v1/convai/knowledge-base/",
-    };
-    const prefix = deletePaths[typeId];
-    if (prefix) {
-      await this.fetch<unknown>(`${prefix}${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "pronunciation-dictionary") {
-      await this.fetch<unknown>(
-        `/v1/pronunciation-dictionaries/${encodeURIComponent(externalId)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ archived: true }),
-        },
-      );
-      return;
-    }
-    throw new Error(`ElevenLabs plugin: deleteResource not supported for type "${typeId}"`);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (!externalId)
+        throw new Error(`ElevenLabs plugin: cannot parse resource id "${resourceId}"`);
+      if (typeId === "voice") {
+        await this.fetch<unknown>(`/v1/voices/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      const deletePaths: Record<string, string> = {
+        "history-item": "/v1/history/",
+        agent: "/v1/convai/agents/",
+        "phone-number": "/v1/convai/phone-numbers/",
+        "knowledge-base-document": "/v1/convai/knowledge-base/",
+      };
+      const prefix = deletePaths[typeId];
+      if (prefix) {
+        await this.fetch<unknown>(`${prefix}${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      if (typeId === "pronunciation-dictionary") {
+        await this.fetch<unknown>(
+          `/v1/pronunciation-dictionaries/${encodeURIComponent(externalId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ archived: true }),
+          },
+        );
+        return;
+      }
+      throw new Error(`ElevenLabs plugin: deleteResource not supported for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -860,116 +876,121 @@ export class ElevenLabsClient implements PluginClient {
    * Subscription quota is account-level, so every resource type's dashboard
    * card leads with the used-vs-limit gauge and then adds type-specific stats.
    */
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const [subscription, resource] = await Promise.all([
-      this.fetchSubscription().catch((): ElevenLabsSubscription | null => null),
-      this.getResource(resourceTypeId, resourceId, accountId).catch(
-        (): ResourceInstance | null => null,
-      ),
-    ]);
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const [subscription, resource] = await Promise.all([
+        this.fetchSubscription().catch((): ElevenLabsSubscription | null => null),
+        runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId)).catch(
+          (): ResourceInstance | null => null,
+        ),
+      ]);
 
-    const stats: DashboardStat[] = [];
-    if (subscription && subscription.character_limit != null) {
-      const used = subscription.character_count ?? 0;
-      const limit = subscription.character_limit;
-      const fraction = limit > 0 ? used / limit : 0;
-      stats.push({
-        label: "Characters Used",
-        value: `${formatNumber(used)} / ${formatNumber(limit)}`,
-        variant:
-          fraction >= 0.95
-            ? "status-error"
-            : fraction >= 0.8
-              ? "status-degraded"
-              : "status-healthy",
-      });
-      stats.push({ label: "Quota Used", value: `${Math.round(fraction * 100)}%` });
-      if (subscription.next_character_count_reset_unix) {
+      const stats: DashboardStat[] = [];
+      if (subscription && subscription.character_limit != null) {
+        const used = subscription.character_count ?? 0;
+        const limit = subscription.character_limit;
+        const fraction = limit > 0 ? used / limit : 0;
         stats.push({
-          label: "Resets",
-          value: new Date(subscription.next_character_count_reset_unix * 1000).toLocaleDateString(
-            "en-US",
-            { month: "short", day: "numeric", year: "numeric" },
-          ),
+          label: "Characters Used",
+          value: `${formatNumber(used)} / ${formatNumber(limit)}`,
+          variant:
+            fraction >= 0.95
+              ? "status-error"
+              : fraction >= 0.8
+                ? "status-degraded"
+                : "status-healthy",
         });
+        stats.push({ label: "Quota Used", value: `${Math.round(fraction * 100)}%` });
+        if (subscription.next_character_count_reset_unix) {
+          stats.push({
+            label: "Resets",
+            value: new Date(subscription.next_character_count_reset_unix * 1000).toLocaleDateString(
+              "en-US",
+              { month: "short", day: "numeric", year: "numeric" },
+            ),
+          });
+        }
+        if (subscription.tier) stats.push({ label: "Tier", value: titleCase(subscription.tier) });
       }
-      if (subscription.tier) stats.push({ label: "Tier", value: titleCase(subscription.tier) });
-    }
 
-    const fields = resource?.fields ?? {};
-    switch (resourceTypeId) {
-      case "voice":
-        if (fields["category"])
-          stats.push({ label: "Category", value: String(fields["category"]) });
-        if (subscription?.voice_limit != null) {
+      const fields = resource?.fields ?? {};
+      switch (resourceTypeId) {
+        case "voice":
+          if (fields["category"])
+            stats.push({ label: "Category", value: String(fields["category"]) });
+          if (subscription?.voice_limit != null) {
+            stats.push({
+              label: "Voice Slots",
+              value: `${formatNumber(subscription.voice_slots_used ?? 0)} / ${formatNumber(subscription.voice_limit)}`,
+            });
+          }
+          break;
+        case "model":
+          if (fields["maxCharacters"] != null) {
+            stats.push({
+              label: "Max Characters",
+              value: formatNumber(Number(fields["maxCharacters"])),
+            });
+          }
+          if (fields["languageCount"] != null) {
+            stats.push({ label: "Languages", value: String(fields["languageCount"]) });
+          }
+          break;
+        case "pronunciation-dictionary":
+          if (fields["ruleCount"] != null) {
+            stats.push({ label: "Rules", value: String(fields["ruleCount"]) });
+          }
+          break;
+        case "agent": {
+          const agentId = externalIdOf(resourceId);
+          const weekAgo = Math.floor((Date.now() - 7 * DAY_MS) / 1000);
+          const [recent, live] = await Promise.all([
+            this.fetchConversations(agentId, weekAgo, 5).catch(
+              (): ConversationWire[] | null => null,
+            ),
+            // GET /v1/convai/analytics/live-count: conversations in progress now.
+            this.fetch<{ count?: number }>(
+              `/v1/convai/analytics/live-count?agent_id=${encodeURIComponent(agentId)}`,
+            ).catch(() => null),
+          ]);
+          if (typeof live?.count === "number") {
+            stats.push({ label: "Live Conversations", value: formatNumber(live.count) });
+          }
+          if (recent) stats.push(...conversationStats(recent));
+          break;
+        }
+        case "phone-number":
           stats.push({
-            label: "Voice Slots",
-            value: `${formatNumber(subscription.voice_slots_used ?? 0)} / ${formatNumber(subscription.voice_limit)}`,
+            label: "Agent",
+            value: String(fields["agentName"] || fields["agentId"] || "Unassigned"),
           });
-        }
-        break;
-      case "model":
-        if (fields["maxCharacters"] != null) {
-          stats.push({
-            label: "Max Characters",
-            value: formatNumber(Number(fields["maxCharacters"])),
-          });
-        }
-        if (fields["languageCount"] != null) {
-          stats.push({ label: "Languages", value: String(fields["languageCount"]) });
-        }
-        break;
-      case "pronunciation-dictionary":
-        if (fields["ruleCount"] != null) {
-          stats.push({ label: "Rules", value: String(fields["ruleCount"]) });
-        }
-        break;
-      case "agent": {
-        const agentId = externalIdOf(resourceId);
-        const weekAgo = Math.floor((Date.now() - 7 * DAY_MS) / 1000);
-        const [recent, live] = await Promise.all([
-          this.fetchConversations(agentId, weekAgo, 5).catch((): ConversationWire[] | null => null),
-          // GET /v1/convai/analytics/live-count: conversations in progress now.
-          this.fetch<{ count?: number }>(
-            `/v1/convai/analytics/live-count?agent_id=${encodeURIComponent(agentId)}`,
-          ).catch(() => null),
-        ]);
-        if (typeof live?.count === "number") {
-          stats.push({ label: "Live Conversations", value: formatNumber(live.count) });
-        }
-        if (recent) stats.push(...conversationStats(recent));
-        break;
+          if (fields["provider"])
+            stats.push({ label: "Provider", value: String(fields["provider"]) });
+          break;
+        case "knowledge-base-document":
+          stats.push({ label: "Dependent Agents", value: String(fields["dependentAgents"] ?? 0) });
+          if (fields["type"]) stats.push({ label: "Type", value: String(fields["type"]) });
+          break;
+        case "history-item":
+          if (fields["characterCount"] != null) {
+            stats.push({
+              label: "Characters Billed",
+              value: formatNumber(Number(fields["characterCount"])),
+            });
+          }
+          if (fields["voiceName"])
+            stats.push({ label: "Voice", value: String(fields["voiceName"]) });
+          break;
+        default:
+          break;
       }
-      case "phone-number":
-        stats.push({
-          label: "Agent",
-          value: String(fields["agentName"] || fields["agentId"] || "Unassigned"),
-        });
-        if (fields["provider"])
-          stats.push({ label: "Provider", value: String(fields["provider"]) });
-        break;
-      case "knowledge-base-document":
-        stats.push({ label: "Dependent Agents", value: String(fields["dependentAgents"] ?? 0) });
-        if (fields["type"]) stats.push({ label: "Type", value: String(fields["type"]) });
-        break;
-      case "history-item":
-        if (fields["characterCount"] != null) {
-          stats.push({
-            label: "Characters Billed",
-            value: formatNumber(Number(fields["characterCount"])),
-          });
-        }
-        if (fields["voiceName"]) stats.push({ label: "Voice", value: String(fields["voiceName"]) });
-        break;
-      default:
-        break;
-    }
 
-    return stats;
+      return stats;
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -985,241 +1006,249 @@ export class ElevenLabsClient implements PluginClient {
    * requests; the newest conversations come first, so a capped range loses
    * its oldest days rather than its most recent.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId === "voice" || resourceTypeId === "model") {
-      const group: UsageGroup = resourceTypeId === "voice" ? "voice_id" : "model";
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "voice" || resourceTypeId === "model") {
+        const group: UsageGroup = resourceTypeId === "voice" ? "voice_id" : "model";
+        const endMs = timeRange?.endMs ?? Date.now();
+        const range = { startMs: timeRange?.startMs ?? endMs - 30 * DAY_MS, endMs };
+        const body = await this.fetch<UsageQueryResponse>(USAGE_QUERY_PATH, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(usageQueryBody(group, range)),
+        });
+        return usageSeriesFor(body, group, externalIdOf(resourceId));
+      }
+      if (resourceTypeId !== "agent") return [];
       const endMs = timeRange?.endMs ?? Date.now();
-      const range = { startMs: timeRange?.startMs ?? endMs - 30 * DAY_MS, endMs };
-      const body = await this.fetch<UsageQueryResponse>(USAGE_QUERY_PATH, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(usageQueryBody(group, range)),
-      });
-      return usageSeriesFor(body, group, externalIdOf(resourceId));
-    }
-    if (resourceTypeId !== "agent") return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 7 * DAY_MS;
-    const conversations = await this.fetchConversations(
-      externalIdOf(resourceId),
-      Math.floor(startMs / 1000),
-      20,
-    );
-    return conversationSeries(conversations, startMs, endMs);
+      const startMs = timeRange?.startMs ?? endMs - 7 * DAY_MS;
+      const conversations = await this.fetchConversations(
+        externalIdOf(resourceId),
+        Math.floor(startMs / 1000),
+        20,
+      );
+      return conversationSeries(conversations, startMs, endMs);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create and edit
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "pronunciation-dictionary") {
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          { key: "description", label: "Description", kind: "text", required: false },
-          {
-            key: "ruleType",
-            label: "Rule Type",
-            kind: "select",
-            required: true,
-            defaultValue: "alias",
-            options: [
-              {
-                id: "alias",
-                label: "Alias",
-                description: "Replace the text with another spelling before synthesis",
-              },
-              {
-                id: "phoneme",
-                label: "Phoneme",
-                description: "Give an exact pronunciation in IPA or CMU Arpabet",
-              },
-            ],
-          },
-          {
-            key: "alphabet",
-            label: "Phonetic Alphabet",
-            kind: "select",
-            required: true,
-            defaultValue: "ipa",
-            options: [
-              { id: "ipa", label: "IPA" },
-              { id: "cmu-arpabet", label: "CMU Arpabet" },
-            ],
-            showWhen: { fieldKey: "ruleType", fieldValue: "phoneme" },
-          },
-          {
-            key: "rules",
-            label: "Rules",
-            kind: "text",
-            multiline: true,
-            required: true,
-            description:
-              "One rule per line, written as text = replacement. The replacement is an alias or a phoneme string, depending on the rule type.",
-            placeholder: "ElevenLabs = Eleven Labs\nSQL = sequel",
-          },
-          {
-            key: "caseSensitive",
-            label: "Case Sensitive",
-            kind: "select",
-            required: false,
-            defaultValue: "true",
-            options: [
-              { id: "true", label: "Yes" },
-              { id: "false", label: "No" },
-            ],
-          },
-          {
-            key: "workspaceAccess",
-            label: "Workspace Access",
-            kind: "select",
-            required: false,
-            description: "What everyone else in the workspace can do with this dictionary",
-            options: [
-              { id: "viewer", label: "Viewer" },
-              { id: "commenter", label: "Commenter" },
-              { id: "editor", label: "Editor" },
-              { id: "admin", label: "Admin" },
-            ],
-          },
-        ],
-      };
-    }
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "pronunciation-dictionary") {
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            { key: "description", label: "Description", kind: "text", required: false },
+            {
+              key: "ruleType",
+              label: "Rule Type",
+              kind: "select",
+              required: true,
+              defaultValue: "alias",
+              options: [
+                {
+                  id: "alias",
+                  label: "Alias",
+                  description: "Replace the text with another spelling before synthesis",
+                },
+                {
+                  id: "phoneme",
+                  label: "Phoneme",
+                  description: "Give an exact pronunciation in IPA or CMU Arpabet",
+                },
+              ],
+            },
+            {
+              key: "alphabet",
+              label: "Phonetic Alphabet",
+              kind: "select",
+              required: true,
+              defaultValue: "ipa",
+              options: [
+                { id: "ipa", label: "IPA" },
+                { id: "cmu-arpabet", label: "CMU Arpabet" },
+              ],
+              showWhen: { fieldKey: "ruleType", fieldValue: "phoneme" },
+            },
+            {
+              key: "rules",
+              label: "Rules",
+              kind: "text",
+              multiline: true,
+              required: true,
+              description:
+                "One rule per line, written as text = replacement. The replacement is an alias or a phoneme string, depending on the rule type.",
+              placeholder: "ElevenLabs = Eleven Labs\nSQL = sequel",
+            },
+            {
+              key: "caseSensitive",
+              label: "Case Sensitive",
+              kind: "select",
+              required: false,
+              defaultValue: "true",
+              options: [
+                { id: "true", label: "Yes" },
+                { id: "false", label: "No" },
+              ],
+            },
+            {
+              key: "workspaceAccess",
+              label: "Workspace Access",
+              kind: "select",
+              required: false,
+              description: "What everyone else in the workspace can do with this dictionary",
+              options: [
+                { id: "viewer", label: "Viewer" },
+                { id: "commenter", label: "Commenter" },
+                { id: "editor", label: "Editor" },
+                { id: "admin", label: "Admin" },
+              ],
+            },
+          ],
+        };
+      }
 
-    if (typeId === "agent") {
-      const [voices, models, llms] = await Promise.all([
-        this.fetchVoices().catch((): ElevenLabsVoice[] => []),
-        this.fetchModels().catch((): ElevenLabsModel[] => []),
-        this.fetchAgentLlms().catch((): SelectOption[] => []),
-      ]);
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          {
-            key: "voiceId",
-            label: "Voice",
-            kind: "select",
-            required: false,
-            description: "Leave unset for the ElevenAgents default voice",
-            options: voices.map((voice) => ({
-              id: voice.voice_id,
-              label: voice.name ?? voice.voice_id,
-              ...(formatLabels(voice.labels) || voice.category
-                ? { description: formatLabels(voice.labels) || String(voice.category) }
-                : {}),
-            })),
-          },
-          {
-            key: "ttsModelId",
-            label: "Voice Model",
-            kind: "select",
-            required: false,
-            description: "Leave unset for the agent default",
-            options: models
-              .filter((model) => model.can_do_text_to_speech !== false)
-              .map((model) => ({
-                id: model.model_id,
-                label: model.name ?? model.model_id,
-                ...(model.description ? { description: model.description } : {}),
+      if (typeId === "agent") {
+        const [voices, models, llms] = await Promise.all([
+          this.fetchVoices().catch((): ElevenLabsVoice[] => []),
+          this.fetchModels().catch((): ElevenLabsModel[] => []),
+          this.fetchAgentLlms().catch((): SelectOption[] => []),
+        ]);
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            {
+              key: "voiceId",
+              label: "Voice",
+              kind: "select",
+              required: false,
+              description: "Leave unset for the ElevenAgents default voice",
+              options: voices.map((voice) => ({
+                id: voice.voice_id,
+                label: voice.name ?? voice.voice_id,
+                ...(formatLabels(voice.labels) || voice.category
+                  ? { description: formatLabels(voice.labels) || String(voice.category) }
+                  : {}),
               })),
-          },
-          {
-            key: "llm",
-            label: "LLM",
-            kind: "select",
-            required: false,
-            description: "Leave unset for the agent default",
-            options: llms,
-          },
-          {
-            key: "language",
-            label: "Language",
-            kind: "select",
-            required: true,
-            defaultValue: "en",
-            options: AGENT_LANGUAGES,
-          },
-          {
-            key: "firstMessage",
-            label: "First Message",
-            kind: "text",
-            required: false,
-            placeholder: "Hi, how can I help you today?",
-          },
-          {
-            key: "systemPrompt",
-            label: "System Prompt",
-            kind: "text",
-            multiline: true,
-            required: false,
-            placeholder: "You are a friendly support agent for…",
-          },
-          { key: "tags", label: "Tags", kind: "string-list", required: false },
-        ],
-      };
-    }
+            },
+            {
+              key: "ttsModelId",
+              label: "Voice Model",
+              kind: "select",
+              required: false,
+              description: "Leave unset for the agent default",
+              options: models
+                .filter((model) => model.can_do_text_to_speech !== false)
+                .map((model) => ({
+                  id: model.model_id,
+                  label: model.name ?? model.model_id,
+                  ...(model.description ? { description: model.description } : {}),
+                })),
+            },
+            {
+              key: "llm",
+              label: "LLM",
+              kind: "select",
+              required: false,
+              description: "Leave unset for the agent default",
+              options: llms,
+            },
+            {
+              key: "language",
+              label: "Language",
+              kind: "select",
+              required: true,
+              defaultValue: "en",
+              options: AGENT_LANGUAGES,
+            },
+            {
+              key: "firstMessage",
+              label: "First Message",
+              kind: "text",
+              required: false,
+              placeholder: "Hi, how can I help you today?",
+            },
+            {
+              key: "systemPrompt",
+              label: "System Prompt",
+              kind: "text",
+              multiline: true,
+              required: false,
+              placeholder: "You are a friendly support agent for…",
+            },
+            { key: "tags", label: "Tags", kind: "string-list", required: false },
+          ],
+        };
+      }
 
-    throw new Error(`ElevenLabs plugin: cannot create resources of type "${typeId}"`);
+      throw new Error(`ElevenLabs plugin: cannot create resources of type "${typeId}"`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "pronunciation-dictionary") {
-      const rules = parseDictionaryRules(fields);
-      const created = await this.fetch<{ id: string }>(
-        "/v1/pronunciation-dictionaries/add-from-rules",
-        {
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "pronunciation-dictionary") {
+        const rules = parseDictionaryRules(fields);
+        const created = await this.fetch<{ id: string }>(
+          "/v1/pronunciation-dictionaries/add-from-rules",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              name: fields["name"],
+              rules,
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              ...(fields["workspaceAccess"] ? { workspace_access: fields["workspaceAccess"] } : {}),
+            }),
+          },
+        );
+        return runPluginEffect(
+          this.getResource(
+            "pronunciation-dictionary",
+            `${accountId}:pronunciation-dictionary:${created.id}`,
+            accountId,
+          ),
+        );
+      }
+
+      if (typeId === "agent") {
+        const name = (fields["name"] ?? "").trim();
+        if (!name) throw new Error("ElevenLabs plugin: an agent needs a name");
+        const prompt: Record<string, unknown> = {};
+        if (fields["systemPrompt"]) prompt["prompt"] = fields["systemPrompt"];
+        if (fields["llm"]) prompt["llm"] = fields["llm"];
+        const agent: Record<string, unknown> = { language: fields["language"] || "en" };
+        if (fields["firstMessage"]) agent["first_message"] = fields["firstMessage"];
+        if (Object.keys(prompt).length) agent["prompt"] = prompt;
+        const tts: Record<string, unknown> = {};
+        if (fields["voiceId"]) tts["voice_id"] = fields["voiceId"];
+        if (fields["ttsModelId"]) tts["model_id"] = fields["ttsModelId"];
+        const tags = parseTags(fields["tags"] ?? "");
+
+        const created = await this.fetch<{ agent_id: string }>("/v1/convai/agents/create", {
           method: "POST",
           body: JSON.stringify({
-            name: fields["name"],
-            rules,
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            ...(fields["workspaceAccess"] ? { workspace_access: fields["workspaceAccess"] } : {}),
+            name,
+            conversation_config: { agent, ...(Object.keys(tts).length ? { tts } : {}) },
+            ...(tags.length ? { tags } : {}),
           }),
-        },
-      );
-      return this.getResource(
-        "pronunciation-dictionary",
-        `${accountId}:pronunciation-dictionary:${created.id}`,
-        accountId,
-      );
-    }
+        });
+        return mapAgent(undefined, await this.fetchAgent(created.agent_id), accountId);
+      }
 
-    if (typeId === "agent") {
-      const name = (fields["name"] ?? "").trim();
-      if (!name) throw new Error("ElevenLabs plugin: an agent needs a name");
-      const prompt: Record<string, unknown> = {};
-      if (fields["systemPrompt"]) prompt["prompt"] = fields["systemPrompt"];
-      if (fields["llm"]) prompt["llm"] = fields["llm"];
-      const agent: Record<string, unknown> = { language: fields["language"] || "en" };
-      if (fields["firstMessage"]) agent["first_message"] = fields["firstMessage"];
-      if (Object.keys(prompt).length) agent["prompt"] = prompt;
-      const tts: Record<string, unknown> = {};
-      if (fields["voiceId"]) tts["voice_id"] = fields["voiceId"];
-      if (fields["ttsModelId"]) tts["model_id"] = fields["ttsModelId"];
-      const tags = parseTags(fields["tags"] ?? "");
-
-      const created = await this.fetch<{ agent_id: string }>("/v1/convai/agents/create", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          conversation_config: { agent, ...(Object.keys(tts).length ? { tts } : {}) },
-          ...(tags.length ? { tags } : {}),
-        }),
-      });
-      return mapAgent(undefined, await this.fetchAgent(created.agent_id), accountId);
-    }
-
-    throw new Error(`ElevenLabs plugin: cannot create resources of type "${typeId}"`);
+      throw new Error(`ElevenLabs plugin: cannot create resources of type "${typeId}"`);
+    });
   }
 
   /**
@@ -1233,81 +1262,83 @@ export class ElevenLabsClient implements PluginClient {
    * - pronunciation-dictionary: `PATCH /v1/pronunciation-dictionaries/{id}`
    *   name (the only mutable metadata besides `archived`).
    */
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    const encoded = encodeURIComponent(externalId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const encoded = encodeURIComponent(externalId);
 
-    if (typeId === "voice") {
-      const current = await this.getResource("voice", resourceId, accountId);
-      const name = (fields["name"] ?? String(current.fields["name"] ?? "")).trim();
-      if (!name) throw new Error("ElevenLabs plugin: a voice needs a name");
-      const description = fields["description"] ?? String(current.fields["description"] ?? "");
-      const multipart = buildMultipartBody([
-        { kind: "field", name: "name", value: name },
-        ...(description
-          ? [{ kind: "field" as const, name: "description", value: description }]
-          : []),
-      ]);
-      await this.fetch<unknown>(`/v1/voices/${encoded}/edit`, {
-        method: "POST",
-        headers: { "Content-Type": multipart.contentType },
-        body: multipart.body,
-      });
-      return this.getResource("voice", resourceId, accountId);
-    }
-
-    if (typeId === "agent") {
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined) {
-        if (!fields["name"].trim()) throw new Error("ElevenLabs plugin: an agent needs a name");
-        body["name"] = fields["name"].trim();
-      }
-      if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
-      const agent: Record<string, unknown> = {};
-      if (fields["language"] !== undefined) agent["language"] = fields["language"];
-      if (fields["firstMessage"] !== undefined) agent["first_message"] = fields["firstMessage"];
-      if (fields["systemPrompt"] !== undefined) {
-        agent["prompt"] = { prompt: fields["systemPrompt"] };
-      }
-      if (Object.keys(agent).length) body["conversation_config"] = { agent };
-      if (Object.keys(body).length) {
-        await this.fetch<unknown>(`/v1/convai/agents/${encoded}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
+      if (typeId === "voice") {
+        const current = await runPluginEffect(this.getResource("voice", resourceId, accountId));
+        const name = (fields["name"] ?? String(current.fields["name"] ?? "")).trim();
+        if (!name) throw new Error("ElevenLabs plugin: a voice needs a name");
+        const description = fields["description"] ?? String(current.fields["description"] ?? "");
+        const multipart = buildMultipartBody([
+          { kind: "field", name: "name", value: name },
+          ...(description
+            ? [{ kind: "field" as const, name: "description", value: description }]
+            : []),
+        ]);
+        await this.fetch<unknown>(`/v1/voices/${encoded}/edit`, {
+          method: "POST",
+          headers: { "Content-Type": multipart.contentType },
+          body: multipart.body,
         });
+        return runPluginEffect(this.getResource("voice", resourceId, accountId));
       }
-      return this.getResource("agent", resourceId, accountId);
-    }
 
-    if (typeId === "phone-number") {
-      if (fields["label"] !== undefined) {
-        await this.fetch<unknown>(`/v1/convai/phone-numbers/${encoded}`, {
-          method: "PATCH",
-          body: JSON.stringify({ label: fields["label"] || null }),
-        });
-      }
-      return this.getResource("phone-number", resourceId, accountId);
-    }
-
-    if (typeId === "pronunciation-dictionary") {
-      if (fields["name"] !== undefined) {
-        if (!fields["name"].trim()) {
-          throw new Error("ElevenLabs plugin: a pronunciation dictionary needs a name");
+      if (typeId === "agent") {
+        const body: Record<string, unknown> = {};
+        if (fields["name"] !== undefined) {
+          if (!fields["name"].trim()) throw new Error("ElevenLabs plugin: an agent needs a name");
+          body["name"] = fields["name"].trim();
         }
-        await this.fetch<unknown>(`/v1/pronunciation-dictionaries/${encoded}`, {
-          method: "PATCH",
-          body: JSON.stringify({ name: fields["name"].trim() }),
-        });
+        if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
+        const agent: Record<string, unknown> = {};
+        if (fields["language"] !== undefined) agent["language"] = fields["language"];
+        if (fields["firstMessage"] !== undefined) agent["first_message"] = fields["firstMessage"];
+        if (fields["systemPrompt"] !== undefined) {
+          agent["prompt"] = { prompt: fields["systemPrompt"] };
+        }
+        if (Object.keys(agent).length) body["conversation_config"] = { agent };
+        if (Object.keys(body).length) {
+          await this.fetch<unknown>(`/v1/convai/agents/${encoded}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          });
+        }
+        return runPluginEffect(this.getResource("agent", resourceId, accountId));
       }
-      return this.getResource("pronunciation-dictionary", resourceId, accountId);
-    }
 
-    throw new Error(`ElevenLabs plugin: updateResource not supported for type "${typeId}"`);
+      if (typeId === "phone-number") {
+        if (fields["label"] !== undefined) {
+          await this.fetch<unknown>(`/v1/convai/phone-numbers/${encoded}`, {
+            method: "PATCH",
+            body: JSON.stringify({ label: fields["label"] || null }),
+          });
+        }
+        return runPluginEffect(this.getResource("phone-number", resourceId, accountId));
+      }
+
+      if (typeId === "pronunciation-dictionary") {
+        if (fields["name"] !== undefined) {
+          if (!fields["name"].trim()) {
+            throw new Error("ElevenLabs plugin: a pronunciation dictionary needs a name");
+          }
+          await this.fetch<unknown>(`/v1/pronunciation-dictionaries/${encoded}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name: fields["name"].trim() }),
+          });
+        }
+        return runPluginEffect(this.getResource("pronunciation-dictionary", resourceId, accountId));
+      }
+
+      throw new Error(`ElevenLabs plugin: updateResource not supported for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1320,49 +1351,51 @@ export class ElevenLabsClient implements PluginClient {
    * `application/octet-stream` audio.
    * https://elevenlabs.io/docs/api-reference/text-to-speech/convert
    */
-  async synthesizeSpeech(
+  synthesizeSpeech(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    if (typeId !== "voice") {
-      throw new Error(`ElevenLabs plugin: synthesizeSpeech not supported for type "${typeId}"`);
-    }
-    const voiceId = payload.voiceId || externalIdOf(resourceId);
-    if (!voiceId) throw new Error("ElevenLabs plugin: no voice selected");
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      if (typeId !== "voice") {
+        throw new Error(`ElevenLabs plugin: synthesizeSpeech not supported for type "${typeId}"`);
+      }
+      const voiceId = payload.voiceId || externalIdOf(resourceId);
+      if (!voiceId) throw new Error("ElevenLabs plugin: no voice selected");
 
-    // The Speech tab has one shared model picker for both halves, so a Scribe
-    // selection can arrive here: fall back to the TTS default rather than
-    // sending a transcription model to the synthesis endpoint.
-    const requested = payload.modelId ?? "";
-    const modelId = requested && !requested.startsWith("scribe") ? requested : DEFAULT_TTS_MODEL;
+      // The Speech tab has one shared model picker for both halves, so a Scribe
+      // selection can arrive here: fall back to the TTS default rather than
+      // sending a transcription model to the synthesis endpoint.
+      const requested = payload.modelId ?? "";
+      const modelId = requested && !requested.startsWith("scribe") ? requested : DEFAULT_TTS_MODEL;
 
-    const started = Date.now();
-    const audio = await this.requestSynthesisAudio(voiceId, {
-      text: payload.text,
-      model_id: modelId,
+      const started = Date.now();
+      const audio = await this.requestSynthesisAudio(voiceId, {
+        text: payload.text,
+        model_id: modelId,
+      });
+      const elapsedMs = Date.now() - started;
+
+      const characters = audio.characterCost ?? payload.text.length;
+      const summaryParts = [
+        `${formatNumber(characters)} characters`,
+        modelId,
+        `${(elapsedMs / 1000).toFixed(1)}s`,
+        `${(audio.bytes.byteLength / 1024).toFixed(0)} KB mp3`,
+      ];
+
+      return {
+        audioBase64: bytesToBase64(audio.bytes),
+        // ElevenLabs answers with application/octet-stream even though the bytes
+        // are mp3, so we label it ourselves for the browser `<audio>` element.
+        mimeType: "audio/mpeg",
+        fileName: `elevenlabs-${voiceId}-${Date.now()}.mp3`,
+        summary: summaryParts.join(" · "),
+        characters,
+        ...(audio.requestId ? { requestId: audio.requestId } : {}),
+      };
     });
-    const elapsedMs = Date.now() - started;
-
-    const characters = audio.characterCost ?? payload.text.length;
-    const summaryParts = [
-      `${formatNumber(characters)} characters`,
-      modelId,
-      `${(elapsedMs / 1000).toFixed(1)}s`,
-      `${(audio.bytes.byteLength / 1024).toFixed(0)} KB mp3`,
-    ];
-
-    return {
-      audioBase64: bytesToBase64(audio.bytes),
-      // ElevenLabs answers with application/octet-stream even though the bytes
-      // are mp3, so we label it ourselves for the browser `<audio>` element.
-      mimeType: "audio/mpeg",
-      fileName: `elevenlabs-${voiceId}-${Date.now()}.mp3`,
-      summary: summaryParts.join(" · "),
-      characters,
-      ...(audio.requestId ? { requestId: audio.requestId } : {}),
-    };
   }
 
   /**
@@ -1418,89 +1451,91 @@ export class ElevenLabsClient implements PluginClient {
    * stringify it (`bodyForHostHttp` has no FormData branch). Same bastion/CA
    * caveat as the synthesis path above.
    */
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    if (typeId !== "voice") {
-      throw new Error(`ElevenLabs plugin: transcribeAudio not supported for type "${typeId}"`);
-    }
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      if (typeId !== "voice") {
+        throw new Error(`ElevenLabs plugin: transcribeAudio not supported for type "${typeId}"`);
+      }
 
-    const requested = payload.modelId ?? "";
-    const modelId = requested.startsWith("scribe") ? requested : DEFAULT_SCRIBE_MODEL;
+      const requested = payload.modelId ?? "";
+      const modelId = requested.startsWith("scribe") ? requested : DEFAULT_SCRIBE_MODEL;
 
-    // `payload.mimeType` is whatever MediaRecorder produced:
-    // `audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari. Scribe
-    // accepts both; forward it verbatim rather than assuming or transcoding.
-    const bytes = base64ToBytes(payload.audioBase64);
-    const fileName = payload.fileName ?? `clip.${extensionForMime(payload.mimeType)}`;
+      // `payload.mimeType` is whatever MediaRecorder produced:
+      // `audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari. Scribe
+      // accepts both; forward it verbatim rather than assuming or transcoding.
+      const bytes = base64ToBytes(payload.audioBase64);
+      const fileName = payload.fileName ?? `clip.${extensionForMime(payload.mimeType)}`;
 
-    const form = new FormData();
-    form.append("model_id", modelId);
-    form.append("file", new Blob([bytes], { type: payload.mimeType }), fileName);
-    form.append("timestamps_granularity", "word");
-    form.append("diarize", "true");
-    if (payload.language && payload.language !== "auto") {
-      form.append("language_code", payload.language);
-    }
+      const form = new FormData();
+      form.append("model_id", modelId);
+      form.append("file", new Blob([bytes], { type: payload.mimeType }), fileName);
+      form.append("timestamps_granularity", "word");
+      form.append("diarize", "true");
+      if (payload.language && payload.language !== "auto") {
+        form.append("language_code", payload.language);
+      }
 
-    const started = Date.now();
-    const response = await fetch(`${API_BASE}/v1/speech-to-text`, {
-      method: "POST",
-      // No Content-Type: `fetch` sets it with the multipart boundary.
-      headers: { "xi-api-key": this.apiKey, Accept: "application/json" },
-      body: form,
+      const started = Date.now();
+      const response = await fetch(`${API_BASE}/v1/speech-to-text`, {
+        method: "POST",
+        // No Content-Type: `fetch` sets it with the multipart boundary.
+        headers: { "xi-api-key": this.apiKey, Accept: "application/json" },
+        body: form,
+      });
+      if (!response.ok) {
+        throw new Error(
+          `ElevenLabs API error ${response.status} for /v1/speech-to-text: ${await response.text()}`,
+        );
+      }
+      const elapsedMs = Date.now() - started;
+      const data = (await response.json()) as ScribeResponse;
+
+      const spoken = (data.words ?? []).filter(
+        (word) => (word.type ?? "word") === "word" && Boolean(word.text),
+      );
+
+      const words: TranscriptWord[] = spoken.map((word) => ({
+        text: word.text ?? "",
+        ...(word.start != null ? { start: word.start } : {}),
+        ...(word.end != null ? { end: word.end } : {}),
+        ...(word.speaker_id ? { speaker: word.speaker_id } : {}),
+      }));
+
+      // The only honest transcript confidence Scribe offers. `language_probability`
+      // is deliberately not used here: it scores the *language guess*, sits near
+      // 0.99 for any intelligible audio, and would render as "99% confidence" over
+      // a badly mangled transcript. It is still reported in the summary, labelled.
+      const confidence = averageWordConfidence(spoken);
+
+      const summaryParts = [modelId];
+      if (data.audio_duration_secs != null) {
+        summaryParts.push(`${data.audio_duration_secs.toFixed(1)}s audio`);
+      }
+      if (data.language_code) {
+        const probability = data.language_probability;
+        summaryParts.push(
+          probability != null
+            ? `${data.language_code} (${Math.round(probability * 100)}%)`
+            : data.language_code,
+        );
+      }
+      summaryParts.push(`${(elapsedMs / 1000).toFixed(1)}s round-trip`);
+
+      return {
+        text: data.text ?? "",
+        summary: summaryParts.join(" · "),
+        ...(data.language_code ? { language: data.language_code } : {}),
+        ...(data.audio_duration_secs != null ? { durationSeconds: data.audio_duration_secs } : {}),
+        ...(confidence != null ? { confidence } : {}),
+        ...(words.length ? { words } : {}),
+        ...(data.transcription_id ? { requestId: data.transcription_id } : {}),
+      };
     });
-    if (!response.ok) {
-      throw new Error(
-        `ElevenLabs API error ${response.status} for /v1/speech-to-text: ${await response.text()}`,
-      );
-    }
-    const elapsedMs = Date.now() - started;
-    const data = (await response.json()) as ScribeResponse;
-
-    const spoken = (data.words ?? []).filter(
-      (word) => (word.type ?? "word") === "word" && Boolean(word.text),
-    );
-
-    const words: TranscriptWord[] = spoken.map((word) => ({
-      text: word.text ?? "",
-      ...(word.start != null ? { start: word.start } : {}),
-      ...(word.end != null ? { end: word.end } : {}),
-      ...(word.speaker_id ? { speaker: word.speaker_id } : {}),
-    }));
-
-    // The only honest transcript confidence Scribe offers. `language_probability`
-    // is deliberately not used here: it scores the *language guess*, sits near
-    // 0.99 for any intelligible audio, and would render as "99% confidence" over
-    // a badly mangled transcript. It is still reported in the summary, labelled.
-    const confidence = averageWordConfidence(spoken);
-
-    const summaryParts = [modelId];
-    if (data.audio_duration_secs != null) {
-      summaryParts.push(`${data.audio_duration_secs.toFixed(1)}s audio`);
-    }
-    if (data.language_code) {
-      const probability = data.language_probability;
-      summaryParts.push(
-        probability != null
-          ? `${data.language_code} (${Math.round(probability * 100)}%)`
-          : data.language_code,
-      );
-    }
-    summaryParts.push(`${(elapsedMs / 1000).toFixed(1)}s round-trip`);
-
-    return {
-      text: data.text ?? "",
-      summary: summaryParts.join(" · "),
-      ...(data.language_code ? { language: data.language_code } : {}),
-      ...(data.audio_duration_secs != null ? { durationSeconds: data.audio_duration_secs } : {}),
-      ...(confidence != null ? { confidence } : {}),
-      ...(words.length ? { words } : {}),
-      ...(data.transcription_id ? { requestId: data.transcription_id } : {}),
-    };
   }
 
   // -------------------------------------------------------------------------

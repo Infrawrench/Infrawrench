@@ -26,7 +26,7 @@ export const DocumentDBClusterResourceType = rt({
     }),
   ],
   outputs: [
-    o("endpoint", "Writer Endpoint"),
+    o("endpoint", "Writer Endpoint", { dnsValue: "hostname" }),
     o("readerEndpoint", "Reader Endpoint"),
     o("port", "Port"),
     o("masterUsername", "Master Username"),

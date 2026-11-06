@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ReplicateClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -18,9 +23,9 @@ import { FileResourceType } from "./resources/file.js";
 // (#EA2804, the literal value behind `.text-branding-red` in their shipped
 // CSS); Replicate publishes no brand-assets page, so that CSS token is the
 // authoritative source for the hex.
-const manifest: PluginManifest = {
+export const manifest = {
   id: "replicate",
-  version: "0.1.0",
+  egressHosts: ["api.replicate.com", "replicate.delivery"],
   displayName: "Replicate",
   description: "Run and manage Replicate predictions, models, trainings, deployments and files.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
@@ -31,9 +36,7 @@ const manifest: PluginManifest = {
       <polygon points="1000,0 1000,113.2 126.4,113.2 126.4,1000 0,1000 0,0"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -47,9 +50,11 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   PredictionResourceType,
@@ -62,9 +67,10 @@ const resourceTypes: ResourceTypeDefinition[] = [
   HardwareResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new ReplicateClient(credentials, services),
+  testCredentials: { apiToken: "r8_test_replicate_token" },
   parseStatusFeed,
-};
+});

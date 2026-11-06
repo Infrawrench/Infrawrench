@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CostSetupError, CreditAccessError } from "@infrawrench/plugin-base";
 import { XaiClient } from "../client.js";
@@ -31,10 +32,12 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client(managementKey?: string) {
-  return new XaiClient({
-    apiKey: "xai-inference",
-    ...(managementKey ? { managementKey } : {}),
-  });
+  return hostClient(
+    new XaiClient({
+      apiKey: "xai-inference",
+      ...(managementKey ? { managementKey } : {}),
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -47,7 +50,7 @@ afterEach(() => {
 
 describe("credentials", () => {
   it("requires an inference API key", () => {
-    expect(() => new XaiClient({})).toThrow(/missing apiKey/);
+    expect(() => hostClient(new XaiClient({}))).toThrow(/missing apiKey/);
   });
 
   it("constructs without a management key", () => {
@@ -655,7 +658,7 @@ describe("transcribeAudio", () => {
       headers: {},
       body: JSON.stringify({ text: "via host" }),
     }));
-    const hosted = new XaiClient({ apiKey: "xai-inference" }, { http: { request } });
+    const hosted = hostClient(new XaiClient({ apiKey: "xai-inference" }, { http: { request } }));
     const result = await hosted.transcribeAudio("custom-voice", "id", ACCOUNT, {
       audioBase64: Buffer.from("x").toString("base64"),
       mimeType: "audio/wav",

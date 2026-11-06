@@ -112,7 +112,9 @@ function rate(raw: string | undefined, fallback: string | undefined): number | u
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
-export function parseRates(credentials: Record<string, string>): SnowflakeRates {
+export function parseRates(
+  credentials: Readonly<Record<string, string | undefined>>,
+): SnowflakeRates {
   const currency = (credentials[RATE_KEYS.currency] ?? "").trim().toUpperCase();
   return {
     creditPrice: rate(credentials[RATE_KEYS.creditPrice], DEFAULT_RATES.creditPrice) ?? 3,

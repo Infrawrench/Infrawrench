@@ -14,7 +14,10 @@ export const PublicIPResourceType = rt({
     f("provisioningState", "Provisioning State", { showcase: true }),
     f("ipVersion", "IP Version", { required: false }),
   ],
-  outputs: [o("ipAddress", "IP Address"), o("fqdn", "FQDN")],
+  outputs: [
+    o("ipAddress", "IP Address", { dnsValue: "ipv4" }),
+    o("fqdn", "FQDN", { dnsValue: "hostname" }),
+  ],
   dependsOn: [
     { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
   ],

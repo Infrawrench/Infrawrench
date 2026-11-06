@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { AxiomApiError } from "../api.js";
@@ -30,7 +31,7 @@ function client(
 ) {
   const { http, calls } = makeHttp(route);
   const secrets = memorySecrets();
-  const c = new AxiomClient(creds, { http, secrets } as unknown as HostServices);
+  const c = hostClient(new AxiomClient(creds, { http, secrets } as unknown as HostServices));
   return { c, calls, secrets };
 }
 
@@ -41,9 +42,9 @@ const TABULAR = (fields: string[], columns: unknown[][]) => ({
 
 describe("construction", () => {
   it("needs a token, and an org for personal access tokens", () => {
-    expect(() => new AxiomClient({})).toThrow(/token/);
-    expect(() => new AxiomClient({ token: "xapt-1" })).toThrow(/organization/);
-    expect(() => new AxiomClient({ token: "xapt-1", orgId: "o" })).not.toThrow();
+    expect(() => hostClient(new AxiomClient({}))).toThrow(/token/);
+    expect(() => hostClient(new AxiomClient({ token: "xapt-1" }))).toThrow(/organization/);
+    expect(() => hostClient(new AxiomClient({ token: "xapt-1", orgId: "o" }))).not.toThrow();
   });
 });
 
@@ -257,7 +258,7 @@ describe("quotas", () => {
 describe("credential options", () => {
   it("lists the organizations a personal token can see", async () => {
     const { http } = makeHttp(() => ({ body: [{ id: "o1", name: "One" }] }));
-    const opts = await plugin.listCredentialOptions!("orgId", { token: "xapt-1" }, {
+    const opts = await hostPlugin(plugin).listCredentialOptions!("orgId", { token: "xapt-1" }, {
       http,
     } as unknown as HostServices);
     expect(opts).toEqual([{ id: "o1", label: "One", description: "o1" }]);
