@@ -14,8 +14,8 @@
 #
 # Auth: OIDC trusted publishing wherever the registry supports it, so no
 # long-lived tokens are stored. As of July 2026 that is npm, PyPI, RubyGems,
-# crates.io and NuGet. Maven Central has no OIDC path and needs Portal
-# credentials plus a GPG key; the three registry-less languages (Go, Swift, PHP)
+# crates.io and NuGet. Java publishes to our own repository (maven.infrawrench.com)
+# with deploy credentials plus a GPG key; the three registry-less languages (Go, Swift, PHP)
 # publish by pushing a tag to a satellite repository, which needs a GitHub App
 # token. Those three secrets are the whole non-OIDC surface.
 name: Publish SDKs
@@ -282,11 +282,12 @@ jobs:
             --skip-duplicate
 
   # --------------------------------------------------------------------------
-  # Maven Central — the one registry with no OIDC trusted publishing.
+  # Java: our own repository, because Maven Central no longer takes these
+  # releases for free (see app/packages/maven-repository/README.md).
   # --------------------------------------------------------------------------
 
   maven:
-    name: "Maven Central — com.infrawrench:infrawrench-sdk"
+    name: "Maven: com.infrawrench:infrawrench-sdk"
     needs: generate
     if: needs.generate.outputs.publish == 'true'
     runs-on: ubuntu-latest
@@ -300,11 +301,11 @@ jobs:
         with:
           java-version: "17"
           distribution: temurin
-          # Writes a settings.xml with a <server id="central"> reading these env
-          # vars, which is what central-publishing-maven-plugin authenticates with.
-          server-id: central
-          server-username: CENTRAL_USERNAME
-          server-password: CENTRAL_PASSWORD
+          # Writes a settings.xml with one <server> reading these env vars, so
+          # each deploy step below picks its destination's credentials by env.
+          server-id: release-target
+          server-username: RELEASE_TARGET_USERNAME
+          server-password: RELEASE_TARGET_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
       # Pinned to 3.9.x rather than the runner's Maven. Under Maven 3.10
@@ -324,11 +325,34 @@ jobs:
           echo "$MAVEN_SHA512  $RUNNER_TEMP/$TARBALL" | sha512sum -c -
           tar -xzf "$RUNNER_TEMP/$TARBALL" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/apache-maven-$MAVEN_VERSION/bin" >> "$GITHUB_PATH"
-      - name: Deploy
+      - name: Deploy to maven.infrawrench.com
         working-directory: sdk/java
-        # `-Prelease` adds the sources/javadoc/GPG/publishing plugins that
-        # Central requires and that a local build has no use for. Central
-        # rejects a duplicate version outright, so check the repository first.
+        # `-Prelease` adds the sources/javadoc/GPG plugins. The repository refuses
+        # to change a released version, and a version is released once it is in
+        # the metadata, so that is what to check; a deploy that died before
+        # writing it runs again and overwrites its own partial upload.
+        run: |
+          set -euo pipefail
+          METADATA=$(curl -sf "https://maven.infrawrench.com/com/infrawrench/infrawrench-sdk/maven-metadata.xml" || true)
+          if grep -qF "<version>$VERSION</version>" <<<"$METADATA"; then
+            echo "::notice::com.infrawrench:infrawrench-sdk:$VERSION is already released; skipping."
+            exit 0
+          fi
+          mvn --version
+          mvn --batch-mode --no-transfer-progress -Prelease deploy
+        env:
+          VERSION: ${{ needs.generate.outputs.version }}
+          RELEASE_TARGET_USERNAME: ${{ secrets.MAVEN_REPO_USERNAME }}
+          RELEASE_TARGET_PASSWORD: ${{ secrets.MAVEN_REPO_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      # Off unless the repository variable MAVEN_CENTRAL_PUBLISH is "true": Central
+      # requires a paid subscription for commercial SDKs and caps monthly volume.
+      # Our own repository is the release, so a failure here must not hold it up.
+      - name: Also deploy to Maven Central
+        if: vars.MAVEN_CENTRAL_PUBLISH == 'true'
+        continue-on-error: true
+        working-directory: sdk/java
+        # Central rejects a duplicate version outright, so check the repository first.
         run: |
           set -euo pipefail
           if curl -sfo /dev/null \
@@ -336,12 +360,11 @@ jobs:
             echo "::notice::com.infrawrench:infrawrench-sdk:$VERSION is already on Central; skipping."
             exit 0
           fi
-          mvn --version
-          mvn --batch-mode --no-transfer-progress -Prelease deploy
+          mvn --batch-mode --no-transfer-progress -Prelease,central deploy
         env:
           VERSION: ${{ needs.generate.outputs.version }}
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
-          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          RELEASE_TARGET_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          RELEASE_TARGET_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
 
   # --------------------------------------------------------------------------

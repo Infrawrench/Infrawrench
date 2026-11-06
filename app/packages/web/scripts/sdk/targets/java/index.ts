@@ -1243,18 +1243,25 @@ ${noDependencies}
 
   <!--
     Release-only. The default build stays a plain compile so anyone can consume
-    the sources without a signing key; Maven Central additionally demands a
-    sources jar, a javadoc jar and a detached GPG signature for every artifact,
-    and none of those belong in a local build. CI activates this with
-    "mvn -Prelease deploy".
+    the sources without a signing key; a release also carries a sources jar, a
+    javadoc jar and a detached GPG signature for every artifact, and none of
+    those belong in a local build. CI activates this with "mvn -Prelease deploy",
+    which publishes to our own repository at maven.infrawrench.com.
 
-    Maven Central is the one registry in this pipeline with no OIDC trusted
-    publishing, so the "central" credentials come from repository secrets via
-    the settings.xml that actions/setup-java writes.
+    Adding the "central" profile sends the same release to Maven Central instead.
+
+    Both use the "release-target" credentials, from repository secrets via the
+    settings.xml that actions/setup-java writes.
   -->
   <profiles>
     <profile>
       <id>release</id>
+      <distributionManagement>
+        <repository>
+          <id>release-target</id>
+          <url>https://maven.infrawrench.com</url>
+        </repository>
+      </distributionManagement>
       <build>
         <plugins>
           <plugin>
@@ -1303,6 +1310,13 @@ ${noDependencies}
               </gpgArguments>
             </configuration>
           </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>central</id>
+      <build>
+        <plugins>
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
@@ -1315,7 +1329,7 @@ ${noDependencies}
             <version>0.11.0</version>
             <extensions>true</extensions>
             <configuration>
-              <publishingServerId>central</publishingServerId>
+              <publishingServerId>release-target</publishingServerId>
               <autoPublish>true</autoPublish>
               <waitUntil>published</waitUntil>
             </configuration>
@@ -1347,6 +1361,14 @@ in [\`${GENERATOR_PATH}\`](${REPOSITORY_URL}/tree/main/${GENERATOR_PATH}).
 ## Install
 
 \`\`\`xml
+<repositories>
+  <repository>
+    <id>infrawrench</id>
+    <url>https://maven.infrawrench.com</url>
+    <snapshots><enabled>false</enabled></snapshots>
+  </repository>
+</repositories>
+
 <dependency>
   <groupId>${GROUP_ID}</groupId>
   <artifactId>${ARTIFACT_ID}</artifactId>

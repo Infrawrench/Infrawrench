@@ -1,0 +1,14 @@
+// maven.infrawrench.com: the Maven repository the Java SDK is published to.
+// See src/index.ts for the rules and README.md for deploying.
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "infrawrench-maven-repository",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-31",
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+  },
+  "routes": [{ "pattern": "maven.infrawrench.com", "custom_domain": true }],
+  "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "infrawrench-maven" }],
+}

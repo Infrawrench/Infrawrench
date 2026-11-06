@@ -34,14 +34,33 @@ dotnet add package Infrawrench.Sdk              # C#
 cargo add infrawrench-sdk                       # Rust
 ```
 
-Java, from Maven Central:
+Java, from our Maven repository. Maven only looks at Maven Central by default, so add the repository too. Releases up to 1.90.0 are also on Central, and Maven resolves those as before:
 
 ```xml
+<repositories>
+  <repository>
+    <id>infrawrench</id>
+    <url>https://maven.infrawrench.com</url>
+    <snapshots><enabled>false</enabled></snapshots>
+  </repository>
+</repositories>
+
 <dependency>
   <groupId>com.infrawrench</groupId>
   <artifactId>infrawrench-sdk</artifactId>
   <version>0.1.0</version>
 </dependency>
+```
+
+With Gradle, limit the repository to our group so your other dependencies never ask it:
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven("https://maven.infrawrench.com") {
+        content { includeGroup("com.infrawrench") }
+    }
+}
 ```
 
 Swift, via SwiftPM:
