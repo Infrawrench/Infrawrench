@@ -32,6 +32,11 @@ export const API_BASE = "https://api.render.com/v1";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 500;
 const MAX_RETRY_S = 5;
+const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+/** Narrower than this a window cannot split: its halves overlap a millisecond each way. */
+const MIN_WINDOW_MS = 4;
+const NEWEST_STEPS = 12;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -66,13 +71,25 @@ function nextCursor({ items }: PageAnswer): string | undefined {
 
 /**
  * A walk also stops on a full page whose last row has no cursor, and that page cannot
- * say it was the last one. `GET /env-groups` is documented that way: it takes `cursor`
- * and `limit`, but its rows are bare `envGroupMeta` with no cursor to send back.
+ * say it was the last one.
  */
+const cutShort = (rows: unknown[]) =>
+  rows.length > 0 && rows.length % PAGE_SIZE === 0 && !cursorOf(rows.at(-1));
+
 function wholeList<T>(path: string, rows: T[]): T[] {
-  if (rows.length === 0 || rows.length % PAGE_SIZE !== 0 || cursorOf(rows.at(-1))) return rows;
+  if (!cutShort(rows)) return rows;
   throw new ListTruncatedError({ vendor: "Render", path, items: rows.length });
 }
+
+const iso = (ms: number) => new Date(ms).toISOString();
+
+/** Milliseconds since the epoch, or NaN, which every comparison reads as false. */
+const timeOf = (row: { createdAt?: string }) => Date.parse(row.createdAt ?? "");
+
+const createdWindow = (after: number | undefined, before: number | undefined) => ({
+  ...(after === undefined ? {} : { createdAfter: iso(after) }),
+  ...(before === undefined ? {} : { createdBefore: iso(before) }),
+});
 
 export function createRenderApi(
   apiKey: string,
@@ -171,29 +188,124 @@ export const listCustomDomains = async (api: RenderApi, serviceId: string) =>
     await api.getAll(`/services/${pathEncode(serviceId)}/custom-domains`, null),
   ).map((row) => ("customDomain" in row ? row.customDomain : row));
 
-export const listEnvGroups = async (api: RenderApi, query: OwnerQuery) =>
-  wholeList("/env-groups", await api.getAll("/env-groups", null, { query })).map(unwrapEnvGroup);
+type EnvGroupMeta = components["schemas"]["envGroupMeta"];
+
+/**
+ * `GET /env-groups` is documented with bare `envGroupMeta` rows and no cursor to send
+ * back, while it takes `cursor`, `limit`, `createdAfter` and `createdBefore`. A cursor
+ * that does come back is followed. A full page without one is read again by creation
+ * window: a window answering a short page holds every group in it, and one answering a
+ * full page splits in two, so the list is whole whatever order Render answers in.
+ */
+export async function listEnvGroups(api: RenderApi, query: OwnerQuery): Promise<EnvGroupMeta[]> {
+  const path = "/env-groups";
+  const read = (after?: number, before?: number) =>
+    api.getAll(path, null, { query: { ...query, ...createdWindow(after, before) } });
+  const first = await read();
+  if (!cutShort(first)) return first.map(unwrapEnvGroup);
+
+  const byId = new Map<string, EnvGroupMeta>();
+  let reads = 1;
+  const truncated = () => new ListTruncatedError({ vendor: "Render", path, items: byId.size });
+  const split = async (after: number | undefined, before: number | undefined): Promise<void> => {
+    const lo = after ?? 0;
+    const hi = before ?? Date.now() + DAY_MS;
+    if (hi - lo <= MIN_WINDOW_MS) throw truncated();
+    const mid = Math.floor((lo + hi) / 2);
+    // Each half reaches a millisecond past the middle, so a group created there lands in
+    // one of them whether Render's bounds are inclusive or not.
+    const halves: Array<[number | undefined, number | undefined]> = [
+      [after, mid + 1],
+      [mid - 1, before],
+    ];
+    for (const [a, b] of halves) {
+      if (++reads > MAX_PAGES) throw truncated();
+      const rows = await read(a, b);
+      for (const group of rows.map(unwrapEnvGroup)) {
+        const at = timeOf(group);
+        // A group outside the window means the window was not applied, and splitting
+        // further would only read the same page again.
+        if ((a !== undefined && at < a) || (b !== undefined && at > b)) throw truncated();
+        byId.set(group.id, group);
+      }
+      if (cutShort(rows)) await split(a, b);
+    }
+  };
+  await split(undefined, undefined);
+  return [...byId.values()];
+}
 
 /** For a picker, where the groups it could read are better than none. */
 export const listEnvGroupChoices = async (api: RenderApi, query: OwnerQuery) =>
   (await api.getAll("/env-groups", null, { query, partial: true })).map(unwrapEnvGroup);
 
-// Rolling window: the newest N. Older rows falling off is what this type means.
-// The document states no order for these two, so a live read should confirm it.
-export const listRecentDeploys = async (api: RenderApi, serviceId: string, count: number) =>
-  (
-    await api.getAll(`/services/${pathEncode(serviceId)}/deploys`, null, {
-      pageSize: count,
-      maxPages: 1,
-      partial: true,
-    })
-  ).map((row) => row.deploy);
+/**
+ * The newest `count` rows of a service's history. The document states no order for
+ * deploys or jobs. A first page that is short, or does not run oldest first, is kept as
+ * Render sent it. One that runs oldest first holds the oldest rows, so a `createdAfter`
+ * window is widened back from now until a short page holds at least `count` rows,
+ * halving back toward the last short one wherever a page comes back full.
+ */
+async function newestRows<T extends { createdAt?: string }>(
+  read: (pageSize: number, createdAfter?: string) => Promise<T[]>,
+  count: number,
+): Promise<T[]> {
+  const first = await read(count);
+  const oldest = first[0];
+  const newest = first.at(-1);
+  if (first.length < count || !oldest || !newest || !(timeOf(oldest) < timeOf(newest))) {
+    return first;
+  }
+  const now = Date.now();
+  let found: T[] | undefined;
+  let shortSpan = 0;
+  let fullSpan = Infinity;
+  let span = HOUR_MS;
+  for (let step = 0; step < NEWEST_STEPS; step++) {
+    const after = now - span;
+    const rows = await read(PAGE_SIZE, iso(after));
+    // A row from before the window means the window was not applied.
+    if (rows.some((r) => timeOf(r) < after)) return first;
+    if (rows.length < PAGE_SIZE) {
+      found = rows;
+      shortSpan = span;
+      if (rows.length >= count || after <= timeOf(oldest)) break;
+      span = fullSpan === Infinity ? span * 8 : (span + fullSpan) / 2;
+    } else {
+      fullSpan = span;
+      span = (shortSpan + span) / 2;
+    }
+  }
+  if (!found) return first;
+  return [...found].sort((a, b) => timeOf(b) - timeOf(a)).slice(0, count);
+}
 
-export const listRecentJobs = async (api: RenderApi, serviceId: string, count: number) =>
-  (
-    await api.getAll(`/services/${pathEncode(serviceId)}/jobs`, null, {
-      pageSize: count,
-      maxPages: 1,
-      partial: true,
-    })
-  ).map((row) => row.job);
+// Rolling window: the newest N. Older rows falling off is what this type means.
+export const listRecentDeploys = (api: RenderApi, serviceId: string, count: number) =>
+  newestRows(
+    async (pageSize, createdAfter) =>
+      (
+        await api.getAll(`/services/${pathEncode(serviceId)}/deploys`, null, {
+          ...(createdAfter ? { query: { createdAfter } } : {}),
+          pageSize,
+          maxPages: 1,
+          partial: true,
+        })
+      ).map((row) => row.deploy),
+    count,
+  );
+
+// Rolling window: the newest N. Older rows falling off is what this type means.
+export const listRecentJobs = (api: RenderApi, serviceId: string, count: number) =>
+  newestRows(
+    async (pageSize, createdAfter) =>
+      (
+        await api.getAll(`/services/${pathEncode(serviceId)}/jobs`, null, {
+          ...(createdAfter ? { query: { createdAfter } } : {}),
+          pageSize,
+          maxPages: 1,
+          partial: true,
+        })
+      ).map((row) => row.job),
+    count,
+  );

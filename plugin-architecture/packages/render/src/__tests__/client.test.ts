@@ -114,7 +114,7 @@ describe("reading a whole list", () => {
       owner: { id: `tea-${i}`, name: `t${i}`, type: "team" },
     }));
 
-  it("refuses a full page of environment groups that names no next page", async () => {
+  it("refuses a full page of environment groups that no window or cursor can narrow", async () => {
     route("GET", "/env-groups", groups(100));
     await expect(client().listResources("env-group", ACCOUNT)).rejects.toThrow(
       "has more than Infrawrench reads",
