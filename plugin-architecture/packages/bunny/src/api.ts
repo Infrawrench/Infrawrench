@@ -150,6 +150,8 @@ export async function bunnyPaged<Item>(
 
 type AppList = ApiResponse<McPaths["/apps"]["get"]>;
 
+const EMPTY_APPS: AppList = { items: [], cursor: null };
+
 /**
  * Magic Containers' cursor listing (`items`, `cursor`). A hand loop rather than
  * `getAll`: a page with no items ends the list even when it still has a cursor.
@@ -158,9 +160,16 @@ export async function mcApps(mc: BunnyApis["mc"]): Promise<NonNullable<AppList["
   const out: NonNullable<AppList["items"]> = [];
   let cursor: string | undefined;
   for (let page = 0; page < MC_MAX_PAGES; page++) {
-    const res = await mc.get("/apps", {
-      query: { limit: MC_PAGE_SIZE, ...(cursor ? { nextCursor: cursor } : {}) },
-    });
+    const res = await mc
+      .get("/apps", {
+        query: { limit: MC_PAGE_SIZE, ...(cursor ? { nextCursor: cursor } : {}) },
+      })
+      .catch((err: unknown) => {
+        // Accounts without Magic Containers answer the first page this way. Later on it
+        // would be part of a list reading as all of it.
+        if (page === 0 && [403, 404].includes(statusOf(err))) return EMPTY_APPS;
+        throw err;
+      });
     const items = requireListPage(res?.items, { vendor: VENDOR, path: "/apps", key: "items" });
     out.push(...items);
     cursor = res?.cursor ?? undefined;

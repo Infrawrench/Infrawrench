@@ -319,17 +319,17 @@ export class BunnyClient implements PluginClient {
             .filter((s) => !s.Deleted)
             .map((s) => scriptInstance(accountId, s));
         case "container-app": {
-          try {
-            const items = await mcApps(this.api.mc);
-            const apps = await Promise.all(
-              items.map((a) => this.api.mc.get(`/apps/${idSegment(a.id)}`)),
-            );
-            return apps.filter(Boolean).map((a) => appInstance(accountId, a));
-          } catch (err) {
-            // Accounts without Magic Containers answer 403/404 here.
-            if ([403, 404].includes(statusOf(err))) return [];
-            throw err;
-          }
+          const items = await mcApps(this.api.mc);
+          const apps = await Promise.all(
+            items.map((a) =>
+              this.api.mc.get(`/apps/${idSegment(a.id)}`).catch((err: unknown) => {
+                // Deleted since the listing. Any other failure must not read as no apps.
+                if (statusOf(err) === 404) return undefined;
+                throw err;
+              }),
+            ),
+          );
+          return apps.flatMap((a) => (a ? [appInstance(accountId, a)] : []));
         }
         default:
           return [];

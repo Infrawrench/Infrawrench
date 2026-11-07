@@ -543,6 +543,46 @@ describe("reading a whole list", () => {
       await expect(later.c.listResources("container-app", "a1")).rejects.toThrow("is not a list");
     });
 
+    it.each([403, 404])("reads a first page %i as no Magic Containers", async (status) => {
+      const { c } = client(() => ({ status, body: { Message: "no" } }));
+      await expect(c.listResources("container-app", "a1")).resolves.toEqual([]);
+    });
+
+    it.each([403, 404])(
+      "fails on a later page's %i rather than prune every app",
+      async (status) => {
+        const { c } = client((u) =>
+          u.pathname !== "/mc/apps"
+            ? { body: app }
+            : u.searchParams.has("nextCursor")
+              ? { status, body: { Message: "no" } }
+              : { body: { items: [app], cursor: "next" } },
+        );
+        await expect(c.listResources("container-app", "a1")).rejects.toMatchObject({ status });
+      },
+    );
+
+    it("drops only an app deleted between the list and its read", async () => {
+      const { c } = client((u) => {
+        if (u.pathname === "/mc/apps")
+          return { body: { items: [{ id: "gone" }, { id: "app" }], cursor: null } };
+        return u.pathname.endsWith("/gone")
+          ? { status: 404, body: { Message: "gone" } }
+          : { body: app };
+      });
+      const apps = await c.listResources("container-app", "a1");
+      expect(apps.map((a) => a.externalId)).toEqual(["app"]);
+    });
+
+    it("fails when an app's read is refused rather than prune every app", async () => {
+      const { c } = client((u) =>
+        u.pathname === "/mc/apps"
+          ? { body: { items: [app], cursor: null } }
+          : { status: 403, body: { Message: "no" } },
+      );
+      await expect(c.listResources("container-app", "a1")).rejects.toMatchObject({ status: 403 });
+    });
+
     it("ends on an empty list", async () => {
       const { c } = client(() => ({ body: { items: [], cursor: null } }));
       await expect(c.listResources("container-app", "a1")).resolves.toEqual([]);
