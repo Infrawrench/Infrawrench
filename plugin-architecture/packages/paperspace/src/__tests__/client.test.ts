@@ -1,7 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaperspaceClient } from "../client.js";
-import { PaperspaceApiError } from "../api.js";
+import { MAX_PAGES, PaperspaceApiError } from "../api.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
 import { machineTypeOptions } from "../create-config.js";
 import { timeframeFor, toSeries, METRICS } from "../metrics.js";
@@ -100,6 +100,107 @@ describe("api", () => {
     expect(err).toBeInstanceOf(PaperspaceApiError);
     expect(err.status).toBe(401);
     expect(err.code).toBe("UNAUTHORIZED");
+  });
+});
+
+describe("reading a whole list", () => {
+  const row = (id: string) => ({ ...MACHINE, id });
+
+  it("fails a list that is still going at the cap, after exactly that many requests", async () => {
+    route("GET", "/machines", (c: Call) => ({
+      items: [row(c.url.searchParams.get("after") ?? "first")],
+      hasMore: true,
+      nextPage: `cur${calls.length}`,
+    }));
+    await expect(client().listResources("machine", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(MAX_PAGES);
+    // 50,000 rows at the document's largest page, the most a sync can prune.
+    expect(MAX_PAGES).toBe(417);
+    expect(calls[0]!.url.searchParams.get("limit")).toBe("120");
+  });
+
+  it("gives a create form what fits instead of failing it at the cap", async () => {
+    route("GET", "/machines", () => ({
+      items: [row(`m${calls.length}`)],
+      hasMore: true,
+      nextPage: `cur${calls.length}`,
+    }));
+    const config = await client().getCreateConfig("snapshot");
+    const machine = config.fields.find((f) => f.key === "machineId");
+    expect(machine?.options).toHaveLength(MAX_PAGES);
+  });
+
+  it("fails a first page whose list is missing or renamed", async () => {
+    route("GET", "/machines", { machines: [MACHINE], hasMore: false });
+    await expect(client().listResources("machine", "acct")).rejects.toThrow("is not a list");
+    route("GET", "/machines", { hasMore: false });
+    await expect(client().listResources("machine", "acct")).rejects.toThrow("is not a list");
+  });
+
+  it("fails a 200 with no body at all", async () => {
+    route("GET", "/machines", () => new Response(null, { status: 200 }));
+    await expect(client().listResources("machine", "acct")).rejects.toThrow("is not a list");
+  });
+
+  it("fails a later page whose list is missing", async () => {
+    route("GET", "/machines", (c: Call) =>
+      c.url.searchParams.get("after")
+        ? { machines: [], hasMore: false }
+        : { items: [MACHINE], hasMore: true, nextPage: "cur" },
+    );
+    await expect(client().listResources("machine", "acct")).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("fails a page that says there is more and gives no way to read it", async () => {
+    route("GET", "/machines", { items: [MACHINE], hasMore: true });
+    await expect(client().listResources("machine", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("follows a cursor on a page that leaves hasMore out", async () => {
+    route("GET", "/machines", (c: Call) =>
+      c.url.searchParams.get("after")
+        ? { items: [row("ps2")], hasMore: false }
+        : { items: [MACHINE], nextPage: "cur" },
+    );
+    const list = await client().listResources("machine", "acct");
+    expect(list.map((m) => m.externalId)).toEqual(["ps1", "ps2"]);
+  });
+
+  it("goes on past an empty page that says there is more", async () => {
+    route("GET", "/machines", (c: Call) =>
+      c.url.searchParams.get("after")
+        ? { items: [MACHINE], hasMore: false }
+        : { items: [], hasMore: true, nextPage: "cur" },
+    );
+    const list = await client().listResources("machine", "acct");
+    expect(list.map((m) => m.externalId)).toEqual(["ps1"]);
+  });
+
+  it("reads an empty account as empty", async () => {
+    route("GET", "/machines", { items: [], hasMore: false });
+    expect(await client().listResources("machine", "acct")).toEqual([]);
+  });
+
+  it("sends a list through the host's service, with no CA, and not fetch", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ items: [MACHINE], hasMore: false }),
+    }));
+    const hosted = hostClient(
+      new PaperspaceClient({ apiKey: "KEY" }, RESOURCE_TYPES, { http: { request } }),
+    );
+    expect((await hosted.listResources("machine", "acct")).map((m) => m.externalId)).toEqual([
+      "ps1",
+    ]);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]).not.toHaveProperty("0.caCert");
+    expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 });
 

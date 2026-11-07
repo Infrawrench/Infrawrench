@@ -1,4 +1,10 @@
-import { createApiClient, type ApiClient, type HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  ListTruncatedError,
+  requireListPage,
+  type ApiClient,
+  type HostServices,
+} from "@infrawrench/plugin-base";
 import type { paths } from "./api-types.gen.js";
 
 /**
@@ -63,24 +69,58 @@ interface ListPage<Item> {
   nextPage?: string | null;
 }
 
+/** The largest `limit` the document allows on a list. */
+const PAGE_SIZE = 120;
+/** 50,000 rows, which is as many as a sync can prune for an account. */
+export const MAX_PAGES = Math.ceil(50_000 / PAGE_SIZE);
+
+export interface ListReadOptions {
+  /** A list where part is fine, such as a form's picker: stop at the cap rather than fail. */
+  partial?: boolean;
+}
+
 /**
  * Every page of a cursor-paginated list, by a function fetching one, so each call
- * stays typed from its route. Not `withCursorPagination`, which reads an `items`
- * that is not an array as an empty page: here that fails the listing, rather than
- * telling the host a team's resources are gone.
+ * stays typed from its route. Not `withCursorPagination`, which reads a page saying
+ * `hasMore` with no `nextPage` as the end of the list: here that fails the listing,
+ * since a sync would read the rows it could not reach as deleted.
  */
 export async function listAll<Item>(
+  path: string,
   fetchPage: (query: { limit: number; after?: string }) => Promise<ListPage<Item> | undefined>,
+  options: ListReadOptions = {},
 ): Promise<Item[]> {
   const out: Item[] = [];
   let after: string | undefined;
-  for (let page = 0; page < 100; page++) {
-    const res = await fetchPage({ limit: 120, ...(after ? { after } : {}) });
-    out.push(...(res?.items ?? []));
-    after = res?.hasMore && res.nextPage ? String(res.nextPage) : undefined;
-    if (!after) break;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await fetchPage({ limit: PAGE_SIZE, ...(after ? { after } : {}) });
+    const rows = requireListPage(res?.items, {
+      vendor: "Paperspace",
+      path,
+      key: "items",
+      page: res,
+    });
+    out.push(...rows);
+    const next = res?.nextPage;
+    if (!(res?.hasMore ?? next)) return out;
+    if (!next) {
+      if (options.partial) return out;
+      throw new ListTruncatedError({
+        vendor: "Paperspace",
+        path,
+        items: out.length,
+        maxItems: out.length,
+      });
+    }
+    after = String(next);
   }
-  return out;
+  if (options.partial) return out;
+  throw new ListTruncatedError({
+    vendor: "Paperspace",
+    path,
+    items: out.length,
+    maxPages: MAX_PAGES,
+  });
 }
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {

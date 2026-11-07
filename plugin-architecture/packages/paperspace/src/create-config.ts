@@ -16,6 +16,9 @@ import type { PCustomTemplate, POsTemplate } from "./types.js";
 
 export const NONE = "none";
 
+/** A long list still offers something to pick from. */
+const PICKER = { partial: true };
+
 /** The regions the API's `region` enum names (2026-10). */
 export const REGIONS: RegionOption[] = [
   { id: "ny2", label: "NY2", location: "New York, USA" },
@@ -102,10 +105,10 @@ export async function buildCreateConfig(
       return { fields: [text("name", "Name")] };
     case "machine": {
       const [os, custom, networks, scripts] = await Promise.all([
-        client.raw.osTemplates().catch(() => []),
-        client.raw.customTemplates().catch(() => []),
-        client.raw.networks().catch(() => []),
-        client.raw.startupScripts().catch(() => []),
+        client.raw.osTemplates(PICKER).catch(() => []),
+        client.raw.customTemplates(PICKER).catch(() => []),
+        client.raw.networks(PICKER).catch(() => []),
+        client.raw.startupScripts(PICKER).catch(() => []),
       ]);
       return {
         fields: [
@@ -179,7 +182,7 @@ export async function buildCreateConfig(
       };
     }
     case "shared-drive": {
-      const networks = await client.raw.networks().catch(() => []);
+      const networks = await client.raw.networks(PICKER).catch(() => []);
       return {
         fields: [
           text("name", "Name"),
@@ -205,7 +208,7 @@ export async function buildCreateConfig(
     }
     case "snapshot":
     case "custom-template": {
-      const machines = await client.raw.machines().catch(() => []);
+      const machines = await client.raw.machines(PICKER).catch(() => []);
       return {
         fields: [
           select(

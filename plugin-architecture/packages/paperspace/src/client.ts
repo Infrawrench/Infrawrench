@@ -12,7 +12,7 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { createPaperspaceApi, listAll, type PaperspaceApi } from "./api.js";
+import { createPaperspaceApi, listAll, type ListReadOptions, type PaperspaceApi } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import { buildCreateConfig, NONE } from "./create-config.js";
 import {
@@ -76,17 +76,40 @@ export class PaperspaceClient implements PluginClient {
   }
 
   readonly raw = {
-    projects: () => listAll((query) => this.api.get("/projects", { query })),
-    machines: () => listAll((query) => this.api.get("/machines", { query })),
-    sharedDrives: () => listAll((query) => this.api.get("/shared-drives", { query })),
-    snapshots: () => listAll((query) => this.api.get("/snapshots", { query })),
-    customTemplates: () => listAll((query) => this.api.get("/custom-templates", { query })),
-    osTemplates: () => listAll((query) => this.api.get("/os-templates", { query })),
-    networks: () => listAll((query) => this.api.get("/private-networks", { query })),
-    publicIps: () => listAll((query) => this.api.get("/public-ips", { query })),
-    startupScripts: () => listAll((query) => this.api.get("/startup-scripts", { query })),
-    deployments: () => listAll((query) => this.api.get("/deployments", { query })),
-    registries: () => listAll((query) => this.api.get("/container-registries", { query })),
+    projects: (options?: ListReadOptions) =>
+      listAll("/projects", (query) => this.api.get("/projects", { query }), options),
+    machines: (options?: ListReadOptions) =>
+      listAll("/machines", (query) => this.api.get("/machines", { query }), options),
+    sharedDrives: (options?: ListReadOptions) =>
+      listAll("/shared-drives", (query) => this.api.get("/shared-drives", { query }), options),
+    snapshots: (options?: ListReadOptions) =>
+      listAll("/snapshots", (query) => this.api.get("/snapshots", { query }), options),
+    customTemplates: (options?: ListReadOptions) =>
+      listAll(
+        "/custom-templates",
+        (query) => this.api.get("/custom-templates", { query }),
+        options,
+      ),
+    osTemplates: (options?: ListReadOptions) =>
+      listAll("/os-templates", (query) => this.api.get("/os-templates", { query }), options),
+    networks: (options?: ListReadOptions) =>
+      listAll(
+        "/private-networks",
+        (query) => this.api.get("/private-networks", { query }),
+        options,
+      ),
+    publicIps: (options?: ListReadOptions) =>
+      listAll("/public-ips", (query) => this.api.get("/public-ips", { query }), options),
+    startupScripts: (options?: ListReadOptions) =>
+      listAll("/startup-scripts", (query) => this.api.get("/startup-scripts", { query }), options),
+    deployments: (options?: ListReadOptions) =>
+      listAll("/deployments", (query) => this.api.get("/deployments", { query }), options),
+    registries: (options?: ListReadOptions) =>
+      listAll(
+        "/container-registries",
+        (query) => this.api.get("/container-registries", { query }),
+        options,
+      ),
   };
 
   /**
