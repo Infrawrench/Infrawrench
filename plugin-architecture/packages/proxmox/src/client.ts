@@ -221,7 +221,13 @@ export class ProxmoxClient implements PluginClient {
     return attempt(async () => {
       const all = await runPluginEffect(this.listResources(typeId, accountId));
       const ext = externalIdOf(resourceId);
-      const found = all.find((r) => r.id === resourceId || r.externalId === ext);
+      let found = all.find((r) => r.id === resourceId || r.externalId === ext);
+      // A shared store's backup stored before its id dropped the node (#871).
+      const slash = ext.indexOf("/");
+      if (!found && typeId === BACKUP && slash > 0) {
+        const volid = ext.slice(slash + 1);
+        found = all.find((r) => r.externalId === volid);
+      }
       if (!found) throw new ProxmoxApiError(`Proxmox plugin: ${typeId} ${ext} not found`, 404);
       return found;
     });
@@ -447,6 +453,22 @@ export class ProxmoxClient implements PluginClient {
       });
   }
 
+  /**
+   * Where to reach a backup. A shared store's backup names no node, so take one that
+   * has the store available now.
+   */
+  private async backupLocation(
+    externalId: string,
+  ): Promise<{ node: string; storage: string; volid: string }> {
+    const { node, storage, volid } = parseBackupExternalId(externalId);
+    if (node) return { node, storage, volid };
+    const store = (await this.storagesWithContent("backup")).find((s) => s.storage === storage);
+    if (!store) {
+      throw new ProxmoxApiError(`Proxmox plugin: no node can reach backup storage ${storage}`, 404);
+    }
+    return { node: store.node, storage, volid };
+  }
+
   /** Storages holding a content type, one entry per shared storage. */
   async storagesWithContent(
     content: string,
@@ -550,7 +572,8 @@ export class ProxmoxClient implements PluginClient {
         };
         const when = epochIso(b.ctime).slice(0, 16).replace("T", " ");
         const label = `${vmid ? `${vmid} ` : ""}${when || b.volid}`;
-        return this.instance(accountId, BACKUP, backupExternalId(s.node, b.volid), label, fields, {
+        const ext = backupExternalId(s.node, b.volid, s.shared);
+        return this.instance(accountId, BACKUP, ext, label, fields, {
           parentResourceId: storageId(s.node, s.storage),
           resolvedOutputs: { volid: b.volid },
         });
@@ -1305,7 +1328,7 @@ export class ProxmoxClient implements PluginClient {
           break;
         }
         case BACKUP: {
-          const { node, storage, volid } = parseBackupExternalId(ext);
+          const { node, storage, volid } = await this.backupLocation(ext);
           await this.api.delete(
             `/nodes/${seg(node)}/storage/${seg(storage)}/content/${seg(volid)}`,
           );
@@ -1432,7 +1455,7 @@ export class ProxmoxClient implements PluginClient {
           break;
         }
         case BACKUP: {
-          const { node, storage, volid } = parseBackupExternalId(ext);
+          const { node, storage, volid } = await this.backupLocation(ext);
           const params: Record<string, FormValue> = {};
           if (has("notes")) params["notes"] = fields["notes"] ?? "";
           if (has("protected")) params["protected"] = bool("protected");

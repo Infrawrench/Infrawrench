@@ -352,6 +352,80 @@ describe("client", () => {
     expect(backups.find((b) => b.fields["vmid"] === "101")!.fields["ctId"]).toBe("101");
   });
 
+  describe("backups on a shared store (#871)", () => {
+    const NFS_VOLID = "nfs:backup/vzdump-lxc-101-2026_10_02-02_00_00.tar.zst";
+    const nfsContent = routes["GET /nodes/pve1/storage/nfs/content"];
+    // pve1's copy of the store is down, so pve2 reads it.
+    const readByPve2 = {
+      ...routes,
+      "GET /cluster/resources": RESOURCES.map((r) =>
+        r.id === "storage/pve1/nfs" ? { ...r, status: "unknown" } : r,
+      ),
+      "GET /nodes/pve2/storage/nfs/content": nfsContent,
+    };
+
+    it("keeps one id whichever node reads the store", async () => {
+      const ids = async (r: Record<string, unknown>) => {
+        const { http } = mockHttp(r);
+        const client = hostClient(new ProxmoxClient(CREDS, { http }));
+        const backups = await client.listResources("pve-backup", "acct");
+        return backups.filter((b) => b.fields["storage"] === "nfs").map((b) => b.id);
+      };
+      const first = await ids(routes);
+      expect(first).toEqual([`acct:pve-backup:${NFS_VOLID}`]);
+      expect(await ids(readByPve2)).toEqual(first);
+    });
+
+    it("keeps the node in the id of a backup on a store only one node has", async () => {
+      const { http } = mockHttp(routes);
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      const backups = await client.listResources("pve-backup", "acct");
+      expect(backups.find((b) => b.fields["storage"] === "local")!.externalId).toBe(
+        "pve1/local:backup/vzdump-qemu-100-2026_10_01-02_00_00.vma.zst",
+      );
+    });
+
+    it("deletes and edits through a node that can reach the store", async () => {
+      const { http, calls } = mockHttp({
+        ...readByPve2,
+        [`DELETE /nodes/pve2/storage/nfs/content/${encodeURIComponent(NFS_VOLID)}`]: null,
+        [`PUT /nodes/pve2/storage/nfs/content/${encodeURIComponent(NFS_VOLID)}`]: null,
+      });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      const id = `acct:pve-backup:${NFS_VOLID}`;
+      await client.updateResource("pve-backup", id, "acct", { notes: "keep" });
+      await client.deleteResource("pve-backup", id, "acct");
+      const writes = calls.filter((c) => c.method !== "GET").map((c) => c.method);
+      expect(writes).toEqual(["PUT", "DELETE"]);
+      for (const c of calls.filter((c) => c.method !== "GET")) {
+        expect(decodeURIComponent(new URL(c.url).pathname)).toBe(
+          `/api2/json/nodes/pve2/storage/nfs/content/${NFS_VOLID}`,
+        );
+      }
+    });
+
+    it("still finds a row stored under the old id, which named a node", async () => {
+      const { http } = mockHttp(routes);
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      const found = await client.getResource(
+        "pve-backup",
+        `acct:pve-backup:pve2/${NFS_VOLID}`,
+        "acct",
+      );
+      expect(found.fields["volid"]).toBe(NFS_VOLID);
+      expect(parseBackupExternalId(`pve2/${NFS_VOLID}`)).toEqual({
+        node: "pve2",
+        volid: NFS_VOLID,
+        storage: "nfs",
+      });
+      expect(parseBackupExternalId(NFS_VOLID)).toEqual({
+        node: undefined,
+        volid: NFS_VOLID,
+        storage: "nfs",
+      });
+    });
+  });
+
   describe("a backup store that cannot be read", () => {
     const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
     afterEach(() => {

@@ -174,21 +174,33 @@ export function backupGuest(
 }
 
 /** Backup external id: `<node>/<volid>` so actions can find the storage's node. */
-export function backupExternalId(node: string, volid: string): string {
-  return `${node}/${volid}`;
+/**
+ * A backup's external id. On a store only one node has, `<node>/<volid>`. On a shared
+ * store the volid alone, which names the storage: any node that has the store may read
+ * it, and the id must not change with the one that did (#871).
+ */
+export function backupExternalId(node: string, volid: string, shared: boolean): string {
+  return shared ? volid : `${node}/${volid}`;
 }
 
+/**
+ * Reads both shapes of {@link backupExternalId}, and the `<node>/<volid>` every backup
+ * had before shared stores dropped the node. A node name cannot hold a colon and a
+ * volid starts with `<storage>:`, so a colon before the first slash means no node.
+ */
 export function parseBackupExternalId(externalId: string): {
-  node: string;
+  node: string | undefined;
   volid: string;
   storage: string;
 } {
   const slash = externalId.indexOf("/");
-  if (slash <= 0) throw new Error(`Proxmox plugin: malformed backup id "${externalId}"`);
-  const node = externalId.slice(0, slash);
-  const volid = externalId.slice(slash + 1);
-  const storage = volid.split(":")[0] ?? "";
-  return { node, volid, storage };
+  const colon = externalId.indexOf(":");
+  if (slash > 0 && (colon < 0 || slash < colon)) {
+    const volid = externalId.slice(slash + 1);
+    return { node: externalId.slice(0, slash), volid, storage: volid.split(":")[0] ?? "" };
+  }
+  if (colon <= 0) throw new Error(`Proxmox plugin: malformed backup id "${externalId}"`);
+  return { node: undefined, volid: externalId, storage: externalId.slice(0, colon) };
 }
 
 /** Storage external id: `<node>/<storage>`. */
