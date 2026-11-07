@@ -1,7 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostedMethods } from "@infrawrench/plugin-base";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { HostServices } from "@infrawrench/plugin-base";
+import type { HostServices, SettingDescriptor } from "@infrawrench/plugin-base";
 import { ClerkClient } from "../client.js";
 import { API_VERSION } from "../api.js";
 import { parseStatusFeed } from "../status-feed.js";
@@ -217,6 +217,54 @@ describe("mutations", () => {
       ["/v1/instance/restrictions", { blocklist: true }],
       ["/v1/instance/organization_settings", { max_allowed_memberships: 25 }],
     ]);
+  });
+});
+
+describe("bot protection settings", () => {
+  const settingsClient = () =>
+    client((call) =>
+      new URL(call.url).pathname === "/v1/instance/protect"
+        ? { body: { rules_enabled: false, specter_enabled: true } }
+        : { body: {} },
+    );
+
+  it("shows Specter as read-only and the rules as a toggle", async () => {
+    const manifest = await settingsClient().getManifest();
+    const { settings }: { settings: SettingDescriptor[] } = JSON.parse(manifest);
+    expect(settings.find((s) => s.id === "protect.specter_enabled")).toMatchObject({
+      control: "readonly",
+      value: "on",
+    });
+    expect(settings.find((s) => s.id === "protect.rules_enabled")).toMatchObject({
+      control: "toggle",
+      value: "off",
+    });
+  });
+
+  it("sends the rules toggle alone", async () => {
+    await settingsClient().applyManifest(
+      "r",
+      ACCOUNT,
+      JSON.stringify([{ id: "protect.rules_enabled", value: "on" }]),
+    );
+    expect(calls.map((x) => [new URL(x.url).pathname, JSON.parse(x.body!)])).toEqual([
+      ["/v1/instance/protect", { rules_enabled: true }],
+    ]);
+  });
+
+  it("refuses a Specter change before sending anything", async () => {
+    await expect(
+      settingsClient().applyManifest(
+        "r",
+        ACCOUNT,
+        JSON.stringify([
+          { id: "restrictions.blocklist", value: "on" },
+          { id: "protect.rules_enabled", value: "on" },
+          { id: "protect.specter_enabled", value: "off" },
+        ]),
+      ),
+    ).rejects.toThrow(/Clerk support/);
+    expect(calls).toHaveLength(0);
   });
 });
 

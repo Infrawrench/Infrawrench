@@ -52,6 +52,8 @@ export const METRICS_DEFAULT_RANGE_MS = 14 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A picker or a detail view's list: part of it is fine and nothing acts on it as complete. */
 const SHORT_LIST: ListOptions = { maxItems: 500, partial: true };
+/** `readOnly` on `InstanceProtect`, and not in the body of `PATCH /instance/protect`. */
+const SPECTER_SETTING = "protect.specter_enabled";
 
 /** The query of `GET /users/count`. */
 type CountQuery = NonNullable<operations["GetUsersCount"]["parameters"]["query"]>;
@@ -836,12 +838,16 @@ export class ClerkClient implements PluginClient {
             "Bot and abuse protection",
             protect.rules_enabled,
           ),
-          toggle(
-            "protect.specter_enabled",
-            "Specter bot detection",
-            "Bot and abuse protection",
-            protect.specter_enabled,
-          ),
+          {
+            ...toggle(
+              SPECTER_SETTING,
+              "Specter bot detection",
+              "Bot and abuse protection",
+              protect.specter_enabled,
+              "Managed automatically or by Clerk support.",
+            ),
+            control: "readonly",
+          },
         );
       }
       return JSON.stringify({ settings });
@@ -861,6 +867,11 @@ export class ClerkClient implements PluginClient {
         ["protect", protect],
       ]);
       for (const { id, value } of changes) {
+        if (id === SPECTER_SETTING) {
+          throw new Error(
+            "Clerk plugin: Specter bot detection is managed automatically or by Clerk support, and cannot be changed here",
+          );
+        }
         const [group = "", key = ""] = id.split(".");
         const target = groups.get(group);
         if (!target || !key) continue;
