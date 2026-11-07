@@ -1,7 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authorization, createExoscaleApi, rawId, type Schemas, statusOf } from "../api.js";
 import { ExoscaleClient } from "../client.js";
 import { focusRows, monthsBetween, parseFocusBody } from "../cost-data.js";
@@ -36,6 +36,19 @@ function host(responder: (call: Call) => { status?: number; body: unknown }) {
   };
   return { services, calls };
 }
+
+/** Nothing in these tests may reach Exoscale: the host transport answers, and `fetch` throws. */
+function blockFetch() {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", () => {
+      throw new Error("no real provider traffic");
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+}
+
+const clientOver = (services: HostServices) =>
+  hostClient(new ExoscaleClient({ apiKey: "k", apiSecret: "s" }, plugin.resourceTypes, services));
 
 describe("signing", () => {
   it("matches EXO2-HMAC-SHA256 vectors computed with node crypto", async () => {
@@ -277,6 +290,38 @@ describe("costs", () => {
   it("refuses Parquet and walks months", () => {
     expect(() => parseFocusBody("PAR1....")).toThrow(/Parquet/);
     expect(monthsBetween("2026-08-15", "2026-10-02")).toEqual(["2026-08", "2026-09", "2026-10"]);
+  });
+});
+
+describe("account balance (#406)", () => {
+  blockFetch();
+
+  const answering = (body: unknown) => {
+    const { services } = host((c) => {
+      if (new URL(c.url).pathname === "/v2/live-balance") return { body };
+      if (new URL(c.url).pathname === "/v2/organization") return { body: { name: "Org" } };
+      throw new Error(`unexpected request ${c.url}`);
+    });
+    return clientOver(services);
+  };
+  const expected = [{ key: "default", label: "Account balance", remaining: 12.5, currency: "CHF" }];
+
+  it("reads the balance at the top level, as the document has it", async () => {
+    const client = answering({ balance: 12.5, currency: "CHF" });
+    expect(await client.fetchCreditBalance()).toEqual(expected);
+    const [org] = await client.listResources("organization", "acct");
+    expect(org?.fields).toMatchObject({ balance: 12.5, currency: "CHF" });
+  });
+
+  it("still reads the balance under a live-balance key", async () => {
+    const client = answering({ "live-balance": { balance: 12.5, currency: "CHF" } });
+    expect(await client.fetchCreditBalance()).toEqual(expected);
+    const [org] = await client.listResources("organization", "acct");
+    expect(org?.fields).toMatchObject({ balance: 12.5, currency: "CHF" });
+  });
+
+  it("has no balance to show when the answer holds none", async () => {
+    expect(await answering({}).fetchCreditBalance()).toEqual([]);
   });
 });
 

@@ -869,21 +869,24 @@ export async function listAntiAffinityGroups(api: ExoscaleApi, accountId: string
 }
 
 /**
- * The balance as this plugin reads it, under a `live-balance` key. The document and
- * Exoscale's Go client both put `balance` and `currency` at the top level (#406).
+ * The document and Exoscale's Go client put `balance` and `currency` at the top level.
+ * The plugin has always read them under a `live-balance` key and no live call has
+ * settled it, so that is still read when the top level has neither.
  */
-export type WrappedBalance = Schemas["live-balance"] & { "live-balance"?: Schemas["live-balance"] };
-
-export const wrappedBalance = (answer: WrappedBalance): Schemas["live-balance"] =>
-  answer["live-balance"] ?? {};
+export function liveBalance(
+  answer: Schemas["live-balance"] & { "live-balance"?: Schemas["live-balance"] },
+): Schemas["live-balance"] {
+  const { "live-balance": wrapped, ...top } = answer;
+  return top.balance !== undefined || top.currency !== undefined ? top : (wrapped ?? {});
+}
 
 export async function listOrganization(api: ExoscaleApi, accountId: string) {
   const z = api.at(DEFAULT_ZONE);
   const [org, balance] = await Promise.all([
     z.get("/organization").catch((): Schemas["organization"] => ({})),
-    z.get("/live-balance").catch((): WrappedBalance => ({})),
+    z.get("/live-balance").catch((): Schemas["live-balance"] => ({})),
   ]);
-  const lb = wrappedBalance(balance);
+  const lb = liveBalance(balance);
   const fields: Fields = {
     name: str(org["name"]),
     currency: str(lb["currency"] || org["currency"]),

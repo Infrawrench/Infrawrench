@@ -458,9 +458,8 @@ export class ExoscaleClient implements PluginClient {
   fetchCreditBalance(): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
       try {
-        const res: listers.WrappedBalance = await this.api.at(DEFAULT_ZONE).get("/live-balance");
-        const lb = res["live-balance"];
-        if (!lb || typeof lb.balance !== "number" || !lb.currency) return [];
+        const lb = listers.liveBalance(await this.api.at(DEFAULT_ZONE).get("/live-balance"));
+        if (typeof lb.balance !== "number" || !lb.currency) return [];
         return [
           {
             key: "default",
