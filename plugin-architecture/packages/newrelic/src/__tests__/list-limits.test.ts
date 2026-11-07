@@ -196,6 +196,11 @@ describe("alerts across accounts", () => {
     expect(prefixes.every((p) => /^acct:alert-policy:\d+:$/.test(p))).toBe(true);
   });
 
+  it("reads every account where the host keeps no track of the rest", async () => {
+    const { c } = client(route(1100));
+    await expect(c.listResources("alert-policy", "acct")).resolves.toHaveLength(1100);
+  });
+
   it("reads every account when they fit, naming nothing", async () => {
     const prefixes = captureUnread();
     const { c } = client(route(150));

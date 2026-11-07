@@ -365,14 +365,17 @@ export class NewRelicClient implements PluginClient {
     typeId: string,
     load: (a: NewRelicAccount) => Promise<T[]>,
   ): Promise<Array<[NewRelicAccount, T[]]>> {
-    const { now, later } = alertAccountWindow(await this.accounts());
-    if (later.length > 0) {
-      // The trailing colon keeps account 4 from vouching for account 42's rows.
+    const accounts = await this.accounts();
+    const { now, later } = alertAccountWindow(accounts);
+    // The trailing colon keeps account 4 from vouching for account 42's rows. A host that
+    // keeps no track answers false, and has no poll to outlast: it reads every account.
+    const tracked =
+      later.length === 0 ||
       reportUnreadListPart({ idPrefixes: later.map((a) => `${accountId}:${typeId}:${a.id}:`) });
-    }
+    const reading = tracked ? now : accounts;
     const refusals: unknown[] = [];
     const all = await mapLimit(
-      now,
+      reading,
       ACCOUNT_CONCURRENCY,
       async (a): Promise<[NewRelicAccount, T[]]> => {
         try {
@@ -384,7 +387,7 @@ export class NewRelicClient implements PluginClient {
         }
       },
     );
-    if (now.length > 0 && refusals.length === now.length) {
+    if (reading.length > 0 && refusals.length === reading.length) {
       // This type's stored rows stay. A host that keeps no track (the desktop) answers
       // false, and there the refusal should still show.
       if (!reportUnreadListPart({ idPrefixes: [""] })) throw refusals[0];
