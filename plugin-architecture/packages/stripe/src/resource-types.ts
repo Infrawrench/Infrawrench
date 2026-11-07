@@ -320,7 +320,7 @@ export const PayoutResourceType = rt({
   name: "Payout",
   id: PAYOUT,
   description:
-    "A transfer of your Stripe balance to your bank account or debit card. The 100 most recent are listed with status, arrival date and failure reason; a pending manual payout can be cancelled.",
+    "A transfer of your Stripe balance to your bank account or debit card. Each is listed with status, arrival date and failure reason; a pending manual payout can be cancelled.",
   fields: [
     f("payoutId", "Payout ID", ro),
     f("amount", "Amount", ro),

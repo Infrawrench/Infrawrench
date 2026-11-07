@@ -20,15 +20,19 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, type ApiBody, type ApiForm } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+  type ApiBody,
+  type ApiForm,
+} from "@infrawrench/plugin-base";
 import type { StripeApi, StripeContext } from "./api.js";
 import {
   StripeApiError,
   dashboardUrl,
   isFeatureUnavailable,
   isPermissionError,
-  listV1,
-  listV2,
   STRIPE_API_VERSION,
   statusOf,
   stripeApi,
@@ -68,11 +72,14 @@ import {
   WEBHOOK_ENDPOINT,
 } from "./resource-types.js";
 
-/** Most recent payouts, report runs and Sigma runs listed (one page each). */
-const RECENT_LIMIT = 100;
-
 /** Subscriptions read for the overview: 10 pages of 100, newest first. */
 const SUBSCRIPTION_PAGES = 10;
+
+/** Report runs and Sigma runs listed: one page of 100, and Stripe lists newest first. */
+const RUN_WINDOW_PAGES = 1;
+
+/** Pages of products, meters and tax codes offered in a create form's pickers. */
+const PICKER_PAGES = 10;
 
 /**
  * AWS regions where EventBridge accepts Stripe partner event sources. Stripe's
@@ -335,68 +342,48 @@ export class StripeClient implements PluginClient {
           return [await this.fetchAccount(accountId)];
         case CONNECTED_ACCOUNT:
           return this.optional(async () =>
-            (
-              await listV1((paging) =>
-                this.api.get("/v1/accounts", { query: { limit: 100, ...paging } }),
-              )
-            ).map((a) => mapConnectedAccount(accountId, this.ctx.apiKey, a)),
+            (await this.api.getAll("/v1/accounts", "data")).map((a) =>
+              mapConnectedAccount(accountId, this.ctx.apiKey, a),
+            ),
           );
         case WEBHOOK_ENDPOINT:
-          return (
-            await listV1((paging) =>
-              this.api.get("/v1/webhook_endpoints", { query: { limit: 100, ...paging } }),
-            )
-          ).map((e) => mapWebhookEndpoint(accountId, e));
+          return (await this.api.getAll("/v1/webhook_endpoints", "data")).map((e) =>
+            mapWebhookEndpoint(accountId, e),
+          );
         case EVENT_DESTINATION:
           return this.listEventDestinations(accountId);
         case PRODUCT:
-          return (
-            await listV1((paging) =>
-              this.api.get("/v1/products", { query: { limit: 100, ...paging } }),
-            )
-          ).map((p) => mapProduct(accountId, this.ctx.apiKey, p));
+          return (await this.api.getAll("/v1/products", "data")).map((p) =>
+            mapProduct(accountId, this.ctx.apiKey, p),
+          );
         case PRICE:
-          return (
-            await listV1(
-              (paging) => this.api.get("/v1/prices", { query: { limit: 100, ...paging } }),
-              20,
-            )
-          ).map((p) => mapPrice(accountId, p));
+          return (await this.api.getAll("/v1/prices", "data")).map((p) => mapPrice(accountId, p));
         case METER:
           return this.optional(async () =>
-            (
-              await listV1((paging) =>
-                this.api.get("/v1/billing/meters", { query: { limit: 100, ...paging } }),
-              )
-            ).map((m) => mapMeter(accountId, m)),
+            (await this.api.getAll("/v1/billing/meters", "data")).map((m) =>
+              mapMeter(accountId, m),
+            ),
           );
         case PAYOUT:
-          return (
-            await listV1(
-              (paging) => this.api.get("/v1/payouts", { query: { limit: 100, ...paging } }),
-              1,
-            )
-          ).map((p) => mapPayout(accountId, p));
+          return (await this.api.getAll("/v1/payouts", "data")).map((p) => mapPayout(accountId, p));
         case REPORT_RUN:
           return this.optional(async () =>
+            // Rolling window: the newest N. Older rows falling off is what this type means.
             (
-              await listV1(
-                (paging) =>
-                  this.api.get("/v1/reporting/report_runs", { query: { limit: 100, ...paging } }),
-                1,
-              )
+              await this.api.getAll("/v1/reporting/report_runs", "data", {
+                maxPages: RUN_WINDOW_PAGES,
+                partial: true,
+              })
             ).map((r) => mapReportRun(accountId, r)),
           );
         case SIGMA_RUN:
           return this.optional(async () =>
+            // Rolling window: the newest N. Older rows falling off is what this type means.
             (
-              await listV1(
-                (paging) =>
-                  this.api.get("/v1/sigma/scheduled_query_runs", {
-                    query: { limit: 100, ...paging },
-                  }),
-                1,
-              )
+              await this.api.getAll("/v1/sigma/scheduled_query_runs", "data", {
+                maxPages: RUN_WINDOW_PAGES,
+                partial: true,
+              })
             ).map((r) => mapSigmaRun(accountId, r)),
           );
         default:
@@ -437,11 +424,9 @@ export class StripeClient implements PluginClient {
    * `GET /v2/core/event_destinations` with the normally redacted URL included.
    */
   private async listEventDestinations(accountId: string): Promise<ResourceInstance[]> {
-    const dests = await listV2(this.ctx, () =>
-      this.api.get("/v2/core/event_destinations", {
-        query: { limit: 100, include: ["webhook_endpoint.url"] },
-      }),
-    );
+    const dests = await this.api.getAllV2("/v2/core/event_destinations", "data", {
+      query: { include: ["webhook_endpoint.url"] },
+    });
     return dests.map((d) => mapEventDestination(accountId, d));
   }
 
@@ -536,10 +521,12 @@ export class StripeClient implements PluginClient {
   /** Events from the last 30 days that at least one endpoint failed to take. */
   private async failedEvents(): Promise<FailedEventSummary[]> {
     const since = Math.floor(Date.now() / 1000) - 30 * 86_400;
-    const res = await this.api.get("/v1/events", {
+    const path = "/v1/events";
+    const res = await this.api.get(path, {
       query: { delivery_success: false, created: { gte: since }, limit: 50 },
     });
-    return (res?.data ?? []).map((e) => ({
+    const events = requireListPage(res?.data, { vendor: "Stripe", path, key: "data" });
+    return events.map((e) => ({
       id: e.id ?? "",
       type: e.type ?? "",
       created: epochToIso(e.created),
@@ -559,11 +546,13 @@ export class StripeClient implements PluginClient {
     };
     const [balance, subs, failed] = await Promise.all([
       this.api.get("/v1/balance").catch(note("Balance")),
-      listV1(
-        (paging) =>
-          this.api.get("/v1/subscriptions", { query: { limit: 100, status: "all", ...paging } }),
-        SUBSCRIPTION_PAGES,
-      ).catch(note("Subscriptions")),
+      this.api
+        .getAll("/v1/subscriptions", "data", {
+          query: { status: "all" },
+          maxPages: SUBSCRIPTION_PAGES,
+          partial: true,
+        })
+        .catch(note("Subscriptions")),
       this.failedEvents().catch(note("Failing webhook deliveries")),
     ]);
     const outputs: Record<string, string> = { ...resource.resolvedOutputs };
@@ -788,10 +777,9 @@ export class StripeClient implements PluginClient {
   }
 
   private async taxCodeOptions(): Promise<SelectOption[]> {
-    const codes = await listV1(
-      (paging) => this.api.get("/v1/tax_codes", { query: { limit: 100, ...paging } }),
-      10,
-    ).catch(() => []);
+    const codes = await this.api
+      .getAll("/v1/tax_codes", "data", { maxPages: PICKER_PAGES, partial: true })
+      .catch(() => []);
     return [
       { id: "", label: "Account default" },
       ...codes
@@ -897,12 +885,20 @@ export class StripeClient implements PluginClient {
 
   private async priceCreateFields(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     const [products, meters, currencies] = await Promise.all([
-      listV1((paging) =>
-        this.api.get("/v1/products", { query: { limit: 100, active: true, ...paging } }),
-      ).catch(() => []),
-      listV1((paging) =>
-        this.api.get("/v1/billing/meters", { query: { limit: 100, status: "active", ...paging } }),
-      ).catch(() => []),
+      this.api
+        .getAll("/v1/products", "data", {
+          query: { active: true },
+          maxPages: PICKER_PAGES,
+          partial: true,
+        })
+        .catch(() => []),
+      this.api
+        .getAll("/v1/billing/meters", "data", {
+          query: { status: "active" },
+          maxPages: PICKER_PAGES,
+          partial: true,
+        })
+        .catch(() => []),
       this.currencyOptions(),
     ]);
     const parentProduct = parentResourceId ? externalIdOf(parentResourceId) : "";
@@ -1105,8 +1101,11 @@ export class StripeClient implements PluginClient {
   }
 
   private async reportRunCreateFields(): Promise<CreateFieldConfig[]> {
-    const res = await this.api.get("/v1/reporting/report_types");
-    const types = (res?.data ?? []).filter((t) => t.id);
+    const path = "/v1/reporting/report_types";
+    const res = await this.api.get(path);
+    const types = requireListPage(res?.data, { vendor: "Stripe", path, key: "data" }).filter(
+      (t) => t.id,
+    );
     // Default to the previous full calendar month, clipped to what is available.
     const now = new Date();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -1651,11 +1650,10 @@ export class StripeClient implements PluginClient {
       const pages = Math.ceil(limit / 100);
       let lines: string[];
       if (active === "Thin events (v2)") {
-        const events = await listV2(
-          this.ctx,
-          () => this.api.get("/v2/core/events", { query: { limit: 100 } }),
-          pages,
-        );
+        const events = await this.api.getAllV2("/v2/core/events", "data", {
+          maxPages: pages,
+          partial: true,
+        });
         lines = events
           .slice(0, limit)
           .map(
@@ -1664,13 +1662,11 @@ export class StripeClient implements PluginClient {
           );
       } else {
         const failed = active === "Failed webhook deliveries";
-        const events = await listV1(
-          (paging) =>
-            this.api.get("/v1/events", {
-              query: { limit: 100, ...(failed ? { delivery_success: false } : {}), ...paging },
-            }),
-          pages,
-        );
+        const events = await this.api.getAll("/v1/events", "data", {
+          query: failed ? { delivery_success: false } : {},
+          maxPages: pages,
+          partial: true,
+        });
         lines = events.slice(0, limit).map((e) => {
           const obj = e.data?.object;
           const pending = e.pending_webhooks ? `  pending_webhooks=${e.pending_webhooks}` : "";

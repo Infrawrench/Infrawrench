@@ -1,18 +1,18 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   STRIPE_API_VERSION,
   encodeForm,
   formatMoney,
   fromMinor,
-  listV1,
   stripeApi,
   toMinor,
 } from "../api.js";
-import { feeRows, serviceFromFeeDescription } from "../balance.js";
+import { MAX_PAGES_PER_DAY, feeRows, serviceFromFeeDescription } from "../balance.js";
 import { StripeClient, parseEventList, summariseSubscriptions } from "../client.js";
 import { plugin } from "../plugin.js";
 import { policyTemplate } from "../preflight.js";
+import { STASH } from "../render.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
 import { stripeTerraformExport } from "../terraform.js";
 import type { Call } from "./helpers.js";
@@ -57,9 +57,7 @@ describe("api", () => {
       return { data: [{ id: "c" }], has_more: false };
     });
     const api = stripeApi({ apiKey: "k", http });
-    const out = await listV1((paging) =>
-      api.get("/v1/products", { query: { limit: 100, ...paging } }),
-    );
+    const out = await api.getAll("/v1/products", "data");
     expect(out.map((x) => x.id)).toEqual(["a", "b", "c"]);
     expect(calls[1]?.url.searchParams.get("starting_after")).toBe("b");
     expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
@@ -630,6 +628,285 @@ describe("preflight probes", () => {
     expect(balance?.url.searchParams.has("limit")).toBe(false);
     const events = calls.find((x) => x.url.pathname === "/v1/events");
     expect(events?.url.searchParams.get("limit")).toBe("1");
+  });
+});
+
+describe("lists that cannot say they have every row", () => {
+  /** A list whose next page never ends, numbering its rows so each cursor moves on. */
+  const endlessV1 = () => {
+    let row = 0;
+    return () => ({ data: [{ id: `x_${++row}` }], has_more: true });
+  };
+  const endlessV2 = (link = "/v2/core/event_destinations?page=more") => {
+    let row = 0;
+    return () => ({ data: [{ id: `ed_${++row}` }], next_page_url: link });
+  };
+
+  it.each([
+    ["stripe-product", "/v1/products"],
+    ["stripe-price", "/v1/prices"],
+    ["stripe-webhook-endpoint", "/v1/webhook_endpoints"],
+    ["stripe-payout", "/v1/payouts"],
+    ["stripe-connected-account", "/v1/accounts"],
+    ["stripe-meter", "/v1/billing/meters"],
+  ])("refuses %s past 50,000 rows, through any catch", async (typeId, path) => {
+    const { c, calls } = client(endlessV1());
+    await expect(c.listResources(typeId, ACC)).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls).toHaveLength(500);
+    expect(calls[0]?.url.pathname).toBe(path);
+    expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
+  });
+
+  it("refuses event destinations past 50,000 rows", async () => {
+    const { c, calls } = client(endlessV2());
+    await expect(c.listResources("stripe-event-destination", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(500);
+  });
+
+  it("reads every payout rather than the newest page", async () => {
+    const { c, calls } = client((call) =>
+      call.url.searchParams.get("starting_after")
+        ? { data: [{ id: "po_2" }], has_more: false }
+        : { data: [{ id: "po_1" }], has_more: true },
+    );
+    const out = await c.listResources("stripe-payout", ACC);
+    expect(out.map((r) => r.externalId)).toEqual(["po_1", "po_2"]);
+    expect(calls[1]?.url.searchParams.get("starting_after")).toBe("po_1");
+  });
+
+  it.each([
+    ["stripe-report-run", "/v1/reporting/report_runs"],
+    ["stripe-sigma-query-run", "/v1/sigma/scheduled_query_runs"],
+  ])("keeps %s to the newest page, a rolling window", async (typeId, path) => {
+    const { c, calls } = client(endlessV1());
+    const out = await c.listResources(typeId, ACC);
+    expect(out).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url.pathname).toBe(path);
+  });
+
+  it.each([
+    ["a renamed key", { items: [], has_more: false }],
+    ["no body at all", ""],
+    ["a list that is not an array", { data: "nope", has_more: false }],
+  ])("refuses a first page with %s", async (_what, body) => {
+    const { c } = client(() => ({ status: 200, body }));
+    await expect(c.listResources("stripe-product", ACC)).rejects.toThrow("is not a list");
+    await expect(c.listResources("stripe-connected-account", ACC)).rejects.toThrow("is not a list");
+    await expect(c.listResources("stripe-event-destination", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a later page that is not a list", async () => {
+    const v1 = client((call) =>
+      call.url.searchParams.get("starting_after")
+        ? { items: [] }
+        : { data: [{ id: "prod_1" }], has_more: true },
+    );
+    await expect(v1.c.listResources("stripe-product", ACC)).rejects.toThrow("is not a list");
+    const v2 = client((call) =>
+      call.url.searchParams.get("page")
+        ? { items: [] }
+        : { data: [{ id: "ed_1" }], next_page_url: "/v2/core/event_destinations?page=2" },
+    );
+    await expect(v2.c.listResources("stripe-event-destination", ACC)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it.each(["https://evil.example/v2/core/event_destinations?page=2", "//evil.example/x?page=2"])(
+    "never sends the key to a next link at %s",
+    async (link) => {
+      const { c, calls } = client(() => ({ data: [{ id: "ed_1" }], next_page_url: link }));
+      await expect(c.listResources("stripe-event-destination", ACC)).rejects.toThrow(
+        "Refusing to send the account's credentials there",
+      );
+      expect(calls).toHaveLength(1);
+      expect(calls.every((x) => x.url.hostname === "api.stripe.com")).toBe(true);
+    },
+  );
+
+  it("refuses a foreign next link in the thin event logs too", async () => {
+    const { c, calls } = client(() => ({
+      data: [],
+      next_page_url: "https://evil.example/v2/core/events?page=2",
+    }));
+    await expect(
+      c.getLogs("stripe-account", "acc:stripe-account:acct_1", ACC, {
+        container: "Thin events (v2)",
+        tailLines: 500,
+      }),
+    ).rejects.toThrow("Refusing to send the account's credentials there");
+    expect(calls.every((x) => x.url.hostname === "api.stripe.com")).toBe(true);
+  });
+
+  it("reads past an empty v2 page that still names a next page", async () => {
+    const { c } = client((call) => {
+      const page = call.url.searchParams.get("page");
+      if (page === "3") return { data: [{ id: "ed_2" }], next_page_url: null };
+      if (page === "2") return { data: [], next_page_url: "/v2/core/event_destinations?page=3" };
+      return { data: [{ id: "ed_1" }], next_page_url: "/v2/core/event_destinations?page=2" };
+    });
+    const out = await c.listResources("stripe-event-destination", ACC);
+    expect(out.map((r) => r.externalId)).toEqual(["ed_1", "ed_2"]);
+  });
+
+  it("follows an absolute next link on Stripe's own host", async () => {
+    const { c, calls } = client((call) =>
+      call.url.searchParams.get("page")
+        ? { data: [{ id: "ed_2" }], next_page_url: null }
+        : {
+            data: [{ id: "ed_1" }],
+            next_page_url: "https://api.stripe.com/v2/core/event_destinations?page=2",
+          },
+    );
+    const out = await c.listResources("stripe-event-destination", ACC);
+    expect(out.map((r) => r.externalId)).toEqual(["ed_1", "ed_2"]);
+    expect(calls[1]?.headers["Authorization"]).toBe("Bearer rk_test_KEY");
+    expect(calls[1]?.headers["Stripe-Version"]).toBe(STRIPE_API_VERSION);
+  });
+
+  it("refuses a day of fees past its cap rather than under-report cost", async () => {
+    const { c, calls } = client(endlessV1());
+    await expect(
+      c.fetchCostData(ACC, { fromDate: "2026-01-01", toDate: "2026-01-01" }),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls).toHaveLength(MAX_PAGES_PER_DAY);
+    expect(MAX_PAGES_PER_DAY).toBeGreaterThanOrEqual(1000);
+  });
+
+  it("refuses a day of fees that is not a list", async () => {
+    const { c } = client(() => ({ items: [] }));
+    await expect(
+      c.fetchCostData(ACC, { fromDate: "2026-01-01", toDate: "2026-01-01" }),
+    ).rejects.toThrow("is not a list");
+  });
+});
+
+describe("reads where part of a list is fine", () => {
+  const endless = () => {
+    let row = 0;
+    return () => ({ data: [{ id: `x_${++row}` }], has_more: true });
+  };
+  const RANGE = { startMs: Date.UTC(2026, 0, 1), endMs: Date.UTC(2026, 0, 1) };
+
+  it("charts the first pages of a busy day", async () => {
+    const { c, calls } = client(endless());
+    await expect(c.fetchMetricSeries("stripe-account", "acct_1", ACC, RANGE)).resolves.toEqual(
+      expect.any(Array),
+    );
+    expect(calls).toHaveLength(20);
+  });
+
+  it("reads meter usage without failing on a long price list", async () => {
+    const { c, calls } = client(endless());
+    await expect(c.fetchMetricSeries("stripe-meter", "mtr_1", ACC, RANGE)).resolves.toEqual([]);
+    expect(calls).toHaveLength(10);
+  });
+
+  it("tails the event stream", async () => {
+    const { c, calls } = client(endless());
+    await c.getLogs("stripe-account", "acc:stripe-account:acct_1", ACC, { tailLines: 150 });
+    expect(calls).toHaveLength(2);
+    const thin = client((call) => ({
+      data: [{ id: `evt_${call.url.searchParams.get("page") ?? "0"}` }],
+      next_page_url: `/v2/core/events?page=${Number(call.url.searchParams.get("page") ?? 0) + 1}`,
+    }));
+    await thin.c.getLogs("stripe-account", "acc:stripe-account:acct_1", ACC, {
+      container: "Thin events (v2)",
+      tailLines: 150,
+    });
+    expect(thin.calls).toHaveLength(2);
+  });
+
+  it("offers the first products and tax codes in the create forms", async () => {
+    const { c, calls } = client((call) => {
+      if (call.url.pathname === "/v1/account") return { id: "acct_1", country: "US" };
+      if (call.url.pathname.startsWith("/v1/country_specs")) return {};
+      return { data: [{ id: `x_${calls.length}` }], has_more: true };
+    });
+    await expect(c.getCreateConfig("stripe-price")).resolves.toBeDefined();
+    await expect(c.getCreateConfig("stripe-product")).resolves.toBeDefined();
+    const count = (path: string) => calls.filter((x) => x.url.pathname === path).length;
+    expect(count("/v1/products")).toBe(10);
+    expect(count("/v1/billing/meters")).toBe(10);
+    expect(count("/v1/tax_codes")).toBe(10);
+  });
+
+  it("overviews the newest subscriptions and says it stopped", async () => {
+    const { c, calls } = client((call) => {
+      if (call.url.pathname !== "/v1/subscriptions") return { data: [], has_more: false };
+      const page = Array.from({ length: 100 }, (_, i) => ({
+        id: `sub_${calls.length}_${i}`,
+        status: "active",
+      }));
+      return { data: page, has_more: true };
+    });
+    const out = await c.enrichDetail({
+      id: "acc:stripe-account:acct_1",
+      pluginId: "stripe",
+      resourceTypeId: "stripe-account",
+      accountId: ACC,
+      displayName: "acct",
+      externalId: "acct_1",
+      fields: {},
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    });
+    expect(calls.filter((x) => x.url.pathname === "/v1/subscriptions")).toHaveLength(10);
+    const overview = JSON.parse(out.resolvedOutputs[STASH.subscriptions] ?? "{}");
+    expect(overview).toMatchObject({ total: 1000, truncated: true });
+  });
+
+  it("does not read a bad failed-events page as no failures", async () => {
+    const { c } = client(() => ({ items: [] }));
+    const out = await c.enrichDetail({
+      id: "acc:stripe-account:acct_1",
+      pluginId: "stripe",
+      resourceTypeId: "stripe-account",
+      accountId: ACC,
+      displayName: "acct",
+      externalId: "acct_1",
+      fields: {},
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    });
+    expect(out.resolvedOutputs[STASH.failedEvents]).toBeUndefined();
+    expect(out.resolvedOutputs[STASH.enrichError]).toContain("Failing webhook deliveries");
+  });
+});
+
+describe("host HTTP", () => {
+  it("sends every page through the host, with no CA and no global fetch", async () => {
+    const fetchStub = vi.fn(() => {
+      throw new Error("no real provider traffic");
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    try {
+      const requests: Record<string, unknown>[] = [];
+      const http = {
+        request: async (req: Record<string, unknown>) => {
+          requests.push(req);
+          const url = String(req["url"]);
+          const body = url.includes("page=2")
+            ? { data: [{ id: "ed_2" }], next_page_url: null }
+            : { data: [{ id: "ed_1" }], next_page_url: "/v2/core/event_destinations?page=2" };
+          return { status: 200, headers: {}, body: JSON.stringify(body) };
+        },
+      };
+      const c = hostClient(new StripeClient({ apiKey: "rk_test_KEY" }, { http } as never));
+      await c.listResources("stripe-event-destination", ACC);
+      expect(requests).toHaveLength(2);
+      expect(requests.every((r) => !("caCert" in r))).toBe(true);
+      expect(fetchStub).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

@@ -1,6 +1,6 @@
 import type { CostChargeType, CostRow } from "@infrawrench/plugin-base";
 import type { StripeApi } from "./api.js";
-import { fromMinor, listV1 } from "./api.js";
+import { fromMinor } from "./api.js";
 import type { components } from "./api-types.gen.js";
 
 /**
@@ -165,8 +165,11 @@ export function feeRows(transactions: StripeBalanceTransaction[]): CostRow[] {
     );
 }
 
-/** Balance transactions are paged per UTC day, at most this many pages each. */
-export const MAX_PAGES_PER_DAY = 100;
+/**
+ * Balance transactions are paged per UTC day, at most this many pages each:
+ * 100,000 a day. Past that the fees for the range throw rather than under-report.
+ */
+export const MAX_PAGES_PER_DAY = 1000;
 
 /** Every UTC day in `[fromDate, toDate]` as `YYYY-MM-DD`. */
 export function daysBetween(fromDate: string, toDate: string): string[] {
@@ -180,22 +183,19 @@ export function daysBetween(fromDate: string, toDate: string): string[] {
 
 /**
  * All balance transactions created on one UTC day. Paging per day keeps a
- * busy account's request count proportional to its volume and makes a capped
- * day visible on its own rather than silently truncating a whole range.
+ * busy account's request count proportional to its volume.
  */
 export async function transactionsForDay(
   api: StripeApi,
   day: string,
-  maxPages = MAX_PAGES_PER_DAY,
+  { maxPages = MAX_PAGES_PER_DAY, partial = false }: { maxPages?: number; partial?: boolean } = {},
 ): Promise<StripeBalanceTransaction[]> {
   const gte = Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000);
-  return listV1(
-    (paging) =>
-      api.get("/v1/balance_transactions", {
-        query: { limit: 100, created: { gte, lt: gte + 86_400 }, ...paging },
-      }),
+  return api.getAll("/v1/balance_transactions", "data", {
+    query: { created: { gte, lt: gte + 86_400 } },
     maxPages,
-  );
+    partial,
+  });
 }
 
 /** Run `fn` over `items` with at most `limit` in flight. */

@@ -1,7 +1,7 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { pathEncode } from "@infrawrench/plugin-base";
 import type { StripeApi } from "./api.js";
-import { fromMinor, listV1 } from "./api.js";
+import { fromMinor } from "./api.js";
 import { dailyVolume, daysBetween, mapLimit, transactionsForDay } from "./balance.js";
 
 /** Days charted on the account Metrics tab, at most. Each is one or more requests. */
@@ -28,7 +28,7 @@ export async function accountMetrics(
   const from = new Date(earliest).toISOString().slice(0, 10);
   const days = daysBetween(from, to);
   const perDay = await mapLimit(days, 4, (day) =>
-    transactionsForDay(api, day, METRIC_PAGES_PER_DAY),
+    transactionsForDay(api, day, { maxPages: METRIC_PAGES_PER_DAY, partial: true }),
   );
   const volume = dailyVolume(perDay.flat());
 
@@ -87,28 +87,20 @@ export async function meterMetrics(
   startMs: number,
   endMs: number,
 ): Promise<MetricSeries[]> {
-  const prices = await listV1(
-    (paging) =>
-      api.get("/v1/prices", { query: { limit: 100, active: true, type: "recurring", ...paging } }),
-    10,
-  );
+  const prices = await api.getAll("/v1/prices", "data", {
+    query: { active: true, type: "recurring" },
+    maxPages: 10,
+    partial: true,
+  });
   const meterPrices = prices.filter((p) => p.recurring?.meter === meterId && p.id);
   const customers = new Map<string, string>();
   for (const price of meterPrices) {
     if (customers.size >= MAX_METER_CUSTOMERS) break;
-    const subs = await listV1(
-      (paging) =>
-        api.get("/v1/subscriptions", {
-          query: {
-            limit: 100,
-            price: String(price.id),
-            status: "active",
-            "expand[]": "data.customer",
-            ...paging,
-          },
-        }),
-      1,
-    );
+    const subs = await api.getAll("/v1/subscriptions", "data", {
+      query: { price: String(price.id), status: "active", "expand[]": "data.customer" },
+      maxPages: 1,
+      partial: true,
+    });
     for (const sub of subs) {
       const c = sub.customer;
       const id = typeof c === "string" ? c : (c?.id ?? "");
@@ -128,20 +120,18 @@ export async function meterMetrics(
   const start = Math.floor(startMs / unit) * unit;
   const end = Math.ceil(Math.min(endMs, Date.now()) / unit) * unit;
   const results = await mapLimit([...customers.entries()], 4, async ([id, label]) => {
-    const summaries = await listV1(
-      (paging) =>
-        api.get(`/v1/billing/meters/${pathEncode(meterId)}/event_summaries`, {
-          query: {
-            limit: 100,
-            customer: id,
-            start_time: Math.floor(start / 1000),
-            end_time: Math.floor(end / 1000),
-            value_grouping_window: hourly ? "hour" : "day",
-            ...paging,
-          },
-        }),
-      5,
-    ).catch(() => []);
+    const summaries = await api
+      .getAll(`/v1/billing/meters/${pathEncode(meterId)}/event_summaries`, "data", {
+        query: {
+          customer: id,
+          start_time: Math.floor(start / 1000),
+          end_time: Math.floor(end / 1000),
+          value_grouping_window: hourly ? "hour" : "day",
+        },
+        maxPages: 5,
+        partial: true,
+      })
+      .catch(() => []);
     return {
       label,
       points: summaries

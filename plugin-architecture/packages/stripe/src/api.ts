@@ -1,7 +1,8 @@
 import {
   createApiClient,
-  restRequest,
-  type ApiClient,
+  withCursorPagination,
+  withLinkPagination,
+  type CursorApiClient,
   type HttpHostServices,
   type ParamValue,
 } from "@infrawrench/plugin-base";
@@ -163,15 +164,40 @@ function stripeHeaders(ctx: StripeContext): Record<string, string> {
   };
 }
 
-export type StripeApi = ApiClient<paths>;
+/** The most `limit` takes on a v1 list; v2 documents no maximum and keeps this size. */
+const PAGE_SIZE = 100;
+
+/**
+ * 50,000 rows, and past that a list throws rather than let a sync prune the rest.
+ * A read where part of a list is fine asks for less with `partial: true`.
+ */
+const MAX_LIST_PAGES = 500;
+
+export type StripeApi = CursorApiClient<
+  paths,
+  {
+    cursorParam: "starting_after";
+    sizeParam: "limit";
+    next: { readonly lastItem: "id" };
+    hasMore: "has_more";
+  }
+> & {
+  getAllV2: CursorApiClient<
+    paths,
+    { cursorParam: never; sizeParam: "limit"; next: "next_page_url"; hasMore: never }
+  >["getAll"];
+};
 
 /**
  * Both API generations, from one document: it says form for v1 bodies and JSON
  * for v2 ones. Routed through the host HTTP service whenever there is one: that
  * is the only path that honours bastion egress and a custom CA.
+ *
+ * `getAll` walks a v1 list by `has_more` and the last row's id, `getAllV2` a v2 list
+ * by `next_page_url`.
  */
 export function stripeApi(ctx: StripeContext): StripeApi {
-  return createApiClient<paths>({
+  const api = createApiClient<paths>({
     vendor: "Stripe",
     baseUrl: API_BASE,
     headers: stripeHeaders(ctx),
@@ -183,78 +209,24 @@ export function stripeApi(ctx: StripeContext): StripeApi {
     serializeForm: encodeForm,
     httpError: ({ status, path, body }) => stripeError(status, path, body),
   });
-}
-
-interface V1List<T> {
-  data?: T[];
-  has_more?: boolean;
-}
-
-/**
- * Every page of a v1 list, up to `maxPages` × 100 objects, so a huge account
- * cannot turn one listing into thousands of requests. `fetchPage` makes the
- * request, spreading `paging` last in its query.
- *
- * A loop rather than `withCursorPagination`, for two things that helper does
- * differently. This has always sent `limit`, the caller's query, then
- * `starting_after`, and the helper puts the query at one end. And it reads a
- * `data` that is not an array as the end of the list, where this throws, so a
- * sync fails rather than prunes everything it stopped seeing.
- */
-export async function listV1<T extends { id?: string }>(
-  fetchPage: (paging: { starting_after?: string }) => Promise<V1List<T> | undefined>,
-  maxPages = 10,
-): Promise<T[]> {
-  const out: T[] = [];
-  let startingAfter: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await fetchPage(startingAfter ? { starting_after: startingAfter } : {});
-    const data = res?.data ?? [];
-    out.push(...data);
-    const last = data[data.length - 1]?.id;
-    if (!res?.has_more || !last) break;
-    startingAfter = last;
-  }
-  return out;
-}
-
-interface V2List<T> {
-  data?: T[];
-  next_page_url?: string | null;
-}
-
-/**
- * Every page of a v2 list by following `next_page_url`, up to `maxPages`.
- * `firstPage` makes the first request; each one after is the link as written,
- * prefixed with the host unless it starts with `http`, wherever that leads.
- * A link is no route of the document, hence `restRequest` for those.
- */
-export async function listV2<T>(
-  ctx: StripeContext,
-  firstPage: () => Promise<V2List<T> | undefined>,
-  maxPages = 10,
-): Promise<T[]> {
-  const first = await firstPage();
-  const out: T[] = [];
-  out.push(...(first?.data ?? []));
-  let next = first?.next_page_url ?? null;
-  for (let page = 1; page < maxPages && next; page++) {
-    const url: string = next.startsWith("http") ? next : `${API_BASE}${next}`;
-    const { body: res } = await restRequest<V2List<T> | undefined>({
-      vendor: "Stripe",
-      url,
-      headers: stripeHeaders(ctx),
-      init: { method: "GET" },
-      ...(ctx.http ? { http: ctx.http } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      contentType: "with-body",
-      emptyBodyIsUndefined: true,
-      httpError: ({ status, body }) => stripeError(status, new URL(url).pathname, body),
-    });
-    out.push(...(res?.data ?? []));
-    next = res?.next_page_url ?? null;
-  }
-  return out;
+  const v1 = withCursorPagination(api, {
+    cursorParam: "starting_after",
+    sizeParam: "limit",
+    pageSize: PAGE_SIZE,
+    next: { lastItem: "id" },
+    hasMore: "has_more",
+    maxPages: MAX_LIST_PAGES,
+  });
+  const v2 = withLinkPagination(api, {
+    sizeParam: "limit",
+    pageSize: PAGE_SIZE,
+    next: "next_page_url",
+    maxPages: MAX_LIST_PAGES,
+    // Stripe's API v2 overview: `next_page_url` is null when there are no more pages,
+    // so only that ends a list, not an empty page.
+    continueOnEmptyPage: true,
+  });
+  return { ...v1, getAllV2: v2.getAll };
 }
 
 /** `sk_live_…` / `rk_live_…` → live; anything else (test, sandbox) → test. */
