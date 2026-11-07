@@ -27,6 +27,7 @@ import {
   externalIdOf,
   pathEncode,
   requireListPage,
+  rethrowIncompleteList,
   unencodedSegment,
 } from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
@@ -83,6 +84,7 @@ import {
 import type { CostCenter, CostCenterMembers, SummaryItem, TaggedUsageItem } from "./usage.js";
 import {
   addCostCenterMembers,
+  billedCostCenters,
   costCenterEnterprise,
   createCostCenter,
   currentYearMonth,
@@ -196,7 +198,7 @@ export class GitHubClient implements PluginClient {
 
   private monthItems(): Promise<TaggedUsageItem[]> {
     return this.cached("items", async () =>
-      fetchMonthItems(this.ctx, currentYearMonth(), await this.costCenters().catch(() => [])),
+      fetchMonthItems(this.ctx, currentYearMonth(), await billedCostCenters(this.costCenters())),
     );
   }
 
@@ -489,8 +491,14 @@ export class GitHubClient implements PluginClient {
   private async listBudgets(accountId: string): Promise<ResourceInstance[]> {
     const [budgets, items, centers] = await Promise.all([
       this.fetchBudgets(),
-      this.monthItems().catch(() => undefined),
-      this.costCenters().catch((): CostCenter[] => []),
+      this.monthItems().catch((err) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      }),
+      this.costCenters().catch((err): CostCenter[] => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
     ]);
     return budgets
       .filter((b) => b.id)
@@ -507,7 +515,10 @@ export class GitHubClient implements PluginClient {
   private async listCostCenters(accountId: string): Promise<ResourceInstance[]> {
     const [centers, items] = await Promise.all([
       this.costCenters(),
-      this.monthItems().catch(() => undefined),
+      this.monthItems().catch((err) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      }),
     ]);
     return centers.map((c) => {
       const spend = items

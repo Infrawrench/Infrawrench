@@ -24,7 +24,7 @@ import { pathEncode } from "@infrawrench/plugin-base";
 import type { operations as DotcomOps } from "./api-types.dotcom.gen.js";
 import type { operations as GhecOps } from "./api-types.ghec.gen.js";
 import type { GitHubContext, Sparse } from "./api.js";
-import { billingBase, byOwner, ghecApi, listOrNothing } from "./api.js";
+import { billingBase, byOwner, ghecApi, listOrNothing, statusOf } from "./api.js";
 
 type Row<Answer> = Answer extends { usageItems?: readonly (infer Item)[] } ? Item : never;
 
@@ -153,6 +153,19 @@ export async function fetchCostCenters(ctx: GitHubContext): Promise<CostCenter[]
 }
 
 /**
+ * The cost centres a bill is split over. Usage under one is only read by asking for
+ * that one, so a failed read must not pass for having none: only a 404 can mean that.
+ */
+export async function billedCostCenters(load: Promise<CostCenter[]>): Promise<CostCenter[]> {
+  try {
+    return await load;
+  } catch (err) {
+    if (statusOf(err) === 404) return [];
+    throw err;
+  }
+}
+
+/**
  * The enterprise whose cost centres these are. Neither of GitHub's documents has a
  * cost centre route for an organization, so a write there is refused rather than sent.
  */
@@ -243,7 +256,7 @@ export async function fetchMonthItems(
 ): Promise<TaggedUsageItem[]> {
   const base = await fetchUsageItems(ctx, ym);
   if (ctx.owner.kind !== "enterprise") return base;
-  const centers = costCenters ?? (await fetchCostCenters(ctx).catch(() => []));
+  const centers = costCenters ?? (await billedCostCenters(fetchCostCenters(ctx)));
   const out: TaggedUsageItem[] = [...base];
   for (const c of centers) {
     const items = await fetchUsageItems(ctx, ym, c.id);

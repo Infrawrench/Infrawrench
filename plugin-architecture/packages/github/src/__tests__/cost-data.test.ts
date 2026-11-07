@@ -173,6 +173,41 @@ describe("fetchGitHubCostData", () => {
     ]);
   });
 
+  describe("when the cost centres cannot be read", () => {
+    const withCentres = (reply: { status?: number; body: unknown }) =>
+      makeHttp((url) =>
+        url.pathname.endsWith("/cost-centers")
+          ? reply
+          : {
+              body: {
+                usageItems: [
+                  { date: "2026-09-10", product: "actions", sku: "actions_linux", grossAmount: 1 },
+                ],
+              },
+            },
+      );
+
+    it("throws, since usage under a centre is only read by asking for that centre", async () => {
+      const { http } = withCentres({ status: 500, body: { message: "boom" } });
+      await expect(fetchGitHubCostData(ctxWith(http, "enterprise:big"), range)).rejects.toThrow(
+        "500",
+      );
+    });
+
+    it("throws on an answer with its key renamed", async () => {
+      const { http } = withCentres({ body: { items: [] } });
+      await expect(fetchGitHubCostData(ctxWith(http, "enterprise:big"), range)).rejects.toThrow(
+        "is not a list",
+      );
+    });
+
+    it("reads a 404 as an enterprise with none", async () => {
+      const { http } = withCentres({ status: 404, body: { message: "Not Found" } });
+      const rows = await fetchGitHubCostData(ctxWith(http, "enterprise:big"), range);
+      expect(rows.map((r) => r.amount)).toEqual([1]);
+    });
+  });
+
   it("throws on a usage answer with its key renamed, rather than read an empty bill", async () => {
     const { http } = makeHttp(() => ({ body: { items: [] } }));
     await expect(fetchGitHubCostData(ctxWith(http), range)).rejects.toThrow("is not a list");

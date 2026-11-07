@@ -21,7 +21,13 @@ import type { GitHubContext } from "./api.js";
 import { statusOf } from "./api.js";
 import { normalizeId, productLabel } from "./products.js";
 import type { TaggedUsageItem } from "./usage.js";
-import { fetchCostCenters, fetchMonthItems, isoDay, monthsBetween } from "./usage.js";
+import {
+  billedCostCenters,
+  fetchCostCenters,
+  fetchMonthItems,
+  isoDay,
+  monthsBetween,
+} from "./usage.js";
 
 const CURRENCY = "USD";
 
@@ -146,7 +152,7 @@ export async function fetchGitHubCostData(
 ): Promise<CostRow[]> {
   try {
     const centers =
-      ctx.owner.kind === "enterprise" ? await fetchCostCenters(ctx).catch(() => []) : [];
+      ctx.owner.kind === "enterprise" ? await billedCostCenters(fetchCostCenters(ctx)) : [];
     const rows: CostRow[] = [];
     const months = monthsBetween(range.fromDate, range.toDate);
     // Newest first, so a refusal is judged on the month that must exist.

@@ -568,6 +568,40 @@ describe("budgets", () => {
     ).toThrow(/AI credits or premium requests/);
   });
 
+  it("leaves a budget's spend unknown when the cost centres cannot be read", async () => {
+    const { c } = client((url) => {
+      if (url.pathname.endsWith("/cost-centers")) return { status: 500, body: {} };
+      if (url.pathname.endsWith("/budgets")) {
+        return {
+          body: {
+            budgets: [
+              {
+                id: "b1",
+                budget_type: "ProductPricing",
+                budget_product_sku: "actions",
+                budget_scope: "enterprise",
+                budget_amount: 80,
+              },
+            ],
+          },
+        };
+      }
+      return {
+        body: { usageItems: [{ product: "actions", sku: "actions_linux", netAmount: 5 }] },
+      };
+    }, "enterprise:big");
+    const [budget] = await c.listResources("budget", "acc");
+    expect(budget!.fields["spentThisMonth"]).toBeUndefined();
+  });
+
+  it("fails the list when a read its spend comes from is not a list", async () => {
+    const { c } = client((url) => {
+      if (url.pathname.endsWith("/budgets")) return { body: { budgets: [{ id: "b1" }] } };
+      return { body: { items: [] } };
+    }, "enterprise:big");
+    await expect(c.listResources("budget", "acc")).rejects.toThrow("is not a list");
+  });
+
   describe("scoped to a cost centre", () => {
     const CENTER = "2f3a7c10-6d0b-4c11-9a55-0f4f0b8f1e77";
     const route = (url: URL, method: string) => {
