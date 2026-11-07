@@ -114,4 +114,53 @@ describe("Oracle Cloud lists that cannot be read whole", () => {
       .map((c) => c.url.searchParams.get("compartmentId"));
     expect(listed.sort()).toEqual([OTHER, PROD, TENANCY].sort());
   });
+
+  it("does not read a failed attachment list as every volume unattached", async () => {
+    const { client } = makeClient((url) => {
+      if (url.pathname === "/20160918/volumes") {
+        return {
+          body: [
+            {
+              id: "ocid1.volume.oc1.iad.vol",
+              displayName: "data",
+              compartmentId: TENANCY,
+              availabilityDomain: "Uocm:US-ASHBURN-AD-1",
+              lifecycleState: "AVAILABLE",
+            },
+          ],
+        };
+      }
+      if (url.pathname === "/20160918/volumeAttachments") {
+        return { status: 502, body: { code: "BadGateway", message: "upstream" } };
+      }
+      return identityRoute(url);
+    });
+    await expect(client.listResources("block-volume", "acct")).rejects.toThrow("502");
+  });
+
+  it("passes a truncated attachment list through the lister's catch", async () => {
+    const { client } = makeClient((url) => {
+      if (url.pathname === "/20160918/volumes") {
+        return {
+          body: [
+            {
+              id: "ocid1.volume.oc1.iad.vol",
+              displayName: "data",
+              compartmentId: TENANCY,
+              availabilityDomain: "Uocm:US-ASHBURN-AD-1",
+              lifecycleState: "AVAILABLE",
+            },
+          ],
+        };
+      }
+      if (url.pathname === "/20160918/volumeAttachments") {
+        const page = Number(url.searchParams.get("page") ?? "0");
+        return { body: [], headers: { "opc-next-page": String(page + 1) } };
+      }
+      return identityRoute(url);
+    });
+    await expect(client.listResources("block-volume", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
 });

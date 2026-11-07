@@ -1,4 +1,4 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { rethrowIncompleteList, type ResourceInstance } from "@infrawrench/plugin-base";
 import { isAuthorizationGap, type OciApi } from "./api.js";
 import { mapLimit, type OciInventory, type Scope, type SearchType } from "./inventory.js";
 
@@ -63,6 +63,18 @@ async function perScope<T>(
     }
   });
   return results.flat();
+}
+
+/**
+ * For a list read only to annotate rows (attachments, health): a refusal
+ * reads as none, anything else fails the type. Reading a failed attachment
+ * list as empty would mark every volume unattached, and those are orphan
+ * findings.
+ */
+function noneIfRefused<T>(err: unknown): T[] {
+  rethrowIncompleteList(err);
+  if (isAuthorizationGap(err)) return [];
+  throw err;
 }
 
 async function compartmentNames(ctx: ListContext): Promise<Map<string, string>> {
@@ -283,7 +295,7 @@ async function instanceExtras(
       path: "/20160918/vnicAttachments",
       query: { compartmentId: scope.compartmentId, limit: 1000 },
     })
-    .catch(() => [] as OciVnicAttachment[]);
+    .catch(noneIfRefused<OciVnicAttachment>);
   const primary = new Map<string, OciVnicAttachment>();
   for (const a of attachments) {
     if (a.lifecycleState !== "ATTACHED") continue;
@@ -310,7 +322,7 @@ async function instanceExtras(
         path: "/20160918/bootVolumeAttachments",
         query: { availabilityDomain: ad, compartmentId: scope.compartmentId, limit: 1000 },
       })
-      .catch(() => []);
+      .catch(noneIfRefused<{ instanceId: string; bootVolumeId: string; lifecycleState: string }>);
     for (const r of rows)
       if (r.lifecycleState === "ATTACHED") boot.set(r.instanceId, r.bootVolumeId);
   });
@@ -414,7 +426,7 @@ export async function listBlockVolumes(ctx: ListContext): Promise<ResourceInstan
           path: "/20160918/volumeAttachments",
           query: { compartmentId: scope.compartmentId, limit: 1000 },
         })
-        .catch(() => []),
+        .catch(noneIfRefused<{ instanceId: string; volumeId: string; lifecycleState: string }>),
     ]);
     const attached = new Map<string, string[]>();
     for (const a of attachments) {
@@ -479,7 +491,9 @@ export async function listBootVolumes(ctx: ListContext): Promise<ResourceInstanc
             path: "/20160918/bootVolumeAttachments",
             query: { availabilityDomain: ad, compartmentId: scope.compartmentId, limit: 1000 },
           })
-          .catch(() => []),
+          .catch(
+            noneIfRefused<{ instanceId: string; bootVolumeId: string; lifecycleState: string }>,
+          ),
       ]);
       const attached = new Map<string, string>();
       for (const a of attachments) {
@@ -793,7 +807,7 @@ export async function listLoadBalancers(ctx: ListContext): Promise<ResourceInsta
           path: "/20170115/loadBalancerHealths",
           query: { compartmentId: scope.compartmentId, limit: 1000 },
         })
-        .catch(() => []),
+        .catch(noneIfRefused<{ loadBalancerId: string; status: string }>),
     ]);
     const health = new Map(healths.map((h) => [h.loadBalancerId, h.status]));
     return lbs
