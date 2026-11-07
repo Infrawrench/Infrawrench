@@ -1,4 +1,12 @@
-import type { HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  type ApiAnswer,
+  type ApiClient,
+  type HostServices,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type { components, paths } from "./api-types.gen.js";
 import { apiError, sendRaw } from "./http.js";
 import type { RawResponse } from "./http.js";
 
@@ -18,7 +26,13 @@ import type { RawResponse } from "./http.js";
  *
  * Everything is WebCrypto (`crypto.subtle`), so it runs in the renderer, the
  * Node host and Workers without a dependency.
+ *
+ * Requests are typed from Okta's OpenAPI document (`plugingen.json`). Each one is
+ * authenticated, and under DPoP signed, in {@link OktaApi.transport}, which is what
+ * the client gets as its `http`.
  */
+
+export type Schemas = components["schemas"];
 
 export interface OktaCredentials {
   orgUrl: string;
@@ -88,7 +102,7 @@ function b64url(bytes: Uint8Array | ArrayBuffer): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function b64urlJson(value: unknown): string {
+function b64urlJson(value: object): string {
   return b64url(new TextEncoder().encode(JSON.stringify(value)));
 }
 
@@ -121,7 +135,7 @@ function pemBody(pem: string): Uint8Array<ArrayBuffer> {
 export async function importSigningKey(material: string): Promise<SigningKey> {
   const text = material.trim();
   if (text.startsWith("{")) {
-    const jwk = JSON.parse(text) as JsonWebKey & { kid?: string };
+    const jwk: JsonWebKey & { kid?: string } = JSON.parse(text);
     if (jwk.kty === "RSA") {
       return { key: await crypto.subtle.importKey("jwk", jwk, RSA, false, ["sign"]), alg: "RS256" };
     }
@@ -150,11 +164,7 @@ export async function importSigningKey(material: string): Promise<SigningKey> {
   }
 }
 
-async function signJwt(
-  signer: SigningKey,
-  header: Record<string, unknown>,
-  claims: Record<string, unknown>,
-): Promise<string> {
+async function signJwt(signer: SigningKey, header: object, claims: object): Promise<string> {
   const input = `${b64urlJson({ ...header, alg: signer.alg })}.${b64urlJson(claims)}`;
   const params = signer.alg === "ES256" ? { name: "ECDSA", hash: "SHA-256" } : RSA;
   const sig = await crypto.subtle.sign(params, signer.key, new TextEncoder().encode(input));
@@ -165,8 +175,8 @@ async function signJwt(
 function kidFromJwk(material: string): string {
   if (!material.trim().startsWith("{")) return "";
   try {
-    const kid = (JSON.parse(material) as { kid?: unknown }).kid;
-    return typeof kid === "string" ? kid : "";
+    const parsed: { kid?: string | number | boolean | null } = JSON.parse(material);
+    return typeof parsed.kid === "string" ? parsed.kid : "";
   } catch {
     return "";
   }
@@ -176,19 +186,6 @@ function kidFromJwk(material: string): string {
 // Client
 // ---------------------------------------------------------------------------
 
-export type Query = Record<string, string | number | boolean | undefined>;
-
-export interface RequestOptions {
-  method?: string;
-  query?: Query;
-  body?: unknown;
-}
-
-export interface OktaResponse<T> {
-  data: T;
-  headers: Record<string, string>;
-}
-
 /** Latest X-Rate-Limit-* reading per API path family, captured from responses. */
 export interface RateLimitReading {
   bucket: string;
@@ -197,19 +194,69 @@ export interface RateLimitReading {
   resetAt: number;
 }
 
+/** What a DPoP proof carries in its header. Absent members are dropped by `JSON.stringify`. */
+interface PublicJwk {
+  kty: string | undefined;
+  crv: string | undefined;
+  x: string | undefined;
+  y: string | undefined;
+}
+
+interface DpopClaims {
+  htm: string;
+  htu: string | undefined;
+  iat: number;
+  jti: string;
+  nonce?: string;
+  ath?: string;
+}
+
+/** What `POST /oauth2/v1/token` answers, success or failure. */
+interface TokenReply {
+  access_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
+}
+
+function parseTokenReply(text: string): TokenReply {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+const JSON_ACCEPT = { Accept: "application/json" };
+
 export class OktaApi {
   private signer: Promise<SigningKey> | null = null;
-  private dpop: Promise<{ key: CryptoKeyPair; jwk: JsonWebKey }> | null = null;
+  private dpop: Promise<{ key: CryptoKeyPair; jwk: PublicJwk }> | null = null;
   private token: { value: string; type: string; expiresAt: number } | null = null;
   private tokenPromise: Promise<{ value: string; type: string; expiresAt: number }> | null = null;
   private dpopNonce = "";
   private useDpop = false;
   readonly rateLimits = new Map<string, RateLimitReading>();
+  /** Every operation in `plugingen.json`. */
+  readonly rest: ApiClient<paths>;
+  /** Always there, since {@link transport} falls back to `fetch` where there is no host. */
+  private readonly http: HttpHostServices = { request: (req) => this.transport(req) };
 
   constructor(
     readonly creds: OktaCredentials,
     private readonly services: HostServices | undefined,
-  ) {}
+  ) {
+    this.rest = createApiClient<paths>({
+      vendor: "Okta",
+      baseUrl: creds.orgUrl,
+      headers: JSON_ACCEPT,
+      http: this.http,
+      contentType: "with-body",
+      emptyBodyIsUndefined: true,
+      httpError: ({ status, url, body }) => apiError(status, new URL(url).pathname, body),
+    });
+  }
 
   get orgUrl(): string {
     return this.creds.orgUrl;
@@ -221,9 +268,10 @@ export class OktaApi {
 
   private async dpopKey() {
     this.dpop ??= (async () => {
-      const key = (await crypto.subtle.generateKey(EC, true, ["sign", "verify"])) as CryptoKeyPair;
+      const key = await crypto.subtle.generateKey(EC, true, ["sign", "verify"]);
       const full = await crypto.subtle.exportKey("jwk", key.publicKey);
-      return { key, jwk: { kty: full.kty, crv: full.crv, x: full.x, y: full.y } as JsonWebKey };
+      const jwk: PublicJwk = { kty: full.kty, crv: full.crv, x: full.x, y: full.y };
+      return { key, jwk };
     })();
     return this.dpop;
   }
@@ -231,16 +279,16 @@ export class OktaApi {
   private async dpopProof(method: string, url: string, accessToken?: string): Promise<string> {
     const { key, jwk } = await this.dpopKey();
     const htu = url.split(/[?#]/)[0];
-    const claims: Record<string, unknown> = {
+    const claims: DpopClaims = {
       htm: method,
       htu,
       iat: Math.floor(Date.now() / 1000),
       jti: randomId(),
     };
-    if (this.dpopNonce) claims["nonce"] = this.dpopNonce;
+    if (this.dpopNonce) claims.nonce = this.dpopNonce;
     if (accessToken) {
       const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(accessToken));
-      claims["ath"] = b64url(hash);
+      claims.ath = b64url(hash);
     }
     return signJwt({ key: key.privateKey, alg: "ES256" }, { typ: "dpop+jwt", jwk }, claims);
   }
@@ -283,13 +331,7 @@ export class OktaApi {
         this.services,
         this.creds.caCert,
       );
-      const body = safeJson(res.body) as {
-        access_token?: string;
-        token_type?: string;
-        expires_in?: number;
-        error?: string;
-        error_description?: string;
-      };
+      const body = parseTokenReply(res.body);
       if (res.status === 200 && body.access_token) {
         return {
           value: body.access_token,
@@ -351,13 +393,15 @@ export class OktaApi {
     });
   }
 
-  /** Issue one request, returning parsed JSON and the response headers. */
-  async call<T>(path: string, options: RequestOptions = {}): Promise<OktaResponse<T>> {
-    const url = path.startsWith("http")
-      ? path
-      : `${this.creds.orgUrl}${path}${buildQuery(options.query)}`;
-    const method = options.method ?? "GET";
-    const body = options.body === undefined ? undefined : JSON.stringify(options.body);
+  /**
+   * The whole of `HttpHostServices` as the client sees it: auth on every attempt, a
+   * fresh DPoP proof over the URL, a retry on 401 under OAuth (a new nonce, or a new
+   * token), and the rate limit each answer reports.
+   */
+  private async transport(req: Parameters<HttpHostServices["request"]>[0]): Promise<RawResponse> {
+    const { url, method } = req;
+    // The client only ever sends JSON text.
+    const body = typeof req.body === "string" ? { body: req.body } : {};
     let res: RawResponse | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       const auth = await this.authHeaders(
@@ -366,16 +410,7 @@ export class OktaApi {
         attempt > 0 && res?.status === 401 && !res.headers["dpop-nonce"],
       );
       res = await sendRaw(
-        {
-          url,
-          method,
-          headers: {
-            ...auth,
-            Accept: "application/json",
-            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-          },
-          ...(body !== undefined ? { body } : {}),
-        },
+        { url, method, headers: { ...auth, ...req.headers }, ...body },
         this.services,
         this.creds.caCert,
       );
@@ -388,28 +423,52 @@ export class OktaApi {
       }
       break;
     }
-    if (!res) throw apiError(500, path, "no response");
-    if (res.status < 200 || res.status >= 300)
-      throw apiError(res.status, new URL(url).pathname, res.body);
-    return { data: (res.body ? JSON.parse(res.body) : undefined) as T, headers: res.headers };
+    if (!res) throw apiError(500, new URL(url).pathname, "no response");
+    return res;
   }
 
-  async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    return (await this.call<T>(path, options)).data;
-  }
-
-  /** Follow `Link: <…>; rel="next"` until exhausted or `maxPages`. */
-  async paginate<T>(path: string, query: Query = {}, maxPages = 25): Promise<T[]> {
-    const out: T[] = [];
-    let next: string | null = `${this.creds.orgUrl}${path}${buildQuery(query)}`;
-    for (let page = 0; next && page < maxPages; page++) {
-      const res: OktaResponse<T[]> = await this.call<T[]>(next);
-      out.push(...(res.data ?? []));
-      next = nextLink(res.headers["link"]);
+  /**
+   * Read a list by following `Link: <…>; rel="next"` from its first page, which is what
+   * types the rest. This is by hand rather than `withLinkPagination` because `getAll`
+   * reads a body that is not an array as an empty page, and the host prunes whatever a
+   * sync stops seeing; spreading it throws. Links go wherever they say, token included
+   * (#386), and are read by {@link nextLink}, which splits on commas (#387).
+   */
+  private async walk<Item>(
+    first: Promise<ApiAnswer<readonly Item[]>>,
+    maxPages: number,
+    atCap: (path: string, items: number) => void,
+  ): Promise<Item[]> {
+    const out: Item[] = [];
+    const firstPage = await first;
+    let page: Pick<ApiAnswer<readonly Item[]>, "body" | "headers"> = firstPage;
+    for (let pages = 1; ; pages++) {
+      out.push(...(page.body ?? []));
+      const next = nextLink(page.headers["link"]);
+      if (!next) return out;
+      if (pages >= maxPages) {
+        // The path as the call wrote it: the base URL has no path of its own.
+        atCap(firstPage.url.slice(this.creds.orgUrl.length).split("?")[0] ?? "", out.length);
+        return out;
+      }
+      const url = next.startsWith("http") ? next : `${this.creds.orgUrl}${next}`;
+      page = await restRequest<readonly Item[]>({
+        vendor: "Okta",
+        url,
+        headers: JSON_ACCEPT,
+        http: this.http,
+        contentType: "with-body",
+        emptyBodyIsUndefined: true,
+        httpError: ({ status, body }) => apiError(status, new URL(url).pathname, body),
+      });
     }
-    if (next)
-      console.warn(`Okta plugin: ${path} truncated at ${maxPages} pages (${out.length} items)`);
-    return out;
+  }
+
+  /** Follow the list until exhausted or `maxPages`. A list cut short says so in the log. */
+  paginate<Item>(first: Promise<ApiAnswer<readonly Item[]>>, maxPages = 25): Promise<Item[]> {
+    return this.walk(first, maxPages, (path, items) => {
+      console.warn(`Okta plugin: ${path} truncated at ${maxPages} pages (${items} items)`);
+    });
   }
 
   /**
@@ -417,27 +476,12 @@ export class OktaApi {
    * so does running past `maxPages`, because a reader that stores the result
    * as the complete set (the seat inventory) must never see a truncated list.
    */
-  async paginateAll<T>(path: string, query: Query = {}, maxPages = 1000): Promise<T[]> {
-    const out: T[] = [];
-    let next: string | null = `${this.creds.orgUrl}${path}${buildQuery(query)}`;
-    for (let page = 0; next; page++) {
-      if (page >= maxPages)
-        throw new Error(
-          `Okta plugin: ${path} has more than ${maxPages} pages; refusing to return a partial list`,
-        );
-      const res: OktaResponse<T[]> = await this.call<T[]>(next);
-      out.push(...(res.data ?? []));
-      next = nextLink(res.headers["link"]);
-    }
-    return out;
-  }
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {};
+  paginateAll<Item>(first: Promise<ApiAnswer<readonly Item[]>>, maxPages = 1000): Promise<Item[]> {
+    return this.walk(first, maxPages, (path) => {
+      throw new Error(
+        `Okta plugin: ${path} has more than ${maxPages} pages; refusing to return a partial list`,
+      );
+    });
   }
 }
 
@@ -459,15 +503,4 @@ export function rateLimitBucket(pathname: string): string {
   const shaped = [...base, ...(rest.length > 0 ? ["{id}"] : [])];
   if (rest.length > 1) shaped.push("*");
   return `/${shaped.join("/")}`;
-}
-
-export function buildQuery(query: Query | undefined): string {
-  if (!query) return "";
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === "") continue;
-    params.set(key, String(value));
-  }
-  const text = params.toString();
-  return text ? `?${text}` : "";
 }

@@ -57,17 +57,22 @@ function lowerKeys(headers: Record<string, string> | undefined): Record<string, 
   return out;
 }
 
+/** What a failed call says about itself, read defensively because any of it may be missing. */
+interface OktaErrorBody {
+  errorSummary?: JsonScalar;
+  errorCode?: JsonScalar;
+  errorCauses?: Array<{ errorSummary?: JsonScalar }>;
+  error?: JsonScalar;
+  error_description?: JsonScalar;
+}
+
+type JsonScalar = string | number | boolean | null;
+
 /** An API error carrying the HTTP status, which the poller classifies on. */
 export function apiError(status: number, path: string, body: string): Error {
   let detail = body.slice(0, 500);
   try {
-    const parsed = JSON.parse(body) as {
-      errorSummary?: unknown;
-      errorCode?: unknown;
-      errorCauses?: Array<{ errorSummary?: unknown }>;
-      error?: unknown;
-      error_description?: unknown;
-    };
+    const parsed: OktaErrorBody = JSON.parse(body);
     const summary = typeof parsed.errorSummary === "string" ? parsed.errorSummary : "";
     const causes = (parsed.errorCauses ?? [])
       .map((c) => (typeof c.errorSummary === "string" ? c.errorSummary : ""))

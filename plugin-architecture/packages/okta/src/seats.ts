@@ -1,5 +1,5 @@
 import type { SeatPrice, SeatRecord } from "@infrawrench/plugin-base";
-import type { OktaUser } from "./types.js";
+import type { Schemas } from "./api.js";
 
 export const SEAT_PRODUCT = "Okta";
 
@@ -46,16 +46,20 @@ export function oktaSeatPrice(configured: string | undefined): SeatPrice {
   };
 }
 
-function text(value: unknown): string {
+function text(value: string | null | undefined): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
 /** One licensed Okta user as a seat; null for a user that holds no licence. */
-export function mapOktaSeat(user: OktaUser, orgUrl: string, price: SeatPrice): SeatRecord | null {
+export function mapOktaSeat(
+  user: Schemas["User"],
+  orgUrl: string,
+  price: SeatPrice,
+): SeatRecord | null {
   const id = text(user.id);
   const status = text(user.status).toUpperCase();
   if (!id || !LICENSED_STATUSES.has(status)) return null;
-  const p = user.profile ?? {};
+  const p: Schemas["UserProfile"] = user.profile ?? {};
   const name =
     text(p.displayName) || [text(p.firstName), text(p.lastName)].filter(Boolean).join(" ");
   const email = text(p.email).toLowerCase();
