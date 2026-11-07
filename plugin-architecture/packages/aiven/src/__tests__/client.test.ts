@@ -388,6 +388,20 @@ describe("reads that cannot say they have every row", () => {
       }),
     ).rejects.toThrow("is not a list");
   });
+
+  it("lists the children of a rebalancing service", async () => {
+    mockFetch({
+      ...account("REBALANCING"),
+      "GET /project/acme/service/k1/topic": { topics: [{ topic_name: "orders" }] },
+    });
+    await expect(list("aiven-kafka-topic")).resolves.toHaveLength(1);
+  });
+
+  it("still skips a powered off service", async () => {
+    const calls = mockFetch(account("POWEROFF"));
+    await expect(list("aiven-kafka-topic")).resolves.toEqual([]);
+    expect(calls.some((c) => c.url.pathname.endsWith("/topic"))).toBe(false);
+  });
 });
 
 describe("Kafka connection string", () => {

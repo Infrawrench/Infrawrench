@@ -68,6 +68,9 @@ const KAFKA_TYPES = new Set(["kafka"]);
 const CONNECT_TYPES = new Set(["kafka", "kafka_connect"]);
 const DB_TYPES = new Set(["pg", "mysql"]);
 
+/** A rebalancing service stays usable, and leaving it out would prune its children. */
+const LISTABLE_STATES = new Set<string | undefined>(["RUNNING", "REBALANCING"]);
+
 function bool(raw: string | undefined): boolean | undefined {
   if (raw === undefined || raw === "") return undefined;
   return raw === "true" || raw === "1" || raw === "yes";
@@ -221,7 +224,7 @@ export class AivenClient implements PluginClient {
 
   private servicesOf(types: Set<string>) {
     return this.services().then((all) =>
-      all.filter((s) => types.has(s.svc.service_type ?? "") && s.svc.state === "RUNNING"),
+      all.filter((s) => types.has(s.svc.service_type ?? "") && LISTABLE_STATES.has(s.svc.state)),
     );
   }
 
