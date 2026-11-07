@@ -515,6 +515,12 @@ describe("a type with no fan-out", () => {
     expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
     expect(urls.some((u) => u.includes("/instances"))).toBe(false);
   });
+
+  it("a 403 on the region list shows where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const { civo } = client((path) => (path === "/regions" ? DENIED : { body: [] }));
+    await expect(civo.listResources("instance", "acct")).rejects.toThrow("Civo API error");
+  });
 });
 
 describe("a read that only adds a field", () => {

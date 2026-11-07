@@ -115,9 +115,10 @@ export class CivoClient implements PluginClient {
         return await lister(this.ctx, accountId);
       } catch (err) {
         // A restricted key refused a whole type is normal, and failing it on every poll
-        // would page someone. Its stored rows stay, with no error.
+        // would page someone. Its stored rows stay, with no error. A host that keeps no track
+        // (the desktop) answers false, and there the refusal should still show.
         if (!isAccessRefusal(err)) throw err;
-        reportUnreadListPart({ idPrefixes: [""] });
+        if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
         return [];
       }
     });
