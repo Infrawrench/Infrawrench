@@ -28,6 +28,21 @@ function row(overrides: Partial<RetailPriceItem>): RetailPriceItem {
 }
 
 describe("azure price catalog", () => {
+  it("does not follow a retail price link to another host", async () => {
+    resetPriceCatalogCache();
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ Items: [], NextPageLink: "https://evil.example/prices" }),
+    }));
+    await expect(
+      fetchPriceCatalog({ serviceId: "virtual-machines", region: "eastus" }, {
+        http: { request },
+      } as never),
+    ).rejects.toThrow("evil.example");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   afterEach(() => resetPriceCatalogCache());
 
   it("declares a public catalog with eastus first", () => {

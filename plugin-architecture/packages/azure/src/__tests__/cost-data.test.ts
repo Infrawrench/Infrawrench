@@ -175,6 +175,67 @@ describe("fetchAzureCostData query shape", () => {
   });
 });
 
+describe("fetchAzureCostData page reads", () => {
+  const USAGE = page({
+    columns: USAGE_COLUMNS,
+    rows: [[1, 20260701, "Virtual Machines", "eastus", "USD"]],
+  });
+
+  it("does not post to a next link on another host, or fall back past it", async () => {
+    const evil = "https://evil.example/next?$skiptoken=abc";
+    const { ctx, post } = ctxFor([
+      page({ columns: USAGE_COLUMNS, rows: [], nextLink: evil }),
+      USAGE,
+      USAGE,
+    ]);
+    await expect(fetchAzureCostData(ctx, RANGE)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a query that never stops paging, and does not fall back past it", async () => {
+    let n = 0;
+    const post = vi.fn(async () => ({
+      properties: {
+        columns: [],
+        rows: [],
+        nextLink: `https://management.azure.com/next?$skiptoken=${n++}`,
+      },
+    }));
+    const { ctx } = ctxFor([]);
+    await expect(fetchAzureCostData({ ...ctx, post } as never, RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(post).toHaveBeenCalledTimes(1000);
+  });
+
+  it("does not read an amortized pass it cut short as a refusal", async () => {
+    const { ctx } = ctxFor([
+      USAGE,
+      page({ columns: USAGE_COLUMNS, rows: [], nextLink: "https://evil.example/next" }),
+    ]);
+    await expect(fetchAzureCostData(ctx, RANGE)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+  });
+
+  it("refuses rows that are not a list", async () => {
+    const { ctx } = ctxFor([{ properties: { columns: [], rows: "nope" } }]);
+    await expect(fetchAzureCostData(ctx, RANGE)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses an answer with no properties that is not the empty 204", async () => {
+    const { ctx } = ctxFor([{ error: { code: "wrapped" } }]);
+    await expect(fetchAzureCostData(ctx, RANGE)).rejects.toThrow("is not a list");
+  });
+
+  it("still reads the empty 204 as no spend", async () => {
+    const { ctx } = ctxFor([{}, {}, {}]);
+    await expect(fetchAzureCostData(ctx, RANGE)).resolves.toEqual({ rows: [] });
+  });
+});
+
 describe("fetchAzureCostData row mapping", () => {
   it("stamps usage rows with service, region and chargeType usage", async () => {
     const { ctx } = ctxFor([
@@ -701,7 +762,7 @@ describe("fetchAzureCostData unused commitment hours", () => {
     const { ctx } = ctxFor([
       ...COVERED_CELL(),
       page({ columns: ATTRIBUTION_COLUMNS, rows: [[7, 20260701, "Tax", "", "USD"]] }),
-      new Error("Azure API POST 429: Too many requests"),
+      new Error("Azure API POST 400: AmortizedCost is not supported for this subscription"),
     ]);
     const result = await fetchAzureCostData(ctx, RANGE);
 
@@ -785,6 +846,51 @@ describe("fetchAzureCostData fallback", () => {
     ]);
     const result = await fetchAzureCostData(ctx, RANGE);
     expect(result.degraded).toBeFalsy();
+  });
+
+  describe("a bad minute on an optional amortized pass", () => {
+    // Read as a refusal, these write coarser keys than the collection before them,
+    // and the host zeroes the covered and unused rows no pass rewrote: for good,
+    // once the days age past restatementDays. The degraded fallback is what stops that.
+    const LEGACY = () =>
+      page({ columns: USAGE_COLUMNS, rows: [[42, 20260701, "Virtual Machines", "eastus", "USD"]] });
+    const COVERED_CELL = () => [
+      page({ columns: USAGE_COLUMNS, rows: [[4, 20260701, "Virtual Machines", "eastus", "USD"]] }),
+      page({ columns: USAGE_COLUMNS, rows: [[10, 20260701, "Virtual Machines", "eastus", "USD"]] }),
+    ];
+
+    it.each([
+      ["a throttle", "Azure API POST 429: Too many requests"],
+      ["a 500", "Azure API POST 500: boom"],
+      ["a gateway timeout", "Azure API POST 504: timeout"],
+      ["a dropped connection", "fetch failed"],
+    ])("falls back as degraded on %s in the amortized consumption pass", async (_what, message) => {
+      const { ctx } = ctxFor([
+        page({
+          columns: USAGE_COLUMNS,
+          rows: [[12, 20260701, "Virtual Machines", "eastus", "USD"]],
+        }),
+        new Error(message),
+        // What the attribution pass reads if the failure was taken for a refusal.
+        page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
+      ]);
+      const result = await fetchAzureCostData(ctx, RANGE);
+      expect(result.degraded).toBe(true);
+    });
+
+    it.each([
+      ["a throttle", "Azure API POST 429: Too many requests"],
+      ["a 500", "Azure API POST 500: boom"],
+    ])("falls back as degraded on %s in the unused pass", async (_what, message) => {
+      const { ctx } = ctxFor([
+        ...COVERED_CELL(),
+        page({ columns: ATTRIBUTION_COLUMNS, rows: [[7, 20260701, "Tax", "", "USD"]] }),
+        new Error(message),
+        LEGACY(),
+      ]);
+      const result = await fetchAzureCostData(ctx, RANGE);
+      expect(result.degraded).toBe(true);
+    });
   });
 
   it("propagates errors that are not about the query shape", async () => {
@@ -934,6 +1040,26 @@ describe("fetchAzureCostData blended basis", () => {
     // Covered weight 30 × 3 = 90: rate 130 / 190.
     const covered = rows.find((r) => r.chargeType === "commitment_covered_usage")!;
     expect(covered.blendedAmount).toBeCloseTo(90 * (130 / 190), 9);
+    fetchSpy.mockRestore();
+  });
+
+  it("does not follow a retail price link to another host", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ Items: [], NextPageLink: "https://evil.example/prices" }), {
+        status: 200,
+      }),
+    );
+    const { ctx } = ctxFor([
+      ...basePasses(),
+      page({
+        columns: METER_COLUMNS,
+        rows: [[30, 30, 20260701, "Virtual Machines", "m-1", "USD"]],
+      }),
+      page({ columns: OD_METER_COLUMNS, rows: [] }),
+    ]);
+
+    await expect(fetchAzureCostData(ctx, RANGE)).rejects.toThrow("evil.example");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     fetchSpy.mockRestore();
   });
 

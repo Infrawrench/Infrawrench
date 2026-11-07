@@ -245,8 +245,16 @@
  * amortized rather than as a guess.
  */
 
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { azureRequest } from "./http.js";
+import {
+  followableLink,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+  rethrowIncompleteList,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import { isArmRefusal } from "./arm-list.js";
+import { azureRequest, type AzureResponse } from "./http.js";
 import {
   blendCommitmentPools,
   type BlendMember,
@@ -290,7 +298,7 @@ interface QueryColumn {
 interface QueryResponse {
   properties?: {
     columns?: QueryColumn[];
-    rows?: Array<Array<string | number>>;
+    rows?: Array<Array<string | number>> | null;
     /** Full URL (with $skiptoken) for the next page, when more rows exist. */
     nextLink?: string;
   };
@@ -403,6 +411,12 @@ function normalizeBenefitId(raw: string): string {
   return normalizeAzureCommitmentId(trimmed);
 }
 
+/**
+ * Pages of one query before refusing, at the API's 5,000 rows a page. Its rows are
+ * grouped by day, so this only ever trips on a query that does not stop paging.
+ */
+const MAX_QUERY_PAGES = 1000;
+
 /** One page-following POST loop over the query endpoint. */
 async function runQuery(
   ctx: AzureHttpContext,
@@ -431,25 +445,33 @@ async function runQuery(
     },
   };
 
-  let url: string | undefined =
+  let url =
     `${ARM}/subscriptions/${ctx.subscriptionId}` +
     `/providers/Microsoft.CostManagement/query?api-version=${COST_API_VERSION}`;
+  const place = { vendor: "Azure Cost Management", path: new URL(url).pathname };
 
-  while (url) {
+  let read = 0;
+  for (let page = 0; page < MAX_QUERY_PAGES; page++) {
     const data: QueryResponse = await ctx.post<QueryResponse>(url, body);
     const props = data.properties;
-    // 204 No Content (no spend in the window) comes back as {} from the
-    // HTTP helper: nothing to parse.
-    if (!props) break;
+    if (!props) {
+      // 204 No Content (no spend in the window) comes back as {} from the
+      // HTTP helper: nothing to parse. Anything else with no properties is not that.
+      if (Object.keys(data).length === 0) return;
+      throw new ListPageError({ ...place, key: "properties", found: props, page: data });
+    }
 
     const columns = props.columns ?? [];
-    const rows = props.rows ?? [];
+    const rows = requireListPage(props.rows, { ...place, key: "properties.rows", page: data });
+    read += rows.length;
     // Column order is not guaranteed, so indices are resolved from the
     // metadata: once per page rather than once per row.
     if (rows.length > 0) onPage(rows, indices(columns));
 
-    url = props.nextLink || undefined;
+    if (!props.nextLink) return;
+    url = followableLink(props.nextLink, url, place);
   }
+  throw new ListTruncatedError({ ...place, items: read, maxPages: MAX_QUERY_PAGES });
 }
 
 interface ColumnIndices {
@@ -719,6 +741,9 @@ export function blendAzureRows(
 }
 
 const RETAIL_PRICES_URL = "https://prices.azure.com/api/retail/prices";
+const RETAIL_PLACE = { vendor: "Azure Retail Prices", path: "/api/retail/prices" };
+/** Ten meters at 1,000 rows a page never get near this. */
+const MAX_RETAIL_PAGES = 100;
 
 /**
  * Public list price per meter for the meters the subscription never ran on
@@ -741,8 +766,11 @@ async function retailMeterPrices(
       `&$filter=${encodeURIComponent(filter)}`;
     // Lowest tier per meter: tiered meters start at tierMinimumUnits 0.
     const tier = new Map<string, number>();
-    while (url) {
-      const res = await azureRequest(http, url);
+    for (let page = 0; url; page++) {
+      if (page >= MAX_RETAIL_PAGES) {
+        throw new ListTruncatedError({ ...RETAIL_PLACE, items: tier.size, maxPages: page });
+      }
+      const res: AzureResponse = await azureRequest(http, url);
       if (!res.ok) throw new Error(`Azure retail prices ${res.status}`);
       const data = await res.json<{
         Items?: Array<{ meterId?: string; retailPrice?: number; tierMinimumUnits?: number }>;
@@ -758,7 +786,7 @@ async function retailMeterPrices(
           out.set(id, price);
         }
       }
-      url = data.NextPageLink || undefined;
+      url = data.NextPageLink ? followableLink(data.NextPageLink, url, RETAIL_PLACE) : undefined;
     }
   }
   return out;
@@ -864,12 +892,14 @@ async function blendedAmounts(
         for (const [id, price] of await retailMeterPrices(ctx.http, unpriced, currency)) {
           if (price > 0) meterPrice.set(id, price);
         }
-      } catch {
+      } catch (err) {
         // No list price: those service-days stay unblended.
+        rethrowIncompleteList(err);
       }
     }
     return blendAzureRows(rows, azureCoveredRatios(covered, meterPrice));
-  } catch {
+  } catch (err) {
+    rethrowIncompleteList(err);
     return undefined;
   }
 }
@@ -885,7 +915,9 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
   // "doesn't support viewing amortized reservation costs for a pay-as-you-go
   // subscription", and MOSA accounts have no commitment purchases at all, so a
   // refusal here is a normal state and not a failure. Losing it costs the
-  // covered/on-demand split and nothing else: the cash figures stand alone.
+  // covered/on-demand split and nothing else: the cash figures stand alone. Anything
+  // but a refusal goes to the degraded fallback, because these rows would otherwise
+  // read as every covered row having gone.
   let amortized: Map<string, ConsumptionCell> | null = new Map();
   try {
     await runQuery(
@@ -896,7 +928,8 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
       accumulateConsumption(amortized),
       "AmortizedCost",
     );
-  } catch {
+  } catch (err) {
+    if (!isArmRefusal(err)) throw err;
     amortized = null;
   }
 
@@ -1023,7 +1056,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
   // Pass 2b: committed hours nothing consumed. Amortized-only by nature, so
   // it is skipped entirely when the subscription refused that dataset above
   // (no point spending a QPU learning the same refusal twice), and its own
-  // failure is survivable for the same reason pass 1b's is: the rest of the
+  // refusal is survivable for the same reason pass 1b's is: the rest of the
   // collection is unaffected and only the wasted-commitment figure is lost.
   //
   // These land in the *same* map as pass 2 because they share a host key with
@@ -1066,8 +1099,9 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
         },
         "AmortizedCost",
       );
-    } catch {
+    } catch (err) {
       // Same posture as pass 1b: a refusal is a state, not a failure.
+      if (!isArmRefusal(err)) throw err;
     }
   }
 
@@ -1146,7 +1180,8 @@ export async function fetchAzureCostData(
 ): Promise<CostFetchResult> {
   try {
     return { rows: await fetchAttributed(ctx, range) };
-  } catch {
+  } catch (err) {
+    rethrowIncompleteList(err);
     return { rows: await fetchLegacy(ctx, range), degraded: true };
   }
 }

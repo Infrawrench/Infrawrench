@@ -11,7 +11,7 @@
  * the only one allowed to reach outward, and a rate-card lookup egressing from
  * ours would be the one call that breaks in a locked-down deployment.
  */
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { followableLink, type HttpHostServices } from "@infrawrench/plugin-base";
 import { z } from "zod";
 import { azureRequest } from "./http.js";
 
@@ -143,7 +143,12 @@ export async function fetchRetailPrices(
     if (!res.ok) throw new Error(`Azure Retail Prices ${res.status}: ${await res.text()}`);
     const body = retailPricesPageSchema.parse(await res.json());
     items.push(...(body.Items ?? []));
-    url = body.NextPageLink ?? "";
+    url = body.NextPageLink
+      ? followableLink(body.NextPageLink, url, {
+          vendor: "Azure Retail Prices",
+          path: new URL(RETAIL_PRICES_ENDPOINT).pathname,
+        })
+      : "";
   }
   return { items, truncated: url !== "" };
 }
