@@ -327,14 +327,20 @@ describe("listSQLDatabases", () => {
     expect(out[0]!.resolvedOutputs["connectionString"]).toContain("srv1.database.windows.net");
   });
 
-  it("skips servers it may not read", async () => {
+  it("lists none for servers it may not read, keeping their stored databases", async () => {
     const ctx = makeCtx((url) => {
       if (url.includes("/servers?")) {
         return { value: [{ id: "/x/resourceGroups/rg1/.../servers/srv1", name: "srv1" }] };
       }
       throw new Error("Azure API 403: AuthorizationFailed");
     });
-    expect(await listers.listSQLDatabases(ctx, ACCT)).toEqual([]);
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    Reflect.set(globalThis, hook, () => true);
+    try {
+      expect(await listers.listSQLDatabases(ctx, ACCT)).toEqual([]);
+    } finally {
+      Reflect.deleteProperty(globalThis, hook);
+    }
   });
 });
 

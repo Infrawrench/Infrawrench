@@ -105,3 +105,32 @@ describe("a principal refused a whole type", () => {
     expect(unread).not.toHaveBeenCalled();
   });
 });
+
+describe("SQL databases when one server's databases are refused", () => {
+  const server = (name: string) => ({
+    name,
+    id: `/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Sql/servers/${name}`,
+    properties: { fullyQualifiedDomainName: `${name}.database.windows.net` },
+  });
+  const client = () =>
+    clientFor((url) => {
+      if (url.pathname.endsWith("/providers/Microsoft.Sql/servers")) {
+        return answer(200, { value: [server("one"), server("two")] });
+      }
+      if (url.pathname.includes("/servers/two/")) return armDenied;
+      return answer(200, { value: [{ name: "db", properties: {} }] });
+    });
+
+  it("keeps that server's stored databases out of the prune", async () => {
+    const rows = await client().listResources("azure-sql-database", "acct");
+    expect(rows.map((r) => r.externalId)).toEqual(["rg/one/db"]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: ["acct:azure-sql-database:rg/two/"] });
+  });
+
+  it("fails where nobody keeps them", async () => {
+    Reflect.set(globalThis, unreadHook, () => false);
+    await expect(client().listResources("azure-sql-database", "acct")).rejects.toThrow(
+      "AuthorizationFailed",
+    );
+  });
+});

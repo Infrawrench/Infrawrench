@@ -1,5 +1,11 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { isArmDeniedOrGone, mapBounded, ReadBudget, startingRow } from "../arm-list.js";
+import { reportUnreadListPart, type ResourceInstance } from "@infrawrench/plugin-base";
+import {
+  isAccessRefused,
+  isArmDeniedOrGone,
+  mapBounded,
+  ReadBudget,
+  startingRow,
+} from "../arm-list.js";
 import { flexibleSkuVCores } from "../extended-support.js";
 import {
   ARM,
@@ -78,10 +84,15 @@ export async function listSQLDatabases(
       }
       return results;
     } catch (err) {
-      // A server this principal can't read, or one deleted since the list above. Any
-      // other failure says nothing about its databases, and reading it as none would
-      // delete them all from the inventory.
+      // A server deleted since the list above took its databases with it. One this
+      // principal can't read still has them: they keep their stored rows, and where
+      // nobody keeps those the refusal shows. Any other failure says nothing about its
+      // databases, and reading it as none would delete them all from the inventory.
       if (!isArmDeniedOrGone(err)) throw err;
+      if (isAccessRefused(err)) {
+        const prefix = ctx.id(accountId, "azure-sql-database", `${serverRg}/${serverName}/`);
+        if (!reportUnreadListPart({ idPrefixes: [prefix] })) throw err;
+      }
       return [];
     }
   });

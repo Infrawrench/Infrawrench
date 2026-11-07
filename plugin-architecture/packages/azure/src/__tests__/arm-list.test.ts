@@ -154,12 +154,22 @@ describe("listSQLDatabases", () => {
     await expect(listers.listSQLDatabases(ctx, "acct")).rejects.toThrow(message);
   });
 
-  it.each([
-    ["denied", "Azure API 403: AuthorizationFailed"],
-    ["gone", "Azure API 404: ResourceNotFound"],
-  ])("skips a server it is %s", async (_what, message) => {
-    const { ctx } = answerDatabases(() => new Error(message));
+  it("skips a server that is gone", async () => {
+    const { ctx } = answerDatabases(() => new Error("Azure API 404: ResourceNotFound"));
     await expect(listers.listSQLDatabases(ctx, "acct")).resolves.toEqual([]);
+  });
+
+  it("keeps a denied server's stored databases, and fails where nobody keeps them", async () => {
+    const { ctx } = answerDatabases(() => new Error("Azure API 403: AuthorizationFailed"));
+    await expect(listers.listSQLDatabases(ctx, "acct")).rejects.toThrow("403");
+    const unread = vi.fn();
+    Reflect.set(globalThis, Symbol.for("infrawrench.unreadListPart"), unread);
+    try {
+      await expect(listers.listSQLDatabases(ctx, "acct")).resolves.toEqual([]);
+    } finally {
+      Reflect.deleteProperty(globalThis, Symbol.for("infrawrench.unreadListPart"));
+    }
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: ["acct:azure-sql-database:rg/srv/"] });
   });
 
   it("reads a server's later pages of databases", async () => {
