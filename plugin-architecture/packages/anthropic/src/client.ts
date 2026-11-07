@@ -859,12 +859,12 @@ export class AnthropicClient implements PluginClient {
             `/v1/organizations/users/${encodeURIComponent(userId)}`,
             undefined,
             { admin: true },
-          ).catch(() => undefined),
+          ).catch(undefinedIfGoneOrRefused),
           this.fetch<AnthropicWorkspace>(
             `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}`,
             undefined,
             { admin: true },
-          ).catch(() => undefined),
+          ).catch(undefinedIfGoneOrRefused),
         ]);
         return this.mapWorkspaceMember(accountId, member, user, workspace);
       }
@@ -3032,6 +3032,12 @@ export class AnthropicClient implements PluginClient {
 }
 
 /** Workspace member ids are `{workspaceId}/{userId}`. */
+/** For a read that only adds detail: gone or refused leaves it out, a throttle or 5xx fails. */
+function undefinedIfGoneOrRefused(err: unknown): undefined {
+  if (err instanceof Error && /API error (403|404)\b/.test(err.message)) return undefined;
+  throw err;
+}
+
 function splitMemberId(externalId: string): [string, string] {
   const idx = externalId.indexOf("/");
   if (idx <= 0) throw new Error(`Anthropic plugin: malformed workspace member id "${externalId}"`);

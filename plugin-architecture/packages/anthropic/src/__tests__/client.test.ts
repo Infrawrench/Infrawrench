@@ -718,6 +718,37 @@ describe("API key mapping", () => {
 });
 
 describe("workspace members", () => {
+  describe("reading one member", () => {
+    const ID = `${ACCOUNT}:workspace-member:w1/user_1`;
+    const answering = (status: number) =>
+      installFetch((url) => {
+        if (url.endsWith("/workspaces/w1/members/user_1")) {
+          return jsonResponse({
+            user_id: "user_1",
+            workspace_id: "w1",
+            workspace_role: "workspace_user",
+          });
+        }
+        return jsonResponse({ error: "no" }, status);
+      });
+
+    it.each([429, 500])("fails on a %i rather than blanking the row's details", async (status) => {
+      answering(status);
+
+      await expect(client().getResource("workspace-member", ID, ACCOUNT)).rejects.toThrow(
+        String(status),
+      );
+    });
+
+    it.each([403, 404])("keeps the bare row on a %i", async (status) => {
+      answering(status);
+
+      const row = await client().getResource("workspace-member", ID, ACCOUNT);
+      expect(row.displayName).toBe("user_1");
+      expect(row.fields["email"]).toBe("");
+    });
+  });
+
   it("lists members of every live workspace joined to member emails", async () => {
     installFetch((url) => {
       if (url.includes("/v1/organizations/workspaces?")) {
