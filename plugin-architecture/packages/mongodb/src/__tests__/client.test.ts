@@ -166,6 +166,21 @@ describe("MongoDBClient", () => {
         expect(res[0]!.fields["host"]).toBe("db.example.com");
         expect(unread).toEqual([{ idPrefixes: [""] }]);
       });
+
+      it("shows the refusal where the host keeps no track, and still finds the connected database", async () => {
+        const error = Object.assign(new Error("not authorized on admin to execute command"), {
+          code: 13,
+          codeName: "Unauthorized",
+        });
+        kv.command.mockRejectedValue(error);
+        await expect(client().listResources("mongodb-database", "acct")).rejects.toBe(error);
+        const found = await client().getResource(
+          "mongodb-database",
+          "acct:mongodb-database:appdb",
+          "acct",
+        );
+        expect(found.displayName).toBe("appdb");
+      });
     });
   });
 
