@@ -621,6 +621,18 @@ describe("preflight", () => {
   });
 });
 
+describe("preflight probes", () => {
+  it("sends no limit to the balance, which is not a list", async () => {
+    const { c, calls } = client(() => ({ data: [], has_more: false, id: "acct_1" }));
+    await c.verifyCredentials();
+    const balance = calls.find((x) => x.url.pathname === "/v1/balance");
+    expect(balance).toBeDefined();
+    expect(balance?.url.searchParams.has("limit")).toBe(false);
+    const events = calls.find((x) => x.url.pathname === "/v1/events");
+    expect(events?.url.searchParams.get("limit")).toBe("1");
+  });
+});
+
 describe("status feed", () => {
   it("treats the API component as provider-wide and ignores third-party acquirers", () => {
     expect(mapComponent("Stripe API")).toMatchObject({ providerWide: true });

@@ -8054,7 +8054,6 @@ export interface operations {
         parameters: {
             query?: {
                 expand?: string[];
-                limit?: number;
             };
             header?: never;
             path?: never;

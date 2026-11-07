@@ -12,9 +12,9 @@ import type { StripeApi } from "./api.js";
  * permissions answers 403 with a message naming what to add. A secret key
  * (`sk_…`) passes every check.
  *
- * Each capability is probed with one `limit=1` read. Write permissions are
- * not probed (that would mean writing): they are listed so the generated
- * template asks for them.
+ * Each capability is probed with one read, `limit=1` on the lists. Write
+ * permissions are not probed (that would mean writing): they are listed so the
+ * generated template asks for them.
  */
 export interface StripePreflightCapability extends PreflightCapability {
   /** One cheap read. Answers the account's id if that is what it read. */
@@ -46,7 +46,7 @@ export const PREFLIGHT_CAPABILITIES: StripePreflightCapability[] = [
     label: "Balance",
     description: "Show available and pending balance.",
     requiredPermissions: [perm("balance:read", "Balance: Read")],
-    probe: reads((api) => api.get("/v1/balance", { query: { limit: 1 } })),
+    probe: reads((api) => api.get("/v1/balance")),
   },
   {
     id: "fees",

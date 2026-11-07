@@ -135,18 +135,6 @@
       "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
     },
     {
-      "pointer": "/paths/~1v1~1balance/get/parameters/1",
-      "value": {
-        "name": "limit",
-        "in": "query",
-        "required": false,
-        "schema": {
-          "type": "integer"
-        }
-      },
-      "why": "The document gives this route no limit, and the preflight probe has always sent limit=1 like every other probe. Requests stay as they were; the bug is filed separately."
-    },
-    {
       "pointer": "/paths/~1v1~1subscriptions/get/parameters/15",
       "value": {
         "name": "expand[]",
