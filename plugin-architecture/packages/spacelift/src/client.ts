@@ -345,8 +345,10 @@ export class SpaceliftClient implements PluginClient {
           return (await this.stacks()).map((s) => mapStack(accountId, s, this.stackUrl(s.id)));
         case "stack-output": {
           const out: ResourceInstance[] = [];
+          const unread: string[] = [];
+          let refusal: unknown;
           for (const s of await this.stacks()) {
-            const res = await this.soft<{
+            let res: {
               stack?: {
                 outputs?: Array<{
                   id: string;
@@ -354,13 +356,29 @@ export class SpaceliftClient implements PluginClient {
                   sensitive?: boolean;
                   description?: string;
                 }>;
-              };
-            }>(
-              "stack outputs",
-              "query($id: ID!) { stack(id: $id) { outputs { id value sensitive description } } }",
-              { id: s.id },
-            );
+              } | null;
+            };
+            try {
+              res = await this.q(
+                "stack outputs",
+                "query($id: ID!) { stack(id: $id) { outputs { id value sensitive description } } }",
+                { id: s.id },
+              );
+            } catch (err) {
+              const status = statusOf(err);
+              // Listed a moment ago and gone now: so are its outputs.
+              if (status === 404) continue;
+              if (status !== 403) throw err;
+              unread.push(`${accountId}:stack:${s.id}`);
+              refusal ??= err;
+              continue;
+            }
             for (const o of res?.stack?.outputs ?? []) out.push(this.outputDoc(accountId, s, o));
+          }
+          if (unread.length > 0) {
+            const reported = reportUnreadListPart({ parentResourceIds: unread });
+            // Where a host keeps no track (the desktop), a key refused every stack should show.
+            if (!reported && refusal !== undefined && out.length === 0) throw refusal;
           }
           return out;
         }

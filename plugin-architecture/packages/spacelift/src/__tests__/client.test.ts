@@ -209,6 +209,43 @@ describe("listing", () => {
     });
   });
 
+  describe("stack outputs", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    });
+    const stacks = [
+      { id: "net", name: "Net" },
+      { id: "app", name: "App" },
+    ];
+    const outputs = { stack: { outputs: [{ id: "vpc_id", value: "vpc-1", sensitive: false }] } };
+
+    it("fails the type when one stack's outputs are throttled", async () => {
+      Reflect.set(globalThis, UNREAD_HOOK, vi.fn());
+      const { c } = client((q, vars) => {
+        if (q.includes("outputs")) {
+          return vars["id"] === "app" ? { errors: [{ message: "rate limit exceeded" }] } : outputs;
+        }
+        return { stacks };
+      });
+      await expect(c.listResources("stack-output", ACC)).rejects.toThrow("rate limit");
+    });
+
+    it("names a stack the key may not read so its outputs stay", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const { c } = client((q, vars) => {
+        if (q.includes("outputs")) {
+          return vars["id"] === "app" ? { errors: [{ message: "Forbidden" }] } : outputs;
+        }
+        return { stacks };
+      });
+      const rows = await c.listResources("stack-output", ACC);
+      expect(rows.map((r) => r.externalId)).toEqual(["net/vpc_id"]);
+      expect(unread).toHaveBeenCalledWith({ parentResourceIds: [`${ACC}:stack:app`] });
+    });
+  });
+
   it("fails the type when run search is throttled instead of reading none", async () => {
     const { c } = client((q) =>
       q.includes("searchRuns") ? { errors: [{ message: "Too many requests" }] } : { stacks: [] },
