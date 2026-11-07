@@ -81,6 +81,13 @@ function pickList(raw: string | undefined): string[] {
   return csv(raw);
 }
 
+/** A blank id would send the write to the list route of its type. */
+function writeId(resourceId: string): string {
+  const id = externalIdOf(resourceId).trim();
+  if (!id) throw new Error(`Checkly plugin: refusing to change "${resourceId}", which has no id`);
+  return id;
+}
+
 /** The fields this plugin changes on a check it read back. */
 type CheckEdit = ApiBody<operations["putV1ChecksId"]>;
 type GroupEdit = ApiBody<operations["putV1CheckgroupsId"]>;
@@ -1148,7 +1155,7 @@ export class ChecklyClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const encoded = pathEncode(id);
       switch (typeId) {
         case "check":
@@ -1280,7 +1287,7 @@ export class ChecklyClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
+      const id = pathEncode(writeId(resourceId));
       switch (typeId) {
         case "check":
           await this.api.delete(`/v1/checks/${id}`);
@@ -1330,7 +1337,7 @@ export class ChecklyClient implements PluginClient {
     accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const flags: Record<string, ["activated" | "muted", boolean]> = {
         activate: ["activated", true],
         deactivate: ["activated", false],

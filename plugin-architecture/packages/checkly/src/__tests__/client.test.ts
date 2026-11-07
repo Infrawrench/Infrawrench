@@ -520,6 +520,30 @@ describe("a group's checks", () => {
   });
 });
 
+describe("a write with a blank id", () => {
+  const types = ["check", "check-group", "alert-channel", "dashboard", "status-page", "variable"];
+
+  it.each(types)("%s: refuses to delete or edit, and sends nothing", async (type) => {
+    const { c, calls } = client(() => ({ body: {} }));
+    await expect(c.deleteResource(type, `acc:${type}:`)).rejects.toThrow("no id");
+    await expect(c.updateResource(type, `acc:${type}:`, ACCOUNT, { name: "x" })).rejects.toThrow(
+      "no id",
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses an action, and sends nothing", async () => {
+    const { c, calls } = client(() => ({ body: [] }));
+    await expect(c.invokeAction("check", "acc:check:", "deactivate", ACCOUNT)).rejects.toThrow(
+      "no id",
+    );
+    await expect(c.invokeAction("check-group", "acc:check-group:", "run", ACCOUNT)).rejects.toThrow(
+      "no id",
+    );
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("creating", () => {
   it("creates an API check with a status assertion", async () => {
     const { c, calls } = client(() => ({
