@@ -54,7 +54,12 @@ import type {
   IdleScanRequest,
 } from "@infrawrench/plugin-base";
 import { azureMonitorReader, fetchAzureIdleFindings, retailPriceReader } from "./idle-findings.js";
-import { withAiCostTags, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  reportUnreadListPart,
+  withAiCostTags,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
+import { isAccessRefused } from "./arm-list.js";
 import {
   fetchAccessToken,
   fetchAksAccessToken,
@@ -384,21 +389,32 @@ export class AzureClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      if (typeId === "azure-app-registration") {
-        return listAppRegistrations(
-          {
-            graphClient: this.graphClient,
-            makeId: (a, t, e) => this.makeId(a, t, e),
-            now: () => new Date().toISOString(),
-            tenantId: this.creds.tenantId,
-          },
-          accountId,
-        );
+      try {
+        return await this.listType(typeId, accountId);
+      } catch (err) {
+        // A role that does not cover this type: keep its stored rows rather than fail
+        // on every poll. Where nobody keeps them (the desktop) the refusal still shows.
+        if (!isAccessRefused(err) || !reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
       }
-      const lister = AzureClient.LISTERS[typeId];
-      if (!lister) throw new Error(`Azure plugin: unknown resource type "${typeId}"`);
-      return lister(this.listerCtx, accountId);
     });
+  }
+
+  private async listType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    if (typeId === "azure-app-registration") {
+      return listAppRegistrations(
+        {
+          graphClient: this.graphClient,
+          makeId: (a, t, e) => this.makeId(a, t, e),
+          now: () => new Date().toISOString(),
+          tenantId: this.creds.tenantId,
+        },
+        accountId,
+      );
+    }
+    const lister = AzureClient.LISTERS[typeId];
+    if (!lister) throw new Error(`Azure plugin: unknown resource type "${typeId}"`);
+    return lister(this.listerCtx, accountId);
   }
 
   getResource(

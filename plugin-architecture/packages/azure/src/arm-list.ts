@@ -68,6 +68,15 @@ export function isArmDeniedOrGone(err: unknown): boolean {
 }
 
 /**
+ * The principal may not read this at all: ARM's 403 (`AuthorizationFailed`), or Graph's
+ * (`Authorization_RequestDenied`), which the Graph SDK throws with a `statusCode`.
+ */
+export function isAccessRefused(err: unknown): boolean {
+  if (armStatus(err) === 403) return true;
+  return typeof err === "object" && err !== null && "statusCode" in err && err.statusCode === 403;
+}
+
+/**
  * ARM said no to this request itself: a 4xx other than an expired credential or a
  * throttle, which say nothing about the thing being read. A 5xx or a dropped
  * connection is not a refusal either.
