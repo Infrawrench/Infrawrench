@@ -33,7 +33,13 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 
 export const manifest = {
   id: "assemblyai",
-  egressHosts: ["api.assemblyai.com", "api.eu.assemblyai.com"],
+  egressHosts: [
+    "api.assemblyai.com",
+    "api.eu.assemblyai.com",
+    "agents.assemblyai.com",
+    "llm-gateway.assemblyai.com",
+    "llm-gateway.eu.assemblyai.com",
+  ],
   displayName: "AssemblyAI",
   description:
     "Speech-to-text and voice agents. Browse transcripts, manage Voice Agent agents, sessions and webhooks, explore the LLM Gateway catalogue, and transcribe a clip from the Speech tab.",

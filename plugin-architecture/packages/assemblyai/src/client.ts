@@ -19,6 +19,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   base64ToBytes,
+  hostTransport,
   ListTruncatedError,
   pathEncode,
   requireListPage,
@@ -295,7 +296,6 @@ export class AssemblyAIClient implements PluginClient {
    * back the (small, JSON) response as a string.
    */
   private async uploadAudio(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-    const http = this.services?.http;
     const { body } = await restRequest<string>({
       vendor: "AssemblyAI",
       url: `${this.baseUrl}/v2/upload`,
@@ -307,7 +307,7 @@ export class AssemblyAIClient implements PluginClient {
       responseAs: "text",
       httpError: ({ status, body: text }) =>
         annotateError(new Error(`AssemblyAI API error ${status} for /v2/upload: ${text}`)),
-      ...(http ? { http, ...(this.caCert ? { caCert: this.caCert } : {}) } : {}),
+      ...hostTransport(this.services?.http, this.caCert),
     });
     const parsed: ApiResponse<TranscriptOperations["uploadFile"]> = JSON.parse(body);
     if (!parsed.upload_url) {

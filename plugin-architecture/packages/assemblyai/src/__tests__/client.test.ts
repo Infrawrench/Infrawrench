@@ -2,6 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostedMethods } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AssemblyAIClient } from "../client.js";
+import { manifest } from "../plugin.js";
 
 const ACCOUNT = "acct-1";
 const JOB_ID = "1f9c0a5e-0000-4000-8000-000000000001";
@@ -422,6 +423,82 @@ describe("list completeness", () => {
   it("rejects a model catalogue with its key renamed", async () => {
     installFetch(() => jsonResponse({ models: [] }));
     await expect(client().listResources("llm-model", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});
+
+describe("egress", () => {
+  it.each(["us", "eu"])("lists every host the %s region calls", async (region) => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/agents")) return jsonResponse([]);
+      if (url.includes("/sessions")) return jsonResponse({ sessions: [] });
+      if (url.includes("/webhook-subscriptions")) return jsonResponse({ subscriptions: [] });
+      if (url.includes("/models")) return jsonResponse({ data: [] });
+      return jsonResponse({ transcripts: [] });
+    });
+    const c = client({ region });
+    for (const type of ["transcript", "voice-agent", "agent-session", "llm-model"]) {
+      await c.listResources(type, ACCOUNT);
+    }
+    await c.listResources("webhook-subscription", ACCOUNT);
+
+    const hosts = new Set(calls.map((call) => new URL(call.url).host));
+    expect(hosts.size).toBe(3);
+    for (const host of hosts) expect(manifest.egressHosts).toContain(host);
+  });
+});
+
+describe("host transport", () => {
+  function hostHttp() {
+    return vi.fn(async (req: { url: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify(
+        req.url.endsWith("/v2/upload")
+          ? { upload_url: "https://cdn.assemblyai.com/upload/abc" }
+          : req.url.includes("/v2/transcript?")
+            ? { transcripts: [] }
+            : { id: JOB_ID, ...completedTranscript() },
+      ),
+    }));
+  }
+
+  it("sends every call through services.http, with no CA unless one is set", async () => {
+    const fetchStub = installFetch(() => {
+      throw new Error("fetch must not be called");
+    });
+    const request = hostHttp();
+    const hosted = hostClient(
+      new AssemblyAIClient({ apiKey: "test-key" }, { http: { request } } as never),
+    );
+
+    await hosted.listResources("transcript", ACCOUNT);
+    await hosted.transcribeAudio("account", "default", ACCOUNT, {
+      audioBase64: "AAAA",
+      mimeType: "audio/webm",
+    });
+
+    const urls = request.mock.calls.map(([req]) => req.url);
+    expect(urls.some((u) => u.endsWith("/v2/upload"))).toBe(true);
+    for (const [req] of request.mock.calls) expect(req).not.toHaveProperty("caCert");
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("passes a CA along on the upload", async () => {
+    installFetch(() => {
+      throw new Error("fetch must not be called");
+    });
+    const request = hostHttp();
+    const hosted = hostClient(
+      new AssemblyAIClient({ apiKey: "test-key", caCert: "PEM" }, { http: { request } } as never),
+    );
+
+    await hosted.transcribeAudio("account", "default", ACCOUNT, {
+      audioBase64: "AAAA",
+      mimeType: "audio/webm",
+    });
+
+    const upload = request.mock.calls.find(([req]) => req.url.endsWith("/v2/upload"));
+    expect(upload?.[0]).toHaveProperty("caCert", "PEM");
   });
 });
 
