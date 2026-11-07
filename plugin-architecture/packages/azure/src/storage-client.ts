@@ -54,6 +54,20 @@ function splitKey(key: string): { container: string; rest: string } {
     : { container: key.slice(0, slash), rest: key.slice(slash + 1) };
 }
 
+/**
+ * The URL of the one blob a key names, each segment percent-encoded: a `#` or
+ * `?` left raw would name a different blob. A key that names no container or no
+ * blob is refused rather than guessed at.
+ */
+function blobUrl(bucket: string, key: string): string {
+  const { container, rest } = splitKey(key);
+  if (!container || !rest) {
+    throw new Error(`${VENDOR}: "${key}" does not name a blob inside a container`);
+  }
+  const path = [container, ...rest.split("/")].map(encodeURIComponent).join("/");
+  return `https://${bucket}.blob.core.windows.net/${path}`;
+}
+
 export async function listStorageObjects(
   ctx: StorageContext,
   bucket: string,
@@ -218,10 +232,8 @@ export async function uploadStorageObject(
   key: string,
   file: File,
 ): Promise<void> {
+  const url = blobUrl(bucket, key);
   const tok = await ctx.storageToken();
-  const containerName = key.split("/")[0] ?? "$root";
-  const blobName = key.split("/").slice(1).join("/") || key;
-  const url = `https://${bucket}.blob.core.windows.net/${containerName}/${blobName}`;
   // Bytes, not a stream: `File.arrayBuffer()` already buffers the whole blob
   // in memory, so handing the host a Uint8Array costs one more copy and no
   // additional peak, and it is the only body shape the host accepts.
@@ -230,7 +242,7 @@ export async function uploadStorageObject(
     method: "PUT",
     headers: {
       Authorization: `Bearer ${tok}`,
-      "x-ms-version": "2023-11-03",
+      "x-ms-version": VERSION,
       "x-ms-blob-type": "BlockBlob",
       "Content-Type": file.type || "application/octet-stream",
     },
@@ -245,15 +257,13 @@ export async function makeStorageFolder(
   key: string,
 ): Promise<void> {
   // Azure doesn't have real folders: upload a zero-byte blob with trailing /
+  const url = blobUrl(bucket, key);
   const tok = await ctx.storageToken();
-  const containerName = key.split("/")[0] ?? "$root";
-  const folderKey = key.split("/").slice(1).join("/") || key;
-  const url = `https://${bucket}.blob.core.windows.net/${containerName}/${folderKey}`;
   const res = await azureRequest(ctx.http, url, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${tok}`,
-      "x-ms-version": "2023-11-03",
+      "x-ms-version": VERSION,
       "x-ms-blob-type": "BlockBlob",
     },
     body: new Uint8Array(0),
@@ -267,19 +277,12 @@ export async function deleteStorageObject(
   key: string,
 ): Promise<void> {
   if (key.endsWith("/")) return deleteFolder(ctx, bucket, key);
-  const containerName = key.split("/")[0] ?? "$root";
-  const blobName = key.split("/").slice(1).join("/") || key;
-  return deleteBlob(ctx, bucket, containerName, blobName);
+  return deleteBlob(ctx, bucket, key);
 }
 
-async function deleteBlob(
-  ctx: StorageContext,
-  bucket: string,
-  container: string,
-  blobName: string,
-): Promise<void> {
+async function deleteBlob(ctx: StorageContext, bucket: string, key: string): Promise<void> {
+  const url = blobUrl(bucket, key);
   const tok = await ctx.storageToken();
-  const url = `https://${bucket}.blob.core.windows.net/${container}/${blobName}`;
   const res = await azureRequest(ctx.http, url, {
     method: "DELETE",
     headers: {
@@ -304,7 +307,7 @@ async function deleteFolder(ctx: StorageContext, bucket: string, key: string): P
   // Deepest first: an account with a hierarchical namespace lists its directories
   // as blobs too, and will not delete one that still holds anything.
   const names = blobs.map((blob) => blob.name).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
-  for (const name of names) await deleteBlob(ctx, bucket, container, name);
+  for (const name of names) await deleteBlob(ctx, bucket, `${container}/${name}`);
   const left = await enumerate(ctx, bucket, container, { prefix: rest, partial: true });
   if (left.blobs.length > 0) {
     throw new Error(

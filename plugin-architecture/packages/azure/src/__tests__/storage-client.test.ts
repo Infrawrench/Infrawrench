@@ -271,3 +271,33 @@ describe("deleteStorageObject", () => {
     await expect(deleteStorageObject(ctx, "acc", "c/f")).rejects.toThrow(/delete failed: 500/);
   });
 });
+
+describe("blob names in the URL", () => {
+  it("deletes the blob it names, even with # or ? in the name", async () => {
+    const { ctx, calls } = host(() => ({ status: 202 }));
+    await deleteStorageObject(ctx, "acc", "c/dir/a#b?.txt");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url.pathname).toBe("/c/dir/a%23b%3F.txt");
+    expect(calls[0]!.url.search).toBe("");
+    expect(calls[0]!.url.hash).toBe("");
+  });
+
+  it("uploads to the blob it names, encoded", async () => {
+    const { ctx, calls } = host(() => ({ status: 201 }));
+    await uploadStorageObject(ctx, "acc", "c/my file%.txt", new File([new Uint8Array([1])], "f"));
+    expect(calls[0]!.url.pathname).toBe("/c/my%20file%25.txt");
+  });
+
+  it("refuses a key that names no blob inside a container", async () => {
+    const { ctx, calls } = host(() => ({ status: 202 }));
+    for (const key of ["", "c", "/x"]) {
+      await expect(deleteStorageObject(ctx, "acc", key)).rejects.toThrow(/container/);
+    }
+    await expect(
+      uploadStorageObject(ctx, "acc", "f.bin", new File([new Uint8Array([1])], "f")),
+    ).rejects.toThrow(/container/);
+    await expect(makeStorageFolder(ctx, "acc", "newfolder")).rejects.toThrow(/container/);
+    await expect(deleteStorageObject(ctx, "acc", "/")).rejects.toThrow(/container/);
+    expect(calls).toHaveLength(0);
+  });
+});
