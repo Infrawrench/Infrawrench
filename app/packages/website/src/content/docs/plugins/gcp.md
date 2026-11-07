@@ -208,4 +208,4 @@ What you need:
 
 Findings are matched to what's running: **Cloud Run services and jobs** by their container images (every container, sidecars included), and GKE workloads through the Kubernetes plugin. A Cloud Run service deployed by tag matches on repository and tag. One deployed by digest matches exactly.
 
-Limits: Infrawrench reads up to 20,000 findings per project, and marks the list as partial past that. Artifact Analysis only keeps rescanning images pulled in the last 30 days. Older images keep their last results, which can be out of date.
+Limits: Infrawrench reads up to 50,000 occurrences per project. Past that, the source shows an error and keeps the findings it last read. Artifact Analysis only keeps rescanning images pulled in the last 30 days. Older images keep their last results, which can be out of date.

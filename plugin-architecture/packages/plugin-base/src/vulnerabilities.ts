@@ -145,8 +145,11 @@ export interface VulnerabilityCapabilityDeclaration {
    */
   requiresElevatedCredential?: boolean;
   /**
-   * True when the plugin reports a bounded subset (e.g. only the most recent
-   * images, only critical+high) rather than every finding the scanner has.
+   * True when the plugin reports a bounded subset rather than every finding the
+   * scanner has. No plugin should set this: the host replaces its stored findings
+   * with what a read returns, so a subset reads as the rest being fixed. A read
+   * past its bound throws `ListTruncatedError` instead. It stays because the
+   * vulnerabilities API reports it for each source.
    */
   partial?: boolean;
 }

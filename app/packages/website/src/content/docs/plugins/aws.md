@@ -196,7 +196,7 @@ AWS accounts show the open CVEs **Amazon Inspector** has found in every enabled 
 - **ECR images** are shown by pull reference (`<account>.dkr.ecr.<region>.amazonaws.com/<repository>`) and digest, so a finding links to every running workload that pulls that image, on any connected provider (Kubernetes pods, Cloud Run, Container Apps).
 - **Lambda functions** and **EC2 instances** link directly to their Lambda and EC2 resources.
 - Regions that refuse the read (Inspector not activated, or a service control policy denies it) are skipped. If every region refuses, you'll see a permission or setup prompt instead of an empty list.
-- Findings are capped per region, most severe first, so a very large estate may show only some of its lowest-severity findings.
+- Up to 50,000 findings are read per region and stored per account. Past that, the source shows an error and keeps the findings it last read.
 
 ## AI spend by caller
 

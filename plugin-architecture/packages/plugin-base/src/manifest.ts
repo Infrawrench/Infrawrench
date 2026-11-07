@@ -769,8 +769,8 @@ export interface PluginClient {
    * so throw rather than return a short list when part of the read failed: a
    * partial answer reads as CVEs having been fixed. Return only open (active)
    * findings; closed or suppressed-at-the-provider ones are not returned.
-   * Bound the walk (pages, repositories, images) and declare
-   * `vulnerabilities.partial` when the bound can bite.
+   * Bound the walk (pages, repositories, images) and throw
+   * {@link ListTruncatedError} past the bound.
    *
    * Throw {@link VulnerabilityAccessError} when scanning is not enabled or the
    * credential lacks the permission, so the host can show the fix instead of

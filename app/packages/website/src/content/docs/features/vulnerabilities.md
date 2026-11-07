@@ -118,6 +118,6 @@ The [VS Code extension](./vscode-extension.md) adds a **Vulnerabilities** line t
 ## Limits
 
 - Findings are only as fresh as your scanner and the six-hourly refresh. A rebuild shows up once the scanner has scanned it and the next refresh runs.
-- Some scanners are read in limited pages (the most recent images, a capped number of pages per region or project). Those sources are marked as partial on the screen.
+- Infrawrench stores up to 50,000 findings per account, and each scanner has its own read limit, listed on its plugin page. Past either, the source shows an error and keeps the findings it last read, rather than showing part of the list.
 - Matching only works for resources in accounts you've connected. A finding can read as not running when it runs somewhere Infrawrench can't see.
 - AWS Lambda functions are matched by name within the scanning account, so two functions with the same name in different regions of one account aren't told apart.
