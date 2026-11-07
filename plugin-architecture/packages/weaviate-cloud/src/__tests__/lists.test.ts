@@ -105,3 +105,46 @@ describe("tenants", () => {
     expect(tenants.map((t) => t.displayName)).toEqual(["a", "b"]);
   });
 });
+
+describe("a cluster that cannot be read", () => {
+  function twoClusters() {
+    const { http, c } = client({ clusters: `https://${OTHER} other-key` });
+    http.route("GET", `${HOST}/v1/schema`, { classes: [{ class: "Article" }] });
+    http.route("GET", `${OTHER}/v1/schema`, respond(401, { error: [{ message: "bad key" }] }));
+    return { http, c };
+  }
+
+  it("keeps the refused cluster's rows where the host tracks them", async () => {
+    const parts = trackUnread();
+    const { c } = twoClusters();
+    const collections = await c.listResources("collection", ACCOUNT);
+    expect(collections.map((x) => x.externalId)).toEqual([`${HOST}/Article`]);
+    expect(parts).toEqual([{ parentResourceIds: [`${ACCOUNT}:cluster:${OTHER}`] }]);
+  });
+
+  it("fails where nobody keeps the rows, rather than reading them as none", async () => {
+    const { c } = twoClusters();
+    await expect(c.listResources("collection", ACCOUNT)).rejects.toThrow("bad key");
+  });
+
+  it("keeps the rows of a Weaviate Cloud cluster that is not READY", async () => {
+    const parts = trackUnread();
+    const http = fakeHttp();
+    http.route("POST", "auth.weaviate.cloud/oauth2/v1/apps/token", {
+      access_token: "access-1",
+      refresh_token: "refresh-2",
+      expires_in: 3600,
+    });
+    http.route("GET", "api-cloud.weaviate.cloud/v1/clusters", {
+      data: [{ id: "c-o", name: "o", status: "UPDATING", endpoint: `https://${OTHER}` }],
+      metadata: {},
+    });
+    http.secrets.set(`${ACCOUNT}:cluster:${OTHER}/apiKey`, "stored-key");
+    const c = hostClient(
+      new WeaviateClient({ cloudToken: "refresh-1" }, RESOURCE_TYPES, http.services),
+    );
+    expect(await c.listResources("collection", ACCOUNT)).toEqual([]);
+    expect(parts).toEqual([{ parentResourceIds: [`${ACCOUNT}:cluster:${OTHER}`] }]);
+    expect(http.calls.some((x) => x.url.host === OTHER)).toBe(false);
+  });
+});

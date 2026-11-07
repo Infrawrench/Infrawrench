@@ -404,34 +404,47 @@ export class WeaviateClient implements PluginClient {
     if (value || full?.api_key) await this.storeSecret(marker, PENDING_KEY_FIELD, "");
   }
 
-  /** Every cluster Infrawrench can reach, in-cluster. */
-  private async connectedConns(accountId: string): Promise<Conn[]> {
+  /**
+   * Every cluster Infrawrench can reach, in-cluster, and the keys of connected
+   * Weaviate Cloud clusters that are not READY, which have nothing to read now.
+   */
+  private async connectedConns(accountId: string): Promise<{ conns: Conn[]; notReady: string[] }> {
     const out = new Map(this.credentialConns);
+    const notReady: string[] = [];
     for (const c of await this.cloudClusters(accountId)) {
-      if (c.status && c.status !== "READY") continue;
       const key = keyForCloud(c);
       if (out.has(key)) continue;
       const conn = await this.conn(accountId, key);
-      if (conn) out.set(key, conn);
+      if (!conn) continue;
+      if (c.status && c.status !== "READY") notReady.push(key);
+      else out.set(key, conn);
     }
-    return [...out.values()];
+    return { conns: [...out.values()], notReady };
   }
 
   /**
    * Run a lister over every connected cluster. A cluster that refuses the key
-   * (401/403) lists empty rather than failing the others.
+   * (401/403), or is not READY, is named as unread so its rows stay while the
+   * others list; where the host keeps no track, a refusal fails the list.
    */
   private async perCluster(
     accountId: string,
     load: (conn: Conn, scope: ClusterScope) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const conns = await this.connectedConns(accountId);
+    const { conns, notReady } = await this.connectedConns(accountId);
+    const clusterId = (key: string) => clusterResourceId({ accountId, key });
+    // Not READY is a cluster being created, resized or upgraded: there is nothing to
+    // read, and on a host that keeps no track nothing is pruned either.
+    if (notReady.length) reportUnreadListPart({ parentResourceIds: notReady.map(clusterId) });
     const lists = await mapLimit(conns, FAN_OUT, async (conn) => {
       try {
         return await load(conn, { accountId, key: conn.key });
       } catch (e) {
-        if (isStatus(e, 401, 403)) return [];
-        throw e;
+        if (!isStatus(e, 401, 403)) throw e;
+        if (reportUnreadListPart({ parentResourceIds: [clusterId(conn.key)] })) return [];
+        throw new Error(`Weaviate cluster ${conn.key} refused its API key: ${errorText(e)}`, {
+          cause: e,
+        });
       }
     });
     return lists.flat();
