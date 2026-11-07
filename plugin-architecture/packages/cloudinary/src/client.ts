@@ -29,6 +29,7 @@ import {
 import {
   createCloudinaryApis,
   cursorQuery,
+  LIST_PAGES,
   readEveryPage,
   type CloudinaryConfig,
   type CloudinaryFolder,
@@ -66,12 +67,8 @@ const CORE_USAGE_KEYS = new Set([
 
 const GIB = 1024 * 1024 * 1024;
 
-/**
- * 100 pages of 500 for one asset type, and the same 50,000 across all three, which
- * is as far as the host can prune. Past that a sync fails rather than come back short.
- */
+/** The same 50,000 across all three asset types as for each, which is as far as the host can prune. */
 const MAX_ASSETS = 50_000;
-const ASSET_PAGES = 100;
 
 /**
  * Both folder lists are "limited to 2000 results". The pages allow for 10,000 in
@@ -188,6 +185,7 @@ export class CloudinaryClient implements PluginClient {
   private readonly cloudName: string;
   private readonly services: HostServices | undefined;
   private readonly api: ReturnType<typeof createCloudinaryApis>["api"];
+  private readonly pages: ReturnType<typeof createCloudinaryApis>["pages"];
   private readonly videoAnalytics: ReturnType<typeof createCloudinaryApis>["videoAnalytics"];
   /** True for an OAuth access token rather than an API key + secret pair. */
   private readonly oauth: boolean;
@@ -205,13 +203,14 @@ export class CloudinaryClient implements PluginClient {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
     this.services = services;
-    const { api, videoAnalytics } = createCloudinaryApis({
+    const { api, pages, videoAnalytics } = createCloudinaryApis({
       cloudName,
       authorization: () => this.authHeader(),
       caCert: credentials["caCert"] ?? "",
       http: services?.http,
     });
     this.api = api;
+    this.pages = pages;
     this.videoAnalytics = videoAnalytics;
   }
 
@@ -1651,7 +1650,7 @@ export class CloudinaryClient implements PluginClient {
       // The document answers an empty type with an empty list, and has no 404 for
       // these routes. Allowing one costs nothing if a real account does differently.
       const rows = await readEveryPage<CloudinaryResource>(
-        { path, key: "resources", maxPages: ASSET_PAGES, notFoundIsEmpty: true },
+        { path, key: "resources", maxPages: LIST_PAGES, notFoundIsEmpty: true },
         async (cursor) => {
           const data = await this.api.get(path, {
             query: { max_results: 500, tags: true, ...cursorQuery(cursor) },
@@ -1702,20 +1701,17 @@ export class CloudinaryClient implements PluginClient {
   }
 
   private async listUploadPresets(accountId: string): Promise<ResourceInstance[]> {
-    const presets: CloudinaryUploadPreset[] = [];
-    let nextCursor: string | undefined;
-    do {
-      const data: CloudinaryUploadPresetPage = await this.api.get("/upload_presets", {
-        query: { max_results: 500, ...cursorQuery(nextCursor) },
-      });
-      if (Array.isArray(data)) {
-        presets.push(...data);
-        nextCursor = undefined;
-      } else {
-        presets.push(...(data.upload_presets ?? data.presets ?? []));
-        nextCursor = data.next_cursor ?? undefined;
-      }
-    } while (nextCursor);
+    const presets = await readEveryPage<CloudinaryUploadPreset>(
+      { path: "/upload_presets", key: "presets", maxPages: LIST_PAGES },
+      async (cursor) => {
+        const data: CloudinaryUploadPresetPage = await this.api.get("/upload_presets", {
+          query: { max_results: 500, ...cursorQuery(cursor) },
+        });
+        return Array.isArray(data)
+          ? { rows: data, next: null }
+          : { rows: data.upload_presets ?? data.presets, next: data.next_cursor };
+      },
+    );
 
     return presets.map((preset) => {
       const mode = preset.unsigned ? "unsigned" : "signed";
@@ -1752,15 +1748,11 @@ export class CloudinaryClient implements PluginClient {
   }
 
   private async listTransformations(accountId: string): Promise<ResourceInstance[]> {
-    const transformations: CloudinaryTransformation[] = [];
-    let nextCursor: string | undefined;
-    do {
-      const data = await this.api.get("/transformations", {
-        query: { named: true, max_results: 500, ...cursorQuery(nextCursor) },
-      });
-      transformations.push(...(data.transformations ?? []));
-      nextCursor = data.next_cursor ?? undefined;
-    } while (nextCursor);
+    const transformations: CloudinaryTransformation[] = await this.pages.getAll(
+      "/transformations",
+      "transformations",
+      { query: { named: true, max_results: 500 } },
+    );
 
     return transformations.map((t) => ({
       id: `${accountId}:transformation:${t.name}`,
@@ -1814,7 +1806,12 @@ export class CloudinaryClient implements PluginClient {
 
   private async listTriggers(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.api.get("/triggers");
-    return (data.triggers ?? []).map((trigger) => this.mapTrigger(trigger, accountId));
+    const triggers = requireListPage(data.triggers, {
+      vendor: "Cloudinary",
+      path: "/triggers",
+      key: "triggers",
+    });
+    return triggers.map((trigger) => this.mapTrigger(trigger, accountId));
   }
 
   private mapUploadMapping(mapping: CloudinaryUploadMapping, accountId: string): ResourceInstance {
@@ -1839,15 +1836,11 @@ export class CloudinaryClient implements PluginClient {
   }
 
   private async listUploadMappings(accountId: string): Promise<ResourceInstance[]> {
-    const mappings: CloudinaryUploadMapping[] = [];
-    let nextCursor: string | undefined;
-    do {
-      const data = await this.api.get("/upload_mappings", {
-        query: { max_results: 500, ...cursorQuery(nextCursor) },
-      });
-      mappings.push(...(data.mappings ?? []));
-      nextCursor = data.next_cursor;
-    } while (nextCursor);
+    const mappings: CloudinaryUploadMapping[] = await this.pages.getAll(
+      "/upload_mappings",
+      "mappings",
+      { query: { max_results: 500 } },
+    );
     return mappings.map((mapping) => this.mapUploadMapping(mapping, accountId));
   }
 

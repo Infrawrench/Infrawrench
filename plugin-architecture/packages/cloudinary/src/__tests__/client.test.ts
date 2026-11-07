@@ -371,6 +371,52 @@ describe("listResources", () => {
     });
   });
 
+  describe.each([
+    ["upload-preset", "presets", { name: "p", unsigned: false, settings: {} }],
+    ["transformation", "transformations", { name: "t", named: true }],
+    ["upload-mapping", "mappings", { folder: "f", template: "https://x.example/" }],
+  ])("%s pages", (type, key, row) => {
+    it("rejects a list that never ends, after exactly its page cap", async () => {
+      installFetch(() => jsonResponse({ [key]: [row], next_cursor: "again" }));
+      await expect(client().listResources(type, ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(100);
+    });
+
+    it("rejects a first page whose list is not there", async () => {
+      installFetch(() => jsonResponse({ renamed: [row] }));
+      await expect(client().listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("rejects a later page whose list is not there", async () => {
+      installFetch((url) =>
+        url.includes("next_cursor=two")
+          ? jsonResponse({ renamed: [row] })
+          : jsonResponse({ [key]: [row], next_cursor: "two" }),
+      );
+      await expect(client().listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+  });
+
+  it("rejects a trigger answer whose list is not there", async () => {
+    installFetch(() => jsonResponse({ renamed: [] }));
+    await expect(client().listResources("trigger", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads empty lists as empty", async () => {
+    installFetch((url) => {
+      if (url.includes("/upload_presets")) return jsonResponse({ presets: [] });
+      if (url.includes("/transformations")) return jsonResponse({ transformations: [] });
+      if (url.includes("/upload_mappings")) return jsonResponse({ mappings: [] });
+      if (url.includes("/triggers")) return jsonResponse({ triggers: [], total: 0 });
+      throw new Error(`unrouted: GET ${url}`);
+    });
+    for (const type of ["upload-preset", "transformation", "upload-mapping", "trigger"]) {
+      await expect(client().listResources(type, ACCOUNT)).resolves.toEqual([]);
+    }
+  });
+
   it("paginates upload presets and accepts Cloudinary response envelopes", async () => {
     installFetch((url) => {
       if (url.endsWith("/upload_presets?max_results=500")) {

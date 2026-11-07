@@ -2,6 +2,7 @@ import {
   createApiClient,
   ListTruncatedError,
   requireListPage,
+  withCursorPagination,
   type ApiFailure,
   type ApiListItem,
   type ApiResponse,
@@ -43,6 +44,12 @@ export type CloudinaryUsage = CloudinaryResponse<"getUsage"> & {
   rate_limit_allowed?: number;
   rate_limit_remaining?: number;
 };
+
+/**
+ * 100 pages of 500 is 50,000 rows. Past that a list fails rather than come back
+ * short, and a cursor that never changes stops here instead of looping forever.
+ */
+export const LIST_PAGES = 100;
 
 /** Any non-2xx answer, carrying the status a list read has to tell apart. */
 export class CloudinaryApiError extends Error {
@@ -118,8 +125,14 @@ export function createCloudinaryApis(options: {
     caCert,
     httpError: (failure: ApiFailure) => new CloudinaryApiError(failure),
   };
+  const api = createApiClient<paths>({ ...shared, encodeQuery: encodeURIComponent });
   return {
-    api: createApiClient<paths>({ ...shared, encodeQuery: encodeURIComponent }),
+    api,
+    pages: withCursorPagination(api, {
+      cursorParam: "next_cursor",
+      next: "next_cursor",
+      maxPages: LIST_PAGES,
+    }),
     /** Video Analytics takes a search expression, form-encoded (a space is `+`). */
     videoAnalytics: createApiClient<paths>(shared),
   };
