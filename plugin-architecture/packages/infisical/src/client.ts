@@ -62,6 +62,9 @@ const PLUGIN_ID = "infisical";
 
 const VENDOR = "Infisical";
 
+/** What Infisical's source writes in `secretValue` for a value the identity may not read. */
+const HIDDEN_VALUE_MASK = "<hidden-by-infisical>";
+
 /** Cap on audit-log pages (1000 events each) read for one metrics window. */
 const MAX_AUDIT_PAGES = 5;
 const AUDIT_PAGE_SIZE = 1000;
@@ -614,7 +617,8 @@ export class InfisicalClient implements PluginClient {
       const id = externalIdOf(resourceId);
       if (typeId === "secret" && outputKey === "value") {
         const secret = await this.fetchSecret(id);
-        if (secret.secretValueHidden) {
+        // The document has `secretValueHidden` only on the listing, so the mask counts too.
+        if (secret.secretValueHidden || secret.secretValue === HIDDEN_VALUE_MASK) {
           throw Object.assign(
             new Error("Infisical plugin: the machine identity may not read this secret's value"),
             { status: 403 },

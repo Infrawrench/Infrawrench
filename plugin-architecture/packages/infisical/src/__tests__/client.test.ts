@@ -565,6 +565,33 @@ describe("integrations read by id", () => {
   });
 });
 
+describe("a secret's value", () => {
+  const SECRET = { id: "s1", workspace: "proj-1", environment: "dev", secretKey: "K" };
+  const value = (secret: object) =>
+    client(() => ({ body: { secret: { ...SECRET, ...secret } } })).resolveOutput(
+      "secret",
+      `${ACCOUNT}:secret:s1`,
+      "value",
+      ACCOUNT,
+    );
+
+  it("is returned when the identity may read it", async () => {
+    await expect(value({ secretValue: "shh" })).resolves.toBe("shh");
+  });
+
+  it("refuses the flag where a server sends one", async () => {
+    await expect(value({ secretValue: "", secretValueHidden: true })).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+
+  it("refuses the mask rather than hand it out as the value, with no flag", async () => {
+    await expect(value({ secretValue: "<hidden-by-infisical>" })).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+});
+
 describe("mutations", () => {
   it("renames and re-values a secret through the v4 PATCH", async () => {
     const c = client((call) => {
