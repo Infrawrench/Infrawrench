@@ -1,6 +1,6 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, type HostServices } from "@infrawrench/plugin-base";
 import { OpenRouterClient } from "../client.js";
 
 const ACCOUNT = "acct-1";
@@ -534,6 +534,42 @@ describe("synthesizeSpeech", () => {
     expect(result.mimeType).toBe("audio/mpeg");
     expect(Buffer.from(result.audioBase64, "base64")).toEqual(Buffer.from(audio));
     expect(result.characters).toBe(5);
+  });
+
+  it("sends speech through the host's HTTP service, so it reaches a bastion", async () => {
+    const audio = new Uint8Array([0xff, 0xfb, 0x90, 0x00]);
+    const fetchStub = installFetch((url) => {
+      throw new Error(`global fetch reached: ${url}`);
+    });
+    const request = vi.fn(async (req: { url: string }) => {
+      if (req.url.endsWith("/audio/speech")) {
+        return {
+          status: 200,
+          headers: { "content-type": "audio/mpeg" },
+          body: "",
+          rawBody: audio,
+        };
+      }
+      return { status: 200, headers: {}, body: JSON.stringify({ data: [] }) };
+    });
+    const hosted = hostClient(
+      new OpenRouterClient({ managementKey: "m", apiKey: "sk-or-v1-inference" }, {
+        http: { request },
+      } as unknown as HostServices),
+    );
+
+    const result = await hosted.synthesizeSpeech("model", `${ACCOUNT}:model:x/tts`, ACCOUNT, {
+      text: "Hi",
+      voiceId: "eve",
+      modelId: "x/tts",
+    });
+
+    expect(fetchStub).not.toHaveBeenCalled();
+    const speech = request.mock.calls.find(([req]) => req.url.endsWith("/audio/speech"))?.[0];
+    expect(speech).toMatchObject({ method: "POST", responseEncoding: "binary" });
+    expect(speech).not.toHaveProperty("caCert");
+    expect(Buffer.from(result.audioBase64, "base64")).toEqual(Buffer.from(audio));
+    expect(result.mimeType).toBe("audio/mpeg");
   });
 
   it("falls back to a valid TTS model when the shared picker holds an STT model", async () => {

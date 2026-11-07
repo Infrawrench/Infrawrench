@@ -29,6 +29,7 @@ import {
   CostSetupError,
   CreditAccessError,
   bytesToBase64,
+  hostFetch,
   joinSubtitle,
   pathEncode,
   withAiCostTags,
@@ -1309,11 +1310,8 @@ export class OpenRouterClient implements PluginClient {
   }
 
   /**
-   * POST /audio/speech. Returns **raw binary**, so this deliberately bypasses
-   * the typed client (which JSON-parses every response) and the host HTTP
-   * service (whose response body is a UTF-8 string and would mangle the bytes).
-   * That means this one request is not routed through a bastion: the trade is
-   * documented rather than silent.
+   * POST /audio/speech. Returns **raw binary**, so this bypasses the typed client,
+   * which JSON-parses every response.
    *
    * Spec: https://openrouter.ai/openapi.json  → `SpeechRequest`
    */
@@ -1336,7 +1334,8 @@ export class OpenRouterClient implements PluginClient {
         response_format: "mp3",
       };
 
-      const res = await fetch(`${BASE_URL}/audio/speech`, {
+      const transport = { http: this.services?.http, caCert: this.caCert };
+      const res = await hostFetch(transport, `${BASE_URL}/audio/speech`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${key}`,
