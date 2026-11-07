@@ -18,13 +18,17 @@ import {
   base64ToBytes,
   externalIdOf,
   buildMultipartBody,
+  ListTruncatedError,
   pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
 } from "@infrawrench/plugin-base";
 import {
   BASE_URL,
   createGladiaApi,
   deleteJobRequest,
   postAudioUpload,
+  VENDOR,
   type GladiaApi,
   type GladiaConnection,
   type GladiaJob,
@@ -41,11 +45,14 @@ import {
 /** The single workspace pseudo-resource's external id. */
 const WORKSPACE_ID = "default";
 
-/** Page size for `/v2/pre-recorded`; the envelope carries no total. */
+/** Page size for the job lists; the envelope carries no total and the document no maximum. */
 const PAGE_SIZE = 50;
 
-/** Hard cap on `next`-following so a huge history can't hang a sidebar load. */
-const MAX_LIST_PAGES = 4;
+/** 50,000 jobs per list. A sync prunes what a list leaves out, so past this it throws. */
+const MAX_LIST_PAGES = 1000;
+
+/** The workspace's activity panel sums a sample of 200 jobs per list, and says so. */
+const MAX_SAMPLE_PAGES = 4;
 
 /** Page size and page cap for the Metrics walk: at most 2,000 jobs per endpoint. */
 const METRICS_PAGE_SIZE = 100;
@@ -163,7 +170,7 @@ export class GladiaClient implements PluginClient {
           return [await this.buildWorkspace(accountId)];
         case "transcription":
         case "live-session": {
-          const jobs = await this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES, typeId);
+          const jobs = await this.fetchJobs(typeId);
           return jobs.map((job) => this.mapJob(accountId, job, typeId));
         }
         default:
@@ -492,51 +499,78 @@ export class GladiaClient implements PluginClient {
    * https://docs.gladia.io/api-reference/v2/live/list
    *
    * The envelope is `{first, current, next, items}` with **no total**, so
-   * paging follows `next` until it is null (bounded by MAX_LIST_PAGES).
+   * paging follows `next` until it is null. A list that outruns `maxPages` throws
+   * unless the read is `partial`.
    */
-  private async fetchJobs(max: number, typeId: JobTypeId = "transcription"): Promise<GladiaJob[]> {
+  private async walkJobs(
+    typeId: JobTypeId,
+    {
+      pageSize = PAGE_SIZE,
+      maxPages = MAX_LIST_PAGES,
+      partial = false,
+      window,
+    }: {
+      pageSize?: number;
+      maxPages?: number;
+      partial?: boolean;
+      window?: { after_date: string; before_date: string };
+    } = {},
+  ): Promise<GladiaJob[]> {
+    const path = JOB_PATHS[typeId];
     const out: GladiaJob[] = [];
     let offset = 0;
-
-    for (let page = 0; page < MAX_LIST_PAGES && out.length < max; page++) {
-      const body = await this.api.get(JOB_PATHS[typeId], {
-        query: { offset, limit: PAGE_SIZE },
+    for (let page = 0; page < maxPages; page++) {
+      const body = await this.api.get(path, {
+        query: { offset, limit: pageSize, ...window },
       });
-      const items = body.items ?? [];
+      const items = requireListPage<GladiaJob>(body.items, {
+        vendor: VENDOR,
+        path,
+        key: "items",
+        page: body,
+      });
       out.push(...items);
-      if (!body.next || items.length === 0) break;
+      if (!body.next || items.length === 0) return out;
       offset += items.length;
     }
+    if (partial) return out;
+    throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
+  }
 
-    return out.slice(0, max);
+  /** Every job of one kind, for the inventory. */
+  private fetchJobs(typeId: JobTypeId): Promise<GladiaJob[]> {
+    return this.walkJobs(typeId);
+  }
+
+  /** The first jobs of one kind, for the workspace's activity sample. */
+  private sampleJobs(typeId: JobTypeId): Promise<GladiaJob[]> {
+    return this.walkJobs(typeId, { maxPages: MAX_SAMPLE_PAGES, partial: true }).catch(
+      (err): GladiaJob[] => {
+        rethrowIncompleteList(err);
+        return [];
+      },
+    );
   }
 
   /**
-   * Every job of one kind created inside a window, using the list endpoints'
-   * own `after_date`/`before_date` filters so the walk never pages past it.
+   * Jobs of one kind created inside a window, using the list endpoints' own
+   * `after_date`/`before_date` filters so the walk never pages past it. A chart
+   * of a busy window draws what the cap holds.
    */
-  private async fetchJobsBetween(
+  private fetchJobsBetween(
     typeId: JobTypeId,
     startMs: number,
     endMs: number,
   ): Promise<GladiaJob[]> {
-    const out: GladiaJob[] = [];
-    let offset = 0;
-    for (let page = 0; page < MAX_METRICS_PAGES; page++) {
-      const body = await this.api.get(JOB_PATHS[typeId], {
-        query: {
-          offset,
-          limit: METRICS_PAGE_SIZE,
-          after_date: new Date(startMs).toISOString(),
-          before_date: new Date(endMs).toISOString(),
-        },
-      });
-      const items = body.items ?? [];
-      out.push(...items);
-      if (!body.next || items.length === 0) break;
-      offset += items.length;
-    }
-    return out;
+    return this.walkJobs(typeId, {
+      pageSize: METRICS_PAGE_SIZE,
+      maxPages: MAX_METRICS_PAGES,
+      partial: true,
+      window: {
+        after_date: new Date(startMs).toISOString(),
+        before_date: new Date(endMs).toISOString(),
+      },
+    });
   }
 
   /**
@@ -561,7 +595,10 @@ export class GladiaClient implements PluginClient {
       const [jobs, live] = await Promise.all([
         this.fetchJobsBetween("transcription", startMs, endMs),
         // Live history is a separate list; a failure there keeps the batch charts.
-        this.fetchJobsBetween("live-session", startMs, endMs).catch((): GladiaJob[] => []),
+        this.fetchJobsBetween("live-session", startMs, endMs).catch((err): GladiaJob[] => {
+          rethrowIncompleteList(err);
+          return [];
+        }),
       ]);
 
       const stamps: number[] = [];
@@ -722,8 +759,8 @@ export class GladiaClient implements PluginClient {
     // A brand-new key with no history (or a transient list failure) should
     // still leave the workspace navigable and the Speech tab usable.
     const [jobs, liveJobs] = await Promise.all([
-      this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES).catch((): GladiaJob[] => []),
-      this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES, "live-session").catch((): GladiaJob[] => []),
+      this.sampleJobs("transcription"),
+      this.sampleJobs("live-session"),
     ]);
     let liveBilling = 0;
     for (const job of liveJobs) liveBilling += num(job.result?.metadata?.billing_time) ?? 0;

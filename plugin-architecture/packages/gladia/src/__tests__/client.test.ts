@@ -429,3 +429,146 @@ describe("workspace metrics", () => {
     ]);
   });
 });
+
+describe("job lists", () => {
+  /** A list that always has more: one job a page, and a next link on every one. */
+  function endlessList(url: string): Response {
+    const offset = new URL(url).searchParams.get("offset");
+    return jsonResponse({ next: "https://api.gladia.io/more", items: [doneJob(`job-${offset}`)] });
+  }
+
+  it("reads a transcription history past the old 200-job cap", async () => {
+    const total = 260;
+    installFetch((url) => {
+      const offset = Number(new URL(url).searchParams.get("offset"));
+      const items = Array.from({ length: Math.min(50, total - offset) }, (_, i) =>
+        doneJob(`job-${offset + i}`),
+      );
+      const more = offset + items.length < total;
+      return jsonResponse({ next: more ? "https://api.gladia.io/more" : null, items });
+    });
+
+    const resources = await client().listResources("transcription", ACCOUNT);
+
+    expect(resources).toHaveLength(total);
+    expect(calls).toHaveLength(6);
+  });
+
+  it.each(["transcription", "live-session"])(
+    "rejects a %s list that never ends, after exactly 1,000 requests",
+    async (typeId) => {
+      installFetch(endlessList);
+      await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(1000);
+    },
+  );
+
+  it.each(["transcription", "live-session"])(
+    "rejects a %s page with its key renamed, on the first page",
+    async (typeId) => {
+      installFetch(() => jsonResponse({ next: null, jobs: [doneJob("job-1")] }));
+      await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+    },
+  );
+
+  it("rejects a page with its key renamed on a later page", async () => {
+    installFetch((url) =>
+      url.includes("offset=0")
+        ? jsonResponse({ next: "https://api.gladia.io/more", items: [doneJob("job-1")] })
+        : jsonResponse({ next: null, jobs: [doneJob("job-2")] }),
+    );
+    await expect(client().listResources("transcription", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads items set to null as an empty list", async () => {
+    installFetch(() => jsonResponse({ next: null, items: null }));
+    expect(await client().listResources("transcription", ACCOUNT)).toEqual([]);
+  });
+
+  it("stays on the host's HTTP service, and sends no CA it was not given", async () => {
+    const stub = installFetch(() => {
+      throw new Error("the plugin's own fetch must not run");
+    });
+    const request = vi.fn(async (_req: { caCert?: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ next: null, items: [doneJob("job-1")] }),
+    }));
+    const hosted = hostClient(
+      new GladiaClient({ apiKey: "test-gladia-key" }, { http: { request } }),
+    );
+
+    await hosted.listResources("transcription", ACCOUNT);
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+    expect(stub).not.toHaveBeenCalled();
+  });
+});
+
+describe("workspace sample", () => {
+  it("sums a sample of 200 jobs a list and does not fail a longer history", async () => {
+    installFetch((url) => {
+      const offset = Number(new URL(url).searchParams.get("offset"));
+      const items = Array.from({ length: 50 }, (_, i) => doneJob(`job-${offset + i}`));
+      return jsonResponse({ next: "https://api.gladia.io/more", items });
+    });
+
+    const [workspace] = await client().listResources("workspace", ACCOUNT);
+
+    expect(workspace!.fields["recentJobs"]).toBe(200);
+    expect(workspace!.fields["liveSessions"]).toBe(200);
+    expect(calls).toHaveLength(8);
+  });
+
+  it.each(["/v2/pre-recorded", "/v2/live"])(
+    "does not read a renamed key on %s as no jobs",
+    async (path) => {
+      installFetch((url) =>
+        url.includes(path)
+          ? jsonResponse({ next: null, jobs: [doneJob("job-1")] })
+          : jsonResponse({ next: null, items: [] }),
+      );
+      await expect(client().listResources("workspace", ACCOUNT)).rejects.toThrow("is not a list");
+    },
+  );
+
+  it("stays navigable when a list fails outright", async () => {
+    installFetch(() => jsonResponse({ message: "boom" }, 500));
+    const [workspace] = await client().listResources("workspace", ACCOUNT);
+    expect(workspace!.fields["recentJobs"]).toBe(0);
+    expect(workspace!.fields["liveSessions"]).toBe(0);
+  });
+});
+
+describe("workspace metrics window", () => {
+  const range = { startMs: Date.UTC(2026, 8, 1), endMs: Date.UTC(2026, 8, 2) };
+  const metrics = () =>
+    client().fetchMetricSeries("workspace", `${ACCOUNT}:workspace:default`, ACCOUNT, range);
+
+  it("charts what 20 pages hold rather than failing a busy window", async () => {
+    installFetch((url) =>
+      jsonResponse({
+        next: "https://api.gladia.io/more",
+        items: url.includes("/v2/live") ? [] : [doneJob("job-1")],
+      }),
+    );
+    const series = await metrics();
+    expect(series.map((s) => s.label)).toContain("Transcriptions");
+    expect(calls.filter((c) => c.url.includes("/v2/pre-recorded"))).toHaveLength(20);
+  });
+
+  it.each(["/v2/pre-recorded", "/v2/live"])(
+    "does not read a renamed key on %s as no jobs",
+    async (path) => {
+      installFetch((url) =>
+        url.includes(path)
+          ? jsonResponse({ next: null, jobs: [doneJob("job-1")] })
+          : jsonResponse({ next: null, items: [] }),
+      );
+      await expect(metrics()).rejects.toThrow("is not a list");
+    },
+  );
+});

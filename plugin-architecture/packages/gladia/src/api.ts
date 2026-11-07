@@ -19,7 +19,7 @@ import type { components, operations, paths } from "./api-types.gen.js";
  */
 export const BASE_URL = "https://api.gladia.io";
 
-const VENDOR = "Gladia";
+export const VENDOR = "Gladia";
 
 type Schemas = components["schemas"];
 
