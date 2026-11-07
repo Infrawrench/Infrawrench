@@ -140,6 +140,11 @@ describe("pages that are not lists", () => {
     await expect(c.listResources("team", ACCOUNT)).resolves.toHaveLength(1);
     expect(calls).toHaveLength(2);
   });
+
+  it("fails on an answer to the issue list that is not a list", async () => {
+    const { c } = client(() => ({ issues: [] }));
+    await expect(c.listResources("issue", ACCOUNT)).rejects.toThrow("is not a list");
+  });
 });
 
 describe("next links", () => {

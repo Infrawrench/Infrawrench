@@ -16,7 +16,12 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import type { SentryApi, SentryContext } from "./api.js";
 import { sentryApi, statusOf } from "./api.js";
 import type { operations } from "./api-types.gen.js";
@@ -326,19 +331,19 @@ export class SentryClient implements PluginClient {
     });
   }
 
-  /** The unresolved issues with the most events in the last 14 days. */
-  private topIssues(projectId?: string, limit = 100) {
-    return this.api
-      .getResponse(`/organizations/${this.o}/issues/`, {
-        query: {
-          query: "is:unresolved",
-          statsPeriod: "14d",
-          sort: "freq",
-          limit,
-          ...(projectId ? { project: [projectId] } : {}),
-        },
-      })
-      .then((r) => (Array.isArray(r.body) ? r.body : []));
+  /**
+   * The unresolved issues with the most events in the last 14 days. Ranked, so this
+   * is one page by design, at the 100 `limit` allows: the type says it lists those.
+   */
+  private async topIssues() {
+    const { body } = await this.api.getResponse(`/organizations/${this.o}/issues/`, {
+      query: { query: "is:unresolved", statsPeriod: "14d", sort: "freq", limit: 100 },
+    });
+    return requireListPage(body, {
+      vendor: "Sentry",
+      path: `/organizations/${this.o}/issues/`,
+      key: null,
+    });
   }
 
   private async listClientKeys(accountId: string): Promise<ResourceInstance[]> {
