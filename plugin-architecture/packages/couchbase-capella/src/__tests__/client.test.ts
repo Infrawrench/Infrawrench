@@ -269,6 +269,58 @@ describe("CapellaClient", () => {
       expect(rows.every((r) => r.resourceId === "c1")).toBe(true);
     });
 
+    it("refuses billing answered with no periods rather than read it as no spend", async () => {
+      const noPeriods = { data: { billingCurrency: "USD" } };
+      const routes = (cluster: unknown, org: unknown) => ({
+        [`GET ${O}/projects`]: page([{ id: "p1" }]),
+        [`GET ${P}/clusters`]: page([CLUSTER]),
+        [`POST ${P}/clusters/c1/billing`]: cluster,
+        [`POST ${O}/billing`]: org,
+      });
+      const range = { fromDate: "2026-09-01", toDate: "2026-09-02" };
+      const fine = { data: { billingCurrency: "USD", periods: [] } };
+
+      mockFetch(routes(noPeriods, fine));
+      await expect(
+        hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" })).fetchCostData(
+          "acc",
+          range,
+        ),
+      ).rejects.toThrow("is not a list");
+
+      mockFetch(routes(fine, noPeriods));
+      await expect(
+        hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" })).fetchCostData(
+          "acc",
+          range,
+        ),
+      ).rejects.toThrow("is not a list");
+    });
+
+    it("still leaves a cluster the key may not read to the unattributed remainder", async () => {
+      mockFetch({
+        [`GET ${O}/projects`]: page([{ id: "p1" }]),
+        [`GET ${P}/clusters`]: page([CLUSTER]),
+        [`POST ${P}/clusters/c1/billing`]: new Response('{"message":"no"}', { status: 403 }),
+        [`POST ${O}/billing`]: {
+          data: {
+            billingCurrency: "USD",
+            periods: [
+              {
+                startDate: "2026-09-01",
+                endDate: "2026-09-01",
+                categories: [{ category: "operationalComputeAndStorage", currencySpend: 7 }],
+              },
+            ],
+          },
+        },
+      });
+      const rows = await hostClient(
+        new CapellaClient({ apiKey: "k", organizationId: "org-1" }),
+      ).fetchCostData("acc", { fromDate: "2026-09-01", toDate: "2026-09-01" });
+      expect(rows.map((r) => [r.resourceId, r.amount])).toEqual([[undefined, 7]]);
+    });
+
     it("refuses a period that is not a single day rather than read it as no spend", async () => {
       const span = {
         data: {

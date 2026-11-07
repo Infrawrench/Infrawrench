@@ -2051,16 +2051,13 @@ export class CapellaClient implements PluginClient {
         const body = { startDate: chunk.start, endDate: chunk.end };
         const clusterTotals = new Map<string, number>();
         for (const ref of refs) {
-          const res = await this.api
-            .post(`${this.sub(ref.projectId, ref.clusterId)}/billing`, {
-              body,
-            })
-            .catch((err: unknown) => {
-              if (isUnavailable(err)) return undefined;
-              throw err;
-            });
+          const path = `${this.sub(ref.projectId, ref.clusterId)}/billing` as const;
+          const res = await this.api.post(path, { body }).catch((err: unknown) => {
+            if (isUnavailable(err)) return undefined;
+            throw err;
+          });
           const currency = res?.data?.billingCurrency ?? "USD";
-          for (const period of res?.data?.periods ?? []) {
+          for (const period of res ? rowsAt(path, "periods", res.data) : []) {
             const date = billingDay(period);
             for (const cat of period.categories ?? []) {
               const amount = amountOf(cat);
@@ -2079,9 +2076,10 @@ export class CapellaClient implements PluginClient {
             }
           }
         }
+        const orgPath = `${this.org}/billing` as const;
         let org: CapellaResponse<"categorizedBilling"> | undefined;
         try {
-          org = await this.api.post(`${this.org}/billing`, { body });
+          org = await this.api.post(orgPath, { body });
         } catch (err) {
           const s = statusOf(err);
           if (s === 403) {
@@ -2090,7 +2088,7 @@ export class CapellaClient implements PluginClient {
           throw err;
         }
         const currency = org?.data?.billingCurrency ?? "USD";
-        for (const period of org?.data?.periods ?? []) {
+        for (const period of rowsAt(orgPath, "periods", org?.data)) {
           const date = billingDay(period);
           for (const cat of period.categories ?? []) {
             if (!cat.category) continue;
