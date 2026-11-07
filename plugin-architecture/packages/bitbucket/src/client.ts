@@ -2,6 +2,7 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  ApiBody,
   CreateFieldConfig,
   CreateResourceConfig,
   DashboardStat,
@@ -10,24 +11,25 @@ import type {
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
+  NoSlashString,
   PluginClient,
   ResourceCreateReturn,
   ResourceInstance,
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type { BitbucketContext } from "./api.js";
 import {
-  bbFetch,
-  bbPaged,
-  bbRequest,
-  enc,
+  bbPostUnread,
+  bitbucketClients,
+  capped,
   encUuid,
   isAbsent,
   splitScoped,
   statusOf,
 } from "./api.js";
+import type { paths } from "./api-types.gen.js";
 import type { VariableOwner } from "./mappers.js";
 import {
   RESTRICTION_KINDS,
@@ -81,6 +83,7 @@ const PIPELINE_LIMIT = 200;
 const METRIC_PAGES = 5;
 /** Bytes of a step log fetched with a Range request. */
 const LOG_TAIL_BYTES = 256 * 1024;
+const LOG_ACCEPT = "text/plain, */*";
 
 export const WEBHOOK_EVENTS = [
   "repo:push",
@@ -123,9 +126,7 @@ export function stash(r: ResourceInstance, data: Record<string, unknown>): Resou
 }
 
 function fail(message: string, status = 400): never {
-  const err = new Error(`Bitbucket plugin: ${message}`) as Error & { status: number };
-  err.status = status;
-  throw err;
+  throw Object.assign(new Error(`Bitbucket plugin: ${message}`), { status });
 }
 
 export const truthy = (v: string | undefined): boolean =>
@@ -136,7 +137,7 @@ export function parseListish(raw: string | undefined): string[] {
   const v = (raw ?? "").trim();
   if (v.startsWith("[")) {
     try {
-      const parsed = JSON.parse(v) as unknown;
+      const parsed: unknown = JSON.parse(v);
       if (Array.isArray(parsed)) return parsed.map((x) => String(x).trim()).filter(Boolean);
     } catch {
       // fall through
@@ -191,9 +192,17 @@ export function cleanLog(text: string): string {
     .replace(/\r(?!\n)/g, "\n");
 }
 
+type RepoPath = `/repositories/${NoSlashString}/${NoSlashString}`;
+type RepoScoped = "/repositories/{workspace}/{repo_slug}";
+type RestrictionWrite = paths[`${RepoScoped}/branch-restrictions`]["post"];
+type VariableWrite = ApiBody<paths[`${RepoScoped}/pipelines_config/variables`]["post"]>;
+
 export class BitbucketClient implements PluginClient {
   readonly ctx: BitbucketContext;
   private readonly services: HostServices | undefined;
+  private readonly api: ReturnType<typeof bitbucketClients>["api"];
+  private readonly lists: ReturnType<typeof bitbucketClients>["lists"];
+  private readonly newestFirst: ReturnType<typeof bitbucketClients>["newestFirst"];
   private reposCache: Promise<BbRepository[]> | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -209,26 +218,31 @@ export class BitbucketClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
     };
     this.services = services;
+    ({
+      api: this.api,
+      lists: this.lists,
+      newestFirst: this.newestFirst,
+    } = bitbucketClients(this.ctx));
   }
 
-  private get ws(): string {
-    return enc(this.ctx.workspace);
+  private get ws(): NoSlashString {
+    return pathEncode(this.ctx.workspace);
   }
 
-  private repo(slug: string): string {
-    return `/repositories/${this.ws}/${enc(slug)}`;
+  private repo(slug: string): RepoPath {
+    return `/repositories/${this.ws}/${pathEncode(slug)}`;
   }
 
   private repos(): Promise<BbRepository[]> {
-    this.reposCache ??= bbPaged<BbRepository>(
-      this.ctx,
-      `/repositories/${this.ws}`,
-      { sort: "-updated_on" },
-      REPO_PAGES,
-    ).catch((err: unknown) => {
-      this.reposCache = undefined;
-      throw err;
-    });
+    this.reposCache ??= this.lists
+      .getAll(`/repositories/${this.ws}`, "values", {
+        query: { sort: "-updated_on" },
+        ...capped(REPO_PAGES),
+      })
+      .catch((err: unknown) => {
+        this.reposCache = undefined;
+        throw err;
+      });
     return this.reposCache;
   }
 
@@ -271,9 +285,9 @@ export class BitbucketClient implements PluginClient {
         case "workspace":
           return [await this.workspace(id)];
         case "project":
-          return (await bbPaged<BbProject>(this.ctx, `/workspaces/${this.ws}/projects`, {}, 5)).map(
-            (p) => mapProject(id, this.ctx.workspace, p),
-          );
+          return (
+            await this.lists.getAll(`/workspaces/${this.ws}/projects`, "values", capped(5))
+          ).map((p) => mapProject(id, this.ctx.workspace, p));
         case "repository":
           this.reposCache = undefined;
           return (await this.repos()).map((r) => mapRepository(id, r));
@@ -281,7 +295,7 @@ export class BitbucketClient implements PluginClient {
           const out = await this.perRepo(
             async (slug) =>
               (
-                await bbFetch<{ values?: BbPipeline[] }>(this.ctx, `${this.repo(slug)}/pipelines`, {
+                await this.api.get(`${this.repo(slug)}/pipelines`, {
                   query: { sort: "-created_on", pagelen: PIPELINES_PER_REPO },
                 })
               ).values?.map((p) => mapPipeline(id, this.ctx.workspace, slug, p)) ?? [],
@@ -297,44 +311,40 @@ export class BitbucketClient implements PluginClient {
         case "repository-variable":
           return this.perRepo(async (slug) =>
             (
-              await bbPaged<BbVariable>(
-                this.ctx,
+              await this.lists.getAll(
                 `${this.repo(slug)}/pipelines_config/variables`,
-                {},
-                3,
+                "values",
+                capped(3),
               )
             ).map((v) => mapVariable(id, { kind: "repository", slug }, v)),
           );
         case "workspace-variable":
           return (
-            await bbPaged<BbVariable>(
-              this.ctx,
+            await this.lists.getAll(
               `/workspaces/${this.ws}/pipelines-config/variables`,
-              {},
-              3,
+              "values",
+              capped(3),
             )
           ).map((v) => mapVariable(id, { kind: "workspace" }, v));
         case "environment":
           return this.perRepo(async (slug) =>
-            (await bbPaged<BbEnvironment>(this.ctx, `${this.repo(slug)}/environments`, {}, 2)).map(
+            (await this.lists.getAll(`${this.repo(slug)}/environments`, "values", capped(2))).map(
               (e) => mapEnvironment(id, slug, e),
             ),
           );
         case "deployment-variable":
           return this.perRepo(async (slug) => {
             const out: ResourceInstance[] = [];
-            for (const e of await bbPaged<BbEnvironment>(
-              this.ctx,
+            for (const e of await this.lists.getAll(
               `${this.repo(slug)}/environments`,
-              {},
-              2,
+              "values",
+              capped(2),
             )) {
               const vars = await this.optional(
-                bbPaged<BbVariable>(
-                  this.ctx,
+                this.lists.getAll(
                   `${this.repo(slug)}/deployments_config/environments/${encUuid(e.uuid)}/variables`,
-                  {},
-                  2,
+                  "values",
+                  capped(2),
                 ),
               );
               for (const v of vars ?? []) {
@@ -352,44 +362,37 @@ export class BitbucketClient implements PluginClient {
         case "branch-restriction":
           return this.perRepo(async (slug) =>
             (
-              await bbPaged<BbBranchRestriction>(
-                this.ctx,
-                `${this.repo(slug)}/branch-restrictions`,
-                {},
-                2,
-              )
+              await this.lists.getAll(`${this.repo(slug)}/branch-restrictions`, "values", capped(2))
             ).map((b) => mapBranchRestriction(id, slug, b)),
           );
         case "repository-webhook":
           return this.perRepo(async (slug) =>
-            (await bbPaged<BbWebhook>(this.ctx, `${this.repo(slug)}/hooks`, {}, 2)).map((h) =>
+            (await this.lists.getAll(`${this.repo(slug)}/hooks`, "values", capped(2))).map((h) =>
               mapWebhook(id, slug, h),
             ),
           );
         case "workspace-webhook":
-          return (await bbPaged<BbWebhook>(this.ctx, `/workspaces/${this.ws}/hooks`, {}, 2)).map(
+          return (await this.lists.getAll(`/workspaces/${this.ws}/hooks`, "values", capped(2))).map(
             (h) => mapWebhook(id, undefined, h),
           );
         case "deploy-key":
           return this.perRepo(async (slug) =>
-            (await bbPaged<BbDeployKey>(this.ctx, `${this.repo(slug)}/deploy-keys`, {}, 2)).map(
+            (await this.lists.getAll(`${this.repo(slug)}/deploy-keys`, "values", capped(2))).map(
               (k) => mapDeployKey(id, slug, k),
             ),
           );
         case "project-deploy-key": {
           const out: ResourceInstance[] = [];
-          for (const p of await bbPaged<BbProject>(
-            this.ctx,
+          for (const p of await this.lists.getAll(
             `/workspaces/${this.ws}/projects`,
-            {},
-            5,
+            "values",
+            capped(5),
           )) {
             const keys = await this.optional(
-              bbPaged<BbDeployKey>(
-                this.ctx,
-                `/workspaces/${this.ws}/projects/${enc(p.key)}/deploy-keys`,
-                {},
-                2,
+              this.lists.getAll(
+                `/workspaces/${this.ws}/projects/${pathEncode(p.key)}/deploy-keys`,
+                "values",
+                capped(2),
               ),
             );
             out.push(...(keys ?? []).map((k) => mapProjectDeployKey(id, p.key, k)));
@@ -399,17 +402,20 @@ export class BitbucketClient implements PluginClient {
         case "runner": {
           const out: ResourceInstance[] = [];
           const workspaceRunners = await this.optional(
-            bbPaged<BbRunner>(this.ctx, `/workspaces/${this.ws}/pipelines-config/runners`, {}, 3),
+            this.lists.getAll(
+              `/workspaces/${this.ws}/pipelines-config/runners`,
+              "values",
+              capped(3),
+            ),
           );
           out.push(...(workspaceRunners ?? []).map((r) => mapRunner(id, undefined, r)));
           out.push(
             ...(await this.perRepo(async (slug) =>
               (
-                await bbPaged<BbRunner>(
-                  this.ctx,
+                await this.lists.getAll(
                   `${this.repo(slug)}/pipelines-config/runners`,
-                  {},
-                  2,
+                  "values",
+                  capped(2),
                 )
               ).map((r) => mapRunner(id, slug, r)),
             )),
@@ -419,18 +425,21 @@ export class BitbucketClient implements PluginClient {
         case "pipeline-schedule":
           return this.perRepo(async (slug) =>
             (
-              await bbPaged<BbSchedule>(
-                this.ctx,
+              await this.lists.getAll(
                 `${this.repo(slug)}/pipelines_config/schedules`,
-                {},
-                2,
+                "values",
+                capped(2),
               )
             ).map((s) => mapSchedule(id, slug, s)),
           );
         case "pipeline-cache":
           return this.perRepo(async (slug) =>
             (
-              await bbPaged<BbCache>(this.ctx, `${this.repo(slug)}/pipelines-config/caches`, {}, 2)
+              await this.lists.getAll(
+                `${this.repo(slug)}/pipelines-config/caches`,
+                "values",
+                capped(2),
+              )
             ).map((c) => mapCache(id, slug, c)),
           );
         default:
@@ -441,8 +450,8 @@ export class BitbucketClient implements PluginClient {
 
   private async workspace(accountId: string): Promise<ResourceInstance> {
     const [w, members] = await Promise.all([
-      bbFetch<BbWorkspace>(this.ctx, `/workspaces/${this.ws}`),
-      this.optional(bbPaged<unknown>(this.ctx, `/workspaces/${this.ws}/members`, {}, 5)),
+      this.api.get(`/workspaces/${this.ws}`),
+      this.optional(this.lists.getAll(`/workspaces/${this.ws}/members`, "values", capped(5))),
     ]);
     return mapWorkspace(accountId, w, members ? { members: members.length } : {});
   }
@@ -466,16 +475,14 @@ export class BitbucketClient implements PluginClient {
           return mapProject(
             accountId,
             this.ctx.workspace,
-            await bbFetch<BbProject>(this.ctx, `/workspaces/${this.ws}/projects/${enc(id)}`),
+            await this.api.get(`/workspaces/${this.ws}/projects/${pathEncode(id)}`),
           );
         case "repository": {
           const [r, config, pipelines] = await Promise.all([
-            bbFetch<BbRepository>(this.ctx, this.repo(id)),
+            this.api.get(this.repo(id)),
+            this.optional(this.api.get(`${this.repo(id)}/pipelines_config`)),
             this.optional(
-              bbFetch<{ enabled?: boolean }>(this.ctx, `${this.repo(id)}/pipelines_config`),
-            ),
-            this.optional(
-              bbFetch<{ values?: BbPipeline[] }>(this.ctx, `${this.repo(id)}/pipelines`, {
+              this.api.get(`${this.repo(id)}/pipelines`, {
                 query: { sort: "-created_on", pagelen: 10 },
               }),
             ),
@@ -491,13 +498,12 @@ export class BitbucketClient implements PluginClient {
         }
         case "pipeline": {
           const [p, steps] = await Promise.all([
-            bbFetch<BbPipeline>(this.ctx, `${this.repo(slug)}/pipelines/${encUuid(rest)}`),
+            this.api.get(`${this.repo(slug)}/pipelines/${encUuid(rest)}`),
             this.optional(
-              bbPaged<BbStep>(
-                this.ctx,
+              this.lists.getAll(
                 `${this.repo(slug)}/pipelines/${encUuid(rest)}/steps`,
-                {},
-                2,
+                "values",
+                capped(2),
               ),
             ),
           ]);
@@ -509,34 +515,22 @@ export class BitbucketClient implements PluginClient {
           return mapVariable(
             accountId,
             { kind: "repository", slug },
-            await bbFetch<BbVariable>(
-              this.ctx,
-              `${this.repo(slug)}/pipelines_config/variables/${encUuid(rest)}`,
-            ),
+            await this.api.get(`${this.repo(slug)}/pipelines_config/variables/${encUuid(rest)}`),
           );
         case "workspace-variable":
           return mapVariable(
             accountId,
             { kind: "workspace" },
-            await bbFetch<BbVariable>(
-              this.ctx,
-              `/workspaces/${this.ws}/pipelines-config/variables/${encUuid(id)}`,
-            ),
+            await this.api.get(`/workspaces/${this.ws}/pipelines-config/variables/${encUuid(id)}`),
           );
         case "deployment-variable": {
           const { scope: envUuid, rest: varUuid } = splitScoped(rest);
           const [env, vars] = await Promise.all([
-            this.optional(
-              bbFetch<BbEnvironment>(
-                this.ctx,
-                `${this.repo(slug)}/environments/${encUuid(envUuid)}`,
-              ),
-            ),
-            bbPaged<BbVariable>(
-              this.ctx,
+            this.optional(this.api.get(`${this.repo(slug)}/environments/${encUuid(envUuid)}`)),
+            this.lists.getAll(
               `${this.repo(slug)}/deployments_config/environments/${encUuid(envUuid)}/variables`,
-              {},
-              3,
+              "values",
+              capped(3),
             ),
           ]);
           const v = vars.find((x) => x.uuid === varUuid);
@@ -549,7 +543,7 @@ export class BitbucketClient implements PluginClient {
         }
         case "environment": {
           const [e, deployments] = await Promise.all([
-            bbFetch<BbEnvironment>(this.ctx, `${this.repo(slug)}/environments/${encUuid(rest)}`),
+            this.api.get(`${this.repo(slug)}/environments/${encUuid(rest)}`),
             this.deploymentsFor(slug, rest, 3),
           ]);
           return stash(mapEnvironment(accountId, slug, e, deployments[0]), {
@@ -560,36 +554,32 @@ export class BitbucketClient implements PluginClient {
           return mapBranchRestriction(
             accountId,
             slug,
-            await bbFetch<BbBranchRestriction>(
-              this.ctx,
-              `${this.repo(slug)}/branch-restrictions/${enc(rest)}`,
-            ),
+            await this.api.get(`${this.repo(slug)}/branch-restrictions/${pathEncode(rest)}`),
           );
         case "repository-webhook":
           return mapWebhook(
             accountId,
             slug,
-            await bbFetch<BbWebhook>(this.ctx, `${this.repo(slug)}/hooks/${encUuid(rest)}`),
+            await this.api.get(`${this.repo(slug)}/hooks/${encUuid(rest)}`),
           );
         case "workspace-webhook":
           return mapWebhook(
             accountId,
             undefined,
-            await bbFetch<BbWebhook>(this.ctx, `/workspaces/${this.ws}/hooks/${encUuid(id)}`),
+            await this.api.get(`/workspaces/${this.ws}/hooks/${encUuid(id)}`),
           );
         case "deploy-key":
           return mapDeployKey(
             accountId,
             slug,
-            await bbFetch<BbDeployKey>(this.ctx, `${this.repo(slug)}/deploy-keys/${enc(rest)}`),
+            await this.api.get(`${this.repo(slug)}/deploy-keys/${pathEncode(rest)}`),
           );
         case "project-deploy-key":
           return mapProjectDeployKey(
             accountId,
             slug,
-            await bbFetch<BbDeployKey>(
-              this.ctx,
-              `/workspaces/${this.ws}/projects/${enc(slug)}/deploy-keys/${enc(rest)}`,
+            await this.api.get(
+              `/workspaces/${this.ws}/projects/${pathEncode(slug)}/deploy-keys/${pathEncode(rest)}`,
             ),
           );
         case "runner": {
@@ -597,31 +587,28 @@ export class BitbucketClient implements PluginClient {
           return mapRunner(
             accountId,
             repoSlug,
-            await bbFetch<BbRunner>(this.ctx, this.runnerPath(repoSlug, uuid)),
+            await this.api.get(this.runnerPath(repoSlug, uuid)),
           );
         }
         case "pipeline-schedule": {
           const [s, runs] = await Promise.all([
-            bbFetch<BbSchedule>(
-              this.ctx,
-              `${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}`,
-            ),
+            this.api.get(`${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}`),
             this.optional(
-              bbFetch<{ values?: BbPipeline[] }>(
-                this.ctx,
+              this.api.get(
                 `${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}/executions`,
-                { query: { pagelen: 10 } },
+                {
+                  query: { pagelen: 10 },
+                },
               ),
             ),
           ]);
           return stash(mapSchedule(accountId, slug, s), { [DETAIL_KEYS.pipelines]: runs?.values });
         }
         case "pipeline-cache": {
-          const caches = await bbPaged<BbCache>(
-            this.ctx,
+          const caches = await this.lists.getAll(
             `${this.repo(slug)}/pipelines-config/caches`,
-            {},
-            3,
+            "values",
+            capped(3),
           );
           const c = caches.find((x) => x.uuid === rest);
           if (!c) fail("cache not found (Bitbucket expires caches after a week)", 404);
@@ -633,10 +620,10 @@ export class BitbucketClient implements PluginClient {
     });
   }
 
-  private runnerPath(slug: string | undefined, uuid: string): string {
+  private runnerPath(slug: string | undefined, uuid: string) {
     return slug
-      ? `${this.repo(slug)}/pipelines-config/runners/${encUuid(uuid)}`
-      : `/workspaces/${this.ws}/pipelines-config/runners/${encUuid(uuid)}`;
+      ? (`${this.repo(slug)}/pipelines-config/runners/${encUuid(uuid)}` as const)
+      : (`/workspaces/${this.ws}/pipelines-config/runners/${encUuid(uuid)}` as const);
   }
 
   /** A repository's deployments to one environment, newest first. */
@@ -646,7 +633,7 @@ export class BitbucketClient implements PluginClient {
     pages: number,
   ): Promise<BbDeployment[]> {
     const all = await this.optional(
-      bbPaged<BbDeployment>(this.ctx, `${this.repo(slug)}/deployments`, {}, pages),
+      this.lists.getAll(`${this.repo(slug)}/deployments`, "values", capped(pages)),
     );
     const when = (d: BbDeployment) =>
       Date.parse(d.state?.completion_date ?? d.state?.start_date ?? d.last_update_time ?? "") || 0;
@@ -738,20 +725,15 @@ export class BitbucketClient implements PluginClient {
       const id = externalIdOf(resourceId);
       const range = rangeOrDefault(timeRange);
       if (resourceTypeId === "repository") {
-        const pipelines: BbPipeline[] = [];
-        let next: string | undefined = `${this.repo(id)}/pipelines`;
-        for (let i = 0; i < METRIC_PAGES && next; i++) {
-          const page: { values?: BbPipeline[]; next?: string } = await bbFetch(
-            this.ctx,
-            next,
-            i === 0 ? { query: { sort: "-created_on", pagelen: 100 } } : {},
-          );
-          const values = page.values ?? [];
-          pipelines.push(...values);
-          const oldest = values[values.length - 1]?.created_on;
-          if (!oldest || Date.parse(oldest) < range.startMs) break;
-          next = page.next;
-        }
+        const budget = capped(METRIC_PAGES);
+        const pipelines = await this.newestFirst.getAll(`${this.repo(id)}/pipelines`, "values", {
+          query: { sort: "-created_on" },
+          maxPages: METRIC_PAGES,
+          stopWhen: (batch) => {
+            const oldest = batch[batch.length - 1]?.created_on;
+            return budget.stopWhen() || !oldest || Date.parse(oldest) < range.startMs;
+          },
+        });
         return pipelineSeries(pipelines, range);
       }
       if (resourceTypeId === "environment") {
@@ -768,7 +750,7 @@ export class BitbucketClient implements PluginClient {
 
   private async repoField(parentResourceId: string | undefined): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
-    const repos = await this.repos().catch(() => [] as BbRepository[]);
+    const repos = await this.repos().catch((): BbRepository[] => []);
     const options = repos.map((r) => ({ id: slugOf(r), label: r.name, description: r.full_name }));
     return [
       {
@@ -783,12 +765,9 @@ export class BitbucketClient implements PluginClient {
   }
 
   private async projectOptions(): Promise<SelectOption[]> {
-    const projects = await bbPaged<BbProject>(
-      this.ctx,
-      `/workspaces/${this.ws}/projects`,
-      {},
-      5,
-    ).catch(() => [] as BbProject[]);
+    const projects = await this.lists
+      .getAll(`/workspaces/${this.ws}/projects`, "values", capped(5))
+      .catch((): BbProject[] => []);
     return projects.map((p) => ({ id: p.key, label: p.name ?? p.key, description: p.key }));
   }
 
@@ -800,15 +779,11 @@ export class BitbucketClient implements PluginClient {
   ): Promise<CreateFieldConfig> {
     if (!slug) return { key, label, kind: "text", required: true, placeholder: "main" };
     const [repo, branches] = await Promise.all([
-      this.optional(bbFetch<BbRepository>(this.ctx, this.repo(slug))),
+      this.optional(this.api.get(this.repo(slug))),
       this.optional(
-        bbFetch<{ values?: Array<{ name: string }> }>(
-          this.ctx,
-          `${this.repo(slug)}/refs/branches`,
-          {
-            query: { pagelen: 100, sort: "-target.date" },
-          },
-        ),
+        this.api.get(`${this.repo(slug)}/refs/branches`, {
+          query: { pagelen: 100, sort: "-target.date" },
+        }),
       ),
     ]);
     const options = (branches?.values ?? []).map((b) => ({ id: b.name, label: b.name }));
@@ -928,7 +903,7 @@ export class BitbucketClient implements PluginClient {
         case "deployment-variable": {
           if (parentResourceId) return { fields: variableFields };
           const envs = await runPluginEffect(this.listResources("environment", "x")).catch(
-            () => [] as ResourceInstance[],
+            (): ResourceInstance[] => [],
           );
           return {
             fields: [
@@ -1094,7 +1069,7 @@ export class BitbucketClient implements PluginClient {
             ],
           };
         case "runner": {
-          const repos = await this.repos().catch(() => [] as BbRepository[]);
+          const repos = await this.repos().catch((): BbRepository[] => []);
           return {
             fields: [
               {
@@ -1214,15 +1189,15 @@ export class BitbucketClient implements PluginClient {
         if (!v) fail("pick a repository");
         return v;
       };
-      const post = <T>(path: string, body: unknown) =>
-        bbFetch<T>(this.ctx, path, { method: "POST", body });
       switch (typeId) {
         case "project": {
-          const p = await post<BbProject>(`/workspaces/${this.ws}/projects`, {
-            name: need("name", "Name"),
-            key: need("key", "Key").toUpperCase(),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            is_private: fields["private"] === undefined ? true : truthy(fields["private"]),
+          const p = await this.api.post(`/workspaces/${this.ws}/projects`, {
+            body: {
+              name: need("name", "Name"),
+              key: need("key", "Key").toUpperCase(),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              is_private: fields["private"] === undefined ? true : truthy(fields["private"]),
+            },
           });
           return mapProject(accountId, this.ctx.workspace, p);
         }
@@ -1230,11 +1205,13 @@ export class BitbucketClient implements PluginClient {
           const slug = need("slug", "Name").toLowerCase();
           if (!/^[a-z0-9._-]+$/.test(slug))
             fail("a repository name may only use lowercase letters, digits, . _ and -");
-          const r = await post<BbRepository>(this.repo(slug), {
-            scm: "git",
-            is_private: fields["private"] === undefined ? true : truthy(fields["private"]),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            ...(fields["project"] ? { project: { key: fields["project"] } } : {}),
+          const r = await this.api.post(this.repo(slug), {
+            body: {
+              scm: "git",
+              is_private: fields["private"] === undefined ? true : truthy(fields["private"]),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              ...(fields["project"] ? { project: { key: fields["project"] } } : {}),
+            },
           });
           return mapRepository(accountId, r);
         }
@@ -1242,14 +1219,16 @@ export class BitbucketClient implements PluginClient {
           const slug = repoSlug();
           const custom = (fields["pipeline"] ?? "").trim();
           const variables = parseVariableLines(fields["variables"]);
-          const p = await post<BbPipeline>(`${this.repo(slug)}/pipelines`, {
-            target: {
-              type: "pipeline_ref_target",
-              ref_type: "branch",
-              ref_name: need("branch", "Branch"),
-              ...(custom ? { selector: { type: "custom", pattern: custom } } : {}),
+          const p = await this.api.post(`${this.repo(slug)}/pipelines`, {
+            body: {
+              target: {
+                type: "pipeline_ref_target",
+                ref_type: "branch",
+                ref_name: need("branch", "Branch"),
+                ...(custom ? { selector: { type: "custom", pattern: custom } } : {}),
+              },
+              ...(variables.length > 0 ? { variables } : {}),
             },
-            ...(variables.length > 0 ? { variables } : {}),
           });
           return mapPipeline(accountId, this.ctx.workspace, slug, p);
         }
@@ -1264,30 +1243,33 @@ export class BitbucketClient implements PluginClient {
           if (!body.value) fail('"Value" is required');
           if (typeId === "repository-variable") {
             const slug = repoSlug();
-            const v = await post<BbVariable>(`${this.repo(slug)}/pipelines_config/variables`, body);
+            const v = await this.api.post(`${this.repo(slug)}/pipelines_config/variables`, {
+              body,
+            });
             return mapVariable(accountId, { kind: "repository", slug }, v);
           }
           if (typeId === "workspace-variable") {
-            const v = await post<BbVariable>(
-              `/workspaces/${this.ws}/pipelines-config/variables`,
+            const v = await this.api.post(`/workspaces/${this.ws}/pipelines-config/variables`, {
               body,
-            );
+            });
             return mapVariable(accountId, { kind: "workspace" }, v);
           }
           const envId = (fields["environment"] ?? "").trim() || parent || "";
           const { scope: slug, rest: envUuid } = splitScoped(envId);
           if (!slug || !envUuid) fail("pick an environment");
-          const v = await post<BbVariable>(
+          const v = await this.api.post(
             `${this.repo(slug)}/deployments_config/environments/${encUuid(envUuid)}/variables`,
-            body,
+            { body },
           );
           return mapVariable(accountId, { kind: "deployment", slug, envUuid }, v);
         }
         case "environment": {
           const slug = repoSlug();
-          const e = await post<BbEnvironment>(`${this.repo(slug)}/environments`, {
-            name: need("name", "Name"),
-            environment_type: { name: fields["environmentType"] || "Staging" },
+          const e = await this.api.post(`${this.repo(slug)}/environments`, {
+            body: {
+              name: need("name", "Name"),
+              environment_type: { name: fields["environmentType"] || "Staging" },
+            },
           });
           return mapEnvironment(accountId, slug, e);
         }
@@ -1295,10 +1277,9 @@ export class BitbucketClient implements PluginClient {
           const slug = repoSlug();
           const kind = need("kind", "Rule");
           if (!RESTRICTION_KINDS[kind]) fail(`"${kind}" is not a branch restriction`);
-          const b = await post<BbBranchRestriction>(
-            `${this.repo(slug)}/branch-restrictions`,
-            this.restrictionBody(kind, fields),
-          );
+          const b = await this.api.post(`${this.repo(slug)}/branch-restrictions`, {
+            body: this.restrictionBody(kind, fields),
+          });
           return mapBranchRestriction(accountId, slug, b);
         }
         case "repository-webhook":
@@ -1316,32 +1297,30 @@ export class BitbucketClient implements PluginClient {
             return mapWebhook(
               accountId,
               undefined,
-              await post<BbWebhook>(`/workspaces/${this.ws}/hooks`, body),
+              await this.api.post(`/workspaces/${this.ws}/hooks`, { body }),
             );
           }
           const slug = repoSlug();
           return mapWebhook(
             accountId,
             slug,
-            await post<BbWebhook>(`${this.repo(slug)}/hooks`, body),
+            await this.api.post(`${this.repo(slug)}/hooks`, { body }),
           );
         }
         case "deploy-key": {
           const slug = repoSlug();
-          const k = await post<BbDeployKey>(`${this.repo(slug)}/deploy-keys`, {
-            key: need("key", "Public key"),
-            label: need("label", "Label"),
+          const k = await this.api.post(`${this.repo(slug)}/deploy-keys`, {
+            body: { key: need("key", "Public key"), label: need("label", "Label") },
           });
           return mapDeployKey(accountId, slug, k);
         }
         case "project-deploy-key": {
           const key = (fields["project"] ?? "").trim() || parent || "";
           if (!key) fail("pick a project");
-          const k = await post<BbDeployKey>(
-            `/workspaces/${this.ws}/projects/${enc(key)}/deploy-keys`,
+          const k = await this.api.post(
+            `/workspaces/${this.ws}/projects/${pathEncode(key)}/deploy-keys`,
             {
-              key: need("key", "Public key"),
-              label: need("label", "Label"),
+              body: { key: need("key", "Public key"), label: need("label", "Label") },
             },
           );
           return mapProjectDeployKey(accountId, key, k);
@@ -1349,15 +1328,13 @@ export class BitbucketClient implements PluginClient {
         case "runner": {
           const scope = fields["scope"] || "workspace";
           const slug = scope.startsWith("repo:") ? scope.slice(5) : undefined;
-          const r = await post<BbRunner>(
-            slug
-              ? `${this.repo(slug)}/pipelines-config/runners`
-              : `/workspaces/${this.ws}/pipelines-config/runners`,
-            {
-              name: need("name", "Name"),
-              labels: runnerLabels(fields["platform"] || "linux", parseListish(fields["labels"])),
-            },
-          );
+          const body = {
+            name: need("name", "Name"),
+            labels: runnerLabels(fields["platform"] || "linux", parseListish(fields["labels"])),
+          };
+          const r = slug
+            ? await this.api.post(`${this.repo(slug)}/pipelines-config/runners`, { body })
+            : await this.api.post(`/workspaces/${this.ws}/pipelines-config/runners`, { body });
           const resource = mapRunner(accountId, slug, r);
           const secrets = this.services?.secrets;
           const id = r.oauth_client?.id;
@@ -1397,11 +1374,18 @@ export class BitbucketClient implements PluginClient {
               : selectorType === "default"
                 ? { type: "default" }
                 : { type: "branches", pattern: branch };
-          const s = await post<BbSchedule>(`${this.repo(slug)}/pipelines_config/schedules`, {
-            type: "pipeline_schedule",
-            enabled: true,
-            cron_pattern: cron,
-            target: { type: "pipeline_ref_target", ref_type: "branch", ref_name: branch, selector },
+          const s = await this.api.post(`${this.repo(slug)}/pipelines_config/schedules`, {
+            body: {
+              type: "pipeline_schedule",
+              enabled: true,
+              cron_pattern: cron,
+              target: {
+                type: "pipeline_ref_target",
+                ref_type: "branch",
+                ref_name: branch,
+                selector,
+              },
+            },
           });
           return mapSchedule(accountId, slug, s);
         }
@@ -1415,7 +1399,7 @@ export class BitbucketClient implements PluginClient {
     kind: string,
     fields: Record<string, string>,
     current?: BbBranchRestriction,
-  ) {
+  ): ApiBody<RestrictionWrite> {
     const matchKind = fields["matchKind"] || current?.branch_match_kind || "glob";
     const spec = RESTRICTION_KINDS[kind];
     const value = (fields["value"] ?? "").trim();
@@ -1450,47 +1434,52 @@ export class BitbucketClient implements PluginClient {
       const id = externalIdOf(resourceId);
       const { scope: slug, rest } = splitScoped(id);
       const has = (k: string) => k in fields;
-      const put = (path: string, body: unknown) => bbFetch(this.ctx, path, { method: "PUT", body });
       switch (typeId) {
         case "project": {
-          const path = `/workspaces/${this.ws}/projects/${enc(id)}`;
-          const current = await bbFetch<BbProject>(this.ctx, path);
-          await put(path, {
-            key: current.key,
-            name: has("name") ? fields["name"] : current.name,
-            description: has("description") ? fields["description"] : (current.description ?? ""),
-            is_private: has("private") ? truthy(fields["private"]) : current.is_private,
+          const path = `/workspaces/${this.ws}/projects/${pathEncode(id)}` as const;
+          const current = await this.api.get(path);
+          await this.api.put(path, {
+            body: {
+              key: current.key,
+              name: has("name") ? fields["name"] : current.name,
+              description: has("description") ? fields["description"] : (current.description ?? ""),
+              is_private: has("private") ? truthy(fields["private"]) : current.is_private,
+            },
           });
           break;
         }
         case "repository": {
-          const body: Record<string, unknown> = {};
-          if (has("description")) body["description"] = fields["description"] ?? "";
-          if (has("private")) body["is_private"] = truthy(fields["private"]);
-          if (has("forkPolicy")) body["fork_policy"] = fields["forkPolicy"];
-          if (has("project") && fields["project"]) body["project"] = { key: fields["project"] };
-          if (Object.keys(body).length > 0) await put(this.repo(id), body);
+          const body: ApiBody<paths["/repositories/{workspace}/{repo_slug}"]["put"]> = {};
+          if (has("description")) body.description = fields["description"] ?? "";
+          if (has("private")) body.is_private = truthy(fields["private"]);
+          if (has("forkPolicy")) body.fork_policy = fields["forkPolicy"];
+          if (has("project") && fields["project"]) body.project = { key: fields["project"] };
+          if (Object.keys(body).length > 0) await this.api.put(this.repo(id), { body });
           break;
         }
         case "repository-variable":
         case "workspace-variable":
         case "deployment-variable": {
-          let path: string;
+          let save: (body: VariableWrite) => Promise<object | undefined>;
           let current: BbVariable | undefined;
           if (typeId === "repository-variable") {
-            path = `${this.repo(slug)}/pipelines_config/variables/${encUuid(rest)}`;
-            current = await bbFetch<BbVariable>(this.ctx, path);
+            const path = `${this.repo(slug)}/pipelines_config/variables/${encUuid(rest)}` as const;
+            current = await this.api.get(path);
+            save = (body) => this.api.put(path, { body });
           } else if (typeId === "workspace-variable") {
-            path = `/workspaces/${this.ws}/pipelines-config/variables/${encUuid(id)}`;
-            current = await bbFetch<BbVariable>(this.ctx, path);
+            const path =
+              `/workspaces/${this.ws}/pipelines-config/variables/${encUuid(id)}` as const;
+            current = await this.api.get(path);
+            save = (body) => this.api.put(path, { body });
           } else {
             const { scope: envUuid, rest: varUuid } = splitScoped(rest);
-            const base = `${this.repo(slug)}/deployments_config/environments/${encUuid(envUuid)}/variables`;
-            path = `${base}/${encUuid(varUuid)}`;
-            current = (await bbPaged<BbVariable>(this.ctx, base, {}, 3)).find(
+            const base =
+              `${this.repo(slug)}/deployments_config/environments/${encUuid(envUuid)}/variables` as const;
+            current = (await this.lists.getAll(base, "values", capped(3))).find(
               (v) => v.uuid === varUuid,
             );
             if (!current) fail("deployment variable not found", 404);
+            save = (body) => this.api.put(`${base}/${encUuid(varUuid)}`, { body });
           }
           const value = fields["value"] || current.value;
           if (value === undefined) {
@@ -1498,7 +1487,7 @@ export class BitbucketClient implements PluginClient {
               "this variable is secured, so Bitbucket will not return its value. Type the value to change it.",
             );
           }
-          await put(path, {
+          await save({
             key: current.key,
             value,
             secured: has("secured") ? truthy(fields["secured"]) : (current.secured ?? false),
@@ -1506,84 +1495,84 @@ export class BitbucketClient implements PluginClient {
           break;
         }
         case "environment": {
-          const change: Record<string, unknown> = {};
+          const change: Record<string, string | { admin_only: boolean }> = {};
           if (has("name") && fields["name"]) change["name"] = fields["name"];
           if (has("adminOnly"))
             change["restrictions"] = { admin_only: truthy(fields["adminOnly"]) };
           if (Object.keys(change).length > 0) {
             const body = { change };
             try {
-              await bbRequest(
+              await bbPostUnread(
                 this.ctx,
                 `${this.repo(slug)}/environments/${encUuid(rest)}/changes`,
-                {
-                  method: "POST",
-                  body,
-                },
+                body,
               );
             } catch (err) {
               // The published path 404s on some repositories; the older
               // deployments_config path is the one the community reports working.
               if (statusOf(err) !== 404) throw err;
-              await bbRequest(
+              await bbPostUnread(
                 this.ctx,
                 `${this.repo(slug)}/deployments_config/environments/${encUuid(rest)}/changes`,
-                {
-                  method: "POST",
-                  body,
-                },
+                body,
               );
             }
           }
           break;
         }
         case "branch-restriction": {
-          const path = `${this.repo(slug)}/branch-restrictions/${enc(rest)}`;
-          const current = await bbFetch<BbBranchRestriction>(this.ctx, path);
-          await put(path, this.restrictionBody(current.kind, fields, current));
+          const path = `${this.repo(slug)}/branch-restrictions/${pathEncode(rest)}` as const;
+          const current = await this.api.get(path);
+          await this.api.put(path, { body: this.restrictionBody(current.kind, fields, current) });
           break;
         }
         case "repository-webhook":
         case "workspace-webhook": {
           const path =
             typeId === "repository-webhook"
-              ? `${this.repo(slug)}/hooks/${encUuid(rest)}`
-              : `/workspaces/${this.ws}/hooks/${encUuid(id)}`;
-          const current = await bbFetch<BbWebhook>(this.ctx, path);
-          await put(path, {
-            url: has("url") && fields["url"] ? fields["url"] : current.url,
-            description: has("description") ? fields["description"] : current.description,
-            active: has("active") ? truthy(fields["active"]) : current.active,
-            events: has("events") ? parseListish(fields["events"]) : current.events,
-            ...(fields["secret"] ? { secret: fields["secret"] } : {}),
+              ? (`${this.repo(slug)}/hooks/${encUuid(rest)}` as const)
+              : (`/workspaces/${this.ws}/hooks/${encUuid(id)}` as const);
+          const current = await this.api.get(path);
+          await this.api.put(path, {
+            body: {
+              url: has("url") && fields["url"] ? fields["url"] : current.url,
+              description: has("description") ? fields["description"] : current.description,
+              active: has("active") ? truthy(fields["active"]) : current.active,
+              events: has("events") ? parseListish(fields["events"]) : current.events,
+              ...(fields["secret"] ? { secret: fields["secret"] } : {}),
+            },
           });
           break;
         }
         case "deploy-key": {
-          const path = `${this.repo(slug)}/deploy-keys/${enc(rest)}`;
-          const current = await bbFetch<BbDeployKey>(this.ctx, path);
-          await put(path, {
-            key: current.key,
-            label: has("label") ? fields["label"] : current.label,
+          const path = `${this.repo(slug)}/deploy-keys/${pathEncode(rest)}` as const;
+          const current = await this.api.get(path);
+          await this.api.put(path, {
+            body: {
+              key: current.key,
+              label: has("label") ? fields["label"] : current.label,
+            },
           });
           break;
         }
         case "runner": {
           const { slug: repoSlug, uuid } = parseRunnerId(id);
           const path = this.runnerPath(repoSlug, uuid);
-          const current = await bbFetch<BbRunner>(this.ctx, path);
-          await put(path, {
-            name: has("name") && fields["name"] ? fields["name"] : current.name,
-            labels: has("labels")
-              ? runnerLabels(undefined, parseListish(fields["labels"]))
-              : current.labels,
+          const current = await this.api.get(path);
+          await this.api.put(path, {
+            body: {
+              name: has("name") && fields["name"] ? fields["name"] : current.name,
+              labels: has("labels")
+                ? runnerLabels(undefined, parseListish(fields["labels"]))
+                : current.labels,
+            },
           });
           break;
         }
         case "pipeline-schedule":
           if (has("enabled")) {
-            await put(`${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}`, {
-              enabled: truthy(fields["enabled"]),
+            await this.api.put(`${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}`, {
+              body: { enabled: truthy(fields["enabled"]) },
             });
           }
           break;
@@ -1598,52 +1587,53 @@ export class BitbucketClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       const { scope: slug, rest } = splitScoped(id);
-      const del = (path: string) => bbFetch(this.ctx, path, { method: "DELETE" });
       switch (typeId) {
         case "project":
-          await del(`/workspaces/${this.ws}/projects/${enc(id)}`);
+          await this.api.delete(`/workspaces/${this.ws}/projects/${pathEncode(id)}`);
           return;
         case "repository-variable":
-          await del(`${this.repo(slug)}/pipelines_config/variables/${encUuid(rest)}`);
+          await this.api.delete(`${this.repo(slug)}/pipelines_config/variables/${encUuid(rest)}`);
           return;
         case "workspace-variable":
-          await del(`/workspaces/${this.ws}/pipelines-config/variables/${encUuid(id)}`);
+          await this.api.delete(`/workspaces/${this.ws}/pipelines-config/variables/${encUuid(id)}`);
           return;
         case "deployment-variable": {
           const { scope: envUuid, rest: varUuid } = splitScoped(rest);
-          await del(
+          await this.api.delete(
             `${this.repo(slug)}/deployments_config/environments/${encUuid(envUuid)}/variables/${encUuid(varUuid)}`,
           );
           return;
         }
         case "environment":
-          await del(`${this.repo(slug)}/environments/${encUuid(rest)}`);
+          await this.api.delete(`${this.repo(slug)}/environments/${encUuid(rest)}`);
           return;
         case "branch-restriction":
-          await del(`${this.repo(slug)}/branch-restrictions/${enc(rest)}`);
+          await this.api.delete(`${this.repo(slug)}/branch-restrictions/${pathEncode(rest)}`);
           return;
         case "repository-webhook":
-          await del(`${this.repo(slug)}/hooks/${encUuid(rest)}`);
+          await this.api.delete(`${this.repo(slug)}/hooks/${encUuid(rest)}`);
           return;
         case "workspace-webhook":
-          await del(`/workspaces/${this.ws}/hooks/${encUuid(id)}`);
+          await this.api.delete(`/workspaces/${this.ws}/hooks/${encUuid(id)}`);
           return;
         case "deploy-key":
-          await del(`${this.repo(slug)}/deploy-keys/${enc(rest)}`);
+          await this.api.delete(`${this.repo(slug)}/deploy-keys/${pathEncode(rest)}`);
           return;
         case "project-deploy-key":
-          await del(`/workspaces/${this.ws}/projects/${enc(slug)}/deploy-keys/${enc(rest)}`);
+          await this.api.delete(
+            `/workspaces/${this.ws}/projects/${pathEncode(slug)}/deploy-keys/${pathEncode(rest)}`,
+          );
           return;
         case "runner": {
           const { slug: repoSlug, uuid } = parseRunnerId(id);
-          await del(this.runnerPath(repoSlug, uuid));
+          await this.api.delete(this.runnerPath(repoSlug, uuid));
           return;
         }
         case "pipeline-schedule":
-          await del(`${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}`);
+          await this.api.delete(`${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}`);
           return;
         case "pipeline-cache":
-          await del(`${this.repo(slug)}/pipelines-config/caches/${encUuid(rest)}`);
+          await this.api.delete(`${this.repo(slug)}/pipelines-config/caches/${encUuid(rest)}`);
           return;
         default:
           throw new Error(`Bitbucket plugin: cannot delete "${typeId}" from Infrawrench`);
@@ -1665,32 +1655,26 @@ export class BitbucketClient implements PluginClient {
       const id = externalIdOf(resourceId);
       const { scope: slug, rest } = splitScoped(id);
       if (typeId === "pipeline" && actionId === "stop") {
-        await bbRequest(this.ctx, `${this.repo(slug)}/pipelines/${encUuid(rest)}/stopPipeline`, {
-          method: "POST",
-        });
+        await bbPostUnread(this.ctx, `${this.repo(slug)}/pipelines/${encUuid(rest)}/stopPipeline`);
         return;
       }
       if (
         typeId === "repository" &&
         (actionId === "enable-pipelines" || actionId === "disable-pipelines")
       ) {
-        await bbFetch(this.ctx, `${this.repo(id)}/pipelines_config`, {
-          method: "PUT",
+        await this.api.put(`${this.repo(id)}/pipelines_config`, {
           body: { enabled: actionId === "enable-pipelines" },
         });
         return;
       }
       if (typeId === "repository" && actionId === "clear-caches") {
-        const caches = await bbPaged<BbCache>(
-          this.ctx,
+        const caches = await this.lists.getAll(
           `${this.repo(id)}/pipelines-config/caches`,
-          {},
-          3,
+          "values",
+          capped(3),
         );
         for (const c of caches) {
-          await bbFetch(this.ctx, `${this.repo(id)}/pipelines-config/caches/${encUuid(c.uuid)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`${this.repo(id)}/pipelines-config/caches/${encUuid(c.uuid)}`);
         }
         return;
       }
@@ -1706,8 +1690,7 @@ export class BitbucketClient implements PluginClient {
         return;
       }
       if (typeId === "pipeline-schedule" && (actionId === "enable" || actionId === "disable")) {
-        await bbFetch(this.ctx, `${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}`, {
-          method: "PUT",
+        await this.api.put(`${this.repo(slug)}/pipelines_config/schedules/${encUuid(rest)}`, {
           body: { enabled: actionId === "enable" },
         });
         return;
@@ -1715,9 +1698,8 @@ export class BitbucketClient implements PluginClient {
       if (typeId === "runner" && (actionId === "enable" || actionId === "disable")) {
         const { slug: repoSlug, uuid } = parseRunnerId(id);
         const path = this.runnerPath(repoSlug, uuid);
-        const current = await bbFetch<BbRunner>(this.ctx, path);
-        await bbFetch(this.ctx, path, {
-          method: "PUT",
+        const current = await this.api.get(path);
+        await this.api.put(path, {
           body: {
             name: current.name,
             labels: current.labels,
@@ -1744,11 +1726,10 @@ export class BitbucketClient implements PluginClient {
     return attempt(async () => {
       if (typeId !== "pipeline") throw new Error(`Bitbucket plugin: "${typeId}" has no logs`);
       const { scope: slug, rest } = splitScoped(externalIdOf(resourceId));
-      const steps = await bbPaged<BbStep>(
-        this.ctx,
+      const steps = await this.lists.getAll(
         `${this.repo(slug)}/pipelines/${encUuid(rest)}/steps`,
-        {},
-        2,
+        "values",
+        capped(2),
       );
       const label = (s: BbStep, i: number) => `${i + 1}. ${s.name ?? "Step"}`;
       const labelled = steps.map((s, i) => ({ s, name: label(s, i) }));
@@ -1760,16 +1741,17 @@ export class BitbucketClient implements PluginClient {
         labelled[labelled.length - 1];
       if (!pick)
         return { text: "This pipeline has no steps yet.\n", containers: [], activeContainer: "" };
-      const path = `${this.repo(slug)}/pipelines/${encUuid(rest)}/steps/${encUuid(pick.s.uuid)}/log`;
+      const path =
+        `${this.repo(slug)}/pipelines/${encUuid(rest)}/steps/${encUuid(pick.s.uuid)}/log` as const;
       let text: string;
       try {
-        text = await bbFetch<string>(this.ctx, path, {
-          as: "text",
-          headers: { Range: `bytes=-${LOG_TAIL_BYTES}` },
-        });
+        ({ body: text } = await this.api.getText(path, {
+          headers: { Accept: LOG_ACCEPT, Range: `bytes=-${LOG_TAIL_BYTES}` },
+        }));
       } catch (err) {
         const status = statusOf(err);
-        if (status === 416) text = await bbFetch<string>(this.ctx, path, { as: "text" });
+        if (status === 416)
+          ({ body: text } = await this.api.getText(path, { headers: { Accept: LOG_ACCEPT } }));
         else if (status === 404) text = `No log for ${pick.s.name ?? "this step"} yet.\n`;
         else throw err;
       }

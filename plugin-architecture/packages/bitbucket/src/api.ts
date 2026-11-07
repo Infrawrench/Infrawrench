@@ -1,10 +1,19 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { utf8ToBase64 } from "@infrawrench/plugin-base";
+import type { ApiFailure, HttpHostServices, NoSlashString } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  pathEncode,
+  restRequest,
+  utf8ToBase64,
+  withLinkPagination,
+} from "@infrawrench/plugin-base";
+import type { paths } from "./api-types.gen.js";
 
 /**
  * Bitbucket Cloud REST API 2.0 (https://api.bitbucket.org/2.0, OpenAPI at
  * https://api.bitbucket.org/swagger.json, verified 2026-10).
  *
+ * - Typed from that document by plugingen; `plugingen.json` lists the operations
+ *   and says why each patch is there.
  * - Auth: an Atlassian API token with scopes is sent as HTTP Basic with the
  *   Atlassian account **email** (not the Bitbucket username) as the user.
  *   Workspace, project and repository access tokens are sent as Bearer.
@@ -54,25 +63,16 @@ export function authHeader(ctx: Pick<BitbucketContext, "email" | "token">): stri
   return ctx.email ? `Basic ${utf8ToBase64(`${ctx.email}:${ctx.token}`)}` : `Bearer ${ctx.token}`;
 }
 
-export type Query = Record<string, string | number | boolean | undefined>;
-
-export function buildQuery(query: Query = {}): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query)) {
-    if (v === undefined || v === "") continue;
-    params.set(k, String(v));
-  }
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
+/** Unvalidated: every field is checked below before it is shown. */
+interface BitbucketErrorBody {
+  error?: { message?: unknown; detail?: unknown; fields?: Record<string, unknown> };
+  message?: unknown;
 }
 
 /** Bitbucket errors are `{"type": "error", "error": {"message": "...", "detail": ...}}`. */
 export function errorDetail(body: string): string {
   try {
-    const parsed = JSON.parse(body) as {
-      error?: { message?: unknown; detail?: unknown; fields?: Record<string, unknown> };
-      message?: unknown;
-    };
+    const parsed: BitbucketErrorBody = JSON.parse(body);
     const e = parsed.error;
     if (e) {
       const parts = [typeof e.message === "string" ? e.message : ""];
@@ -95,136 +95,108 @@ export function errorDetail(body: string): string {
   return body.slice(0, 500);
 }
 
-export interface RawResponse {
-  status: number;
-  headers: Record<string, string>;
-  text: string;
+function apiError(status: number, method: string, shown: string, body: string): BitbucketApiError {
+  return new BitbucketApiError(
+    status,
+    `Bitbucket API error ${status} for ${method} ${shown}: ${errorDetail(body)}`,
+  );
+}
+
+/** A `next` link as this API writes it (absolute, same host only), or anything else, against the API base. */
+function linkUrl(link: string): string {
+  if (/^https?:\/\//i.test(link)) {
+    if (!link.startsWith(`${API_BASE}/`)) {
+      throw new Error(`Bitbucket plugin: refusing to follow a link off ${API_BASE}: ${link}`);
+    }
+    return link;
+  }
+  return `${API_BASE}${link}`;
+}
+
+/** A failed request names the path as called, and a followed link by its path or as written. */
+function httpError({ status, method, path, body, link }: ApiFailure): BitbucketApiError {
+  const shown = link === undefined ? path : link.startsWith("http") ? new URL(link).pathname : link;
+  return apiError(status, method, shown, body);
 }
 
 /**
- * One request. Routed through the host HTTP service whenever there is one:
- * that is the only path that honours bastion egress.
+ * The typed clients for one set of credentials. Routed through the host HTTP
+ * service whenever there is one: that is the only path that honours bastion
+ * egress.
+ *
+ * Both list walkers run past an empty page while it still names a next one.
+ * `lists` reads a page with no body as the end of the list. `newestFirst` is
+ * for a walk that stops on what a page holds, so it reads a page with no body
+ * as a failure, and sends the caller's `sort` before `pagelen`.
  */
-export async function bbRaw(
-  ctx: Pick<BitbucketContext, "http">,
-  url: string,
-  method: string,
-  headers: Record<string, string>,
-  body?: string,
-): Promise<RawResponse> {
-  const lower: Record<string, string> = {};
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-    });
-    for (const [k, v] of Object.entries(res.headers ?? {})) lower[k.toLowerCase()] = v;
-    return { status: res.status, headers: lower, text: res.body };
-  }
-  const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-  res.headers.forEach((v, k) => {
-    lower[k.toLowerCase()] = v;
+export function bitbucketClients(ctx: Pick<BitbucketContext, "email" | "token" | "http">) {
+  const api = createApiClient<paths>({
+    vendor: "Bitbucket",
+    baseUrl: API_BASE,
+    headers: { Authorization: authHeader(ctx), Accept: "application/json" },
+    http: ctx.http,
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    httpError,
   });
-  return { status: res.status, headers: lower, text: await res.text() };
+  const lists = withLinkPagination(api, {
+    next: "next",
+    sizeParam: "pagelen",
+    pageSize: 100,
+    pagingFirst: true,
+    maxPages: 10,
+    foreignLinks: "refuse",
+    resolveLink: linkUrl,
+    continueOnEmptyPage: true,
+    emptyBodyEndsList: true,
+  });
+  const newestFirst = withLinkPagination(api, {
+    next: "next",
+    sizeParam: "pagelen",
+    pageSize: 100,
+    maxPages: 10,
+    foreignLinks: "refuse",
+    resolveLink: linkUrl,
+    continueOnEmptyPage: true,
+  });
+  return { api, lists, newestFirst };
 }
 
-export interface RequestOptions {
-  method?: string;
-  query?: Query;
-  body?: unknown;
-  as?: "json" | "text";
-  headers?: Record<string, string>;
+/**
+ * A list's page cap, for `getAll`. `stopWhen` ends the walk on the last page
+ * allowed, before the client looks at that page's `next`: a link off this API is
+ * refused when it would be followed, and one the cap would never reach is not.
+ */
+export function capped(maxPages: number) {
+  let pages = 0;
+  return { maxPages, stopWhen: () => ++pages >= maxPages };
 }
 
-/** Resolve a path (relative to the API base) or a `next` link (absolute, same host only). */
-function urlFor(pathOrUrl: string, query?: Query): string {
-  if (/^https?:\/\//i.test(pathOrUrl)) {
-    if (!pathOrUrl.startsWith(`${API_BASE}/`)) {
-      throw new Error(`Bitbucket plugin: refusing to follow a link off ${API_BASE}: ${pathOrUrl}`);
-    }
-    return (
-      pathOrUrl +
-      (query && Object.keys(query).length > 0
-        ? buildQuery(query).replace(/^\?/, pathOrUrl.includes("?") ? "&" : "?")
-        : "")
-    );
-  }
-  return `${API_BASE}${pathOrUrl}${buildQuery(query)}`;
-}
-
-export async function bbRequest(
-  ctx: BitbucketContext,
+/**
+ * A POST whose answer is not read, and need not be JSON: `api.post` would parse
+ * it, and `getText` is GET only.
+ */
+export async function bbPostUnread(
+  ctx: Pick<BitbucketContext, "email" | "token" | "http">,
   path: string,
-  opts: RequestOptions = {},
-): Promise<RawResponse> {
-  const url = urlFor(path, opts.query);
-  const method = opts.method ?? "GET";
-  const headers: Record<string, string> = {
-    Authorization: authHeader(ctx),
-    Accept: opts.as === "text" ? "text/plain, */*" : "application/json",
-    ...(opts.headers ?? {}),
-  };
-  const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await bbRaw(ctx, url, method, headers, body);
-  if (res.status < 200 || res.status >= 300) {
-    const shown = path.startsWith("http") ? new URL(path).pathname : path;
-    throw new BitbucketApiError(
-      res.status,
-      `Bitbucket API error ${res.status} for ${method} ${shown}: ${errorDetail(res.text)}`,
-    );
-  }
-  return res;
+  body?: object,
+): Promise<void> {
+  await restRequest<string>({
+    vendor: "Bitbucket",
+    url: `${API_BASE}${path}`,
+    headers: { Authorization: authHeader(ctx), Accept: "application/json" },
+    init: { method: "POST", ...(body === undefined ? {} : { body: JSON.stringify(body) }) },
+    ...(ctx.http ? { http: ctx.http } : {}),
+    contentType: "with-body",
+    responseAs: "text",
+    httpError: ({ status, body: text }) => apiError(status, "POST", path, text),
+  });
 }
-
-export async function bbFetch<T>(
-  ctx: BitbucketContext,
-  path: string,
-  opts: RequestOptions = {},
-): Promise<T> {
-  const res = await bbRequest(ctx, path, opts);
-  if (opts.as === "text") return res.text as T;
-  if (res.status === 204 || !res.text) return undefined as T;
-  return JSON.parse(res.text) as T;
-}
-
-interface Page<T> {
-  values?: T[];
-  next?: string;
-}
-
-/** Every page of a list, following `next`, up to `maxPages`. */
-export async function bbPaged<T>(
-  ctx: BitbucketContext,
-  path: string,
-  query: Query = {},
-  maxPages = 10,
-  pagelen = 100,
-): Promise<T[]> {
-  const out: T[] = [];
-  let next: string | undefined = path;
-  let first = true;
-  for (let i = 0; i < maxPages && next; i++) {
-    const page: Page<T> = await bbFetch<Page<T>>(
-      ctx,
-      next,
-      first ? { query: { pagelen, ...query } } : {},
-    );
-    first = false;
-    out.push(...(Array.isArray(page?.values) ? page.values : []));
-    next = page?.next;
-  }
-  return out;
-}
-
-export const enc = encodeURIComponent;
 
 /** `{uuid}` in a path. Accepts the UUID with or without braces. */
-export function encUuid(uuid: string): string {
+export function encUuid(uuid: string): NoSlashString {
   const v = uuid.trim();
-  return enc(v.startsWith("{") ? v : `{${v}}`);
+  return pathEncode(v.startsWith("{") ? v : `{${v}}`);
 }
 
 /** Split `head/rest` at the first slash: composite external ids. */

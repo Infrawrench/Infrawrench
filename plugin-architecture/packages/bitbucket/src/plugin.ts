@@ -7,13 +7,12 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import type { BitbucketContext } from "./api.js";
-import { bbPaged, isPermissionError } from "./api.js";
+import { bitbucketClients, capped, isPermissionError } from "./api.js";
 import { BitbucketClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { bitbucketRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
-import type { BbWorkspaceAccess } from "./types.js";
 import { BITBUCKET_OAUTH, completeBitbucketOAuth, emailFor, isOAuthConnected } from "./oauth.js";
 import { bitbucketDeployEvents } from "./deploy-events.js";
 
@@ -86,7 +85,11 @@ async function listCredentialOptions(
     ...(services?.http ? { http: services.http } : {}),
   };
   try {
-    const access = await bbPaged<BbWorkspaceAccess>(ctx, "/user/workspaces", {}, 5);
+    const access = await bitbucketClients(ctx).lists.getAll(
+      "/user/workspaces",
+      "values",
+      capped(5),
+    );
     return access
       .filter((a) => a.workspace?.slug)
       .map((a) => ({
