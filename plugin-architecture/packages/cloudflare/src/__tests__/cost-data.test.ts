@@ -177,6 +177,17 @@ describe("fetchCloudflareCostData", () => {
     });
   });
 
+  it("refuses a 2xx with no usage list rather than reading it as no cost", async () => {
+    const get = vi.fn(async (path: string) =>
+      path.endsWith("/billable-usage/info")
+        ? { success: true, result: { covered: true, subscriptions: [] }, errors: [] }
+        : { success: true, errors: [] },
+    );
+    await expect(fetchCloudflareCostData(makeApi({ cf: { get } }), range)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
   it("fetches info once per client across chunks", async () => {
     const api = costApi();
     await fetchCloudflareCostData(api, { fromDate: "2026-07-01", toDate: "2026-07-31" });

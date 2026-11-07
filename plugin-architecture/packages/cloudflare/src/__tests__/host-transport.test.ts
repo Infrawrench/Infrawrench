@@ -24,9 +24,10 @@ type HostRequest = {
 const ZONE = { id: "z1", name: "example.test", account: { id: "acc1" } };
 
 function answer(status: number, value: unknown) {
+  const headers: Record<string, string> = { "content-type": "application/json" };
   return {
     status,
-    headers: { "content-type": "application/json" },
+    headers,
     body: "",
     rawBody: new TextEncoder().encode(JSON.stringify(value)),
   };
@@ -126,6 +127,33 @@ describe("the Cloudflare SDK through the host's HTTP service", () => {
         headers: { ...throttled.headers, "retry-after-ms": "1" },
       });
       await expect(listRecords(request)).rejects.toThrow("Rate limited");
+    });
+
+    it("does not read a 200 saying success: false as an empty zone", async () => {
+      const request = failingZoneTwo(
+        answer(200, {
+          success: false,
+          errors: [{ code: 1000, message: "Temporary failure" }],
+          result: null,
+        }),
+      );
+      await expect(listRecords(request)).rejects.toThrow("Temporary failure");
+    });
+
+    it("does the same with no host service", async () => {
+      fetchStub.mockImplementation(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(
+              new URL(url).pathname === "/client/v4/zones"
+                ? { success: true, errors: [], result: url.includes("page=2") ? [] : [ZONE] }
+                : { success: false, errors: [{ code: 1000, message: "Temporary" }], result: null },
+            ),
+            { headers: { "content-type": "application/json" } },
+          ),
+      );
+      const client = hostClient(new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes));
+      await expect(client.listResources("dns-record", "acct")).rejects.toThrow("Temporary");
     });
 
     it("reads a zone that is not entitled as none", async () => {

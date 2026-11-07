@@ -38,6 +38,20 @@ describe("analytics engine", () => {
     expect(init.body).toBe("SHOW TABLES FORMAT JSON");
   });
 
+  it("refuses a 200 that is not the dataset list, so stored datasets stay", async () => {
+    globalThis.fetch = respond("<html>upstream error</html>") as never;
+    await expect(listDatasets(makeApi(), "acct")).rejects.toThrow("is not a list");
+    globalThis.fetch = respond(JSON.stringify({ meta: [], rows: 0 })) as never;
+    await expect(listDatasets(makeApi(), "acct")).rejects.toThrow("is not a list");
+  });
+
+  it("reads an empty answer as no datasets", async () => {
+    globalThis.fetch = respond("") as never;
+    await expect(listDatasets(makeApi(), "acct")).resolves.toEqual([]);
+    globalThis.fetch = respond(JSON.stringify({ meta: [], data: [], rows: 0 })) as never;
+    await expect(listDatasets(makeApi(), "acct")).resolves.toEqual([]);
+  });
+
   it("turns a 403 into an Account Analytics permission hint", async () => {
     globalThis.fetch = respond("Authentication error", 403) as never;
     await expect(listDatasets(makeApi(), "acct")).rejects.toThrow(/Account Analytics:Read/);

@@ -31,7 +31,7 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, requireListPage, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import { CloudflareApi, formatCloudflareError } from "./clients/shared.js";
 import { CREATE_TOKEN_HELP_LINK } from "./preflight.js";
 
@@ -203,8 +203,13 @@ export async function fetchCloudflareCostData(
       `/accounts/${accountId}/billable-usage`,
       { query: { from: widenFromForAnchors(range, info), to: range.toDate } },
     );
-    records = env.result ?? [];
+    records = requireListPage(env.result, {
+      vendor: "Cloudflare",
+      path: `/accounts/${accountId}/billable-usage`,
+      key: "result",
+    });
   } catch (err) {
+    rethrowIncompleteList(err);
     if (isSetupStatus(err)) throw setupError(err);
     throw new Error(formatCloudflareError(err), { cause: err });
   }

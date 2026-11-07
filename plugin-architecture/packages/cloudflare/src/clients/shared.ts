@@ -332,22 +332,59 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<Uint8Array<Arra
   return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
 }
 
+function isFailedEnvelope(body: unknown): boolean {
+  return (
+    body !== null &&
+    typeof body === "object" &&
+    "success" in body &&
+    body.success === false &&
+    "errors" in body &&
+    Array.isArray(body.errors) &&
+    body.errors.length > 0 &&
+    (!("result" in body) || body.result === null)
+  );
+}
+
 /**
- * The SDK's requests, through the host's HTTP service. Under Node a multipart upload,
- * such as a Worker's script, arrives as a stream, and the host's service takes bytes.
+ * The SDK takes a 2xx's `result` without looking at `success`, and its pages read a missing
+ * `result` as the end of the list. A read answered with a 200 and `success: false` would pass as
+ * no rows and a sync would prune them, so it goes back to the SDK as the failure it is: a status
+ * that fails a whole list, not one that reads as a refusal. Only a GET, since a write already says
+ * what it did by its result, and only the whole envelope, since a value read through the SDK
+ * could be any JSON.
  */
-function sdkFetch(http: HttpHostServices): SdkFetch {
+async function failedEnvelopeAsError(res: Response, method: string): Promise<Response> {
+  if (!res.ok || method !== "GET" || !res.headers.get("content-type")?.includes("json")) return res;
+  const text = await res.clone().text();
+  try {
+    if (!isFailedEnvelope(JSON.parse(text))) return res;
+  } catch {
+    return res;
+  }
+  return new Response(text, {
+    status: 502,
+    headers: { "content-type": "application/json", "x-should-retry": "false" },
+  });
+}
+
+/**
+ * The SDK's requests, through the host's HTTP service when there is one. Under Node a multipart
+ * upload, such as a Worker's script, arrives as a stream, and the host's service takes bytes.
+ */
+function sdkFetch(http: HttpHostServices | undefined): SdkFetch {
   return async (url, init) => {
     const { body } = init ?? {};
     const chunks: Uint8Array<ArrayBuffer>[] = [];
     if (isAsyncIterable(body)) for await (const chunk of body) chunks.push(chunk);
     const sent = isAsyncIterable(body) ? new Blob(chunks) : body;
-    return hostFetch({ http }, String(url), {
-      method: init?.method ?? "GET",
+    const method = init?.method ?? "GET";
+    const res = await hostFetch({ http }, String(url), {
+      method,
       headers: init?.headers ?? {},
       ...(init?.signal ? { signal: init.signal } : {}),
       ...(sent != null ? { body: sent } : {}),
     });
+    return failedEnvelopeAsError(res, method);
   };
 }
 
@@ -379,7 +416,7 @@ export class CloudflareApi {
     this.cf = new Cloudflare({
       apiToken,
       maxRetries: 5,
-      ...(http ? { fetch: sdkFetch(http) } : {}),
+      fetch: sdkFetch(http),
     });
   }
 

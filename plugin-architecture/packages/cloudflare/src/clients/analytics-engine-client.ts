@@ -10,6 +10,7 @@
  * API to create or delete one (that happens through the binding). Data is
  * kept for three months.
  */
+import { requireListPage } from "@infrawrench/plugin-base";
 import { cfFetch } from "./shared.js";
 import type { MetricSeries, ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
@@ -111,8 +112,14 @@ function datasetFromRow(row: Record<string, unknown>): string {
 }
 
 export async function listDatasetNames(api: CloudflareApi): Promise<string[]> {
-  const { json } = await runAnalyticsEngineSql(api, "SHOW TABLES FORMAT JSON");
-  return [...new Set((json?.data ?? []).map(datasetFromRow).filter(Boolean))].sort();
+  const { json, text } = await runAnalyticsEngineSql(api, "SHOW TABLES FORMAT JSON");
+  if (!text.trim()) return [];
+  const rows = requireListPage(json?.data, {
+    vendor: "Cloudflare",
+    path: "SHOW TABLES on the Analytics Engine SQL API",
+    key: "data",
+  });
+  return [...new Set(rows.map(datasetFromRow).filter(Boolean))].sort();
 }
 
 export async function listDatasets(
