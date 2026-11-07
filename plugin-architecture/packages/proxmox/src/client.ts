@@ -557,9 +557,16 @@ export class ProxmoxClient implements PluginClient {
       });
     });
     if (unread.size > 0) {
-      const tracked = reportUnreadListPart({ parentResourceIds: [...unread].sort() });
-      // A host that keeps no track (the desktop) prunes nothing, and there the refusal shows.
-      if (!tracked && refusals.length > 0) throw refusals[0];
+      const names = [...unread].sort();
+      // Where nobody keeps those stores' backups (the desktop, a read outside a sync),
+      // the list without them is not the whole list: show why instead.
+      if (!reportUnreadListPart({ parentResourceIds: names })) {
+        if (refusals.length > 0) throw refusals[0];
+        const stores = names.map((id) => externalIdOf(id)).join(", ");
+        throw new Error(
+          `Proxmox VE backup storage is not available, so its backups were not read: ${stores}`,
+        );
+      }
     }
     return lists.flat();
   }

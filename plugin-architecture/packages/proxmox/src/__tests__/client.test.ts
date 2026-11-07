@@ -425,6 +425,17 @@ describe("client", () => {
       });
     });
 
+    it("fails where nobody keeps a down store's backups, rather than list without them", async () => {
+      const resources = RESOURCES.map((r) =>
+        r.id === "storage/pve1/local" ? { ...r, status: "unknown" } : r,
+      );
+      const { http } = mockHttp({ ...routes, "GET /cluster/resources": resources });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      await expect(client.listResources("pve-backup", "acct")).rejects.toThrow("pve1/local");
+      Reflect.set(globalThis, UNREAD_HOOK, () => false);
+      await expect(client.listResources("pve-backup", "acct")).rejects.toThrow("pve1/local");
+    });
+
     it("names nothing unread for a shared store that is down on one node only", async () => {
       const unread = vi.fn();
       Reflect.set(globalThis, UNREAD_HOOK, unread);
