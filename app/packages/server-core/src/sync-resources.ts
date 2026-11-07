@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import type {
   DashboardStat,
   MetricSeries,
@@ -12,6 +12,7 @@ import {
   isIncompleteListError,
   type UnreadListPart,
 } from "@infrawrench/plugin-base";
+import { chunksOf } from "./db/chunks";
 import { db } from "./db/client";
 import { accounts, dashboardPins, resources, secretFieldStates } from "./db/schema";
 import { decrypt, encrypt, buildAad } from "./encryption";
@@ -87,46 +88,108 @@ export async function loadAccountClient(accountId: string, organizationId: strin
   return { account, plugin: loaded.plugin, client };
 }
 
-/** Upsert one resource row and bump its syncVersion. */
-async function upsertResource(
+/**
+ * Rows per upsert statement: well under what one statement can bind at 13 columns a
+ * row, and small enough that one row's large `fields` does not make a statement huge.
+ */
+const UPSERT_ROWS_PER_STATEMENT = 500;
+
+/**
+ * Upsert the rows a sync read, one statement at a time, each with its own syncVersion.
+ *
+ * In batches rather than a statement per row: every statement reads `MAX(sync_version)`
+ * across the organization, so a statement per row costs the square of the row count
+ * (70,000 rows took four minutes against a local Postgres, of the poller's five), and
+ * it bumps the 32-bit version once per row on every poll.
+ *
+ * One at a time, so a large account takes one of the pool's connections rather than
+ * queueing ahead of everyone else's, and a later batch always has the higher version:
+ * `/sync` reads `syncVersion > lastSyncVersion`, so a batch that committed with a lower
+ * version than one a reader has already seen would never reach that reader.
+ */
+async function upsertResources(
   organizationId: string,
   accountId: string,
-  r: ResourceInstance,
+  rows: ResourceInstance[],
 ): Promise<void> {
-  const nextVersion = sql<number>`COALESCE((SELECT MAX(sync_version) FROM resources WHERE organization_id = ${organizationId}), 0) + 1`;
-  await db
-    .insert(resources)
-    .values({
-      id: r.id,
-      organizationId,
-      pluginId: r.pluginId,
-      resourceTypeId: r.resourceTypeId,
-      accountId,
-      displayName: r.displayName,
-      externalId: r.externalId ?? null,
-      fieldsJson: r.fields ?? {},
-      outputsJson: r.resolvedOutputs ?? {},
-      parentResourceId: r.parentResourceId ?? null,
-      lastSyncedAt: new Date(),
-      syncVersion: nextVersion,
-      deletedAt: null,
-    })
-    .onConflictDoUpdate({
-      target: resources.id,
-      set: {
-        displayName: r.displayName,
-        // Merge with existing JSON so user-supplied keys not returned by the
-        // plugin's lister (e.g. a Cloud SQL root password set at create time)
-        // survive subsequent syncs. New values from the lister win.
-        fieldsJson: sql`COALESCE(${resources.fieldsJson}, '{}'::jsonb) || ${JSON.stringify(r.fields ?? {})}::jsonb`,
-        outputsJson: sql`COALESCE(${resources.outputsJson}, '{}'::jsonb) || ${JSON.stringify(r.resolvedOutputs ?? {})}::jsonb`,
-        parentResourceId: r.parentResourceId ?? null,
-        lastSyncedAt: new Date(),
-        updatedAt: new Date(),
-        syncVersion: nextVersion,
-        deletedAt: null,
-      },
-    });
+  // A statement cannot touch a row twice, and a list can repeat one. The last wins.
+  const unique = [...new Map(rows.map((r) => [r.id, r])).values()];
+  for (const batch of chunksOf(unique, UPSERT_ROWS_PER_STATEMENT)) {
+    const [next] = await db
+      .select({ version: sql<number>`COALESCE(MAX(${resources.syncVersion}), 0) + 1` })
+      .from(resources)
+      .where(eq(resources.organizationId, organizationId));
+    const version = next?.version ?? 1;
+    const now = new Date();
+    await db
+      .insert(resources)
+      .values(
+        batch.map((r) => ({
+          id: r.id,
+          organizationId,
+          pluginId: r.pluginId,
+          resourceTypeId: r.resourceTypeId,
+          accountId,
+          displayName: r.displayName,
+          externalId: r.externalId ?? null,
+          fieldsJson: r.fields ?? {},
+          outputsJson: r.resolvedOutputs ?? {},
+          parentResourceId: r.parentResourceId ?? null,
+          lastSyncedAt: now,
+          syncVersion: version,
+          deletedAt: null,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: resources.id,
+        set: {
+          displayName: sql`excluded.display_name`,
+          // Merge with existing JSON so user-supplied keys not returned by the
+          // plugin's lister (e.g. a Cloud SQL root password set at create time)
+          // survive subsequent syncs. New values from the lister win.
+          fieldsJson: sql`COALESCE(${resources.fieldsJson}, '{}'::jsonb) || excluded.fields_json`,
+          outputsJson: sql`COALESCE(${resources.outputsJson}, '{}'::jsonb) || excluded.outputs_json`,
+          parentResourceId: sql`excluded.parent_resource_id`,
+          lastSyncedAt: now,
+          updatedAt: now,
+          syncVersion: version,
+          deletedAt: null,
+        },
+      });
+  }
+}
+
+/** The organization's next sync version, as a value to select or set. */
+function nextSyncVersion(organizationId: string): SQL<number> {
+  return sql<number>`COALESCE((SELECT MAX(sync_version) FROM resources WHERE organization_id = ${organizationId}), 0) + 1`;
+}
+
+/**
+ * Soft-delete the rows `conditions` select that are not in `liveIds`.
+ *
+ * Works out what is gone here rather than in SQL. `NOT IN` binds one parameter per live
+ * row and postgres.js refuses past 65,534, and one array parameter does not fix it on
+ * Postgres before 15, which compares every row with every element: `<> ALL` took 44
+ * seconds at 100,000 rows where this takes 60 ms. A bare array also needs the driver's
+ * type round trip, which the edge turns off. Most polls find nothing gone and write
+ * nothing here at all.
+ */
+async function softDeleteMissing(
+  organizationId: string,
+  conditions: SQL[],
+  liveIds: ReadonlySet<string>,
+): Promise<void> {
+  const stored = await db
+    .select({ id: resources.id })
+    .from(resources)
+    .where(and(...conditions));
+  const gone = stored.map((row) => row.id).filter((id) => !liveIds.has(id));
+  for (const ids of chunksOf(gone)) {
+    await db
+      .update(resources)
+      .set({ deletedAt: new Date(), syncVersion: nextSyncVersion(organizationId) })
+      .where(and(...conditions, inArray(resources.id, ids)));
+  }
 }
 
 type PriorRow = PriorResourceSnapshot & { parentResourceId: string | null };
@@ -275,7 +338,7 @@ export async function syncAccountResourceType(
     ?.filter((row) => row.resourceTypeId === typeId)
     .filter((row) => !unreadIds.has(row.id));
 
-  await Promise.all(fetched.map((r) => upsertResource(organizationId, accountId, r)));
+  await upsertResources(organizationId, accountId, fetched);
   await recordDeploys(organizationId, accountId, plugin, fetched);
 
   if (prior) {
@@ -289,24 +352,17 @@ export async function syncAccountResourceType(
   if (!loaded && unreadParts.length > 0) return fetched;
 
   // Soft-delete resources of this type that no longer exist upstream.
-  const liveIds = [...fetched.map((r) => r.id), ...unreadIds];
-  const deleteConditions = [
-    eq(resources.accountId, accountId),
-    eq(resources.organizationId, organizationId),
-    eq(resources.resourceTypeId, typeId),
-    isNull(resources.deletedAt),
-    isNotNull(resources.lastSyncedAt),
-  ];
-  if (liveIds.length > 0) {
-    deleteConditions.push(notInArray(resources.id, liveIds));
-  }
-  await db
-    .update(resources)
-    .set({
-      deletedAt: new Date(),
-      syncVersion: sql<number>`COALESCE((SELECT MAX(sync_version) FROM resources WHERE organization_id = ${organizationId}), 0) + 1`,
-    })
-    .where(and(...deleteConditions));
+  await softDeleteMissing(
+    organizationId,
+    [
+      eq(resources.accountId, accountId),
+      eq(resources.organizationId, organizationId),
+      eq(resources.resourceTypeId, typeId),
+      isNull(resources.deletedAt),
+      isNotNull(resources.lastSyncedAt),
+    ],
+    new Set([...fetched.map((r) => r.id), ...unreadIds]),
+  );
 
   return fetched;
 }
@@ -398,7 +454,8 @@ export async function syncAccountResources(
     const r = fetchResults[i]!;
     const typeId = runnableTypeIds[i]!;
     if (r.status === "fulfilled") {
-      allResources.push(...r.value);
+      // Not `push(...r.value)`: spreading past about 120,000 arguments overflows the stack.
+      for (const resource of r.value) allResources.push(resource);
       succeededTypeIds.push(typeId);
       onTypeDone(typeId, "ok");
     } else {
@@ -428,7 +485,7 @@ export async function syncAccountResources(
   // Without the snapshots there is no telling which rows those are, so none of the type go.
   const prunableTypeIds = succeededTypeIds.filter((typeId) => loaded || !unreadByType.has(typeId));
 
-  await Promise.all(allResources.map((r) => upsertResource(organizationId, accountId, r)));
+  await upsertResources(organizationId, accountId, allResources);
   await recordDeploys(organizationId, accountId, plugin, allResources);
 
   if (prior) {
@@ -447,22 +504,17 @@ export async function syncAccountResources(
   // The provider's list is authoritative: anything we have for a succeeded type
   // that isn't in the live response is gone. Never delete across failed types:
   // transient API errors must not wipe data.
-  const liveIds = [...allResources.map((r) => r.id), ...unreadIds];
   if (prunableTypeIds.length > 0) {
-    const deleteConditions = [
-      eq(resources.accountId, accountId),
-      eq(resources.organizationId, organizationId),
-      isNull(resources.deletedAt),
-      inArray(resources.resourceTypeId, prunableTypeIds),
-    ];
-    if (liveIds.length > 0) deleteConditions.push(notInArray(resources.id, liveIds));
-    await db
-      .update(resources)
-      .set({
-        deletedAt: new Date(),
-        syncVersion: sql<number>`COALESCE((SELECT MAX(sync_version) FROM resources WHERE organization_id = ${organizationId}), 0) + 1`,
-      })
-      .where(and(...deleteConditions));
+    await softDeleteMissing(
+      organizationId,
+      [
+        eq(resources.accountId, accountId),
+        eq(resources.organizationId, organizationId),
+        isNull(resources.deletedAt),
+        inArray(resources.resourceTypeId, prunableTypeIds),
+      ],
+      new Set([...allResources.map((r) => r.id), ...unreadIds]),
+    );
   }
 
   await refreshPinnedStats(accountId, organizationId, plugin, client);
@@ -811,7 +863,7 @@ export async function reconcileAccountReferences(
         ref.consumerAccountId,
         { [ref.fieldKey]: newValue },
       );
-      await upsertResource(organizationId, ref.consumerAccountId, updated);
+      await upsertResources(organizationId, ref.consumerAccountId, [updated]);
 
       // Refresh the SWR cache so the next cycle only acts on genuine changes.
       const cache = await encrypt(

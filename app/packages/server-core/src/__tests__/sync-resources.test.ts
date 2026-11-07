@@ -11,9 +11,11 @@ import { fakePostgres } from "./helpers/fake-postgres";
  *    Result rows are queued FIFO in statement order: writes consume a queue
  *    slot too, so a queued `[]` marks each write between two reads that need
  *    rows; anything past the queue resolves to the empty default. A full
- *    account sync issues: account select, prior-snapshot select, one upsert
- *    per fetched resource, a change-timeline insert (when there are events),
- *    the soft-delete update, the pinned selectDistinct, then the refs select.
+ *    account sync issues: account select, prior-snapshot select, a version
+ *    select and an upsert per batch of fetched resources, a change-timeline
+ *    insert (when there are events), the select of what is stored, a
+ *    soft-delete update per batch of what is gone (none when nothing is), the
+ *    pinned selectDistinct, then the refs select.
  *  - encryption, plugin-loader, host-services, tunnel-resolver: vi.fn mocks.
  *  - clickhouse/writers: vi.fn mocks asserting the streamed rows.
  *  - plugin-base: only `evaluatePeerIntegrationUnreachable` is used.
@@ -154,8 +156,11 @@ describe("syncAccountResourceType", () => {
 
   it("upserts fetched resources and soft-deletes the rest", async () => {
     pg.queueRows([accountRow()]); // account
-    // Change-timeline prior snapshots, upsert, change insert and soft-delete
-    // all resolve to the empty default.
+    pg.queueRows([]); // change-timeline prior snapshots
+    pg.queueRows([{ version: 1 }]); // next sync version
+    pg.queueRows([]); // upsert
+    pg.queueRows([]); // change-timeline insert
+    pg.queueRows([{ id: "res-1" }, { id: "res-gone" }]); // what is stored
     const client = makeClient({ listResources: vi.fn(async () => [resourceInstance()]) });
     getPlugin.mockResolvedValue({
       plugin: fakePlugin({ createClient: vi.fn(() => client) }),
@@ -166,16 +171,69 @@ describe("syncAccountResourceType", () => {
     expect(inserts("resources")).toHaveLength(1);
     expect(inserts("resources")[0]!.sql).toContain("on conflict");
     expect(updates("resources")).toHaveLength(1);
+    expect(updates("resources")[0]!.params).toContain("res-gone");
+    expect(updates("resources")[0]!.params).not.toContain("res-1");
     expect(rewriteCredentialsThroughTunnel).toHaveBeenCalledWith("acc-1", { token: "secret" });
   });
 
-  it("still issues the soft-delete update when nothing is live", async () => {
+  it("soft-deletes everything stored when nothing is live", async () => {
     pg.queueRows([accountRow()]);
+    pg.queueRows([]); // change-timeline prior snapshots
+    pg.queueRows([{ id: "res-1" }, { id: "res-2" }]); // what is stored
     const client = makeClient({ listResources: vi.fn(async () => []) });
     getPlugin.mockResolvedValue({ plugin: fakePlugin({ createClient: vi.fn(() => client) }) });
     const out = await sync.syncAccountResourceType("acc-1", "org-1", "vm");
     expect(out).toHaveLength(0);
     expect(updates("resources")).toHaveLength(1);
+    expect(updates("resources")[0]!.params).toEqual(expect.arrayContaining(["res-1", "res-2"]));
+  });
+
+  it("takes more rows of one type than a function call can spread", async () => {
+    pg.queueRows([accountRow()]);
+    const rows = Array.from({ length: 150_000 }, (_, i) => resourceInstance({ id: `res-${i}` }));
+    const client = makeClient({ listResources: vi.fn(async () => rows) });
+    getPlugin.mockResolvedValue({
+      plugin: fakePlugin({
+        resourceTypes: [{ id: "vm", pluralDisplayName: "VMs" }],
+        createClient: vi.fn(() => client),
+      }),
+    });
+    const out = await sync.syncAccountResources("acc-1", "org-1");
+    expect(out.resourceCount).toBe(150_000);
+  });
+
+  it("writes nothing when everything stored is still listed", async () => {
+    pg.queueRows([accountRow()]);
+    pg.queueRows([]); // change-timeline prior snapshots
+    pg.queueRows([{ version: 1 }]); // next sync version
+    pg.queueRows([]); // upsert
+    pg.queueRows([]); // change-timeline insert
+    pg.queueRows([{ id: "res-1" }]); // what is stored
+    const client = makeClient({ listResources: vi.fn(async () => [resourceInstance()]) });
+    getPlugin.mockResolvedValue({ plugin: fakePlugin({ createClient: vi.fn(() => client) }) });
+    await sync.syncAccountResourceType("acc-1", "org-1", "vm");
+    expect(updates("resources")).toHaveLength(0);
+  });
+
+  it("upserts in batches, with a higher version for each, and a row a list repeats once", async () => {
+    pg.queueRows([accountRow()]);
+    pg.queueRows([]); // change-timeline prior snapshots
+    pg.queueRows([{ version: 7 }]);
+    pg.queueRows([]);
+    pg.queueRows([{ version: 8 }]);
+    const rows = Array.from({ length: 501 }, (_, i) =>
+      resourceInstance({ id: `res-${i}`, displayName: `Row ${i}` }),
+    );
+    const repeated = resourceInstance({ id: "res-0", displayName: "Repeated" });
+    const client = makeClient({ listResources: vi.fn(async () => [...rows, repeated]) });
+    getPlugin.mockResolvedValue({ plugin: fakePlugin({ createClient: vi.fn(() => client) }) });
+    await sync.syncAccountResourceType("acc-1", "org-1", "vm");
+    const [first, second] = inserts("resources");
+    expect(inserts("resources")).toHaveLength(2);
+    expect(first!.params).toContain(7);
+    expect(first!.params).toContain("Repeated");
+    expect(first!.params).not.toContain("Row 0");
+    expect(second!.params).toContain(8);
   });
 });
 
@@ -264,12 +322,13 @@ describe("syncAccountResources", () => {
     pg.queueRows([accountRow()]); // loadAccountClient (db.select #1)
     // db.select #2 is the change-timeline prior-snapshot load.
     // refreshPinnedStats pinned uses db.selectDistinct (no select).
-    // reconcileAccountReferences refs is db.select #3 -> throw.
+    // db.select #3 and #4 are the upsert's version and the read of what is stored.
+    // reconcileAccountReferences refs is db.select #5 -> throw.
     const orig = pg.db.select;
     let calls = 0;
     (pg.db as { select: typeof pg.db.select }).select = ((...args: never[]) => {
       calls++;
-      if (calls === 3) throw new Error("reconcile boom");
+      if (calls === 5) throw new Error("reconcile boom");
       return (orig as (...a: never[]) => ReturnType<typeof orig>).apply(pg.db, args);
     }) as typeof pg.db.select;
     try {
@@ -342,12 +401,16 @@ describe("a list a plugin could not read whole", () => {
     const pruned = () => softDeletes()[0]!.params;
 
     function unreadAccount(
-      rows: Record<string, unknown>[],
+      rows: Array<{ id: string; resourceTypeId: string }>,
       part: UnreadListPart,
       live: string[] = ["acc-1:vm:a"],
     ) {
       pg.queueRows([accountRow()]);
       pg.queueRows(rows);
+      pg.queueRows([{ version: 1 }]); // next sync version
+      pg.queueRows([]); // upsert
+      pg.queueRows([]); // change-timeline insert
+      pg.queueRows(rows.filter((r) => r.resourceTypeId === "vm").map(({ id }) => ({ id })));
       getPlugin.mockResolvedValue({
         plugin: fakePlugin({
           resourceTypes: [{ id: "vm", pluralDisplayName: "VMs" }],
@@ -374,8 +437,8 @@ describe("a list a plugin could not read whole", () => {
       );
       const result = await sync.syncAccountResources("acc-1", "org-1");
       expect(result.succeededTypeIds).toEqual(["vm"]);
-      expect(pruned()).toContain("acc-1:vm:unread");
-      expect(pruned()).not.toContain("acc-1:vm:gone");
+      expect(pruned()).toContain("acc-1:vm:gone");
+      expect(pruned()).not.toContain("acc-1:vm:unread");
     });
 
     it("leaves a row whose parent's parent it did not read", async () => {
@@ -387,7 +450,7 @@ describe("a list a plugin could not read whole", () => {
         { parentResourceIds: ["acc-1:project:past-the-cap"] },
       );
       await sync.syncAccountResources("acc-1", "org-1");
-      expect(pruned()).toContain("acc-1:vm:deep");
+      expect(softDeletes()).toHaveLength(0);
     });
 
     it("leaves a row by its id, for a list with no parents to name", async () => {
@@ -395,8 +458,8 @@ describe("a list a plugin could not read whole", () => {
         idPrefixes: ["acc-1:vm:mine/"],
       });
       await sync.syncAccountResources("acc-1", "org-1");
-      expect(pruned()).toContain("acc-1:vm:mine/old");
-      expect(pruned()).not.toContain("acc-1:vm:public/old");
+      expect(pruned()).toContain("acc-1:vm:public/old");
+      expect(pruned()).not.toContain("acc-1:vm:mine/old");
     });
 
     it("records no deletion for what it left", async () => {
@@ -451,8 +514,8 @@ describe("a list a plugin could not read whole", () => {
         { parentResourceIds: ["acc-1:project:x"] },
       );
       await sync.syncAccountResourceType("acc-1", "org-1", "vm");
-      expect(pruned()).toContain("acc-1:vm:unread");
-      expect(pruned()).not.toContain("acc-1:vm:gone");
+      expect(pruned()).toContain("acc-1:vm:gone");
+      expect(pruned()).not.toContain("acc-1:vm:unread");
     });
   });
 
@@ -514,16 +577,18 @@ describe("a list a plugin could not read whole", () => {
 describe("refreshPinnedStats", () => {
   /**
    * Queue everything up to the pinned read for a one-resource sync: account
-   * lookup, prior snapshots, the upsert, the change-timeline insert and the
-   * soft-delete update (writes hold a queue slot too), then the pins.
+   * lookup, prior snapshots, the version and the upsert, the change-timeline
+   * insert and the read of what is stored (writes hold a queue slot too), then
+   * the pins.
    * Keys in the pinned projection order. The refs read takes the default.
    */
   function queueSyncWithPins(pinned: Array<Record<string, unknown>>) {
     pg.queueRows([accountRow()]); // loadAccountClient
     pg.queueRows([]); // prior snapshots
+    pg.queueRows([{ version: 1 }]); // next sync version
     pg.queueRows([]); // upsert
     pg.queueRows([]); // change-timeline insert
-    pg.queueRows([]); // soft-delete update
+    pg.queueRows([]); // what is stored
     pg.queueRows(pinned); // dashboard pins
   }
 

@@ -14,6 +14,7 @@ import {
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
 import type { DoraDeploymentInput } from "@infrawrench/client-core";
+import { chunksOf } from "../db/chunks";
 import { db } from "../db/client";
 import { deployEvents, resources } from "../db/schema";
 import { normalizeRepository } from "./repository";
@@ -65,18 +66,20 @@ export async function recordDeployEventsFromSync(
   ];
   const stored = new Map<string, DeployEventResource>();
   if (missing.length > 0) {
-    const rows = await db
-      .select({
-        id: resources.id,
-        resourceTypeId: resources.resourceTypeId,
-        externalId: resources.externalId,
-        displayName: resources.displayName,
-        fields: resources.fieldsJson,
-        outputs: resources.outputsJson,
-      })
-      .from(resources)
-      .where(and(eq(resources.organizationId, organizationId), inArray(resources.id, missing)));
-    for (const r of rows) stored.set(r.id, asDeployResource(r));
+    for (const ids of chunksOf(missing)) {
+      const rows = await db
+        .select({
+          id: resources.id,
+          resourceTypeId: resources.resourceTypeId,
+          externalId: resources.externalId,
+          displayName: resources.displayName,
+          fields: resources.fieldsJson,
+          outputs: resources.outputsJson,
+        })
+        .from(resources)
+        .where(and(eq(resources.organizationId, organizationId), inArray(resources.id, ids)));
+      for (const r of rows) stored.set(r.id, asDeployResource(r));
+    }
   }
 
   const now = new Date();

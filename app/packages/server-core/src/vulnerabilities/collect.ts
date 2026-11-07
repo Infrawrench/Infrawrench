@@ -8,7 +8,7 @@
  * suppressed at the provider, image deleted) disappears with it.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, notInArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import {
   ListTruncatedError,
@@ -16,6 +16,7 @@ import {
   type VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
 
+import { chunksOf } from "../db/chunks";
 import { db } from "../db/client";
 import {
   accountVulnerabilityFindings,
@@ -32,10 +33,15 @@ export interface VulnerabilityCollectionResult {
 }
 
 /**
- * Hard ceiling on stored findings per account: a runaway scanner must not fill the
- * table, and the prune below binds one parameter per finding, up to Postgres's 65,535.
+ * Hard ceiling on stored findings per account. A runaway scanner must not fill the
+ * table, and the upserts below run one statement per finding inside one transaction,
+ * so the time that transaction stays open grows with this number. Raising it needs
+ * those upserts batched first: a poller Lambda has 300 seconds, and at the few
+ * milliseconds a round trip to the database takes, 50,000 of them already use most of it.
  */
 export const MAX_FINDINGS_PER_ACCOUNT = 50_000;
+
+const RESOLUTIONS_PER_STATEMENT = 500;
 
 /**
  * The list as given, or a refusal when it is over the ceiling. Storing only part
@@ -128,44 +134,55 @@ export async function collectAccountVulnerabilities(
           set: values,
         });
     }
-    const seen = findings.map((f) => f.id);
-    const pruned = await tx
-      .delete(accountVulnerabilityFindings)
-      .where(
-        seen.length > 0
-          ? and(
+    const seen = new Set(findings.map((f) => f.id));
+    const stored = await tx
+      .select({ findingId: accountVulnerabilityFindings.findingId })
+      .from(accountVulnerabilityFindings)
+      .where(eq(accountVulnerabilityFindings.accountId, accountId));
+    const gone = stored.map((row) => row.findingId).filter((id) => !seen.has(id));
+    const pruned = [];
+    for (const findingIds of chunksOf(gone)) {
+      pruned.push(
+        ...(await tx
+          .delete(accountVulnerabilityFindings)
+          .where(
+            and(
               eq(accountVulnerabilityFindings.accountId, accountId),
-              notInArray(accountVulnerabilityFindings.findingId, seen),
-            )
-          : eq(accountVulnerabilityFindings.accountId, accountId),
-      )
-      .returning({
-        findingId: accountVulnerabilityFindings.findingId,
-        advisoryId: accountVulnerabilityFindings.advisoryId,
-        severity: accountVulnerabilityFindings.severity,
-        artifactKind: accountVulnerabilityFindings.artifactKind,
-        artifactName: accountVulnerabilityFindings.artifactName,
-        firstSeenAt: accountVulnerabilityFindings.firstSeenAt,
-        createdAt: accountVulnerabilityFindings.createdAt,
-      });
+              inArray(accountVulnerabilityFindings.findingId, findingIds),
+            ),
+          )
+          .returning({
+            findingId: accountVulnerabilityFindings.findingId,
+            advisoryId: accountVulnerabilityFindings.advisoryId,
+            severity: accountVulnerabilityFindings.severity,
+            artifactKind: accountVulnerabilityFindings.artifactKind,
+            artifactName: accountVulnerabilityFindings.artifactName,
+            firstSeenAt: accountVulnerabilityFindings.firstSeenAt,
+            createdAt: accountVulnerabilityFindings.createdAt,
+          })),
+      );
+    }
     // The time-to-fix log. Only a read with nothing dropped may say a finding was
     // fixed: `normalizeVulnerabilityFindings` drops the ones it cannot use.
     if (pruned.length > 0 && raw.length === findings.length) {
-      await tx.insert(vulnerabilityResolutions).values(
-        pruned.map((p) => ({
-          id: randomUUID(),
-          organizationId,
-          accountId,
-          pluginId: account.pluginId,
-          findingId: p.findingId,
-          advisoryId: p.advisoryId,
-          severity: p.severity,
-          artifactKind: p.artifactKind,
-          artifactName: p.artifactName,
-          firstSeenAt: p.firstSeenAt ?? p.createdAt,
-          resolvedAt: collectedAt,
-        })),
-      );
+      // Eleven parameters a row, so a large scan's worth would not fit in one statement.
+      for (const batch of chunksOf(pruned, RESOLUTIONS_PER_STATEMENT)) {
+        await tx.insert(vulnerabilityResolutions).values(
+          batch.map((p) => ({
+            id: randomUUID(),
+            organizationId,
+            accountId,
+            pluginId: account.pluginId,
+            findingId: p.findingId,
+            advisoryId: p.advisoryId,
+            severity: p.severity,
+            artifactKind: p.artifactKind,
+            artifactName: p.artifactName,
+            firstSeenAt: p.firstSeenAt ?? p.createdAt,
+            resolvedAt: collectedAt,
+          })),
+        );
+      }
     }
   });
 

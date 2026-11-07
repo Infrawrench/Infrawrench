@@ -89,7 +89,7 @@ function makeResource(id: string, displayName: string) {
   };
 }
 
-function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
+function setupSync(pluginResources: ReturnType<typeof makeResource>[], storedIds: string[] = []) {
   // db.select().from().where() → account lookup first, then the
   // change-timeline prior-snapshot load (empty), AND
   // db.select().from().innerJoin().where() → reconcileAccountReferences output-ref
@@ -99,7 +99,13 @@ function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
   const reconcileWhere = vi.fn().mockResolvedValue([]);
   const reconcileInnerJoin = vi.fn().mockReturnValue({ where: reconcileWhere });
   const selectFrom = vi.fn().mockReturnValue({ where: selectWhere, innerJoin: reconcileInnerJoin });
-  mockSelect.mockReturnValue({ from: selectFrom });
+  // db.select({ id }).from().where() → what is stored, to prune against what was listed.
+  const storedFrom = vi.fn().mockReturnValue({
+    where: vi.fn().mockResolvedValue(storedIds.map((id) => ({ id }))),
+  });
+  mockSelect.mockImplementation((shape?: Record<string, unknown>) => ({
+    from: shape && Object.keys(shape).join() === "id" ? storedFrom : selectFrom,
+  }));
 
   // db.selectDistinct().from().innerJoin().where() → refreshPinnedStats pinned lookup (empty)
   const distinctWhere = vi.fn().mockResolvedValue([]);
@@ -122,11 +128,11 @@ function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
   // db.insert().values().onConflictDoUpdate()
   insertCalls.length = 0;
   const onConflictDoUpdate = vi.fn().mockImplementation((conflict) => {
-    insertCalls[insertCalls.length - 1]!.conflictSet = conflict.set;
+    for (const call of insertCalls) call.conflictSet ??= conflict.set;
     return Promise.resolve();
   });
-  const values = vi.fn().mockImplementation((v) => {
-    insertCalls.push({ values: v, conflictSet: null });
+  const values = vi.fn().mockImplementation((rows: unknown[]) => {
+    for (const row of rows) insertCalls.push({ values: row, conflictSet: null });
     return { onConflictDoUpdate };
   });
   // Change-timeline inserts go to their own table: keep them out of
@@ -157,7 +163,7 @@ describe("syncAccountResources stale resource cleanup", () => {
 
   it("soft-deletes resources not returned by plugin (the core bug fix)", async () => {
     // Plugin returns only vm-2; vm-1 was previously in DB but is now deleted upstream
-    setupSync([makeResource("vm-2", "Running VM")]);
+    setupSync([makeResource("vm-2", "Running VM")], ["vm-1", "vm-2"]);
 
     const app = buildApp();
     const res = await app.request("/acct-1/sync", { method: "POST" });
@@ -176,7 +182,7 @@ describe("syncAccountResources stale resource cleanup", () => {
 
   it("soft-deletes ALL resources when plugin returns empty list", async () => {
     // All VMs deleted upstream
-    setupSync([]);
+    setupSync([], ["vm-1", "vm-2"]);
 
     const app = buildApp();
     const res = await app.request("/acct-1/sync", { method: "POST" });
@@ -221,17 +227,18 @@ describe("syncAccountResources stale resource cleanup", () => {
       displayName: "Updated Name",
       fieldsJson: { state: "running" },
     });
-    // conflictSet uses a SQL fragment to merge fields json (preserves
-    // user-supplied keys not returned by the plugin), so just verify
-    // displayName is overwritten on conflict.
-    expect(insertCalls[0]!.conflictSet).toMatchObject({
-      displayName: "Updated Name",
-    });
+    // conflictSet takes these from the row being inserted with SQL fragments, and merges
+    // fields json (preserves user-supplied keys not returned by the plugin), so just
+    // verify displayName is overwritten on conflict.
+    expect(insertCalls[0]!.conflictSet).toHaveProperty("displayName");
   });
 
   it("handles multiple resources correctly — keeps live, deletes stale", async () => {
     // Two VMs alive, previously there were three
-    setupSync([makeResource("vm-1", "VM One"), makeResource("vm-3", "VM Three")]);
+    setupSync(
+      [makeResource("vm-1", "VM One"), makeResource("vm-3", "VM Three")],
+      ["vm-1", "vm-2", "vm-3"],
+    );
 
     const app = buildApp();
     const res = await app.request("/acct-1/sync", { method: "POST" });
