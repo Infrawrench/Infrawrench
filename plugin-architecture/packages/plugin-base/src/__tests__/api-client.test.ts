@@ -960,7 +960,6 @@ describe("withCursorPagination", () => {
         { pagination: { next: 5 } },
         'it has no "things", only an object with pagination',
       ],
-      ["null", { things: null, pagination: { next: 5 } }, 'its "things" was null'],
       ["not an array", { things: "nope", pagination: { next: 5 } }, 'its "things" was a string'],
       ["an object", { things: {}, pagination: { next: 5 } }, 'its "things" was an empty object'],
     ])("refuses a batch that is %s", async (_name, body, said) => {
@@ -968,6 +967,12 @@ describe("withCursorPagination", () => {
       const failure = nested().getAll("/nested", "things");
       await expect(failure).rejects.toBeInstanceOf(ListPageError);
       await expect(failure).rejects.toThrow(said);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("reads a batch that is null as an empty list", async () => {
+      answer({ things: null, pagination: { next: 5 } });
+      await expect(nested().getAll("/nested", "things")).resolves.toEqual([]);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
