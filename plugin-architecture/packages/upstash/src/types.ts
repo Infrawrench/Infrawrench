@@ -14,6 +14,7 @@ export type UpTeam = Developer["schemas"]["Team"];
 export type UpSchedule = QStash["schemas"]["Schedule"];
 export type UpQueue = QStash["schemas"]["Queue"];
 export type UpUrlGroup = QStash["schemas"]["URLGroup"];
+export type UpLogEntry = QStash["schemas"]["LogEntry"];
 
 /** Something that lives under one regional QStash account. */
 export interface QStashChild<V> {

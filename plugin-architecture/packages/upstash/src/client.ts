@@ -24,6 +24,7 @@ import {
   decodePromptArgs,
   externalIdOf,
   pathEncode,
+  requireListPage,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { DeveloperClient, QStashClient, UpstashContext } from "./api.js";
@@ -53,6 +54,7 @@ import type {
   PublishOperation,
   QStashChild,
   ScheduleCreateOperation,
+  UpLogEntry,
   UpQStashUser,
   UpQueue,
   UpRedis,
@@ -65,6 +67,8 @@ import type {
 
 const CACHE_MS = 20_000;
 export const METRICS_WINDOW_MS = 60 * 60 * 1000;
+/** The document's maximum `count` on `GET /v2/logs`. */
+const QSTASH_LOG_PAGE = 100;
 
 function bool(raw: string | undefined): boolean | undefined {
   if (raw === undefined || raw === "") return undefined;
@@ -1573,10 +1577,8 @@ export class UpstashClient implements PluginClient {
         };
       }
       if (typeId === T.qstash) {
-        const res = await this.q(ext, (api) =>
-          api.get("/v2/logs", { query: { count: Math.min(tail, 1000) } }),
-        );
-        const text = (res?.logs ?? [])
+        const logs = await this.qstashLogs(ext, tail);
+        const text = logs
           .slice()
           .reverse()
           .map(
@@ -1594,6 +1596,28 @@ export class UpstashClient implements PluginClient {
         "Upstash plugin: logs are available for the account (audit log) and QStash (message log).",
       );
     });
+  }
+
+  /** The newest `tail` entries. A log view, so stopping at `tail` is what was asked for. */
+  private async qstashLogs(qstashId: string, tail: number) {
+    const out: UpLogEntry[] = [];
+    let cursor: string | undefined;
+    do {
+      const query = {
+        count: Math.min(tail - out.length, QSTASH_LOG_PAGE),
+        ...(cursor ? { cursor } : {}),
+      };
+      const res = await this.q(qstashId, (api) => api.get("/v2/logs", { query }));
+      const rows = requireListPage(res?.logs ?? [], {
+        vendor: "QStash",
+        path: "/v2/logs",
+        key: "logs",
+      });
+      if (!rows.length) break;
+      out.push(...rows);
+      cursor = res?.cursor;
+    } while (cursor && out.length < tail);
+    return out;
   }
 
   fetchDashboardStats(

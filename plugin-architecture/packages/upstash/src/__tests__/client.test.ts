@@ -336,6 +336,82 @@ describe("Redis owner", () => {
   });
 });
 
+describe("QStash message log", () => {
+  const LOGS = "GET qstash-us-east-1.upstash.io/v2/logs";
+  const route = {
+    [`GET ${API}/qstash/users`]: [{ id: "q1", token: "qtok", region: "us-east-1" }],
+  };
+  /** Newest first, as the plugin has always read it, 1000 entries behind a numeric cursor. */
+  const pages = (url: URL) => {
+    const from = Number(url.searchParams.get("cursor") ?? 0);
+    const count = Number(url.searchParams.get("count"));
+    if (count > 100) return new Response("count is at most 100", { status: 400 });
+    const logs = Array.from({ length: count }, (_, i) => ({
+      time: 1_700_000_000_000 - (from + i) * 1000,
+      messageId: `m${from + i}`,
+      state: "DELIVERED",
+    }));
+    return { cursor: String(from + count), logs };
+  };
+  const logCalls = (calls: ReturnType<typeof mockFetch>) =>
+    calls.filter((c) => c.url.pathname === "/v2/logs");
+  const lines = (text: string) => text.trim().split("\n");
+
+  it("never asks for more than 100, and pages to the lines asked for", async () => {
+    const calls = mockFetch({ ...route, [LOGS]: pages });
+    const res = await hostClient(new UpstashClient(creds)).getLogs(
+      "upstash-qstash",
+      `${ACC}:upstash-qstash:q1`,
+      ACC,
+      { tailLines: 250 },
+    );
+    expect(logCalls(calls).map((c) => c.url.searchParams.get("count"))).toEqual([
+      "100",
+      "100",
+      "50",
+    ]);
+    expect(logCalls(calls).map((c) => c.url.searchParams.get("cursor"))).toEqual([
+      null,
+      "100",
+      "200",
+    ]);
+    const out = lines(res.text);
+    expect(out).toHaveLength(250);
+    expect(out[0]).toContain("m249");
+    expect(out[249]).toContain("m0");
+  });
+
+  it("makes one request for the default tail", async () => {
+    const calls = mockFetch({ ...route, [LOGS]: pages });
+    const res = await hostClient(new UpstashClient(creds)).getLogs(
+      "upstash-qstash",
+      `${ACC}:upstash-qstash:q1`,
+      ACC,
+      {},
+    );
+    expect(logCalls(calls)).toHaveLength(1);
+    expect(lines(res.text)).toHaveLength(100);
+  });
+
+  it("stops where no cursor comes back, and on an empty page", async () => {
+    const entry = { time: 1_700_000_000_000, messageId: "m", state: "ERROR" };
+    const ended = mockFetch({ ...route, [LOGS]: { logs: [entry] } });
+    const c = hostClient(new UpstashClient(creds));
+    const id = `${ACC}:upstash-qstash:q1`;
+    expect(
+      lines((await c.getLogs("upstash-qstash", id, ACC, { tailLines: 500 })).text),
+    ).toHaveLength(1);
+    expect(logCalls(ended)).toHaveLength(1);
+
+    const empty = mockFetch({ ...route, [LOGS]: { cursor: "again", logs: [] } });
+    const res = await hostClient(new UpstashClient(creds)).getLogs("upstash-qstash", id, ACC, {
+      tailLines: 500,
+    });
+    expect(res.text).toBe("No message logs.\n");
+    expect(logCalls(empty)).toHaveLength(1);
+  });
+});
+
 describe("helpers", () => {
   it("parses Go timestamps", () => {
     expect(parseUpstashTime("2025-09-04 15:12:52.76649148 +0000 UTC")).toBe(
