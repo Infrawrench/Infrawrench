@@ -1,0 +1,96 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.fireworks.ai/merged.openapi.yaml",
+  "pathPrefix": "/v1/accounts/{account_id}",
+  "patches": [
+    {
+      "pointer": "/paths/~1deployments~1{deployment_id}/patch/requestBody/content/application~1json/schema/required",
+      "value": [],
+      "why": "Requires baseModel on every update; the plugin sends only the fields the user changed."
+    },
+    {
+      "pointer": "/paths/~1users~1{user_id}/patch/requestBody/content/application~1json/schema/required",
+      "value": [],
+      "why": "Requires role on every update; the plugin sends only the fields the user changed."
+    },
+    {
+      "pointer": "/paths/~1routers~1{router_id}/patch/requestBody/content/application~1json/schema/properties/name",
+      "value": { "type": "string" },
+      "why": "Left out of the update body, though the plugin has always sent the router's name there."
+    },
+    {
+      "pointer": "/paths/~1supervisedFineTuningJobs~1{supervised_fine_tuning_job_id}:cancel/post/requestBody/required",
+      "value": false,
+      "why": "Its body is an object with no properties, and the plugin sends none."
+    },
+    {
+      "pointer": "/paths/~1supervisedFineTuningJobs~1{supervised_fine_tuning_job_id}:resume/post/requestBody/required",
+      "value": false,
+      "why": "Its body is an object with no properties, and the plugin sends none."
+    },
+    {
+      "pointer": "/paths/~1reinforcementFineTuningJobs~1{reinforcement_fine_tuning_job_id}:cancel/post/requestBody/required",
+      "value": false,
+      "why": "Its body is an object with no properties, and the plugin sends none."
+    },
+    {
+      "pointer": "/paths/~1reinforcementFineTuningJobs~1{reinforcement_fine_tuning_job_id}:resume/post/requestBody/required",
+      "value": false,
+      "why": "Its body is an object with no properties, and the plugin sends none."
+    },
+    {
+      "pointer": "/paths/~1dpoJobs~1{dpo_job_id}:resume/post/requestBody/required",
+      "value": false,
+      "why": "Its body is an object with no properties, and the plugin sends none."
+    },
+    {
+      "pointer": "/paths/~1deployments~1{deployment_id}:undelete/post/requestBody/required",
+      "value": false,
+      "why": "Its body is an object with no properties, and the plugin sends none."
+    }
+  ],
+  "paths": {
+    "/auditLogs": ["get"],
+    "/batchInferenceJobs": ["get"],
+    "/batchInferenceJobs/{batch_inference_job_id}": ["get", "delete"],
+    "/billingUsage": ["get"],
+    "/datasets": ["get"],
+    "/datasets/{dataset_id}": ["get", "delete"],
+    "/deployedModels": ["get"],
+    "/deployedModels/{deployed_model_id}": ["get", "delete"],
+    "/deployments": ["get"],
+    "/deployments/{deployment_id}": ["get", "patch", "delete"],
+    "/deployments/{deployment_id}:scale": ["patch"],
+    "/deployments/{deployment_id}:undelete": ["post"],
+    "/dpoJobs": ["get"],
+    "/dpoJobs/{dpo_job_id}": ["get", "delete"],
+    "/dpoJobs/{dpo_job_id}:resume": ["post"],
+    "/evaluationJobs": ["get"],
+    "/evaluationJobs/{evaluation_job_id}": ["get", "delete"],
+    "/evaluationJobs/{evaluation_job_id}:getExecutionLogEndpoint": ["get"],
+    "/evaluators": ["get"],
+    "/evaluators/{evaluator_id}": ["get", "patch", "delete"],
+    "/evaluators/{evaluator_id}:getBuildLogEndpoint": ["get"],
+    "/models": ["get"],
+    "/models/{model_id}": ["get", "delete"],
+    "/quotas": ["get"],
+    "/quotas/{quota_id}": ["get", "patch"],
+    "/reinforcementFineTuningJobs": ["get"],
+    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}": ["get", "delete"],
+    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}:cancel": ["post"],
+    "/reinforcementFineTuningJobs/{reinforcement_fine_tuning_job_id}:resume": ["post"],
+    "/routers": ["get", "post"],
+    "/routers/{router_id}": ["get", "patch", "delete"],
+    "/secrets": ["get", "post"],
+    "/secrets/{secret_id}": ["get", "delete"],
+    "/supervisedFineTuningJobs": ["get"],
+    "/supervisedFineTuningJobs/{supervised_fine_tuning_job_id}": ["get", "delete"],
+    "/supervisedFineTuningJobs/{supervised_fine_tuning_job_id}:cancel": ["post"],
+    "/supervisedFineTuningJobs/{supervised_fine_tuning_job_id}:resume": ["post"],
+    "/usageCosts:query": ["post"],
+    "/users": ["get", "post"],
+    "/users/{user_id}": ["get", "patch"],
+    "/users/{user_id}/apiKeys": ["get", "post"],
+    "/users/{user_id}/apiKeys:delete": ["post"]
+  }
+}
