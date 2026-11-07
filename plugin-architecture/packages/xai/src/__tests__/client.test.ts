@@ -1413,3 +1413,43 @@ describe("list limits (#384)", () => {
     expect(collections?.options).toHaveLength(20);
   });
 });
+
+describe("fetchCostData when usage reaches xAI's cardinality limit", () => {
+  const range = { fromDate: "2026-07-01", toDate: "2026-07-04" };
+  const startsOf = (init?: RequestInit): string => {
+    const sent: { analyticsRequest: { timeRange: { startTime: string; endTime: string } } } =
+      JSON.parse(String(init?.body));
+    return sent.analyticsRequest.timeRange.startTime.slice(0, 10);
+  };
+
+  it("reads a shorter range rather than store a subset as the bill", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/auth/management-keys/validation")) return jsonResponse({ scopeId: "t1" });
+      const start = startsOf(init);
+      if (start === "2026-07-01" && calls.filter((c) => c.url.includes("/usage")).length === 1) {
+        return jsonResponse({ timeSeries: [], limitReached: true });
+      }
+      return jsonResponse({
+        timeSeries: [
+          {
+            groupLabels: ["tokens"],
+            dataPoints: [{ timestamp: `${start}T00:00:00Z`, values: [1] }],
+          },
+        ],
+      });
+    });
+    const rows = await client("xai-mgmt").fetchCostData(ACCOUNT, range);
+    expect(rows.map((r) => r.date)).toEqual(["2026-07-01", "2026-07-03"]);
+    expect(calls.filter((c) => c.url.includes("/usage"))).toHaveLength(3);
+  });
+
+  it("fails when a single day is still over the limit", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/auth/management-keys/validation")) return jsonResponse({ scopeId: "t1" });
+      return jsonResponse({ timeSeries: [], limitReached: true });
+    });
+    await expect(client("xai-mgmt").fetchCostData(ACCOUNT, range)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+});

@@ -26,6 +26,7 @@ import type {
 import {
   CostSetupError,
   CreditAccessError,
+  ListTruncatedError,
   base64ToBytes,
   hostTransport,
   pathEncode,
@@ -1370,17 +1371,35 @@ export class XaiClient implements PluginClient {
         { label: "Create a management key", url: "https://console.x.ai/team/default/settings" },
       );
     }
-    const series = await this.queryUsage(range.fromDate, range.toDate, "TIME_UNIT_DAY");
+    return this.dailyCostRows(range.fromDate, range.toDate);
+  }
+
+  private async dailyCostRows(fromDate: string, toDate: string): Promise<CostRow[]> {
+    const path = "/v1/billing/teams/{team_id}/usage";
+    const series = await this.queryUsage(fromDate, toDate, "TIME_UNIT_DAY");
+    // xAI: "only a subset of results is returned", and its advice is a shorter range.
+    if (series.limitReached) {
+      if (fromDate >= toDate) {
+        const items = series.timeSeries?.length ?? 0;
+        throw new ListTruncatedError({ vendor: "xAI Management", path, items });
+      }
+      const from = Date.parse(`${fromDate}T00:00:00Z`);
+      const days = (Date.parse(`${toDate}T00:00:00Z`) - from) / DAY_MS;
+      const middle = isoDate(from + Math.floor(days / 2) * DAY_MS);
+      return [
+        ...(await this.dailyCostRows(fromDate, middle)),
+        ...(await this.dailyCostRows(nextDay(middle), toDate)),
+      ];
+    }
     const rows: CostRow[] = [];
     // `limitReached` can stand beside a series left out of an empty answer.
-    const usagePath = "/v1/billing/teams/{team_id}/usage";
-    for (const s of managementList(series, "timeSeries", usagePath, ["limitReached"])) {
+    for (const s of managementList(series, "timeSeries", path, ["limitReached"])) {
       const service = s.groupLabels?.[0] ?? s.group?.[0] ?? "xAI API";
       for (const point of s.dataPoints ?? []) {
         const amount = point.values?.[0];
         if (!point.timestamp || amount === undefined) continue;
         const date = point.timestamp.slice(0, 10);
-        if (date < range.fromDate || date > range.toDate) continue;
+        if (date < fromDate || date > toDate) continue;
         rows.push({ date, service, currency: "USD", amount });
       }
     }
