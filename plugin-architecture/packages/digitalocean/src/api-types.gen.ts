@@ -610,6 +610,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/droplets/{droplet_id}/backups/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["droplets_get_backup_policy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/droplets/{droplet_id}/snapshots": {
         parameters: {
             query?: never;
@@ -5185,6 +5201,12 @@ export interface components {
             weekday?: string;
             readonly window_length_hours?: number;
         };
+        droplet_backup_policy_record: {
+            backup_enabled?: boolean;
+            backup_policy?: components["schemas"]["droplet_backup_policy"] & unknown;
+            droplet_id?: number;
+            next_backup_window?: components["schemas"]["droplet_next_backup_window"] & unknown;
+        };
         droplet_create: {
             backup_policy?: components["schemas"]["droplet_backup_policy"] & unknown;
             /** @default false */
@@ -6784,6 +6806,19 @@ export interface components {
                 };
             };
         };
+        droplet_backup_policy: {
+            headers: {
+                "ratelimit-limit": components["headers"]["ratelimit-limit"];
+                "ratelimit-remaining": components["headers"]["ratelimit-remaining"];
+                "ratelimit-reset": components["headers"]["ratelimit-reset"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    policy?: components["schemas"]["droplet_backup_policy_record"];
+                };
+            };
+        };
         droplet_bandwidth_metric_response: app_metric_response_723b0083;
         droplet_cpu_metric_response: app_metric_response_723b0083;
         droplet_create: droplet_create_f5b6adad;
@@ -8377,6 +8412,20 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: components["responses"]["all_droplet_backups"];
+        };
+    };
+    droplets_get_backup_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                droplet_id: components["parameters"]["droplet_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["droplet_backup_policy"];
         };
     };
     droplets_list_snapshots: {

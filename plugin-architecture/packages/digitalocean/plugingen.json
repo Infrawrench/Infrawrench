@@ -895,6 +895,7 @@
     "/vpc_peerings": ["get", "post"],
     "/vpc_peerings/{vpc_peering_id}": ["patch", "delete"],
     "/vpcs": ["get", "post"],
-    "/vpcs/{vpc_id}": ["delete"]
+    "/vpcs/{vpc_id}": ["delete"],
+    "/droplets/{droplet_id}/backups/policy": ["get"]
   }
 }

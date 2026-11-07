@@ -91,23 +91,29 @@ export async function enrichDoDetail(
   // Per-droplet backups/snapshots: fetched here so the Restore from
   // Backup picker can show "Daily backup • Mar 21 (5 GB)" instead of
   // raw numeric ids. Skipped entirely when the droplet has neither.
-  const [sizesRes, distrosRes, privateImagesRes, backupsRes, snapshotsRes] = await Promise.all([
-    needSizes ? ctx.api.getAll("/sizes", "sizes", PICKER) : Promise.resolve(null),
-    needDistros
-      ? ctx.api.getAll("/images", "images", { ...PICKER, query: { type: "distribution" } })
-      : Promise.resolve(null),
-    ctx.api.getAll("/images", "images", { ...PICKER, query: { private: true } }).catch(() => []),
-    hasBackups && externalId
-      ? ctx.api
-          .getAll(`/droplets/${idSegment(externalId)}/backups`, "backups", PICKER)
-          .catch(() => [])
-      : Promise.resolve(null),
-    hasSnapshots && externalId
-      ? ctx.api
-          .getAll(`/droplets/${idSegment(externalId)}/snapshots`, "snapshots", PICKER)
-          .catch(() => [])
-      : Promise.resolve(null),
-  ]);
+  const [sizesRes, distrosRes, privateImagesRes, backupsRes, snapshotsRes, policyRes] =
+    await Promise.all([
+      needSizes ? ctx.api.getAll("/sizes", "sizes", PICKER) : Promise.resolve(null),
+      needDistros
+        ? ctx.api.getAll("/images", "images", { ...PICKER, query: { type: "distribution" } })
+        : Promise.resolve(null),
+      ctx.api.getAll("/images", "images", { ...PICKER, query: { private: true } }).catch(() => []),
+      hasBackups && externalId
+        ? ctx.api
+            .getAll(`/droplets/${idSegment(externalId)}/backups`, "backups", PICKER)
+            .catch(() => [])
+        : Promise.resolve(null),
+      hasSnapshots && externalId
+        ? ctx.api
+            .getAll(`/droplets/${idSegment(externalId)}/snapshots`, "snapshots", PICKER)
+            .catch(() => [])
+        : Promise.resolve(null),
+      // A Droplet does not carry its policy, and a read that fails only leaves the
+      // detail page reading its other signs that backups are on.
+      externalId
+        ? ctx.api.get(`/droplets/${idSegment(externalId)}/backups/policy`).catch(() => null)
+        : Promise.resolve(null),
+    ]);
 
   if (sizesRes) {
     const sizes: SizeOption[] = sizesRes
@@ -180,8 +186,16 @@ export async function enrichDoDetail(
     });
   }
 
+  const policy = policyRes?.policy;
+  const schedule = policy?.backup_enabled === false ? undefined : policy?.backup_policy;
   return {
     ...resource,
+    fields: {
+      ...resource.fields,
+      ...(schedule?.plan ? { backupPolicyPlan: schedule.plan } : {}),
+      ...(schedule?.hour != null ? { backupPolicyHour: String(schedule.hour) } : {}),
+      ...(schedule?.weekday ? { backupPolicyWeekday: schedule.weekday } : {}),
+    },
     resolvedOutputs: {
       ...resource.resolvedOutputs,
       __sizes__: JSON.stringify(sizes),

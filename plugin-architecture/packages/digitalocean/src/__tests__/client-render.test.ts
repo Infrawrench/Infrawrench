@@ -271,3 +271,57 @@ describe("enrichDetail", () => {
     expect(enriched.resourceTypeId).toBe("gen-ai-agent");
   });
 });
+
+describe("a Droplet's backup policy (#415)", () => {
+  const droplet = {
+    id: `${ACC}:droplet:7`,
+    pluginId: "digitalocean",
+    resourceTypeId: "droplet",
+    accountId: ACC,
+    displayName: "d",
+    fields: { name: "d", status: "active", features: "" },
+    resolvedOutputs: {},
+    secretStates: [],
+    externalId: "7",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+  const answering = (policy: object | null) =>
+    installFetch((path) => {
+      if (path === "/droplets/7/backups/policy") {
+        return policy ?? jsonResponse({ id: "forbidden" }, 403);
+      }
+      if (path.startsWith("/sizes")) return { sizes: [] };
+      if (path.startsWith("/images")) return { images: [] };
+      return undefined;
+    });
+
+  it("reads it from the policy route, and the detail page then knows backups are on", async () => {
+    answering({
+      policy: {
+        droplet_id: 7,
+        backup_enabled: true,
+        backup_policy: { plan: "weekly", weekday: "SUN", hour: 4 },
+      },
+    });
+    const enriched = await client.enrichDetail(droplet);
+    expect(enriched.fields["backupPolicyPlan"]).toBe("weekly");
+    expect(enriched.fields["backupPolicyHour"]).toBe("4");
+    expect(enriched.fields["backupPolicyWeekday"]).toBe("SUN");
+  });
+
+  it("does not call a disabled policy a schedule", async () => {
+    answering({
+      policy: { droplet_id: 7, backup_enabled: false, backup_policy: { plan: "daily", hour: 0 } },
+    });
+    const enriched = await client.enrichDetail(droplet);
+    expect(enriched.fields).not.toHaveProperty("backupPolicyPlan");
+  });
+
+  it("still renders when the policy cannot be read", async () => {
+    answering(null);
+    const enriched = await client.enrichDetail(droplet);
+    expect(enriched.fields).not.toHaveProperty("backupPolicyPlan");
+    expect(enriched.resolvedOutputs).toHaveProperty("__sizes__");
+  });
+});

@@ -32,10 +32,7 @@ export interface DoListerContext {
   spacesBucketRegions: Map<string, string>;
 }
 
-type DoDroplet = ApiListItem<operations["droplets_list"], "droplets"> & {
-  /** Not in the document, which keeps it at `/droplets/{id}/backups/policy` (#415). */
-  backup_policy?: { plan?: string; hour?: number; weekday?: string } | null;
-};
+type DoDroplet = ApiListItem<operations["droplets_list"], "droplets">;
 
 /** The document's list rows have no `id`, `status` or `knowledge_bases` (#414). */
 export type DoAgentRow = ApiListItem<operations["genai_list_agents"], "agents"> & {
@@ -558,7 +555,6 @@ export function mapDroplet(
   // fall back on it regardless of when DO eventually flips `features`.
   const nextBackupWindow = d.next_backup_window;
   const nextBackupStart = nextBackupWindow?.start ?? "";
-  const backupPolicy = d.backup_policy;
   const parentResourceId = ctx.parentResourceIdForUrn(
     accountId,
     `do:droplet:${String(d.id)}`,
@@ -586,9 +582,6 @@ export function mapDroplet(
       volumeIds: volumeIds.join(","),
       features: Array.isArray(d.features) ? d.features.join(",") : "",
       nextBackupStart,
-      backupPolicyPlan: backupPolicy?.plan ?? "",
-      backupPolicyHour: backupPolicy?.hour != null ? String(backupPolicy.hour) : "",
-      backupPolicyWeekday: backupPolicy?.weekday ?? "",
       // VPC the droplet lives in: used by the NFS-share→droplet drop
       // target to derive the share-level `attach` action's `vpc_id`.
       vpcUuid: String(d.vpc_uuid ?? ""),
