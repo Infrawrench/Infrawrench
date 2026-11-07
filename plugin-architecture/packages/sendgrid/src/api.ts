@@ -7,10 +7,36 @@
  * header lets a parent account's key act as one of its subusers. Errors are
  * `{ errors: [{ message, field }] }`.
  *
- * Verified against Twilio's published OpenAPI documents
- * (`twilio/sendgrid-oai`, `spec/json/tsg_*_v3.json`, 2026-10).
+ * Typed from Twilio's published OpenAPI documents (`twilio/sendgrid-oai`,
+ * `spec/json/tsg_*_v3.json`), which split the API into one file per product.
+ * Every one has the same hosts and auth, so they make one client.
  */
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  withCursorPagination,
+  type ApiClient,
+  type ApiListItem,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths as AlertPaths } from "./api-types.alerts.gen.js";
+import type { paths as ApiKeyPaths } from "./api-types.api-keys.gen.js";
+import type { paths as DomainPaths } from "./api-types.domain-authentication.gen.js";
+import type { paths as IpWarmupPaths } from "./api-types.ip-warmup.gen.js";
+import type { paths as IpPaths } from "./api-types.ips.gen.js";
+import type { paths as LinkPaths } from "./api-types.link-branding.gen.js";
+import type { paths as ReverseDnsPaths } from "./api-types.reverse-dns.gen.js";
+import type { paths as ScopePaths } from "./api-types.scopes.gen.js";
+import type { paths as StatPaths } from "./api-types.stats.gen.js";
+import type { paths as SubuserPaths } from "./api-types.subusers.gen.js";
+import type { paths as SuppressionPaths } from "./api-types.suppressions.gen.js";
+import type {
+  operations as TemplateOperations,
+  paths as TemplatePaths,
+} from "./api-types.templates.gen.js";
+import type { paths as UserPaths } from "./api-types.user.gen.js";
+import type { paths as VerifiedSenderPaths } from "./api-types.verified-senders.gen.js";
+import type { paths as WebhookPaths } from "./api-types.webhooks.gen.js";
 
 export const API_HOSTS = {
   global: "https://api.sendgrid.com",
@@ -50,22 +76,14 @@ export function isAccessDenied(err: unknown): boolean {
   return s === 401 || s === 403;
 }
 
-export type QueryValue = string | number | boolean | undefined;
-
-export interface SendGridRequest {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-  /** Skip `on-behalf-of` (parent-only endpoints such as `/v3/subusers`). */
-  asParent?: boolean;
+interface ErrorBody {
+  errors?: Array<{ message?: string; field?: string | null }>;
 }
 
 function describeError(status: number, body: string, path: string): SendGridApiError {
   let message = body;
   try {
-    const parsed = JSON.parse(body) as {
-      errors?: Array<{ message?: string; field?: string | null }>;
-    };
+    const parsed: ErrorBody = JSON.parse(body);
     const msgs = (parsed.errors ?? [])
       .map((e) => (e.field ? `${e.field}: ${e.message ?? ""}` : (e.message ?? "")))
       .filter(Boolean);
@@ -87,83 +105,99 @@ function describeError(status: number, body: string, path: string): SendGridApiE
   );
 }
 
-export async function sendgridFetch<T>(
-  ctx: SendGridContext,
-  path: string,
-  req: SendGridRequest = {},
-): Promise<T> {
-  const method = req.method ?? (req.body !== undefined ? "POST" : "GET");
+/** An empty value is left out, which is what a resource id with nothing in it comes to. */
+function writeQuery(query: Record<string, ParamValue>): string {
   const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(req.query ?? {})) {
+  for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== "") qs.append(k, String(v));
   }
-  const query = qs.toString();
-  const url = `${API_HOSTS[ctx.region]}${path}${query ? `?${query}` : ""}`;
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${ctx.apiKey}`,
-    Accept: "application/json",
-  };
-  if (ctx.onBehalfOf && !req.asParent) headers["on-behalf-of"] = ctx.onBehalfOf;
-  const body = req.body !== undefined ? JSON.stringify(req.body) : undefined;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-
-  let status: number;
-  let text: string;
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    status = res.status;
-    text = res.body;
-  } else {
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    status = res.status;
-    text = await res.text();
-  }
-  if (status < 200 || status >= 300) throw describeError(status, text, path);
-  if (status === 204 || !text) return undefined as T;
-  return JSON.parse(text) as T;
+  return qs.toString();
 }
 
-/** Walk a `limit`/`offset` list that returns a bare array. */
-export async function listOffset<T>(
-  ctx: SendGridContext,
-  path: string,
-  query: Record<string, QueryValue> = {},
-  opts: { pageSize?: number; maxItems?: number; asParent?: boolean } = {},
-): Promise<T[]> {
-  const pageSize = opts.pageSize ?? 100;
-  const maxItems = opts.maxItems ?? 5000;
-  const out: T[] = [];
-  for (let offset = 0; offset < maxItems; offset += pageSize) {
-    const page = await sendgridFetch<T[]>(ctx, path, {
-      query: { ...query, limit: pageSize, offset },
-      ...(opts.asParent ? { asParent: true } : {}),
-    });
-    const items = Array.isArray(page) ? page : [];
-    out.push(...items);
-    if (items.length < pageSize) break;
-  }
-  return out;
+type SendGridPaths = AlertPaths &
+  ApiKeyPaths &
+  DomainPaths &
+  IpWarmupPaths &
+  IpPaths &
+  LinkPaths &
+  ReverseDnsPaths &
+  ScopePaths &
+  StatPaths &
+  SubuserPaths &
+  SuppressionPaths &
+  TemplatePaths &
+  UserPaths &
+  VerifiedSenderPaths &
+  WebhookPaths;
+
+const PAGE_SIZE = 100;
+
+/** `limit`/`offset` lists that answer a bare array: 50 pages, so 5000 items at most. */
+function withOffsetLists(client: ApiClient<SendGridPaths>) {
+  return withCursorPagination(client, {
+    cursorParam: "offset",
+    firstCursor: 0,
+    sizeParam: "limit",
+    pageSize: PAGE_SIZE,
+    maxPages: 50,
+    // By the page size, not by what came back: a page may be longer than was asked for.
+    next: ({ cursor }) => Number(cursor) + PAGE_SIZE,
+    stopOnShortPage: true,
+    emptyBodyEndsList: true,
+  });
+}
+
+function createClient(ctx: SendGridContext, onBehalfOf: string) {
+  return withOffsetLists(
+    createApiClient<SendGridPaths>({
+      vendor: "SendGrid",
+      baseUrl: API_HOSTS[ctx.region],
+      headers: {
+        Authorization: `Bearer ${ctx.apiKey}`,
+        Accept: "application/json",
+        ...(onBehalfOf ? { "on-behalf-of": onBehalfOf } : {}),
+      },
+      contentType: "with-body",
+      emptyBodyIsUndefined: true,
+      serializeQuery: writeQuery,
+      httpError: ({ status, body, path }) => describeError(status, body, path),
+      http: ctx.http,
+      caCert: ctx.caCert,
+    }),
+  );
+}
+
+export type SendGridApi = ReturnType<typeof createClient>;
+
+export interface SendGridApis {
+  /** Acts as the connection's subuser, when it has one. */
+  api: SendGridApi;
+  /** Never sends `on-behalf-of`, for parent-only endpoints such as `/v3/subusers`. */
+  parent: SendGridApi;
+}
+
+export function createSendGridApis(ctx: SendGridContext): SendGridApis {
+  return { api: createClient(ctx, ctx.onBehalfOf), parent: createClient(ctx, "") };
 }
 
 /**
  * Walk `/v3/templates`, which pages by `page_token` taken from the absolute
  * `_metadata.next` URL (max `page_size` 200).
  */
-export async function listTemplates<T>(ctx: SendGridContext, maxPages = 25): Promise<T[]> {
-  const out: T[] = [];
+export async function listTemplates(
+  api: SendGridApi,
+  maxPages = 25,
+): Promise<ApiListItem<TemplateOperations["ListTemplate"], "result">[]> {
+  const out: ApiListItem<TemplateOperations["ListTemplate"], "result">[] = [];
   let token: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res = await sendgridFetch<{ result?: T[]; _metadata?: { next?: string } }>(
-      ctx,
-      "/v3/templates",
-      { query: { generations: "legacy,dynamic", page_size: 200, page_token: token } },
-    );
+    const res = await api.get("/v3/templates", {
+      query: {
+        generations: "legacy,dynamic",
+        page_size: 200,
+        ...(token !== undefined ? { page_token: token } : {}),
+      },
+    });
     out.push(...(res?.result ?? []));
     const next = res?._metadata?.next;
     if (!next) break;
