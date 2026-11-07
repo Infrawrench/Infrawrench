@@ -64,26 +64,58 @@ const { default: ts } = await import("typescript");
 const PACKAGES = path.join(ROOT, "plugin-architecture/packages");
 const METHODS = ["get", "put", "post", "delete", "patch", "head", "options", "trace"];
 
-function collectRefs(node, out) {
+function collectRefs(node, out, mappings) {
   if (Array.isArray(node)) {
-    for (const item of node) collectRefs(item, out);
+    for (const item of node) collectRefs(item, out, mappings);
   } else if (node && typeof node === "object") {
     for (const [key, value] of Object.entries(node)) {
       if (key === "$ref" && typeof value === "string" && value.startsWith("#/")) out.add(value);
       // A mapping names schemas without a `$ref`, and a schema reached only this
-      // way must survive pruning: the document does not validate without it.
+      // way must survive pruning: the document does not validate without it. It may
+      // also name one bare, with no pointer at all.
       else if (key === "discriminator" && value?.mapping) {
-        for (const target of Object.values(value.mapping)) out.add(target);
-      } else collectRefs(value, out);
+        for (const target of Object.values(value.mapping)) {
+          const ref = target.startsWith("#/") ? target : `#/components/schemas/${target}`;
+          out.add(ref);
+          mappings.add(ref);
+        }
+      } else collectRefs(value, out, mappings);
     }
   }
 }
 
-const resolvePointer = (doc, ref) =>
-  ref
-    .slice(2)
-    .split("/")
-    .reduce((cur, seg) => cur?.[seg.replaceAll("~1", "/").replaceAll("~0", "~")], doc);
+/** Read a `#/...` pointer, percent-encoded or not, through any `$ref` on the way. */
+function resolvePointer(doc, ref) {
+  let cur = doc;
+  for (const seg of ref.slice(2).split("/")) {
+    if (typeof cur?.$ref === "string" && cur.$ref.startsWith("#/")) {
+      cur = resolvePointer(doc, cur.$ref);
+    }
+    cur = cur?.[decodeURIComponent(seg).replaceAll("~1", "/").replaceAll("~0", "~")];
+  }
+  return cur;
+}
+
+/**
+ * Bundlers point one operation at a schema inside another (`#/paths/...`), which
+ * pruning may remove, or inside a component (`#/components/schemas/Tag/allOf/0`),
+ * which openapi-typescript renders as a property the type does not have. Put the
+ * schema where it is used.
+ */
+function inlineDeepRefs(doc) {
+  const deep = /^#\/(paths\/|components\/[^/]+\/[^/]+\/)/;
+  const expand = (node, within) => {
+    if (Array.isArray(node)) return node.map((item) => expand(item, within));
+    if (!node || typeof node !== "object") return node;
+    const ref = node.$ref;
+    if (typeof ref === "string" && deep.test(ref) && !within.has(ref)) {
+      return expand(resolvePointer(doc, ref), new Set(within).add(ref));
+    }
+    return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, expand(v, within)]));
+  };
+  doc.paths = expand(doc.paths, new Set());
+  doc.components = expand(doc.components, new Set());
+}
 
 /** Keep the listed operations and everything they transitively reference. */
 function prune(doc, wanted) {
@@ -104,16 +136,21 @@ function prune(doc, wanted) {
 
   const seen = new Set();
   const queue = new Set();
-  collectRefs(paths, queue);
+  const mappings = new Set();
+  collectRefs(paths, queue, mappings);
   while (queue.size > 0) {
     const [ref] = queue;
     queue.delete(ref);
     if (seen.has(ref)) continue;
     seen.add(ref);
     const target = resolvePointer(doc, ref);
-    if (target === undefined) throw new Error(`Dangling reference ${ref}`);
+    if (target === undefined) {
+      // A mapping's value need not lead anywhere (OpenRouter's does not); a `$ref` must.
+      if (mappings.has(ref)) continue;
+      throw new Error(`Dangling reference ${ref}`);
+    }
     const next = new Set();
-    collectRefs(target, next);
+    collectRefs(target, next, mappings);
     for (const r of next) if (!seen.has(r)) queue.add(r);
   }
 
@@ -154,12 +191,21 @@ function withoutDocs(node, keysAreNames = false) {
   return kept;
 }
 
-/** The client only ever returns a 2xx body; errors reach callers as a message. */
+/**
+ * The client only ever returns a 2xx body; errors reach callers as a message. An
+ * operation with no 2xx says how it succeeds under `default`, if anywhere (Gemini's
+ * document does this throughout), so that stands in for a 200.
+ */
 function dropErrorResponses(doc) {
   for (const item of Object.values(doc.paths)) {
     for (const method of METHODS) {
-      for (const code of Object.keys(item[method]?.responses ?? {})) {
-        if (!code.startsWith("2")) delete item[method].responses[code];
+      const responses = item[method]?.responses ?? {};
+      const codes = Object.keys(responses);
+      if (responses.default && !codes.some((code) => code.startsWith("2"))) {
+        responses["200"] = responses.default;
+      }
+      for (const code of codes) {
+        if (!code.startsWith("2")) delete responses[code];
       }
     }
   }
@@ -278,13 +324,15 @@ function stripPathPrefix(doc, prefix) {
 
 async function generateDocument(plugin, dir, config, fileName) {
   const doc = await loadDocument(config.specUrl);
+  inlineDeepRefs(doc);
   if (config.pathPrefix) stripPathPrefix(doc, config.pathPrefix);
   applyPatches(doc, config.patches);
-  const pruned = prune(doc, config.paths);
+  // Before pruning, so that what only an example refers to is not kept or chased.
+  const pruned = prune(withoutDocs(doc), config.paths);
   dropErrorResponses(pruned);
   // `defaultNonNullable` would make any field with a server-side default required
   // in request bodies too, which is the opposite of what a default means.
-  const ast = await openapiTS(withoutDocs(pruned), {
+  const ast = await openapiTS(pruned, {
     alphabetize: true,
     defaultNonNullable: false,
   });

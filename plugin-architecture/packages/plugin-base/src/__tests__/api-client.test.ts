@@ -11,6 +11,7 @@ import {
   withPagination,
   type ApiClient,
   type ApiFailure,
+  type ApiForm,
   type ApiListItem,
   type ApiResponse,
   type PageAnswer,
@@ -82,6 +83,140 @@ interface paths {
     { rows: Item[]; meta: { next_page_url: string | null } }
   >;
   "/no-link-field": Get<{ PageSize?: number }, { rows: Item[] }>;
+  // A list whose only parameter is its size, and one that requires another.
+  "/size-only": Get<{ PageSize?: number }, { rows: Item[]; next_page_uri?: string | null }>;
+  "/offset": Get<{ offset?: number; limit?: number }, { rows: Item[] }>;
+  "/required-filter": {
+    get: {
+      parameters: { query: { project: string; PageSize?: number } };
+      requestBody?: never;
+      responses: { 200: Json<{ rows: Item[]; next_page_uri?: string | null }> };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    patch?: never;
+  };
+  // Request and response encodings other than plain JSON.
+  "/form": {
+    get?: never;
+    put?: never;
+    post: {
+      parameters: { query?: never };
+      requestBody?: {
+        content: {
+          "application/x-www-form-urlencoded": {
+            Name: string;
+            Sticky?: boolean;
+            Size?: number;
+            Tag?: string[];
+            Limits?: { max?: number; labels?: string[] };
+          };
+        };
+      };
+      responses: { 201: Json<{ item: Item }> };
+    };
+    delete?: never;
+    patch?: never;
+  };
+  "/form-required": {
+    get?: never;
+    put?: never;
+    post: {
+      parameters: { query?: never };
+      requestBody: { content: { "application/x-www-form-urlencoded": { Name: string } } };
+      responses: { 204: NoContent };
+    };
+    delete?: never;
+    patch?: never;
+  };
+  "/either": {
+    get?: never;
+    put?: never;
+    post: {
+      parameters: { query?: never };
+      requestBody: {
+        content: {
+          "application/json": { asJson: string };
+          "application/x-www-form-urlencoded": { asForm: string };
+        };
+      };
+      responses: { 204: NoContent };
+    };
+    delete?: never;
+    patch?: never;
+  };
+  "/upload": {
+    get?: never;
+    put?: never;
+    post: {
+      parameters: { query?: never };
+      requestBody: { content: { "multipart/form-data": { file: string } } };
+      responses: { 200: Json<{ item: Item }> };
+    };
+    delete?: never;
+    patch: {
+      parameters: { query?: never };
+      requestBody?: { content: { "application/octet-stream": string } };
+      responses: { 204: NoContent };
+    };
+  };
+  "/vendor-json": {
+    get: {
+      parameters: { query?: never };
+      requestBody?: never;
+      responses: { 200: { content: { "application/vnd.acme.v2+json": { acme: string } } } };
+    };
+    put: {
+      parameters: { query?: never };
+      requestBody: { content: { "application/merge-patch+json": { acme?: string } } };
+      responses: { 200: { content: { "application/json; charset=utf-8": { charset: string } } } };
+    };
+    post: {
+      parameters: { query?: never };
+      requestBody?: never;
+      responses: {
+        200: {
+          content: {
+            "application/json": { plain: string };
+            "application/vnd.acme.v2+json": { acme: string };
+            "text/plain": string;
+          };
+        };
+      };
+    };
+    delete?: never;
+    patch?: never;
+  };
+  "/not-json": {
+    get: {
+      parameters: { query?: never };
+      requestBody?: never;
+      responses: {
+        200: { content: { "text/csv": string; "application/x-ndjson": string } };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    patch?: never;
+  };
+  "/odd-codes": {
+    get: {
+      parameters: { query?: never };
+      requestBody?: never;
+      responses: {
+        206: Json<{ partial: true }>;
+        207: Json<{ multi: true }>;
+        "2XX": Json<{ wild: true }>;
+        301: Json<{ moved: true }>;
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    patch?: never;
+  };
   "/no-query": {
     get: {
       parameters: { query?: never };
@@ -245,6 +380,42 @@ describe("query strings", () => {
     expect(lastUrl()).toBe(`${BASE}/items?tag=a%2Cb,c+d`);
   });
 
+  it("sends a nested object as bracketed names, which URLSearchParams would escape", async () => {
+    const api = createApiClient<{
+      "/nested-query": Get<
+        { created?: { gte?: number; lt?: number | undefined; tag?: string[] } },
+        object
+      >;
+    }>({ vendor: "E", baseUrl: BASE, headers: {} });
+    await api.get("/nested-query", {
+      query: { created: { gte: 1, lt: undefined, tag: ["a b", "c"] } },
+    });
+    const expected = new URLSearchParams();
+    expected.append("created[gte]", "1");
+    expected.append("created[tag]", "a b");
+    expected.append("created[tag]", "c");
+    expect(lastUrl()).toBe(`${BASE}/nested-query?${expected}`);
+  });
+
+  it("takes a serializer for a dialect the default does not speak, scope following it", async () => {
+    const api = createApiClient<paths>({
+      vendor: "E",
+      baseUrl: BASE,
+      headers: {},
+      scopeQuery: { team: "t" },
+      serializeQuery: (query) =>
+        Object.entries(query)
+          .flatMap(([key, value]) =>
+            Array.isArray(value) ? value.map((v, i) => `${key}[${i}]=${String(v)}`) : [],
+          )
+          .join("&"),
+    });
+    await api.get("/items", { query: { tag: ["a", "b"] } });
+    expect(lastUrl()).toBe(`${BASE}/items?tag[0]=a&tag[1]=b&team=t`);
+    await api.get("/items", { query: { page: 1 } });
+    expect(lastUrl()).toBe(`${BASE}/items?team=t`);
+  });
+
   it("leaves commaSeparated a plain array to anything else that reads it", () => {
     const list = commaSeparated(["a", "b"]);
     expect(Array.isArray(list)).toBe(true);
@@ -332,6 +503,166 @@ describe("requests", () => {
   });
 });
 
+describe("form bodies", () => {
+  const FORM = "application/x-www-form-urlencoded";
+
+  it("sends the form type and URLSearchParams' bytes", async () => {
+    fetchMock.mockResolvedValueOnce(response({ item: { id: 1, name: "n" } }, 201));
+    const { item } = await client().post("/form", {
+      form: { Name: "a b&c=d+e/é", Sticky: false, Size: 0 },
+    });
+    expect(item.id).toBe(1);
+    expect(lastInit()?.method).toBe("POST");
+    expect(lastInit()?.body).toBe(
+      new URLSearchParams({ Name: "a b&c=d+e/é", Sticky: "false", Size: "0" }).toString(),
+    );
+    expect(lastInit()?.headers).toMatchObject({ "Content-Type": FORM });
+  });
+
+  it("repeats a key for an array, brackets a nested object, and skips what is absent", async () => {
+    await client().post("/form", {
+      form: {
+        Name: "",
+        Sticky: undefined,
+        Tag: ["x y", "z"],
+        Limits: { max: 3, labels: ["l"] },
+      },
+    });
+    expect(lastInit()?.body).toBe("Name=&Tag=x+y&Tag=z&Limits%5Bmax%5D=3&Limits%5Blabels%5D=l");
+    await client().post("/form", { form: { Name: "n", Tag: commaSeparated(["a", "b c"]) } });
+    expect(lastInit()?.body).toBe("Name=n&Tag=a,b+c");
+  });
+
+  it("sends an empty body, with its type, for an empty form", async () => {
+    const name: string | undefined = undefined;
+    await client().post("/form", { form: { Name: name } });
+    expect(lastInit()?.body).toBe("");
+    expect(lastInit()?.headers).toMatchObject({ "Content-Type": FORM });
+  });
+
+  it("sends no body and no form type when an optional form is left out", async () => {
+    const api = createApiClient<paths>({
+      vendor: "E",
+      baseUrl: BASE,
+      headers: {},
+      contentType: "with-body",
+    });
+    await api.post("/form");
+    expect(lastInit()?.body).toBeUndefined();
+    expect(lastInit()?.headers).toEqual({});
+  });
+
+  it("puts the type last with-body and first otherwise, and leaves the caller's alone", async () => {
+    const options = { vendor: "E", baseUrl: BASE, headers: { Accept: "application/json" } };
+    await createApiClient<paths>({ ...options, contentType: "with-body" }).post("/form", {
+      form: { Name: "n" },
+    });
+    expect(Object.entries(lastInit()?.headers ?? {})).toEqual([
+      ["Accept", "application/json"],
+      ["Content-Type", FORM],
+    ]);
+    await createApiClient<paths>(options).post("/form", { form: { Name: "n" } });
+    expect(Object.keys(lastInit()?.headers ?? {})).toEqual(["Content-Type", "Accept"]);
+    await createApiClient<paths>({
+      ...options,
+      headers: { "Content-Type": `${FORM}; charset=utf-8` },
+    }).post("/form", { form: { Name: "n" } });
+    expect(lastInit()?.headers).toEqual({ "Content-Type": `${FORM}; charset=utf-8` });
+  });
+
+  it("stays form-encoded whatever the query's encoder does", async () => {
+    const api = createApiClient<paths>({
+      vendor: "E",
+      baseUrl: BASE,
+      headers: {},
+      encodeQuery: encodeURIComponent,
+    });
+    await api.post("/form", { form: { Name: "a b" } });
+    expect(lastInit()?.body).toBe("Name=a+b");
+  });
+
+  it("takes a serializer for a dialect the default does not speak", async () => {
+    const api = createApiClient<paths>({
+      vendor: "E",
+      baseUrl: BASE,
+      headers: {},
+      serializeForm: (form) => `keys=${Object.keys(form).join(",")}`,
+    });
+    await api.post("/form", { form: { Name: "n", Size: 1 } });
+    expect(lastInit()?.body).toBe("keys=Name,Size");
+  });
+
+  it("goes through the host's http service as a string, with its type", async () => {
+    const { http, calls } = fakeHost([{ status: 204 }]);
+    const api = createApiClient<paths>({
+      vendor: "E",
+      baseUrl: BASE,
+      headers: { Accept: "application/json" },
+      http,
+      contentType: "with-body",
+    });
+    await api.post("/form-required", { form: { Name: "a b" } });
+    expect(calls[0]).toMatchObject({
+      method: "POST",
+      body: "Name=a+b",
+      headers: { Accept: "application/json", "Content-Type": FORM },
+    });
+  });
+
+  it("picks the encoding by which key the call used, where the document has both", async () => {
+    await client().post("/either", { form: { asForm: "x" } });
+    expect(lastInit()?.body).toBe("asForm=x");
+    expect(lastInit()?.headers).toMatchObject({ "Content-Type": FORM });
+    await client().post("/either", { body: { asJson: "x" } });
+    expect(lastInit()?.body).toBe('{"asJson":"x"}');
+    expect(lastInit()?.headers).toMatchObject({ "Content-Type": "application/json" });
+  });
+});
+
+describe("headers on one call", () => {
+  it("merge over the client's, and reach every page of a walk", async () => {
+    const api = createApiClient<paths>({
+      vendor: "E",
+      baseUrl: BASE,
+      headers: { Accept: "application/json", Authorization: "Bearer t" },
+    });
+    await api.get("/items", {
+      headers: { Accept: "application/vnd.acme.v2+json", "If-Match": "e" },
+    });
+    expect(lastInit()?.headers).toEqual({
+      "Content-Type": "application/json",
+      Accept: "application/vnd.acme.v2+json",
+      Authorization: "Bearer t",
+      "If-Match": "e",
+    });
+
+    fetchMock
+      .mockResolvedValueOnce(response({ calls: [{ id: 1 }], next_page_uri: "/more" }))
+      .mockResolvedValueOnce(response({ calls: [{ id: 2 }], next_page_uri: null }));
+    const links = withLinkPagination(api, {
+      next: "next_page_uri",
+      maxPages: 5,
+      foreignLinks: "follow",
+    });
+    fetchMock.mockClear();
+    await links.getAll("/twilio", "calls", { headers: { "If-Match": "x" } });
+    expect(fetchMock.mock.calls.map(([, init]) => init?.headers)).toEqual([
+      expect.objectContaining({ "If-Match": "x" }),
+      expect.objectContaining({ "If-Match": "x" }),
+    ]);
+    fetchMock.mockClear();
+    fetchMock
+      .mockResolvedValueOnce(response({ items: [{ id: 1 }] }))
+      .mockResolvedValueOnce(response({ items: [] }));
+    const numbered = withPagination(api, { pageParam: "page", sizeParam: "per_page", pageSize: 1 });
+    await numbered.getAll("/items", "items", { headers: { "If-Match": "y" } });
+    expect(fetchMock.mock.calls.map(([, init]) => init?.headers)).toEqual([
+      expect.objectContaining({ "If-Match": "y" }),
+      expect.objectContaining({ "If-Match": "y" }),
+    ]);
+  });
+});
+
 describe("withPagination", () => {
   const items = (count: number, offset = 0): Item[] =>
     Array.from({ length: count }, (_, i) => ({ id: offset + i, name: `i${offset + i}` }));
@@ -375,6 +706,18 @@ describe("withPagination", () => {
   it("treats a missing root key as the end of the list", async () => {
     fetchMock.mockResolvedValueOnce(response({ meta: {} }));
     await expect(paged().getAll("/items", "items")).resolves.toEqual([]);
+  });
+
+  it("sends the page params first when told to", async () => {
+    fetchMock.mockResolvedValueOnce(response({ items: [] }));
+    const api = withPagination(client(), {
+      pageParam: "page",
+      sizeParam: "per_page",
+      pageSize: 2,
+      pagingFirst: true,
+    });
+    await api.getAll("/items", "items", { query: { sort: "name" } });
+    expect(urls()).toEqual(["/items?page=1&per_page=2&sort=name"]);
   });
 
   it("works without a total", async () => {
@@ -701,6 +1044,20 @@ describe("withCursorPagination", () => {
     expect(urls()[1]).toBe("/link?page%5Bsize%5D=100&page%5Bafter%5D=abc");
   });
 
+  it("sends the size and cursor first when told to", async () => {
+    answer({ things: [item(1)], pagination: { next: 8 } }, { things: [], pagination: {} });
+    const api = withCursorPagination(client(), {
+      cursorParam: "until",
+      sizeParam: "limit",
+      pageSize: 2,
+      maxPages: 5,
+      next: "pagination.next",
+      pagingFirst: true,
+    });
+    await api.getAll("/nested", "things", { query: { sort: "name" } });
+    expect(urls()).toEqual(["/nested?limit=2&sort=name", "/nested?limit=2&until=8&sort=name"]);
+  });
+
   it("sends no page size for a provider that takes none", async () => {
     answer({ things: [item(1)], pagination: { next: 3 } }, { things: [], pagination: {} });
     const api = withCursorPagination(client(), {
@@ -959,6 +1316,44 @@ describe("withCursorPagination, from what the whole page says", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("walks an offset, which is a cursor worked out from the page", async () => {
+    fetchMock
+      .mockResolvedValueOnce(paged({ rows: [{ id: 1 }, { id: 2 }] }))
+      .mockResolvedValueOnce(paged({ rows: [{ id: 3 }] }))
+      .mockResolvedValueOnce(paged({ rows: [] }));
+    const api = withCursorPagination(client(), {
+      cursorParam: "offset",
+      firstCursor: 0,
+      sizeParam: "limit",
+      pageSize: 2,
+      maxPages: 5,
+      next: ({ cursor, items }) => Number(cursor) + items.length,
+    });
+    expect(await api.getAll("/offset", "rows")).toHaveLength(3);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      `${BASE}/offset?limit=2&offset=0`,
+      `${BASE}/offset?limit=2&offset=2`,
+      `${BASE}/offset?limit=2&offset=3`,
+    ]);
+  });
+
+  it("walks page numbers that count from zero", async () => {
+    fetchMock
+      .mockResolvedValueOnce(paged({ items: [{ id: 1 }] }))
+      .mockResolvedValueOnce(paged({ items: [] }));
+    const api = withCursorPagination(client(), {
+      cursorParam: "page",
+      firstCursor: 0,
+      maxPages: 5,
+      next: ({ cursor }) => Number(cursor) + 1,
+    });
+    expect(await api.getAll("/items", "items")).toHaveLength(1);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      `${BASE}/items?page=0`,
+      `${BASE}/items?page=1`,
+    ]);
+  });
+
   it("lets onTruncated throw, so a reader can refuse a partial list", async () => {
     fetchMock.mockImplementation(async () => paged({ items: [{ id: 1 }] }, { "X-Next-Page": "2" }));
     const api = withCursorPagination(client(), {
@@ -1103,6 +1498,140 @@ describe("withLinkPagination", () => {
       await api.getAll("/meta-link", "rows");
       expect(lastUrl()).toBe("https://x.test/more");
     });
+  });
+
+  describe("resolveLink", () => {
+    const concatenating = (extra: { foreignLinks?: "follow" | "refuse" } = {}) =>
+      withLinkPagination(client(), {
+        next: "next_page_uri",
+        sizeParam: "PageSize",
+        pageSize: 1000,
+        pagingFirst: true,
+        maxPages: 5,
+        foreignLinks: extra.foreignLinks ?? "follow",
+        continueOnEmptyPage: true,
+        resolveLink: (link) => (link.startsWith("http") ? link : `https://host.test${link}`),
+      });
+    const pages = (...links: unknown[]) => {
+      for (const next_page_uri of links) {
+        fetchMock.mockResolvedValueOnce(paged({ calls: [{ id: 1 }], next_page_uri }));
+      }
+    };
+
+    it("sends what it answers as it stands, spaces and all, without resolving", async () => {
+      pages("//evil.test/x y", "no-slash?a=b c", null);
+      await concatenating().getAll("/twilio", "calls");
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+        `${BASE}/twilio?PageSize=1000`,
+        "https://host.test//evil.test/x y",
+        "https://host.testno-slash?a=b c",
+      ]);
+    });
+
+    it("sees the link even if it is not a string, and an empty answer ends the list", async () => {
+      const seen: unknown[] = [];
+      pages(5);
+      const api = withLinkPagination(client(), {
+        next: "next_page_uri",
+        maxPages: 5,
+        foreignLinks: "follow",
+        resolveLink: (link) => {
+          seen.push(link);
+          return null;
+        },
+      });
+      await expect(api.getAll("/twilio", "calls")).resolves.toHaveLength(1);
+      expect(seen).toEqual([5]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("is what `refuse` looks at", async () => {
+      pages("https://evil.test/x");
+      await expect(
+        concatenating({ foreignLinks: "refuse" }).getAll("/twilio", "calls"),
+      ).rejects.toThrow("from https://api.example.test to https://evil.test");
+    });
+
+    it("can answer something that is not a URL, which fails where the transport says so", async () => {
+      const { http, calls } = fakeHost([
+        { body: '{"calls":[{"id":1}],"next_page_uri":"httpfoo"}' },
+        { status: 500, body: "boom" },
+      ]);
+      const failures: ApiFailure[] = [];
+      const api = withLinkPagination(
+        createApiClient<paths>({
+          vendor: "E",
+          baseUrl: BASE,
+          headers: {},
+          http,
+          httpError: (failure) => {
+            failures.push(failure);
+            return new Error("failed");
+          },
+        }),
+        {
+          next: "next_page_uri",
+          maxPages: 5,
+          foreignLinks: "follow",
+          resolveLink: (link) => link,
+        },
+      );
+      await expect(api.getAll("/twilio", "calls")).rejects.toThrow("failed");
+      expect(calls[1]?.url).toBe("httpfoo");
+      expect(failures[0]).toMatchObject({
+        path: "httpfoo",
+        target: "httpfoo",
+        url: "httpfoo",
+        link: "httpfoo",
+      });
+    });
+
+    it("tells httpError the link as written, and the first page has none", async () => {
+      const failures: ApiFailure[] = [];
+      const api = withLinkPagination(
+        createApiClient<paths>({
+          vendor: "E",
+          baseUrl: BASE,
+          headers: {},
+          httpError: (failure) => {
+            failures.push(failure);
+            return new Error("failed");
+          },
+        }),
+        { next: "next_page_uri", maxPages: 5, foreignLinks: "follow" },
+      );
+      fetchMock.mockResolvedValueOnce(paged("boom", {}, 500));
+      await expect(api.getAll("/twilio", "calls")).rejects.toThrow("failed");
+      expect(failures[0]).not.toHaveProperty("link");
+      fetchMock
+        .mockResolvedValueOnce(paged({ calls: [{ id: 1 }], next_page_uri: "/rel?a=1" }))
+        .mockResolvedValueOnce(paged("boom", {}, 500));
+      await expect(api.getAll("/twilio", "calls")).rejects.toThrow("failed");
+      expect(failures[1]).toMatchObject({
+        link: "/rel?a=1",
+        path: "/rel",
+        url: "https://api.example.test/rel?a=1",
+      });
+    });
+  });
+
+  it("sends the size first when told to, and only on the first request", async () => {
+    fetchMock
+      .mockResolvedValueOnce(paged({ rows: [{ id: 1 }], next_page_uri: "/more" }))
+      .mockResolvedValueOnce(paged({ rows: [], next_page_uri: null }));
+    const api = withLinkPagination(client(), {
+      next: "next_page_uri",
+      sizeParam: "PageSize",
+      pageSize: 9,
+      pagingFirst: true,
+      maxPages: 5,
+      foreignLinks: "follow",
+    });
+    await api.getAll("/required-filter", "rows", { query: { project: "p" } });
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      `${BASE}/required-filter?PageSize=9&project=p`,
+      "https://api.example.test/more",
+    ]);
   });
 
   describe("a link to another host", () => {
@@ -1599,6 +2128,117 @@ export function compileTimeChecks(api: ApiClient<paths>, raw: string) {
   void api.getText(`/items/${raw}`);
   // @ts-expect-error
   void api.getText("/items", { query: { pagee: 1 } });
+
+  // A list whose only parameter is the size has nothing left for a caller to send.
+  const sizeOnly = withLinkPagination(api, {
+    next: "next_page_uri",
+    sizeParam: "PageSize",
+    maxPages: 2,
+    foreignLinks: "follow",
+  });
+  void sizeOnly.getAll("/size-only", "rows");
+  void sizeOnly.getAll("/size-only", "rows", { signal: new AbortController().signal });
+  // @ts-expect-error
+  void sizeOnly.getAll("/size-only", "rows", { query: { anything: 1 } });
+  // @ts-expect-error the size belongs to the helper
+  void sizeOnly.getAll("/size-only", "rows", { query: { PageSize: 1 } });
+
+  // A parameter the document requires stays compulsory on a list.
+  // @ts-expect-error
+  void sizeOnly.getAll("/required-filter", "rows");
+  // @ts-expect-error
+  void sizeOnly.getAll("/required-filter", "rows", {});
+  // @ts-expect-error
+  void sizeOnly.getAll("/required-filter", "rows", { query: { project: 1 } });
+  void sizeOnly.getAll("/required-filter", "rows", { query: { project: "p" } });
+
+  // A form operation takes `form` and only `form`, typed from what the document says.
+  void api.post("/form", { form: { Name: "n", Sticky: true, Size: 1, Tag: ["t"] } });
+  void api.post("/form");
+  // @ts-expect-error a JSON body on a form operation
+  void api.post("/form", { body: { Name: "n" } });
+  // @ts-expect-error an unknown field
+  void api.post("/form", { form: { Name: "n", Nope: 1 } });
+  // @ts-expect-error a wrong type: a boolean field is not text
+  void api.post("/form", { form: { Name: "n", Sticky: "true" } });
+  // @ts-expect-error a required field left out
+  void api.post("/form", { form: { Size: 1 } });
+  // `undefined` for a required key means "let the provider say so", as in a JSON body.
+  const formName: string | undefined = raw;
+  void api.post("/form", { form: { Name: formName } });
+  // @ts-expect-error a form the document requires
+  void api.post("/form-required");
+  // @ts-expect-error a form on a JSON operation
+  void api.post("/items", { form: { name: "n" } });
+  const named: ApiForm<paths["/form"]["post"]> = { Name: "n" };
+  void api.post("/form", { form: named });
+
+  // Where the document has both, the key decides which schema applies, and not both.
+  void api.post("/either", { body: { asJson: "x" } });
+  void api.post("/either", { form: { asForm: "x" } });
+  // @ts-expect-error
+  void api.post("/either", { body: { asForm: "x" } });
+  // @ts-expect-error
+  void api.post("/either", { form: { asJson: "x" } });
+  // @ts-expect-error
+  void api.post("/either", { body: { asJson: "x" }, form: { asForm: "x" } });
+  // @ts-expect-error
+  void api.post("/either");
+
+  // A required body the client cannot encode does not compile, rather than send nothing.
+  // @ts-expect-error
+  void api.post("/upload");
+  // @ts-expect-error
+  void api.post("/upload", {});
+  // @ts-expect-error
+  void api.post("/upload", { body: { file: "x" } });
+  // @ts-expect-error
+  void api.post("/upload", { form: { file: "x" } });
+  // An optional one can be left out, and still cannot be written.
+  void api.patch("/upload");
+  // @ts-expect-error
+  void api.patch("/upload", { body: "bytes" });
+
+  // JSON under another name is still JSON, and `application/json` wins where both exist.
+  void (async () => {
+    const vendor: string = (await api.get("/vendor-json")).acme;
+    const charset: string = (await api.put("/vendor-json", { body: { acme: "a" } })).charset;
+    const plain: string = (await api.post("/vendor-json")).plain;
+    // @ts-expect-error only application/json is read when there is one
+    const other = (await api.post("/vendor-json")).acme;
+    // @ts-expect-error
+    void api.put("/vendor-json", { body: { nope: "a" } });
+    const csv: never = await api.get("/not-json");
+    return { vendor, charset, plain, other, csv };
+  });
+
+  // Every 2xx answers, and nothing else does.
+  void (async () => {
+    const odd = await api.get("/odd-codes");
+    const partial = "partial" in odd ? odd.partial : undefined;
+    const multi = "multi" in odd ? odd.multi : undefined;
+    const wild = "wild" in odd ? odd.wild : undefined;
+    // A 301 is not an answer, so this union has no room for one.
+    const only: { partial: true } | { multi: true } | { wild: true } = odd;
+    return { partial, multi, wild, only };
+  });
+
+  // A plugin's own encoder fits as it is, recursive type and all.
+  type OwnFormValue =
+    string | number | boolean | null | undefined | OwnFormValue[] | { [key: string]: OwnFormValue };
+  const ownEncoder = (form: Record<string, OwnFormValue>) => JSON.stringify(form);
+  void createApiClient<paths>({
+    vendor: "E",
+    baseUrl: BASE,
+    headers: {},
+    serializeForm: ownEncoder,
+  });
+
+  // Headers go on any call and any walk, and are only ever strings.
+  void api.get("/items", { headers: { "If-Match": "e" } });
+  void sizeOnly.getAll("/size-only", "rows", { headers: { Accept: "x" } });
+  // @ts-expect-error
+  void api.get("/items", { headers: { "If-Match": 1 } });
 
   // Items come from the response, with no generic at the call site, across a union
   // and a nullable response alike.

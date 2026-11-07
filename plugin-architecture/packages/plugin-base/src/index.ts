@@ -542,6 +542,7 @@ export type {
   ApiClient,
   ApiClientOptions,
   ApiFailure,
+  ApiForm,
   ApiListItem,
   ApiResponse,
   CursorApiClient,
@@ -554,6 +555,8 @@ export type {
   PageAnswer,
   PageNumberPagination,
   PaginatedApiClient,
+  ParamValue,
+  ResolveLink,
   WebLink,
 } from "./api-client.js";
 export type {
