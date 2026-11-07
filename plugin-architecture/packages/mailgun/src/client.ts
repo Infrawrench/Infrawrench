@@ -434,7 +434,12 @@ export class MailgunClient implements PluginClient {
     const part = this.unreadDomainPart(typeId, accountId);
     const { summaries, bundles, unread } = await this.domains(part);
     this.rowsOf(typeId, accountId, summaries);
-    for (const summary of unread) reportUnreadListPart(part(summary));
+    // The read is cached, so it may have left domains unread for a host that kept track.
+    // One that keeps none here answers false: the read is done again, and reads them all.
+    if (!unread.every((summary) => reportUnreadListPart(part(summary)))) {
+      this.invalidate();
+      return (await this.domains(part)).bundles;
+    }
     return bundles;
   }
 

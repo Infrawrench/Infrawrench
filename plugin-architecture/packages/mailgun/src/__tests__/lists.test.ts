@@ -574,6 +574,14 @@ describe("what fans out over domains", () => {
       expect(domainsRead(calls, /\/webhooks$/)).toHaveLength(700);
     });
 
+    it("reads every domain again where the host keeps no track of a cached read's rest", async () => {
+      const { c, calls } = client(route, "us");
+      await c.listResources("mailgun-domain", "a");
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      await expect(c.listResources("mailgun-domain", "a")).resolves.toHaveLength(700);
+      expect(domainsRead(calls, /^\/v4\/domains\/[^/]+$/)).toHaveLength(500 + 700);
+    });
+
     it("still finds one child of a domain past the budget", async () => {
       const { c } = client((url) => {
         if (url.pathname === "/v3/domains/d699.test/webhooks")
