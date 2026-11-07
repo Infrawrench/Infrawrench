@@ -5,6 +5,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { fieldString, tf } from "@infrawrench/plugin-base";
 import { parseMeta } from "./mappers.js";
+import { CONSUL_WRITTEN_CONFIG_KINDS } from "./resource-types.js";
 
 /**
  * Terraform mapping for the official `hashicorp/consul` provider (2.23, docs
@@ -66,6 +67,8 @@ export const consulTerraformExport: TerraformExportCapability = {
         const name = s("name");
         const config = resource.resolvedOutputs["config"];
         if (!kind || !name || config === undefined) return null;
+        // Applying one would fail: Consul derives it from the gateway and its routes.
+        if (CONSUL_WRITTEN_CONFIG_KINDS.includes(kind)) return null;
         const ns = s("namespace");
         const partition = s("partition");
         const scoped = (ns && ns !== "default") || (partition && partition !== "default");

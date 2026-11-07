@@ -63,7 +63,11 @@ import {
   parseMeta,
 } from "./mappers.js";
 import { COMMANDS, renderConsulDetail, renderConsulSidebar } from "./render.js";
-import { CONFIG_KINDS } from "./resource-types.js";
+import {
+  CONFIG_KINDS,
+  CONSUL_WRITTEN_CONFIG_KINDS,
+  WRITABLE_CONFIG_KINDS,
+} from "./resource-types.js";
 
 const MAX_CHECKS = 100_000;
 /** Rules come one request per policy, so past this many a policy is listed without them and the detail view reads them. */
@@ -934,7 +938,7 @@ export class ConsulClient implements PluginClient {
                 kind: "select",
                 required: true,
                 defaultValue: "service-defaults",
-                options: CONFIG_KINDS.map((k) => ({ id: k, label: k })),
+                options: WRITABLE_CONFIG_KINDS.map((k) => ({ id: k, label: k })),
               },
               {
                 key: "entry",
@@ -1135,6 +1139,11 @@ export class ConsulClient implements PluginClient {
     if (kind && !e.Kind) e.Kind = kind;
     if (!e.Kind || !e.Name)
       throw new ConsulApiError(400, "Consul plugin: the config entry needs Kind and Name");
+    if (CONSUL_WRITTEN_CONFIG_KINDS.includes(e.Kind))
+      throw new ConsulApiError(
+        400,
+        `Consul plugin: Consul writes ${e.Kind} entries itself, from the api-gateway and its routes; edit those instead`,
+      );
     return e;
   }
 

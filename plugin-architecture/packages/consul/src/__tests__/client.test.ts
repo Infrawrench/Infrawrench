@@ -307,6 +307,28 @@ describe("lists a sync prunes against", () => {
       expect(rows.map((r) => r.externalId)).toEqual(["service-defaults/web"]);
     });
 
+    it("lists every kind Consul documents, and offers only the writable ones", async () => {
+      const { c, calls } = client(() => []);
+      await c.listResources("consul-config-entry", ACCOUNT);
+      const read = calls.map(kindOf);
+      for (const k of ["inline-certificate", "file-system-certificate", "bound-api-gateway"])
+        expect(read).toContain(k);
+      const form = await c.getCreateConfig("consul-config-entry");
+      const offered = form.fields.find((x) => x.key === "kind")?.options?.map((o) => o.id);
+      expect(offered).toContain("inline-certificate");
+      expect(offered).toContain("file-system-certificate");
+      expect(offered).not.toContain("bound-api-gateway");
+    });
+
+    it("reads a certificate kind an older server does not know as none", async () => {
+      const { c } = client((call) =>
+        kindOf(call) === "file-system-certificate"
+          ? { status: 500, text: "invalid config entry kind: file-system-certificate" }
+          : [],
+      );
+      expect(await c.listResources("consul-config-entry", ACCOUNT)).toEqual([]);
+    });
+
     it("keeps a refused kind's rows and reads the others", async () => {
       const parts = trackUnread();
       const { c } = client((call) =>
@@ -463,7 +485,43 @@ describe("lists a sync prunes against", () => {
   });
 });
 
+describe("a kind Consul writes itself", () => {
+  it("refuses to write a bound-api-gateway, which Consul writes itself", async () => {
+    const { c, calls } = client(() => ({ Kind: "bound-api-gateway", Name: "gw" }));
+    await expect(
+      c.applyManifest(
+        "acct:consul-config-entry:bound-api-gateway/gw",
+        ACCOUNT,
+        '{"Kind":"bound-api-gateway","Name":"gw"}',
+      ),
+    ).rejects.toThrow("Consul writes");
+    await expect(
+      c.createResource("consul-config-entry", ACCOUNT, {
+        kind: "bound-api-gateway",
+        entry: '{"Kind":"bound-api-gateway","Name":"gw"}',
+      }),
+    ).rejects.toThrow("Consul writes");
+    expect(calls.filter((x) => x.method === "PUT")).toEqual([]);
+  });
+});
+
 describe("terraform", () => {
+  it("leaves a bound-api-gateway out of the Terraform export", () => {
+    const out = consulTerraformExport.mapResource({
+      id: "acct:consul-config-entry:bound-api-gateway/gw",
+      pluginId: "consul",
+      resourceTypeId: "consul-config-entry",
+      accountId: ACCOUNT,
+      displayName: "bound-api-gateway/gw",
+      externalId: "bound-api-gateway/gw",
+      fields: { kind: "bound-api-gateway", name: "gw" },
+      resolvedOutputs: { config: "{}" },
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    });
+    expect(out).toBeNull();
+  });
   it("exports a config entry with its body as config_json", () => {
     const out = consulTerraformExport.mapResource({
       id: "acct:consul-config-entry:service-defaults/web",

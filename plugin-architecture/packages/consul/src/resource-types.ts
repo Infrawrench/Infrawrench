@@ -5,8 +5,8 @@ const ro = { required: false, editable: false } as const;
 const num = (key: string, label: string) => f(key, label, { ...ro, kind: "number" });
 const bool = (key: string, label: string) => f(key, label, { ...ro, kind: "boolean" });
 
-/** Config entry kinds listed and offered for creation (Consul 1.22 / 2.0). */
-export const CONFIG_KINDS = [
+/** Config entry kinds offered for creation (Consul 1.22 / 2.0). */
+export const WRITABLE_CONFIG_KINDS = [
   "service-defaults",
   "proxy-defaults",
   "service-router",
@@ -18,12 +18,20 @@ export const CONFIG_KINDS = [
   "api-gateway",
   "http-route",
   "tcp-route",
+  "inline-certificate",
+  "file-system-certificate",
   "mesh",
   "exported-services",
   "sameness-group",
   "jwt-provider",
   "control-plane-request-limit",
 ];
+
+/** Consul writes these from an api-gateway and the routes bound to it; `PUT /config` refuses them. */
+export const CONSUL_WRITTEN_CONFIG_KINDS = ["bound-api-gateway"];
+
+/** Every kind the config entry list reads. */
+export const CONFIG_KINDS = [...WRITABLE_CONFIG_KINDS, ...CONSUL_WRITTEN_CONFIG_KINDS];
 
 export const ClusterResourceType = rt({
   name: "Cluster",
