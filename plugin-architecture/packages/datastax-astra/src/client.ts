@@ -267,8 +267,11 @@ export class AstraPluginClient implements PluginClient {
         : 0;
     const rotated = [...parents.slice(start), ...parents.slice(0, start)];
     const past = rotated.slice(FAN_OUT_REQUESTS);
-    if (past.length) reportUnreadListPart({ parentResourceIds: past.map((p) => p.parentId) });
-    const reading = rotated.slice(0, FAN_OUT_REQUESTS);
+    // A host that keeps no track (the desktop) answers false, and has no poll to outlast,
+    // so it reads every parent; a refusal there shows rather than leave the list short.
+    const tracked =
+      past.length === 0 || reportUnreadListPart({ parentResourceIds: past.map((p) => p.parentId) });
+    const reading = tracked ? rotated.slice(0, FAN_OUT_REQUESTS) : rotated;
     const refused: string[] = [];
     let refusal: unknown;
     for (const parent of reading) {
@@ -281,10 +284,7 @@ export class AstraPluginClient implements PluginClient {
       }
     }
     if (!refused.length) return;
-    // A host that keeps no track (the desktop) answers false, and there a refusal of
-    // everything should still show.
-    if (!reportUnreadListPart({ parentResourceIds: refused }) && refused.length === reading.length)
-      throw refusal;
+    if (!reportUnreadListPart({ parentResourceIds: refused })) throw refusal;
   }
 
   private async database(id: string): Promise<AstraDatabase> {

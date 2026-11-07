@@ -309,6 +309,20 @@ describe("lists that stop early", () => {
       unread.stop();
     }
   });
+
+  it("reads every database's children, past what a poll would read", async () => {
+    const dbs = dbsNamed("db", 450);
+    const routes: Record<string, unknown> = { "GET /v2/databases": pagedDatabases(dbs) };
+    for (const db of dbs) {
+      routes[`GET /v2/databases/${db.id}/snapshots`] = { snapshots: [{ id: "s" }] };
+    }
+    mockFetch(routes);
+    const rows = await hostClient(new AstraPluginClient({ token: "t" })).listResources(
+      T.snapshot,
+      "acc",
+    );
+    expect(rows).toHaveLength(450);
+  });
 });
 
 describe("a token refused a list", () => {
@@ -423,7 +437,7 @@ describe("a token refused a list", () => {
     }
   });
 
-  it("with no host tracking, shows a refusal of every database but not of some", async () => {
+  it("with no host tracking, shows a refusal of some databases or of every one", async () => {
     const other = { ...DB, id: "other" };
     mockFetch({
       "GET /v2/databases": [DB, other],
@@ -432,7 +446,7 @@ describe("a token refused a list", () => {
     });
     await expect(
       hostClient(new AstraPluginClient({ token: "t" })).listResources(T.snapshot, "acc"),
-    ).resolves.toHaveLength(1);
+    ).rejects.toBeInstanceOf(AstraApiError);
     mockFetch({
       "GET /v2/databases": [DB, other],
       [`GET /v2/databases/${DB.id}/snapshots`]: refused,
