@@ -11,12 +11,13 @@
  * - `https://router.huggingface.co/v1/…`: the Inference Providers router
  *   (OpenAI-compatible).
  *
- * The Hub paginates with an RFC 8288 `Link: <…>; rel="next"` header, so this
- * helper returns response headers, which `jsonRestFetch` does not. It still
- * prefers the host HTTP service (bastion routing, custom CA, desktop CORS) and
- * only falls back to global `fetch` without one.
+ * The Hub and Inference Endpoints are called through the typed clients in
+ * `api.ts`; only the router and the Inference Catalog, which neither document
+ * covers, go through `hfJson`. Both end in `hfTransport`, which prefers the host
+ * HTTP service (bastion routing, custom CA, desktop CORS) and only falls back to
+ * global `fetch` without one.
  */
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { restRequest, type HttpHostServices } from "@infrawrench/plugin-base";
 
 export const HUB_BASE = "https://huggingface.co";
 export const ENDPOINTS_BASE = "https://api.endpoints.huggingface.cloud";
@@ -27,12 +28,6 @@ export interface HfContext {
   token: string;
   caCert?: string;
   http?: HttpHostServices;
-}
-
-export interface HfResponse<T> {
-  status: number;
-  headers: Record<string, string>;
-  data: T;
 }
 
 /** An Error carrying the HTTP status, which the poller classifies on. */
@@ -56,8 +51,8 @@ function extractMessage(body: string): string {
   const trimmed = body.trim();
   if (!trimmed) return "";
   try {
-    const parsed = JSON.parse(trimmed) as { error?: unknown; message?: unknown };
-    const msg = parsed.error ?? parsed.message;
+    const parsed: { error?: unknown; message?: unknown } | null = JSON.parse(trimmed);
+    const msg = parsed?.error ?? parsed?.message;
     if (typeof msg === "string") return msg;
   } catch {
     // Not JSON: fall through to the raw (truncated) body.
@@ -66,93 +61,80 @@ function extractMessage(body: string): string {
 }
 
 export function statusOf(err: unknown): number | undefined {
-  const status = (err as { status?: unknown } | null)?.status;
-  return typeof status === "number" ? status : undefined;
+  if (err === null || typeof err !== "object" || !("status" in err)) return undefined;
+  return typeof err.status === "number" ? err.status : undefined;
+}
+
+/** Global `fetch`, for a client with no host service. It never takes a CA. */
+const viaFetch: HttpHostServices["request"] = async ({ url, method, headers, body }) => {
+  const res = await fetch(url, {
+    method,
+    headers,
+    ...(body !== undefined ? { body: typeof body === "string" ? body : new Uint8Array(body) } : {}),
+  });
+  const text = await res.text();
+  const resHeaders: Record<string, string> = {};
+  res.headers?.forEach?.((value, key) => {
+    resHeaders[key] = value;
+  });
+  return { status: res.status, headers: resHeaders, body: text };
+};
+
+/** A 2xx body as `restRequest` should parse it: blank is no body, anything else not JSON a string. */
+function jsonOrQuoted(text: string): string {
+  if (!text.trim()) return "";
+  try {
+    JSON.parse(text);
+    return text;
+  } catch {
+    return JSON.stringify(text);
+  }
 }
 
 /**
- * Perform one request. `url` is absolute. `body` is JSON-encoded when it is
- * not already a string. Throws {@link HfError} on a non-2xx response.
+ * The host service, or `fetch` without one. These APIs answer some writes with a
+ * bare word or nothing but whitespace, and that has never been a failure here.
  */
-export async function hfRequest<T>(
-  ctx: HfContext,
-  url: string,
-  init: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
-): Promise<HfResponse<T>> {
-  const method = init.method ?? "GET";
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${ctx.token}`,
-    Accept: "application/json",
-    ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
-    ...init.headers,
+export function hfTransport(ctx: HfContext): HttpHostServices {
+  return {
+    request: async (req) => {
+      const res = ctx.http ? await ctx.http.request(req) : await viaFetch(req);
+      if (res.status < 200 || res.status >= 300) return res;
+      return { ...res, body: jsonOrQuoted(res.body) };
+    },
   };
-  const body =
-    init.body === undefined
-      ? undefined
-      : typeof init.body === "string"
-        ? init.body
-        : JSON.stringify(init.body);
-  const label = labelFor(url);
-
-  let status: number;
-  let text: string;
-  let resHeaders: Record<string, string>;
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    status = res.status;
-    text = res.body;
-    resHeaders = lowerKeys(res.headers);
-  } else {
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    status = res.status;
-    text = await res.text();
-    resHeaders = {};
-    res.headers?.forEach?.((value, key) => {
-      resHeaders[key.toLowerCase()] = value;
-    });
-  }
-
-  if (status < 200 || status >= 300) throw hfError(status, label, text);
-  if (status === 204 || !text.trim()) {
-    return { status, headers: resHeaders, data: undefined as unknown as T };
-  }
-  let data: T;
-  try {
-    data = JSON.parse(text) as T;
-  } catch {
-    data = text as unknown as T;
-  }
-  return { status, headers: resHeaders, data };
 }
 
-/** Convenience wrapper returning only the parsed body. */
+/** What every request to these APIs sends and does, whichever client makes it. */
+export function hfRequestOptions(ctx: HfContext) {
+  return {
+    vendor: "Hugging Face",
+    headers: { Authorization: `Bearer ${ctx.token}`, Accept: "application/json" },
+    http: hfTransport(ctx),
+    contentType: "with-body" as const,
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+  };
+}
+
+/**
+ * One request to a route neither document covers. `url` is absolute, `body` is
+ * JSON-encoded. Throws {@link HfError} on a non-2xx response.
+ */
 export async function hfJson<T>(
   ctx: HfContext,
   url: string,
-  init?: { method?: string; body?: unknown; headers?: Record<string, string> },
+  init: { method?: string; body?: object } = {},
 ): Promise<T> {
-  return (await hfRequest<T>(ctx, url, init)).data;
-}
-
-/**
- * Follow `Link: rel="next"` pages until exhausted or `maxPages` is reached.
- * Hub listings return a bare JSON array per page.
- */
-export async function hfPaginate<T>(ctx: HfContext, url: string, maxPages = 20): Promise<T[]> {
-  const out: T[] = [];
-  let next: string | undefined = url;
-  for (let page = 0; next && page < maxPages; page++) {
-    const res: HfResponse<T[] | null> = await hfRequest<T[] | null>(ctx, next);
-    if (Array.isArray(res.data)) out.push(...res.data);
-    next = parseNextLink(res.headers["link"]);
-  }
-  return out;
+  const answer = await restRequest<T>({
+    ...hfRequestOptions(ctx),
+    url,
+    init: {
+      method: init.method ?? "GET",
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+    },
+    httpError: ({ status, body }) => hfError(status, labelFor(url), body),
+  });
+  return answer.body;
 }
 
 /** Extract the `rel="next"` target from an RFC 8288 Link header. */
@@ -165,13 +147,8 @@ export function parseNextLink(header: string | undefined): string | undefined {
   return undefined;
 }
 
-function lowerKeys(headers: Record<string, string> | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headers ?? {})) out[key.toLowerCase()] = value;
-  return out;
-}
-
-function labelFor(url: string): string {
+/** What an error names: the path alone, or a next link that is not a URL as it came. */
+export function labelFor(url: string): string {
   try {
     const parsed = new URL(url);
     return parsed.pathname;
@@ -183,8 +160,4 @@ function labelFor(url: string): string {
 /** Encode a `namespace/name` repo id for a path, keeping the slash. */
 export function encRepo(repoId: string): string {
   return repoId.split("/").map(encodeURIComponent).join("/");
-}
-
-export function enc(value: string): string {
-  return encodeURIComponent(value);
 }

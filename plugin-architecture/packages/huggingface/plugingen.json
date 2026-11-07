@@ -1,0 +1,851 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "hub",
+      "specUrl": "https://huggingface.co/.well-known/openapi.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/HubRepo",
+          "value": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "private": {
+                "type": "boolean"
+              },
+              "gated": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "disabled": {
+                "type": "boolean"
+              },
+              "downloads": {
+                "type": "number"
+              },
+              "likes": {
+                "type": "number"
+              },
+              "pipeline_tag": {
+                "type": "string"
+              },
+              "library_name": {
+                "type": "string"
+              },
+              "lastModified": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "usedStorage": {
+                "type": "number"
+              },
+              "sdk": {
+                "type": "string"
+              },
+              "subdomain": {
+                "type": "string"
+              },
+              "runtime": {
+                "type": "object",
+                "properties": {
+                  "stage": {
+                    "type": "string"
+                  },
+                  "hardware": {
+                    "type": "object",
+                    "properties": {
+                      "current": {
+                        "type": ["string", "null"]
+                      },
+                      "requested": {
+                        "type": ["string", "null"]
+                      }
+                    }
+                  },
+                  "gcTimeout": {
+                    "type": ["number", "null"]
+                  },
+                  "storage": {
+                    "type": ["string", "null"]
+                  },
+                  "errorMessage": {
+                    "type": "string"
+                  },
+                  "domains": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "domain": {
+                          "type": "string"
+                        },
+                        "stage": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "cardData": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "emoji": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "why": "The fields the plugin asks for through expand[], for the listings below. Every one is optional: expand[] decides what comes back."
+        },
+        {
+          "pointer": "/paths/~1api~1models",
+          "value": {
+            "get": {
+              "parameters": [
+                {
+                  "name": "author",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "sort",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "limit",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "name": "expand[]",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "OK",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/HubRepo"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The Hub document leaves out its repository listings and lookups, which the Hub API docs (huggingface.co/docs/hub/api) describe."
+        },
+        {
+          "pointer": "/paths/~1api~1datasets",
+          "value": {
+            "get": {
+              "parameters": [
+                {
+                  "name": "author",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "limit",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "name": "expand[]",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "OK",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/HubRepo"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The Hub document leaves out its repository listings and lookups, which the Hub API docs (huggingface.co/docs/hub/api) describe."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces",
+          "value": {
+            "get": {
+              "parameters": [
+                {
+                  "name": "author",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "limit",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "name": "expand[]",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "OK",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/HubRepo"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The Hub document leaves out its repository listings and lookups, which the Hub API docs (huggingface.co/docs/hub/api) describe."
+        },
+        {
+          "pointer": "/paths/~1api~1models~1{namespace}~1{repo}",
+          "value": {
+            "get": {
+              "parameters": [
+                {
+                  "name": "namespace",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "repo",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "expand[]",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "OK",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/HubRepo"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The Hub document leaves out its repository listings and lookups, which the Hub API docs (huggingface.co/docs/hub/api) describe."
+        },
+        {
+          "pointer": "/paths/~1api~1datasets~1{namespace}~1{repo}",
+          "value": {
+            "get": {
+              "parameters": [
+                {
+                  "name": "namespace",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "repo",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "expand[]",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "OK",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/HubRepo"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The Hub document leaves out its repository listings and lookups, which the Hub API docs (huggingface.co/docs/hub/api) describe."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}",
+          "value": {
+            "get": {
+              "parameters": [
+                {
+                  "name": "namespace",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "repo",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "expand[]",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "OK",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/HubRepo"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The Hub document leaves out its repository listings and lookups, which the Hub API docs (huggingface.co/docs/hub/api) describe."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1delete",
+          "value": {
+            "delete": {
+              "requestBody": {
+                "required": true,
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "type": "object",
+                      "required": ["name", "type"],
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "organization": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": ["model", "dataset", "space"]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "responses": {
+                "200": {
+                  "description": "No body the plugin reads."
+                }
+              }
+            }
+          },
+          "why": "Not in the document, though /api/repos/create and /api/repos/move are. huggingface_hub's delete_repo calls it with this body."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1restart",
+          "value": {
+            "post": {
+              "parameters": [
+                {
+                  "name": "namespace",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "repo",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "factory",
+                  "in": "query",
+                  "required": false,
+                  "schema": {
+                    "type": "boolean"
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "No body the plugin reads."
+                }
+              }
+            }
+          },
+          "why": "Not in the document. huggingface_hub's restart_space calls it, with factory=true for a factory reboot."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1pause",
+          "value": {
+            "post": {
+              "parameters": [
+                {
+                  "name": "namespace",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "name": "repo",
+                  "in": "path",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "No body the plugin reads."
+                }
+              }
+            }
+          },
+          "why": "Not in the document. huggingface_hub's pause_space calls it."
+        },
+        {
+          "pointer": "/paths/~1api~1scheduled-jobs~1{namespace}~1{jobId}/delete/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1scheduled-jobs~1{namespace}~1{jobId}~1suspend/post/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1scheduled-jobs~1{namespace}~1{jobId}~1resume/post/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1secrets/post/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1secrets/delete/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1variables/post/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1variables/delete/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1hardware/post/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1sleeptime/post/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1organizations~1{name}~1settings~1tokens~1{tokenId}~1revoke/post/responses",
+          "value": {
+            "200": {
+              "description": "No body the plugin reads."
+            }
+          },
+          "why": "The document gives this operation no responses, which types as never, and the plugin reads no body from it."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/0/properties/license",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/0/properties/region",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/0/properties/visibility",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/1/properties/license",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/1/properties/region",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/1/properties/visibility",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/2/properties/license",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/2/properties/region",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/2/properties/visibility",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/3/properties/license",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/3/properties/region",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/3/properties/visibility",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/3/properties/hardware",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1repos~1create/post/requestBody/content/application~1json/schema/oneOf/3/properties/sdk",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1jobs~1{namespace}/post/requestBody/content/application~1json/schema/oneOf/0/properties/flavor",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1scheduled-jobs~1{namespace}/post/requestBody/content/application~1json/schema/properties/jobSpec/oneOf/0/properties/flavor",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1jobs~1{namespace}/post/requestBody/content/application~1json/schema/oneOf/1/properties/flavor",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1scheduled-jobs~1{namespace}/post/requestBody/content/application~1json/schema/properties/jobSpec/oneOf/1/properties/flavor",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1hardware/post/requestBody/content/application~1json/schema/properties/flavor",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        },
+        {
+          "pointer": "/paths/~1api~1spaces~1{namespace}~1{repo}~1settings/put/requestBody/content/application~1json/schema/properties/visibility",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the Hub validates it, so a value outside this enum stays the Hub's error."
+        }
+      ],
+      "paths": {
+        "/api/whoami-v2": ["get"],
+        "/api/models": ["get"],
+        "/api/datasets": ["get"],
+        "/api/spaces": ["get"],
+        "/api/models/{namespace}/{repo}": ["get"],
+        "/api/datasets/{namespace}/{repo}": ["get"],
+        "/api/spaces/{namespace}/{repo}": ["get"],
+        "/api/models/{namespace}/{repo}/settings": ["put"],
+        "/api/datasets/{namespace}/{repo}/settings": ["put"],
+        "/api/spaces/{namespace}/{repo}/settings": ["put"],
+        "/api/repos/create": ["post"],
+        "/api/repos/delete": ["delete"],
+        "/api/spaces/hardware": ["get"],
+        "/api/jobs/hardware": ["get"],
+        "/api/spaces/zero-gpu/quota": ["get"],
+        "/api/spaces/{namespace}/{repo}/secrets": ["get", "post", "delete"],
+        "/api/spaces/{namespace}/{repo}/variables": ["get", "post", "delete"],
+        "/api/spaces/{namespace}/{repo}/hardware": ["post"],
+        "/api/spaces/{namespace}/{repo}/sleeptime": ["post"],
+        "/api/spaces/{namespace}/{repo}/restart": ["post"],
+        "/api/spaces/{namespace}/{repo}/pause": ["post"],
+        "/api/jobs/{namespace}": ["get", "post"],
+        "/api/jobs/{namespace}/{jobId}": ["get"],
+        "/api/jobs/{namespace}/{jobId}/cancel": ["post"],
+        "/api/scheduled-jobs/{namespace}": ["get", "post"],
+        "/api/scheduled-jobs/{namespace}/{jobId}": ["get", "delete"],
+        "/api/scheduled-jobs/{namespace}/{jobId}/schedule": ["post"],
+        "/api/scheduled-jobs/{namespace}/{jobId}/suspend": ["post"],
+        "/api/scheduled-jobs/{namespace}/{jobId}/resume": ["post"],
+        "/api/scheduled-jobs/{namespace}/{jobId}/run": ["post"],
+        "/api/organizations/{name}/service-accounts": ["get", "post"],
+        "/api/organizations/{name}/service-accounts/{serviceAccountId}": ["get", "delete"],
+        "/api/organizations/{name}/service-accounts/{serviceAccountId}/tokens": ["post"],
+        "/api/organizations/{name}/service-accounts/{serviceAccountId}/tokens/{tokenId}": [
+          "delete"
+        ],
+        "/api/organizations/{name}/settings/tokens": ["get"],
+        "/api/organizations/{name}/settings/tokens/{tokenId}/revoke": ["post"],
+        "/api/settings/webhooks": ["get"],
+        "/api/settings/webhooks/{webhookId}": ["delete"],
+        "/api/settings/webhooks/{webhookId}/{action}": ["post"],
+        "/api/organizations/{name}/billing/usage/inference": ["get"],
+        "/api/settings/billing/usage/jobs": ["get"]
+      }
+    },
+    {
+      "name": "endpoints",
+      "specUrl": "https://api.endpoints.huggingface.cloud/openapi.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/EndpointType",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the API validates it, so a value outside this enum stays the API's error."
+        },
+        {
+          "pointer": "/components/schemas/EndpointTask",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and the API validates it, so a value outside this enum stays the API's error."
+        }
+      ],
+      "paths": {
+        "/v2/provider": ["get"],
+        "/v2/provider/{namespace}": ["get"],
+        "/v2/provider/quotas/{namespace}": ["get"],
+        "/v2/endpoint/{namespace}": ["get", "post"],
+        "/v2/endpoint/{namespace}/{name}": ["get", "put", "delete"],
+        "/v2/endpoint/{namespace}/{name}/replica": ["get"],
+        "/v2/endpoint/{namespace}/{name}/pause": ["post"],
+        "/v2/endpoint/{namespace}/{name}/resume": ["post"],
+        "/v2/endpoint/{namespace}/{name}/scale-to-zero": ["post"],
+        "/v2/endpoint/{namespace}/{name}/metrics": ["post"],
+        "/v3/endpoint/{namespace}/{name}/logs": ["get"]
+      }
+    }
+  ]
+}

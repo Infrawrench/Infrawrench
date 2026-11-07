@@ -81,7 +81,7 @@ export async function completeHuggingFaceOAuth(
       headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: "application/json" },
     });
     if (!res.ok) return {};
-    const me = (await res.json()) as WhoAmI;
+    const me: WhoAmI = await res.json();
     return me.name ? { accountName: `Hugging Face (${me.name})` } : {};
   } catch {
     return {};
