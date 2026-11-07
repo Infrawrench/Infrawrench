@@ -582,3 +582,126 @@ describe("renaming an environment", () => {
     expect(calls.find((x) => x.method === "PATCH")).toBeUndefined();
   });
 });
+
+describe("paged lists", () => {
+  const MGMT = { managementKeyId: "hcxmk_1", managementKeySecret: "s" };
+  const ENVS = "/2/teams/acme/environments";
+  const KEYS = "/2/teams/acme/api-keys";
+  const envRow = { id: "hcaen_1", attributes: { name: "Staging", slug: "staging" } };
+  const signalRow = { id: "sig1", name: "Latency" };
+
+  /** Every paged list, with what its answer looks like and where it starts. */
+  const LISTS = [
+    {
+      name: "environments",
+      type: "environment",
+      path: ENVS,
+      creds: MGMT,
+      page: (rows: unknown, next: string | null): unknown => ({ data: rows, links: { next } }),
+      row: envRow,
+      renamed: (rows: unknown): unknown => ({ items: rows, links: { next: null } }),
+    },
+    {
+      name: "API keys",
+      type: "api-key",
+      path: KEYS,
+      creds: MGMT,
+      page: (rows: unknown, next: string | null): unknown => ({ data: rows, links: { next } }),
+      row: { id: "hcxik_1", attributes: { name: "k" } },
+      renamed: (rows: unknown): unknown => ({ items: rows, links: { next: null } }),
+    },
+    {
+      name: "signals",
+      type: "signal",
+      path: "/1/signals",
+      creds: { configurationKey: "cfg" },
+      page: (rows: unknown, next: string | null): unknown => ({ signals: rows, links: { next } }),
+      row: signalRow,
+      renamed: (rows: unknown): unknown => ({ items: rows, links: { next: null } }),
+    },
+  ];
+
+  function serve(list: (typeof LISTS)[number], answer: (url: URL) => unknown) {
+    return (url: URL): Reply => {
+      if (url.pathname === "/1/auth") return { body: AUTH_V1 };
+      if (url.pathname === "/2/auth") return { body: AUTH_V2 };
+      if (url.pathname === list.path) return { body: answer(url) };
+      if (url.pathname === ENVS) return { body: { data: [envRow], links: { next: null } } };
+      return { status: 404 };
+    };
+  }
+
+  for (const list of LISTS) {
+    it(`${list.name}: reads 10,000 rows and throws rather than stop at the cap`, async () => {
+      let n = 0;
+      const { c, calls } = client(
+        serve(list, () => list.page([list.row], `${list.path}?page[after]=${++n}`)),
+        list.creds,
+      );
+      await expect(c.listResources(list.type, ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(pathsCalled(calls, list.path)).toHaveLength(100);
+      expect(
+        calls.find((x) => x.url.pathname === list.path)?.url.searchParams.get("page[size]"),
+      ).toBe("100");
+    });
+
+    it(`${list.name}: rejects a first page whose list is not one`, async () => {
+      const { c } = client(
+        serve(list, () => list.renamed([list.row])),
+        list.creds,
+      );
+      await expect(c.listResources(list.type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it(`${list.name}: rejects a later page whose list is not one`, async () => {
+      const { c } = client(
+        serve(list, (url) =>
+          url.searchParams.get("page[after]")
+            ? list.renamed([list.row])
+            : list.page([list.row], `${list.path}?page[after]=2`),
+        ),
+        list.creds,
+      );
+      await expect(c.listResources(list.type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it(`${list.name}: refuses a next link to another host`, async () => {
+      const { c, calls } = client(
+        serve(list, () => list.page([list.row], "https://evil.example/steal")),
+        list.creds,
+      );
+      await expect(c.listResources(list.type, ACCOUNT)).rejects.toThrow(
+        "Refusing to send the account's credentials there",
+      );
+      expect(calls.every((x) => x.url.hostname === API_HOST)).toBe(true);
+    });
+
+    it(`${list.name}: never joins a link with no leading slash onto the host name`, async () => {
+      const { c, calls } = client(
+        serve(list, (url) =>
+          url.pathname === list.path && url.searchParams.get("page[after]")
+            ? list.page([], null)
+            : list.page([list.row], ".evil.example/steal?page[after]=2"),
+        ),
+        list.creds,
+      );
+      await c.listResources(list.type, ACCOUNT).catch(() => undefined);
+      expect(calls.every((x) => x.url.hostname === API_HOST)).toBe(true);
+    });
+
+    it(`${list.name}: follows the relative link the document gives`, async () => {
+      const { c, calls } = client(
+        serve(list, (url) =>
+          url.searchParams.get("page[after]")
+            ? list.page([list.row], null)
+            : list.page([list.row], `${list.path}?page[after]=abc&page[size]=100`),
+        ),
+        list.creds,
+      );
+      await c.listResources(list.type, ACCOUNT);
+      expect(pathsCalled(calls, list.path)[1]?.url.searchParams.get("page[after]")).toBe("abc");
+    });
+  }
+});

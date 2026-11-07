@@ -16,7 +16,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
 import type { ConfigApi, HoneycombContext } from "./api.js";
-import { mapPooled, statusOf, v1, v2, v2Paged } from "./api.js";
+import { mapPooled, statusOf, v1, v1Lists, v2, v2Lists } from "./api.js";
 import type { operations } from "./api-types.config.gen.js";
 import type { operations as ManagementOperations } from "./api-types.management.gen.js";
 import type { EnvScope } from "./mappers.js";
@@ -67,7 +67,6 @@ import type {
   HnyFilter,
   HnyQuerySpec,
   HnyRecipient,
-  HnySignal,
   HnyTrigger,
 } from "./types.js";
 
@@ -79,7 +78,7 @@ const CONFIG_KEY_FIELD = "configurationKey";
 /** Stored per API key resource: the secret, when Infrawrench created it. */
 const API_KEY_SECRET_FIELD = "key";
 const CACHE_TTL_MS = 60_000;
-/** Markers are events, not configuration: keep the most recent per dataset. */
+// Rolling window: the newest N. Older rows falling off is what this type means.
 const MAX_MARKERS_PER_DATASET = 100;
 const POOL = 4;
 
@@ -336,10 +335,9 @@ export class HoneycombClient implements PluginClient {
     };
     const out: EnvAccess[] = [];
     if (this.ctx.managementToken && team) {
-      const envs = await v2Paged(this.ctx, () =>
-        v2(this.ctx).get(`/2/teams/${pathEncode(team)}/environments`, {
-          query: { "page[size]": 100 },
-        }),
+      const envs = await v2Lists(this.ctx).getAll(
+        `/2/teams/${pathEncode(team)}/environments`,
+        "data",
       );
       for (const e of envs) {
         const slug = e.attributes?.slug ?? e.id;
@@ -549,7 +547,9 @@ export class HoneycombClient implements PluginClient {
           return this.listRecipients(accountId);
         case "signal":
           return this.perEnv(accountId, async (env, key) =>
-            (await this.fetchSignals(key)).map((s) => mapSignal(accountId, env, s)),
+            (await v1Lists(this.ctx, key).getAll("/1/signals", "signals")).map((s) =>
+              mapSignal(accountId, env, s),
+            ),
           );
         case "api-key":
           return this.listApiKeys(accountId);
@@ -643,32 +643,11 @@ export class HoneycombClient implements PluginClient {
     return [];
   }
 
-  private async fetchSignals(key: string): Promise<HnySignal[]> {
-    const out: HnySignal[] = [];
-    let after: string | undefined;
-    for (let page = 0; page < 50; page++) {
-      const res = await v1(this.ctx, key).get("/1/signals", {
-        query: { "page[size]": 100, ...(after ? { "page[after]": after } : {}) },
-      });
-      out.push(...(res.signals ?? []));
-      const next = res.links?.next;
-      if (!next) break;
-      const cursor = /page%5Bafter%5D=([^&]+)|page\[after\]=([^&]+)/.exec(next);
-      after = decodeURIComponent(cursor?.[1] ?? cursor?.[2] ?? "");
-      if (!after) break;
-    }
-    return out;
-  }
-
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     if (!this.ctx.managementToken) return [];
     const team = await this.teamSlug();
     const [keys, envs] = await Promise.all([
-      v2Paged(this.ctx, () =>
-        v2(this.ctx).get(`/2/teams/${pathEncode(team)}/api-keys`, {
-          query: { "page[size]": 100 },
-        }),
-      ),
+      v2Lists(this.ctx).getAll(`/2/teams/${pathEncode(team)}/api-keys`, "data"),
       this.environments(accountId),
     ]);
     const slugById = slugsById(envs);

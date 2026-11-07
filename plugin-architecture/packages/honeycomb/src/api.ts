@@ -1,6 +1,6 @@
 import {
   createApiClient,
-  restRequest,
+  withLinkPagination,
   type ApiClient,
   type HttpHostServices,
 } from "@infrawrench/plugin-base";
@@ -120,57 +120,27 @@ export function v2(ctx: HoneycombContext): ApiClient<ManagementPaths> {
   });
 }
 
-interface JsonApiPage<Row> {
-  data?: Row[];
-  links?: { next?: string | null };
-}
-
 /**
- * Walk a v2 list from its first page. Pagination is a cursor: `links.next` is a
- * ready-made relative URL (with `page[after]`), or null on the last page. A link
- * is sent to the region's API host whatever host it names.
- *
- * This is a hand loop rather than `withLinkPagination` because that reads a `data`
- * that is not an array as an empty page, and the host prunes what a sync stops
- * seeing. Here it fails the sync, as it always has.
+ * The `/2/...` lists. `links.next` is a ready-made relative URL with `page[after]`, null
+ * on the last page; 100 is the document's largest `page[size]`, so this reads 10,000 rows.
  */
-export async function v2Paged<Row>(
-  ctx: HoneycombContext,
-  first: () => Promise<JsonApiPage<Row>>,
-  maxPages = 50,
-): Promise<Row[]> {
-  const out: Row[] = [];
-  let next: string | null = null;
-  for (let page = 0; page < maxPages && (page === 0 || next); page++) {
-    const res: JsonApiPage<Row> = next === null ? await first() : await followLink(ctx, next);
-    out.push(...(res.data ?? []));
-    const link: string | null = res.links?.next ?? null;
-    next = link ? relativePath(link) : null;
-  }
-  return out;
-}
-
-/** A next link as Honeycomb wrote it: no operation in the document has this shape. */
-async function followLink<Row>(ctx: HoneycombContext, path: string): Promise<JsonApiPage<Row>> {
-  const { body } = await restRequest<JsonApiPage<Row>>({
-    vendor: "Honeycomb",
-    url: `${ctx.region.apiUrl}${path}`,
-    errorPath: path,
-    headers: managementHeaders(managementToken(ctx)),
-    ...transport(ctx),
-    httpError: ({ status, body: text }) => apiError(status, path, text),
+export function v2Lists(ctx: HoneycombContext) {
+  return withLinkPagination(v2(ctx), {
+    next: "links.next",
+    sizeParam: "page[size]",
+    pageSize: 100,
+    maxPages: 100,
   });
-  return body;
 }
 
-function relativePath(link: string): string {
-  if (link.startsWith("/")) return link;
-  try {
-    const u = new URL(link);
-    return `${u.pathname}${u.search}`;
-  } catch {
-    return link;
-  }
+/** `/1/signals`, paged the same way as the `/2/...` lists. */
+export function v1Lists(ctx: HoneycombContext, key: string) {
+  return withLinkPagination(v1(ctx, key), {
+    next: "links.next",
+    sizeParam: "page[size]",
+    pageSize: 100,
+    maxPages: 100,
+  });
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */
