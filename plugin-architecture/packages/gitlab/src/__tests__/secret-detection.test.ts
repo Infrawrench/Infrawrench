@@ -170,6 +170,86 @@ describe("secret detection", () => {
     });
   });
 
+  describe("a project with more findings than one page", () => {
+    const project = [{ id: 1, path_with_namespace: "acme/big" }];
+    const batch = (hasNextPage: boolean, endCursor: string | null) => ({
+      data: {
+        projects: {
+          nodes: [
+            {
+              fullPath: "acme/big",
+              vulnerabilities: { nodes: [vuln(1)], pageInfo: { hasNextPage, endCursor } },
+            },
+          ],
+        },
+      },
+    });
+    const later = (id: number, hasNextPage: boolean, endCursor: string | null) => ({
+      data: {
+        project: {
+          vulnerabilities: { nodes: [vuln(id)], pageInfo: { hasNextPage, endCursor } },
+        },
+      },
+    });
+
+    it("follows the project's pages until they end", async () => {
+      const replies = [batch(true, "c1"), later(2, true, "c2"), later(3, false, null)];
+      const { http, calls } = makeHttp(() => replies.shift());
+      const page = await listSecretDetectionFindings(ctx(http), project, {
+        limit: 100,
+        includeResolved: true,
+      });
+      expect(page.findings.map((f) => f.ref)).toEqual([
+        "gid://gitlab/Vulnerability/1",
+        "gid://gitlab/Vulnerability/2",
+        "gid://gitlab/Vulnerability/3",
+      ]);
+      expect(page.truncated).toBe(false);
+      const variables = calls.map((c) => (c.body as { variables: object }).variables);
+      expect(variables[1]).toMatchObject({ fullPath: "acme/big", after: "c1" });
+      expect(variables[2]).toMatchObject({ fullPath: "acme/big", after: "c2" });
+    });
+
+    it("stops at the limit and says so", async () => {
+      const replies = [batch(true, "c1"), later(2, true, "c2")];
+      const { http, calls } = makeHttp(() => replies.shift());
+      const page = await listSecretDetectionFindings(ctx(http), project, {
+        limit: 2,
+        includeResolved: true,
+      });
+      expect(calls).toHaveLength(2);
+      expect(page.findings).toHaveLength(2);
+      expect(page.truncated).toBe(true);
+    });
+
+    it("keeps what it read and says so when a later page fails", async () => {
+      const replies = [batch(true, "c1"), { status: 500, body: { message: "boom" } }];
+      const { http } = makeHttp(() => replies.shift());
+      const page = await listSecretDetectionFindings(ctx(http), project, {
+        limit: 100,
+        includeResolved: true,
+      });
+      expect(page.findings).toHaveLength(1);
+      expect(page.truncated).toBe(true);
+    });
+
+    it("says so when pages never end, after a bounded number of requests", async () => {
+      let id = 1;
+      const replies = (call: { body: unknown }) => {
+        const { variables } = call.body as { variables: { after?: string } };
+        id += 1;
+        return variables.after ? later(id, true, "again") : batch(true, "again");
+      };
+      const { http, calls } = makeHttp(replies);
+      const page = await listSecretDetectionFindings(ctx(http), project, {
+        limit: 100_000,
+        includeResolved: true,
+      });
+      expect(calls).toHaveLength(50);
+      expect(page.truncated).toBe(true);
+    });
+  });
+
   it("falls back to the identifier name or title for the token type", () => {
     expect(
       vulnerabilityTokenType({ id: "x", state: "DETECTED", identifiers: [{ name: "AWS" }] }),

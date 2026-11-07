@@ -35,8 +35,10 @@ import { type GitLabContext, glGraphql } from "./api.js";
 
 /** Projects per GraphQL request; nested connections count toward query complexity. */
 const PROJECT_BATCH = 10;
-/** Vulnerabilities read per project per scan. */
+/** Vulnerabilities read per request. */
 const PER_PROJECT = 100;
+/** Pages read per project per scan, the first one included. Past this the page says truncated. */
+const PROJECT_MAX_PAGES = 50;
 
 interface GlVulnerability {
   id: string;
@@ -54,30 +56,43 @@ interface GlVulnerability {
   location?: { file?: string | null; startLine?: string | number | null } | null;
 }
 
+interface VulnConnection {
+  nodes?: GlVulnerability[];
+  pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+}
+
 interface ProjectsResponse {
   projects?: {
-    nodes?: Array<{
-      fullPath: string;
-      vulnerabilities?: {
-        nodes?: GlVulnerability[];
-        pageInfo?: { hasNextPage?: boolean };
-      } | null;
-    } | null>;
+    nodes?: Array<{ fullPath: string; vulnerabilities?: VulnConnection | null } | null>;
   };
 }
+
+interface ProjectResponse {
+  project?: { vulnerabilities?: VulnConnection | null } | null;
+}
+
+const VULN_FIELDS = `
+  nodes {
+    id title state detectedAt updatedAt webUrl dismissalReason
+    identifiers { externalType externalId name }
+    location { ... on VulnerabilityLocationSecretDetection { file startLine } }
+  }
+  pageInfo { hasNextPage endCursor }`;
 
 const QUERY = `query($ids: [ID!], $first: Int) {
   projects(ids: $ids, first: ${PROJECT_BATCH}) {
     nodes {
       fullPath
-      vulnerabilities(reportType: [SECRET_DETECTION], first: $first) {
-        nodes {
-          id title state detectedAt updatedAt webUrl dismissalReason
-          identifiers { externalType externalId name }
-          location { ... on VulnerabilityLocationSecretDetection { file startLine } }
-        }
-        pageInfo { hasNextPage }
+      vulnerabilities(reportType: [SECRET_DETECTION], first: $first) {${VULN_FIELDS}
       }
+    }
+  }
+}`;
+
+/** The batch query cannot resume one project, so a project's later pages are read alone. */
+const PROJECT_QUERY = `query($fullPath: ID!, $first: Int, $after: String) {
+  project(fullPath: $fullPath) {
+    vulnerabilities(reportType: [SECRET_DETECTION], first: $first, after: $after) {${VULN_FIELDS}
     }
   }
 }`;
@@ -125,6 +140,32 @@ export async function listSecretDetectionFindings(
   let failures = 0;
   let batches = 0;
   let lastError = "";
+  const collect = (fullPath: string, connection: VulnConnection) => {
+    for (const v of connection.nodes ?? []) {
+      const f = toFinding(fullPath, v);
+      if (!query.includeResolved && f.state !== "open") continue;
+      findings.push(f);
+    }
+  };
+  /** Reads a project's pages after the batch's first one. False when some went unread. */
+  const readLaterPages = async (fullPath: string, first: VulnConnection): Promise<boolean> => {
+    let pageInfo = first.pageInfo;
+    for (let page = 1; pageInfo?.hasNextPage; page++) {
+      if (page >= PROJECT_MAX_PAGES || findings.length >= query.limit || !pageInfo.endCursor) {
+        return false;
+      }
+      const res = await glGraphql<ProjectResponse>(ctx, PROJECT_QUERY, {
+        fullPath,
+        first: PER_PROJECT,
+        after: pageInfo.endCursor,
+      });
+      const next = res.data?.project?.vulnerabilities;
+      if (!next?.nodes) return false;
+      collect(fullPath, next);
+      pageInfo = next.pageInfo;
+    }
+    return true;
+  };
   for (let i = 0; i < projects.length; i += PROJECT_BATCH) {
     if (findings.length >= query.limit) {
       truncated = true;
@@ -145,12 +186,11 @@ export async function listSecretDetectionFindings(
       if (res.errors?.length) truncated = true;
       for (const project of nodes) {
         if (!project?.vulnerabilities?.nodes) continue;
-        if (project.vulnerabilities.pageInfo?.hasNextPage) truncated = true;
-        for (const v of project.vulnerabilities.nodes) {
-          const f = toFinding(project.fullPath, v);
-          if (!query.includeResolved && f.state !== "open") continue;
-          findings.push(f);
-        }
+        collect(project.fullPath, project.vulnerabilities);
+        const whole = await readLaterPages(project.fullPath, project.vulnerabilities).catch(
+          () => false,
+        );
+        if (!whole) truncated = true;
       }
     } catch (err) {
       failures += 1;
