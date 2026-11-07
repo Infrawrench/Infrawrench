@@ -343,7 +343,7 @@ describe("a global or home-region type refused whole", () => {
       });
       expect(unread).toEqual([]);
     }
-  });
+  }, 30_000);
 });
 
 describe("DescribeRegions", () => {

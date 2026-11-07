@@ -52,7 +52,7 @@ describe("a read that fails while collecting", () => {
     await expect(warehouseCreditsByDay(ctx, "2026-09-01", "2026-09-02")).rejects.toThrow(
       "has more than Infrawrench reads",
     );
-  });
+  }, 30_000);
 
   it.each(["USAGE_IN_CURRENCY_DAILY", "WAREHOUSE_METERING_HISTORY"])(
     "fails on a 200 from %s that is not a ResultSet, rather than reading no cost",

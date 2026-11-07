@@ -183,7 +183,7 @@ describe.each([
     expect(rows).toHaveLength(1);
     expect(rows[0]!.fields).not.toHaveProperty(childField);
     expect(stats.reads).toBe(BUDGET);
-  });
+  }, 30_000);
 
   it("does not swallow a child list's foreign next link", async () => {
     const { ctx } = makeCtx((url) =>

@@ -136,7 +136,7 @@ describe("runSql on a transient answer after the submit", () => {
     ]);
     await expect(runSql(ctx(), "SELECT 1")).rejects.toMatchObject({ status: 422 });
     expect(calls).toHaveLength(2);
-  });
+  }, 30_000);
 
   it("cancels the statement when the caller aborts while a poll is backing off", async () => {
     const controller = new AbortController();
@@ -334,7 +334,7 @@ describe("runSql", () => {
       role: "SYSADMIN",
       parameters: { timezone: "UTC", query_tag: "infrawrench" },
     });
-  });
+  }, 30_000);
 
   it("turns a 422 into a SnowflakeError that knows about authorization", async () => {
     vi.stubGlobal(

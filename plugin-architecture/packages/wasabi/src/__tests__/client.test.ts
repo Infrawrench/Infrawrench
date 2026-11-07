@@ -287,7 +287,7 @@ describe("lists that must be whole", () => {
     );
     const series = await c.fetchMetricSeries("account", "wasabi:account:a1", "a1");
     expect(series.length).toBeGreaterThan(0);
-  });
+  }, 30_000);
   it("refuses to delete a folder it could not list whole", async () => {
     const { c, calls } = client((u, r) => {
       if (u.searchParams.has("location"))

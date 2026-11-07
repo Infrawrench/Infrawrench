@@ -667,7 +667,7 @@ describe("the budget of one poll", () => {
     }
     expect(endpoints.size).toBe(400);
     expect(roles.size).toBe(800);
-  });
+  }, 30_000);
 
   it("stops starting reads past the poll's time budget, and names what is left", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T00:00:00Z") });

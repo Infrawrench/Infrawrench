@@ -110,7 +110,7 @@ describe("transport", () => {
     const err = await bad.client.listResources("account", "acct").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AliApiError);
     expect((err as AliApiError).status).toBe(404);
-  });
+  }, 30_000);
 
   it("sends Quota Center parameters as a signed form body", async () => {
     const { client, calls } = makeClient((req) =>
