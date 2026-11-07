@@ -2,13 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import {
   commaSeparated,
   createApiClient,
+  nextLinkHeader,
+  parseLinkHeader,
   pathEncode,
   unencodedSegment,
   withCursorPagination,
+  withLinkPagination,
   withPagination,
   type ApiClient,
+  type ApiFailure,
   type ApiListItem,
   type ApiResponse,
+  type PageAnswer,
 } from "../api-client.js";
 import type { HttpHostServices } from "../manifest.js";
 
@@ -69,6 +74,25 @@ interface paths {
     { "page[size]"?: number; "page[after]"?: string },
     { data: Item[]; links: { next?: string | null } }
   >;
+  // The shapes `withLinkPagination` has to read.
+  "/apps": Get<{ limit?: number; q?: string }, Item[]>;
+  "/twilio": Get<{ PageSize?: number }, { calls: Item[]; next_page_uri?: string | null }>;
+  "/meta-link": Get<
+    { PageSize?: number },
+    { rows: Item[]; meta: { next_page_url: string | null } }
+  >;
+  "/no-link-field": Get<{ PageSize?: number }, { rows: Item[] }>;
+  "/no-query": {
+    get: {
+      parameters: { query?: never };
+      requestBody?: never;
+      responses: { 200: Json<Item[]> };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    patch?: never;
+  };
   "/items": {
     get: {
       parameters: {
@@ -696,6 +720,600 @@ describe("withCursorPagination", () => {
   });
 });
 
+/** A `Response` with headers, as the page walks read them. */
+function paged(body: unknown, headers: Record<string, string> = {}, status = 200): Response {
+  const text = body === undefined ? null : typeof body === "string" ? body : JSON.stringify(body);
+  return new Response(status === 204 ? null : text, { status, headers });
+}
+
+/** A host HTTP service that answers from a queue, recording what it was asked. */
+function fakeHost(
+  answers: Array<{ status?: number; headers?: Record<string, string>; body?: string }>,
+) {
+  const calls: Array<Parameters<HttpHostServices["request"]>[0]> = [];
+  const http: HttpHostServices = {
+    request: async (req) => {
+      calls.push(req);
+      const next = answers.shift() ?? {};
+      return { status: next.status ?? 200, headers: next.headers ?? {}, body: next.body ?? "" };
+    },
+  };
+  return { http, calls };
+}
+
+describe("getResponse and getText", () => {
+  it("hands back the status and lower-cased headers under global fetch", async () => {
+    fetchMock.mockResolvedValueOnce(paged({ item: 1 }, { "X-Total": "12" }, 201));
+    const answer = await client().getResponse("/single");
+    expect(answer).toEqual({
+      status: 201,
+      headers: expect.objectContaining({ "x-total": "12" }),
+      body: { item: 1 },
+      url: `${BASE}/single`,
+    });
+  });
+
+  it("hands back the same through the host's http service, whatever case it sends", async () => {
+    const { http } = fakeHost([{ headers: { "X-Total": "12", LINK: "<x>" }, body: '{"item":1}' }]);
+    const api = createApiClient<paths>({ vendor: "Example", baseUrl: BASE, headers: {}, http });
+    const answer = await api.getResponse("/single");
+    expect(answer.headers).toEqual({ "x-total": "12", link: "<x>" });
+    expect(answer.body).toEqual({ item: 1 });
+  });
+
+  it("leaves a text body alone in both transports", async () => {
+    fetchMock.mockResolvedValueOnce(paged('{"looks":"like json"}'));
+    expect((await client().getText("/single")).body).toBe('{"looks":"like json"}');
+    const { http } = fakeHost([{ body: "<html>not json" }]);
+    const api = createApiClient<paths>({ vendor: "Example", baseUrl: BASE, headers: {}, http });
+    expect((await api.getText("/single")).body).toBe("<html>not json");
+  });
+
+  it("takes a query, and still reports a failure", async () => {
+    fetchMock.mockResolvedValueOnce(paged("nope", {}, 500));
+    await expect(client().getText("/items", { query: { page: 1 } })).rejects.toThrow(
+      "Example API error 500 for /items?page=1: nope",
+    );
+  });
+});
+
+describe("httpError", () => {
+  class TeapotError extends Error {
+    constructor(
+      readonly status: number,
+      message: string,
+    ) {
+      super(message);
+    }
+  }
+  const options = {
+    vendor: "Example",
+    baseUrl: BASE,
+    headers: {},
+    httpError: ({ status, method, path, target, url, body }: ApiFailure) =>
+      new TeapotError(status, `${status} ${method} ${path} ${target} ${url} ${body}`),
+  };
+
+  it("builds what a non-2xx throws under global fetch", async () => {
+    fetchMock.mockResolvedValueOnce(paged("boom", {}, 418));
+    const err = await createApiClient<paths>(options)
+      .get("/items", { query: { page: 2 } })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TeapotError);
+    expect(err).toMatchObject({
+      status: 418,
+      message: `418 GET /items /items?page=2 ${BASE}/items?page=2 boom`,
+    });
+  });
+
+  it("builds what a non-2xx throws through the host's http service", async () => {
+    const { http } = fakeHost([{ status: 418, body: "boom" }]);
+    await expect(
+      createApiClient<paths>({ ...options, http }).post("/items", { body: { name: "n" } }),
+    ).rejects.toMatchObject({ status: 418, message: expect.stringContaining("418 POST /items") });
+  });
+
+  it("names a followed link by its pathname", async () => {
+    fetchMock
+      .mockResolvedValueOnce(paged([{ id: 1 }], { Link: '<https://x.test/a/b?c=1>; rel="next"' }))
+      .mockResolvedValueOnce(paged("boom", {}, 500));
+    const api = withLinkPagination(createApiClient<paths>(options), {
+      next: nextLinkHeader(),
+      maxPages: 5,
+      foreignLinks: "follow",
+    });
+    await expect(api.getAll("/apps", null)).rejects.toMatchObject({
+      message: "500 GET /a/b /a/b?c=1 https://x.test/a/b?c=1 boom",
+    });
+  });
+});
+
+describe("contentType and emptyBodyIsUndefined", () => {
+  const options = { vendor: "Example", baseUrl: BASE, headers: { Accept: "application/json" } };
+
+  it("sends Content-Type first on everything by default", async () => {
+    await createApiClient<paths>(options).get("/single");
+    expect(Object.keys(lastInit()?.headers ?? {})).toEqual(["Content-Type", "Accept"]);
+  });
+
+  it("sends it last and only with a body when told to", async () => {
+    const api = createApiClient<paths>({ ...options, contentType: "with-body" });
+    await api.get("/single");
+    expect(Object.keys(lastInit()?.headers ?? {})).toEqual(["Accept"]);
+    await api.post("/items", { body: { name: "n" } });
+    expect(Object.keys(lastInit()?.headers ?? {})).toEqual(["Accept", "Content-Type"]);
+  });
+
+  it("does not overrule a Content-Type the caller set, in any case", async () => {
+    const api = createApiClient<paths>({
+      ...options,
+      headers: { "content-type": "application/vnd.api+json" },
+      contentType: "with-body",
+    });
+    await api.post("/items", { body: { name: "n" } });
+    expect(lastInit()?.headers).toEqual({ "content-type": "application/vnd.api+json" });
+  });
+
+  it("throws on an empty 2xx under global fetch by default, and reads it as nothing if told", async () => {
+    fetchMock.mockResolvedValueOnce(paged(""));
+    await expect(createApiClient<paths>(options).get("/single")).rejects.toThrow(SyntaxError);
+    fetchMock.mockResolvedValueOnce(paged(""));
+    const lenient = createApiClient<paths>({ ...options, emptyBodyIsUndefined: true });
+    expect(await lenient.get("/single")).toBeUndefined();
+  });
+
+  it("still reads a body as JSON with emptyBodyIsUndefined", async () => {
+    fetchMock.mockResolvedValueOnce(paged({ detail: { name: "n" } }));
+    const lenient = createApiClient<paths>({ ...options, emptyBodyIsUndefined: true });
+    expect(await lenient.get("/single")).toEqual({ detail: { name: "n" } });
+  });
+});
+
+describe("a host service wrapper as the transport", () => {
+  it("can sign each request and retry on the provider's say-so, without a hook of its own", async () => {
+    const { http: host, calls } = fakeHost([
+      { status: 401, headers: { "dpop-nonce": "n1" } },
+      { body: '{"detail":{"name":"n"}}' },
+    ]);
+    const signing: HttpHostServices = {
+      request: async (req) => {
+        let answer = await host.request({ ...req, headers: { ...req.headers, DPoP: "none" } });
+        const nonce = answer.headers["dpop-nonce"];
+        if (answer.status === 401 && nonce) {
+          answer = await host.request({ ...req, headers: { ...req.headers, DPoP: nonce } });
+        }
+        return answer;
+      },
+    };
+    const api = createApiClient<paths>({ vendor: "E", baseUrl: BASE, headers: {}, http: signing });
+    expect(await api.get("/single")).toEqual({ detail: { name: "n" } });
+    expect(calls.map((c) => c.headers["DPoP"])).toEqual(["none", "n1"]);
+  });
+});
+
+describe("withCursorPagination, from what the whole page says", () => {
+  const counted = (headerName = "x-next-page") =>
+    withCursorPagination(client(), {
+      cursorParam: "page",
+      firstCursor: 1,
+      sizeParam: "per_page",
+      pageSize: 2,
+      maxPages: 5,
+      continueOnEmptyPage: true,
+      next: ({ headers }) => headers[headerName],
+    });
+
+  it("sends firstCursor on the first request, after the size", async () => {
+    fetchMock.mockResolvedValueOnce(paged({ items: [{ id: 1 }] }));
+    await counted().getAll("/items", "items");
+    expect(lastUrl()).toBe(`${BASE}/items?per_page=2&page=1`);
+  });
+
+  it("follows a page number in a header, past an empty page, until it is blank", async () => {
+    fetchMock
+      .mockResolvedValueOnce(paged({ items: [{ id: 1 }] }, { "X-Next-Page": "4" }))
+      .mockResolvedValueOnce(paged({ items: [] }, { "X-Next-Page": "5" }))
+      .mockResolvedValueOnce(paged({ items: [{ id: 2 }] }, { "X-Next-Page": "" }));
+    const items = await counted().getAll("/items", "items");
+    expect(items).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      `${BASE}/items?per_page=2&page=1`,
+      `${BASE}/items?per_page=2&page=4`,
+      `${BASE}/items?per_page=2&page=5`,
+    ]);
+  });
+
+  it("tells the function everything about the page", async () => {
+    const seen: PageAnswer[] = [];
+    fetchMock.mockResolvedValueOnce(paged({ items: [{ id: 1 }] }, { "X-A": "b" }));
+    const api = withCursorPagination(client(), {
+      cursorParam: "page",
+      firstCursor: 3,
+      sizeParam: "per_page",
+      pageSize: 7,
+      maxPages: 5,
+      next: (page) => {
+        seen.push(page);
+        return null;
+      },
+    });
+    await api.getAll("/items", "items");
+    expect(seen[0]).toMatchObject({
+      headers: { "x-a": "b" },
+      body: { items: [{ id: 1 }] },
+      items: [{ id: 1 }],
+      cursor: "3",
+      pageSize: 7,
+    });
+  });
+
+  it("stops after the page stopWhen says is enough, having kept that page", async () => {
+    fetchMock.mockResolvedValue(paged({ items: [{ id: 1, name: "old" }] }, { "X-Next-Page": "2" }));
+    fetchMock.mockImplementation(async () =>
+      paged({ items: [{ id: 1, name: "old" }] }, { "X-Next-Page": "2" }),
+    );
+    const items = await counted().getAll("/items", "items", {
+      stopWhen: (batch) => batch.some((item) => item.name === "old"),
+    });
+    expect(items).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets onTruncated throw, so a reader can refuse a partial list", async () => {
+    fetchMock.mockImplementation(async () => paged({ items: [{ id: 1 }] }, { "X-Next-Page": "2" }));
+    const api = withCursorPagination(client(), {
+      cursorParam: "page",
+      maxPages: 2,
+      next: ({ headers }) => headers["x-next-page"],
+      onTruncated: ({ path, maxPages }) => {
+        throw new Error(`${path} has more than ${maxPages} pages`);
+      },
+    });
+    await expect(api.getAll("/items", "items")).rejects.toThrow("/items has more than 2 pages");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads a cursor out of a Link header, to send back as a parameter", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        paged({ items: [{ id: 1 }] }, { Link: '<https://x.test/items?page=9>; rel="next"' }),
+      )
+      .mockResolvedValueOnce(paged({ items: [{ id: 2 }] }));
+    const api = withCursorPagination(client(), {
+      cursorParam: "page",
+      maxPages: 5,
+      next: nextLinkHeader(),
+      readCursor: (link) => new URL(link).searchParams.get("page"),
+    });
+    await api.getAll("/items", "items");
+    expect(lastUrl()).toBe(`${BASE}/items?page=9`);
+  });
+});
+
+describe("withLinkPagination", () => {
+  const scoped = () =>
+    createApiClient<paths>({
+      vendor: "Example",
+      baseUrl: BASE,
+      headers: { Authorization: "Bearer t" },
+      scopeQuery: { team: "t1" },
+    });
+  const link = (url: string, rest = 'rel="next"') => ({ Link: `<${url}>; ${rest}` });
+
+  const headerWalk = (extra: { maxPages?: number } = {}) =>
+    withLinkPagination(client(), {
+      next: nextLinkHeader(),
+      sizeParam: "limit",
+      pageSize: 2,
+      maxPages: extra.maxPages ?? 5,
+      foreignLinks: "follow",
+    });
+
+  describe("following", () => {
+    it("asks for the path once, then each link exactly as written", async () => {
+      const odd = `${BASE}/apps?after=a%20b&x=[1]&limit=2`;
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link(odd)))
+        .mockResolvedValueOnce(paged([{ id: 2 }]));
+      const items = await headerWalk().getAll("/apps", null, { query: { q: "x y" } });
+      expect(items).toEqual([{ id: 1 }, { id: 2 }]);
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+        `${BASE}/apps?q=x+y&limit=2`,
+        odd,
+      ]);
+    });
+
+    it("sends the client's headers with a link, and does not add scopeQuery to it", async () => {
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link(`${BASE}/apps?after=1`)))
+        .mockResolvedValueOnce(paged([{ id: 2 }]));
+      const api = withLinkPagination(scoped(), {
+        next: nextLinkHeader(),
+        maxPages: 5,
+        foreignLinks: "follow",
+      });
+      await api.getAll("/apps", null);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${BASE}/apps?team=t1`);
+      expect(lastUrl()).toBe(`${BASE}/apps?after=1`);
+      expect(lastInit()?.headers).toMatchObject({ Authorization: "Bearer t" });
+    });
+
+    it("works through the host's http service, whose headers come in any case", async () => {
+      const { http, calls } = fakeHost([
+        { headers: { LINK: `<${BASE}/apps?after=1>; rel="next"` }, body: '[{"id":1}]' },
+        { body: '[{"id":2}]' },
+      ]);
+      const api = withLinkPagination(
+        createApiClient<paths>({ vendor: "E", baseUrl: BASE, headers: {}, http, caCert: "PEM" }),
+        { next: nextLinkHeader(), maxPages: 5, foreignLinks: "follow" },
+      );
+      expect(await api.getAll("/apps", null)).toEqual([{ id: 1 }, { id: 2 }]);
+      expect(calls.map((c) => [c.url, c.caCert])).toEqual([
+        [`${BASE}/apps`, "PEM"],
+        [`${BASE}/apps?after=1`, "PEM"],
+      ]);
+    });
+
+    it("resolves a relative link against the page it came from", async () => {
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link("/v2/other?a=1")))
+        .mockResolvedValueOnce(paged([{ id: 2 }], link("?a=2")))
+        .mockResolvedValueOnce(paged([{ id: 3 }], link("next-one")))
+        .mockResolvedValueOnce(paged([]));
+      await headerWalk().getAll("/apps", null);
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+        `${BASE}/apps?limit=2`,
+        "https://api.example.test/v2/other?a=1",
+        "https://api.example.test/v2/other?a=2",
+        "https://api.example.test/v2/next-one",
+      ]);
+    });
+
+    it("reads a link from a body field, and collects from a key", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          paged({ calls: [{ id: 1 }], next_page_uri: "/2010/Calls?Page=1&PageToken=x" }),
+        )
+        .mockResolvedValueOnce(paged({ calls: [{ id: 2 }], next_page_uri: null }));
+      const api = withLinkPagination(client(), {
+        next: "next_page_uri",
+        sizeParam: "PageSize",
+        pageSize: 1000,
+        maxPages: 5,
+        foreignLinks: "follow",
+      });
+      expect(await api.getAll("/twilio", "calls")).toEqual([{ id: 1 }, { id: 2 }]);
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+        `${BASE}/twilio?PageSize=1000`,
+        "https://api.example.test/2010/Calls?Page=1&PageToken=x",
+      ]);
+    });
+
+    it("reads a link from a nested body field", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          paged({ rows: [{ id: 1 }], meta: { next_page_url: "https://x.test/more" } }),
+        )
+        .mockResolvedValueOnce(paged({ rows: [{ id: 2 }], meta: { next_page_url: null } }));
+      const api = withLinkPagination(client(), {
+        next: "meta.next_page_url",
+        maxPages: 5,
+        foreignLinks: "follow",
+      });
+      await api.getAll("/meta-link", "rows");
+      expect(lastUrl()).toBe("https://x.test/more");
+    });
+  });
+
+  describe("a link to another host", () => {
+    const foreign = "https://evil.test/apps?after=1";
+
+    it("is followed, credentials and all, when the plugin says so", async () => {
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link(foreign)))
+        .mockResolvedValueOnce(paged([{ id: 2 }]));
+      expect(await headerWalk().getAll("/apps", null)).toHaveLength(2);
+      expect(lastUrl()).toBe(foreign);
+      expect(lastInit()?.headers).toMatchObject({ Authorization: "Bearer t" });
+    });
+
+    it("throws without asking when it says not to", async () => {
+      fetchMock.mockResolvedValueOnce(paged([{ id: 1 }], link(foreign)));
+      const api = withLinkPagination(client(), {
+        next: nextLinkHeader(),
+        maxPages: 5,
+        foreignLinks: "refuse",
+      });
+      await expect(api.getAll("/apps", null)).rejects.toThrow(
+        "from https://api.example.test to https://evil.test",
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("lets a link on the same origin through either way", async () => {
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link(`${BASE}/apps?after=1`)))
+        .mockResolvedValueOnce(paged([{ id: 2 }]));
+      const api = withLinkPagination(client(), {
+        next: nextLinkHeader(),
+        maxPages: 5,
+        foreignLinks: "refuse",
+      });
+      expect(await api.getAll("/apps", null)).toHaveLength(2);
+    });
+
+    it("compares origins, so another port or scheme is another host", async () => {
+      for (const other of ["https://api.example.test:8443/x", "http://api.example.test/x"]) {
+        fetchMock.mockResolvedValueOnce(paged([{ id: 1 }], link(other)));
+        const api = withLinkPagination(client(), {
+          next: nextLinkHeader(),
+          maxPages: 5,
+          foreignLinks: "refuse",
+        });
+        await expect(api.getAll("/apps", null)).rejects.toThrow(/Refusing/);
+      }
+    });
+  });
+
+  describe("termination", () => {
+    it("ends when a page has no Link header, or none for rel=next", async () => {
+      fetchMock.mockResolvedValueOnce(paged([{ id: 1 }]));
+      expect(await headerWalk().getAll("/apps", null)).toHaveLength(1);
+      fetchMock.mockResolvedValueOnce(paged([{ id: 1 }], link(`${BASE}/first`, 'rel="prev"')));
+      expect(await headerWalk().getAll("/apps", null)).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("ends on an empty page by default, and goes on past one when told", async () => {
+      fetchMock.mockResolvedValueOnce(paged([], link(`${BASE}/apps?a=1`)));
+      expect(await headerWalk().getAll("/apps", null)).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      fetchMock
+        .mockResolvedValueOnce(paged([], link(`${BASE}/apps?a=1`)))
+        .mockResolvedValueOnce(paged([{ id: 2 }]));
+      const api = withLinkPagination(client(), {
+        next: nextLinkHeader(),
+        maxPages: 5,
+        foreignLinks: "follow",
+        continueOnEmptyPage: true,
+      });
+      expect(await api.getAll("/apps", null)).toEqual([{ id: 2 }]);
+    });
+
+    it("stops at maxPages on a link that repeats, returning what it has", async () => {
+      fetchMock.mockImplementation(async () => paged([{ id: 1 }], link(`${BASE}/apps?same=1`)));
+      const onTruncated = vi.fn();
+      const api = withLinkPagination(client(), {
+        next: nextLinkHeader(),
+        maxPages: 3,
+        foreignLinks: "follow",
+        onTruncated,
+      });
+      expect(await api.getAll("/apps", null)).toHaveLength(3);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(onTruncated).toHaveBeenCalledWith({ path: "/apps", items: 3, maxPages: 3 });
+    });
+
+    it("stops on a repeating link when told to, without calling it truncated", async () => {
+      fetchMock.mockImplementation(async () => paged([{ id: 1 }], link(`${BASE}/apps?same=1`)));
+      const onTruncated = vi.fn();
+      const api = withLinkPagination(client(), {
+        next: nextLinkHeader(),
+        maxPages: 9,
+        foreignLinks: "follow",
+        stopOnRepeatedCursor: true,
+        onTruncated,
+      });
+      await api.getAll("/apps", null);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(onTruncated).not.toHaveBeenCalled();
+    });
+
+    it("takes pageSize, maxPages and stopWhen per call", async () => {
+      fetchMock.mockImplementation(async () => paged([{ id: 1 }], link(`${BASE}/apps?n=1`)));
+      await headerWalk().getAll("/apps", null, { pageSize: 9, maxPages: 2 });
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${BASE}/apps?limit=9`);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      fetchMock.mockClear();
+      await headerWalk().getAll("/apps", null, { stopWhen: () => true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("propagates a failed page, and keeps the client's other verbs", async () => {
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link(`${BASE}/apps?n=1`)))
+        .mockResolvedValueOnce(paged("boom", {}, 500));
+      await expect(headerWalk().getAll("/apps", null)).rejects.toThrow("/apps?n=1: boom");
+
+      fetchMock.mockResolvedValueOnce(paged({ detail: { name: "n" } }));
+      expect(await headerWalk().get("/single")).toEqual({ detail: { name: "n" } });
+    });
+
+    it("forwards an abort signal to every page", async () => {
+      const { signal } = new AbortController();
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link(`${BASE}/apps?n=1`)))
+        .mockResolvedValueOnce(paged([]));
+      await headerWalk().getAll("/apps", null, { signal });
+      expect(fetchMock.mock.calls.map(([, init]) => init?.signal)).toEqual([signal, signal]);
+    });
+  });
+});
+
+describe("nextLinkHeader", () => {
+  const read = (link: string | undefined, options?: Parameters<typeof nextLinkHeader>[0]) =>
+    nextLinkHeader(options)({
+      headers: link === undefined ? {} : { link },
+      body: undefined,
+      items: [],
+      cursor: undefined,
+      pageSize: undefined,
+    });
+
+  it("picks rel=next among several links", () => {
+    expect(
+      read('<https://a/1>; rel="prev", <https://a/2>; rel="next", <https://a/3>; rel="last"'),
+    ).toBe("https://a/2");
+  });
+
+  it("reads rel unquoted, in any case, and among several values", () => {
+    expect(read("<https://a/2>; rel=next")).toBe("https://a/2");
+    expect(read('<https://a/2>; REL="NEXT"')).toBe("https://a/2");
+    expect(read('<https://a/2>; rel="last next"')).toBe("https://a/2");
+  });
+
+  it("does not take a rel that merely contains the word", () => {
+    expect(read('<https://a/2>; rel="nextish"')).toBeUndefined();
+    expect(read("<https://a/2>; title=next")).toBeUndefined();
+  });
+
+  it("is undefined with no header, a blank one, or none that parses", () => {
+    expect(read(undefined)).toBeUndefined();
+    expect(read("")).toBeUndefined();
+    expect(read('https://a/2; rel="next"')).toBeUndefined();
+  });
+
+  it("asks `when` about the parameters, for a link that is always sent", () => {
+    const hasResults = {
+      when: (params: Record<string, string>) => params["results"] === "true",
+    };
+    const sentry = (results: string) =>
+      `<https://s/a?&cursor=0:0:1>; rel="previous"; results="false"; cursor="0:0:1", <https://s/a?&cursor=0:100:0>; rel="next"; results="${results}"; cursor="0:100:0"`;
+    expect(read(sentry("true"), hasResults)).toBe("https://s/a?&cursor=0:100:0");
+    expect(read(sentry("false"), hasResults)).toBeUndefined();
+  });
+
+  it("takes another rel", () => {
+    expect(read('<https://a/1>; rel="prev"', { rel: "PREV" })).toBe("https://a/1");
+  });
+});
+
+describe("parseLinkHeader", () => {
+  it("keeps a comma or semicolon inside a URL or a quoted parameter", () => {
+    expect(
+      parseLinkHeader(
+        '<https://a/x?ids=1,2;3>; rel="next"; title="a, b; c", <https://a/y>; rel=last',
+      ),
+    ).toEqual([
+      { url: "https://a/x?ids=1,2;3", params: { rel: "next", title: "a, b; c" } },
+      { url: "https://a/y", params: { rel: "last" } },
+    ]);
+  });
+
+  it("lower-cases parameter names, keeps the first of a repeat, and takes one with no value", () => {
+    expect(parseLinkHeader('<u>; REL=next; rel=last; Flag; x = "y"')).toEqual([
+      { url: "u", params: { rel: "next", flag: "", x: "y" } },
+    ]);
+  });
+
+  it("is empty for nothing", () => {
+    expect(parseLinkHeader(undefined)).toEqual([]);
+    expect(parseLinkHeader("")).toEqual([]);
+  });
+});
+
 /**
  * Checked by `tsc`, never run. Each directive fails the type check if the line
  * below it starts compiling, so these are what stops the client going loose.
@@ -882,6 +1500,105 @@ export function compileTimeChecks(api: ApiClient<paths>, raw: string) {
   });
   // @ts-expect-error
   void rootArray.getAll("/root-array", "thing");
+
+  // A next link's field is checked against the document, and a typo fails at the config.
+  const links = withLinkPagination(api, {
+    next: "next_page_uri",
+    sizeParam: "PageSize",
+    maxPages: 2,
+    foreignLinks: "follow",
+  });
+  void links.getAll("/twilio", "calls");
+  // @ts-expect-error
+  void links.getAll("/meta-link", "rows");
+  // @ts-expect-error
+  void links.getAll("/twilio", "nope");
+  // @ts-expect-error a field no operation has
+  withLinkPagination(api, { next: "next_page_ur", maxPages: 2, foreignLinks: "follow" });
+  withLinkPagination(api, {
+    // @ts-expect-error a size parameter no operation has fails on what it asks of `next`
+    next: "next_page_uri",
+    sizeParam: "size",
+    maxPages: 2,
+    foreignLinks: "follow",
+  });
+
+  // Which way a foreign link goes is not optional, and is one of the two.
+  // @ts-expect-error
+  withLinkPagination(api, { next: nextLinkHeader(), maxPages: 2 });
+  // @ts-expect-error
+  withLinkPagination(api, { next: nextLinkHeader(), maxPages: 2, foreignLinks: "maybe" });
+  // @ts-expect-error
+  withLinkPagination(api, { next: nextLinkHeader(), foreignLinks: "follow" });
+
+  // A link walk has no cursor to configure.
+  withLinkPagination(api, {
+    next: nextLinkHeader(),
+    maxPages: 2,
+    foreignLinks: "follow",
+    // @ts-expect-error
+    cursorParam: "after",
+  });
+
+  // A link in a header fits any list, even one with no query, since nothing is read
+  // from the body; the size parameter, where there is one, still has to exist.
+  const headerLinks = withLinkPagination(api, {
+    next: nextLinkHeader(),
+    maxPages: 2,
+    foreignLinks: "follow",
+  });
+  void headerLinks.getAll("/no-query", null);
+  void headerLinks.getAll("/apps", null);
+  // @ts-expect-error not a list
+  void headerLinks.getAll("/single", null);
+  const sized = withLinkPagination(api, {
+    next: nextLinkHeader(),
+    sizeParam: "limit",
+    maxPages: 2,
+    foreignLinks: "follow",
+  });
+  void sized.getAll("/apps", null);
+  // @ts-expect-error the size belongs to the helper
+  void sized.getAll("/apps", null, { query: { limit: 1 } });
+  void sized.getAll("/apps", null, { query: { q: "x" } });
+  // @ts-expect-error `limit` is not a parameter of this one
+  void sized.getAll("/no-query", null);
+
+  // A function reading the page stands in for a field, and the rest stays checked.
+  const counted = withCursorPagination(api, {
+    cursorParam: "page",
+    firstCursor: 1,
+    sizeParam: "per_page",
+    maxPages: 2,
+    next: ({ headers, items, cursor }) => (items.length > 0 ? headers["x-next-page"] : cursor),
+  });
+  void counted.getAll("/items", "items");
+  // @ts-expect-error the cursor parameter is not on this operation
+  void counted.getAll("/nested", "things");
+  // @ts-expect-error
+  void counted.getAll("/items", "items", { query: { page: 1 } });
+  // @ts-expect-error a stop condition sees the list's own items
+  void counted.getAll("/items", "items", { stopWhen: (batch) => batch[0]?.nope === 1 });
+  void counted.getAll("/items", "items", { stopWhen: (batch) => batch[0]?.name === "x" });
+
+  // Headers and text come back typed, and are only for what the document lists.
+  void (async () => {
+    const { headers, body, status, url } = await api.getResponse("/single");
+    const total: string | undefined = headers["x-total"];
+    const name: string = body.detail.name;
+    const text: string = (await api.getText("/single")).body;
+    // @ts-expect-error
+    const missing = body.nope;
+    return { total, name, text, status, url, missing };
+  });
+  // @ts-expect-error
+  void api.getResponse("/not-listed");
+  // @ts-expect-error
+  void api.getText("/not-listed");
+  // @ts-expect-error a parameter that did not go through pathEncode
+  void api.getText(`/items/${raw}`);
+  // @ts-expect-error
+  void api.getText("/items", { query: { pagee: 1 } });
 
   // Items come from the response, with no generic at the call site, across a union
   // and a nullable response alike.

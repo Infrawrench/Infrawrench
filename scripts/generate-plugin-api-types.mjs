@@ -25,11 +25,23 @@
 // fails the run, so a provider fixing its document surfaces rather than rotting:
 //
 //   "patches": [{ "pointer": "/paths/~1x/post/requestBody/.../required", "value": [], "why": "..." }]
+//
+// A Swagger 2 document is converted to OpenAPI 3.0 on load, so `paths` and `patches`
+// always address the OpenAPI 3 form: a `definitions` schema is at `/components/schemas`
+// and a response body under `content`. Its `basePath` moves into `servers`, so paths
+// are written without it.
+//
+// A document that writes a version prefix into every path, where the client's base URL
+// has to hold it, names it in `pathPrefix`. Paths outside it are dropped, and `paths`
+// and `patches` are written without it:
+//
+//   { "specUrl": "https://...", "pathPrefix": "/api/v4", "paths": { "/projects": ["get"] } }
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire, registerHooks } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { upgradeFromTwoToThree } from "@scalar/openapi-upgrader/2.0-to-3.0";
 import YAML from "yaml";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -105,9 +117,9 @@ function prune(doc, wanted) {
     for (const r of next) if (!seen.has(r)) queue.add(r);
   }
 
-  const pruned = { ...doc, paths, components: {} };
-  delete pruned["x-tagGroups"];
-  delete pruned.tags;
+  // Nothing else survives: `webhooks` and `x-webhooks` point into `components`, and
+  // whatever they reach has just been left out of it.
+  const pruned = { openapi: doc.openapi, info: doc.info, paths, components: {} };
   for (const ref of seen) {
     const segments = ref.slice(2).split("/");
     if (segments[0] !== "components") continue;
@@ -254,11 +266,19 @@ async function loadDocument(url) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url} answered ${response.status}`);
   const text = await response.text();
-  return text.trimStart().startsWith("{") ? JSON.parse(text) : YAML.parse(text);
+  const doc = text.trimStart().startsWith("{") ? JSON.parse(text) : YAML.parse(text);
+  return doc.swagger ? upgradeFromTwoToThree(doc) : doc;
+}
+
+function stripPathPrefix(doc, prefix) {
+  const kept = Object.entries(doc.paths ?? {}).filter(([route]) => route.startsWith(`${prefix}/`));
+  if (kept.length === 0) throw new Error(`No path in the document starts with ${prefix}/`);
+  doc.paths = Object.fromEntries(kept.map(([route, item]) => [route.slice(prefix.length), item]));
 }
 
 async function generateDocument(plugin, dir, config, fileName) {
   const doc = await loadDocument(config.specUrl);
+  if (config.pathPrefix) stripPathPrefix(doc, config.pathPrefix);
   applyPatches(doc, config.patches);
   const pruned = prune(doc, config.paths);
   dropErrorResponses(pruned);

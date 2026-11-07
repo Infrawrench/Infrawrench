@@ -72,31 +72,83 @@ export interface JsonRestFetchOptions {
   http?: HttpHostServices;
 }
 
-/**
- * JSON-over-REST fetch helper. Returns the parsed JSON body typed as `T`.
- *
- * - Throws `Error("<vendor> API error <status> for <path>: <body>")` on !ok.
- * - Returns `undefined as T` for 204 No Content (matches existing per-plugin behavior).
- * - `Content-Type: application/json` is set unless the caller supplied one.
- */
-export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
-  const { vendor, url, headers, errorPath, init, caCert, http } = opts;
-  const initHeaders = init?.headers;
-  const mergedHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...headers,
-  };
+export interface RestRequestOptions extends JsonRestFetchOptions {
+  /** Build what a non-2xx answer throws, instead of the default `Error`. */
+  httpError?: (failure: { status: number; body: string }) => Error;
+  /**
+   * `"always"` (default) puts `Content-Type: application/json` first on every
+   * request. `"with-body"` sends it only on a request with a body, after the
+   * caller's headers, and not at all when the caller set one.
+   */
+  contentType?: "always" | "with-body";
+  /**
+   * Read a 2xx with no body as `undefined` under global `fetch` too. The host's
+   * HTTP service has always done that; `fetch` throws a `SyntaxError` by default.
+   */
+  emptyBodyIsUndefined?: boolean;
+  /** `"text"` returns the body as it came, whatever its status or content type. */
+  responseAs?: "json" | "text";
+}
+
+/** An answer with what `jsonRestFetch` drops. Header names are lower case in both transports. */
+export interface RestResponse<T> {
+  status: number;
+  headers: Record<string, string>;
+  body: T;
+}
+
+function lowerCaseKeys(headers: Record<string, string> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers ?? {})) out[key.toLowerCase()] = value;
+  return out;
+}
+
+function headersOf(res: Response): Record<string, string> {
+  const out: Record<string, string> = {};
+  // Plenty of plugin tests stub `fetch` with a bare `{ ok, json }`.
+  res.headers?.forEach?.((value, key) => {
+    out[key.toLowerCase()] = value;
+  });
+  return out;
+}
+
+function mergeHeaders(opts: RestRequestOptions): Record<string, string> {
+  const initHeaders = opts.init?.headers;
+  const merged: Record<string, string> =
+    opts.contentType === "with-body"
+      ? { ...opts.headers }
+      : { "Content-Type": "application/json", ...opts.headers };
   if (initHeaders) {
     if (initHeaders instanceof Headers) {
       initHeaders.forEach((value, key) => {
-        mergedHeaders[key] = value;
+        merged[key] = value;
       });
     } else if (Array.isArray(initHeaders)) {
-      for (const [key, value] of initHeaders) mergedHeaders[key] = value;
+      for (const [key, value] of initHeaders) merged[key] = value;
     } else {
-      Object.assign(mergedHeaders, initHeaders);
+      Object.assign(merged, initHeaders);
     }
   }
+  if (
+    opts.contentType === "with-body" &&
+    opts.init?.body != null &&
+    !Object.keys(merged).some((key) => key.toLowerCase() === "content-type")
+  ) {
+    merged["Content-Type"] = "application/json";
+  }
+  return merged;
+}
+
+/**
+ * One REST request, answered with its status and headers as well as the parsed
+ * body. {@link jsonRestFetch} is this, for callers that only want the body.
+ */
+export async function restRequest<T>(opts: RestRequestOptions): Promise<RestResponse<T>> {
+  const { vendor, url, errorPath, init, caCert, http, httpError, responseAs } = opts;
+  const mergedHeaders = mergeHeaders(opts);
+  const failed = (status: number, body: string) =>
+    httpError?.({ status, body }) ??
+    new Error(`${vendor} API error ${status} for ${errorPath ?? url}: ${body}`);
 
   // Always prefer the host's HTTP service when present: that's the only path
   // that picks up bastion routing for accounts that have one attached, and the
@@ -111,21 +163,34 @@ export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
       ...(body !== undefined ? { body } : {}),
       ...(caCert ? { caCert } : {}),
     });
-    if (result.status < 200 || result.status >= 300) {
-      const label = errorPath ?? url;
-      throw new Error(`${vendor} API error ${result.status} for ${label}: ${result.body}`);
-    }
-    if (result.status === 204 || !result.body) return undefined as unknown as T;
-    return JSON.parse(result.body) as T;
+    if (result.status < 200 || result.status >= 300) throw failed(result.status, result.body);
+    const answer = { status: result.status, headers: lowerCaseKeys(result.headers) };
+    if (responseAs === "text") return { ...answer, body: result.body as T };
+    if (result.status === 204 || !result.body) return { ...answer, body: undefined as T };
+    return { ...answer, body: JSON.parse(result.body) as T };
   }
 
   const res = await fetch(url, { ...init, headers: mergedHeaders });
-  if (!res.ok) {
-    const label = errorPath ?? url;
-    throw new Error(`${vendor} API error ${res.status} for ${label}: ${await res.text()}`);
+  if (!res.ok) throw failed(res.status, await res.text());
+  const answer = { status: res.status, headers: headersOf(res) };
+  if (responseAs === "text") return { ...answer, body: (await res.text()) as T };
+  if (res.status === 204) return { ...answer, body: undefined as T };
+  if (opts.emptyBodyIsUndefined) {
+    const text = await res.text();
+    return { ...answer, body: (text ? JSON.parse(text) : undefined) as T };
   }
-  if (res.status === 204) return undefined as unknown as T;
-  return (await res.json()) as T;
+  return { ...answer, body: (await res.json()) as T };
+}
+
+/**
+ * JSON-over-REST fetch helper. Returns the parsed JSON body typed as `T`.
+ *
+ * - Throws `Error("<vendor> API error <status> for <path>: <body>")` on !ok.
+ * - Returns `undefined as T` for 204 No Content (matches existing per-plugin behavior).
+ * - `Content-Type: application/json` is set unless the caller supplied one.
+ */
+export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
+  return (await restRequest<T>(opts)).body;
 }
 
 /**
