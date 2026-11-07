@@ -88,7 +88,7 @@ export interface ProjectRef {
   projectName: string;
 }
 
-const projectParent = (accountId: string, groupId: string) =>
+export const projectParent = (accountId: string, groupId: string) =>
   resourceId(accountId, "project", groupId);
 export const clusterParent = (accountId: string, groupId: string, cluster: string) =>
   resourceId(accountId, "cluster", `${groupId}/${cluster}`);

@@ -254,6 +254,72 @@ describe("a cluster whose children cannot be read", () => {
     expect(await listing(http, "backup-snapshot")).toEqual([]);
   });
 
+  describe("a refused read", () => {
+    const CLUSTERS = "/api/atlas/v2/groups/g1/clusters";
+    const USERS = "/api/atlas/v2/groups/g1/databaseUsers";
+    const refuse = (status: number) => reply({ status, body: { detail: "refused" } });
+
+    it.each([401, 403])("keeps a project's rows when its list answers %i", async (status) => {
+      const { http } = atlas((call) => (call.path.startsWith(USERS) ? refuse(status) : undefined));
+      expect(await listing(http, "database-user")).toEqual([]);
+      expect(namedParents()).toEqual(["acct:project:g1"]);
+    });
+
+    it("reads a 404 on a project's list as a project that is gone", async () => {
+      const { http } = atlas((call) => (call.path.startsWith(USERS) ? refuse(404) : undefined));
+      expect(await listing(http, "database-user")).toEqual([]);
+      expect(unread).toEqual([]);
+    });
+
+    it("still fails the type on a server error", async () => {
+      const { http } = atlas((call) => (call.path.startsWith(USERS) ? refuse(500) : undefined));
+      await expect(listing(http, "database-user")).rejects.toThrow("500");
+      expect(unread).toEqual([]);
+    });
+
+    it("fails the type when the credential cannot read the project list", async () => {
+      const { http } = atlas((call) =>
+        call.path.startsWith("/api/atlas/v2/orgs/org1/groups") ? refuse(401) : undefined,
+      );
+      await expect(listing(http, "database-user")).rejects.toThrow("401");
+      expect(unread).toEqual([]);
+    });
+
+    it.each([401, 403])("keeps a cluster's rows when its child list answers %i", async (status) => {
+      const { http } = withClusters([running], (call) =>
+        call.path.startsWith(SNAPSHOTS) ? refuse(status) : undefined,
+      );
+      expect(await listing(http, "backup-snapshot")).toEqual([]);
+      expect(namedParents()).toEqual(["acct:cluster:g1/main"]);
+    });
+
+    it("names the project for one refused provider of its endpoint services", async () => {
+      const { http } = atlas((call) =>
+        call.path.endsWith("/privateEndpoint/AWS/endpointService")
+          ? refuse(403)
+          : call.path.includes("/endpointService")
+            ? []
+            : undefined,
+      );
+      expect(await listing(http, "private-endpoint-service")).toEqual([]);
+      expect(namedParents()).toEqual(["acct:project:g1"]);
+    });
+
+    it("names a project whose clusters were refused for every type on one client", async () => {
+      const { http, calls } = atlas((call) =>
+        call.path.split("?")[0] === CLUSTERS ? refuse(403) : undefined,
+      );
+      const client = hostClient(new MongoDBAtlasClient(CREDS, { http }));
+      expect(await client.listResources("cluster", ACCOUNT)).toEqual([]);
+      expect(namedParents()).toEqual(["acct:project:g1"]);
+
+      unread = [];
+      expect(await client.listResources("backup-snapshot", ACCOUNT)).toEqual([]);
+      expect(namedParents()).toEqual(["acct:project:g1"]);
+      expect(calls.filter((c) => c.path.split("?")[0] === CLUSTERS)).toHaveLength(1);
+    });
+  });
+
   describe("with backups turned off", () => {
     const off = { ...cluster, backupEnabled: false };
 

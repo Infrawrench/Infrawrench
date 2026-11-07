@@ -63,6 +63,7 @@ import {
   parseRoles,
   resourceId as fullResourceId,
   splitId,
+  projectParent,
 } from "./mappers.js";
 import {
   COST_METRICS_WINDOW_MS,
@@ -115,14 +116,35 @@ async function mapLimit<T, R>(
   return out;
 }
 
-/** A 403/404 in one project or cluster lists it empty; anything else fails the listing. */
-async function tolerant<T>(load: () => Promise<T[]>): Promise<T[]> {
+interface ProjectCluster {
+  project: ProjectRef;
+  cluster: AtlasCluster;
+}
+
+interface ClusterRead {
+  clusters: ProjectCluster[];
+  /** Projects whose cluster list the credential was refused. */
+  refused: ProjectRef[];
+}
+
+/** Keeps the stored rows under these parents. Where a host keeps no track, this does nothing. */
+function nameUnread(parentResourceIds: string[]): void {
+  if (parentResourceIds.length > 0) reportUnreadListPart({ parentResourceIds });
+}
+
+/**
+ * A 404 says this project or cluster has none. A refusal says nothing about its rows, so
+ * `onRefused` names it and they stay. That includes a 401: every caller got here through
+ * the project list, which does not come through here and fails on a rejected credential.
+ */
+async function tolerant<T>(onRefused: () => void, load: () => Promise<T[]>): Promise<T[]> {
   try {
     return await load();
   } catch (err) {
-    const s = statusOf(err);
-    if (s === 401 || s === 403 || s === 404) return [];
-    throw err;
+    if (statusOf(err) === 404) return [];
+    if (!isPermissionError(err)) throw err;
+    onRefused();
+    return [];
   }
 }
 
@@ -190,7 +212,7 @@ export class MongoDBAtlasClient implements PluginClient {
   private readonly configuredOrgId: string;
   private orgCache: Promise<AtlasOrg> | undefined;
   private projectsCache: Promise<AtlasGroup[]> | undefined;
-  private clustersCache: Promise<Array<{ project: ProjectRef; cluster: AtlasCluster }>> | undefined;
+  private clustersCache: Promise<ClusterRead> | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     this.ctx = contextFromCredentials(credentials, services?.http);
@@ -246,29 +268,57 @@ export class MongoDBAtlasClient implements PluginClient {
       .map((p) => ({ groupId: p.id, projectName: p.name ?? p.id }));
   }
 
-  private perProject<T>(load: (p: ProjectRef) => Promise<T[]>): Promise<T[]> {
+  private perProject<T>(accountId: string, load: (p: ProjectRef) => Promise<T[]>): Promise<T[]> {
     return this.refs().then(async (refs) =>
-      (await mapLimit(refs, CONCURRENCY, (p) => tolerant(() => load(p)))).flat(),
+      (
+        await mapLimit(refs, CONCURRENCY, (p) =>
+          tolerant(
+            () => nameUnread([projectParent(accountId, p.groupId)]),
+            () => load(p),
+          ),
+        )
+      ).flat(),
     );
   }
 
-  private clusters(): Promise<Array<{ project: ProjectRef; cluster: AtlasCluster }>> {
-    this.clustersCache ??= this.perProject(async (p) => {
-      const clusters = await this.api.getAll(
-        `/groups/${pathEncode(p.groupId)}/clusters`,
-        "results",
-        {
-          headers: atlasVersion(CLUSTER_VERSION),
-        },
-      );
-      return clusters
-        .filter((c) => !isListedElsewhere(c))
-        .map((cluster) => ({ project: p, cluster }));
-    }).catch((err: unknown) => {
-      this.clustersCache = undefined;
-      throw err;
-    });
+  private clusterRead(): Promise<ClusterRead> {
+    this.clustersCache ??= this.refs()
+      .then(async (refs) => {
+        const refused: ProjectRef[] = [];
+        const lists = await mapLimit(refs, CONCURRENCY, (p) =>
+          tolerant(
+            () => refused.push(p),
+            async () =>
+              (
+                await this.api.getAll(`/groups/${pathEncode(p.groupId)}/clusters`, "results", {
+                  headers: atlasVersion(CLUSTER_VERSION),
+                })
+              )
+                .filter((c) => !isListedElsewhere(c))
+                .map((cluster) => ({ project: p, cluster })),
+          ),
+        );
+        return { clusters: lists.flat(), refused };
+      })
+      .catch((err: unknown) => {
+        this.clustersCache = undefined;
+        throw err;
+      });
     return this.clustersCache;
+  }
+
+  private async clusters(): Promise<ProjectCluster[]> {
+    return (await this.clusterRead()).clusters;
+  }
+
+  /**
+   * The clusters for a listing. The read is shared across types, and each type's sync
+   * needs telling on its own which projects were refused, or their rows prune.
+   */
+  private async listedClusters(accountId: string): Promise<ProjectCluster[]> {
+    const { clusters, refused } = await this.clusterRead();
+    nameUnread(refused.map((p) => projectParent(accountId, p.groupId)));
+    return clusters;
   }
 
   /**
@@ -283,19 +333,19 @@ export class MongoDBAtlasClient implements PluginClient {
     filter: (c: AtlasCluster) => boolean,
     load: (project: ProjectRef, clusterName: string, cluster: AtlasCluster) => Promise<T[]>,
   ): Promise<T[]> {
-    const named = (await this.clusters()).filter(({ cluster }) => cluster.name);
-    const asleep = named.filter(({ cluster }) => cluster.paused);
-    if (asleep.length > 0) {
-      reportUnreadListPart({
-        parentResourceIds: asleep.map(({ project, cluster }) =>
-          clusterParent(accountId, project.groupId, cluster.name!),
-        ),
-      });
-    }
+    const named = (await this.listedClusters(accountId)).filter(({ cluster }) => cluster.name);
+    nameUnread(
+      named
+        .filter(({ cluster }) => cluster.paused)
+        .map(({ project, cluster }) => clusterParent(accountId, project.groupId, cluster.name!)),
+    );
     const awake = named.filter(({ cluster }) => !cluster.paused && filter(cluster));
     return (
       await mapLimit(awake, CONCURRENCY, ({ project, cluster }) =>
-        tolerant(() => load(project, cluster.name!, cluster)),
+        tolerant(
+          () => nameUnread([clusterParent(accountId, project.groupId, cluster.name!)]),
+          () => load(project, cluster.name!, cluster),
+        ),
       )
     ).flat();
   }
@@ -319,11 +369,11 @@ export class MongoDBAtlasClient implements PluginClient {
         case "project":
           return (await this.projects()).filter((g) => g.id).map((g) => mapProject(accountId, g));
         case "cluster":
-          return (await this.clusters()).map(({ project, cluster }) =>
+          return (await this.listedClusters(accountId)).map(({ project, cluster }) =>
             mapCluster(accountId, cluster, project),
           );
         case "flex-cluster":
-          return this.perProject(async (p) =>
+          return this.perProject(accountId, async (p) =>
             (
               await this.api.getAll(`/groups/${pathEncode(p.groupId)}/flexClusters`, "results", {
                 headers: atlasVersion(FLEX_VERSION),
@@ -331,19 +381,19 @@ export class MongoDBAtlasClient implements PluginClient {
             ).map((c) => mapFlexCluster(accountId, c, p)),
           );
         case "database-user":
-          return this.perProject(async (p) =>
+          return this.perProject(accountId, async (p) =>
             (
               await this.api.getAll(`/groups/${pathEncode(p.groupId)}/databaseUsers`, "results")
             ).map((u) => mapDatabaseUser(accountId, u, p)),
           );
         case "ip-access-entry":
-          return this.perProject(async (p) =>
+          return this.perProject(accountId, async (p) =>
             (await this.api.getAll(`/groups/${pathEncode(p.groupId)}/accessList`, "results")).map(
               (e) => mapAccessEntry(accountId, e, p),
             ),
           );
         case "alert":
-          return this.perProject(async (p) =>
+          return this.perProject(accountId, async (p) =>
             (
               await this.api.getAll(`/groups/${pathEncode(p.groupId)}/alerts`, "results", {
                 query: { status: "OPEN" },
@@ -351,26 +401,28 @@ export class MongoDBAtlasClient implements PluginClient {
             ).map((a) => mapAlert(accountId, a, p)),
           );
         case "alert-configuration":
-          return this.perProject(async (p) =>
+          return this.perProject(accountId, async (p) =>
             (await this.api.getAll(`/groups/${pathEncode(p.groupId)}/alertConfigs`, "results")).map(
               (c) => mapAlertConfig(accountId, c, p),
             ),
           );
         case "private-endpoint-service":
-          return this.perProject(async (p) => {
+          return this.perProject(accountId, async (p) => {
             const per = await Promise.all(
               ["AWS", "AZURE", "GCP"].map((provider) =>
-                tolerant(async () =>
-                  requireListPage(
-                    await this.api.get(
-                      `/groups/${pathEncode(p.groupId)}/privateEndpoint/${pathEncode(provider)}/endpointService`,
+                tolerant(
+                  () => nameUnread([projectParent(accountId, p.groupId)]),
+                  async () =>
+                    requireListPage(
+                      await this.api.get(
+                        `/groups/${pathEncode(p.groupId)}/privateEndpoint/${pathEncode(provider)}/endpointService`,
+                      ),
+                      {
+                        vendor: VENDOR,
+                        path: `/groups/${p.groupId}/privateEndpoint/${provider}/endpointService`,
+                        key: null,
+                      },
                     ),
-                    {
-                      vendor: VENDOR,
-                      path: `/groups/${p.groupId}/privateEndpoint/${provider}/endpointService`,
-                      key: null,
-                    },
-                  ),
                 ),
               ),
             );
@@ -393,9 +445,7 @@ export class MongoDBAtlasClient implements PluginClient {
             return snapshots().catch((err: unknown) => {
               const status = statusOf(err);
               if (status < 400 || status >= 500 || status === 429) throw err;
-              reportUnreadListPart({
-                parentResourceIds: [clusterParent(accountId, p.groupId, name)],
-              });
+              nameUnread([clusterParent(accountId, p.groupId, name)]);
               return [];
             });
           });
