@@ -5,7 +5,6 @@ import { isDedicatedTier, tierSpec } from "./tiers.js";
 export type AtlasGroup = ApiListItem<operations["getOrgGroups"], "results">;
 export type AtlasCluster = ApiListItem<operations["listGroupClusters"], "results">;
 export type AtlasFlexCluster = ApiListItem<operations["listGroupFlexClusters"], "results">;
-export type AtlasServerless = ApiListItem<operations["listGroupServerlessInstances"], "results">;
 export type AtlasDatabaseUser = ApiListItem<operations["listGroupDatabaseUsers"], "results">;
 export type AtlasAccessEntry = ApiListItem<operations["listGroupAccessListEntries"], "results">;
 export type AtlasSnapshot = ApiListItem<operations["listGroupClusterBackupSnapshots"], "results">;
@@ -161,7 +160,7 @@ export function isShardedCluster(c: AtlasCluster): boolean {
   return c.clusterType === "SHARDED" || c.clusterType === "GEOSHARDED";
 }
 
-/** True for clusters `/clusters` returns that are listed under their own type. */
+/** True for clusters `/clusters` returns that are not dedicated ones: Flex, or a former serverless instance. */
 export function isListedElsewhere(c: AtlasCluster): boolean {
   const name = primaryRegionConfigs(c)[0]?.providerName ?? "";
   return name === "FLEX" || name === "SERVERLESS";
@@ -272,35 +271,6 @@ export function mapFlexCluster(
     },
     {
       outputs: { standardSrv: c.connectionStrings?.standardSrv ?? "" },
-      parentResourceId: projectParent(accountId, project.groupId),
-    },
-  );
-}
-
-export function mapServerless(
-  accountId: string,
-  s: AtlasServerless,
-  project: ProjectRef,
-): ResourceInstance {
-  const name = s.name ?? "";
-  return instance(
-    accountId,
-    "serverless-instance",
-    `${project.groupId}/${name}`,
-    name,
-    {
-      name,
-      stateName: s.stateName,
-      provider: s.providerSettings?.backingProviderName,
-      region: s.providerSettings?.regionName,
-      mongoDBVersion: s.mongoDBVersion,
-      terminationProtectionEnabled: s.terminationProtectionEnabled ?? false,
-      standardSrv: s.connectionStrings?.standardSrv,
-      createDate: s.createDate,
-      ...project,
-    },
-    {
-      outputs: { standardSrv: s.connectionStrings?.standardSrv ?? "" },
       parentResourceId: projectParent(accountId, project.groupId),
     },
   );

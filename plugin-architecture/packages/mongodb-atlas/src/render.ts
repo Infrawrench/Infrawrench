@@ -487,12 +487,6 @@ function renderFlex(r: ResourceInstance): DetailViewSchema {
 function genericStatus(r: ResourceInstance): StatusDotNode {
   const f = r.fields;
   switch (r.resourceTypeId) {
-    case "serverless-instance":
-      return {
-        kind: "status-dot",
-        status: stateStatus(str(f["stateName"])),
-        label: stateLabel(str(f["stateName"])),
-      };
     case "backup-snapshot": {
       const s = str(f["status"]);
       return {
@@ -699,9 +693,7 @@ export function renderAtlasDetail(r: ResourceInstance): DetailViewSchema {
 export function renderAtlasSidebar(r: ResourceInstance): SidebarItemSchema {
   const f = r.fields;
   const detail =
-    r.resourceTypeId === "cluster" ||
-    r.resourceTypeId === "flex-cluster" ||
-    r.resourceTypeId === "serverless-instance"
+    r.resourceTypeId === "cluster" || r.resourceTypeId === "flex-cluster"
       ? {
           kind: "status-dot" as const,
           status: stateStatus(str(f["stateName"]), f["paused"]),

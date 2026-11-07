@@ -308,33 +308,6 @@ export const FlexClusterResourceType = rt({
   iconKey: "database",
 });
 
-export const ServerlessInstanceResourceType = rt({
-  name: "Serverless Instance",
-  id: "serverless-instance",
-  description:
-    "A legacy Atlas serverless instance. MongoDB is migrating these to Flex clusters; listed so their spend and connection strings stay visible.",
-  parentTypeId: PROJECT_PARENT,
-  showInSidebar: true,
-  fields: [
-    f("name", "Name", { editable: false }),
-    f("stateName", "State", { required: false, editable: false }),
-    f("provider", "Cloud", { showcase: true, required: false, editable: false }),
-    f("region", "Region", { showcase: true, required: false, editable: false }),
-    f("mongoDBVersion", "MongoDB Version", { required: false, editable: false }),
-    f("terminationProtectionEnabled", "Termination Protection", {
-      kind: "boolean",
-      required: false,
-      editable: false,
-    }),
-    f("standardSrv", "Connection String", { required: false, editable: false }),
-    f("createDate", "Created", { required: false, editable: false }),
-    ...projectFields,
-  ],
-  outputs: [o("standardSrv", "Connection String (SRV)")],
-  supportsDelete: false,
-  iconKey: "database",
-});
-
 export const DatabaseUserResourceType = rt({
   name: "Database User",
   id: "database-user",
@@ -642,7 +615,6 @@ export const RESOURCE_TYPES: ResourceTypeDefinition[] = [
   ProjectResourceType,
   ClusterResourceType,
   FlexClusterResourceType,
-  ServerlessInstanceResourceType,
   DatabaseUserResourceType,
   IpAccessEntryResourceType,
   BackupSnapshotResourceType,

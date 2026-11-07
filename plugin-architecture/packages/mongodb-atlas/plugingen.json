@@ -355,8 +355,6 @@
     "/groups/{groupId}/clusters/provider/regions": ["get"],
     "/groups/{groupId}/flexClusters": ["get"],
     "/groups/{groupId}/flexClusters/{name}": ["get", "patch"],
-    "/groups/{groupId}/serverless": ["get"],
-    "/groups/{groupId}/serverless/{name}": ["get"],
     "/groups/{groupId}/databaseUsers": ["get", "post"],
     "/groups/{groupId}/databaseUsers/{databaseName}/{username}": ["get", "patch", "delete"],
     "/groups/{groupId}/accessList": ["get", "post"],

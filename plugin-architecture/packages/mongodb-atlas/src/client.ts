@@ -57,7 +57,6 @@ import {
   mapOrganization,
   mapProject,
   mapSearchIndex,
-  mapServerless,
   mapSnapshot,
   parseRoles,
   resourceId as fullResourceId,
@@ -313,12 +312,6 @@ export class MongoDBAtlasClient implements PluginClient {
               })
             ).map((c) => mapFlexCluster(accountId, c, p)),
           );
-        case "serverless-instance":
-          return this.perProject(async (p) =>
-            (await this.api.getAll(`/groups/${pathEncode(p.groupId)}/serverless`, "results")).map(
-              (s) => mapServerless(accountId, s, p),
-            ),
-          );
         case "database-user":
           return this.perProject(async (p) =>
             (
@@ -508,13 +501,6 @@ export class MongoDBAtlasClient implements PluginClient {
             { headers: atlasVersion(FLEX_VERSION) },
           );
           return mapFlexCluster(accountId, c, await this.projectRef(groupId));
-        }
-        case "serverless-instance": {
-          const [groupId, name] = splitId(id, 1);
-          const s = await this.api.get(
-            `/groups/${pathEncode(groupId)}/serverless/${pathEncode(name)}`,
-          );
-          return mapServerless(accountId, s, await this.projectRef(groupId));
         }
         case "database-user": {
           const [groupId, db, user] = splitId(id, 2);
@@ -706,7 +692,6 @@ export class MongoDBAtlasClient implements PluginClient {
             { label: "Version", value: show(f["mongoDBVersion"]) },
           ];
         case "flex-cluster":
-        case "serverless-instance":
           return [
             { label: "State", value: show(f["stateName"]) },
             { label: "Region", value: show(f["region"]) },

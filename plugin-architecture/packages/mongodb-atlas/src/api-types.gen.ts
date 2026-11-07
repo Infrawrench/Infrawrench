@@ -434,40 +434,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/groups/{groupId}/serverless": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @deprecated */
-        get: operations["listGroupServerlessInstances"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/groups/{groupId}/serverless/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @deprecated */
-        get: operations["getGroupServerlessInstance"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/orgs": {
         parameters: {
             query?: never;
@@ -1317,10 +1283,6 @@ export interface components {
         };
         /** @enum {string} */
         ClusterMatcherField: "CLUSTER_NAME";
-        ClusterServerlessBackupOptions: {
-            /** @default true */
-            serverlessContinuousBackupEnabled?: boolean;
-        };
         ComponentLabel: {
             key?: string;
             value?: string;
@@ -4325,12 +4287,6 @@ export interface components {
             /** Format: int32 */
             readonly totalCount?: number;
         };
-        PaginatedServerlessInstanceDescriptionView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["ServerlessInstanceDescription"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
         PartitionFieldView: {
             fieldName: string;
             /** @enum {string} */
@@ -4865,41 +4821,8 @@ export interface components {
             threshold?: number;
             units?: components["schemas"]["RawMetricUnits"];
         };
-        ServerlessConnectionStringsPrivateEndpointItem: {
-            readonly endpointId?: string;
-            /** @enum {string} */
-            readonly providerName?: "AWS" | "AZURE";
-            readonly region?: string;
-        };
-        ServerlessConnectionStringsPrivateEndpointList: {
-            readonly endpoints?: components["schemas"]["ServerlessConnectionStringsPrivateEndpointItem"][];
-            readonly srvConnectionString?: string;
-            /** @enum {string} */
-            readonly type?: "MONGOS";
-        };
         /** @enum {string} */
         ServerlessEventTypeViewAlertable: "OUTSIDE_SERVERLESS_METRIC_THRESHOLD";
-        ServerlessInstanceDescription: {
-            connectionStrings?: components["schemas"]["ServerlessInstanceDescriptionConnectionStrings"];
-            /** Format: date-time */
-            readonly createDate?: string;
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly mongoDBVersion?: string;
-            name?: string;
-            providerSettings: components["schemas"]["ServerlessProviderSettings"];
-            serverlessBackupOptions?: components["schemas"]["ClusterServerlessBackupOptions"];
-            /** @enum {string} */
-            readonly stateName?: "IDLE" | "CREATING" | "UPDATING" | "DELETING" | "REPAIRING";
-            tags?: components["schemas"]["ResourceTag"][];
-            /** @default false */
-            terminationProtectionEnabled?: boolean;
-        };
-        ServerlessInstanceDescriptionConnectionStrings: {
-            readonly privateEndpoint?: components["schemas"]["ServerlessConnectionStringsPrivateEndpointList"][];
-            readonly standardSrv?: string;
-        };
         ServerlessMetricAlertConfigViewForNdsGroup: {
             /** Format: date-time */
             readonly created?: string;
@@ -5044,20 +4967,6 @@ export interface components {
             /** Format: double */
             threshold?: number;
             units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessProviderSettings: {
-            /** @enum {string} */
-            backingProviderName: "AWS" | "AZURE" | "GCP";
-            /** Format: int32 */
-            readonly effectiveDiskSizeGBLimit?: number;
-            effectiveInstanceSizeName?: components["schemas"]["BaseCloudProviderInstanceSize"];
-            readonly effectiveProviderName?: string;
-            /**
-             * @default SERVERLESS
-             * @enum {string}
-             */
-            providerName?: "SERVERLESS";
-            regionName: string;
         };
         ServerlessTotalWriteUnitsRPUMetricThresholdView: {
             /**
@@ -6588,49 +6497,6 @@ export interface operations {
                 };
                 content: {
                     "application/vnd.atlas.2023-01-01+json": components["schemas"]["ApiMeasurementsGeneralView_Atlas"];
-                };
-            };
-        };
-    };
-    listGroupServerlessInstances: {
-        parameters: parameters_ff43d5ef;
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedServerlessInstanceDescriptionView"];
-                };
-            };
-        };
-    };
-    getGroupServerlessInstance: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["ServerlessInstanceDescription"];
                 };
             };
         };

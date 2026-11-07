@@ -383,6 +383,20 @@ describe("snapshots of sharded clusters", () => {
   });
 });
 
+describe("serverless instances", () => {
+  it("are retired: no type, and nothing asks for the routes Atlas is removing", async () => {
+    expect(plugin.resourceTypes.some((t) => t.id === "serverless-instance")).toBe(false);
+    const { http, calls } = atlas();
+    await expect(
+      hostClient(new MongoDBAtlasClient(CREDS, { http })).listResources(
+        "serverless-instance",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/unknown resource type/);
+    expect(calls.some((c) => c.path.includes("/serverless"))).toBe(false);
+  });
+});
+
 describe("cluster detail", () => {
   it("offers only the tiers Atlas sells in the cluster's region", async () => {
     const { http } = atlas();
