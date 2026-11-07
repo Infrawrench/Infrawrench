@@ -87,6 +87,12 @@ export function createVercelApi(options: {
     api: withCursorPagination(client, { ...PAGES, cursorParam: "until" }),
     /** `GET /v10/projects` answers with a continuation token and takes it as `from`. */
     projectPages: withCursorPagination(client, { ...PAGES, cursorParam: "from" }),
+    /** `GET /v10/projects/{id}/env` documents no `limit`, so this one sends none. */
+    envPages: withCursorPagination(client, {
+      cursorParam: "until",
+      next: PAGES.next,
+      maxPages: PAGES.maxPages,
+    }),
     /** `GET /v2/teams` is the user's teams: the document gives it no team to scope to. */
     accountPages: withCursorPagination(createApiClient<paths>(connection), {
       ...PAGES,

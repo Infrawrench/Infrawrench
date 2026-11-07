@@ -2952,6 +2952,7 @@ export interface operations {
                 slug?: string;
                 source?: string;
                 teamId?: string;
+                until?: number;
             };
             header?: never;
             path: {

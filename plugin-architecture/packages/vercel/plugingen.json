@@ -124,6 +124,18 @@
         }
       },
       "why": "As for visits: the document's rows have no counts, and the rows of a non-time `by` are never asked for."
+    },
+    {
+      "pointer": "/paths/~1v10~1projects~1{idOrName}~1env/get/parameters/8",
+      "value": {
+        "name": "until",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "number"
+        }
+      },
+      "why": "The answer can carry `pagination`, but the document gives no parameter to send `pagination.next` back in. `until` is what every other list here takes it as."
     }
   ],
   "paths": {

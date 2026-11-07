@@ -20,7 +20,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   dnsContentField,
-  rethrowIncompleteList,
+  requireListPage,
   joinSubtitle,
   pathEncode,
   renderDnsRecordDetail,
@@ -161,6 +161,7 @@ export class VercelClient implements PluginClient {
   private readonly api: ReturnType<typeof createVercelApi>["api"];
   private readonly projectPages: ReturnType<typeof createVercelApi>["projectPages"];
   private readonly accountPages: ReturnType<typeof createVercelApi>["accountPages"];
+  private readonly envPages: ReturnType<typeof createVercelApi>["envPages"];
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = credentials["accessToken"];
@@ -169,7 +170,7 @@ export class VercelClient implements PluginClient {
     this.teamId = credentials["teamId"] || null;
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
-    const { api, projectPages, accountPages } = createVercelApi({
+    const { api, projectPages, accountPages, envPages } = createVercelApi({
       accessToken: token,
       teamId: this.teamId,
       caCert: this.caCert,
@@ -178,6 +179,7 @@ export class VercelClient implements PluginClient {
     this.api = api;
     this.projectPages = projectPages;
     this.accountPages = accountPages;
+    this.envPages = envPages;
   }
 
   private async listRawTeams() {
@@ -1201,13 +1203,17 @@ export class VercelClient implements PluginClient {
 
     for (const project of projects) {
       try {
-        const data = await this.api.get(`/v10/projects/${pathEncode(project.id)}/env`);
-        const envs = "envs" in data ? (data.envs ?? []) : [];
+        const envs = await this.envPages.getAll(
+          `/v10/projects/${pathEncode(project.id)}/env`,
+          "envs",
+        );
         for (const env of envs) {
           results.push(this.mapEnvVar(env, project, accountId));
         }
-      } catch {
-        /* skip projects where we lack env read permissions */
+      } catch (err) {
+        // No read permission, or the project went since the list. Anything else is not "no
+        // variables": a sync would delete them all.
+        if (!hasStatus(err, 403, 404)) throw err;
       }
     }
 
@@ -1223,13 +1229,14 @@ export class VercelClient implements PluginClient {
   }
 
   private async listAllDnsRecords(accountId: string): Promise<ResourceInstance[]> {
-    // Only domains on Vercel's nameservers have records here; the rest
-    // answer with an error, which just means "no records to show".
+    // Only domains on Vercel's nameservers have records here; the rest answer with a 4xx,
+    // which just means "no records to show". A 5xx or a 429 does not, and a sync reading it
+    // that way would delete the domain's records.
     const domains = await this.api.getAll("/v5/domains", "domains");
     const batches = await Promise.all(
       domains.map((d) =>
         this.listDnsRecordsForDomain(d.name, accountId).catch((err: unknown) => {
-          rethrowIncompleteList(err);
+          if (!hasStatus(err, 400, 403, 404)) throw err;
           return [];
         }),
       ),
@@ -1238,7 +1245,11 @@ export class VercelClient implements PluginClient {
   }
 
   private async listWebhooks(accountId: string): Promise<ResourceInstance[]> {
-    const hooks = webhooksIn(await this.api.get("/v1/webhooks"));
+    const hooks = requireListPage(webhooksIn(await this.api.get("/v1/webhooks")), {
+      vendor: "Vercel",
+      path: "/v1/webhooks",
+      key: null,
+    });
     return hooks.map((h) => this.mapWebhook(h, accountId));
   }
 
@@ -2005,8 +2016,8 @@ export class VercelClient implements PluginClient {
 }
 
 /** The document says a bare array; `{ webhooks }` is an older shape the plugin still reads. */
-function webhooksIn(data: VercelWebhook[] | { webhooks?: VercelWebhook[] }): VercelWebhook[] {
-  return Array.isArray(data) ? data : (data.webhooks ?? []);
+function webhooksIn(data: VercelWebhook[] | { webhooks?: VercelWebhook[] }) {
+  return Array.isArray(data) ? data : data.webhooks;
 }
 
 /** The id a write acts on. A blank one would address the collection, not a resource. */

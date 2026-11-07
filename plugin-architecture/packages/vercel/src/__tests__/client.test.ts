@@ -414,18 +414,61 @@ describe("listResources dispatch + mappers", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("env var handles missing envs array and undefined target", async () => {
-    installFetch((url) => {
-      if (url.includes("/v10/projects?")) {
-        return jsonResponse({
-          projects: [{ id: "p1", name: "one", createdAt: 1 }],
-          pagination: { next: null },
-        });
-      }
-      return jsonResponse({});
+  const oneProject = () =>
+    jsonResponse({
+      projects: [{ id: "p1", name: "one", createdAt: 1 }],
+      pagination: { next: null },
     });
+
+  it("env var handles an undefined target", async () => {
+    installFetch((url) =>
+      url.includes("/v10/projects?") ? oneProject() : jsonResponse({ envs: [{ key: "FOO" }] }),
+    );
     const res = await client().listResources("vercel-env-var", ACCOUNT);
-    expect(res).toHaveLength(0);
+    expect(res[0]!.fields["target"]).toBe("—");
+  });
+
+  it("refuses an env answer with no list, rather than delete the project's variables", async () => {
+    installFetch((url) => (url.includes("/v10/projects?") ? oneProject() : jsonResponse({})));
+    await expect(client().listResources("vercel-env-var", ACCOUNT)).rejects.toThrow(
+      'it has no "envs"',
+    );
+  });
+
+  it("follows an env answer's pagination, and refuses one that never ends", async () => {
+    let page = 0;
+    installFetch((url) =>
+      url.includes("/v10/projects?")
+        ? oneProject()
+        : jsonResponse({
+            envs: [{ id: `e${page}`, key: "K" }],
+            pagination: { next: page++ === 0 ? 1700 : null },
+          }),
+    );
+    const res = await client().listResources("vercel-env-var", ACCOUNT);
+    expect(res.map((r) => r.externalId)).toEqual(["e0", "e1"]);
+    expect(calls.slice(1).map((c) => c.url)).toEqual([
+      "https://api.vercel.com/v10/projects/p1/env",
+      "https://api.vercel.com/v10/projects/p1/env?until=1700",
+    ]);
+
+    installFetch((url) =>
+      url.includes("/v10/projects?")
+        ? oneProject()
+        : jsonResponse({ envs: [{ id: "e", key: "K" }], pagination: { next: 1 } }),
+    );
+    await expect(client().listResources("vercel-env-var", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("does not read a failed env list as a project with no variables", async () => {
+    installFetch((url) =>
+      url.includes("/v10/projects?") ? oneProject() : jsonResponse("boom", 500),
+    );
+    await expect(client().listResources("vercel-env-var", ACCOUNT)).rejects.toThrow(
+      "Vercel API error 500",
+    );
   });
 
   it("lists teams", async () => {
@@ -1809,6 +1852,17 @@ describe("DNS records", () => {
     expect(res[0]!.parentResourceId).toBe("acct-1:vercel-domain:a.com");
   });
 
+  it.each([500, 429])("does not read a %i as a domain with no records", async (status) => {
+    installFetch((url) =>
+      url.includes("/records")
+        ? jsonResponse("boom", status)
+        : jsonResponse({ domains: [{ name: "a.com" }], pagination: { next: null } }),
+    );
+    await expect(client().listResources("vercel-dns-record", ACCOUNT)).rejects.toThrow(
+      `Vercel API error ${status}`,
+    );
+  });
+
   it("creates an MX record under the parent domain", async () => {
     installFetch(() => jsonResponse({ uid: "rec_9" }));
     const res = await client().createResource(
@@ -1875,6 +1929,16 @@ describe("webhooks", () => {
     const res = await client().listResources("vercel-webhook", ACCOUNT);
     expect(res[0]!.id).toBe("acct-1:vercel-webhook:hook_1");
     expect(res[0]!.fields).toMatchObject({ events: "deployment.ready", projects: "p1" });
+  });
+
+  it("refuses a webhook answer that is not a list, rather than delete them all", async () => {
+    installFetch(() => jsonResponse({ error: "nope" }));
+    await expect(client().listResources("vercel-webhook", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+    installFetch(() => jsonResponse({ webhooks: [{ id: "hook_1", url: "u", events: [] }] }));
+    const res = await client().listResources("vercel-webhook", ACCOUNT);
+    expect(res[0]!.externalId).toBe("hook_1");
   });
 
   it("creates a webhook from picker values and keeps the one-time secret", async () => {
