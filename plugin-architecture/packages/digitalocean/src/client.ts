@@ -1465,10 +1465,8 @@ export class DigitalOceanClient implements PluginClient {
         const shareId = shareExternalId.includes("/")
           ? shareExternalId.split("/")[1]!
           : shareExternalId;
-        // The document wants `params: { vpc_id }` (#411).
-        await this.api.written<"nfs_create_action">(`/nfs/${idSegment(shareId)}/actions`, {
-          method: "POST",
-          body: JSON.stringify({ type: "attach", vpc_id: dropletVpc, region: shareRegion }),
+        await this.api.post(`/nfs/${idSegment(shareId)}/actions`, {
+          body: { type: "attach", region: shareRegion, params: { vpc_id: dropletVpc } },
         });
         return;
       }

@@ -67,10 +67,20 @@ type DoAgentApiKeyRow = ApiListItem<operations["genai_list_agent_api_keys"], "ap
   id?: string;
 };
 
-/** What the plugin reads of a share: the document's fields, and one it does not list (#411). */
-type DoNfsRow = Partial<NonNullable<DoResponse<"nfs_list">["shares"]>[number]> & {
-  mount_targets?: Array<{ address?: string; mount_path?: string; export_path?: string }> | null;
-};
+type DoNfsRow = Partial<NonNullable<DoResponse<"nfs_list">["shares"]>[number]>;
+
+/** A share's mount, which the document puts in `host` and `mount_path`. */
+export function nfsMount(share: DoNfsRow): { mountTarget: string; mountCommand: string } {
+  const mountTarget = share.host ?? "";
+  const directory = share.name ?? share.id;
+  return {
+    mountTarget,
+    mountCommand:
+      mountTarget && share.mount_path
+        ? `sudo mount -t nfs -o nfsvers=4.1 ${mountTarget}:${share.mount_path} /mnt/${directory}`
+        : "",
+  };
+}
 
 /** A router's model reference: the document says an id, and an object has been seen. */
 function modelRef(m: string | { uuid?: string; name?: string }): { id: string; name: string } {
@@ -652,29 +662,46 @@ async function listImages(ctx: DoListerContext, accountId: string): Promise<Reso
   }));
 }
 
-async function listNfsShares(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
-  // The NFS API is region-scoped but listing without a region returns shares
-  // from every region the account has any in. DO encodes the region in each
-  // share's response so we don't have to fan-out by region for listing.
-  let shares: DoNfsRow[] = [];
+/** One answer of `GET /nfs`. The document names the list `shares`; `nfs` is what this read before. */
+async function nfsShares(ctx: DoListerContext, region?: string): Promise<DoNfsRow[]> {
+  const data: DoResponse<"nfs_list"> & { nfs?: DoNfsRow[] | null } = await ctx.api.get(
+    "/nfs",
+    region ? { query: { region } } : {},
+  );
+  return data.nfs ? data.nfs : rowsOf(data, "shares", "/nfs");
+}
+
+/**
+ * The document lists `region` as optional and says this answers all of the account's
+ * shares, while its description writes the region into the URL. So a refusal without
+ * one falls back to asking each region, where a 4xx means no shares in that one, since
+ * NFS is only offered in some regions.
+ */
+async function everyNfsShare(ctx: DoListerContext): Promise<DoNfsRow[]> {
   try {
-    // The document takes no `per_page` here and answers `shares` (#411).
-    const data: DoResponse<"nfs_list"> & { nfs?: DoNfsRow[] | null } =
-      await ctx.api.written<"nfs_list">("/nfs?per_page=200");
-    shares = data.nfs ?? [];
-  } catch {
-    // NFS is region-gated; an account in a non-NFS region returns 4xx.
-    return [];
+    return await nfsShares(ctx);
+  } catch (err) {
+    if (failedWith(err, 403, 404)) return [];
+    if (!failedWith(err, 400, 422)) throw err;
   }
+  const regions = await ctx.api.getAll("/regions", "regions");
+  const perRegion = await Promise.all(
+    regions.map((r) =>
+      nfsShares(ctx, r.slug).catch((err: unknown) => {
+        if (failedWith(err, 400, 403, 404, 422)) return [];
+        throw err;
+      }),
+    ),
+  );
+  return perRegion.flat();
+}
+
+async function listNfsShares(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
+  const shares = await everyNfsShare(ctx);
   return shares.map((s) => {
     const region = String(s.region ?? "");
     const externalId = `${region}/${String(s.id)}`;
-    const mountTargets = Array.isArray(s.mount_targets) ? s.mount_targets : [];
-    const mountTarget = String(mountTargets[0]?.address ?? mountTargets[0]?.mount_path ?? "");
-    const exportPath = String(mountTargets[0]?.export_path ?? `/${String(s.id)}`);
-    const mountCommand = mountTarget
-      ? `sudo mount -t nfs -o nfsvers=4.1 ${mountTarget}:${exportPath} /mnt/${s.name ?? s.id}`
-      : "";
+    const { mountTarget, mountCommand } = nfsMount(s);
     const vpcIds = Array.isArray(s.vpc_ids) ? s.vpc_ids : [];
     return {
       id: `${accountId}:nfs-share:${externalId}`,

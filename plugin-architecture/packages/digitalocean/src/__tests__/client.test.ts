@@ -132,8 +132,8 @@ describe("listResources dispatch + mappers", () => {
       if (path === "/domains?per_page=200") return { domains: [{ name: "example.com" }] };
       if (path.startsWith("/domains/example.com/records"))
         return { domain_records: [{ id: 7, type: "A", name: "www", data: "1.2.3.4" }] };
-      if (path === "/nfs?per_page=200")
-        return { nfs: [{ id: "nfs-1", name: "share", region: "nyc3", size_gib: 50 }] };
+      if (path === "/nfs")
+        return { shares: [{ id: "nfs-1", name: "share", region: "nyc3", size_gib: 50 }] };
       return undefined;
     });
   });

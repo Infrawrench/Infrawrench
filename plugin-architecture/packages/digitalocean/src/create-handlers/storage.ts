@@ -4,9 +4,9 @@ import { signedS3Fetch } from "@infrawrench/plugin-base";
 import { PICKER } from "../api.js";
 import type { DoResponse } from "../api.js";
 import { SPACES_REGIONS, regionDisplay } from "../constants.js";
+import { nfsMount } from "../resource-listers.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
 
-/** The document answers `{ share }`; the plugin reads `nfs` (#411). */
 type DoNfsAnswer = Partial<NonNullable<DoResponse<"nfs_create">["share"]>>;
 
 /**
@@ -456,9 +456,12 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
         performance_tier: fields["performanceTier"] ?? "standard",
       },
     });
-    const s = data.nfs ?? {};
+    // The document answers `share`; `nfs` is what this read before.
+    const s = data.share ?? data.nfs ?? {};
+    if (!s.id) throw new Error("DigitalOcean created the NFS share but returned no id for it.");
     const now = new Date().toISOString();
-    const externalId = `${region}/${String(s.id ?? "")}`;
+    const externalId = `${region}/${s.id}`;
+    const { mountTarget, mountCommand } = nfsMount(s);
     return {
       id: `${accountId}:nfs-share:${externalId}`,
       pluginId: "digitalocean",
@@ -471,10 +474,13 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
         sizeGib: Number(s.size_gib ?? fields["sizeGib"] ?? 0),
         performanceTier: String(s.performance_tier ?? fields["performanceTier"] ?? "standard"),
         vpcIds: Array.isArray(s.vpc_ids) ? s.vpc_ids.join(",") : (fields["vpcId"] ?? ""),
-        mountTarget: "",
-        status: String(s.status ?? "creating"),
+        mountTarget,
+        status: String(s.status ?? "CREATING"),
       },
-      resolvedOutputs: {},
+      resolvedOutputs: {
+        ...(mountTarget ? { mountTarget } : {}),
+        ...(mountCommand ? { mountCommand } : {}),
+      },
       secretStates: [],
       externalId,
       ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
