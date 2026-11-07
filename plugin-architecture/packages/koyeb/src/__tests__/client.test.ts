@@ -437,6 +437,11 @@ describe("lists", () => {
 });
 
 describe("deployments", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
   it("reads the newest few of each service", async () => {
     routes["GET /v1/services"] = { services: [SERVICE], has_next: false };
     routes["GET /v1/deployments"] = { deployments: [DEP], has_next: true };
@@ -452,5 +457,51 @@ describe("deployments", () => {
     await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow("is not a list");
     routes["GET /v1/deployments"] = () => new Response("", { status: 200 });
     await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("past the budget reads a run of services and names the rest", async () => {
+    const services = Array.from({ length: 1100 }, (_, i) => ({ ...SERVICE, id: `s${i}` }));
+    routes["GET /v1/services"] = (c: Call) => {
+      const offset = Number(c.query.get("offset"));
+      return { services: services.slice(offset, offset + 100), count: "1100" };
+    };
+    routes["GET /v1/deployments"] = { deployments: [] };
+    const named: string[] = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: { parentResourceIds?: string[] }) => {
+      named.push(...(part.parentResourceIds ?? []));
+    });
+    await client().listResources("deployment", ACCOUNT);
+    const read = calls
+      .filter((c) => c.path === "/v1/deployments")
+      .map((c) => `${ACCOUNT}:service:${c.query.get("service_id")}`);
+    expect(read).toHaveLength(1000);
+    expect(named).toHaveLength(100);
+    expect(new Set([...read, ...named]).size).toBe(1100);
+  });
+
+  it("moves the run of services from one poll to the next", async () => {
+    const services = Array.from({ length: 1100 }, (_, i) => ({ ...SERVICE, id: `s${i}` }));
+    routes["GET /v1/services"] = (c: Call) => {
+      const offset = Number(c.query.get("offset"));
+      return { services: services.slice(offset, offset + 100), count: "1100" };
+    };
+    routes["GET /v1/deployments"] = { deployments: [] };
+    const unreadAt = async (at: string) => {
+      vi.setSystemTime(new Date(at));
+      const named: string[] = [];
+      Reflect.set(globalThis, UNREAD_HOOK, (part: { parentResourceIds?: string[] }) => {
+        named.push(...(part.parentResourceIds ?? []));
+      });
+      await client().listResources("deployment", ACCOUNT);
+      return named;
+    };
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const first = await unreadAt("2026-11-07T10:00:00Z");
+      const second = await unreadAt("2026-11-07T10:05:00Z");
+      expect(second).not.toEqual(first);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

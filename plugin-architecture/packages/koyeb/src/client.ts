@@ -21,6 +21,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   QuotaAccessError,
+  reportUnreadListPart,
   rethrowIncompleteList,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
@@ -73,6 +74,8 @@ import type {
 const TTL_MS = 60_000;
 const DEPLOYMENTS_PER_SERVICE = 10;
 const FAN_OUT = 6;
+// One request per service per poll. The spec documents no rate limit.
+const MAX_DEPLOYMENT_SERVICES = 1000;
 
 const FLAGS: Record<string, string> = {
   fra: "\u{1F1E9}\u{1F1EA}",
@@ -82,6 +85,23 @@ const FLAGS: Record<string, string> = {
   sin: "\u{1F1F8}\u{1F1EC}",
   tyo: "\u{1F1EF}\u{1F1F5}",
 };
+
+/**
+ * The services to read deployments for this poll and those left for later. Polls share
+ * nothing, so past the budget the start moves with the clock by the golden ratio, which
+ * spreads evenly over the list however long it is.
+ */
+function deploymentWindow(services: KyService[]): { now: KyService[]; later: KyService[] } {
+  if (services.length <= MAX_DEPLOYMENT_SERVICES) return { now: services, later: [] };
+  const sorted = [...services].sort((a, b) => (a.id < b.id ? -1 : 1));
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return {
+    now: rotated.slice(0, MAX_DEPLOYMENT_SERVICES),
+    later: rotated.slice(MAX_DEPLOYMENT_SERVICES),
+  };
+}
 
 /** Koyeb's memory strings ("512MB", "2GB") in MB. */
 export function memoryMb(raw: string | undefined): number {
@@ -207,8 +227,13 @@ export class KoyebClient implements PluginClient {
           );
         }
         case "deployment": {
-          const services = await this.services();
-          const lists = await mapLimit(services, FAN_OUT, async (s) => {
+          const { now, later } = deploymentWindow(await this.services());
+          if (later.length > 0) {
+            reportUnreadListPart({
+              parentResourceIds: later.map((s) => `${accountId}:service:${s.id}`),
+            });
+          }
+          const lists = await mapLimit(now, FAN_OUT, async (s) => {
             // Rolling window: the newest N. Older rows falling off is what this type means.
             // The spec gives no order; Koyeb's own CLI takes `limit=1` as the latest.
             const path = "/v1/deployments";
