@@ -572,3 +572,15 @@ describe("workspace metrics window", () => {
     },
   );
 });
+
+describe("deleteResource with no id", () => {
+  it.each(["transcription", "live-session"])("refuses a blank %s id", async (typeId) => {
+    installFetch(() => {
+      throw new Error("no request should be sent");
+    });
+    await expect(client().deleteResource(typeId, `${ACCOUNT}:${typeId}:`, ACCOUNT)).rejects.toThrow(
+      "no job id",
+    );
+    expect(calls).toHaveLength(0);
+  });
+});

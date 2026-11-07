@@ -305,14 +305,13 @@ export class GladiaClient implements PluginClient {
       if (!isJobType(typeId)) {
         throw new Error(`Gladia plugin: cannot delete type "${typeId}"`);
       }
+      const jobId = externalIdOf(resourceId);
+      if (!jobId) throw new Error(`Gladia plugin: no job id in "${resourceId}", nothing deleted`);
       // DELETE /v2/pre-recorded/{id} and DELETE /v2/live/{id}: verified against
       // https://docs.gladia.io/api-reference/v2/pre-recorded/delete and
       // https://docs.gladia.io/api-reference/v2/live/delete. Both answer 202
       // Accepted on success and 403 when the job is not in a deletable state.
-      await deleteJobRequest(
-        this.connection,
-        `${JOB_PATHS[typeId]}/${pathEncode(externalIdOf(resourceId))}`,
-      );
+      await deleteJobRequest(this.connection, `${JOB_PATHS[typeId]}/${pathEncode(jobId)}`);
     });
   }
 
