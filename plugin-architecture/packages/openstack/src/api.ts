@@ -14,7 +14,8 @@
  *
  * Every request goes through `services.http` when available (bastion, CA,
  * desktop CORS); catalog endpoints are followed as published, so they must
- * be reachable from wherever the host runs.
+ * be reachable from wherever the host runs. A bastion allows the Keystone
+ * host and the catalog hosts picked in the `endpointHosts` credential field.
  */
 import { ListPageError, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
@@ -165,6 +166,18 @@ function linksNext(page: Record<string, unknown> | undefined, key: string): bool
   return typeof glance === "string" && glance !== "";
 }
 
+/** Whether a failed request was a bastion refusing its destination, in it or its causes. */
+function bastionRefusal(err: unknown): string | undefined {
+  let current: unknown = err;
+  for (let depth = 0; depth < 6 && current instanceof Error; depth++) {
+    if (/not allowed for this account|not allowlisted/.test(current.message)) {
+      return current.message;
+    }
+    current = current.cause;
+  }
+  return undefined;
+}
+
 export class OpenStackApi {
   readonly authUrl: string;
   readonly region: string;
@@ -220,6 +233,14 @@ export class OpenStackApi {
         };
       return { status: res.status, headers: hdrs, body: await res.text() };
     } catch (e) {
+      const host = new URL(url).hostname;
+      const refusal = bastionRefusal(e);
+      if (refusal) {
+        throw new OpenStackApiError(
+          `The bastion refused OpenStack endpoint ${host}: ${refusal}. A bastion lets through the Keystone URL's host and the hosts picked under Service Endpoint Hosts (Advanced options on the account), so pick ${host} there.`,
+          503,
+        );
+      }
       const msg = e instanceof Error ? e.message : String(e);
       throw new OpenStackApiError(
         `OpenStack endpoint ${new URL(url).host} is unreachable: ${msg}. Every service endpoint in the catalog must be reachable from here (directly or through a bastion), and the CA certificate must match.`,
@@ -370,6 +391,29 @@ export class OpenStackApi {
       for (const e of s.endpoints)
         if (e.region_id ?? e.region) set.add((e.region_id ?? e.region) as string);
     return [...set].sort();
+  }
+
+  /** The hosts of the endpoints this account would call, each with the services on it. */
+  static catalogHosts(
+    catalog: CatalogEntry[],
+    region: string,
+    iface: string,
+  ): Array<{ host: string; services: string[] }> {
+    const byHost = new Map<string, string[]>();
+    for (const service of Object.keys(SERVICE_TYPES)) {
+      const url = OpenStackApi.pickEndpoint(catalog, service, region, iface);
+      if (!url) continue;
+      let host: string;
+      try {
+        host = new URL(url).hostname.replace(/^\[(.*)\]$/, "$1").toLowerCase();
+      } catch {
+        continue;
+      }
+      byHost.set(host, [...(byHost.get(host) ?? []), service]);
+    }
+    return [...byHost]
+      .map(([host, services]) => ({ host, services }))
+      .sort((a, b) => (a.host < b.host ? -1 : 1));
   }
 
   /** Resolve a service endpoint from the catalog, or `undefined` when the cloud lacks it. */

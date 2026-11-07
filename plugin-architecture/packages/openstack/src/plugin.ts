@@ -17,7 +17,8 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 
 export const manifest = {
   id: "openstack",
-  // OpenStack clouds are user-chosen: Keystone and every catalog endpoint are per-cloud hosts, so there is no fixed egress list (same as kubernetes).
+  // OpenStack clouds are user-chosen: Keystone and every catalog endpoint are per-cloud hosts, so there is no fixed egress list.
+  // A bastion allows the Keystone host from authUrl and the catalog hosts picked in endpointHosts.
   egressHosts: [],
   displayName: "OpenStack",
   description:
@@ -106,6 +107,17 @@ export const manifest = {
       placeholder: "public",
     },
     {
+      key: "endpointHosts",
+      providerHost: true,
+      label: "Service Endpoint Hosts",
+      description:
+        "Only needed behind a bastion, when the service catalog puts Nova, Neutron or other services on hosts other than the Keystone URL's. Pick those hosts so the bastion lets them through. Public addresses only.",
+      sensitive: false,
+      optional: true,
+      advanced: true,
+      providerOptions: { dependsOn: ["authUrl"], multiple: true },
+    },
+    {
       key: "caCert",
       label: "CA Certificate (optional)",
       description:
@@ -148,6 +160,8 @@ export const plugin = definePlugin({
               "userDomain",
               "project",
               "projectDomain",
+              "region",
+              "interface",
               "caCert",
             ]
               .filter((k) => credentials[k])
@@ -163,6 +177,12 @@ export const plugin = definePlugin({
       if (fieldKey === "region") {
         const token = await api.token();
         return OpenStackApi.catalogRegions(token.catalog).map((r) => ({ id: r, label: r }));
+      }
+      if (fieldKey === "endpointHosts") {
+        const token = await api.token();
+        return OpenStackApi.catalogHosts(token.catalog, api.region, api.iface)
+          .filter((h) => h.host !== new URL(api.authUrl).hostname)
+          .map((h) => ({ id: h.host, label: h.host, description: h.services.join(", ") }));
       }
       throw new Error(`OpenStack plugin: no options for "${fieldKey}"`);
     });
