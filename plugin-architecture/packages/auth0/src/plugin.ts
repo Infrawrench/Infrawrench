@@ -24,8 +24,9 @@ const SCOPES = [
 
 export const manifest = {
   id: "auth0",
-  // Auth0 tenants: {tenant}.auth0.com and {tenant}.{region}.auth0.com
-  egressHosts: ["*.auth0.com"],
+  // Auth0 tenants: {tenant}.auth0.com and {tenant}.{region}.auth0.com. A user export's
+  // signed `location` is on a regional S3 bucket, {env}-auth0-export-users-{region}.s3.{region}.amazonaws.com.
+  egressHosts: ["*.auth0.com", "*.amazonaws.com"],
   displayName: "Auth0",
   description:
     "Customer identity platform. Manage applications, APIs, connections, users, roles, organizations, Actions (with deploy), log streams, custom domains, tenant settings, branding and attack protection, and read tenant logs and daily sign-in stats.",

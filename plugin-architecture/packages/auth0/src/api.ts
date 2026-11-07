@@ -94,20 +94,27 @@ function isBadRequest(err: unknown): boolean {
   return typeof err === "object" && err !== null && "status" in err && err.status === 400;
 }
 
+/** What {@link walkPages} read, and what stopped it if that was not the end of the list. */
+export interface Walked<Item> {
+  rows: Item[];
+  /** `depth`: Auth0 refused to page further. `cap`: {@link PagesOptions.maxPages} ran out. */
+  cut?: "depth" | "cap";
+}
+
 /**
  * Page through an offset-paginated collection (`page`/`per_page` with
  * `include_totals=true`). A hand loop rather than `withCursorPagination` because the
  * document also allows these routes to answer the bare array, and a 400 past the first
  * page has to read as this list being too long, not as a bad request.
  */
-export async function pages<Key extends string, Item>(
+export async function walkPages<Key extends string, Item>(
   path: string,
   key: Key,
   fetchPage: (paging: Paging) => Promise<ListPage<Key, Item>>,
   options: PagesOptions = {},
-): Promise<Item[]> {
-  const { maxPages = MAX_PAGES, perPage = 100, partial = false, totalIsEstimate } = options;
-  const out: Item[] = [];
+): Promise<Walked<Item>> {
+  const { maxPages = MAX_PAGES, perPage = 100, totalIsEstimate } = options;
+  const rows: Item[] = [];
   for (let page = 0; page < maxPages; page++) {
     let body: ListPage<Key, Item>;
     try {
@@ -116,37 +123,46 @@ export async function pages<Key extends string, Item>(
       // The same request worked for page 0, so what it refuses is the depth: offset
       // paging on /users stops at 1000 rows.
       if (page === 0 || !isBadRequest(err)) throw err;
-      if (partial) return out;
-      throw new ListTruncatedError({
-        vendor: VENDOR,
-        path,
-        items: out.length,
-        maxItems: out.length,
-      });
+      return { rows, cut: "depth" };
     }
-    let rows: Item[];
+    let read: Item[];
     let total: number | undefined;
     if (Array.isArray(body)) {
-      rows = body;
+      read = body;
     } else {
       const keyed: { [K in Key]?: Item[] } = body;
       ({ total } = body);
       // The document marks the key optional, and a total of 0 says what its absence means.
-      rows =
+      read =
         total === 0 && keyed[key] === undefined
           ? []
           : requireListPage(keyed[key], { vendor: VENDOR, path, key, page: body });
     }
-    out.push(...rows);
-    if (rows.length === 0) return out;
+    rows.push(...read);
+    if (read.length === 0) return { rows };
     if (typeof total === "number" && !totalIsEstimate) {
-      if (out.length >= total) return out;
-    } else if (rows.length < perPage) {
-      return out;
+      if (rows.length >= total) return { rows };
+    } else if (read.length < perPage) {
+      return { rows };
     }
   }
-  if (partial) return out;
-  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
+  return { rows, cut: "cap" };
+}
+
+/** {@link walkPages} for a list that is either whole or an error, or is {@link PagesOptions.partial}. */
+export async function pages<Key extends string, Item>(
+  path: string,
+  key: Key,
+  fetchPage: (paging: Paging) => Promise<ListPage<Key, Item>>,
+  options: PagesOptions = {},
+): Promise<Item[]> {
+  const { rows, cut } = await walkPages(path, key, fetchPage, options);
+  if (!cut || options.partial) return rows;
+  throw new ListTruncatedError(
+    cut === "depth"
+      ? { vendor: VENDOR, path, items: rows.length, maxItems: rows.length }
+      : { vendor: VENDOR, path, items: rows.length, maxPages: options.maxPages ?? MAX_PAGES },
+  );
 }
 
 /** What a checkpoint-paged list asks for. */

@@ -306,6 +306,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_jobs_by_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/users-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_users-exports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/verification-email": {
         parameters: {
             query?: never;
@@ -1879,6 +1911,35 @@ export interface components {
             verification_method?: components["schemas"]["CustomDomainVerificationMethodEnum"];
         };
         CreateCustomDomainResponseContent: CreateCustomDomainResponseContent_a5d1eed5;
+        CreateExportUsersFields: {
+            export_as?: string;
+            name: string;
+        };
+        CreateExportUsersRequestContent: {
+            /** @default con_0000000000000001 */
+            connection_id?: string;
+            fields?: components["schemas"]["CreateExportUsersFields"][];
+            format?: components["schemas"]["JobFileFormatEnum"];
+            /** @default 5 */
+            limit?: number;
+        };
+        CreateExportUsersResponseContent: {
+            /** @default con_0000000000000001 */
+            connection_id?: string;
+            created_at?: string;
+            fields?: components["schemas"]["CreateExportUsersFields"][];
+            format?: components["schemas"]["JobFileFormatEnum"];
+            /** @default job_0000000000000001 */
+            id: string;
+            /** @default 5 */
+            limit?: number;
+            /** @default pending */
+            status: string;
+            /** @default users_export */
+            type: string;
+        } & {
+            [key: string]: unknown;
+        };
         CreateIdentityAssertionAuthorizationGrant: {
             /** @default false */
             active: boolean;
@@ -2303,6 +2364,37 @@ export interface components {
         };
         GetConnectionResponseContent: CreateConnectionResponseContent_ba0ba795;
         GetCustomDomainResponseContent: CustomDomain_d4110e87;
+        GetJobResponseContent: {
+            /** @default con_0000000000000001 */
+            connection_id?: string;
+            created_at?: string;
+            format?: components["schemas"]["JobFileFormatEnum"];
+            /** @default job_0000000000000001 */
+            id: string;
+            location?: string;
+            percentage_done?: number;
+            /** @default pending */
+            status: string;
+            status_details?: string;
+            summary?: components["schemas"]["GetJobSummary"];
+            time_left_seconds?: number;
+            /** @default users_import */
+            type: string;
+        } & {
+            [key: string]: unknown;
+        };
+        GetJobSummary: {
+            /** @default 0 */
+            failed?: number;
+            /** @default 0 */
+            inserted?: number;
+            /** @default 0 */
+            total?: number;
+            /** @default 0 */
+            updated?: number;
+        } & {
+            [key: string]: unknown;
+        };
         GetLogStreamResponseContent: CreateLogStreamResponseContent_28cbcf67;
         GetOrganizationResponseContent: GetOrganizationResponseContent_e16d9399;
         GetResourceServerResponseContent: CreateResourceServerResponseContent_595d54a2;
@@ -2416,6 +2508,8 @@ export interface components {
             /** @default 1 */
             minor?: number;
         };
+        /** @enum {string} */
+        JobFileFormatEnum: "json" | "csv";
         LinkedClientConfiguration: {
             /** Format: client-id */
             client_id: string;
@@ -4647,6 +4741,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VerifyCustomDomainResponseContent"];
+                };
+            };
+        };
+    };
+    get_jobs_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetJobResponseContent"];
+                };
+            };
+        };
+    };
+    "post_users-exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateExportUsersRequestContent"];
+                "application/x-www-form-urlencoded": components["schemas"]["CreateExportUsersRequestContent"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateExportUsersResponseContent"];
                 };
             };
         };

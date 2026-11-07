@@ -67,3 +67,5 @@ export type A0CustomDomain = (
 ) & { origin_domain_name?: string };
 
 export type A0Log = Answer<"get_logs">[number];
+
+export type A0Job = Answer<"get_jobs_by_id">;

@@ -22,8 +22,9 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { operations, paths } from "./api-types.gen.js";
-import { Auth0Api, checkpoints, pages, readCredentials, regionOfDomain } from "./api.js";
+import { Auth0Api, checkpoints, pages, readCredentials, regionOfDomain, walkPages } from "./api.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
+import { usersPastSearch, type ExportedUser } from "./user-export.js";
 import type {
   A0Action,
   A0Branding,
@@ -47,6 +48,9 @@ export const METRICS_DEFAULT_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
 const PICKER = { maxPages: 10, partial: true };
 
 const MAX_ENABLED_CLIENT_READS = 1000;
+
+/** All of the 1,000 users Auth0's search returns of a query, at 100 a page. */
+const USER_SEARCH_PAGES = 10;
 
 /** 10,000 custom domains at the 100 a page the document allows. */
 const MAX_CUSTOM_DOMAIN_PAGES = 100;
@@ -124,7 +128,10 @@ export class Auth0Client implements PluginClient {
   readonly api: Auth0Api;
   private readonly rest: ApiClient<paths>;
 
-  constructor(credentials: Credentials, services?: HostServices) {
+  constructor(
+    credentials: Credentials,
+    private readonly services?: HostServices,
+  ) {
     this.api = new Auth0Api(readCredentials(credentials), services);
     this.rest = this.api.rest;
   }
@@ -162,16 +169,7 @@ export class Auth0Client implements PluginClient {
           );
         }
         case "user":
-          return (
-            await pages(
-              "/users",
-              "users",
-              (paging) => this.rest.get("/users", { query: { sort: "created_at:-1", ...paging } }),
-              // A best-effort search, as the document says, with nothing to say `total`
-              // counts past the depth it pages to. Asking once more is what proves the end.
-              { totalIsEstimate: true },
-            )
-          ).map((u) => this.mapUser(accountId, u));
+          return (await this.listUsers(accountId)).map((u) => this.mapUser(accountId, u));
         case "role":
           return (
             await pages("/roles", "roles", (paging) => this.rest.get("/roles", { query: paging }))
@@ -206,6 +204,32 @@ export class Auth0Client implements PluginClient {
           throw new Error(`Auth0 plugin: unknown resource type "${typeId}"`);
       }
     });
+  }
+
+  /**
+   * The search alone for a tenant it can read whole, which is nearly all of them and
+   * spends no job. Its newest rows also keep a larger tenant fresh between exports.
+   */
+  private async listUsers(accountId: string): Promise<(A0User | ExportedUser)[]> {
+    const { rows, cut } = await walkPages(
+      "/users",
+      "users",
+      (paging) => this.rest.get("/users", { query: { sort: "created_at:-1", ...paging } }),
+      // A best-effort search, as the document says, with nothing to say `total` counts
+      // past the depth it pages to. Only a short page proves the end, so a tenant of
+      // exactly 1,000 takes the export, which is right for it too.
+      { maxPages: USER_SEARCH_PAGES, totalIsEstimate: true },
+    );
+    if (!cut) return rows;
+    return usersPastSearch(
+      {
+        rest: this.rest,
+        services: this.services,
+        caCert: this.api.creds.caCert,
+        stateResourceId: `${accountId}:tenant:${this.api.domain}`,
+      },
+      rows,
+    );
   }
 
   getResource(
@@ -532,7 +556,7 @@ export class Auth0Client implements PluginClient {
     );
   }
 
-  mapUser(accountId: string, u: A0User): ResourceInstance {
+  mapUser(accountId: string, u: A0User | ExportedUser): ResourceInstance {
     const id = str(u.user_id);
     return this.instance(
       accountId,

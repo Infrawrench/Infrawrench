@@ -245,7 +245,7 @@ describe("list limits", () => {
     await expect(c.listResources("user", ACCOUNT)).rejects.toThrow(
       "has more than Infrawrench reads",
     );
-    expect(apiCalls()).toHaveLength(11);
+    expect(apiCalls()).toHaveLength(10);
   });
 
   it("ends the user list on an empty page after a full one", async () => {
