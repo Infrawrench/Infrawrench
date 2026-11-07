@@ -1163,6 +1163,61 @@ describe("BYOK credentials", () => {
   });
 });
 
+describe("expired API keys", () => {
+  const past = "2020-01-01T00:00:00Z";
+
+  it("stay in the inventory", async () => {
+    installFetch((url) => {
+      if (url.includes("/workspaces")) return jsonResponse({ data: [], total_count: 0 });
+      expect(url).toContain("include_expired=true");
+      return url.includes("offset=0")
+        ? jsonResponse({ data: [{ hash: "old", expires_at: past }] })
+        : jsonResponse({ data: [] });
+    });
+    const rows = await client().listResources("api-key", ACCOUNT);
+    expect(rows.map((r) => r.fields["expiresAt"])).toEqual([past]);
+  });
+
+  it("read as expired in the detail, the sidebar and the stats", async () => {
+    installFetch((url) =>
+      url.includes("/credits")
+        ? jsonResponse({ data: { total_credits: 1, total_usage: 0 } })
+        : jsonResponse({ data: { hash: "old", expires_at: past } }),
+    );
+    const id = `${ACCOUNT}:api-key:old`;
+    const stats = await client().fetchDashboardStats("api-key", id, ACCOUNT);
+    expect(stats.find((stat) => stat.label === "Status")).toMatchObject({
+      value: "expired",
+      variant: "status-degraded",
+    });
+
+    const resource = await client().getResource("api-key", id, ACCOUNT);
+    const sync = new OpenRouterClient({ managementKey: "m" });
+    const detail = sync.renderDetail(resource);
+    expect(detail.status).toMatchObject({ status: "degraded" });
+    expect(JSON.stringify(detail.sections)).toContain('"Status","value":"Expired"');
+    expect(sync.renderSidebarItem(resource).status).toMatchObject({ status: "degraded" });
+  });
+
+  it("leaves a key expiring later reading as active", async () => {
+    installFetch((url) =>
+      url.includes("/credits")
+        ? jsonResponse({ data: { total_credits: 1, total_usage: 0 } })
+        : jsonResponse({ data: { hash: "new", expires_at: "2999-01-01T00:00:00Z" } }),
+    );
+    const stats = await client().fetchDashboardStats("api-key", `${ACCOUNT}:api-key:new`, ACCOUNT);
+    expect(stats.find((stat) => stat.label === "Status")?.value).toBe("active");
+  });
+
+  it("are left out of the guardrail key picker", async () => {
+    installFetch((url) => {
+      if (url.includes("/keys")) expect(url).not.toContain("include_expired");
+      return jsonResponse({ data: [], total_count: 0 });
+    });
+    await client().getCreateConfig("guardrail");
+  });
+});
+
 describe("workspaces beyond the default", () => {
   const search = (url: string) => new URL(url).searchParams;
 

@@ -472,7 +472,9 @@ export class OpenRouterClient implements PluginClient {
     const now = new Date().toISOString();
     const keys = await this.acrossWorkspaces(
       (query) =>
-        this.api.keys.getAll("/keys", "data", { query: { ...query, include_disabled: true } }),
+        this.api.keys.getAll("/keys", "data", {
+          query: { ...query, include_disabled: true, include_expired: true },
+        }),
       (k) => k.hash,
     );
     return keys.map((k) => this.mapKey(accountId, now, k));
@@ -717,8 +719,8 @@ export class OpenRouterClient implements PluginClient {
           },
           {
             label: "Status",
-            value: f["disabled"] === true ? "disabled" : "active",
-            variant: f["disabled"] === true ? "status-degraded" : "status-healthy",
+            value: keyStatus(f).toLowerCase(),
+            variant: keyStatus(f) === "Active" ? "status-healthy" : "status-degraded",
           },
         ];
         try {
@@ -1898,7 +1900,7 @@ export class OpenRouterClient implements PluginClient {
 
   private renderApiKeyDetail(resource: ResourceInstance): DetailViewSchema {
     const f = resource.fields;
-    const disabled = f["disabled"] === true;
+    const status = keyStatus(f);
     const limit = Number(f["limit"] ?? 0);
     const remaining = Number(f["limitRemaining"] ?? 0);
 
@@ -1906,7 +1908,7 @@ export class OpenRouterClient implements PluginClient {
       metricsCapability: { defaultTimeRangeMs: ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000 },
       title: resource.displayName,
       subtitle: "OpenRouter API Key",
-      status: { kind: "status-dot", status: disabled ? "degraded" : "healthy" },
+      status: { kind: "status-dot", status: status === "Active" ? "healthy" : "degraded" },
       sections: [
         {
           kind: "section",
@@ -1918,7 +1920,7 @@ export class OpenRouterClient implements PluginClient {
                 { key: "Hash", value: String(f["hash"] || DASH), copyable: true },
                 { key: "Name", value: String(f["name"] || DASH) },
                 { key: "Label", value: String(f["label"] || DASH) },
-                { key: "Status", value: disabled ? "Disabled" : "Active" },
+                { key: "Status", value: status },
                 { key: "Expires", value: String(f["expiresAt"] || "never") },
                 { key: "Created", value: String(f["createdAt"] || DASH) },
                 { key: "Updated", value: String(f["updatedAt"] || DASH) },
@@ -1986,7 +1988,7 @@ export class OpenRouterClient implements PluginClient {
         label: resource.displayName,
         status: {
           kind: "status-dot",
-          status: resource.fields["disabled"] === true ? "degraded" : "healthy",
+          status: keyStatus(resource.fields) === "Active" ? "healthy" : "degraded",
         },
       };
     }
@@ -2010,6 +2012,13 @@ export class OpenRouterClient implements PluginClient {
 }
 
 // -------------------------------------------------------------- helpers
+
+/** What a key can do now. BYOK credentials go through here too, and have no expiry. */
+function keyStatus(fields: ResourceInstance["fields"]): "Active" | "Disabled" | "Expired" {
+  if (fields["disabled"] === true) return "Disabled";
+  const expires = Date.parse(String(fields["expiresAt"] ?? ""));
+  return expires <= Date.now() ? "Expired" : "Active";
+}
 
 /** The key may not reach this route, or the thing it asked about is gone. */
 function isRefused(err: unknown): boolean {
