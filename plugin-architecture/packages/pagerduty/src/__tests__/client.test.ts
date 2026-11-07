@@ -396,3 +396,29 @@ describe("terraform export", () => {
 beforeEach(() => {
   vi.restoreAllMocks();
 });
+
+describe("cached reads", () => {
+  it("reads the users again straight after a failed read", async () => {
+    let failing = true;
+    const { c, calls } = client(() =>
+      failing
+        ? { status: 500, body: { error: { message: "boom" } } }
+        : { status: 200, body: { users: [{ id: "U1", name: "Ada" }], more: false } },
+    );
+    await expect(c.listResources("pagerduty-user", "acc")).rejects.toThrow("500");
+    failing = false;
+    const users = await c.listResources("pagerduty-user", "acc");
+    expect(users.map((u) => u.externalId)).toEqual(["U1"]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("keeps a good read for the next caller", async () => {
+    const { c, calls } = client(() => ({
+      status: 200,
+      body: { escalation_policies: [{ id: "P1", name: "On call" }], more: false },
+    }));
+    await c.listResources("pagerduty-escalation-policy", "acc");
+    await c.listResources("pagerduty-escalation-policy", "acc");
+    expect(calls).toHaveLength(1);
+  });
+});

@@ -95,9 +95,28 @@ const CACHE_MS = 60_000;
 /** Resolved incidents older than this are not listed as resources. */
 const RESOLVED_WINDOW_MS = 7 * 24 * 3600_000;
 
-interface Cached<T> {
-  at: number;
-  value: Promise<T>;
+/** A read kept for `CACHE_MS`, unless it failed: one transient error must not answer for a minute. */
+class CachedRead<T> {
+  private entry: { at: number; value: Promise<T> } | undefined;
+  private readonly read: () => Promise<T>;
+
+  constructor(read: () => Promise<T>) {
+    this.read = read;
+  }
+
+  get(): Promise<T> {
+    if (this.entry && Date.now() - this.entry.at < CACHE_MS) return this.entry.value;
+    const value = this.read();
+    this.entry = { at: Date.now(), value };
+    value.catch(() => {
+      if (this.entry?.value === value) this.entry = undefined;
+    });
+    return value;
+  }
+
+  clear(): void {
+    this.entry = undefined;
+  }
 }
 
 const trimmed = (fields: Record<string, string>, key: string): string => (fields[key] ?? "").trim();
@@ -149,8 +168,14 @@ export class PagerDutyClient implements PluginClient {
   private readonly api: PagerDutyApi;
   private readonly fromEmail: string;
   private readonly paging: PagingContext;
-  private userCache: Cached<PdUser[]> | undefined;
-  private policyCache: Cached<PdEscalationPolicy[]> | undefined;
+  private readonly userRead = new CachedRead<PdUser[]>(() =>
+    this.api.getAll("/users", "users", { query: { "include[]": ["teams"] } }),
+  );
+  private readonly policyRead = new CachedRead<PdEscalationPolicy[]>(() =>
+    this.api.getAll("/escalation_policies", "escalation_policies", {
+      query: { "include[]": ["services", "teams"], sort_by: "name" },
+    }),
+  );
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
@@ -179,30 +204,12 @@ export class PagerDutyClient implements PluginClient {
   }
 
   private invalidate(): void {
-    this.userCache = undefined;
-    this.policyCache = undefined;
-  }
-
-  private users(): Promise<PdUser[]> {
-    if (this.userCache && Date.now() - this.userCache.at < CACHE_MS) return this.userCache.value;
-    const value = this.api.getAll("/users", "users", { query: { "include[]": ["teams"] } });
-    this.userCache = { at: Date.now(), value };
-    return value;
-  }
-
-  private policies(): Promise<PdEscalationPolicy[]> {
-    if (this.policyCache && Date.now() - this.policyCache.at < CACHE_MS) {
-      return this.policyCache.value;
-    }
-    const value = this.api.getAll("/escalation_policies", "escalation_policies", {
-      query: { "include[]": ["services", "teams"], sort_by: "name" },
-    });
-    this.policyCache = { at: Date.now(), value };
-    return value;
+    this.userRead.clear();
+    this.policyRead.clear();
   }
 
   private async userOptions(): Promise<Option[]> {
-    return (await this.users()).map((u) => ({
+    return (await this.userRead.get()).map((u) => ({
       id: u.id ?? "",
       name: u.name ?? u.email ?? u.id ?? "",
       ...(u.email ? { description: u.email } : {}),
@@ -210,7 +217,10 @@ export class PagerDutyClient implements PluginClient {
   }
 
   private async policyOptions(): Promise<Option[]> {
-    return (await this.policies()).map((p) => ({ id: p.id ?? "", name: p.name ?? p.id ?? "" }));
+    return (await this.policyRead.get()).map((p) => ({
+      id: p.id ?? "",
+      name: p.name ?? p.id ?? "",
+    }));
   }
 
   private async priorityOptions(): Promise<Option[]> {
@@ -241,7 +251,7 @@ export class PagerDutyClient implements PluginClient {
             })
           ).map((s) => mapService(accountId, s));
         case "pagerduty-escalation-policy":
-          return (await this.policies()).map((p) => mapEscalationPolicy(accountId, p));
+          return (await this.policyRead.get()).map((p) => mapEscalationPolicy(accountId, p));
         case "pagerduty-schedule":
           return (await this.api.getAll("/schedules", "schedules")).map((s) =>
             mapSchedule(accountId, s),
@@ -249,7 +259,7 @@ export class PagerDutyClient implements PluginClient {
         case "pagerduty-team":
           return (await this.api.getAll("/teams", "teams")).map((t) => mapTeam(accountId, t));
         case "pagerduty-user":
-          return (await this.users()).map((u) => mapUser(accountId, u));
+          return (await this.userRead.get()).map((u) => mapUser(accountId, u));
         case "pagerduty-incident": {
           const [open, resolved] = await Promise.all([
             this.api.getAll("/incidents", "incidents", {
