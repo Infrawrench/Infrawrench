@@ -16,8 +16,15 @@ import type {
   SettingDescriptor,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
-import { createClerkApi, type ClerkApi, type ListBody } from "./api.js";
+import {
+  externalIdOf,
+  ListTruncatedError,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+  type ApiBody,
+} from "@infrawrench/plugin-base";
+import { createClerkApi, VENDOR, type ClerkApi, type ListBody, type ListOptions } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import type { ClerkFailure } from "./http.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
@@ -43,6 +50,8 @@ import type {
 const PLUGIN_ID = "clerk";
 export const METRICS_DEFAULT_RANGE_MS = 14 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** A picker or a detail view's list: part of it is fine and nothing acts on it as complete. */
+const SHORT_LIST: ListOptions = { maxItems: 500, partial: true };
 
 /** The query of `GET /users/count`. */
 type CountQuery = NonNullable<operations["GetUsersCount"]["parameters"]["query"]>;
@@ -118,7 +127,7 @@ export class ClerkClient implements PluginClient {
           return (await this.listUsers()).map((u) => this.mapUser(accountId, u));
         case "organization":
           return (
-            await this.api.list((paging) =>
+            await this.api.list("/organizations", (paging) =>
               this.api.get("/organizations", {
                 query: { include_members_count: true, ...paging },
               }),
@@ -127,55 +136,81 @@ export class ClerkClient implements PluginClient {
         case "domain":
           return (await this.listDomains()).map((d) => this.mapDomain(accountId, d));
         case "jwt-template":
-          return (await this.api.list((query) => this.api.get("/jwt_templates", { query }))).map(
-            (t) => this.mapJwtTemplate(accountId, t),
-          );
+          return (
+            await this.api.list("/jwt_templates", (query) =>
+              this.api.get("/jwt_templates", { query }),
+            )
+          ).map((t) => this.mapJwtTemplate(accountId, t));
         case "oauth-application":
           return (
-            await this.api.list((query) => this.api.get("/oauth_applications", { query }))
+            await this.api.list("/oauth_applications", (query) =>
+              this.api.get("/oauth_applications", { query }),
+            )
           ).map((a) => this.mapOAuthApp(accountId, a));
         case "enterprise-connection":
           return (
-            await this.api.list((query) => this.api.get("/enterprise_connections", { query }))
+            await this.api.list("/enterprise_connections", (query) =>
+              this.api.get("/enterprise_connections", { query }),
+            )
           ).map((c) => this.mapEnterpriseConnection(accountId, c));
         case "machine":
-          return (await this.api.list((query) => this.api.get("/machines", { query }))).map((m) =>
-            this.mapMachine(accountId, m),
-          );
+          return (
+            await this.api.list("/machines", (query) => this.api.get("/machines", { query }))
+          ).map((m) => this.mapMachine(accountId, m));
         case "allowlist-identifier":
           return (
-            await this.api.list((query) => this.api.get("/allowlist_identifiers", { query }))
+            await this.api.list("/allowlist_identifiers", (query) =>
+              this.api.get("/allowlist_identifiers", { query }),
+            )
           ).map((i) => this.mapIdentifier(accountId, "allowlist-identifier", i));
-        case "blocklist-identifier": {
-          const body: ListBody<CkIdentifier> = await this.api.get("/blocklist_identifiers");
-          const items = Array.isArray(body) ? body : (body.data ?? []);
-          return items.map((i) => this.mapIdentifier(accountId, "blocklist-identifier", i));
-        }
+        case "blocklist-identifier":
+          return (await this.listBlocklist()).map((i) =>
+            this.mapIdentifier(accountId, "blocklist-identifier", i),
+          );
         case "invitation":
           return (
-            await this.api.list((paging) =>
+            await this.api.list("/invitations", (paging) =>
               this.api.get("/invitations", { query: { status: "pending", ...paging } }),
             )
           ).map((i) => this.mapInvitation(accountId, i));
         case "redirect-url":
-          return (await this.api.list((query) => this.api.get("/redirect_urls", { query }))).map(
-            (r) => this.mapRedirectUrl(accountId, r),
-          );
+          return (
+            await this.api.list("/redirect_urls", (query) =>
+              this.api.get("/redirect_urls", { query }),
+            )
+          ).map((r) => this.mapRedirectUrl(accountId, r));
         default:
           throw new Error(`Clerk plugin: unknown resource type "${typeId}"`);
       }
     });
   }
 
-  private listUsers(maxItems?: number): Promise<CkUser[]> {
+  private listUsers(options?: ListOptions): Promise<CkUser[]> {
     return this.api.list(
+      "/users",
       (paging) => this.api.get("/users", { query: { order_by: "-created_at", ...paging } }),
-      maxItems,
+      options,
     );
   }
 
   private listDomains(): Promise<CkDomain[]> {
-    return this.api.list((query) => this.api.get("/domains", { query }));
+    return this.api.list("/domains", (query) => this.api.get("/domains", { query }));
+  }
+
+  /** The document gives this route no paging, so one answer has to be all of it. */
+  private async listBlocklist(): Promise<CkIdentifier[]> {
+    const path = "/blocklist_identifiers";
+    const body: ListBody<CkIdentifier> | undefined = await this.api.get(path);
+    const items = requireListPage(Array.isArray(body) ? body : body?.data, {
+      vendor: VENDOR,
+      path,
+      key: "data",
+    });
+    const total = Array.isArray(body) ? undefined : body?.total_count;
+    if (total !== undefined && total > items.length) {
+      throw new ListTruncatedError({ vendor: VENDOR, path, items: items.length, maxPages: 1 });
+    }
+    return items;
   }
 
   /** How many users match. `query` is empty for all of them. */
@@ -183,14 +218,15 @@ export class ClerkClient implements PluginClient {
     return this.api.get("/users/count", { query });
   }
 
-  private async listActiveSessions(userId: string, maxItems?: number): Promise<CkSession[]> {
+  private async listActiveSessions(userId: string, options?: ListOptions): Promise<CkSession[]> {
     // A blank `user_id` is dropped from the query, which turns this into every
     // active session in the instance, and the revoke action acts on the result.
     if (!userId.trim()) throw new Error("Clerk plugin: this action needs a user id");
     return this.api.list(
+      "/sessions",
       (paging) =>
         this.api.get("/sessions", { query: { user_id: userId, status: "active", ...paging } }),
-      maxItems,
+      options,
     );
   }
 
@@ -294,7 +330,10 @@ export class ClerkClient implements PluginClient {
   private async instanceResource(accountId: string): Promise<ResourceInstance> {
     const [instance, domains, users, active, orgSettings] = await Promise.all([
       this.api.get("/instance"),
-      this.listDomains().catch((): CkDomain[] => []),
+      this.listDomains().catch((err): CkDomain[] => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
       this.countUsers({}).catch(() => ({ total_count: undefined })),
       this.countUsers({ last_active_at_since: Date.now() - 30 * DAY_MS }).catch(() => ({
         total_count: undefined,
@@ -840,7 +879,7 @@ export class ClerkClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async userOptions(): Promise<SelectOption[]> {
-    const users = await this.listUsers(500).catch((): CkUser[] => []);
+    const users = await this.listUsers(SHORT_LIST).catch((): CkUser[] => []);
     return users.map((u) => ({
       id: str(u.id),
       label: primaryEmail(u) || str(u.username) || str(u.id),
@@ -849,7 +888,11 @@ export class ClerkClient implements PluginClient {
 
   async roleOptions(): Promise<SelectOption[]> {
     const roles = await this.api
-      .list((query) => this.api.get("/organization_roles", { query }), 500)
+      .list(
+        "/organization_roles",
+        (query) => this.api.get("/organization_roles", { query }),
+        SHORT_LIST,
+      )
       .catch((): CkOrgRole[] => []);
     if (roles.length === 0) {
       return [
@@ -1584,15 +1627,20 @@ export class ClerkClient implements PluginClient {
       switch (resource.resourceTypeId) {
         case "user": {
           const [sessions, memberships, orgs, roles] = await Promise.all([
-            this.listActiveSessions(raw, 500).catch((): CkSession[] => []),
+            this.listActiveSessions(raw, SHORT_LIST).catch((): CkSession[] => []),
             this.api
               .list(
+                "/users/{user_id}/organization_memberships",
                 (query) => this.api.get(`/users/${id}/organization_memberships`, { query }),
-                500,
+                SHORT_LIST,
               )
               .catch((): CkMembership[] => []),
             this.api
-              .list((query) => this.api.get("/organizations", { query }), 500)
+              .list(
+                "/organizations",
+                (query) => this.api.get("/organizations", { query }),
+                SHORT_LIST,
+              )
               .catch((): CkOrganization[] => []),
             this.roleOptions(),
           ]);
@@ -1620,17 +1668,22 @@ export class ClerkClient implements PluginClient {
         case "organization": {
           const [members, users, roles, invitations] = await Promise.all([
             this.api
-              .list((query) => this.api.get(`/organizations/${id}/memberships`, { query }), 1000)
+              .list(
+                "/organizations/{organization_id}/memberships",
+                (query) => this.api.get(`/organizations/${id}/memberships`, { query }),
+                { maxItems: 1000, partial: true },
+              )
               .catch((): CkMembership[] => []),
             this.userOptions(),
             this.roleOptions(),
             this.api
               .list(
+                "/organizations/{organization_id}/invitations",
                 (paging) =>
                   this.api.get(`/organizations/${id}/invitations`, {
                     query: { status: "pending", ...paging },
                   }),
-                500,
+                SHORT_LIST,
               )
               .catch((): CkOrgInvitation[] => []),
           ]);
@@ -1654,7 +1707,7 @@ export class ClerkClient implements PluginClient {
         }
         case "machine": {
           const machines = await this.api
-            .list((query) => this.api.get("/machines", { query }), 500)
+            .list("/machines", (query) => this.api.get("/machines", { query }), SHORT_LIST)
             .catch((): CkMachine[] => []);
           extra["__machineOptions__"] = JSON.stringify(
             machines

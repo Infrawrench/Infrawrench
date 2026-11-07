@@ -220,6 +220,140 @@ describe("mutations", () => {
   });
 });
 
+describe("lists", () => {
+  const pathOf = (call: Call) => new URL(call.url).pathname;
+  const offsetOf = (call: Call) => Number(new URL(call.url).searchParams.get("offset"));
+  const rows = (offset: number, length = 500) =>
+    Array.from({ length }, (_, i) => ({ id: `row_${offset + i}`, name: `Row ${offset + i}` }));
+
+  it("reads past the old 2,500 row cap", async () => {
+    const c = client((call) => {
+      const offset = offsetOf(call);
+      return { body: rows(offset, offset < 12_000 ? 500 : 7) };
+    });
+    expect(await c.listResources("user", ACCOUNT)).toHaveLength(12_007);
+  });
+
+  it("refuses a list that never ends instead of returning part of it", async () => {
+    const c = client((call) => ({ body: rows(offsetOf(call)) }));
+    await expect(c.listResources("user", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("refuses a page whose list key was renamed, first or later", async () => {
+    const first = client(() => ({ body: { items: [], total_count: 0 } }));
+    await expect(first.listResources("organization", ACCOUNT)).rejects.toThrow("is not a list");
+    calls = [];
+    const later = client((call) =>
+      offsetOf(call) === 0
+        ? { body: { data: rows(0), total_count: 900 } }
+        : { body: { items: rows(500), total_count: 900 } },
+    );
+    await expect(later.listResources("organization", ACCOUNT)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("refuses an empty answer", async () => {
+    const c = client(() => ({}));
+    await expect(c.listResources("redirect-url", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("keeps reading a short page when total_count says there is more", async () => {
+    const c = client((call) => {
+      const offset = offsetOf(call);
+      return { body: { data: rows(offset, offset < 200 ? 100 : 50), total_count: 250 } };
+    });
+    expect(await c.listResources("machine", ACCOUNT)).toHaveLength(250);
+    expect(calls.map(offsetOf)).toEqual([0, 100, 200]);
+  });
+
+  it("reads the blocklist as one page, and refuses it when that page is not all of it", async () => {
+    const whole = client(() => ({ body: { data: rows(0, 2), total_count: 2 } }));
+    expect(await whole.listResources("blocklist-identifier", ACCOUNT)).toHaveLength(2);
+    const renamed = client(() => ({ body: { items: [], total_count: 0 } }));
+    await expect(renamed.listResources("blocklist-identifier", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+    const part = client(() => ({ body: { data: rows(0, 2), total_count: 3 } }));
+    await expect(part.listResources("blocklist-identifier", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("lets a bad domains page through the instance's catch", async () => {
+    const c = client((call) =>
+      pathOf(call) === "/v1/domains" ? { body: { items: [] } } : { body: { id: "ins_1" } },
+    );
+    await expect(c.listResources("instance", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("still names the instance when domains fail for another reason", async () => {
+    const c = client((call) =>
+      pathOf(call) === "/v1/domains" ? { status: 403, body: {} } : { body: { id: "ins_1" } },
+    );
+    const [instance] = await c.listResources("instance", ACCOUNT);
+    expect(instance!.externalId).toBe("ins_1");
+  });
+
+  it("revokes nothing when it cannot read every session", async () => {
+    const c = client((call) =>
+      call.method === "GET" ? { body: rows(offsetOf(call)) } : { body: {} },
+    );
+    await expect(
+      c.invokeAction("user", `${ACCOUNT}:user:user_1`, "revoke-sessions"),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls.filter((x) => x.method === "POST")).toHaveLength(0);
+  });
+
+  it("reads every session past the old cap before revoking", async () => {
+    const c = client((call) => {
+      if (call.method !== "GET") return { body: {} };
+      const offset = offsetOf(call);
+      return { body: rows(offset, offset < 2_500 ? 500 : 1) };
+    });
+    await c.invokeAction("user", `${ACCOUNT}:user:user_1`, "revoke-sessions");
+    expect(calls.filter((x) => x.method === "POST")).toHaveLength(2_501);
+  });
+
+  it("lets a picker stop at its cap", async () => {
+    const c = client((call) => ({ body: rows(offsetOf(call)) }));
+    const config = await c.getCreateConfig("organization");
+    const owner = config.fields.find((f) => f.key === "createdBy");
+    expect(owner!.options).toHaveLength(500);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("lets a detail view stop at its cap", async () => {
+    const c = client((call) => {
+      const offset = offsetOf(call);
+      if (pathOf(call).endsWith("/memberships")) {
+        return {
+          body: {
+            data: rows(offset).map((r) => ({ public_user_data: { user_id: r.id } })),
+            total_count: 5_000,
+          },
+        };
+      }
+      return { body: [] };
+    });
+    const detail = await c.enrichDetail({
+      id: `${ACCOUNT}:organization:org_1`,
+      pluginId: "clerk",
+      resourceTypeId: "organization",
+      accountId: ACCOUNT,
+      displayName: "Org",
+      fields: {},
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    });
+    expect(JSON.parse(detail.resolvedOutputs["__members__"]!)).toHaveLength(1000);
+  });
+});
+
 describe("status feed", () => {
   it("keeps unresolved incidents", () => {
     const body = JSON.stringify({
