@@ -18,10 +18,17 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  reportUnreadListPart,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import type { NorthflankContext, Query } from "./api.js";
 import { nfFetch, nfList, statusOf } from "./api.js";
 import { fetchDailyUsage, fetchNorthflankCostData } from "./cost-data.js";
+import type { FanOut } from "./fan-out.js";
+import { fanOutWindow, readPerParent, reportUnreadParents } from "./fan-out.js";
 import {
   addonConnection,
   mapAccount,
@@ -79,6 +86,8 @@ import type {
 const CACHE_MS = 30_000;
 /** Subdomain details (verification, certificate expiry) are fetched for at most this many per domain. */
 const MAX_SUBDOMAIN_DETAILS = 25;
+/** What a create form reads for its options, where part of a list is fine. */
+const PICKER = { maxPages: 10, partial: true };
 
 function bool(raw: string | undefined): boolean | undefined {
   if (raw === undefined || raw === "") return undefined;
@@ -169,51 +178,76 @@ export class NorthflankClient implements PluginClient {
   // Shared listings
   // -------------------------------------------------------------------------
 
-  /** Projects with their region, cluster and workload counts (one GET each). */
-  projects(): Promise<NfProject[]> {
+  /** The project listing alone: what every per-project type fans out over. */
+  private projectList(): Promise<NfProject[]> {
+    return this.cached("project-list", () =>
+      nfList<NfProject>(this.ctx, "/v1/projects", "projects"),
+    );
+  }
+
+  /**
+   * Projects with their region, cluster and workload counts, from one GET each for the
+   * projects inside this poll's window. `unread` names the ones past it, which carry only
+   * what the listing says.
+   */
+  private projects(): Promise<{ all: NfProject[]; unread: Set<string> }> {
     return this.cached("projects", async () => {
-      const list = await nfList<NfProject>(
-        this.ctx,
-        "/v1/projects",
-        (d) => (d as { projects?: NfProject[] })?.projects,
-      );
-      return Promise.all(
-        list.map(async (p) => {
-          try {
-            const res = await this.get<{ data?: NfProject }>(this.p(p.id ?? ""));
-            return { ...p, ...(res?.data ?? {}) };
-          } catch {
-            return p;
-          }
-        }),
-      );
+      const list = await this.projectList();
+      const { now, later } = fanOutWindow(list, (p) => p.id ?? "");
+      const detailed = new Map<string, NfProject>();
+      for (const p of now) {
+        if (!p.id) continue;
+        try {
+          const res = await this.get<{ data?: NfProject }>(this.p(p.id));
+          detailed.set(p.id, { ...p, ...(res?.data ?? {}) });
+        } catch (err) {
+          // A role that lists projects without reading one keeps the listing's fields.
+          if (statusOf(err) !== 403 && statusOf(err) !== 404) throw err;
+        }
+      }
+      return {
+        all: list.map((p) => detailed.get(p.id ?? "") ?? p),
+        unread: new Set(later.map((p) => p.id ?? "")),
+      };
     });
   }
 
   private perProject<V>(
     key: string,
     load: (projectId: string) => Promise<V[]>,
-  ): Promise<Array<{ projectId: string; item: V }>> {
+  ): Promise<FanOut<{ projectId: string; item: V }>> {
     return this.cached(key, async () => {
-      const projects = await this.projects();
-      const out: Array<{ projectId: string; item: V }> = [];
-      for (const p of projects) {
-        if (!p.id) continue;
-        const items = await load(p.id);
-        for (const item of items) out.push({ projectId: p.id, item });
-      }
-      return out;
+      const projects = (await this.projectList()).filter((p) => p.id);
+      return readPerParent(
+        projects,
+        (p) => p.id ?? "",
+        async (p) => {
+          const projectId = p.id ?? "";
+          return (await load(projectId)).map((item) => ({ projectId, item }));
+        },
+      );
     });
   }
 
-  private services() {
+  /** Rows of a per-project type, naming the projects it did not read this poll. */
+  private async projectChildren<V>(
+    accountId: string,
+    fan: Promise<FanOut<{ projectId: string; item: V }>>,
+  ): Promise<Array<{ projectId: string; item: V }>> {
+    const read = await fan;
+    reportUnreadParents(read, (id) => `${accountId}:${T.project}:${id}`);
+    return read.rows;
+  }
+
+  private serviceFan() {
     return this.perProject<NfService>("services", (pid) =>
-      nfList<NfService>(
-        this.ctx,
-        this.p(pid, "/services"),
-        (d) => (d as { services?: NfService[] })?.services,
-      ),
+      nfList<NfService>(this.ctx, this.p(pid, "/services"), "services"),
     );
+  }
+
+  /** Services for pickers and detail views, where part of the list is fine. */
+  private async services(): Promise<Array<{ projectId: string; item: NfService }>> {
+    return (await this.serviceFan()).rows;
   }
 
   private plans(): Promise<NfPlan[]> {
@@ -260,106 +294,154 @@ export class NorthflankClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case T.account: {
-          const res = await this.get<{ data?: NfAuth }>("/v1/auth", undefined, false);
-          return [mapAccount(accountId, res?.data ?? {}, this.ctx.teamId)];
-        }
-        case T.project:
-          return (await this.projects()).map((p) => mapProject(accountId, p));
-        case T.service:
-          return (await this.services()).map(({ projectId, item }) =>
-            mapService(accountId, projectId, item),
-          );
-        case T.job:
-          return (
-            await this.perProject<NfJob>("jobs", (pid) =>
-              nfList<NfJob>(this.ctx, this.p(pid, "/jobs"), (d) => (d as { jobs?: NfJob[] })?.jobs),
-            )
-          ).map(({ projectId, item }) => mapJob(accountId, projectId, item));
-        case T.addon:
-          return (
-            await this.perProject<NfAddon>("addons", (pid) =>
-              nfList<NfAddon>(
-                this.ctx,
-                this.p(pid, "/addons"),
-                (d) => (d as { addons?: NfAddon[] })?.addons,
-              ),
-            )
-          ).map(({ projectId, item }) => mapAddon(accountId, projectId, item));
-        case T.secretGroup:
-          return (
-            await this.perProject<NfSecretGroup>("secrets", (pid) =>
-              nfList<NfSecretGroup>(
-                this.ctx,
-                this.p(pid, "/secrets"),
-                (d) => (d as { secrets?: NfSecretGroup[] })?.secrets,
-              ),
-            )
-          ).map(({ projectId, item }) => mapSecretGroup(accountId, projectId, item));
-        case T.volume:
-          return (
-            await this.perProject<NfVolume>("volumes", (pid) =>
-              nfList<NfVolume>(this.ctx, this.p(pid, "/volumes"), (d) =>
-                Array.isArray(d) ? (d as NfVolume[]) : (d as { volumes?: NfVolume[] })?.volumes,
-              ),
-            )
-          ).map(({ projectId, item }) => mapVolume(accountId, projectId, item));
-        case T.pipeline:
-          return (
-            await this.perProject<NfPipeline>("pipelines", (pid) =>
-              nfList<NfPipeline>(
-                this.ctx,
-                this.p(pid, "/pipelines"),
-                (d) => (d as { pipelines?: NfPipeline[] })?.pipelines,
-              ),
-            )
-          ).map(({ projectId, item }) => mapPipeline(accountId, projectId, item));
-        case T.domain:
-          return (await this.domains()).map((d) => mapDomain(accountId, d));
-        case T.subdomain:
-          return this.listSubdomains(accountId);
-        case T.cluster:
-          return (
-            await nfList<NfCluster>(
-              this.ctx,
-              "/v1/cloud-providers/clusters",
-              (d) => (d as { clusters?: NfCluster[] })?.clusters,
-            )
-          ).map((c) => mapCluster(accountId, c));
-        default:
-          throw new Error(`Northflank plugin: unknown resource type "${typeId}"`);
+      try {
+        return await this.readResources(typeId, accountId);
+      } catch (err) {
+        if (statusOf(err) !== 403) throw err;
+        // An API role can refuse a whole type. This type's stored rows stay. A host that
+        // keeps no track (the desktop) answers false, and there the refusal should show.
+        if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
       }
     });
   }
 
-  /** Domains with their subdomain lists (the listing omits them, so one GET each). */
-  private domains(): Promise<NfDomain[]> {
+  private async readResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case T.account: {
+        const res = await this.get<{ data?: NfAuth }>("/v1/auth", undefined, false);
+        return [mapAccount(accountId, res?.data ?? {}, this.ctx.teamId)];
+      }
+      case T.project: {
+        const { all, unread } = await this.projects();
+        if (unread.size > 0) {
+          reportUnreadListPart({
+            idPrefixes: [...unread].map((id) => `${accountId}:${T.project}:${id}`),
+          });
+        }
+        return all.filter((p) => !unread.has(p.id ?? "")).map((p) => mapProject(accountId, p));
+      }
+      case T.service:
+        return (await this.projectChildren(accountId, this.serviceFan())).map(
+          ({ projectId, item }) => mapService(accountId, projectId, item),
+        );
+      case T.job:
+        return (
+          await this.projectChildren(
+            accountId,
+            this.perProject<NfJob>("jobs", (pid) =>
+              nfList<NfJob>(this.ctx, this.p(pid, "/jobs"), "jobs"),
+            ),
+          )
+        ).map(({ projectId, item }) => mapJob(accountId, projectId, item));
+      case T.addon:
+        return (
+          await this.projectChildren(
+            accountId,
+            this.perProject<NfAddon>("addons", (pid) =>
+              nfList<NfAddon>(this.ctx, this.p(pid, "/addons"), "addons"),
+            ),
+          )
+        ).map(({ projectId, item }) => mapAddon(accountId, projectId, item));
+      case T.secretGroup:
+        return (
+          await this.projectChildren(
+            accountId,
+            this.perProject<NfSecretGroup>("secrets", (pid) =>
+              nfList<NfSecretGroup>(this.ctx, this.p(pid, "/secrets"), "secrets"),
+            ),
+          )
+        ).map(({ projectId, item }) => mapSecretGroup(accountId, projectId, item));
+      case T.volume:
+        return (
+          await this.projectChildren(
+            accountId,
+            this.perProject<NfVolume>("volumes", (pid) =>
+              // Documented as an array in `data`; `{ volumes }` is the older answer.
+              nfList<NfVolume>(this.ctx, this.p(pid, "/volumes"), null, { alsoKey: "volumes" }),
+            ),
+          )
+        ).map(({ projectId, item }) => mapVolume(accountId, projectId, item));
+      case T.pipeline:
+        return (
+          await this.projectChildren(
+            accountId,
+            this.perProject<NfPipeline>("pipelines", (pid) =>
+              nfList<NfPipeline>(this.ctx, this.p(pid, "/pipelines"), "pipelines"),
+            ),
+          )
+        ).map(({ projectId, item }) => mapPipeline(accountId, projectId, item));
+      case T.domain: {
+        const { all, unread } = await this.domains();
+        if (unread.size > 0) {
+          reportUnreadListPart({
+            idPrefixes: [...unread].map((name) => `${accountId}:${T.domain}:${name}`),
+          });
+        }
+        return all
+          .filter(({ domain }) => !unread.has(domain.name ?? ""))
+          .map(({ domain }) => mapDomain(accountId, domain));
+      }
+      case T.subdomain:
+        return this.listSubdomains(accountId);
+      case T.cluster:
+        return (await nfList<NfCluster>(this.ctx, "/v1/cloud-providers/clusters", "clusters")).map(
+          (c) => mapCluster(accountId, c),
+        );
+      default:
+        throw new Error(`Northflank plugin: unknown resource type "${typeId}"`);
+    }
+  }
+
+  /**
+   * Domains with their subdomain lists, which the listing leaves out, so one GET each for
+   * the domains inside this poll's window. `unread` names the ones past it; `refused` the
+   * ones whose details the token's role refuses, which keep the listing's fields.
+   */
+  private domains(): Promise<{
+    all: Array<{ domain: NfDomain; detailed: boolean }>;
+    unread: Set<string>;
+    refused: unknown;
+  }> {
     return this.cached("domains", async () => {
-      const list = await nfList<NfDomain>(
-        this.ctx,
-        "/v1/domains",
-        (d) => (d as { domains?: NfDomain[] })?.domains,
-      );
-      return Promise.all(
-        list.map(async (d) => {
-          try {
-            const res = await this.get<{ data?: NfDomain }>(
-              `/v1/domains/${encodeURIComponent(d.name ?? "")}`,
-            );
-            return { ...d, ...(res?.data ?? {}) };
-          } catch {
-            return d;
-          }
-        }),
-      );
+      const list = await nfList<NfDomain>(this.ctx, "/v1/domains", "domains");
+      const { now, later } = fanOutWindow(list, (d) => d.name ?? "");
+      const all: Array<{ domain: NfDomain; detailed: boolean }> = [];
+      let refused: unknown;
+      const inWindow = new Set(now);
+      for (const d of list) {
+        if (!inWindow.has(d)) {
+          all.push({ domain: d, detailed: false });
+          continue;
+        }
+        try {
+          const res = await this.get<{ data?: NfDomain }>(
+            `/v1/domains/${encodeURIComponent(d.name ?? "")}`,
+          );
+          all.push({ domain: { ...d, ...(res?.data ?? {}) }, detailed: true });
+        } catch (err) {
+          // Deleted since it was listed: it and its subdomains are gone.
+          if (statusOf(err) === 404) continue;
+          if (statusOf(err) !== 403) throw err;
+          refused = err;
+          all.push({ domain: d, detailed: false });
+        }
+      }
+      return { all, unread: new Set(later.map((d) => d.name ?? "")), refused };
     });
   }
 
   private async listSubdomains(accountId: string): Promise<ResourceInstance[]> {
     const out: ResourceInstance[] = [];
-    for (const d of await this.domains()) {
+    const { all, refused } = await this.domains();
+    const unread: string[] = [];
+    for (const { domain: d, detailed } of all) {
       const domain = d.name ?? "";
+      // The listing has no subdomains: an unread domain's are unknown, not none.
+      if (!detailed) {
+        unread.push(domain);
+        continue;
+      }
       const subs = d.subdomains ?? [];
       for (const [i, s] of subs.entries()) {
         let detail: NfSubdomain = { ...s };
@@ -376,6 +458,11 @@ export class NorthflankClient implements PluginClient {
         out.push(mapSubdomain(accountId, domain, detail));
       }
     }
+    const refusedThroughout = refused !== undefined && all.every((d) => !d.detailed);
+    reportUnreadParents(
+      { rows: out, unread, ...(refusedThroughout ? { refusedThroughout: refused } : {}) },
+      (name) => `${accountId}:${T.domain}:${name}`,
+    );
     return out;
   }
 
@@ -835,11 +922,9 @@ export class NorthflankClient implements PluginClient {
               nfList<NfNode>(
                 this.ctx,
                 `/v1/cloud-providers/clusters/${encodeURIComponent(ext)}/nodes`,
-                (d) => (d as { nodes?: NfNode[] })?.nodes,
-                {
-                  query: { status: "RUNNING" },
-                  maxPages: 3,
-                },
+                "nodes",
+                // A detail view's first nodes; part of the list is fine here.
+                { query: { status: "RUNNING" }, maxPages: 3, partial: true },
               ),
             ),
           ]);
@@ -891,7 +976,7 @@ export class NorthflankClient implements PluginClient {
 
   private async projectField(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
-    const projects = await this.projects();
+    const { all: projects } = await this.projects();
     return [
       {
         key: "projectId",
@@ -946,11 +1031,9 @@ export class NorthflankClient implements PluginClient {
             this.get<{ data?: { regions?: NfRegion[] } }>("/v1/regions", undefined, false)
               .then((r) => r?.data?.regions ?? [])
               .catch(() => [] as NfRegion[]),
-            nfList<NfCluster>(
-              this.ctx,
-              "/v1/cloud-providers/clusters",
-              (d) => (d as { clusters?: NfCluster[] })?.clusters,
-            ).catch(() => [] as NfCluster[]),
+            nfList<NfCluster>(this.ctx, "/v1/cloud-providers/clusters", "clusters", PICKER).catch(
+              () => [] as NfCluster[],
+            ),
           ]);
           return {
             fields: [
@@ -1017,12 +1100,10 @@ export class NorthflankClient implements PluginClient {
               full_name?: string;
               vcsService?: string;
               accountLogin?: string;
-            }>(
-              this.ctx,
-              "/v1/integrations/vcs/repos",
-              (d) => (d as { repos?: Array<{ url?: string }> })?.repos,
-              { maxPages: 5 },
-            ).catch(() => []),
+            }>(this.ctx, "/v1/integrations/vcs/repos", "repos", {
+              maxPages: 5,
+              partial: true,
+            }).catch(() => []),
           ]);
           return {
             fields: [
@@ -1403,7 +1484,7 @@ export class NorthflankClient implements PluginClient {
             ],
           };
         case T.subdomain: {
-          const domains = parentResourceId ? [] : await this.domains();
+          const domains = parentResourceId ? [] : (await this.domains()).all.map((d) => d.domain);
           return {
             fields: [
               ...(parentResourceId
@@ -2224,7 +2305,7 @@ export class NorthflankClient implements PluginClient {
     range: CostFetchRange,
   ): PluginEffect<CostRow[] | CostFetchResult> {
     return attempt(async () => {
-      return fetchNorthflankCostData(this.ctx, range, () => this.projects());
+      return fetchNorthflankCostData(this.ctx, range, () => this.projectList());
     });
   }
 

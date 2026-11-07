@@ -1,5 +1,10 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  jsonRestFetch,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 
 /**
  * Northflank REST API (`https://api.northflank.com/v1`, OpenAPI document at
@@ -135,32 +140,89 @@ export function statusOf(err: unknown): number {
   return err instanceof NorthflankApiError ? err.status : 0;
 }
 
+export interface NfPagination {
+  hasNextPage?: boolean;
+  cursor?: string;
+  count?: number;
+}
+
 export interface NfPage<T> {
   data: T;
-  pagination?: { hasNextPage?: boolean; cursor?: string; count?: number };
+  pagination?: NfPagination;
 }
 
 /**
- * Walk a cursor-paginated listing. `pick` extracts the array from `data`
- * (most listings wrap it, e.g. `data.projects`; volumes return `data` itself).
+ * Pages a list reads before it throws: 10,000 rows at the documented maximum of 100 a
+ * page. Northflank's default allowance is 1000 requests an hour, so a longer list could
+ * not be read in one poll anyway.
+ */
+export const NF_LIST_MAX_PAGES = 100;
+export const NF_PAGE_SIZE = 100;
+
+/**
+ * The cursor to ask for next, `undefined` at the end, or a {@link ListPageError} for a page
+ * that says there is more and gives no way to ask for it. Every listing documents
+ * `pagination.hasNextPage` as required and `cursor` as optional.
+ */
+export function nextCursor(
+  pagination: NfPagination | undefined,
+  where: { vendor: string; path: string; key: string | null; page: unknown },
+): string | undefined {
+  if (!pagination?.hasNextPage) return undefined;
+  if (pagination.cursor) return pagination.cursor;
+  throw new ListPageError({ ...where, found: undefined, saysMoreWith: "no cursor" });
+}
+
+/**
+ * Walk a cursor-paginated listing whose rows are at `data[key]`, or are `data` itself when
+ * `key` is `null` (volumes). `alsoKey` reads a second documented or historical shape:
+ * the volumes listing is documented as an array and has been answered as `{ volumes }`.
+ *
+ * A page whose list is missing throws, and so does a list longer than `maxPages`, unless
+ * `partial` says part of it is fine (pickers, a detail view's rows).
  */
 export async function nfList<T>(
   ctx: NorthflankContext,
   path: string,
-  pick: (data: unknown) => T[] | undefined,
-  options: { query?: Query; maxPages?: number; teamScoped?: boolean } = {},
+  key: string | null,
+  options: {
+    query?: Query;
+    maxPages?: number;
+    teamScoped?: boolean;
+    partial?: boolean;
+    alsoKey?: string;
+  } = {},
 ): Promise<T[]> {
   const out: T[] = [];
   let cursor: string | undefined;
-  const maxPages = options.maxPages ?? 20;
+  const maxPages = options.maxPages ?? NF_LIST_MAX_PAGES;
+  const where = { vendor: "Northflank", path, key };
   for (let page = 0; page < maxPages; page++) {
-    const res = await nfFetch<NfPage<unknown>>(ctx, "GET", path, {
-      query: { per_page: 100, ...options.query, ...(cursor ? { cursor } : {}) },
-      ...(options.teamScoped !== undefined ? { teamScoped: options.teamScoped } : {}),
-    });
-    out.push(...(pick(res?.data) ?? []));
-    if (!res?.pagination?.hasNextPage || !res.pagination.cursor) break;
-    cursor = res.pagination.cursor;
+    const res = await nfFetch<NfPage<T[] | Record<string, T[] | null | undefined>> | null>(
+      ctx,
+      "GET",
+      path,
+      {
+        query: { per_page: NF_PAGE_SIZE, ...options.query, ...(cursor ? { cursor } : {}) },
+        ...(options.teamScoped !== undefined ? { teamScoped: options.teamScoped } : {}),
+      },
+    );
+    out.push(...requireListPage(listIn(res?.data, key, options.alsoKey), { ...where, page: res }));
+    cursor = nextCursor(res?.pagination, { ...where, page: res });
+    if (!cursor) return out;
   }
-  return out;
+  if (options.partial) return out;
+  throw new ListTruncatedError({ ...where, items: out.length, maxPages });
+}
+
+function listIn<T>(
+  data: T[] | Record<string, T[] | null | undefined> | undefined,
+  key: string | null,
+  alsoKey: string | undefined,
+): readonly T[] | null | undefined {
+  if (Array.isArray(data)) return key === null ? data : undefined;
+  if (data === undefined || data === null) return undefined;
+  const primary = key === null ? undefined : data[key];
+  if (primary !== undefined || alsoKey === undefined) return primary;
+  return data[alsoKey];
 }

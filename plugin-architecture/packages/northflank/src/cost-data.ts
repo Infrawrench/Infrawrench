@@ -1,6 +1,12 @@
 import type { CostFetchRange, CostFetchResult, CostRow } from "@infrawrench/plugin-base";
-import type { NorthflankContext } from "./api.js";
-import { nfFetch } from "./api.js";
+import {
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
+import type { NfPagination, NorthflankContext } from "./api.js";
+import { nextCursor, nfFetch } from "./api.js";
 import type { NfProject, NfUsageEntry } from "./types.js";
 
 /**
@@ -44,6 +50,12 @@ function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * Pages of daily buckets read before throwing: 10,000 days at the documented maximum of
+ * 100 a page, far past any range the cost pass asks for.
+ */
+const USAGE_MAX_PAGES = 100;
+
 /** Walk every daily bucket between the two unix timestamps (end exclusive). */
 export async function fetchDailyUsage(
   ctx: NorthflankContext,
@@ -53,11 +65,12 @@ export async function fetchDailyUsage(
 ): Promise<NfUsageEntry[]> {
   const out: NfUsageEntry[] = [];
   let cursor: string | undefined;
-  for (let page = 0; page < 20; page++) {
+  const path = "/v1/billing/usage";
+  for (let page = 0; page < USAGE_MAX_PAGES; page++) {
     const res = await nfFetch<{
-      data?: { usage?: NfUsageEntry[] };
-      pagination?: { hasNextPage?: boolean; cursor?: string };
-    }>(ctx, "GET", "/v1/billing/usage", {
+      data?: { usage?: NfUsageEntry[] | null };
+      pagination?: NfPagination;
+    } | null>(ctx, "GET", path, {
       query: {
         granularity: "day",
         startTime,
@@ -68,11 +81,21 @@ export async function fetchDailyUsage(
         ...(cursor ? { cursor } : {}),
       },
     });
-    out.push(...(res?.data?.usage ?? []));
-    if (!res?.pagination?.hasNextPage || !res.pagination.cursor) break;
-    cursor = res.pagination.cursor;
+    const where = { vendor: "Northflank", path, key: "usage", page: res };
+    // `data` is required; `data.usage` is not, so a day range with no entries may leave it out.
+    if (typeof res?.data !== "object" || res.data === null) {
+      throw new ListPageError({ ...where, key: "data", found: res?.data });
+    }
+    out.push(...requireListPage(res.data.usage ?? null, where));
+    cursor = nextCursor(res.pagination, where);
+    if (!cursor) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: "Northflank",
+    path,
+    items: out.length,
+    maxPages: USAGE_MAX_PAGES,
+  });
 }
 
 export async function fetchNorthflankCostData(
@@ -92,7 +115,8 @@ export async function fetchNorthflankCostData(
   let projects: NfProject[] = [];
   try {
     projects = (await listProjects()).filter((p) => p.uid);
-  } catch {
+  } catch (err) {
+    rethrowIncompleteList(err);
     degraded = true;
   }
   if (projects.length > MAX_ATTRIBUTED_PROJECTS) projects = [];
@@ -100,7 +124,8 @@ export async function fetchNorthflankCostData(
     let entries: NfUsageEntry[];
     try {
       entries = await fetchDailyUsage(ctx, startTime, endTime, project.uid);
-    } catch {
+    } catch (err) {
+      rethrowIncompleteList(err);
       degraded = true;
       continue;
     }

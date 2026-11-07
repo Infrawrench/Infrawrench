@@ -77,9 +77,7 @@ async function listCredentialOptions(
   };
   const auth = await nfFetch<{ data?: NfAuth }>(ctx, "GET", "/v1/auth", { teamScoped: false });
   if (auth?.data?.entityType !== "org") return [];
-  const teams = await nfList<NfTeam>(ctx, "/v1/teams", (d) => (d as { teams?: NfTeam[] })?.teams, {
-    teamScoped: false,
-  });
+  const teams = await nfList<NfTeam>(ctx, "/v1/teams", "teams", { teamScoped: false });
   return teams.map((t) => ({
     id: t.id ?? "",
     label: t.name ?? t.id ?? "",
