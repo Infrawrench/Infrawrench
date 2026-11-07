@@ -573,6 +573,79 @@ describe("metrics", () => {
   });
 });
 
+describe("hosts a response names (#386)", () => {
+  const discovery = "api.pinecone.io/prometheus/projects/p1/metrics/discovery";
+  const allowed = "metrics.us-east-1-aws.pinecone.io";
+  const sample = 'pinecone_db_record_total{index_name="products"} 7';
+
+  function scrapes(targets: string[]) {
+    const { http, c } = client({ projectId: "p1" });
+    http.route("GET", "api.pinecone.io/indexes/products", serverless);
+    http.route("POST", "products-abc.svc.aped-4627.pinecone.io/describe_index_stats", {
+      totalVectorCount: 7,
+    });
+    http.route("GET", discovery, [{ targets }]);
+    http.route("GET", `${allowed}/metrics`, respond(200, sample, true));
+    return { http, c };
+  }
+
+  const fetchMetrics = (c: ReturnType<typeof client>["c"]) =>
+    c.fetchMetricSeries("index", `${ACCOUNT}:index:products`, ACCOUNT);
+
+  it("scrapes a target under pinecone.io with the key as a Bearer token", async () => {
+    const { http, c } = scrapes([`https://${allowed}/metrics`]);
+    const series = await fetchMetrics(c);
+    expect(series.find((s) => s.label === "Records (Prometheus)")!.points[0]!.value).toBe(7);
+    const scrape = http.calls.find((call) => call.url.host === allowed)!;
+    expect(scrape.headers["Authorization"]).toBe("Bearer pcsk_k");
+  });
+
+  it.each([
+    ["another host", "https://evil.example/metrics"],
+    ["a bare host", "evil.example/metrics"],
+    ["a lookalike", "https://metrics.pinecone.io.evil.example/metrics"],
+    ["plain http", `http://${allowed}/metrics`],
+  ])("sends the key to no target on %s, and still scrapes the rest", async (_, target) => {
+    const { http, c } = scrapes([target, `https://${allowed}/metrics`]);
+    const series = await fetchMetrics(c);
+    const hosts = http.calls.map((call) => `${call.url.protocol}//${call.url.host}`);
+    expect(hosts).not.toContain("https://evil.example");
+    expect(hosts).not.toContain("https://metrics.pinecone.io.evil.example");
+    expect(hosts).not.toContain(`http://${allowed}`);
+    expect(series.find((s) => s.label === "Records (Prometheus)")!.points[0]!.value).toBe(7);
+  });
+
+  it("sends the key to no index or assistant host outside pinecone.io", async () => {
+    const { http, c } = client();
+    for (const host of ["evil.example", "http://products.svc.pinecone.io"]) {
+      const assistant = mapAssistant({ name: "helper", status: "Ready", host }, ACCOUNT);
+      const detail = await c.enrichDetail(assistant);
+      expect(detail.fields["fileCount"]).toBeUndefined();
+
+      http.route("GET", "api.pinecone.io/assistant/assistants/helper", {
+        name: "helper",
+        status: "Ready",
+        host,
+      });
+      const events = [];
+      for await (const event of c.streamChatMessage!("assistant", assistant.id, ACCOUNT, [
+        { role: "user", content: "hello" },
+      ])) {
+        events.push(event);
+      }
+      expect(events[0]).toMatchObject({
+        kind: "error",
+        message: expect.stringContaining("Refusing to send the account's credentials there"),
+      });
+
+      const index = mapIndex({ ...serverless, host }, ACCOUNT);
+      await c.enrichDetail(index);
+    }
+    const hosts = http.calls.map((call) => `${call.url.protocol}//${call.url.host}`);
+    expect(new Set(hosts)).toEqual(new Set(["https://api.pinecone.io"]));
+  });
+});
+
 describe("quotas", () => {
   it("reports pods used against max_pods", async () => {
     const { http, c } = client({ clientId: "c", clientSecret: "s", projectId: "p1" });

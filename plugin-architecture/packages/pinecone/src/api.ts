@@ -1,5 +1,8 @@
 import {
   createApiClient,
+  followableLink,
+  hostTransport,
+  linkHostsUnder,
   pathEncode,
   restRequest,
   type ApiBody,
@@ -156,6 +159,19 @@ function fileLists(client: ApiClient<AssistantDataPaths>) {
   });
 }
 
+/**
+ * A URL from a response, about to get the project API key: an index or assistant host,
+ * or a Prometheus target. The document's hosts and the manifest's `egressHosts` are all
+ * under pinecone.io, and a bastion refuses anything else anyway. Throws on the rest.
+ */
+function pineconeUrl(url: string, path: string): string {
+  return followableLink(url, `${API_HOST}/`, {
+    vendor: "Pinecone",
+    path,
+    foreignLinks: linkHostsUnder("pinecone.io"),
+  });
+}
+
 export class PineconeApi {
   private token: TokenCache | undefined;
   private tokenInFlight: Promise<string> | undefined;
@@ -242,6 +258,7 @@ export class PineconeApi {
   private onHost<P>(host: string, path: string): ApiClient<P> {
     const base = hostUrl(host);
     if (!base) throw new PineconeApiError(404, path, "This resource has no host yet.");
+    pineconeUrl(base, path);
     return this.client<P>(base, { "Api-Key": this.requireKey() });
   }
 
@@ -267,8 +284,8 @@ export class PineconeApi {
   /**
    * Prometheus endpoints (discovery and the scrape targets) take the project
    * API key as a Bearer token rather than in `Api-Key`. These stay outside the
-   * clients: a scrape target is whatever URL discovery named, and the docs'
-   * `/metrics/discovery` is not in the document, which spells it `/metrics/discover`.
+   * clients: a scrape target is a URL discovery named, and the docs' `/metrics/discovery`
+   * is not in the document, which spells it `/metrics/discover`.
    */
   private async prometheus<T>(
     url: string,
@@ -276,7 +293,7 @@ export class PineconeApi {
     responseAs?: "text",
   ): Promise<RestResponse<T>> {
     const token = this.requireKey();
-    const u = new URL(url);
+    const u = new URL(pineconeUrl(url, "Prometheus scrape target"));
     const path = `${u.pathname}${u.search}`;
     return restRequest<T>({
       vendor: "Pinecone",
@@ -296,9 +313,7 @@ export class PineconeApi {
   }
 
   private transport() {
-    const http = this.services?.http;
-    const { caCert } = this.creds;
-    return { ...(http ? { http } : {}), ...(caCert ? { caCert } : {}) };
+    return hostTransport(this.services?.http, this.creds.caCert);
   }
 
   /** The scrape targets a project's discovery endpoint names. */
