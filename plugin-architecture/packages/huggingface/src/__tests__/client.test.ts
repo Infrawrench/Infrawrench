@@ -468,6 +468,45 @@ describe("a token the API rejects", () => {
   );
 });
 
+describe("endpoint logs", () => {
+  const logs = (entries: Array<{ timestamp: string; line: string }>) =>
+    host((req) => {
+      if (req.url.includes("/replica")) return { body: { items: [] } };
+      if (req.url.includes("/logs")) return { body: entries };
+      throw new Error(`unrouted ${req.url}`);
+    });
+  const read = (http: HttpHostServices) =>
+    org(http).getLogs!("hf-inference-endpoint", `${ACCOUNT}:hf-inference-endpoint:chat`, ACCOUNT, {
+      tailLines: 10,
+    });
+  const older = { timestamp: "2026-11-07T10:00:00.000Z", line: "older" };
+  const same = { timestamp: "2026-11-07T10:00:00.000Z", line: "same ms" };
+  const newer = { timestamp: "2026-11-07T10:00:01.000Z", line: "newer" };
+
+  it("keeps the chronological order the document promises, and asks for the newest", async () => {
+    const { http, calls } = logs([older, same, newer]);
+    const { text } = await read(http);
+    expect(
+      text
+        .trim()
+        .split("\n")
+        .map((l) => l.split(" ").slice(1).join(" ")),
+    ).toEqual(["older", "same ms", "newer"]);
+    expect(calls.find((c) => c.url.includes("/logs"))?.url).toContain("order=desc");
+  });
+
+  it("still reads oldest first if an answer comes newest first", async () => {
+    const { http } = logs([newer, same, older]);
+    const { text } = await read(http);
+    expect(
+      text
+        .trim()
+        .split("\n")
+        .map((l) => l.split(" ").slice(1).join(" ")),
+    ).toEqual(["older", "same ms", "newer"]);
+  });
+});
+
 describe("mutations", () => {
   it("creates a custom endpoint from the picked compute", async () => {
     const { http, calls } = host((req) => {

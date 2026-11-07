@@ -1129,9 +1129,7 @@ export class HuggingFaceClient implements PluginClient {
           },
         },
       );
-      const text = (entries ?? [])
-        .slice()
-        .reverse()
+      const text = oldestFirst(entries ?? [])
         .map((e) => {
           const replica = active === "All replicas" && e.replica_id ? ` [${e.replica_id}]` : "";
           return `${e.timestamp ?? ""}${replica} ${e.line ?? ""}\n`;
@@ -1329,6 +1327,17 @@ function repoExtras(fields: Record<string, string>) {
     ...(fields["license"] ? { license: fields["license"] } : {}),
     ...(fields["region"] ? { region: fields["region"] } : {}),
   };
+}
+
+/**
+ * The document says log entries are chronological whatever `order` is, with `order`
+ * only choosing which end `limit` keeps. That is unconfirmed live and this code used
+ * to assume the opposite, so an answer that does come newest first is turned round.
+ */
+function oldestFirst<T extends { timestamp?: string }>(entries: T[]): T[] {
+  const first = Date.parse(entries[0]?.timestamp ?? "");
+  const last = Date.parse(entries[entries.length - 1]?.timestamp ?? "");
+  return first > last ? entries.slice().reverse() : entries;
 }
 
 function splitList(value: string | undefined): string[] {
