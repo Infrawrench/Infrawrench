@@ -205,6 +205,32 @@ describe("node groups", () => {
     { uuid: "k2", zone: "fi-hel1" },
   ];
 
+  it("falls back to the embedded groups, and fails when there are none to fall back to", async () => {
+    const withEmbedded = host((path) => {
+      if (path === "/kubernetes") return { body: [clusters[0]] };
+      if (path === "/kubernetes/k1/node-groups") return problem(500);
+      return undefined;
+    });
+    const rows = await client(withEmbedded.services).listResources("node-group", "a");
+    expect(rows.map((r) => r.displayName)).toEqual(["embedded"]);
+
+    const without = host((path) => {
+      if (path === "/kubernetes") return { body: [clusters[1]] };
+      if (path === "/kubernetes/k2/node-groups") return problem(500);
+      return undefined;
+    });
+    await expect(client(without.services).listResources("node-group", "a")).rejects.toThrow("500");
+  });
+
+  it("reads a cluster that is gone as none", async () => {
+    const { services } = host((path) => {
+      if (path === "/kubernetes") return { body: [clusters[1]] };
+      if (path === "/kubernetes/k2/node-groups") return problem(404);
+      return undefined;
+    });
+    expect(await client(services).listResources("node-group", "a")).toEqual([]);
+  });
+
   it("refuses a cluster list that is not a list", async () => {
     const { services } = host(() => ({ body: { clusters: [] } }));
     await expect(client(services).listResources("kubernetes-cluster", "a")).rejects.toThrow(

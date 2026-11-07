@@ -398,10 +398,13 @@ export async function listNodeGroups(api: UpCloudApi, accountId: string) {
     try {
       const groups = bareList(await api.get<Json[] | null>(path), path);
       return groups.map((g) => mapNodeGroup(g, c, accountId));
-    } catch {
-      return ((c["node_groups"] as Json[] | undefined) ?? []).map((g) =>
-        mapNodeGroup(g, c, accountId),
-      );
+    } catch (err) {
+      rethrowIncompleteList(err);
+      if (statusOf(err) === 404) return [];
+      // The cluster list carries each cluster's groups, which serve when this read fails.
+      const embedded = c["node_groups"];
+      if (!Array.isArray(embedded)) throw err;
+      return embedded.map((g: Json) => mapNodeGroup(g, c, accountId));
     }
   });
   return rows.flat();
