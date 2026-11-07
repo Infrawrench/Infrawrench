@@ -150,6 +150,15 @@ const opt = (v: string | undefined): string | undefined => {
   return t ? t : undefined;
 };
 
+/** `Number()` reads spaces as 0, and `NaN` goes out as JSON `null`, which clears the fallback. */
+function numericFallback(raw: string): number {
+  const value = Number(raw);
+  if (raw.trim() === "" || !Number.isFinite(value)) {
+    throw new Error("Resend plugin: the fallback value of a number property must be a number");
+  }
+  return value;
+}
+
 /** What a line of the email logs reads, from a sent or a received email. */
 interface LoggedEmail {
   id?: string;
@@ -938,7 +947,7 @@ export class ResendClient implements PluginClient {
               fallback_value:
                 fallback !== undefined
                   ? type === "number"
-                    ? Number(fallback)
+                    ? numericFallback(fallback)
                     : fallback
                   : undefined,
             },
@@ -1065,7 +1074,8 @@ export class ResendClient implements PluginClient {
             const raw = fields["fallbackValue"] ?? "";
             await api.patch(`/contact-properties/${enc}`, {
               body: {
-                fallback_value: raw === "" ? null : current.type === "number" ? Number(raw) : raw,
+                fallback_value:
+                  raw === "" ? null : current.type === "number" ? numericFallback(raw) : raw,
               },
             });
           }

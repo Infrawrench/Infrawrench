@@ -383,6 +383,53 @@ describe("details the list does not return", () => {
   });
 });
 
+describe("contact property fallback values", () => {
+  const number = { id: "p1", key: "age", type: "number", fallback_value: 5 };
+
+  it("refuses text on a number property instead of clearing the fallback", async () => {
+    const { c, calls } = client(() => number);
+    await expect(
+      c.updateResource("resend-contact-property", "acc:resend-contact-property:p1", ACC, {
+        fallbackValue: "abc",
+      }),
+    ).rejects.toThrow("must be a number");
+    expect(calls.filter((x) => x.method === "PATCH")).toEqual([]);
+  });
+
+  it("refuses text on a number property when creating one", async () => {
+    const { c, calls } = client(() => number);
+    await expect(
+      c.createResource("resend-contact-property", ACC, {
+        key: "age",
+        type: "number",
+        fallbackValue: "abc",
+      }),
+    ).rejects.toThrow("must be a number");
+    expect(calls).toEqual([]);
+  });
+
+  it("does not read spaces as zero", async () => {
+    const { c, calls } = client(() => number);
+    await expect(
+      c.updateResource("resend-contact-property", "acc:resend-contact-property:p1", ACC, {
+        fallbackValue: "  ",
+      }),
+    ).rejects.toThrow("must be a number");
+    expect(calls.filter((x) => x.method === "PATCH")).toEqual([]);
+  });
+
+  it("sends a number as a number, and clears an emptied fallback with null", async () => {
+    const { c, calls } = client(() => number);
+    const id = "acc:resend-contact-property:p1";
+    await c.updateResource("resend-contact-property", id, ACC, { fallbackValue: "7" });
+    await c.updateResource("resend-contact-property", id, ACC, { fallbackValue: "" });
+    expect(calls.filter((x) => x.method === "PATCH").map((x) => x.body)).toEqual([
+      { fallback_value: 7 },
+      { fallback_value: null },
+    ]);
+  });
+});
+
 describe("metrics and quotas", () => {
   it("charts daily metrics for a domain and converts fractional rates to percent", async () => {
     const { c, calls } = client(() => ({

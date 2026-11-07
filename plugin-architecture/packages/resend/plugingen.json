@@ -217,7 +217,7 @@
       "value": {
         "type": ["string", "number", "null"]
       },
-      "why": "The plugin clears a fallback by sending null, which the document's string-or-number does not say."
+      "why": "The plugin clears a fallback by sending null, which the document's string-or-number does not say. Resend's own Node SDK types fallback_value as string, number or null and sends it as given."
     },
     {
       "pointer": "/components/schemas/DomainCapabilities/properties/sending",
