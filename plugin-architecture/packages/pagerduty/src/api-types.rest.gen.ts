@@ -815,8 +815,10 @@ export interface components {
         };
         EscalationRule: {
             escalation_delay_in_minutes: number;
-            /** @enum {string} */
-            escalation_rule_assignment_strategy?: "round_robin" | "assign_to_everyone";
+            escalation_rule_assignment_strategy?: ("round_robin" | "assign_to_everyone") | {
+                /** @enum {string} */
+                type: "round_robin" | "assign_to_everyone";
+            };
             readonly id?: string;
             targets: components["schemas"]["EscalationTargetReference"][];
         };

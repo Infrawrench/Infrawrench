@@ -270,6 +270,28 @@
           "why": "The urgency from the create form goes through as typed."
         },
         {
+          "pointer": "/components/schemas/EscalationRule/properties/escalation_rule_assignment_strategy",
+          "value": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": ["round_robin", "assign_to_everyone"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["round_robin", "assign_to_everyone"]
+                  }
+                },
+                "required": ["type"]
+              }
+            ]
+          },
+          "why": "Typed as a string, though the document's own PUT example sends `{ type: \"round_robin\" }`; the plugin sends back whichever form it read."
+        },
+        {
           "pointer": "/components/schemas/IncidentBody",
           "value": {
             "type": "object",

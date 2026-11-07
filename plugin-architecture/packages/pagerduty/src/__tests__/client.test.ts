@@ -755,3 +755,132 @@ describe("incident alerts", () => {
     expect(shown(r.fields)).toEqual([]);
   });
 });
+
+describe("editing an escalation policy", () => {
+  const roundRobin = { type: "round_robin" };
+  const policy = {
+    id: "P1",
+    type: "escalation_policy",
+    summary: "Primary",
+    self: "https://api.pagerduty.com/escalation_policies/P1",
+    name: "Primary",
+    description: "Pages the primary",
+    num_loops: 2,
+    on_call_handoff_notifications: "always",
+    teams: [{ id: "T1", type: "team_reference", summary: "Payments" }],
+    services: [{ id: "S1", type: "service_reference" }],
+    escalation_rules: [
+      {
+        id: "R1",
+        escalation_delay_in_minutes: 30,
+        escalation_rule_assignment_strategy: roundRobin,
+        targets: [{ id: "U1", type: "user_reference", summary: "Ada" }],
+      },
+    ],
+  };
+
+  function edit(read: unknown, fields: Record<string, string>) {
+    const { c, calls } = client((call) => {
+      if (call.method === "PUT") return { status: 200, body: { escalation_policy: read } };
+      if (call.url.includes("/oncalls")) return { status: 200, body: { oncalls: [], more: false } };
+      return { status: 200, body: { escalation_policy: read } };
+    });
+    const done = c.updateResource("pagerduty-escalation-policy", "acc:x:P1", "acc", fields);
+    return { done, calls };
+  }
+  const sent = (calls: Call[]) => calls.find((call) => call.method === "PUT")?.body;
+
+  it("asks for each rule's assignment strategy before it writes", async () => {
+    const { done, calls } = edit(policy, { name: "Renamed" });
+    await done;
+    expect(new URL(calls[0]!.url).searchParams.getAll("include[]")).toContain(
+      "escalation_rule_assignment_strategies",
+    );
+  });
+
+  it("keeps the strategy, the team and the handoff setting on a rename", async () => {
+    const { done, calls } = edit(policy, { name: "Renamed" });
+    await done;
+    expect(sent(calls)).toEqual({
+      escalation_policy: {
+        type: "escalation_policy",
+        name: "Renamed",
+        description: "Pages the primary",
+        num_loops: 2,
+        on_call_handoff_notifications: "always",
+        teams: [{ id: "T1", type: "team_reference" }],
+        escalation_rules: [
+          {
+            id: "R1",
+            escalation_delay_in_minutes: 30,
+            escalation_rule_assignment_strategy: roundRobin,
+            targets: [{ id: "U1", type: "user_reference" }],
+          },
+        ],
+      },
+    });
+  });
+
+  it("sends a strategy back in the form it was read, as the schema's string too", async () => {
+    const { done, calls } = edit(
+      {
+        ...policy,
+        escalation_rules: [
+          { ...policy.escalation_rules[0], escalation_rule_assignment_strategy: "round_robin" },
+        ],
+      },
+      { name: "Renamed" },
+    );
+    await done;
+    expect(sent(calls)).toMatchObject({
+      escalation_policy: {
+        escalation_rules: [{ escalation_rule_assignment_strategy: "round_robin" }],
+      },
+    });
+  });
+
+  it.each([{ type: "assign_to_everyone" }, "assign_to_everyone", null])(
+    "leaves out what a rule does by default, which the write already works without: %j",
+    async (strategy) => {
+      const { done, calls } = edit(
+        {
+          ...policy,
+          escalation_rules: [
+            { ...policy.escalation_rules[0], escalation_rule_assignment_strategy: strategy },
+          ],
+        },
+        { name: "Renamed" },
+      );
+      await done;
+      expect(JSON.stringify(sent(calls))).not.toContain("escalation_rule_assignment_strategy");
+    },
+  );
+
+  it("does not send what the policy does not have", async () => {
+    const { teams: _teams, on_call_handoff_notifications: _handoff, ...bare } = policy;
+    const { done, calls } = edit({ ...bare, teams: [] }, { numLoops: "1" });
+    await done;
+    const body = JSON.stringify(sent(calls));
+    expect(body).not.toContain("teams");
+    expect(body).not.toContain("on_call_handoff_notifications");
+    expect(body).toContain('"num_loops":1');
+  });
+
+  it("refuses to write a target or a team it cannot name", async () => {
+    const blankTarget = edit(
+      {
+        ...policy,
+        escalation_rules: [
+          { ...policy.escalation_rules[0], targets: [{ type: "user_reference" }] },
+        ],
+      },
+      { name: "Renamed" },
+    );
+    await expect(blankTarget.done).rejects.toThrow("has no id");
+    expect(sent(blankTarget.calls)).toBeUndefined();
+
+    const blankTeam = edit({ ...policy, teams: [{ type: "team_reference" }] }, { name: "Renamed" });
+    await expect(blankTeam.done).rejects.toThrow("has no id");
+    expect(sent(blankTeam.calls)).toBeUndefined();
+  });
+});

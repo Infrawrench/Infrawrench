@@ -169,6 +169,33 @@ function parseIdList(raw: string): string[] {
 
 const ref = <const Type extends string>(id: string, type: Type) => ({ id, type });
 
+type PdEscalationRule = NonNullable<PdEscalationPolicy["escalation_rules"]>[number];
+
+/** An id read back for a write. A blank one must stop the write, not reach PagerDuty. */
+function requireId(id: string | undefined, what: string): string {
+  if (!id) throw new PagerDutyApiError(502, `PagerDuty returned ${what} that has no id`);
+  return id;
+}
+
+/** A rule as it was read, to send back with the rest of its policy. */
+function ruleToKeep(rule: PdEscalationRule): PdEscalationRule {
+  const strategy = rule.escalation_rule_assignment_strategy;
+  const name = typeof strategy === "string" ? strategy : strategy?.type;
+  return {
+    ...(rule.id ? { id: rule.id } : {}),
+    escalation_delay_in_minutes: rule.escalation_delay_in_minutes,
+    targets: (rule.targets ?? []).map((t) =>
+      ref(requireId(t.id, "an escalation target"), t.type ?? "user_reference"),
+    ),
+    // Sent in the form it was read, because the document's schema says a string and its
+    // example an object. Assigning to everyone is what a rule with no strategy does, so
+    // it stays out, as it always has: a plan without round robin may refuse the field.
+    ...(strategy && name !== "assign_to_everyone"
+      ? { escalation_rule_assignment_strategy: strategy }
+      : {}),
+  };
+}
+
 /** What an incident update can set; the type is added when it is sent. */
 type IncidentChange = Omit<ApiBody<operations["updateIncident"]>["incident"], "type">;
 
@@ -931,8 +958,11 @@ export class PagerDutyClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "pagerduty-escalation-policy": {
-          // PUT needs the rules back, so merge onto the current policy.
-          const current = await this.api.get(`/escalation_policies/${id}`);
+          // PUT takes the whole policy and the document does not say what it does with a field
+          // left out, so everything settable goes back as read, with only the edit changed.
+          const current = await this.api.get(`/escalation_policies/${id}`, {
+            query: { "include[]": ["escalation_rule_assignment_strategies"] },
+          });
           const p = current?.escalation_policy;
           if (!p) throw new PagerDutyApiError(404, "PagerDuty escalation policy not found");
           const description =
@@ -946,13 +976,17 @@ export class PagerDutyClient implements PluginClient {
                 name: "name" in fields ? trimmed(fields, "name") : p.name,
                 ...(description !== undefined ? { description } : {}),
                 ...(numLoops !== undefined ? { num_loops: numLoops } : {}),
-                escalation_rules: (p.escalation_rules ?? []).map((r) => ({
-                  ...(r.id ? { id: r.id } : {}),
-                  escalation_delay_in_minutes: r.escalation_delay_in_minutes,
-                  targets: (r.targets ?? []).map((t) =>
-                    ref(t.id ?? "", t.type ?? "user_reference"),
-                  ),
-                })),
+                ...(p.on_call_handoff_notifications
+                  ? { on_call_handoff_notifications: p.on_call_handoff_notifications }
+                  : {}),
+                ...(p.teams?.length
+                  ? {
+                      teams: p.teams.map((t) =>
+                        ref(requireId(t.id, "a team on an escalation policy"), "team_reference"),
+                      ),
+                    }
+                  : {}),
+                escalation_rules: (p.escalation_rules ?? []).map(ruleToKeep),
               },
             },
           });
