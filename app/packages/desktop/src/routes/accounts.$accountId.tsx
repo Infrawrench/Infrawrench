@@ -29,7 +29,7 @@ import {
   CreateTile,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
-import type { AccountRow } from "../db/rows";
+import { upsertResourceRow, type AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
@@ -603,8 +603,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }
     const db = await getDb();
     if (pinned.has(resource.id)) {
+      // Only the pin: the resource's row also holds its stored secrets, through a cascade.
       await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [resource.id]);
-      await db.execute("DELETE FROM resources WHERE id = $1", [resource.id]);
       setPinned((prev) => {
         const s = new Set(prev);
         s.delete(resource.id);
@@ -612,20 +612,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
       });
     } else {
       // Satisfy the dashboard_pins FK by upserting the resource first.
-      await db.execute(
-        `INSERT OR REPLACE INTO resources
-         (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          resource.id,
-          resource.pluginId,
-          typeId,
-          resource.accountId,
-          resource.displayName,
-          resource.externalId ?? resource.id,
-          JSON.stringify(resource.fields),
-        ],
-      );
+      await upsertResourceRow(db, { ...resource, resourceTypeId: typeId });
 
       const dashboards = await db.select<{ id: string }[]>(
         "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",

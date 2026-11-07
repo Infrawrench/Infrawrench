@@ -43,7 +43,7 @@ describe("pinResource", () => {
     await pinResource(resource, db, "dash-explicit");
 
     // resource upsert
-    expect(execute.mock.calls[0]![0]).toContain("INSERT OR REPLACE INTO resources");
+    expect(execute.mock.calls[0]![0]).toContain("INSERT INTO resources");
     expect(execute.mock.calls[0]![1]).toEqual([
       "res-1",
       "plugin",

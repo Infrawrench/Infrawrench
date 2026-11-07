@@ -1,5 +1,6 @@
 import type { DraggableResource } from "@infrawrench/ui";
 import type { DbClient } from "../db/client";
+import { upsertResourceRow } from "../db/rows";
 
 export type { DraggableResource };
 
@@ -14,20 +15,7 @@ export async function pinResource(
   db: DbClient,
   dashboardId?: string | undefined,
 ): Promise<void> {
-  await db.execute(
-    `INSERT OR REPLACE INTO resources
-     (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [
-      resource.id,
-      resource.pluginId,
-      resource.resourceTypeId,
-      resource.accountId,
-      resource.displayName,
-      resource.externalId ?? resource.id,
-      JSON.stringify(resource.fields),
-    ],
-  );
+  await upsertResourceRow(db, resource);
 
   let dashId: string;
   if (dashboardId) {

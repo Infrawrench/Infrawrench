@@ -101,7 +101,7 @@ export function useLocalSpotlightResults(mode: "pin" | "navigate" | "drop"): {
             external_id: string;
           }[]
         >(
-          "SELECT id, plugin_id, resource_type_id, account_id, display_name, fields_json, external_id FROM resources WHERE resource_type_id != '__account__' ORDER BY display_name ASC",
+          "SELECT id, plugin_id, resource_type_id, account_id, display_name, fields_json, external_id FROM resources WHERE resource_type_id != '__account__' AND deleted_at IS NULL ORDER BY display_name ASC",
         );
 
         for (const r of sqliteRows) {

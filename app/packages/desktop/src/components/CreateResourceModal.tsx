@@ -30,6 +30,7 @@ import type {
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
 import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { getDb } from "../db/client";
+import { upsertResourceRow } from "../db/rows";
 import { persistPlaintextSecret, persistOutputRef } from "../lib/sql-drivers";
 
 /**
@@ -45,21 +46,7 @@ import { persistPlaintextSecret, persistOutputRef } from "../lib/sql-drivers";
  */
 async function persistCreatedResource(resource: ResourceInstance): Promise<void> {
   const db = await getDb();
-  await db.execute(
-    `INSERT OR REPLACE INTO resources
-     (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      resource.id,
-      resource.pluginId,
-      resource.resourceTypeId,
-      resource.accountId,
-      resource.displayName,
-      resource.externalId ?? resource.id,
-      JSON.stringify(resource.fields ?? {}),
-      JSON.stringify(resource.resolvedOutputs ?? {}),
-    ],
-  );
+  await upsertResourceRow(db, resource);
   for (const state of resource.secretStates ?? []) {
     if (state.resolution.kind !== "plaintext") continue;
     await persistPlaintextSecret(resource.id, state.fieldKey, state.resolution.value);

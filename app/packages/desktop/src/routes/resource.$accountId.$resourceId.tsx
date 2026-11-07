@@ -42,7 +42,7 @@ import {
   useStableGT,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
-import type { AccountRow } from "../db/rows";
+import { upsertResourceRow, type AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
@@ -991,21 +991,7 @@ export function ResourcePanel({
       changedFields,
     );
     const db = await getDb();
-    await db.execute(
-      `INSERT OR REPLACE INTO resources
-       (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        updated.id,
-        updated.pluginId,
-        updated.resourceTypeId,
-        updated.accountId,
-        updated.displayName,
-        updated.externalId ?? updated.id,
-        JSON.stringify(updated.fields ?? {}),
-        JSON.stringify(updated.resolvedOutputs ?? {}),
-      ],
-    );
+    await upsertResourceRow(db, updated);
     toast.success(gt("{label} updated.", { label: resourceTypeLabel }));
     dispatchRefreshResource();
   }
@@ -1100,21 +1086,7 @@ export function ResourcePanel({
         changedFields,
       );
       const db = await getDb();
-      await db.execute(
-        `INSERT OR REPLACE INTO resources
-         (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          updated.id,
-          updated.pluginId,
-          updated.resourceTypeId,
-          updated.accountId,
-          updated.displayName,
-          updated.externalId ?? updated.id,
-          JSON.stringify(updated.fields ?? {}),
-          JSON.stringify(updated.resolvedOutputs ?? {}),
-        ],
-      );
+      await upsertResourceRow(db, updated);
     }
     dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
     setRefreshVersion((v) => v + 1);

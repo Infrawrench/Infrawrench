@@ -56,6 +56,7 @@ import type {
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 
 import { getDb } from "../db/client";
+import { upsertResourceRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
 import { invoke } from "./invoke";
 import { createPluginClient } from "./plugin-client";
@@ -440,22 +441,7 @@ export function createDesktopAgentClient(): AgentClient {
         throw new Error(`VM provisioning failed: ${message}`, { cause: error });
       }
 
-      await db.execute(
-        `INSERT OR REPLACE INTO resources
-         (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json, parent_resource_id, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
-        [
-          resource.id,
-          resource.pluginId,
-          resource.resourceTypeId,
-          resource.accountId,
-          resource.displayName,
-          resource.externalId ?? resource.id,
-          JSON.stringify(resource.fields ?? {}),
-          JSON.stringify(resource.resolvedOutputs ?? {}),
-          resource.parentResourceId ?? null,
-        ],
-      );
+      await upsertResourceRow(db, resource);
       const updatedLogs = [
         ...logs,
         `VM created: ${resource.displayName} (${resource.id}).`,
@@ -1300,22 +1286,7 @@ async function createRepoConfigResources(
         ...(spec.fields ?? {}),
       });
       const { resource: createdResource, warnings } = normalizeResourceCreateResult(createReturn);
-      await db.execute(
-        `INSERT OR REPLACE INTO resources
-         (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json, parent_resource_id, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
-        [
-          createdResource.id,
-          createdResource.pluginId,
-          createdResource.resourceTypeId,
-          createdResource.accountId,
-          createdResource.displayName,
-          createdResource.externalId ?? createdResource.id,
-          JSON.stringify(createdResource.fields ?? {}),
-          JSON.stringify(createdResource.resolvedOutputs ?? {}),
-          createdResource.parentResourceId ?? null,
-        ],
-      );
+      await upsertResourceRow(db, createdResource);
       created.push({
         id: createdResource.id,
         pluginId: spec.pluginId,
@@ -1527,22 +1498,7 @@ async function loadAgentVmResource(row: SessionRow): Promise<ResourceInstance> {
     row.account_id,
   );
   const db = await getDb();
-  await db.execute(
-    `INSERT OR REPLACE INTO resources
-     (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json, parent_resource_id, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
-    [
-      resource.id,
-      resource.pluginId,
-      resource.resourceTypeId,
-      resource.accountId,
-      resource.displayName,
-      resource.externalId ?? resource.id,
-      JSON.stringify(resource.fields ?? {}),
-      JSON.stringify(resource.resolvedOutputs ?? {}),
-      resource.parentResourceId ?? null,
-    ],
-  );
+  await upsertResourceRow(db, resource);
   return resource;
 }
 
