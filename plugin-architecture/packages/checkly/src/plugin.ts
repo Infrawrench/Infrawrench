@@ -8,7 +8,7 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { ckFetch } from "./api.js";
+import { createChecklyApi } from "./api.js";
 import { ChecklyClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { CHECKLY_PREFLIGHT } from "./preflight.js";
@@ -75,23 +75,17 @@ export const plugin = definePlugin({
       if (fieldKey !== "accountId") return [];
       const apiKey = (credentials["apiKey"] ?? "").trim();
       if (!apiKey) return [];
-      const accounts = await ckFetch<
-        Array<{ id?: string; name?: string; planDisplayName?: string }>
-      >(
-        {
-          apiKey,
-          accountId: "",
-          ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-          ...(services?.http ? { http: services.http } : {}),
-        },
-        "/v1/accounts",
-        { noAccount: true },
-      );
+      const accounts = await createChecklyApi({
+        apiKey,
+        accountId: "",
+        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+        ...(services?.http ? { http: services.http } : {}),
+      }).get("/v1/accounts");
       return (accounts ?? [])
         .filter((a) => a.id)
         .map((a) => ({
-          id: a.id as string,
-          label: a.name ?? (a.id as string),
+          id: a.id,
+          label: a.name ?? a.id,
           description: [a.planDisplayName, a.id].filter(Boolean).join(", "),
         }));
     });

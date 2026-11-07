@@ -1,0 +1,342 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.checklyhq.com/openapi.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/ChecksV1DnsRequestPatch",
+      "value": {
+        "$ref": "#/components/schemas/ChecksV1DnsRequest"
+      },
+      "why": "PUT /v1/checks/{id} refers to this schema and the document does not define it; every sibling request has one."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1GenericCheck/properties/request",
+      "value": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ChecksV1ApiRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ChecksV1TcpRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ChecksV1UrlRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ChecksV1DnsRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ChecksV1IcmpRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ChecksV1TracerouteRequestRead"
+          },
+          {
+            "$ref": "#/components/schemas/ChecksV1GrpcRequestRead"
+          },
+          {
+            "$ref": "#/components/schemas/ChecksV1SslRequestRead"
+          }
+        ],
+        "nullable": true
+      },
+      "why": "The last member of its anyOf is only `nullable: true`, which generates `unknown` and swallows the union."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1DnsMonitorUpdate/required",
+      "value": [],
+      "why": "Unlike every other per-type update schema. The plugin PUTs back what it read, which always has the name."
+    },
+    {
+      "pointer": "/components/schemas/CheckStatus/nullable",
+      "value": false,
+      "why": "A row of the status list; a null one has never been handled and the plugin reads it unguarded."
+    },
+    {
+      "pointer": "/components/schemas/AlertChannelConfig",
+      "value": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "webhookType": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "serviceKey": {
+            "type": "string"
+          },
+          "serviceName": {
+            "type": "string"
+          },
+          "account": {
+            "type": "string"
+          },
+          "apiKey": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Bare `type: object`, which generates an object with no fields. These are the fields of the config per channel type, which the plugin reads."
+    },
+    {
+      "pointer": "/components/schemas/AlertChannelCreateConfig",
+      "value": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "webhookType": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "serviceKey": {
+            "type": "string"
+          },
+          "serviceName": {
+            "type": "string"
+          },
+          "account": {
+            "type": "string"
+          },
+          "apiKey": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Bare `type: object`, which generates an object with no fields. These are the fields of the config per channel type, which the plugin writes."
+    },
+    {
+      "pointer": "/components/schemas/AlertChannelCreate/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum. `channelConfig` refuses a type it does not know."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1ApiRequest/properties/method",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1DnsRequest/properties/recordType",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1CheckUpdate/properties/frequency",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1UrlMonitorCreate/properties/frequency",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1ApiCheckCreate/properties/frequency",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1TcpCheckCreate/properties/frequency",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1IcmpMonitorCreate/properties/frequency",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1DnsMonitorCreate/properties/frequency",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1UrlMonitorCreate/properties/locations/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1ApiCheckCreate/properties/locations/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1TcpCheckCreate/properties/locations/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1IcmpMonitorCreate/properties/locations/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ChecksV1DnsMonitorCreate/properties/locations/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/Model10/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Text from our create form, sent as typed; Checkly validates it, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/EnvironmentVariablesV1UpdateRequest/properties/value",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Reads answer `value: null` for a hidden value, and the plugin sends back what it read when no new value is entered."
+    },
+    {
+      "pointer": "/components/schemas/MaintenanceWindowUpdate/properties/statusPageVisibility",
+      "value": {
+        "$ref": "#/components/schemas/MaintenanceWindowStatusPageVisibilityResponse"
+      },
+      "why": "The plugin sends back what it read, and the response schema marks fewer fields required than this one."
+    },
+    {
+      "pointer": "/paths/~1v1~1private-locations~1{id}~1keys/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {}
+            }
+          }
+        }
+      },
+      "why": "The document lists no body. The plugin has always sent `{}`, and requests must stay as they are."
+    }
+  ],
+  "paths": {
+    "/v1/accounts": ["get"],
+    "/v1/accounts/me": ["get"],
+    "/v1/checks": ["get"],
+    "/v1/checks/{id}": ["get", "put", "delete"],
+    "/v1/check-statuses": ["get"],
+    "/v1/check-groups": ["get", "post"],
+    "/v1/check-groups/{id}": ["get", "put", "delete"],
+    "/v1/check-groups/{id}/checks": ["get"],
+    "/v1/alert-channels": ["get", "post"],
+    "/v1/alert-channels/{id}": ["get", "put", "delete"],
+    "/v1/maintenance-windows": ["get", "post"],
+    "/v1/maintenance-windows/{id}": ["get", "put", "delete"],
+    "/v1/private-locations": ["get", "post"],
+    "/v1/private-locations/{id}": ["get", "put", "delete"],
+    "/v1/private-locations/{id}/keys": ["post"],
+    "/v1/private-locations/{id}/metrics": ["get"],
+    "/v1/dashboards": ["get", "post"],
+    "/v1/dashboards/{dashboardId}": ["get", "put", "delete"],
+    "/v3/status-pages": ["get"],
+    "/v3/status-pages/{statusPageId}": ["get", "put", "delete"],
+    "/v1/variables": ["get", "post"],
+    "/v1/variables/{key}": ["get", "put", "delete"],
+    "/v1/locations": ["get"],
+    "/v2/usage/terms": ["get"],
+    "/v2/usage/summary": ["get"],
+    "/v1/checks/url": ["post"],
+    "/v1/checks/api": ["post"],
+    "/v1/checks/tcp": ["post"],
+    "/v1/checks/icmp": ["post"],
+    "/v1/checks/dns": ["post"],
+    "/v1/checks/heartbeat": ["post"],
+    "/v1/checks/api/{id}": ["put"],
+    "/v1/checks/browser/{id}": ["put"],
+    "/v1/checks/dns/{id}": ["put"],
+    "/v1/checks/grpc/{id}": ["put"],
+    "/v1/checks/heartbeat/{id}": ["put"],
+    "/v1/checks/icmp/{id}": ["put"],
+    "/v1/checks/multistep/{id}": ["put"],
+    "/v1/checks/ssl/{id}": ["put"],
+    "/v1/checks/tcp/{id}": ["put"],
+    "/v1/checks/traceroute/{id}": ["put"],
+    "/v1/checks/url/{id}": ["put"],
+    "/v2/check-sessions/trigger": ["post"],
+    "/v2/check-results/{checkId}": ["get"],
+    "/v1/analytics/api-checks/{id}": ["get"],
+    "/v1/analytics/url-monitors/{id}": ["get"],
+    "/v1/analytics/browser-checks/{id}": ["get"],
+    "/v1/analytics/multistep-checks/{id}": ["get"],
+    "/v1/analytics/playwright-checks/{id}": ["get"],
+    "/v1/analytics/tcp-checks/{id}": ["get"],
+    "/v1/analytics/dns/{id}": ["get"],
+    "/v1/analytics/icmp/{id}": ["get"],
+    "/v1/analytics/ssl/{id}": ["get"],
+    "/v1/analytics/heartbeat-checks/{id}": ["get"]
+  }
+}
