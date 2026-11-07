@@ -4,6 +4,7 @@ import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
+  HttpHostServices,
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
@@ -34,6 +35,7 @@ import {
   NeonAuthSupportedAuthProvider,
 } from "@neondatabase/api-client";
 import { fetchNeonCostData } from "./cost-data.js";
+import { hostAdapter } from "./host-adapter.js";
 import { fetchBranchLogs } from "./logs.js";
 import { fetchBranchUsageSeries, fetchProjectUsageSeries } from "./metrics.js";
 import { flatMapPooled } from "./pool.js";
@@ -150,10 +152,16 @@ export class NeonClient implements PluginClient {
   /** Maps bucket name → branch, since the host's storage browser passes only a name. */
   private readonly bucketLocator = new BucketLocator();
 
-  constructor(credentials: Credentials, _services?: HostServices) {
+  private readonly http: HttpHostServices | undefined;
+
+  constructor(credentials: Credentials, services?: HostServices) {
     const key = credentials["apiKey"];
     if (!key) throw new Error("Neon plugin: missing apiKey credential");
-    this.api = createApiClient({ apiKey: key });
+    this.http = services?.http;
+    this.api = createApiClient({
+      apiKey: key,
+      ...(services?.http ? { adapter: hostAdapter(services.http, () => this.api) } : {}),
+    });
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -1444,7 +1452,7 @@ export class NeonClient implements PluginClient {
   uploadStorageObject(bucket: string, key: string, file: File): PluginEffect<void> {
     return attempt(async () => {
       const ref = await this.resolveBucketRef(bucket);
-      await uploadBucketObject(this.api, ref, bucket, key, file, file.type || undefined);
+      await uploadBucketObject(this.api, ref, bucket, key, file, file.type || undefined, this.http);
     });
   }
 
@@ -1453,7 +1461,15 @@ export class NeonClient implements PluginClient {
       const ref = await this.resolveBucketRef(bucket);
       // S3 has no folders; a zero-byte object with a trailing slash is the marker.
       const folderKey = key.endsWith("/") ? key : `${key}/`;
-      await uploadBucketObject(this.api, ref, bucket, folderKey, new Blob([]));
+      await uploadBucketObject(
+        this.api,
+        ref,
+        bucket,
+        folderKey,
+        new Blob([]),
+        undefined,
+        this.http,
+      );
     });
   }
 

@@ -25,7 +25,9 @@ import { neonRemediationCommands } from "./remediation.js";
 
 export const manifest = {
   id: "neon",
-  egressHosts: ["console.neon.tech"],
+  // The API, and presigned uploads to a branch's S3 host, such as
+  // br-x.storage.c-1.us-east-2.aws.neon.tech.
+  egressHosts: ["*.neon.tech"],
   displayName: "Neon",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#0A0A0A"/>

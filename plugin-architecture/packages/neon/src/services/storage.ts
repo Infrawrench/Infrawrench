@@ -1,4 +1,5 @@
-import type { ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
+import { hostFetch } from "@infrawrench/plugin-base";
+import type { HttpHostServices, ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
 import type { Api, Bucket, CredentialMeta, ProjectListItem } from "@neondatabase/api-client";
 import { enumerateBranches, isServiceUnavailable, resourceId, type BranchRef } from "./common.js";
 
@@ -192,7 +193,8 @@ export async function uploadBucketObject(
   bucketName: string,
   key: string,
   body: Blob,
-  contentType?: string,
+  contentType: string | undefined,
+  http: HttpHostServices | undefined,
 ): Promise<void> {
   const resp = await api.presignProjectBranchBucketObject(
     ref.projectId,
@@ -206,7 +208,7 @@ export async function uploadBucketObject(
   );
 
   const presigned = resp.data;
-  const uploaded = await fetch(presigned.url, {
+  const uploaded = await hostFetch({ http }, presigned.url, {
     method: presigned.method,
     headers: presigned.headers,
     body,
