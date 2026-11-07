@@ -1,6 +1,6 @@
 import { showcaseFields } from "@infrawrench/plugin-base";
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SentryClient } from "../client.js";
 import { ProjectResourceType } from "../resource-types.js";
 import type { Call } from "./helpers.js";
@@ -28,6 +28,115 @@ function endless(call: Call) {
     headers: nextLink(`https://us.sentry.io${call.url.pathname}?cursor=${page + 1}`),
   };
 }
+
+describe("pages that are not lists", () => {
+  it("keeps walking past an empty page while the link says there are results", async () => {
+    const { c, calls } = client((call) => {
+      const cursor = call.url.searchParams.get("cursor");
+      return cursor
+        ? {
+            body: [{ id: "2", slug: "b" }],
+            headers: nextLink(`https://us.sentry.io${ORG}/teams/`, false),
+          }
+        : { body: [], headers: nextLink(`https://us.sentry.io${ORG}/teams/?cursor=1`) };
+    });
+    await expect(c.listResources("team", ACCOUNT)).resolves.toHaveLength(1);
+    expect(calls).toHaveLength(2);
+  });
+});
+
+describe("next links", () => {
+  it("refuses a link to another host, and nothing reaches it", async () => {
+    const { c, calls } = client(() => ({
+      body: [{ id: "1", slug: "a" }],
+      headers: nextLink("https://evil.example/api/0/organizations/acme/teams/?cursor=1"),
+    }));
+    await expect(c.listResources("team", ACCOUNT)).rejects.toThrow(REFUSED);
+    expect(calls.map((x) => x.url.host)).toEqual(["us.sentry.io"]);
+  });
+
+  it("refuses a look-alike host and plain http under sentry.io", async () => {
+    for (const link of [
+      "https://sentry.io.evil.example/api/0/x/",
+      "https://evilsentry.io/api/0/x/",
+      "http://sentry.io/api/0/x/",
+    ]) {
+      const { c, calls } = client(() => ({
+        body: [{ id: "1", slug: "a" }],
+        headers: nextLink(link),
+      }));
+      await expect(c.listResources("team", ACCOUNT)).rejects.toThrow(REFUSED);
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  it("follows Sentry's links from a regional host to sentry.io", async () => {
+    const { c, calls } = client((call) =>
+      call.url.host === "sentry.io"
+        ? {
+            body: [{ id: "2", slug: "b" }],
+            headers: nextLink(`https://sentry.io${ORG}/teams/`, false),
+          }
+        : {
+            body: [{ id: "1", slug: "a" }],
+            headers: nextLink(`https://sentry.io${ORG}/teams/?cursor=1`),
+          },
+    );
+    await expect(c.listResources("team", ACCOUNT)).resolves.toHaveLength(2);
+    expect(calls.map((x) => x.url.host)).toEqual(["us.sentry.io", "sentry.io"]);
+  });
+
+  it("keeps a self-hosted token on the configured host whatever the link names", async () => {
+    const extra = { region: "self-hosted", baseUrl: "https://sentry.internal.example/" };
+    const { c, calls } = client((call) => {
+      const cursor = call.url.searchParams.get("cursor");
+      return cursor
+        ? {
+            body: [{ id: "2", slug: "b" }],
+            headers: nextLink(`https://sentry.public.example${ORG}/teams/`, false),
+          }
+        : {
+            body: [{ id: "1", slug: "a" }],
+            // What `system.url-prefix` writes when it differs from the address connected to.
+            headers: nextLink(`https://sentry.public.example${ORG}/teams/?cursor=a,b`),
+          };
+    }, extra);
+    await expect(c.listResources("team", ACCOUNT)).resolves.toHaveLength(2);
+    expect(calls.map((x) => x.url.host)).toEqual([
+      "sentry.internal.example",
+      "sentry.internal.example",
+    ]);
+    expect(calls[1]!.url.pathname).toBe(`${ORG}/teams/`);
+    expect(calls[1]!.url.searchParams.get("cursor")).toBe("a,b");
+  });
+
+  it("does not trust sentry.io from a self-hosted connection", async () => {
+    const extra = { region: "self-hosted", baseUrl: "https://sentry.internal.example" };
+    const { c, calls } = client(
+      () => ({ body: [{ id: "1", slug: "a" }], headers: nextLink("https://sentry.io/elsewhere/") }),
+      extra,
+    );
+    await expect(c.listResources("team", ACCOUNT)).rejects.toThrow(REFUSED);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("host HTTP", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("goes through the host's service, with no CA on the call and no fetch", async () => {
+    const fetchStub = vi.fn(() => {
+      throw new Error("fetch must not be called");
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    const request = vi.fn(async () => ({ status: 200, headers: {}, body: "[]" }));
+    const c = hostClient(new SentryClient(creds, { http: { request } } as never));
+    await c.listResources("team", ACCOUNT);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]).not.toHaveProperty("0.caCert");
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+});
 
 describe("writes with a blank id", () => {
   it("refuses, and sends nothing", async () => {

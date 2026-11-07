@@ -1,5 +1,10 @@
 import type { HttpHostServices, NextPage } from "@infrawrench/plugin-base";
-import { createApiClient, findNextLink, withLinkPagination } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  findNextLink,
+  linkHostsUnder,
+  withLinkPagination,
+} from "@infrawrench/plugin-base";
 import type { paths } from "./api-types.gen.js";
 import type { SentryInstance } from "./regions.js";
 
@@ -101,13 +106,16 @@ export function nextPageUrl(link: string | undefined): string | undefined {
 const nextPage: NextPage = ({ headers }) => nextPageUrl(headers["link"]);
 
 /**
- * The API, with `getAll` for cursor-paginated lists: 100 rows a page, up to
- * `maxPages` (20 unless a call says otherwise), so a misbehaving cursor cannot
- * spin forever. Sentry pages with a `Link` header and reports totals in
- * `X-Hits`; `getResponse` is what reads the second.
+ * The API, with `getAll` for cursor-paginated lists: 100 rows a page, the most the
+ * document allows, up to `maxPages` (20 unless a call says otherwise), so a
+ * misbehaving cursor cannot spin forever. Sentry pages with a `Link` header and
+ * reports totals in `X-Hits`; `getResponse` is what reads the second.
  *
- * An empty page does not end a list, only the link does. A link not starting
- * `http` is read as a path under the API root, as this plugin always has.
+ * Next links are written on `system.url-prefix` rather than the host asked. For
+ * sentry.io that is another host under sentry.io. For a self-hosted install it is
+ * whatever the install was told, which need not be the address this connection
+ * uses, so only the link's path and cursor are read and the token stays where the
+ * account points it.
  */
 export function sentryApi(ctx: SentryContext) {
   const root = apiRoot(ctx);
@@ -116,9 +124,16 @@ export function sentryApi(ctx: SentryContext) {
     sizeParam: "per_page",
     pageSize: 100,
     maxPages: 20,
+    // The pagination guide ends a list at `results=false`, so an empty page does not.
     continueOnEmptyPage: true,
-    foreignLinks: "follow",
-    resolveLink: (link) => (link.startsWith("http") ? link : `${root}${link}`),
+    foreignLinks: ctx.instance.selfHosted ? "refuse" : linkHostsUnder("sentry.io"),
+    resolveLink: (link) => {
+      const url = new URL(link, `${root}/`);
+      const at = url.pathname.indexOf("/api/0/");
+      return ctx.instance.selfHosted && at >= 0
+        ? `${root}${url.pathname.slice(at + "/api/0".length)}${url.search}`
+        : url.href;
+    },
   });
 }
 
