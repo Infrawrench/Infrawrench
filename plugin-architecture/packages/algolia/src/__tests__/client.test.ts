@@ -549,6 +549,41 @@ describe("lists that cannot say they are complete", () => {
     });
   });
 
+  describe("an index whose settings read fails", () => {
+    const indexes = (status: number) => {
+      const { http, c } = client();
+      http.route("GET", INDEXES, { items: [{ name: "a" }, { name: "b" }], nbPages: 1 });
+      http.route("GET", `${INDEXES}/a/settings`, respond(status, { message: "no settings" }));
+      http.route("GET", `${INDEXES}/b/settings`, { searchableAttributes: ["title"] });
+      return c;
+    };
+
+    it.each([401, 429])("fails the type on a %i, not blank settings", async (status) => {
+      await expect(indexes(status).listResources("index", ACCOUNT)).rejects.toThrow("no settings");
+    });
+
+    it("fails the type once every search host answers a 5xx", async () => {
+      const { http, c } = client();
+      http.route("GET", INDEXES, { items: [{ name: "a" }], nbPages: 1 });
+      for (const host of [
+        READ,
+        `${APP}-1.algolianet.com`,
+        `${APP}-2.algolianet.com`,
+        `${APP}-3.algolianet.com`,
+      ]) {
+        http.route("GET", `${host}/1/indexes/a/settings`, respond(500, { message: "no settings" }));
+      }
+      await expect(c.listResources("index", ACCOUNT)).rejects.toThrow("no settings");
+    });
+
+    it.each([403, 404])("still lists the index without settings on a %i", async (status) => {
+      const list = await indexes(status).listResources("index", ACCOUNT);
+      expect(list.map((r) => r.externalId)).toEqual(["a", "b"]);
+      expect(list[0]!.fields["searchableAttributes"]).toBeUndefined();
+      expect(list[1]!.fields["searchableAttributes"]).toBe("title");
+    });
+  });
+
   it("walks crawlers by page until the reported total", async () => {
     const { http, c } = client(crawlerCreds);
     http.route("GET", CRAWLERS, (call: { url: URL }) =>

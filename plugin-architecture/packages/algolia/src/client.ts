@@ -430,7 +430,12 @@ export class AlgoliaClient implements PluginClient {
           const indexes = await this.indexes();
           // Settings feed the edit form; large applications get them for the first indices only.
           const settings = await mapLimit(indexes.slice(0, MAX_SETTINGS_FETCH), FAN_OUT, (i) =>
-            this.settings(i.name).catch(() => undefined),
+            this.settings(i.name).catch((e: unknown) => {
+              // A key without the settings ACL, or an index deleted since the list. Anything
+              // else would blank the stored settings for a sync, so it fails the type instead.
+              if (isStatus(e, 403, 404)) return undefined;
+              throw e;
+            }),
           );
           return indexes.map((i, n) => mapIndex(i, settings[n], accountId));
         }
