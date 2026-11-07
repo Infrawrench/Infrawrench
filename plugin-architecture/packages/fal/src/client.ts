@@ -323,6 +323,15 @@ export function analyticsSeries(
 }
 
 /**
+ * For a list of apps the key is refused: the stored rows stay, with no error on every poll.
+ * A host that keeps no track (the desktop) answers false, and there the refusal shows.
+ */
+function keepRowsWhenRefused(err: unknown): never[] {
+  if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+  return [];
+}
+
+/**
  * fal: Model API endpoints the workspace uses (price, cost, analytics,
  * recent requests), Serverless apps (queue, revisions, logs, analytics),
  * Compute instances, API keys and workflows, plus billed usage and the
@@ -472,7 +481,7 @@ export class FalClient implements PluginClient {
    * usage names, since fal's document has no route that lists environments.
    */
   private async listApps(accountId: string): Promise<ResourceInstance[]> {
-    const apps = await this.readApps(await this.recentEnvironments());
+    const apps = await this.readApps(await this.recentEnvironments(), keepRowsWhenRefused);
     return apps.map((a) => this.mapApp(accountId, a));
   }
 
@@ -504,29 +513,36 @@ export class FalClient implements PluginClient {
     } catch (err) {
       const status = statusOf(err);
       if (status !== 403 && !(status !== undefined && REFUSED_QUERY.has(status))) throw err;
-      reportUnreadListPart({ idPrefixes: [""] });
-      return [];
+      return keepRowsWhenRefused(err);
     }
   }
 
-  /** Main first, so that an id seen twice keeps main's row. */
-  private async readApps(environments: readonly string[] = []): Promise<App[]> {
+  /**
+   * Main first, so that an id seen twice keeps main's row. `onRefused` says what a key
+   * refused the apps of main or an environment gets: none, for a cost read that only
+   * names its rows with them.
+   */
+  private async readApps(
+    environments: readonly string[] = [],
+    onRefused: (err: unknown) => App[] = () => [],
+  ): Promise<App[]> {
     const byId = new Map<string, App>();
-    for (const app of await this.readMainApps()) byId.set(app.endpoint_id, app);
+    for (const app of await this.readMainApps(onRefused)) byId.set(app.endpoint_id, app);
     for (const environment of environments) {
-      for (const app of await this.readEnvironmentApps(environment)) {
+      for (const app of await this.readEnvironmentApps(environment, onRefused)) {
         if (!byId.has(app.endpoint_id)) byId.set(app.endpoint_id, app);
       }
     }
     return [...byId.values()];
   }
 
-  private async readMainApps(): Promise<App[]> {
+  private async readMainApps(onRefused: (err: unknown) => App[]): Promise<App[]> {
     let res: { apps?: App[] };
     try {
       res = await call(() => this.api.get("/serverless/apps", { query: { expand: "endpoints" } }));
     } catch (err) {
-      if (statusOf(err) === 403 || statusOf(err) === 404) return [];
+      if (statusOf(err) === 403) return onRefused(err);
+      if (statusOf(err) === 404) return [];
       throw err;
     }
     return requireListPage(res.apps, {
@@ -541,7 +557,10 @@ export class FalClient implements PluginClient {
    * and fal's own guides call the default `main`. So a refused name is no apps, and so is
    * a row from an environment other than the one asked for.
    */
-  private async readEnvironmentApps(environment: string): Promise<App[]> {
+  private async readEnvironmentApps(
+    environment: string,
+    onRefused: (err: unknown) => App[],
+  ): Promise<App[]> {
     let res: { apps?: App[] };
     try {
       res = await call(() =>
@@ -549,10 +568,7 @@ export class FalClient implements PluginClient {
       );
     } catch (err) {
       const status = statusOf(err);
-      if (status === 403) {
-        reportUnreadListPart({ idPrefixes: [""] });
-        return [];
-      }
+      if (status === 403) return onRefused(err);
       if (status !== undefined && REFUSED_QUERY.has(status)) return [];
       throw err;
     }

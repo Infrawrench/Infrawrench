@@ -555,6 +555,41 @@ describe("Serverless apps outside the main environment", () => {
       expect(note).toHaveBeenCalledWith({ idPrefixes: [""] });
     });
 
+    it("shows the refusal where the host keeps no track", async () => {
+      const usageRefused = host((url) =>
+        url.includes("/serverless/usage")
+          ? { status: 403 }
+          : { body: { apps: [app("my-app", "main")] } },
+      );
+      await expect(
+        client(usageRefused.http).listResources("fal-app", ACCOUNT),
+      ).rejects.toMatchObject({ status: 403 });
+      const environmentRefused = host((url) => {
+        if (url.includes("/serverless/usage")) return { body: usage({ environment: "staging" }) };
+        if (environmentOf(url)) return { status: 403 };
+        return { body: { apps: [app("my-app", "main")] } };
+      });
+      await expect(
+        client(environmentRefused.http).listResources("fal-app", ACCOUNT),
+      ).rejects.toMatchObject({ status: 403 });
+    });
+
+    it("keeps the stored rows when main's apps are refused, rather than read them as none", async () => {
+      const note = vi.fn();
+      Reflect.set(globalThis, HOOK, note);
+      const { http } = host((url) =>
+        url.includes("/serverless/usage")
+          ? { body: usage({ environment: "main" }) }
+          : { status: 403 },
+      );
+      expect(await client(http).listResources("fal-app", ACCOUNT)).toEqual([]);
+      expect(note).toHaveBeenCalledWith({ idPrefixes: [""] });
+      Reflect.deleteProperty(globalThis, HOOK);
+      await expect(client(http).listResources("fal-app", ACCOUNT)).rejects.toMatchObject({
+        status: 403,
+      });
+    });
+
     it("reports nothing when it read them", async () => {
       const note = vi.fn();
       Reflect.set(globalThis, HOOK, note);
