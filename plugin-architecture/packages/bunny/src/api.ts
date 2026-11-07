@@ -1,6 +1,8 @@
 import {
   createApiClient,
+  ListTruncatedError,
   pathEncode,
+  requireListPage,
   restRequest,
   type ApiClientOptions,
   type ApiResponse,
@@ -95,7 +97,7 @@ function writeQuery(query: Record<string, ParamValue>): string {
 /** One client per document: the Core API, Edge Scripting and Magic Containers. */
 export function createBunnyApis(ctx: BunnyContext) {
   const shared: Omit<ApiClientOptions, "baseUrl"> = {
-    vendor: "bunny.net",
+    vendor: VENDOR,
     headers: { Accept: "application/json", AccessKey: ctx.apiKey },
     http: ctx.http,
     caCert: ctx.caCert,
@@ -113,50 +115,63 @@ export function createBunnyApis(ctx: BunnyContext) {
 
 export type BunnyApis = ReturnType<typeof createBunnyApis>;
 
+const VENDOR = "bunny.net";
+const PER_PAGE = 1000;
+const MAX_PAGES = 50;
+const MC_PAGE_SIZE = 100;
+const MC_MAX_PAGES = 100;
+
 /**
  * `{Items, CurrentPage, TotalItems, HasMoreItems}` listings. A hand loop rather
  * than `getAll`: an empty page with more to come carries on, an answer that is
  * the array itself ends the list, and `page` goes before `perPage`.
  */
 export async function bunnyPaged<Item>(
+  path: string,
   fetchPage: (paging: {
     page: number;
     perPage: number;
   }) => Promise<{ Items?: Item[] | null; HasMoreItems?: boolean } | Item[]>,
-  maxPages = 50,
 ): Promise<Item[]> {
   const out: Item[] = [];
-  for (let page = 1; page <= maxPages; page++) {
-    const res = await fetchPage({ page, perPage: 1000 });
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const res = await fetchPage({ page, perPage: PER_PAGE });
     if (Array.isArray(res)) return [...out, ...res];
-    out.push(...(res?.Items ?? []));
-    if (!res?.HasMoreItems) break;
+    // The document has `Items` nullable, so null is an empty page. Left out is not.
+    const items =
+      res?.Items === null
+        ? []
+        : requireListPage(res?.Items, { vendor: VENDOR, path, key: "Items" });
+    out.push(...items);
+    if (!res?.HasMoreItems) return out;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages: MAX_PAGES });
 }
 
 type AppList = ApiResponse<McPaths["/apps"]["get"]>;
 
 /**
  * Magic Containers' cursor listing (`items`, `cursor`). A hand loop rather than
- * `getAll`, which would read an `items` that is not a list as an empty account,
- * and the host prunes what a sync stops seeing.
+ * `getAll`: a page with no items ends the list even when it still has a cursor.
  */
-export async function mcApps(
-  mc: BunnyApis["mc"],
-  maxPages = 50,
-): Promise<NonNullable<AppList["items"]>> {
+export async function mcApps(mc: BunnyApis["mc"]): Promise<NonNullable<AppList["items"]>> {
   const out: NonNullable<AppList["items"]> = [];
   let cursor: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
+  for (let page = 0; page < MC_MAX_PAGES; page++) {
     const res = await mc.get("/apps", {
-      query: { limit: 100, ...(cursor ? { nextCursor: cursor } : {}) },
+      query: { limit: MC_PAGE_SIZE, ...(cursor ? { nextCursor: cursor } : {}) },
     });
-    out.push(...(res?.items ?? []));
+    const items = requireListPage(res?.items, { vendor: VENDOR, path: "/apps", key: "items" });
+    out.push(...items);
     cursor = res?.cursor ?? undefined;
-    if (!cursor || (res?.items ?? []).length === 0) break;
+    if (!cursor || items.length === 0) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path: "/apps",
+    items: out.length,
+    maxPages: MC_MAX_PAGES,
+  });
 }
 
 /**
@@ -166,7 +181,7 @@ export async function mcApps(
  */
 function storageOptions(ctx: BunnyContext, url: string, accessKey: string) {
   return {
-    vendor: "bunny.net",
+    vendor: VENDOR,
     url,
     headers: { Accept: "application/json", AccessKey: accessKey },
     contentType: "with-body" as const,
@@ -188,7 +203,9 @@ export async function listStorage(
     init: { method: "GET" },
     emptyBodyIsUndefined: true,
   });
-  return body === undefined ? [] : body;
+  return body === undefined
+    ? []
+    : requireListPage(body, { vendor: VENDOR, path: new URL(url).pathname, key: null });
 }
 
 /** A write whose answer is not read, so it need not be JSON. */

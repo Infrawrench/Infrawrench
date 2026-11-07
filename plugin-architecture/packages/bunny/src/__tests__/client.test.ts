@@ -454,6 +454,150 @@ describe("container app metrics", () => {
   });
 });
 
+describe("reading a whole list", () => {
+  const PAGED: Array<[string, string]> = [
+    ["dns-zone", "/dnszone"],
+    ["video-library", "/videolibrary"],
+    ["edge-script", "/compute/script"],
+  ];
+
+  it.each(PAGED)("%s throws when the list outruns the page cap", async (type, path) => {
+    const { c, calls } = client((u) => {
+      expect(u.pathname).toBe(path);
+      return { body: { Items: [{ Id: 1, Name: "x", Domain: "x" }], HasMoreItems: true } };
+    });
+    await expect(c.listResources(type, "a1")).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls).toHaveLength(50);
+  });
+
+  it.each(PAGED)("%s throws on a renamed key, first page or later", async (type) => {
+    const first = client(() => ({ body: { Rows: [], HasMoreItems: false } }));
+    await expect(first.c.listResources(type, "a1")).rejects.toThrow("is not a list");
+    const later = client((u) =>
+      u.searchParams.get("page") === "1"
+        ? { body: { Items: [{ Id: 1, Name: "x", Domain: "x" }], HasMoreItems: true } }
+        : { body: { Rows: [], HasMoreItems: false } },
+    );
+    await expect(later.c.listResources(type, "a1")).rejects.toThrow("is not a list");
+    expect(later.calls).toHaveLength(2);
+  });
+
+  it.each(PAGED)("%s throws on an empty answer", async (type) => {
+    const { c } = client(() => ({ body: "" }));
+    await expect(c.listResources(type, "a1")).rejects.toThrow("is not a list");
+  });
+
+  it.each(PAGED)("%s reads the document's null Items as an empty page", async (type) => {
+    const { c } = client(() => ({ body: { Items: null, HasMoreItems: false } }));
+    await expect(c.listResources(type, "a1")).resolves.toEqual([]);
+  });
+
+  it("still takes a page that is the array itself", async () => {
+    const { c, calls } = client(() => ({ body: [{ Id: 1, Domain: "x" }] }));
+    expect(await c.listResources("dns-zone", "a1")).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+  });
+
+  it.each([
+    ["pull-zone", "/pullzone"],
+    ["storage-zone", "/storagezone"],
+  ])("%s throws when %s does not answer a list", async (type) => {
+    const named = client(() => ({ body: { Items: [] } }));
+    await expect(named.c.listResources(type, "a1")).rejects.toThrow("is not a list");
+    const blank = client(() => ({ body: "" }));
+    await expect(blank.c.listResources(type, "a1")).rejects.toThrow("is not a list");
+  });
+
+  describe("Magic Containers", () => {
+    const app = { id: "app", name: "app" };
+
+    it("throws when the list outruns the page cap, with nothing fetched for it", async () => {
+      const { c, calls } = client(() => ({ body: { items: [app], cursor: "next" } }));
+      await expect(c.listResources("container-app", "a1")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(100);
+      expect(calls.every((x) => new URL(x.url).pathname === "/mc/apps")).toBe(true);
+    });
+
+    it("reads past the old cap of 5,000 apps", async () => {
+      let page = 0;
+      const { c } = client((u) => {
+        if (u.pathname !== "/mc/apps") return { body: app };
+        page++;
+        return { body: { items: [app], cursor: page < 60 ? `c${page}` : null } };
+      });
+      expect(await c.listResources("container-app", "a1")).toHaveLength(60);
+    });
+
+    it("throws on a renamed key, first page or later", async () => {
+      const first = client(() => ({ body: { apps: [] } }));
+      await expect(first.c.listResources("container-app", "a1")).rejects.toThrow("is not a list");
+      const later = client((u) =>
+        u.pathname !== "/mc/apps"
+          ? { body: app }
+          : u.searchParams.has("nextCursor")
+            ? { body: { apps: [] } }
+            : { body: { items: [app], cursor: "next" } },
+      );
+      await expect(later.c.listResources("container-app", "a1")).rejects.toThrow("is not a list");
+    });
+
+    it("ends on an empty list", async () => {
+      const { c } = client(() => ({ body: { items: [], cursor: null } }));
+      await expect(c.listResources("container-app", "a1")).resolves.toEqual([]);
+    });
+
+    it("probes with one small page, however many apps there are", async () => {
+      const { c, calls } = client((u) =>
+        u.pathname === "/mc/apps" ? { body: { items: [app], cursor: "next" } } : { body: [] },
+      );
+      const { checks } = await c.verifyCredentials();
+      expect(checks.find((x) => x.capabilityId === "containers")!.status).toBe("ok");
+      const apps = calls.filter((x) => new URL(x.url).pathname === "/mc/apps");
+      expect(apps).toHaveLength(1);
+      expect(new URL(apps[0]!.url).searchParams.get("limit")).toBe("1");
+    });
+  });
+
+  describe("the account summary", () => {
+    it("fails rather than count a list it could not finish", async () => {
+      const { c } = client((u) =>
+        u.pathname === "/dnszone"
+          ? { body: { Items: [{ Id: 1, Domain: "x" }], HasMoreItems: true } }
+          : { body: u.pathname === "/billing" ? {} : [] },
+      );
+      await expect(c.listResources("account", "a1")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
+    it("fails on an answer that is not a list", async () => {
+      const { c } = client((u) => ({
+        body: u.pathname === "/pullzone" ? { Items: [] } : u.pathname === "/billing" ? {} : [],
+      }));
+      await expect(c.listResources("account", "a1")).rejects.toThrow("is not a list");
+    });
+
+    it("still shows the account when a count is refused", async () => {
+      const { c } = client((u) =>
+        u.pathname === "/billing" ? { body: {} } : { status: 500, body: { Message: "no" } },
+      );
+      const [account] = await c.listResources("account", "a1");
+      expect(account!.fields).toMatchObject({ pullZoneCount: 0, dnsZoneCount: 0 });
+    });
+  });
+
+  it("refuses a storage listing that is not a list", async () => {
+    const { c } = client((u) =>
+      u.host === "api.bunny.net"
+        ? { body: [{ Id: 1, Name: "assets", Password: "PW" }] }
+        : { body: { Items: [] } },
+    );
+    await expect(c.listStorageObjects("assets", "")).rejects.toThrow("is not a list");
+  });
+});
+
 describe("storage browser", () => {
   it("lists with the zone password on the zone's storage host", async () => {
     const { c, calls } = client((u) => {

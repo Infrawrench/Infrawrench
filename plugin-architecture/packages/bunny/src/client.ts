@@ -15,7 +15,12 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { CreditAccessError, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  CreditAccessError,
+  externalIdOf,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { BunnyApis, BunnyContext, Chart } from "./api.js";
 import {
   BunnyApiError,
@@ -88,6 +93,12 @@ function childOf(id: string): { parent: string; key: string } {
   const { parent, key } = splitChild(id);
   if (!parent || !key) throw new Error(`bunny.net plugin: "${id}" does not name a child resource.`);
   return { parent, key };
+}
+
+/** A count that cannot be read shows as none, but a list that came back in part is not none. */
+function noneUnlessIncomplete(err: unknown): never[] {
+  rethrowIncompleteList(err);
+  return [];
 }
 
 function ymd(ms: number): string {
@@ -233,7 +244,9 @@ export class BunnyClient implements PluginClient {
   private pullZones(): Promise<PullZone[]> {
     if (this.pullZonesCache && Date.now() - this.pullZonesCache.at < CACHE_MS)
       return this.pullZonesCache.value;
-    const value = this.api.core.get("/pullzone").then((r) => r ?? []);
+    const value = this.api.core
+      .get("/pullzone")
+      .then((r) => requireListPage(r, { vendor: "bunny.net", path: "/pullzone", key: null }));
     this.pullZonesCache = { at: Date.now(), value };
     value.catch(() => (this.pullZonesCache = undefined));
     return value;
@@ -244,14 +257,18 @@ export class BunnyClient implements PluginClient {
       return this.storageZonesCache.value;
     const value = this.api.core
       .get("/storagezone")
-      .then((r) => (r ?? []).filter((z) => !z.Deleted));
+      .then((r) =>
+        requireListPage(r, { vendor: "bunny.net", path: "/storagezone", key: null }).filter(
+          (z) => !z.Deleted,
+        ),
+      );
     this.storageZonesCache = { at: Date.now(), value };
     value.catch(() => (this.storageZonesCache = undefined));
     return value;
   }
 
   private async dnsZones(): Promise<DnsZone[]> {
-    return bunnyPaged((paging) => this.api.core.get("/dnszone", { query: paging }));
+    return bunnyPaged("/dnszone", (paging) => this.api.core.get("/dnszone", { query: paging }));
   }
 
   private async pullZone(id: string): Promise<PullZone> {
@@ -287,11 +304,13 @@ export class BunnyClient implements PluginClient {
           );
         case "video-library":
           return (
-            await bunnyPaged((paging) => this.api.core.get("/videolibrary", { query: paging }))
+            await bunnyPaged("/videolibrary", (paging) =>
+              this.api.core.get("/videolibrary", { query: paging }),
+            )
           ).map((l) => libraryInstance(accountId, l));
         case "edge-script":
           return (
-            await bunnyPaged((paging) =>
+            await bunnyPaged("/compute/script", (paging) =>
               this.api.compute.get("/compute/script", {
                 query: { includeLinkedPullzones: true, ...paging },
               }),
@@ -321,9 +340,9 @@ export class BunnyClient implements PluginClient {
   private async accountInstance(accountId: string): Promise<ResourceInstance> {
     const [billing, pz, sz, dns] = await Promise.all([
       this.api.core.get("/billing").catch(() => undefined),
-      this.pullZones().catch(() => []),
-      this.storageZones().catch(() => []),
-      this.dnsZones().catch(() => []),
+      this.pullZones().catch(noneUnlessIncomplete),
+      this.storageZones().catch(noneUnlessIncomplete),
+      this.dnsZones().catch(noneUnlessIncomplete),
     ]);
     const fields: Record<string, string | number | boolean> = {
       pullZoneCount: pz.length,
@@ -490,7 +509,7 @@ export class BunnyClient implements PluginClient {
         checks: await Promise.all([
           probe("resources", () => this.api.core.get("/pullzone")),
           probe("costs", () => this.api.core.get("/billing")),
-          probe("containers", () => mcApps(this.api.mc, 1)),
+          probe("containers", () => this.api.mc.get("/apps", { query: { limit: 1 } })),
         ]),
       };
     });
