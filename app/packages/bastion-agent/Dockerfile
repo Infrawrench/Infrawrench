@@ -22,7 +22,7 @@ RUN npx esbuild src/index.ts \
     --target=node22 \
     --format=esm \
     --outfile=dist/index.mjs \
-    --banner:js="import{createRequire}from'node:module';const require=createRequire(import.meta.url);"
+    --banner:js="import{createRequire as bannerCreateRequire}from'node:module';const require=bannerCreateRequire(import.meta.url);"
 
 FROM node:22-alpine
 WORKDIR /app
