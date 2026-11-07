@@ -1,4 +1,12 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  type ApiBody,
+  type ApiClient,
+  type ApiResponse,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type { operations, paths } from "./api-types.gen.js";
 
 export const HUB = "https://hub.docker.com";
 
@@ -43,7 +51,7 @@ export function secretKind(secret: string): "pat" | "oat" | "password" {
 
 export function errorDetail(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { detail?: unknown; message?: unknown; errinfo?: unknown };
+    const parsed: { detail?: unknown; message?: unknown } = JSON.parse(body);
     if (typeof parsed.message === "string" && parsed.message) return parsed.message;
     if (typeof parsed.detail === "string" && parsed.detail) return parsed.detail;
   } catch {
@@ -85,13 +93,21 @@ export async function rawRequest(
   return { status: res.status, headers: lower, text: await res.text() };
 }
 
+/**
+ * The token exchange. Documented, but kept off the typed client: it is what the
+ * client's headers need, carries no bearer, and has its own failure message.
+ */
 async function exchange(ctx: HubContext): Promise<string> {
+  const credentials: ApiBody<operations["AuthCreateAccessToken"]> = {
+    identifier: ctx.identifier,
+    secret: ctx.secret,
+  };
   const res = await rawRequest(
     ctx.http,
     `${HUB}/v2/auth/token`,
     "POST",
     { "Content-Type": "application/json", Accept: "application/json" },
-    JSON.stringify({ identifier: ctx.identifier, secret: ctx.secret }),
+    JSON.stringify(credentials),
   );
   if (res.status < 200 || res.status >= 300) {
     throw new HubApiError(
@@ -99,7 +115,8 @@ async function exchange(ctx: HubContext): Promise<string> {
       `Docker Hub rejected the credentials (${res.status}): ${errorDetail(res.text)}. Check the username (or organization name for an organization access token) and the token.`,
     );
   }
-  const token = (JSON.parse(res.text) as { access_token?: string }).access_token;
+  const answer: ApiResponse<operations["AuthCreateAccessToken"]> = JSON.parse(res.text);
+  const token = answer.access_token;
   if (!token) throw new HubApiError(500, "Docker Hub returned no access token");
   // The JWT lives ten minutes; refresh a minute early.
   ctx.jwt = { token, until: Date.now() + 9 * 60_000 };
@@ -111,77 +128,122 @@ async function bearer(ctx: HubContext): Promise<string> {
   return exchange(ctx);
 }
 
-export type Query = Record<string, string | number | boolean | undefined>;
+const authHeaders = async (ctx: HubContext) => ({
+  Accept: "application/json",
+  Authorization: `Bearer ${await bearer(ctx)}`,
+});
 
-export function buildQuery(query: Query = {}): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query))
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
+function apiError(status: number, path: string, body: string): HubApiError {
+  return new HubApiError(
+    status,
+    `Docker Hub API error ${status} for ${path}: ${errorDetail(body)}`,
+  );
+}
+
+function isJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * One authenticated Hub call. `path` is relative to `https://hub.docker.com`
- * or an absolute `next` URL from a paged response. A 401 drops the cached JWT
- * and retries once (the token may have expired mid-pass).
+ * The host service or `fetch`, whichever {@link rawRequest} picks, with what Docker
+ * Hub's calls have always had around it: a 401 drops the cached JWT and retries
+ * once (the token may have expired mid-pass), and a 2xx whose body is not JSON
+ * reads as that text rather than failing, which `restRequest` would otherwise do.
  */
-export async function hubFetch<T>(
-  ctx: HubContext,
-  path: string,
-  opts: { method?: string; query?: Query; body?: unknown } = {},
-): Promise<T> {
-  const url = path.startsWith("http") ? path : `${HUB}${path}${buildQuery(opts.query)}`;
-  const method = opts.method ?? "GET";
-  const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-  const send = async () =>
-    rawRequest(
-      ctx.http,
-      url,
-      method,
-      {
-        Accept: "application/json",
-        Authorization: `Bearer ${await bearer(ctx)}`,
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      body,
-    );
-  let res = await send();
-  if (res.status === 401) {
-    delete ctx.jwt;
-    res = await send();
-  }
-  if (res.status < 200 || res.status >= 300) {
-    const short = path.startsWith("http") ? new URL(path).pathname : path;
-    throw new HubApiError(
-      res.status,
-      `Docker Hub API error ${res.status} for ${short}: ${errorDetail(res.text)}`,
-    );
-  }
-  if (!res.text) return undefined as T;
-  try {
-    return JSON.parse(res.text) as T;
-  } catch {
-    return res.text as unknown as T;
-  }
+function hubTransport(ctx: HubContext): HttpHostServices {
+  return {
+    async request({ url, method, headers, body: sent }) {
+      // Every body here is JSON text; the interface also allows bytes.
+      const body = typeof sent === "string" ? sent : undefined;
+      let res = await rawRequest(ctx.http, url, method, headers, body);
+      if (res.status === 401) {
+        delete ctx.jwt;
+        res = await rawRequest(
+          ctx.http,
+          url,
+          method,
+          { ...headers, Authorization: `Bearer ${await bearer(ctx)}` },
+          body,
+        );
+      }
+      const ok = res.status >= 200 && res.status < 300;
+      return {
+        // `restRequest` drops the body of a 204, and these calls read one if it comes.
+        status: res.status === 204 ? 200 : res.status,
+        headers: res.headers,
+        body: ok && res.text && !isJson(res.text) ? JSON.stringify(res.text) : res.text,
+      };
+    },
+  };
 }
 
-/** Every page of a `{results, next}` list, bounded so a looping `next` cannot spin forever. */
-export async function hubPaged<T>(
-  ctx: HubContext,
-  path: string,
-  query: Query = {},
-  maxPages = 20,
-): Promise<T[]> {
-  const out: T[] = [];
-  let res = await hubFetch<{ results?: T[]; next?: string | null }>(ctx, path, {
-    query: { page_size: 100, ...query },
+export type HubApi = ApiClient<paths>;
+
+/** Docker Hub, typed from its document (`plugingen.json`). */
+export function hubApi(ctx: HubContext): HubApi {
+  return createApiClient<paths>({
+    vendor: "Docker Hub",
+    baseUrl: HUB,
+    headers: () => authHeaders(ctx),
+    http: hubTransport(ctx),
+    contentType: "with-body",
+    httpError: ({ status, path, body }) => apiError(status, path, body),
   });
+}
+
+/** What every list asks for on its first page. */
+export const FIRST_PAGE = { query: { page_size: 100 } };
+
+/** One page of a `{results, next}` list. */
+export interface HubPage<Row> {
+  results?: Row[];
+  next?: string | null;
+}
+
+/**
+ * A next link as Docker Hub wrote it, absolute on the real service. The parameter
+ * is `path` because a `next` that is not text fails right here, and that is the
+ * message a failed sync has always carried.
+ */
+async function followLink<Row>(ctx: HubContext, path: string): Promise<HubPage<Row> | undefined> {
+  const absolute = path.startsWith("http");
+  const { body } = await restRequest<HubPage<Row> | undefined>({
+    vendor: "Docker Hub",
+    url: absolute ? path : `${HUB}${path}`,
+    headers: await authHeaders(ctx),
+    http: hubTransport(ctx),
+    contentType: "with-body",
+    httpError: ({ status, body: text }) =>
+      apiError(status, absolute ? new URL(path).pathname : path, text),
+  });
+  return body;
+}
+
+/**
+ * Every page of a `{results, next}` list from its first page, bounded so a looping
+ * `next` cannot spin forever.
+ *
+ * This is a hand loop rather than `withLinkPagination` because that reads a
+ * `results` that is not an array as an empty page, and the host prunes what a sync
+ * stops seeing. Here it fails the sync, as it always has.
+ */
+export async function hubPaged<Row>(
+  ctx: HubContext,
+  first: () => Promise<HubPage<Row> | undefined>,
+  maxPages = 20,
+): Promise<Row[]> {
+  const out: Row[] = [];
+  let res = await first();
   for (let page = 0; ; page++) {
     out.push(...(res?.results ?? []));
     const next = res?.next;
     if (!next || page + 1 >= maxPages) break;
-    res = await hubFetch(ctx, next);
+    res = await followLink<Row>(ctx, next);
   }
   return out;
 }
@@ -191,16 +253,15 @@ export async function hubPaged<T>(
  * throws instead of truncating, because a reader that stores the result as
  * the complete set (the seat inventory) must never see a partial list.
  */
-export async function hubPagedAll<T>(
+export async function hubPagedAll<Row>(
   ctx: HubContext,
+  /** Names the list in the error. */
   path: string,
-  query: Query = {},
+  first: () => Promise<HubPage<Row> | undefined>,
   maxPages = 500,
-): Promise<T[]> {
-  const out: T[] = [];
-  let res = await hubFetch<{ results?: T[]; next?: string | null }>(ctx, path, {
-    query: { page_size: 100, ...query },
-  });
+): Promise<Row[]> {
+  const out: Row[] = [];
+  let res = await first();
   for (let page = 1; ; page++) {
     out.push(...(res?.results ?? []));
     const next = res?.next;
@@ -210,6 +271,6 @@ export async function hubPagedAll<T>(
         500,
         `Docker Hub plugin: ${path} has more than ${maxPages} pages; refusing to return a partial list`,
       );
-    res = await hubFetch(ctx, next);
+    res = await followLink<Row>(ctx, next);
   }
 }

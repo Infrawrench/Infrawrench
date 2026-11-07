@@ -1,0 +1,458 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.docker.com/reference/api/hub/latest.yaml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/hub_org",
+      "value": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orgname": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "company": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "date_joined": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The document has no schema for an organization's profile, which the two routes below answer with."
+    },
+    {
+      "pointer": "/paths/~1v2~1user~1",
+      "value": {
+        "get": {
+          "operationId": "getV2User",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/user"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the document, but the plugin calls it: the signed-in user's profile, for their namespace. See the Docker Hub section of KNOWLEDGE.md for where the route comes from."
+    },
+    {
+      "pointer": "/paths/~1v2~1user~1orgs~1",
+      "value": {
+        "get": {
+          "operationId": "getV2UserOrgs",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/page"
+            },
+            {
+              "$ref": "#/components/parameters/page_size"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/page"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "results": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/hub_org"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the document, but the plugin calls it: the organizations behind the namespace picker. See the Docker Hub section of KNOWLEDGE.md for where the route comes from."
+    },
+    {
+      "pointer": "/paths/~1v2~1orgs~1{org_name}",
+      "value": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/org_name"
+          }
+        ],
+        "get": {
+          "operationId": "getV2OrgsByOrgName",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/hub_org"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the document, but the plugin calls it: an organization's profile, for its namespace. See the Docker Hub section of KNOWLEDGE.md for where the route comes from."
+    },
+    {
+      "pointer": "/paths/~1v2~1repositories~1{namespace}~1{repository}~1",
+      "value": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/namespace"
+          },
+          {
+            "$ref": "#/components/parameters/repository"
+          }
+        ],
+        "patch": {
+          "operationId": "patchV2Repository",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "type": "string"
+                    },
+                    "full_description": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        },
+        "delete": {
+          "operationId": "deleteV2Repository",
+          "responses": {
+            "202": {
+              "description": "Accepted"
+            }
+          }
+        }
+      },
+      "why": "Not in the document, but the plugin calls it: editing a repository's descriptions and deleting it. See the Docker Hub section of KNOWLEDGE.md for where the route comes from."
+    },
+    {
+      "pointer": "/paths/~1v2~1repositories~1{namespace}~1{repository}~1privacy",
+      "value": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/namespace"
+          },
+          {
+            "$ref": "#/components/parameters/repository"
+          }
+        ],
+        "post": {
+          "operationId": "postV2RepositoryPrivacy",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["is_private"],
+                  "properties": {
+                    "is_private": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      },
+      "why": "Not in the document, but the plugin calls it: changing a repository's visibility. See the Docker Hub section of KNOWLEDGE.md for where the route comes from."
+    },
+    {
+      "pointer": "/paths/~1v2~1repositories~1{namespace}~1{repository}~1tags~1{tag}~1",
+      "value": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/namespace"
+          },
+          {
+            "$ref": "#/components/parameters/repository"
+          },
+          {
+            "$ref": "#/components/parameters/tag"
+          }
+        ],
+        "delete": {
+          "operationId": "deleteV2RepositoryTag",
+          "responses": {
+            "204": {
+              "description": "Deleted"
+            }
+          }
+        }
+      },
+      "why": "Not in the document, but the plugin calls it: deleting a tag. See the Docker Hub section of KNOWLEDGE.md for where the route comes from."
+    },
+    {
+      "pointer": "/paths/~1v2~1repositories~1{namespace}~1{repository}~1groups~1{group_id}~1",
+      "value": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/namespace"
+          },
+          {
+            "$ref": "#/components/parameters/repository"
+          },
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "patch": {
+          "operationId": "patchV2RepositoryGroup",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["permission"],
+                  "properties": {
+                    "permission": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      },
+      "why": "Not in the document, but the plugin calls it: changing the permission of a team that already has one. See the Docker Hub section of KNOWLEDGE.md for where the route comes from."
+    },
+    {
+      "pointer": "/paths/~1v2~1namespaces~1{namespace}~1repositories~1{repository}~1tags/get/parameters/2",
+      "value": {
+        "in": "query",
+        "name": "name",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "Not in the document, but the repository's Tags tab sends its filter here."
+    },
+    {
+      "pointer": "/components/schemas/repository_info/properties/description",
+      "value": {
+        "type": ["string", "null"]
+      },
+      "why": "Listed under `required` but left out of `properties`. The plugin reads it as text."
+    },
+    {
+      "pointer": "/components/schemas/repository_info/properties/last_updated",
+      "value": {
+        "type": ["string", "null"],
+        "format": "date-time"
+      },
+      "why": "Nullable on the list row in this same document, and the mapper treats it as nullable."
+    },
+    {
+      "pointer": "/components/schemas/repository_list_entry/properties/description",
+      "value": {
+        "type": ["string", "null"]
+      },
+      "why": "Left out of the list row; the repository list maps it the same way as a single read."
+    },
+    {
+      "pointer": "/components/schemas/repository_list_entry/required",
+      "value": ["name", "namespace"],
+      "why": "The document marks nothing required, and these two are what identifies a repository."
+    },
+    {
+      "pointer": "/components/schemas/repo_creation_request/properties/description",
+      "value": {
+        "type": "string"
+      },
+      "why": "Not in the document, but the create form sends the short description here."
+    },
+    {
+      "pointer": "/components/schemas/update_repository_immutable_tags_request/required",
+      "value": ["immutable_tags"],
+      "why": "The plugin leaves the rules out when there are none, so the types have to allow it."
+    },
+    {
+      "pointer": "/components/schemas/RepositoryGroupCreationRequest/properties/permission",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text it was given straight through and Docker Hub validates it, so a value outside this enum should get Docker Hub's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/tag/required",
+      "value": ["name"],
+      "why": "The document marks nothing required, and the name is what identifies a tag."
+    },
+    {
+      "pointer": "/components/schemas/tag/properties/digest",
+      "value": {
+        "type": "string"
+      },
+      "why": "Left out of the document; the plugin reads it first and falls back to the first image's digest, so an answer without it still works."
+    },
+    {
+      "pointer": "/components/schemas/tag/properties/media_type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Left out of the document; the plugin shows it when it is there."
+    },
+    {
+      "pointer": "/paths/~1v2~1orgs~1{org_name}~1settings/put/requestBody/content/application~1json/schema/properties/restricted_images",
+      "value": {
+        "$ref": "#/components/schemas/restricted_images"
+      },
+      "why": "The second allOf member only restates what is required, which generates an index signature of never and makes the whole type never. The plugin always writes all three fields."
+    },
+    {
+      "pointer": "/components/schemas/org_group/required",
+      "value": ["name"],
+      "why": "The document marks nothing required, and the name is what identifies a team."
+    },
+    {
+      "pointer": "/components/schemas/group_member/required",
+      "value": ["username"],
+      "why": "The document marks nothing required, and the username is what identifies a team member."
+    },
+    {
+      "pointer": "/components/schemas/org_member/required",
+      "value": ["username"],
+      "why": "The document marks nothing required, and the username is what identifies a member."
+    },
+    {
+      "pointer": "/components/schemas/org_member/properties/role",
+      "value": {
+        "type": "string"
+      },
+      "why": "The update route in this document allows custom role names, and the plugin only reads this as text."
+    },
+    {
+      "pointer": "/components/schemas/invite/required",
+      "value": ["id"],
+      "why": "The document marks nothing required, and the id is what identifies an invite."
+    },
+    {
+      "pointer": "/components/schemas/accessToken/required",
+      "value": ["uuid"],
+      "why": "The document marks nothing required, and the uuid is what identifies a token."
+    },
+    {
+      "pointer": "/components/schemas/orgAccessToken/required",
+      "value": ["id"],
+      "why": "The document marks nothing required, and the id is what identifies a token."
+    },
+    {
+      "pointer": "/components/schemas/orgAccessToken/properties/description",
+      "value": {
+        "type": "string"
+      },
+      "why": "Sent on create in this document but left out of what comes back, and the plugin shows it when it is there."
+    },
+    {
+      "pointer": "/components/schemas/createOrgAccessTokenResponse/allOf/0",
+      "value": {
+        "$ref": "#/components/schemas/orgAccessToken"
+      },
+      "why": "An inline copy of `orgAccessToken` with fewer fields, which the plugin maps the same way."
+    },
+    {
+      "pointer": "/components/schemas/updateOrgAccessTokenRequest/properties/description",
+      "value": {
+        "type": "string"
+      },
+      "why": "Not in the document, but the edit form sends it."
+    }
+  ],
+  "paths": {
+    "/v2/auth/token": ["post"],
+    "/v2/user/": ["get"],
+    "/v2/user/orgs/": ["get"],
+    "/v2/orgs/{org_name}": ["get"],
+    "/v2/access-tokens": ["get", "post"],
+    "/v2/access-tokens/{uuid}": ["get", "patch", "delete"],
+    "/v2/auditlogs/{account}": ["get"],
+    "/v2/orgs/{org_name}/settings": ["get", "put"],
+    "/v2/orgs/{org_name}/access-tokens": ["get", "post"],
+    "/v2/orgs/{org_name}/access-tokens/{access_token_id}": ["get", "patch", "delete"],
+    "/v2/namespaces/{namespace}/repositories": ["get", "post"],
+    "/v2/namespaces/{namespace}/repositories/{repository}": ["get"],
+    "/v2/namespaces/{namespace}/repositories/{repository}/tags": ["get"],
+    "/v2/namespaces/{namespace}/repositories/{repository}/tags/{tag}": ["get"],
+    "/v2/namespaces/{namespace}/repositories/{repository}/immutabletags": ["patch"],
+    "/v2/repositories/{namespace}/{repository}/": ["patch", "delete"],
+    "/v2/repositories/{namespace}/{repository}/privacy": ["post"],
+    "/v2/repositories/{namespace}/{repository}/tags/{tag}/": ["delete"],
+    "/v2/repositories/{namespace}/{repository}/groups": ["post"],
+    "/v2/repositories/{namespace}/{repository}/groups/{group_id}/": ["patch"],
+    "/v2/orgs/{org_name}/members": ["get"],
+    "/v2/orgs/{org_name}/members/{username}": ["put", "delete"],
+    "/v2/orgs/{org_name}/invites": ["get"],
+    "/v2/orgs/{org_name}/groups": ["get", "post"],
+    "/v2/orgs/{org_name}/groups/{group_name}": ["get", "patch", "delete"],
+    "/v2/orgs/{org_name}/groups/{group_name}/members": ["get", "post"],
+    "/v2/orgs/{org_name}/groups/{group_name}/members/{username}": ["delete"],
+    "/v2/invites/{id}": ["delete"],
+    "/v2/invites/{id}/resend": ["patch"],
+    "/v2/invites/bulk": ["post"]
+  }
+}
