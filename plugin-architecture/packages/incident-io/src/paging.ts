@@ -49,7 +49,7 @@ import {
   type ApiBody,
 } from "@infrawrench/plugin-base";
 import type { IoApi } from "./api.js";
-import { IncidentIoApiError, statusOf, upTo } from "./api.js";
+import { IncidentIoApiError, listPlace, readAll, statusOf } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import type {
   IoAlertSource,
@@ -79,13 +79,14 @@ export function isSendableSource(s: IoAlertSource): boolean {
   return (s.source_type === "http" || s.source_type === "http_custom") && Boolean(s.secret_token);
 }
 
-async function alertSources(ctx: PagingContext): Promise<IoAlertSource[]> {
-  const res = await ctx.api.get("/v2/alert_sources");
-  return res?.alert_sources ?? [];
+export async function alertSources(api: IoApi): Promise<IoAlertSource[]> {
+  const path = "/v2/alert_sources";
+  const res = await api.get(path);
+  return requireListPage(res?.alert_sources, listPlace(path, "alert_sources", res));
 }
 
 export async function listTargets(ctx: PagingContext): Promise<PagingTarget[]> {
-  return (await alertSources(ctx)).filter(isSendableSource).map((s) => ({
+  return (await alertSources(ctx.api)).filter(isSendableSource).map((s) => ({
     id: s.id ?? "",
     name: s.name ?? s.id ?? "",
     description: "HTTP alert source",
@@ -160,8 +161,9 @@ export async function sendPagingEvent(
 
 export async function listOnCallSources(ctx: PagingContext): Promise<PagingOnCallSource[]> {
   const [schedules, paths] = await Promise.all([
-    ctx.api.getAll("/v2/schedules", "schedules", { pageSize: 100, stopWhen: upTo() }),
-    ctx.api.getAll("/v2/escalation_paths", "escalation_paths", { pageSize: 25, stopWhen: upTo() }),
+    // These fill a picker, where the start of a very long list is fine.
+    ctx.api.getAll("/v2/schedules", "schedules", { ...readAll(250), partial: true }),
+    ctx.api.getAll("/v2/escalation_paths", "escalation_paths", { ...readAll(25), partial: true }),
   ]);
   return [
     ...schedules.map((s) => ({
@@ -269,16 +271,14 @@ export async function listIncidents(
   const [open, recent] = await Promise.all([
     ctx.api.getAll("/v2/incidents", "incidents", {
       query: { status_category: { one_of: OPEN_CATEGORIES } },
-      pageSize: 250,
-      stopWhen: upTo(1000),
+      ...readAll(250),
     }),
     query.includeResolved === false
       ? Promise.resolve<IoIncident[]>([])
       : ctx.api.getAll("/v2/incidents", "incidents", {
           // The date filters take a day; the window is widened to it.
           query: { updated_at: { gte: [day(query.since)] } },
-          pageSize: 250,
-          stopWhen: upTo(1000),
+          ...readAll(250),
         }),
   ]);
   const byId = new Map<string, IoIncident>();
@@ -304,8 +304,11 @@ export async function getIncident(
 
 /** The account's statuses in rank order, for picking where to move an incident. */
 export async function incidentStatuses(api: IoApi): Promise<IoIncidentStatus[]> {
-  const res = await api.get("/v1/incident_statuses");
-  return [...(res?.incident_statuses ?? [])].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+  const path = "/v1/incident_statuses";
+  const res = await api.get(path);
+  return requireListPage(res?.incident_statuses, listPlace(path, "incident_statuses", res)).sort(
+    (a, b) => (a.rank ?? 0) - (b.rank ?? 0),
+  );
 }
 
 async function editStatus(

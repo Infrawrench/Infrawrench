@@ -6,7 +6,7 @@ import { IncidentIoClient } from "../client.js";
 import { queryString } from "../api.js";
 import { pagingStatusOf, toPagingIncident } from "../mappers.js";
 import { buildAlertEvent, verifyWebhook } from "../paging.js";
-import { SHIFTS_KEY } from "../render.js";
+import { ALERTS_KEY, OVERRIDES_KEY, SHIFTS_KEY, USERS_KEY } from "../render.js";
 import { parseStatusFeed } from "../status-feed.js";
 
 interface Call {
@@ -77,6 +77,243 @@ describe("transport", () => {
       code: "missing_scope",
       message: expect.stringContaining("Needs Manage on-call"),
     });
+  });
+});
+
+/** A cursor list that always has one more page, with each page's cursor new. */
+function endless(key: string) {
+  let n = 0;
+  return () => {
+    n += 1;
+    return {
+      status: 200,
+      body: { [key]: [{ id: `R${n}` }], pagination_meta: { after: `C${n}`, page_size: 1 } },
+    };
+  };
+}
+
+describe("lists", () => {
+  // The largest page each route documents, and the requests 10,000 rows take at it.
+  it.each([
+    ["incident-io-alert-route", "alert_routes", 50, 200],
+    ["incident-io-schedule", "schedules", 25, 400],
+    ["incident-io-escalation-path", "escalation_paths", 25, 400],
+    ["incident-io-status-page", "status_pages", 250, 40],
+    ["incident-io-maintenance-window", "maintenance_windows", 50, 200],
+    ["incident-io-user", "users", 250, 40],
+    ["incident-io-team", "teams", 250, 40],
+  ])("%s throws past 10,000 rows rather than stop short", async (type, key, size, pages) => {
+    const { c, calls } = client(endless(key));
+    await expect(c.listResources(type, "acc")).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls).toHaveLength(pages);
+    expect(new URL(calls[0]!.url).searchParams.get("page_size")).toBe(String(size));
+  });
+
+  it("reads a list past the old row caps", async () => {
+    let n = 0;
+    const { c } = client(() => {
+      n += 1;
+      const users = Array.from({ length: 250 }, (_, i) => ({ id: `U${n}-${i}` }));
+      return {
+        status: 200,
+        body: { users, pagination_meta: n < 12 ? { after: `C${n}`, page_size: 250 } : {} },
+      };
+    });
+    expect(await c.listResources("incident-io-user", "acc")).toHaveLength(3000);
+  });
+
+  it.each([
+    ["incident-io-incident", "incidents"],
+    ["incident-io-escalation", "escalations"],
+  ])("%s throws past 10,000 rows on either of its walks", async (type, key) => {
+    const recent = endless(key);
+    const { c } = client((call) =>
+      decodeURIComponent(call.url).includes("updated_at[gte]")
+        ? recent()
+        : { status: 200, body: { [key]: [] } },
+    );
+    await expect(c.listResources(type, "acc")).rejects.toThrow("has more than Infrawrench reads");
+  });
+
+  it("throws when a page hands back the cursor that fetched it", async () => {
+    const { c, calls } = client(() => ({
+      status: 200,
+      body: { teams: [{ id: "T1" }], pagination_meta: { after: "same", page_size: 250 } },
+    }));
+    await expect(c.listResources("incident-io-team", "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(40);
+  });
+
+  it("rejects a page with its key renamed, on the first page and a later one", async () => {
+    const first = client(() => ({ status: 200, body: { people: [] } }));
+    await expect(first.c.listResources("incident-io-user", "acc")).rejects.toThrow("is not a list");
+    let n = 0;
+    const later = client(() => {
+      n += 1;
+      return n === 1
+        ? { status: 200, body: { users: [{ id: "U1" }], pagination_meta: { after: "U1" } } }
+        : { status: 200, body: { error: "wrapped" } };
+    });
+    await expect(later.c.listResources("incident-io-user", "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("rejects an empty 200 rather than read it as no rows", async () => {
+    const { c } = client(() => ({ status: 200 }));
+    await expect(c.listResources("incident-io-team", "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("reads a key set to null as empty", async () => {
+    const { c } = client(() => ({ status: 200, body: { teams: null } }));
+    expect(await c.listResources("incident-io-team", "acc")).toEqual([]);
+  });
+
+  // These routes take no paging parameters, so they are one read rather than a walk.
+  it.each([
+    ["incident-io-alert-source", "alert_sources"],
+    ["incident-io-severity", "severities"],
+    ["incident-io-status", "incident_statuses"],
+    ["incident-io-catalog-type", "catalog_types"],
+    ["incident-io-workflow", "workflows"],
+  ])("%s refuses an answer with no list, and reads null as empty", async (type, key) => {
+    for (const body of [{ error: "wrapped" }, undefined]) {
+      const { c } = client(() => ({ status: 200, ...(body ? { body } : {}) }));
+      await expect(c.listResources(type, "acc")).rejects.toThrow("is not a list");
+    }
+    const { c } = client(() => ({ status: 200, body: { [key]: null } }));
+    expect(await c.listResources(type, "acc")).toEqual([]);
+  });
+
+  it("lists open escalations and the last 90 days' changes, once each", async () => {
+    const { c, calls } = client((call) => ({
+      status: 200,
+      body: decodeURIComponent(call.url).includes("status[not_in]")
+        ? { escalations: [{ id: "E1" }], pagination_meta: {} }
+        : { escalations: [{ id: "E1" }, { id: "E2" }], pagination_meta: {} },
+    }));
+    const rows = await c.listResources("incident-io-escalation", "acc");
+    expect(rows.map((r) => r.externalId).sort()).toEqual(["E1", "E2"]);
+    const urls = calls.map((x) => new URL(x.url));
+    expect(urls.every((u) => u.searchParams.get("page_size") === "50")).toBe(true);
+    const open = urls.find((u) => u.searchParams.has("status[not_in]"))!;
+    expect(open.searchParams.getAll("status[not_in]")).toEqual([
+      "resolved",
+      "expired",
+      "cancelled",
+    ]);
+    const recent = urls.find((u) => u.searchParams.has("updated_at[gte]"))!;
+    const since = Date.parse(recent.searchParams.get("updated_at[gte]")!);
+    expect(Math.round((Date.now() - since) / 86_400_000)).toBeGreaterThanOrEqual(89);
+    expect(Math.round((Date.now() - since) / 86_400_000)).toBeLessThanOrEqual(91);
+  });
+
+  it("offers a long list of on-call sources in full up to its cap, without failing", async () => {
+    const paths = endless("escalation_paths");
+    const { c, calls } = client((call) =>
+      call.url.includes("/v2/schedules")
+        ? { status: 200, body: { schedules: [{ id: "S1", name: "Primary" }], pagination_meta: {} } }
+        : paths(),
+    );
+    const sources = await c.listPagingOnCallSources();
+    expect(sources[0]).toMatchObject({ id: "schedule:S1", name: "Primary" });
+    expect(calls.filter((x) => x.url.includes("/v2/escalation_paths"))).toHaveLength(400);
+  });
+
+  it("refuses to offer targets from an answer with no list", async () => {
+    const { c } = client(() => ({ status: 200, body: { error: "wrapped" } }));
+    await expect(c.listPagingTargets()).rejects.toThrow("is not a list");
+  });
+
+  it("throws on a paging incident list past its cap, so the sync's window does not move", async () => {
+    const { c } = client(endless("incidents"));
+    await expect(c.listPagingIncidents({ since: new Date(0) })).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("reads paging incidents past the old 1,000", async () => {
+    let n = 0;
+    const { c } = client((call) => {
+      if (decodeURIComponent(call.url).includes("status_category")) {
+        return { status: 200, body: { incidents: [] } };
+      }
+      n += 1;
+      const incidents = Array.from({ length: 250 }, (_, i) => ({ id: `I${n}-${i}` }));
+      return { status: 200, body: { incidents, pagination_meta: n < 6 ? { after: `C${n}` } : {} } };
+    });
+    expect(await c.listPagingIncidents({ since: new Date(0) })).toHaveLength(1500);
+  });
+});
+
+describe("detail views", () => {
+  it("finds an upcoming override past the old 200 rows", async () => {
+    let n = 0;
+    const { c, calls } = client((call) => {
+      const path = new URL(call.url).pathname;
+      if (path === "/v2/schedules/S1") {
+        return { status: 200, body: { schedule: { id: "S1" } } };
+      }
+      if (path !== "/v2/schedule_overrides") return { status: 403 };
+      n += 1;
+      const overrides = Array.from({ length: 250 }, (_, i) => ({
+        id: `O${n}-${i}`,
+        start_at: "2020-01-01T00:00:00Z",
+        end_at: n === 2 && i === 0 ? "2999-01-01T00:00:00Z" : "2020-01-02T00:00:00Z",
+      }));
+      return { status: 200, body: { overrides, pagination_meta: n < 2 ? { after: "C" } : {} } };
+    });
+    const r = await c.getResource("incident-io-schedule", "acc:incident-io-schedule:S1", "acc");
+    const rows: { id: string }[] = JSON.parse(String(r.fields[OVERRIDES_KEY]));
+    expect(rows.map((row) => row.id)).toEqual(["O2-0"]);
+    const asked = calls.find((x) => x.url.includes("/v2/schedule_overrides"))!;
+    expect(new URL(asked.url).searchParams.get("page_size")).toBe("250");
+  });
+
+  it("does not read a schedule's truncated overrides as none", async () => {
+    const overrides = endless("overrides");
+    const { c } = client((call) => {
+      const path = new URL(call.url).pathname;
+      if (path === "/v2/schedules/S1") {
+        return { status: 200, body: { schedule: { id: "S1" } } };
+      }
+      return path === "/v2/schedule_overrides" ? overrides() : { status: 403 };
+    });
+    await expect(
+      c.getResource("incident-io-schedule", "acc:incident-io-schedule:S1", "acc"),
+    ).rejects.toThrow("has more than Infrawrench reads");
+  });
+
+  it("still shows a schedule's overrides picker of users when that list is long", async () => {
+    const users = endless("users");
+    const { c, calls } = client((call) => {
+      const path = new URL(call.url).pathname;
+      if (path === "/v2/schedules/S1") {
+        return { status: 200, body: { schedule: { id: "S1" } } };
+      }
+      return path === "/v2/users" ? users() : { status: 403 };
+    });
+    const r = await c.getResource("incident-io-schedule", "acc:incident-io-schedule:S1", "acc");
+    expect(JSON.parse(String(r.fields[USERS_KEY]))).toHaveLength(40);
+    expect(calls.filter((x) => x.url.includes("/v2/users"))).toHaveLength(40);
+  });
+
+  it("shows one page of an alert source's alerts", async () => {
+    const alerts = endless("alerts");
+    const { c, calls } = client((call) => {
+      const path = new URL(call.url).pathname;
+      if (path === "/v2/alert_sources/A1") {
+        return { status: 200, body: { alert_source: { id: "A1" } } };
+      }
+      return alerts();
+    });
+    const r = await c.getResource(
+      "incident-io-alert-source",
+      "acc:incident-io-alert-source:A1",
+      "acc",
+    );
+    expect(JSON.parse(String(r.fields[ALERTS_KEY]))).toHaveLength(1);
+    expect(calls.filter((x) => x.url.includes("/v2/alerts"))).toHaveLength(1);
   });
 });
 

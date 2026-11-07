@@ -17,10 +17,16 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { IoApi } from "./api.js";
-import { IncidentIoApiError, createIoApi, upTo } from "./api.js";
+import { IncidentIoApiError, createIoApi, listPlace, readAll } from "./api.js";
 import type {
+  IoEscalation,
   IoIncident,
   IoIncidentStatus,
   IoPerson,
@@ -29,6 +35,7 @@ import type {
   IoUser,
 } from "./mappers.js";
 import {
+  ENDED_ESCALATION_STATUSES,
   OPEN_CATEGORIES,
   mapAlertRoute,
   mapAlertSource,
@@ -47,6 +54,7 @@ import {
 } from "./mappers.js";
 import type { PagingContext } from "./paging.js";
 import {
+  alertSources,
   getIncident,
   incidentStatuses,
   listIncidents,
@@ -77,6 +85,10 @@ import {
 
 /** Closed incidents changed longer ago than this are not listed as resources. */
 const RECENT_WINDOW_MS = 7 * 24 * 3600_000;
+/** Ended escalations changed longer ago than this are not listed as resources. */
+const ESCALATION_WINDOW_MS = 90 * 24 * 3600_000;
+
+const daysAgo = (ms: number): string => new Date(Date.now() - ms).toISOString().slice(0, 10);
 
 const trimmed = (fields: Record<string, string>, key: string): string => (fields[key] ?? "").trim();
 
@@ -126,12 +138,15 @@ export class IncidentIoClient implements PluginClient {
   }
 
   private async severities(): Promise<IoSeverity[]> {
-    const res = await this.api.get("/v1/severities");
-    return [...(res?.severities ?? [])].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+    const path = "/v1/severities";
+    const res = await this.api.get(path);
+    return requireListPage(res?.severities, listPlace(path, "severities", res)).sort(
+      (a, b) => (a.rank ?? 0) - (b.rank ?? 0),
+    );
   }
 
-  private async users(): Promise<IoUser[]> {
-    return this.api.getAll("/v2/users", "users", { pageSize: 250, stopWhen: upTo() });
+  private async users(walk: { partial?: boolean } = {}): Promise<IoUser[]> {
+    return this.api.getAll("/v2/users", "users", { ...readAll(250), ...walk });
   }
 
   // -------------------------------------------------------------------------
@@ -142,86 +157,88 @@ export class IncidentIoClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "incident-io-incident": {
-          const since = new Date(Date.now() - RECENT_WINDOW_MS).toISOString().slice(0, 10);
           const [open, recent] = await Promise.all([
             this.api.getAll("/v2/incidents", "incidents", {
               query: { status_category: { one_of: OPEN_CATEGORIES } },
-              pageSize: 250,
-              stopWhen: upTo(1000),
+              ...readAll(250),
             }),
             this.api.getAll("/v2/incidents", "incidents", {
-              query: { updated_at: { gte: [since] } },
-              pageSize: 250,
-              stopWhen: upTo(1000),
+              query: { updated_at: { gte: [daysAgo(RECENT_WINDOW_MS)] } },
+              ...readAll(250),
             }),
           ]);
           const byId = new Map<string, IoIncident>();
           for (const i of [...recent, ...open]) if (i.id) byId.set(i.id, i);
           return [...byId.values()].map((i) => mapIncident(accountId, i));
         }
-        case "incident-io-escalation":
-          return (
-            await this.api.getAll("/v2/escalations", "escalations", {
-              pageSize: 50,
-              stopWhen: upTo(250),
-            })
-          ).map((e) => mapEscalation(accountId, e));
+        case "incident-io-escalation": {
+          // The route lists every escalation ever raised, in an order the document does
+          // not state, so the newest can't be asked for and the whole of it would fail a
+          // busy account. Open ones and recent changes are a list that can be read whole.
+          const [open, recent] = await Promise.all([
+            this.api.getAll("/v2/escalations", "escalations", {
+              query: { status: { not_in: ENDED_ESCALATION_STATUSES } },
+              ...readAll(50),
+            }),
+            this.api.getAll("/v2/escalations", "escalations", {
+              query: { updated_at: { gte: [daysAgo(ESCALATION_WINDOW_MS)] } },
+              ...readAll(50),
+            }),
+          ]);
+          const byId = new Map<string, IoEscalation>();
+          for (const e of [...recent, ...open]) if (e.id) byId.set(e.id, e);
+          return [...byId.values()].map((e) => mapEscalation(accountId, e));
+        }
         case "incident-io-alert-source":
-          return ((await this.api.get("/v2/alert_sources"))?.alert_sources ?? []).map((s) =>
-            mapAlertSource(accountId, s),
-          );
+          return (await alertSources(this.api)).map((s) => mapAlertSource(accountId, s));
         case "incident-io-alert-route":
-          return (
-            await this.api.getAll("/v2/alert_routes", "alert_routes", {
-              pageSize: 50,
-              stopWhen: upTo(),
-            })
-          ).map((r) => mapAlertRoute(accountId, r));
+          return (await this.api.getAll("/v2/alert_routes", "alert_routes", readAll(50))).map((r) =>
+            mapAlertRoute(accountId, r),
+          );
         case "incident-io-schedule":
-          return (
-            await this.api.getAll("/v2/schedules", "schedules", { pageSize: 25, stopWhen: upTo() })
-          ).map((s) => mapSchedule(accountId, s));
+          // Not the route's 250: the document says next_shifts empties above 25 and is
+          // silent on current_shifts, which `onCallNow` reads.
+          return (await this.api.getAll("/v2/schedules", "schedules", readAll(25))).map((s) =>
+            mapSchedule(accountId, s),
+          );
         case "incident-io-escalation-path":
           return (
-            await this.api.getAll("/v2/escalation_paths", "escalation_paths", {
-              pageSize: 25,
-              stopWhen: upTo(),
-            })
+            await this.api.getAll("/v2/escalation_paths", "escalation_paths", readAll(25))
           ).map((p) => mapEscalationPath(accountId, p));
         case "incident-io-severity":
           return (await this.severities()).map((s) => mapSeverity(accountId, s));
         case "incident-io-status":
           return (await incidentStatuses(this.api)).map((s) => mapIncidentStatus(accountId, s));
-        case "incident-io-catalog-type":
-          return ((await this.api.get("/v3/catalog_types"))?.catalog_types ?? []).map((t) =>
-            mapCatalogType(accountId, t),
+        case "incident-io-catalog-type": {
+          const path = "/v3/catalog_types";
+          const res = await this.api.get(path);
+          return requireListPage(res?.catalog_types, listPlace(path, "catalog_types", res)).map(
+            (t) => mapCatalogType(accountId, t),
           );
-        case "incident-io-workflow":
-          return ((await this.api.get("/v2/workflows"))?.workflows ?? []).map((w) =>
+        }
+        case "incident-io-workflow": {
+          const path = "/v2/workflows";
+          const res = await this.api.get(path);
+          return requireListPage(res?.workflows, listPlace(path, "workflows", res)).map((w) =>
             mapWorkflow(accountId, w),
           );
+        }
         case "incident-io-status-page":
-          return (
-            await this.api.getAll("/v2/status_pages", "status_pages", {
-              pageSize: 100,
-              stopWhen: upTo(),
-            })
-          ).map((p) => mapStatusPage(accountId, p));
+          return (await this.api.getAll("/v2/status_pages", "status_pages", readAll(250))).map(
+            (p) => mapStatusPage(accountId, p),
+          );
         case "incident-io-maintenance-window":
           return (
-            await this.api.getAll("/v1/maintenance_windows", "maintenance_windows", {
-              pageSize: 50,
-              stopWhen: upTo(250),
-            })
+            await this.api.getAll("/v1/maintenance_windows", "maintenance_windows", readAll(50))
           )
             .filter((w) => !w.archived_at)
             .map((w) => mapMaintenanceWindow(accountId, w));
         case "incident-io-user":
           return (await this.users()).map((u) => mapUser(accountId, u));
         case "incident-io-team":
-          return (
-            await this.api.getAll("/v3/teams", "teams", { pageSize: 100, stopWhen: upTo() })
-          ).map((t) => mapTeam(accountId, t));
+          return (await this.api.getAll("/v3/teams", "teams", readAll(250))).map((t) =>
+            mapTeam(accountId, t),
+          );
         default:
           throw new Error(`incident.io plugin: unknown resource type "${typeId}"`);
       }
@@ -283,7 +300,8 @@ export class IncidentIoClient implements PluginClient {
             .getAll("/v2/alerts", "alerts", {
               query: { alert_source: { one_of: [ext] } },
               pageSize: 25,
-              stopWhen: upTo(25),
+              maxPages: 1,
+              partial: true,
             })
             .catch(() => []);
           const rows: AlertRow[] = alerts.map((a) => ({
@@ -310,11 +328,13 @@ export class IncidentIoClient implements PluginClient {
             this.api
               .getAll("/v2/schedule_overrides", "overrides", {
                 query: { schedule_id: ext },
-                pageSize: 50,
-                stopWhen: upTo(200),
+                ...readAll(250),
               })
-              .catch(() => []),
-            this.users().catch((): IoUser[] => []),
+              .catch((err: unknown) => {
+                rethrowIncompleteList(err);
+                return [];
+              }),
+            this.users({ partial: true }).catch((): IoUser[] => []),
           ]);
           const layers: Option[] = (res.schedule.config?.rotations ?? []).flatMap((rot) =>
             (rot.layers ?? []).map((layer) => ({

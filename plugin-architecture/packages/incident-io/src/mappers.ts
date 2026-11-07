@@ -86,6 +86,8 @@ export function pagingStatusOf(category: string | undefined): PagingIncidentStat
 }
 
 export const OPEN_CATEGORIES = ["triage", "live", "paused"];
+/** Every other status is one someone can still act on. */
+export const ENDED_ESCALATION_STATUSES = ["resolved", "expired", "cancelled"];
 
 export function mapIncident(accountId: string, i: IoIncident): ResourceInstance {
   const id = i.id ?? "";

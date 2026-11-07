@@ -8,8 +8,12 @@
  * - Base `https://api.incident.io`, `Authorization: Bearer <api key>`. Keys
  *   are created under Settings, API keys, with per-key permissions.
  * - Cursor pagination: `page_size` and `after`, answered with
- *   `pagination_meta.after` (absent on the last page). Incidents allow up to
- *   250 per page.
+ *   `pagination_meta.after` (absent on the last page). Every list's key is
+ *   required, so a page without it is not an empty list. The largest page is
+ *   250 for incidents, users, overrides, schedules, status pages and teams, 50
+ *   for alerts, alert routes, escalations and maintenance windows, and 25 for
+ *   escalation paths. `/v2/schedule_entries` pages differently: see
+ *   `scheduleEntries`.
  * - Filters are deep-object query parameters: `status_category[one_of]=live`,
  *   `updated_at[gte]=2026-10-01`, each repeated for several values.
  * - Errors: `{ type, status, request_id, errors: [{ code, message, source? }] }`.
@@ -23,6 +27,10 @@ import {
   type ParamValue,
 } from "@infrawrench/plugin-base";
 import type { components, paths } from "./api-types.gen.js";
+
+const VENDOR = "incident.io";
+/** Rows a list reads before it throws, rather than pass for the whole of it. */
+const LIST_ROWS = 10_000;
 
 export const API_BASE = "https://api.incident.io";
 export const INCIDENT_IO_HOSTNAMES = ["api.incident.io"];
@@ -105,7 +113,7 @@ export function queryString(query: Record<string, ParamValue> | undefined): stri
 
 export function createIoApi(transport: IncidentIoTransport) {
   const api = createApiClient<paths>({
-    vendor: "incident.io",
+    vendor: VENDOR,
     baseUrl: API_BASE,
     headers: { Accept: "application/json", Authorization: `Bearer ${transport.apiKey}` },
     http: transport.http,
@@ -121,15 +129,20 @@ export function createIoApi(transport: IncidentIoTransport) {
     pageSize: PAGE_SIZE,
     maxPages: 100,
     next: "pagination_meta.after",
-    stopOnRepeatedCursor: true,
-    emptyBodyEndsList: true,
   });
 }
 
 export type IoApi = ReturnType<typeof createIoApi>;
 
-/** End a list once it holds this many items. The page that reaches it is kept whole. */
-export function upTo(maxItems = 2000): (batch: { length: number }) => boolean {
-  let seen = 0;
-  return (batch) => (seen += batch.length) >= maxItems;
+/** A walk at the route's page size, far enough for {@link LIST_ROWS} rows. */
+export function readAll(pageSize: number): { pageSize: number; maxPages: number } {
+  return { pageSize, maxPages: Math.ceil(LIST_ROWS / pageSize) };
+}
+
+/**
+ * Where a list came from, for `requireListPage`, on the routes with no paging. An
+ * answer with no list is not an empty list, and an empty list prunes everything.
+ */
+export function listPlace(path: string, key: string, page: unknown) {
+  return { vendor: VENDOR, path, key, page };
 }
