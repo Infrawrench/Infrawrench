@@ -314,13 +314,17 @@ async function listDedicatedInferences(
     const id = String(d.id ?? "");
     const spec = d.spec ?? d.pending_deployment_spec;
     // `model_uuid` and `model_name` are not in the document.
-    const deployments: Array<{ model_id?: string; model_uuid?: string; model_name?: string }> =
-      Array.isArray(spec?.model_deployments) ? spec.model_deployments : [];
+    const deployments: Array<{
+      model_slug?: string;
+      model_id?: string;
+      model_uuid?: string;
+      model_name?: string;
+    }> = Array.isArray(spec?.model_deployments) ? spec.model_deployments : [];
     const endpoints = d.endpoints;
     const publicEndpoint = String(endpoints?.public_endpoint_fqdn ?? "");
     const privateEndpoint = String(endpoints?.private_endpoint_fqdn ?? "");
     const modelSummary = deployments
-      .map((m) => String(m.model_id ?? m.model_uuid ?? m.model_name ?? ""))
+      .map((m) => String(m.model_slug || m.model_id || m.model_uuid || m.model_name || ""))
       .filter(Boolean)
       .join(", ");
     return {

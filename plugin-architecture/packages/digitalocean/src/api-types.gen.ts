@@ -450,14 +450,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/dedicated-inferences/accelerators": {
+    "/dedicated-inferences/gpu-model-config": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["dedicatedInferences_listAccelerators"];
+        get: operations["dedicatedInferences_get_gpu_model_config"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5068,6 +5068,15 @@ export interface components {
             };
             spec: components["schemas"]["dedicated_inference_spec"];
         };
+        dedicated_inference_gpu_model_config: {
+            gpu_slugs?: string[];
+            is_gated_model?: boolean;
+            model_name?: string;
+            model_slug?: string;
+        };
+        dedicated_inference_gpu_model_configs_response: {
+            gpu_model_configs?: components["schemas"]["dedicated_inference_gpu_model_config"][];
+        };
         dedicated_inference_size: {
             currency?: string;
             gpu_slug?: string;
@@ -5082,8 +5091,7 @@ export interface components {
             enable_public_endpoint: boolean;
             model_deployments: components["schemas"]["model_deployment_spec"][];
             name: string;
-            /** @enum {string} */
-            region: "atl1" | "nyc2" | "tor1";
+            region: string;
             version: number;
             vpc: {
                 /** Format: uuid */
@@ -8142,7 +8150,7 @@ export interface operations {
             202: components["responses"]["accepted"];
         };
     };
-    dedicatedInferences_listAccelerators: {
+    dedicatedInferences_get_gpu_model_config: {
         parameters: {
             query?: never;
             header?: never;
@@ -8153,16 +8161,13 @@ export interface operations {
         responses: {
             200: {
                 headers: {
+                    "ratelimit-limit": components["headers"]["ratelimit-limit"];
+                    "ratelimit-remaining": components["headers"]["ratelimit-remaining"];
+                    "ratelimit-reset": components["headers"]["ratelimit-reset"];
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        accelerators?: {
-                            model_id?: string;
-                            name?: string;
-                            slug?: string;
-                        }[];
-                    };
+                    "application/json": components["schemas"]["dedicated_inference_gpu_model_configs_response"];
                 };
             };
         };

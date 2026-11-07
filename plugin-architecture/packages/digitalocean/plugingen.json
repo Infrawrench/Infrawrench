@@ -547,47 +547,6 @@
       "why": "`type` is required in the document, and the host sends only the fields that changed."
     },
     {
-      "pointer": "/paths/~1dedicated-inferences~1accelerators",
-      "value": {
-        "get": {
-          "operationId": "dedicatedInferences_listAccelerators",
-          "parameters": [],
-          "responses": {
-            "200": {
-              "description": "ok",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "accelerators": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "slug": {
-                              "type": "string"
-                            },
-                            "model_id": {
-                              "type": "string"
-                            },
-                            "name": {
-                              "type": "string"
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "why": "Not in the document, which has accelerators only under one inference and a separate gpu-model-config. Kept because requests must not change."
-    },
-    {
       "pointer": "/components/responses/action/content/application~1json/schema/required",
       "value": ["action"],
       "why": "The document omits `required` here. The response always carries `action`, and the plugin reads it without a guard."
@@ -714,6 +673,13 @@
       "pointer": "/components/schemas/apiLinkAgentFunctionInputPublic/properties/output_schema",
       "value": {},
       "why": "Documented as an object with no properties, which generates `Record<string, never>`. It is any JSON schema the user writes."
+    },
+    {
+      "pointer": "/components/schemas/dedicated_inference_spec/properties/region",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
     }
   ],
   "paths": {
@@ -744,7 +710,6 @@
     "/databases/{database_cluster_uuid}/users": ["get", "post"],
     "/databases/{database_cluster_uuid}/users/{username}": ["delete"],
     "/dedicated-inferences": ["get", "post"],
-    "/dedicated-inferences/accelerators": ["get"],
     "/dedicated-inferences/sizes": ["get"],
     "/dedicated-inferences/{dedicated_inference_id}": ["delete"],
     "/domains": ["get", "post"],
@@ -896,6 +861,7 @@
     "/vpc_peerings/{vpc_peering_id}": ["patch", "delete"],
     "/vpcs": ["get", "post"],
     "/vpcs/{vpc_id}": ["delete"],
-    "/droplets/{droplet_id}/backups/policy": ["get"]
+    "/droplets/{droplet_id}/backups/policy": ["get"],
+    "/dedicated-inferences/gpu-model-config": ["get"]
   }
 }

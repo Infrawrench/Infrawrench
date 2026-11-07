@@ -11,17 +11,18 @@ import { idSegment, PICKER } from "../api.js";
 import type { DoResponse } from "../api.js";
 import type { operations } from "../api-types.gen.js";
 import { regionDisplay } from "../constants.js";
+import { vpcOptions } from "./services.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
 
 type DoRouterPreset = ApiListItem<operations["genai_list_model_router_presets"], "presets">;
 
-/** The shape the size picker reads. The document answers `sizes` instead (#413). */
-type DoDedicatedSizes = DoResponse<"dedicatedInferences_list_sizes"> & {
-  regions?: Array<{
-    region: string;
-    sizes?: Array<{ slug: string; gpu_count: number; price_monthly?: number }>;
-  }>;
-};
+/** The region's default VPC, for what requires one when the user left the choice to it. */
+async function defaultVpcIn(ctx: DoCreateContext, region: string): Promise<string> {
+  const vpcs = await ctx.api.getAll("/vpcs", "vpcs", PICKER);
+  const uuid = vpcs.find((v) => v.default === true && v.region === region)?.id;
+  if (!uuid) throw new Error(`Choose a VPC: DigitalOcean reports no default VPC in ${region}.`);
+  return uuid;
+}
 
 /** The document says a model's provider is an enum string, which has no `name` (#414). */
 function providerName(provider: string | { name?: string } | undefined): string | undefined {
@@ -314,51 +315,59 @@ export async function genaiGetCreateConfig(
 
   if (typeId === "dedicated-inference") {
     // Pull both the size catalog (region+GPU+pricing) and the GPU model
-    // config catalog (what model_id each accelerator can serve) so the
-    // user can pick a region/size that's actually viable for their model.
-    const [sizes, accelerators]: [
-      DoDedicatedSizes,
-      DoResponse<"dedicatedInferences_listAccelerators">,
-    ] = await Promise.all([
-      ctx.api.get("/dedicated-inferences/sizes").catch(() => ({ regions: [] })),
-      ctx.api.get("/dedicated-inferences/accelerators").catch(() => ({ accelerators: [] })),
+    // config catalog (which GPU slugs each model can run on) so the user can
+    // pick a region/size that's actually viable for their model. A failure here
+    // propagates: its scope hint says more than a form of empty pickers would.
+    const [sizes, gpuModels, vpcs] = await Promise.all([
+      ctx.api.get("/dedicated-inferences/sizes"),
+      ctx.api.get("/dedicated-inferences/gpu-model-config"),
+      vpcOptions(ctx),
     ]);
-    const regionOptions = (sizes.regions ?? []).map((r) => {
-      const info = regionDisplay(r.region);
+    const sizeRows = sizes.sizes ?? [];
+    const regionSlugs = new Set([
+      ...(sizes.enabled_regions ?? []),
+      ...sizeRows.map((s) => s.region ?? "").filter(Boolean),
+    ]);
+    const regionOptions = [...regionSlugs].map((region) => {
+      const info = regionDisplay(region);
       return {
-        id: r.region,
-        label: r.region,
+        id: region,
+        label: region,
         ...(info ? { location: info.location, flag: info.flag } : {}),
       };
     });
-    // Two things about this list:
-    //   - GPU count and price go in `description`, not the label. The picker
-    //     gives the label a single line, and a combined
-    //     "gpu-h100x1-80gb (1× GPU, $3219/mo)" is long enough that the price
-    //     (the reason for showing it at all) is the part that gets cut off.
-    //   - The catalog is keyed by region and the same slug appears under
-    //     several of them, so dedupe; otherwise the picker lists a GPU size
-    //     once per region that offers it, with colliding option ids.
+    // The price goes in `description`, not the label: the picker gives the label a
+    // single line, and the price is the part that would get cut off. The catalog has a
+    // row per region and GPU, so dedupe, or a size lists once per region that offers it,
+    // with colliding option ids.
     const seenSizeSlugs = new Set<string>();
-    const sizeOptions = (sizes.regions ?? []).flatMap((r) =>
-      (r.sizes ?? []).flatMap((s) => {
-        if (seenSizeSlugs.has(s.slug)) return [];
-        seenSizeSlugs.add(s.slug);
-        return [
-          {
-            id: s.slug,
-            label: s.slug,
-            description: s.price_monthly
-              ? `${s.gpu_count}× GPU · $${Math.round(s.price_monthly)}/mo`
-              : `${s.gpu_count}× GPU`,
-          },
-        ];
-      }),
-    );
-    const modelOptions = (accelerators.accelerators ?? []).map((a) => ({
-      id: String(a.model_id ?? a.slug ?? ""),
-      label: String(a.name ?? a.model_id ?? a.slug ?? ""),
-    }));
+    const sizeOptions = sizeRows.flatMap((s) => {
+      const slug = s.gpu_slug;
+      if (!slug || seenSizeSlugs.has(slug)) return [];
+      seenSizeSlugs.add(slug);
+      const currency = s.currency && s.currency !== "USD" ? ` ${s.currency}` : "";
+      return [
+        {
+          id: slug,
+          label: slug,
+          ...(s.price_per_hour ? { description: `$${s.price_per_hour}/hr${currency}` } : {}),
+        },
+      ];
+    });
+    const modelOptions = (gpuModels.gpu_model_configs ?? []).flatMap((m) => {
+      if (!m.model_slug) return [];
+      const parts = [
+        ...(m.gpu_slugs?.length ? [`Runs on ${m.gpu_slugs.join(", ")}`] : []),
+        ...(m.is_gated_model ? ["Gated: needs a Hugging Face token"] : []),
+      ];
+      return [
+        {
+          id: m.model_slug,
+          label: m.model_name ?? m.model_slug,
+          ...(parts.length > 0 ? { description: parts.join(". ") } : {}),
+        },
+      ];
+    });
     return {
       fields: [
         { key: "name", label: "Deployment Name", kind: "text", required: true },
@@ -376,7 +385,15 @@ export async function genaiGetCreateConfig(
           kind: "select",
           required: true,
           options: sizeOptions,
-          description: "Accelerator size: GPU count and monthly price.",
+          description: "Accelerator size and hourly price. It has to be one the model runs on.",
+        },
+        {
+          key: "scale",
+          label: "GPU Count",
+          kind: "number",
+          required: false,
+          defaultValue: "1",
+          description: "How many of this GPU size to run the model on.",
         },
         {
           key: "modelId",
@@ -401,9 +418,10 @@ export async function genaiGetCreateConfig(
         {
           key: "vpcUuid",
           label: "VPC",
-          kind: "text",
+          kind: "select",
           required: false,
-          description: "Optional VPC UUID. Defaults to the region's default VPC when empty.",
+          options: vpcs,
+          description: "Has to be in the chosen region. Defaults to that region's default VPC.",
         },
         {
           key: "huggingFaceToken",
@@ -652,27 +670,37 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
   if (typeId === "dedicated-inference") {
     // POST returns 202 Accepted with the provisioning record: same shape
     // as GET /dedicated-inferences/{id} but with status `provisioning`.
-    // The document wants `accelerators`, not `size` (#413), so this body cannot
-    // be checked against it until that is settled.
-    const data = await ctx.api.written<"dedicatedInferences_create">("/dedicated-inferences", {
-      method: "POST",
-      body: JSON.stringify({
+    const name = String(fields["name"] ?? "");
+    const region = String(fields["region"] ?? "");
+    // The document requires a VPC, and the form lets the region's default stand.
+    const vpcUuid = fields["vpcUuid"] || (await defaultVpcIn(ctx, region));
+    const data = await ctx.api.post("/dedicated-inferences", {
+      body: {
         spec: {
-          name: fields["name"],
-          region: fields["region"],
+          version: 1,
+          name,
+          region,
           enable_public_endpoint: fields["enablePublicEndpoint"] === "true",
-          ...(fields["vpcUuid"] ? { vpc: { uuid: fields["vpcUuid"] } } : {}),
+          vpc: { uuid: vpcUuid },
           model_deployments: [
             {
-              model_id: fields["modelId"],
-              size: fields["size"],
+              model_slug: String(fields["modelId"] ?? ""),
+              model_provider: "hugging_face",
+              accelerators: [
+                {
+                  scale: Number(fields["scale"]) || 1,
+                  // The only type the document names.
+                  type: "prefill_decode",
+                  accelerator_slug: String(fields["size"] ?? ""),
+                },
+              ],
             },
           ],
         },
         ...(fields["huggingFaceToken"]
           ? { access_tokens: { hugging_face_token: fields["huggingFaceToken"] } }
           : {}),
-      }),
+      },
     });
     const d = data.dedicated_inference ?? {};
     const id = String(d.id ?? "");
@@ -686,7 +714,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
       fields: {
         name: String(fields["name"]),
         region: String(d.region ?? fields["region"] ?? ""),
-        vpcUuid: String(d.vpc_uuid ?? fields["vpcUuid"] ?? ""),
+        vpcUuid: String(d.vpc_uuid ?? vpcUuid),
         enablePublicEndpoint: fields["enablePublicEndpoint"] === "true" ? "yes" : "no",
         modelCount: 1,
         modelSummary: String(fields["modelId"] ?? ""),

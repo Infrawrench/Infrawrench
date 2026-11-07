@@ -97,10 +97,20 @@ function routeFetch(path: string): unknown {
   if (path.startsWith("/gen-ai/agents")) return { agents: [{ uuid: "agent-1", name: "A1" }] };
   if (path === "/dedicated-inferences/sizes")
     return {
-      regions: [{ region: "nyc3", sizes: [{ slug: "gpu-1", gpu_count: 1, price_monthly: 1500 }] }],
+      enabled_regions: ["nyc2"],
+      sizes: [{ gpu_slug: "gpu-1", price_per_hour: "2", region: "nyc2", currency: "USD" }],
     };
-  if (path === "/dedicated-inferences/accelerators")
-    return { accelerators: [{ slug: "acc-1", model_id: "m-1", name: "Mixtral" }] };
+  if (path === "/dedicated-inferences/gpu-model-config")
+    return {
+      gpu_model_configs: [
+        {
+          model_slug: "mistral/mixtral",
+          model_name: "Mixtral",
+          gpu_slugs: ["gpu-1"],
+          is_gated_model: true,
+        },
+      ],
+    };
   return {};
 }
 
@@ -238,7 +248,7 @@ describe("doGetCreateConfig — every type produces fields", () => {
     expect(size.options[0]).toEqual({
       id: "gpu-1",
       label: "gpu-1",
-      description: "1× GPU · $1500/mo",
+      description: "$2/hr",
     });
     // The price has to survive a narrow column, so it must not be packed into
     // the label alongside the slug.
@@ -250,9 +260,10 @@ describe("doGetCreateConfig — every type produces fields", () => {
       fetch: vi.fn(async (path: string) => {
         if (path === "/dedicated-inferences/sizes")
           return {
-            regions: [
-              { region: "nyc3", sizes: [{ slug: "gpu-1", gpu_count: 1, price_monthly: 1500 }] },
-              { region: "tor1", sizes: [{ slug: "gpu-1", gpu_count: 1, price_monthly: 1500 }] },
+            enabled_regions: ["nyc2", "tor1"],
+            sizes: [
+              { gpu_slug: "gpu-1", price_per_hour: "2", region: "nyc2" },
+              { gpu_slug: "gpu-1", price_per_hour: "2", region: "tor1" },
             ],
           };
         return routeFetch(path);
@@ -267,7 +278,7 @@ describe("doGetCreateConfig — every type produces fields", () => {
     const ctx = makeCtx({
       fetch: vi.fn(async (path: string) => {
         if (path === "/dedicated-inferences/sizes")
-          return { regions: [{ region: "nyc3", sizes: [{ slug: "gpu-2", gpu_count: 2 }] }] };
+          return { sizes: [{ gpu_slug: "gpu-2", region: "nyc2" }] };
         return routeFetch(path);
       }) as Mock,
     });
@@ -275,7 +286,45 @@ describe("doGetCreateConfig — every type produces fields", () => {
     const size = config.fields.find((f) => f.key === "size") as {
       options: Array<{ description?: string }>;
     };
-    expect(size.options[0]!.description).toBe("2× GPU");
+    expect(size.options[0]!.description).toBeUndefined();
+  });
+
+  it("dedicated-inference offers the regions, GPU sizes, models and VPCs the document describes (#413)", async () => {
+    const seen: string[] = [];
+    const ctx = makeCtx({
+      fetch: vi.fn(async (path: string) => {
+        seen.push(path);
+        return path === "/vpcs?per_page=200"
+          ? { vpcs: [{ id: "vpc-1", name: "main", region: "nyc2", default: true }] }
+          : routeFetch(path);
+      }) as Mock,
+    });
+    const config = await doGetCreateConfig(ctx, "dedicated-inference");
+    const field = (key: string) => {
+      const found: object | undefined = config.fields.find((f) => f.key === key);
+      return { ...found } as Record<string, unknown>;
+    };
+    expect(field("region")["regions"]).toEqual([expect.objectContaining({ id: "nyc2" })]);
+    expect(field("modelId")["options"]).toEqual([
+      {
+        id: "mistral/mixtral",
+        label: "Mixtral",
+        description: "Runs on gpu-1. Gated: needs a Hugging Face token",
+      },
+    ]);
+    expect(field("vpcUuid")["kind"]).toBe("select");
+    expect(field("vpcUuid")["options"]).toEqual([expect.objectContaining({ id: "vpc-1" })]);
+    expect(seen).not.toContain("/dedicated-inferences/accelerators");
+  });
+
+  it("dedicated-inference does not hide a failed catalog behind empty pickers", async () => {
+    const ctx = makeCtx({
+      fetch: vi.fn(async (path: string) => {
+        if (path === "/dedicated-inferences/sizes") throw new Error("DO API error 403 for /x");
+        return routeFetch(path);
+      }) as Mock,
+    });
+    await expect(doGetCreateConfig(ctx, "dedicated-inference")).rejects.toThrow("403");
   });
 
   it("throws for an unknown type", async () => {
@@ -789,18 +838,64 @@ describe("doCreateResource — REST create branches", () => {
   it("creates a dedicated-inference deployment", async () => {
     const fetch = vi.fn(async (path: string) => {
       if (path === "/dedicated-inferences")
-        return { dedicated_inference: { id: "di-1", region: "nyc3", status: "provisioning" } };
+        return { dedicated_inference: { id: "di-1", region: "nyc2", status: "provisioning" } };
+      if (path === "/vpcs?per_page=200")
+        return {
+          vpcs: [
+            { id: "vpc-other", region: "tor1", default: true },
+            { id: "vpc-1", region: "nyc2", default: true },
+          ],
+        };
       return {};
     }) as Mock;
     const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "dedicated-inference", "acc", {
       name: "infer",
-      region: "nyc3",
+      region: "nyc2",
       size: "gpu-1",
-      modelId: "m-1",
+      scale: "2",
+      modelId: "mistral/mixtral",
       enablePublicEndpoint: "true",
+      huggingFaceToken: "hf-token",
     });
     expect(result.resource.id).toBe("acc:dedicated-inference:di-1");
+    expect(result.resource.fields["vpcUuid"]).toBe("vpc-1");
+    const [, init] = fetch.mock.calls.find(([path]) => path === "/dedicated-inferences")!;
+    expect(JSON.parse(init.body)).toEqual({
+      spec: {
+        version: 1,
+        name: "infer",
+        region: "nyc2",
+        enable_public_endpoint: true,
+        vpc: { uuid: "vpc-1" },
+        model_deployments: [
+          {
+            model_slug: "mistral/mixtral",
+            model_provider: "hugging_face",
+            accelerators: [{ scale: 2, type: "prefill_decode", accelerator_slug: "gpu-1" }],
+          },
+        ],
+      },
+      access_tokens: { hugging_face_token: "hf-token" },
+    });
+  });
+
+  it("sends the VPC the user chose, and refuses when there is neither that nor a default", async () => {
+    const fetch = vi.fn(async (path: string) =>
+      path === "/dedicated-inferences"
+        ? { dedicated_inference: { id: "di-1" } }
+        : { vpcs: [{ id: "vpc-other", region: "tor1", default: true }] },
+    ) as Mock;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
+    const form = { name: "infer", region: "nyc2", size: "gpu-1", modelId: "m/m" };
+    await expect(doCreateResource(ctx, "dedicated-inference", "acc", form)).rejects.toThrow(
+      "Choose a VPC",
+    );
+    expect(fetch).not.toHaveBeenCalledWith("/dedicated-inferences", expect.anything());
+
+    await doCreateResource(ctx, "dedicated-inference", "acc", { ...form, vpcUuid: "vpc-9" });
+    const [, init] = fetch.mock.calls.find(([path]) => path === "/dedicated-inferences")!;
+    expect(JSON.parse(init.body).spec.vpc).toEqual({ uuid: "vpc-9" });
   });
 
   it("creates an agent-api-key from an agent detail page and captures the secret", async () => {
