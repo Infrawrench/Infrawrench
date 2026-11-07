@@ -17,10 +17,9 @@ import type { operations, paths } from "./api-types.gen.js";
  * {@link FlyApi.rest}.
  *
  * The host's HTTP service is used whenever there is one: it is what bastion routing
- * and a custom CA need. App names and Machine and volume ids go into paths as
- * written, with `unencodedSegment`, as they always have.
+ * and a custom CA need.
  */
-export const MACHINES_API = "https://api.machines.dev";
+const MACHINES_API = "https://api.machines.dev";
 
 export interface FlyApi extends ApiClient<paths> {
   /** A GET the typed client cannot make, with the same transport and error text. */
@@ -75,7 +74,6 @@ export type FlyApp = ApiResponse<operations["Apps_show"]> & { created_at?: strin
 
 export type FlyMachine = ApiResponse<operations["Machines_show"]>;
 export type FlyMachineConfig = NonNullable<FlyMachine["config"]>;
-export type FlyMachineEvent = ApiListItem<operations["Machines_list_events"], null>;
 
 export type FlyVolume = ApiResponse<operations["Volumes_get_by_id"]>;
 export type FlyVolumeSnapshot = ApiListItem<operations["Volumes_list_snapshots"], null>;

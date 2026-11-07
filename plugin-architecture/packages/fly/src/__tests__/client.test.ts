@@ -847,13 +847,12 @@ describe("fetchMetricSeries", () => {
     expect(decodeURIComponent(diskCall!.url.replace(/\+/g, " "))).toContain("* 512");
   });
 
-  it("returns empty when appName cannot be resolved", async () => {
-    router([
-      [(u) => u.includes("/machines/m1"), { id: "m1", name: "n", state: "started", region: "iad" }],
-    ]);
-    // machine with empty appName field: appName derived from fields["appName"] which mapMachine sets, so force via app type with empty name
-    const res = await client().fetchMetricSeries("machine", "acct-1:machine:/m1", ACCOUNT);
-    expect(res).toEqual([]);
+  it("refuses a resource id with no app rather than request /v1/apps//machines", async () => {
+    installFetch(() => jsonResponse({}));
+    await expect(
+      client().fetchMetricSeries("machine", "acct-1:machine:/m1", ACCOUNT),
+    ).rejects.toThrow(/Cannot parse machine resource ID/);
+    expect(calls).toHaveLength(0);
   });
 
   it("skips series when prometheus returns non-ok or empty", async () => {
@@ -1139,6 +1138,130 @@ describe("renderSidebarItem", () => {
     );
     expect((item("volume", { state: "x" }).status as { status: string }).status).toBe("error");
     expect((item("other", {}).status as { status: string }).status).toBe("info");
+  });
+});
+
+describe("path segments", () => {
+  const ANSWER = { id: "x", name: "x", state: "created", hostname: "h", secrets: [], ips: [] };
+  const app = "my app?x=1#y";
+  const machine = "m/1?z";
+  const volume = "v/1#z";
+  const encodedApp = "my%20app%3Fx%3D1%23y";
+  const encodedMachine = "m%2F1%3Fz";
+  const encodedVolume = "v%2F1%23z";
+  const base = `https://api.machines.dev/v1/apps/${encodedApp}`;
+  const answer = () => installFetch(() => jsonResponse(ANSWER));
+  const lastCall = () => calls[calls.length - 1]!;
+
+  it.each([
+    ["app", `acct-1:app:${app}`, base],
+    ["machine", `acct-1:machine:${app}/${machine}`, `${base}/machines/${encodedMachine}`],
+    ["volume", `acct-1:volume:${app}/${volume}`, `${base}/volumes/${encodedVolume}`],
+    [
+      "certificate",
+      `acct-1:certificate:${app}/h.example.com`,
+      `${base}/certificates/h.example.com`,
+    ],
+    ["app-secret", `acct-1:app-secret:${app}/S`, `${base}/secrets/S`],
+  ])("reads and deletes a %s at its own route", async (typeId, id, url) => {
+    answer();
+    await client().getResource(typeId, id, ACCOUNT);
+    expect(lastCall().url).toBe(url);
+    await client().deleteResource(typeId, id, ACCOUNT);
+    expect(lastCall().url).toBe(url);
+    expect(method(lastCall().init)).toBe("DELETE");
+  });
+
+  it("encodes a Machine action, a snapshot, a deploy token and an address release", async () => {
+    answer();
+    await client().invokeAction("machine", `acct-1:machine:${app}/${machine}`, "stop", ACCOUNT);
+    expect(lastCall().url).toBe(`${base}/machines/${encodedMachine}/stop`);
+    await client().invokeAction("volume", `acct-1:volume:${app}/${volume}`, "snapshot", ACCOUNT);
+    expect(lastCall().url).toBe(`${base}/volumes/${encodedVolume}/snapshots`);
+    await client().exportCredential("app", `acct-1:app:${app}`, ACCOUNT, "deploy-token");
+    expect(lastCall().url).toBe(`${base}/deploy_token`);
+    await client().deleteResource("ip-allocation", `acct-1:ip-allocation:${app}/fdaa::1`, ACCOUNT);
+    expect(lastCall().url).toBe(`${base}/ip_assignments/fdaa%3A%3A1`);
+  });
+
+  it.each([
+    ["machine", { name: "n", appName: app, image: "i", region: "iad" }, "machines"],
+    ["volume", { name: "n", appName: app, region: "iad", sizeGb: "1" }, "volumes"],
+    ["certificate", { hostname: "h.example.com", appName: app }, "certificates/acme"],
+    ["ip-allocation", { appName: app, type: "v6" }, "ip_assignments"],
+  ])("creates a %s under a hand-entered app name", async (typeId, fields, route) => {
+    answer();
+    await client().createResource(typeId, ACCOUNT, fields);
+    expect(lastCall().url).toBe(`${base}/${route}`);
+  });
+
+  it("encodes the name of an app it just created when reading it back", async () => {
+    answer();
+    await client().createResource("app", ACCOUNT, { name: app });
+    expect(lastCall().url).toBe(base);
+  });
+
+  it("reads Machine events with one query string", async () => {
+    installFetch(() => jsonResponse([]));
+    await client().getLogs("machine", `acct-1:machine:${app}/${machine}`, ACCOUNT, {
+      container: "events",
+      tailLines: 7,
+    });
+    expect(lastCall().url).toBe(`${base}/machines/${encodedMachine}/events?limit=7`);
+  });
+
+  it("lists every per-app route under an app name that needs encoding", async () => {
+    const seen: string[] = [];
+    installFetch((url) => {
+      if (url.includes("/v1/apps?")) {
+        return jsonResponse({ apps: [{ id: "a", name: app }], total_apps: 1 });
+      }
+      seen.push(url);
+      return jsonResponse(url.includes("/machines") || url.includes("/volumes") ? [] : {});
+    });
+    for (const typeId of ["machine", "volume", "certificate", "ip-allocation", "app-secret"]) {
+      await client().listResources(typeId, ACCOUNT);
+    }
+    expect(seen).toEqual([
+      `${base}/machines`,
+      `${base}/volumes`,
+      `${base}/certificates?limit=500`,
+      `${base}/ip_assignments`,
+      `${base}/secrets`,
+    ]);
+  });
+
+  it.each([
+    ["machine", "acct-1:machine:app-one/"],
+    ["machine", "acct-1:machine:/m1"],
+    ["volume", "acct-1:volume:app-one/"],
+    ["volume", "acct-1:volume:/v1"],
+    ["certificate", "acct-1:certificate:app-one/"],
+    ["app-secret", "acct-1:app-secret:/S"],
+    ["ip-allocation", "acct-1:ip-allocation:app-one/"],
+    ["postgres-cluster", "acct-1:postgres-cluster:"],
+    ["app", "acct-1:app:"],
+  ])("refuses to delete a %s with a blank id: %s", async (typeId, id) => {
+    answer();
+    await expect(client().deleteResource(typeId, id, ACCOUNT)).rejects.toThrow(/Cannot|blank/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "exportCredential",
+      () => client().exportCredential("app", "acct-1:app:", ACCOUNT, "deploy-token"),
+    ],
+    ["getLogs", () => client().getLogs("app", "acct-1:app:", ACCOUNT, {})],
+    [
+      "invokeAction",
+      () =>
+        client().invokeAction("postgres-cluster", "acct-1:postgres-cluster:", "backup", ACCOUNT),
+    ],
+  ])("refuses a blank id on %s", async (_name, call) => {
+    answer();
+    await expect(call()).rejects.toThrow(/Cannot|blank/);
+    expect(calls).toHaveLength(0);
   });
 });
 
