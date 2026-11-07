@@ -14,9 +14,11 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { HoneycombContext, JsonApiResource } from "./api.js";
-import { ds, mapPooled, statusOf, v1, v2, v2Paged } from "./api.js";
+import { externalIdOf, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
+import type { ConfigApi, HoneycombContext } from "./api.js";
+import { mapPooled, statusOf, v1, v2, v2Paged } from "./api.js";
+import type { operations } from "./api-types.config.gen.js";
+import type { operations as ManagementOperations } from "./api-types.management.gen.js";
 import type { EnvScope } from "./mappers.js";
 import {
   DEFINITION_KEYS,
@@ -55,26 +57,21 @@ import { resolveRegion } from "./regions.js";
 import { RECIPIENT_TRIGGERS_KEY, renderHoneycombDetail, renderHoneycombSidebar } from "./render.js";
 import { ALL_DATASETS } from "./resource-types.js";
 import type {
-  HnyApiKeyAttrs,
+  HnyApiKey,
   HnyAuth,
-  HnyAuthV2,
-  HnyBoard,
   HnyBoardView,
-  HnyBurnAlert,
-  HnyColumn,
   HnyDataset,
   HnyDatasetDefinitions,
-  HnyDerivedColumn,
   HnyEnvironmentAttrs,
-  HnyMarker,
-  HnyMarkerSetting,
-  HnyQueryAnnotation,
+  HnyFilter,
   HnyQuerySpec,
   HnyRecipient,
   HnySignal,
-  HnySlo,
   HnyTrigger,
 } from "./types.js";
+
+type EnvironmentUpdate =
+  ManagementOperations["updateEnvironment"]["requestBody"]["content"]["application/vnd.api+json"];
 
 /** Stored per environment resource: its configuration key. */
 const CONFIG_KEY_FIELD = "configurationKey";
@@ -165,6 +162,8 @@ function trimmed(fields: Record<string, string>, key: string): string {
   return (fields[key] ?? "").trim();
 }
 
+function numberOr(value: string | undefined, fallback: number): number;
+function numberOr(value: string | undefined, fallback?: number): number | undefined;
 function numberOr(value: string | undefined, fallback?: number): number | undefined {
   if (value === undefined || value.trim() === "") return fallback;
   const n = Number(value);
@@ -176,9 +175,9 @@ function boolField(value: string | undefined): boolean {
 }
 
 /** Typed filter value: numbers and booleans as JSON, lists for in/not-in. */
-export function filterValue(op: string, raw: string): unknown {
+export function filterValue(op: string, raw: string): HnyFilter["value"] {
   if (op === "exists" || op === "does-not-exist") return undefined;
-  const parse = (v: string): unknown => {
+  const parse = (v: string): string | number | boolean => {
     const t = v.trim();
     if (t === "true") return true;
     if (t === "false") return false;
@@ -197,7 +196,7 @@ export function builderSpec(
   const json = trimmed(fields, "queryJson");
   if (json) {
     try {
-      return JSON.parse(json) as HnyQuerySpec;
+      return JSON.parse(json);
     } catch {
       throw new Error("Query JSON is not valid JSON.");
     }
@@ -209,7 +208,7 @@ export function builderSpec(
   }
   const spec: HnyQuerySpec = {
     calculations: [{ op, ...(column && op !== "COUNT" && op !== "CONCURRENCY" ? { column } : {}) }],
-    time_range: numberOr(fields["timeRange"], opts.forTrigger ? 900 : 7200) as number,
+    time_range: numberOr(fields["timeRange"], opts.forTrigger ? 900 : 7200),
   };
   const filterColumn = trimmed(fields, "filterColumn");
   if (filterColumn) {
@@ -220,6 +219,17 @@ export function builderSpec(
   const breakdown = trimmed(fields, "breakdown");
   if (breakdown && !opts.forTrigger) spec.breakdowns = [breakdown];
   return spec;
+}
+
+/** The environments a configuration key reaches, with that key. */
+function connected(envs: EnvAccess[]): Array<{ env: EnvAccess; key: string }> {
+  return envs.flatMap((env) => (env.key ? [{ env, key: env.key }] : []));
+}
+
+function slugsById(envs: EnvAccess[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const e of envs) if (e.id) out.set(e.id, e.slug);
+  return out;
 }
 
 export class HoneycombClient implements PluginClient {
@@ -237,10 +247,8 @@ export class HoneycombClient implements PluginClient {
     let keyId = (credentials["managementKeyId"] ?? "").trim();
     let keySecret = (credentials["managementKeySecret"] ?? "").trim();
     // Accept the joined `id:secret` form pasted into either field.
-    if (keyId.includes(":") && !keySecret)
-      [keyId, keySecret] = keyId.split(":", 2) as [string, string];
-    if (keySecret.includes(":") && !keyId)
-      [keyId, keySecret] = keySecret.split(":", 2) as [string, string];
+    if (keyId.includes(":") && !keySecret) [keyId = "", keySecret = ""] = keyId.split(":", 2);
+    if (keySecret.includes(":") && !keyId) [keyId = "", keySecret = ""] = keySecret.split(":", 2);
     if ((keyId && !keySecret) || (!keyId && keySecret)) {
       throw new Error("Honeycomb plugin: a management key needs both its ID and its secret");
     }
@@ -266,7 +274,7 @@ export class HoneycombClient implements PluginClient {
 
   private accountAuth(): Promise<HnyAuth> {
     if (!this.configurationKey) return Promise.reject(new Error("no configuration key"));
-    this.authCache ??= v1<HnyAuth>(this.ctx, this.configurationKey, "/1/auth");
+    this.authCache ??= v1(this.ctx, this.configurationKey).get("/1/auth");
     return this.authCache;
   }
 
@@ -274,7 +282,7 @@ export class HoneycombClient implements PluginClient {
   private teamSlug(): Promise<string> {
     this.teamCache ??= (async () => {
       if (this.ctx.managementToken) {
-        const auth = await v2<HnyAuthV2>(this.ctx, "/2/auth");
+        const auth = await v2(this.ctx).get("/2/auth");
         const teamId = auth.data?.relationships?.team?.data?.id;
         const team = (auth.included ?? []).find(
           (i) => i.type === "teams" && (!teamId || i.id === teamId),
@@ -327,9 +335,10 @@ export class HoneycombClient implements PluginClient {
     };
     const out: EnvAccess[] = [];
     if (this.ctx.managementToken && team) {
-      const envs = await v2Paged<HnyEnvironmentAttrs>(
-        this.ctx,
-        `/2/teams/${encodeURIComponent(team)}/environments`,
+      const envs = await v2Paged(this.ctx, () =>
+        v2(this.ctx).get(`/2/teams/${pathEncode(team)}/environments`, {
+          query: { "page[size]": 100 },
+        }),
       );
       for (const e of envs) {
         const slug = e.attributes?.slug ?? e.id;
@@ -389,9 +398,9 @@ export class HoneycombClient implements PluginClient {
   private datasets(env: EnvAccess): Promise<HnyDataset[]> {
     const cached = this.datasetCache.get(env.slug);
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
-    const value = v1<HnyDataset[]>(this.ctx, this.requireKey(env), "/1/datasets").then(
-      (d) => d ?? [],
-    );
+    const value = v1(this.ctx, this.requireKey(env))
+      .get("/1/datasets")
+      .then((d) => d ?? []);
     this.datasetCache.set(env.slug, { at: Date.now(), value });
     value.catch(() => this.datasetCache.delete(env.slug));
     return value;
@@ -406,10 +415,10 @@ export class HoneycombClient implements PluginClient {
     accountId: string,
     load: (env: EnvAccess, key: string) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const envs = (await this.environments(accountId)).filter((e) => e.key);
-    const results = await mapPooled(envs, POOL, async (env) => {
+    const envs = connected(await this.environments(accountId));
+    const results = await mapPooled(envs, POOL, async ({ env, key }) => {
       try {
-        return await load(env, env.key as string);
+        return await load(env, key);
       } catch (err) {
         const status = statusOf(err);
         if (status === 401 || status === 403 || status === 404) return [];
@@ -465,35 +474,33 @@ export class HoneycombClient implements PluginClient {
           return this.perEnv(accountId, async (env, key) => {
             const sets = await this.datasets(env);
             return mapPooled(sets, POOL, async (d) => {
-              const defs = await v1<HnyDatasetDefinitions>(
-                this.ctx,
-                key,
-                `/1/dataset_definitions/${ds(d.slug ?? "")}`,
-              ).catch(() => undefined);
+              const defs = await v1(this.ctx, key)
+                .get(`/1/dataset_definitions/${pathEncode(d.slug ?? "")}`)
+                .catch(() => undefined);
               return mapDataset(accountId, env, d, defs);
             });
           });
         case "column":
           return this.perDataset(accountId, false, async (env, key, dataset) =>
-            (await v1<HnyColumn[]>(this.ctx, key, `/1/columns/${ds(dataset)}`)).map((c) =>
+            (await v1(this.ctx, key).get(`/1/columns/${pathEncode(dataset)}`)).map((c) =>
               mapColumn(accountId, env, dataset, c),
             ),
           );
         case "derived-column":
           return this.perDataset(accountId, true, async (env, key, dataset) =>
-            (await v1<HnyDerivedColumn[]>(this.ctx, key, `/1/derived_columns/${ds(dataset)}`)).map(
-              (c) => mapDerivedColumn(accountId, env, dataset, c),
+            (await v1(this.ctx, key).get(`/1/derived_columns/${pathEncode(dataset)}`)).map((c) =>
+              mapDerivedColumn(accountId, env, dataset, c),
             ),
           );
         case "trigger":
           return this.perDataset(accountId, true, async (env, key, dataset) =>
-            (await v1<HnyTrigger[]>(this.ctx, key, `/1/triggers/${ds(dataset)}`)).map((t) =>
+            (await v1(this.ctx, key).get(`/1/triggers/${pathEncode(dataset)}`)).map((t) =>
               mapTrigger(accountId, env, dataset, t),
             ),
           );
         case "slo":
           return this.perDataset(accountId, true, async (env, key, dataset) =>
-            (await v1<HnySlo[]>(this.ctx, key, `/1/slos/${ds(dataset)}`)).map((s) =>
+            (await v1(this.ctx, key).get(`/1/slos/${pathEncode(dataset)}`)).map((s) =>
               mapSlo(accountId, env, dataset, s),
             ),
           );
@@ -501,29 +508,25 @@ export class HoneycombClient implements PluginClient {
           return this.listBurnAlerts(accountId);
         case "board":
           return this.perEnv(accountId, async (env, key) =>
-            (await v1<HnyBoard[]>(this.ctx, key, "/1/boards")).map((b) =>
-              mapBoard(accountId, env, b),
-            ),
+            (await v1(this.ctx, key).get("/1/boards")).map((b) => mapBoard(accountId, env, b)),
           );
         case "board-view":
           return this.perEnv(accountId, async (env, key) => {
-            const boards = await v1<HnyBoard[]>(this.ctx, key, "/1/boards");
-            const views = await mapPooled(boards, POOL, async (b) =>
-              b.id
+            const boards = await v1(this.ctx, key).get("/1/boards");
+            const views = await mapPooled(boards, POOL, async ({ id: boardId }) =>
+              boardId
                 ? (
-                    await v1<HnyBoardView[]>(
-                      this.ctx,
-                      key,
-                      `/1/boards/${encodeURIComponent(b.id)}/views`,
-                    ).catch(() => [] as HnyBoardView[])
-                  ).map((v) => mapBoardView(accountId, env, b.id as string, v))
+                    await v1(this.ctx, key)
+                      .get(`/1/boards/${pathEncode(boardId)}/views`)
+                      .catch((): HnyBoardView[] => [])
+                  ).map((v) => mapBoardView(accountId, env, boardId, v))
                 : [],
             );
             return views.flat();
           });
         case "marker":
           return this.perDataset(accountId, true, async (env, key, dataset) => {
-            const markers = await v1<HnyMarker[]>(this.ctx, key, `/1/markers/${ds(dataset)}`);
+            const markers = await v1(this.ctx, key).get(`/1/markers/${pathEncode(dataset)}`);
             return [...(markers ?? [])]
               .sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0))
               .slice(0, MAX_MARKERS_PER_DATASET)
@@ -531,15 +534,15 @@ export class HoneycombClient implements PluginClient {
           });
         case "marker-setting":
           return this.perDataset(accountId, true, async (env, key, dataset) =>
-            (await v1<HnyMarkerSetting[]>(this.ctx, key, `/1/marker_settings/${ds(dataset)}`)).map(
-              (m) => mapMarkerSetting(accountId, env, dataset, m),
+            (await v1(this.ctx, key).get(`/1/marker_settings/${pathEncode(dataset)}`)).map((m) =>
+              mapMarkerSetting(accountId, env, dataset, m),
             ),
           );
         case "saved-query":
           return this.perDataset(accountId, true, async (env, key, dataset) =>
-            (
-              await v1<HnyQueryAnnotation[]>(this.ctx, key, `/1/query_annotations/${ds(dataset)}`)
-            ).map((a) => mapSavedQuery(accountId, env, dataset, a)),
+            (await v1(this.ctx, key).get(`/1/query_annotations/${pathEncode(dataset)}`)).map((a) =>
+              mapSavedQuery(accountId, env, dataset, a),
+            ),
           );
         case "recipient":
           return this.listRecipients(accountId);
@@ -575,7 +578,7 @@ export class HoneycombClient implements PluginClient {
       if (!envSlug || !dataset || !sloId) return [];
       try {
         const { env, key } = await this.keyFor(accountId, envSlug);
-        const alerts = await v1<HnyBurnAlert[]>(this.ctx, key, `/1/burn_alerts/${ds(dataset)}`, {
+        const alerts = await v1(this.ctx, key).get(`/1/burn_alerts/${pathEncode(dataset)}`, {
           query: { slo_id: sloId },
         });
         return (alerts ?? []).map((b) => mapBurnAlert(accountId, env, dataset, sloId, b));
@@ -600,10 +603,9 @@ export class HoneycombClient implements PluginClient {
   }
 
   private async listRecipients(accountId: string): Promise<ResourceInstance[]> {
-    const envs = (await this.environments(accountId)).filter((e) => e.key);
-    for (const env of envs) {
+    for (const { key } of connected(await this.environments(accountId))) {
       try {
-        const list = await v1<HnyRecipient[]>(this.ctx, env.key as string, "/1/recipients");
+        const list = await v1(this.ctx, key).get("/1/recipients");
         return (list ?? []).map((r) => mapRecipient(accountId, r));
       } catch (err) {
         const status = statusOf(err);
@@ -618,12 +620,9 @@ export class HoneycombClient implements PluginClient {
     const out: HnySignal[] = [];
     let after: string | undefined;
     for (let page = 0; page < 50; page++) {
-      const res = await v1<{ signals?: HnySignal[]; links?: { next?: string | null } }>(
-        this.ctx,
-        key,
-        "/1/signals",
-        { query: { "page[size]": 100, ...(after ? { "page[after]": after } : {}) } },
-      );
+      const res = await v1(this.ctx, key).get("/1/signals", {
+        query: { "page[size]": 100, ...(after ? { "page[after]": after } : {}) },
+      });
       out.push(...(res.signals ?? []));
       const next = res.links?.next;
       if (!next) break;
@@ -638,14 +637,18 @@ export class HoneycombClient implements PluginClient {
     if (!this.ctx.managementToken) return [];
     const team = await this.teamSlug();
     const [keys, envs] = await Promise.all([
-      v2Paged<HnyApiKeyAttrs>(this.ctx, `/2/teams/${encodeURIComponent(team)}/api-keys`),
+      v2Paged(this.ctx, () =>
+        v2(this.ctx).get(`/2/teams/${pathEncode(team)}/api-keys`, {
+          query: { "page[size]": 100 },
+        }),
+      ),
       this.environments(accountId),
     ]);
-    const slugById = new Map(envs.filter((e) => e.id).map((e) => [e.id as string, e.slug]));
+    const slugById = slugsById(envs);
     return keys.map((k) => mapApiKey(accountId, this.keyRef(k), slugById));
   }
 
-  private keyRef(k: JsonApiResource<HnyApiKeyAttrs>) {
+  private keyRef(k: HnyApiKey) {
     const envId = k.relationships?.["environment"]?.data?.id;
     return {
       id: k.id,
@@ -672,58 +675,46 @@ export class HoneycombClient implements PluginClient {
         case "dataset": {
           const { env, key } = await this.keyFor(accountId, a);
           const [d, defs] = await Promise.all([
-            v1<HnyDataset>(this.ctx, key, `/1/datasets/${ds(b)}`),
-            v1<HnyDatasetDefinitions>(this.ctx, key, `/1/dataset_definitions/${ds(b)}`).catch(
-              () => undefined,
-            ),
+            v1(this.ctx, key).get(`/1/datasets/${pathEncode(b)}`),
+            v1(this.ctx, key)
+              .get(`/1/dataset_definitions/${pathEncode(b)}`)
+              .catch(() => undefined),
           ]);
           return mapDataset(accountId, env, d, defs);
         }
         case "column": {
           const { env, key } = await this.keyFor(accountId, a);
-          const col = await v1<HnyColumn>(
-            this.ctx,
-            key,
-            `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
-          );
+          const col = await v1(this.ctx, key).get(`/1/columns/${pathEncode(b)}/${pathEncode(c)}`);
           return mapColumn(accountId, env, b, col);
         }
         case "derived-column": {
           const { env, key } = await this.keyFor(accountId, a);
-          const col = await v1<HnyDerivedColumn>(
-            this.ctx,
-            key,
-            `/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`,
+          const col = await v1(this.ctx, key).get(
+            `/1/derived_columns/${pathEncode(b)}/${pathEncode(c)}`,
           );
           return mapDerivedColumn(accountId, env, b, col);
         }
         case "trigger": {
           const { env, key } = await this.keyFor(accountId, a);
-          const t = await v1<HnyTrigger>(
-            this.ctx,
-            key,
-            `/1/triggers/${ds(b)}/${encodeURIComponent(c)}`,
-          );
+          const t = await v1(this.ctx, key).get(`/1/triggers/${pathEncode(b)}/${pathEncode(c)}`);
           return mapTrigger(accountId, env, b, t);
         }
         case "slo": {
           const { env, key } = await this.keyFor(accountId, a);
-          const path = `/1/slos/${ds(b)}/${encodeURIComponent(c)}`;
+          const path = `/1/slos/${pathEncode(b)}/${pathEncode(c)}` as const;
           // `detailed` (compliance, budget, burn rate) is Enterprise-only.
-          const s = await v1<HnySlo>(this.ctx, key, path, { query: { detailed: true } }).catch(
-            (err) => {
+          const s = await v1(this.ctx, key)
+            .get(path, { query: { detailed: true } })
+            .catch((err) => {
               if (statusOf(err) === 404) throw err;
-              return v1<HnySlo>(this.ctx, key, path);
-            },
-          );
+              return v1(this.ctx, key).get(path);
+            });
           return mapSlo(accountId, env, b, s);
         }
         case "burn-alert": {
           const { env, key } = await this.keyFor(accountId, a);
-          const alert = await v1<HnyBurnAlert>(
-            this.ctx,
-            key,
-            `/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`,
+          const alert = await v1(this.ctx, key).get(
+            `/1/burn_alerts/${pathEncode(b)}/${pathEncode(c)}`,
           );
           return mapBurnAlert(accountId, env, b, alert.slo?.id ?? "", alert);
         }
@@ -732,57 +723,47 @@ export class HoneycombClient implements PluginClient {
           return mapBoard(
             accountId,
             env,
-            await v1<HnyBoard>(this.ctx, key, `/1/boards/${encodeURIComponent(b)}`),
+            await v1(this.ctx, key).get(`/1/boards/${pathEncode(b)}`),
           );
         }
         case "board-view": {
           const { env, key } = await this.keyFor(accountId, a);
-          const view = await v1<HnyBoardView>(
-            this.ctx,
-            key,
-            `/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`,
+          const view = await v1(this.ctx, key).get(
+            `/1/boards/${pathEncode(b)}/views/${pathEncode(c)}`,
           );
           return mapBoardView(accountId, env, b, view);
         }
         case "saved-query": {
           const { env, key } = await this.keyFor(accountId, a);
-          const ann = await v1<HnyQueryAnnotation>(
-            this.ctx,
-            key,
-            `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`,
+          const ann = await v1(this.ctx, key).get(
+            `/1/query_annotations/${pathEncode(b)}/${pathEncode(c)}`,
           );
           const spec = ann.query_id
-            ? await v1<HnyQuerySpec>(
-                this.ctx,
-                key,
-                `/1/queries/${ds(b)}/${encodeURIComponent(ann.query_id)}`,
-              ).catch(() => undefined)
+            ? await v1(this.ctx, key)
+                .get(`/1/queries/${pathEncode(b)}/${pathEncode(ann.query_id)}`)
+                .catch(() => undefined)
             : undefined;
           return mapSavedQuery(accountId, env, b, ann, spec);
         }
         case "recipient": {
-          const r = await v1<HnyRecipient>(
-            this.ctx,
-            await this.recipientKey(accountId),
-            `/1/recipients/${encodeURIComponent(ext)}`,
+          const r = await v1(this.ctx, await this.recipientKey(accountId)).get(
+            `/1/recipients/${pathEncode(ext)}`,
           );
           return mapRecipient(accountId, r);
         }
         case "signal": {
           const { env, key } = await this.keyFor(accountId, a);
-          const s = await v1<HnySignal>(this.ctx, key, `/1/signals/${encodeURIComponent(b)}`);
+          const s = await v1(this.ctx, key).get(`/1/signals/${pathEncode(b)}`);
           return mapSignal(accountId, env, s);
         }
         case "api-key": {
           const team = await this.teamSlug();
-          const res = await v2<{ data?: JsonApiResource<HnyApiKeyAttrs> }>(
-            this.ctx,
-            `/2/teams/${encodeURIComponent(team)}/api-keys/${encodeURIComponent(ext)}`,
+          const res = await v2(this.ctx).get(
+            `/2/teams/${pathEncode(team)}/api-keys/${pathEncode(ext)}`,
           );
           if (!res.data) break;
           const envs = await this.environments(accountId);
-          const slugById = new Map(envs.filter((e) => e.id).map((e) => [e.id as string, e.slug]));
-          return mapApiKey(accountId, this.keyRef(res.data), slugById);
+          return mapApiKey(accountId, this.keyRef(res.data), slugsById(envs));
         }
         default:
           break;
@@ -822,10 +803,8 @@ export class HoneycombClient implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (resource.resourceTypeId !== "recipient" || !resource.externalId) return resource;
-      const triggers = await v1<HnyTrigger[]>(
-        this.ctx,
-        await this.recipientKey(resource.accountId),
-        `/1/recipients/${encodeURIComponent(resource.externalId)}/triggers`,
+      const triggers = await v1(this.ctx, await this.recipientKey(resource.accountId)).get(
+        `/1/recipients/${pathEncode(resource.externalId)}/triggers`,
       );
       const rows = (triggers ?? []).map((t) => ({
         name: t.name ?? t.id,
@@ -922,11 +901,9 @@ export class HoneycombClient implements PluginClient {
         }
         case "dataset": {
           const { key } = await this.keyFor(accountId, a);
-          const defs = await v1<HnyDatasetDefinitions>(
-            this.ctx,
-            key,
-            `/1/dataset_definitions/${ds(b)}`,
-          ).catch(() => ({}) as HnyDatasetDefinitions);
+          const defs = await v1(this.ctx, key)
+            .get(`/1/dataset_definitions/${pathEncode(b)}`)
+            .catch((): HnyDatasetDefinitions => ({}));
           const duration = defs["duration_ms"]?.name;
           const error = defs["error"]?.name;
           return datasetSeries(
@@ -939,11 +916,7 @@ export class HoneycombClient implements PluginClient {
         }
         case "trigger": {
           const { key } = await this.keyFor(accountId, a);
-          const t = await v1<HnyTrigger>(
-            this.ctx,
-            key,
-            `/1/triggers/${ds(b)}/${encodeURIComponent(c)}`,
-          );
+          const t = await v1(this.ctx, key).get(`/1/triggers/${pathEncode(b)}/${pathEncode(c)}`);
           const queryId = t.query_id ?? t.query?.id;
           if (!queryId) return [];
           return storedQuerySeries(
@@ -957,10 +930,8 @@ export class HoneycombClient implements PluginClient {
         }
         case "saved-query": {
           const { key } = await this.keyFor(accountId, a);
-          const ann = await v1<HnyQueryAnnotation>(
-            this.ctx,
-            key,
-            `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`,
+          const ann = await v1(this.ctx, key).get(
+            `/1/query_annotations/${pathEncode(b)}/${pathEncode(c)}`,
           );
           if (!ann.query_id) return [];
           return storedQuerySeries(
@@ -992,7 +963,7 @@ export class HoneycombClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async connectedEnvOptions(accountId = "", onlyEnv?: string) {
-    const envs = await this.environments(accountId).catch(() => [] as EnvAccess[]);
+    const envs = await this.environments(accountId).catch((): EnvAccess[] => []);
     return envs
       .filter((e) => e.key && (!onlyEnv || e.slug === onlyEnv))
       .map((e) => opt(e.slug, e.name));
@@ -1000,11 +971,11 @@ export class HoneycombClient implements PluginClient {
 
   /** `env/dataset` choices across connected environments, optionally with `env/__all__`. */
   private async targetOptions(includeAll: boolean, accountId = "", onlyEnv?: string) {
-    const envs = (await this.environments(accountId).catch(() => [] as EnvAccess[])).filter(
+    const envs = (await this.environments(accountId).catch((): EnvAccess[] => [])).filter(
       (e) => e.key && (!onlyEnv || e.slug === onlyEnv),
     );
     const groups = await mapPooled(envs, POOL, async (env) => {
-      const sets = await this.datasets(env).catch(() => [] as HnyDataset[]);
+      const sets = await this.datasets(env).catch((): HnyDataset[] => []);
       return [
         ...(includeAll
           ? [
@@ -1024,17 +995,10 @@ export class HoneycombClient implements PluginClient {
 
   private async recipientOptions(accountId = "") {
     try {
-      const list = await v1<HnyRecipient[]>(
-        this.ctx,
-        await this.recipientKey(accountId),
-        "/1/recipients",
+      const list = await v1(this.ctx, await this.recipientKey(accountId)).get("/1/recipients");
+      return (list ?? []).flatMap((r) =>
+        r.id ? [{ id: r.id, label: `${recipientTarget(r) || r.id} (${r.type ?? ""})` }] : [],
       );
-      return (list ?? [])
-        .filter((r) => r.id)
-        .map((r) => ({
-          id: r.id as string,
-          label: `${recipientTarget(r) || r.id} (${r.type ?? ""})`,
-        }));
     } catch {
       return [];
     }
@@ -1338,7 +1302,7 @@ export class HoneycombClient implements PluginClient {
         case "slo": {
           const derived = await runPluginEffect(
             this.listResources("derived-column", accountId),
-          ).catch(() => [] as ResourceInstance[]);
+          ).catch((): ResourceInstance[] => []);
           return {
             fields: [
               {
@@ -1403,7 +1367,7 @@ export class HoneycombClient implements PluginClient {
                       required: true,
                       options: (
                         await runPluginEffect(this.listResources("slo", accountId)).catch(
-                          () => [] as ResourceInstance[],
+                          (): ResourceInstance[] => [],
                         )
                       ).map((s) => opt(s.externalId ?? s.id, s.displayName)),
                     },
@@ -1485,7 +1449,7 @@ export class HoneycombClient implements PluginClient {
                       required: true,
                       options: (
                         await runPluginEffect(this.listResources("board", accountId)).catch(
-                          () => [] as ResourceInstance[],
+                          (): ResourceInstance[] => [],
                         )
                       ).map((b) => opt(b.externalId ?? b.id, b.displayName)),
                     },
@@ -1629,7 +1593,7 @@ export class HoneycombClient implements PluginClient {
             ],
           };
         case "api-key": {
-          const envs = await this.environments(accountId).catch(() => [] as EnvAccess[]);
+          const envs = await this.environments(accountId).catch((): EnvAccess[] => []);
           return {
             fields: [
               {
@@ -1637,7 +1601,7 @@ export class HoneycombClient implements PluginClient {
                 label: "Environment",
                 kind: "select",
                 required: true,
-                options: envs.filter((e) => e.id).map((e) => opt(e.id as string, e.name)),
+                options: envs.flatMap((e) => (e.id ? [opt(e.id, e.name)] : [])),
               },
               { key: "name", label: "Name", kind: "text", required: true },
               {
@@ -1705,48 +1669,44 @@ export class HoneycombClient implements PluginClient {
             (parentResourceId ? externalIdOf(parentResourceId) : "");
           const { env, key } = await this.keyFor(accountId, envSlug);
           const depth = numberOr(fields["expandJsonDepth"]);
-          const d = await v1<HnyDataset>(this.ctx, key, "/1/datasets", {
-            method: "POST",
-            body: JSON.stringify({
+          const d = await v1(this.ctx, key).post("/1/datasets", {
+            body: {
               name: trimmed(fields, "name"),
               ...(fields["description"] ? { description: fields["description"] } : {}),
               ...(depth !== undefined ? { expand_json_depth: depth } : {}),
-            }),
+            },
           });
           this.datasetCache.delete(env.slug);
           return mapDataset(accountId, env, d);
         }
         case "column": {
           const { env, key, dataset } = await this.target(accountId, fields, parentResourceId);
-          const c = await v1<HnyColumn>(this.ctx, key, `/1/columns/${ds(dataset)}`, {
-            method: "POST",
-            body: JSON.stringify({
+          const c = await v1(this.ctx, key).post(`/1/columns/${pathEncode(dataset)}`, {
+            body: {
               key_name: trimmed(fields, "keyName"),
               type: trimmed(fields, "type") || "string",
               ...(fields["description"] ? { description: fields["description"] } : {}),
               hidden: boolField(fields["hidden"]),
-            }),
+            },
           });
           return mapColumn(accountId, env, dataset, c);
         }
         case "derived-column": {
           const { env, key, dataset } = await this.target(accountId, fields, undefined);
-          const c = await v1<HnyDerivedColumn>(this.ctx, key, `/1/derived_columns/${ds(dataset)}`, {
-            method: "POST",
-            body: JSON.stringify({
+          const c = await v1(this.ctx, key).post(`/1/derived_columns/${pathEncode(dataset)}`, {
+            body: {
               alias: trimmed(fields, "alias"),
               expression: trimmed(fields, "expression"),
               ...(fields["description"] ? { description: fields["description"] } : {}),
-            }),
+            },
           });
           return mapDerivedColumn(accountId, env, dataset, c);
         }
         case "trigger": {
           const { env, key, dataset } = await this.target(accountId, fields, undefined);
           const recipientId = trimmed(fields, "recipientId");
-          const t = await v1<HnyTrigger>(this.ctx, key, `/1/triggers/${ds(dataset)}`, {
-            method: "POST",
-            body: JSON.stringify({
+          const t = await v1(this.ctx, key).post(`/1/triggers/${pathEncode(dataset)}`, {
+            body: {
               name: trimmed(fields, "name"),
               ...(fields["description"] ? { description: fields["description"] } : {}),
               query: builderSpec(fields, { forTrigger: true }),
@@ -1758,7 +1718,7 @@ export class HoneycombClient implements PluginClient {
               alert_type: trimmed(fields, "alertType") || "on_change",
               disabled: false,
               ...(recipientId ? { recipients: [{ id: recipientId }] } : {}),
-            }),
+            },
           });
           return mapTrigger(accountId, env, dataset, t);
         }
@@ -1774,23 +1734,21 @@ export class HoneycombClient implements PluginClient {
           if (!recipientId)
             throw new Error("Pick a recipient: Honeycomb requires one per burn alert.");
           const kind = trimmed(fields, "alertType") || "exhaustion_time";
-          const body: Record<string, unknown> = {
-            alert_type: kind,
-            slo: { id: sloId },
-            recipients: [{ id: recipientId }],
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-          };
-          if (kind === "budget_rate") {
-            body["budget_rate_window_minutes"] = numberOr(fields["budgetRateWindowMinutes"], 60);
-            body["budget_rate_decrease_threshold_per_million"] = Math.round(
-              (numberOr(fields["budgetRateDecreasePercent"], 1) as number) * 10_000,
-            );
-          } else {
-            body["exhaustion_minutes"] = numberOr(fields["exhaustionMinutes"], 240);
-          }
-          const b = await v1<HnyBurnAlert>(this.ctx, key, `/1/burn_alerts/${ds(dataset)}`, {
-            method: "POST",
-            body: JSON.stringify(body),
+          const b = await v1(this.ctx, key).post(`/1/burn_alerts/${pathEncode(dataset)}`, {
+            body: {
+              alert_type: kind,
+              slo: { id: sloId },
+              recipients: [{ id: recipientId }],
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              ...(kind === "budget_rate"
+                ? {
+                    budget_rate_window_minutes: numberOr(fields["budgetRateWindowMinutes"], 60),
+                    budget_rate_decrease_threshold_per_million: Math.round(
+                      numberOr(fields["budgetRateDecreasePercent"], 1) * 10_000,
+                    ),
+                  }
+                : { exhaustion_minutes: numberOr(fields["exhaustionMinutes"], 240) }),
+            },
           });
           return mapBurnAlert(accountId, env, dataset, sloId, b);
         }
@@ -1799,16 +1757,15 @@ export class HoneycombClient implements PluginClient {
             trimmed(fields, "environment") ||
             (parentResourceId ? externalIdOf(parentResourceId) : "");
           const { env, key } = await this.keyFor(accountId, envSlug);
-          const b = await v1<HnyBoard>(this.ctx, key, "/1/boards", {
-            method: "POST",
-            body: JSON.stringify({
+          const b = await v1(this.ctx, key).post("/1/boards", {
+            body: {
               name: trimmed(fields, "name"),
               ...(fields["description"] ? { description: fields["description"] } : {}),
               type: "flexible",
               layout_generation: "auto",
               panels: [],
               tags: [],
-            }),
+            },
           });
           return mapBoard(accountId, env, b);
         }
@@ -1819,85 +1776,64 @@ export class HoneycombClient implements PluginClient {
           const { env, key } = await this.keyFor(accountId, envSlug);
           const op = trimmed(fields, "filterOp") || "=";
           const value = filterValue(op, fields["filterValue"] ?? "");
-          const v = await v1<HnyBoardView>(
-            this.ctx,
-            key,
-            `/1/boards/${encodeURIComponent(boardId)}/views`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                name: trimmed(fields, "name"),
-                filters: [
-                  {
-                    column: trimmed(fields, "filterColumn"),
-                    operation: op,
-                    ...(value !== undefined ? { value } : {}),
-                  },
-                ],
-              }),
+          const v = await v1(this.ctx, key).post(`/1/boards/${pathEncode(boardId)}/views`, {
+            body: {
+              name: trimmed(fields, "name"),
+              filters: [
+                {
+                  column: trimmed(fields, "filterColumn"),
+                  operation: op,
+                  ...(value !== undefined ? { value } : {}),
+                },
+              ],
             },
-          );
+          });
           return mapBoardView(accountId, env, boardId, v);
         }
         case "marker": {
           const { env, key, dataset } = await this.target(accountId, fields, undefined);
           const start = trimmed(fields, "startTime");
           const end = trimmed(fields, "endTime");
-          const m = await v1<HnyMarker>(this.ctx, key, `/1/markers/${ds(dataset)}`, {
-            method: "POST",
-            body: JSON.stringify({
+          const m = await v1(this.ctx, key).post(`/1/markers/${pathEncode(dataset)}`, {
+            body: {
               message: trimmed(fields, "message"),
               ...(fields["type"] ? { type: trimmed(fields, "type") } : {}),
               ...(fields["url"] ? { url: trimmed(fields, "url") } : {}),
               ...(start ? { start_time: Math.floor(Date.parse(start) / 1000) } : {}),
               ...(end ? { end_time: Math.floor(Date.parse(end) / 1000) } : {}),
-            }),
+            },
           });
           return mapMarker(accountId, env, dataset, m);
         }
         case "marker-setting": {
           const { env, key, dataset } = await this.target(accountId, fields, undefined);
-          const m = await v1<HnyMarkerSetting>(this.ctx, key, `/1/marker_settings/${ds(dataset)}`, {
-            method: "POST",
-            body: JSON.stringify({
+          const m = await v1(this.ctx, key).post(`/1/marker_settings/${pathEncode(dataset)}`, {
+            body: {
               type: trimmed(fields, "type"),
               color: trimmed(fields, "color"),
-            }),
+            },
           });
           return mapMarkerSetting(accountId, env, dataset, m);
         }
         case "saved-query": {
           const { env, key, dataset } = await this.target(accountId, fields, undefined);
           const spec = builderSpec(fields, { forTrigger: false });
-          const query = await v1<HnyQuerySpec>(this.ctx, key, `/1/queries/${ds(dataset)}`, {
-            method: "POST",
-            body: JSON.stringify(spec),
+          const query = await v1(this.ctx, key).post(`/1/queries/${pathEncode(dataset)}`, {
+            body: spec,
           });
-          const ann = await v1<HnyQueryAnnotation>(
-            this.ctx,
-            key,
-            `/1/query_annotations/${ds(dataset)}`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                name: trimmed(fields, "name"),
-                ...(fields["description"] ? { description: fields["description"] } : {}),
-                query_id: query.id,
-              }),
+          const ann = await v1(this.ctx, key).post(`/1/query_annotations/${pathEncode(dataset)}`, {
+            body: {
+              name: trimmed(fields, "name"),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              query_id: query.id,
             },
-          );
+          });
           return mapSavedQuery(accountId, env, dataset, ann, query);
         }
         case "recipient": {
-          const r = await v1<HnyRecipient>(
-            this.ctx,
-            await this.recipientKey(accountId),
-            "/1/recipients",
-            {
-              method: "POST",
-              body: JSON.stringify(recipientBody(trimmed(fields, "type"), fields)),
-            },
-          );
+          const r = await v1(this.ctx, await this.recipientKey(accountId)).post("/1/recipients", {
+            body: recipientBody(trimmed(fields, "type"), fields),
+          });
           return mapRecipient(accountId, r);
         }
         case "api-key":
@@ -1911,23 +1847,18 @@ export class HoneycombClient implements PluginClient {
   private async createEnvironment(accountId: string, fields: Record<string, string>) {
     const team = await this.teamSlug();
     const color = trimmed(fields, "color");
-    const res = await v2<{ data?: JsonApiResource<HnyEnvironmentAttrs> }>(
-      this.ctx,
-      `/2/teams/${encodeURIComponent(team)}/environments`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          data: {
-            type: "environments",
-            attributes: {
-              name: trimmed(fields, "name"),
-              ...(fields["description"] ? { description: fields["description"] } : {}),
-              ...(color ? { color } : {}),
-            },
+    const res = await v2(this.ctx).post(`/2/teams/${pathEncode(team)}/environments`, {
+      body: {
+        data: {
+          type: "environments",
+          attributes: {
+            name: trimmed(fields, "name"),
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            ...(color ? { color } : {}),
           },
-        }),
+        },
       },
-    );
+    });
     const created = res.data;
     if (!created) throw new Error("Honeycomb returned no environment");
     this.envCache = undefined;
@@ -1951,10 +1882,8 @@ export class HoneycombClient implements PluginClient {
   private async createSlo(accountId: string, fields: Record<string, string>) {
     const [envSlug = "", sliDataset = "", sliId = ""] = trimmed(fields, "sli").split("/");
     const { env, key } = await this.keyFor(accountId, envSlug);
-    const sli = await v1<HnyDerivedColumn>(
-      this.ctx,
-      key,
-      `/1/derived_columns/${ds(sliDataset)}/${encodeURIComponent(sliId)}`,
+    const sli = await v1(this.ctx, key).get(
+      `/1/derived_columns/${pathEncode(sliDataset)}/${pathEncode(sliId)}`,
     );
     const datasets = trimmed(fields, "datasets")
       .split(",")
@@ -1964,18 +1893,15 @@ export class HoneycombClient implements PluginClient {
     if (path === ALL_DATASETS && datasets.length === 0) {
       throw new Error("An environment-wide SLI needs the datasets to evaluate the SLO on.");
     }
-    const s = await v1<HnySlo>(this.ctx, key, `/1/slos/${ds(path)}`, {
-      method: "POST",
-      body: JSON.stringify({
+    const s = await v1(this.ctx, key).post(`/1/slos/${pathEncode(path)}`, {
+      body: {
         name: trimmed(fields, "name"),
         description: fields["description"] ?? "",
         sli: { alias: sli.alias },
         time_period_days: numberOr(fields["timePeriodDays"], 30),
-        target_per_million: Math.round(
-          (numberOr(fields["targetPercent"], 99.9) as number) * 10_000,
-        ),
+        target_per_million: Math.round(numberOr(fields["targetPercent"], 99.9) * 10_000),
         ...(path === ALL_DATASETS ? { dataset_slugs: datasets } : {}),
-      }),
+      },
     });
     return mapSlo(accountId, env, path, s);
   }
@@ -1985,7 +1911,7 @@ export class HoneycombClient implements PluginClient {
     const keyType = trimmed(fields, "keyType") || "ingest";
     let picked: string[] = [];
     try {
-      picked = JSON.parse(fields["permissions"] || "[]") as string[];
+      picked = JSON.parse(fields["permissions"] || "[]");
     } catch {
       picked = [];
     }
@@ -1994,22 +1920,17 @@ export class HoneycombClient implements PluginClient {
         .filter((p) => keyType === "configuration" || p === "create_datasets")
         .map((p) => [p, true]),
     );
-    const res = await v2<{ data?: JsonApiResource<HnyApiKeyAttrs> }>(
-      this.ctx,
-      `/2/teams/${encodeURIComponent(team)}/api-keys`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          data: {
-            type: "api-keys",
-            attributes: { key_type: keyType, name: trimmed(fields, "name"), permissions },
-            relationships: {
-              environment: { data: { id: trimmed(fields, "environment"), type: "environments" } },
-            },
+    const res = await v2(this.ctx).post(`/2/teams/${pathEncode(team)}/api-keys`, {
+      body: {
+        data: {
+          type: "api-keys",
+          attributes: { key_type: keyType, name: trimmed(fields, "name"), permissions },
+          relationships: {
+            environment: { data: { id: trimmed(fields, "environment"), type: "environments" } },
           },
-        }),
+        },
       },
-    );
+    });
     if (!res.data) throw new Error("Honeycomb returned no key");
     const secret = res.data.attributes?.secret;
     const resourceId = resourceIdFor(accountId, "api-key", res.data.id);
@@ -2019,31 +1940,25 @@ export class HoneycombClient implements PluginClient {
       await this.storeSecret(resourceId, API_KEY_SECRET_FIELD, usable).catch(() => undefined);
     }
     const envs = await this.environments(accountId);
-    const slugById = new Map(envs.filter((e) => e.id).map((e) => [e.id as string, e.slug]));
-    return mapApiKey(accountId, this.keyRef(res.data), slugById);
+    return mapApiKey(accountId, this.keyRef(res.data), slugsById(envs));
   }
 
   /** Mint a configuration key for an environment and store it against the environment. */
   private async connectEnvironment(accountId: string, slug: string, envId: string): Promise<void> {
     const team = await this.teamSlug();
-    const res = await v2<{ data?: JsonApiResource<HnyApiKeyAttrs> }>(
-      this.ctx,
-      `/2/teams/${encodeURIComponent(team)}/api-keys`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          data: {
-            type: "api-keys",
-            attributes: {
-              key_type: "configuration",
-              name: "Infrawrench",
-              permissions: CONNECT_PERMISSIONS,
-            },
-            relationships: { environment: { data: { id: envId, type: "environments" } } },
+    const res = await v2(this.ctx).post(`/2/teams/${pathEncode(team)}/api-keys`, {
+      body: {
+        data: {
+          type: "api-keys",
+          attributes: {
+            key_type: "configuration",
+            name: "Infrawrench",
+            permissions: CONNECT_PERMISSIONS,
           },
-        }),
+          relationships: { environment: { data: { id: envId, type: "environments" } } },
+        },
       },
-    );
+    });
     const secret = res.data?.attributes?.secret;
     if (!secret) throw new Error("Honeycomb did not return the new key's secret");
     await this.storeSecret(resourceIdFor(accountId, "environment", slug), CONFIG_KEY_FIELD, secret);
@@ -2068,32 +1983,30 @@ export class HoneycombClient implements PluginClient {
         case "environment": {
           if (fields[CONFIG_KEY_FIELD]?.trim()) {
             const key = fields[CONFIG_KEY_FIELD].trim();
-            const auth = await v1<HnyAuth>(this.ctx, key, "/1/auth");
+            const auth = await v1(this.ctx, key).get("/1/auth");
             if (auth.type === "ingest")
               throw new Error("That is an ingest key. Paste a configuration key.");
             await this.storeSecret(resourceId, CONFIG_KEY_FIELD, key);
             this.envCache = undefined;
           }
-          const attrs: Record<string, unknown> = {};
-          if ("name" in fields) attrs["name"] = fields["name"];
-          if ("description" in fields) attrs["description"] = fields["description"];
-          if ("color" in fields && fields["color"]) attrs["color"] = fields["color"];
+          const attrs: EnvironmentUpdate["data"]["attributes"] = {};
+          if (fields["name"] !== undefined) attrs.name = fields["name"];
+          if (fields["description"] !== undefined) attrs.description = fields["description"];
+          if (fields["color"]) attrs.color = fields["color"];
           if ("deleteProtected" in fields) {
-            attrs["settings"] = { delete_protected: boolField(fields["deleteProtected"]) };
+            attrs.settings = { delete_protected: boolField(fields["deleteProtected"]) };
           }
           if (Object.keys(attrs).length > 0) {
             const env = await this.env(accountId, ext);
             if (!env.id)
               throw new Error("Editing an environment needs a management key on the account.");
             const team = await this.teamSlug();
-            await v2(
-              this.ctx,
-              `/2/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(env.id)}`,
+            await v2(this.ctx).patch(
+              `/2/teams/${pathEncode(team)}/environments/${pathEncode(env.id)}`,
               {
-                method: "PATCH",
-                body: JSON.stringify({
+                body: {
                   data: { id: env.id, type: "environments", attributes: attrs },
-                }),
+                },
               },
             );
             this.envCache = undefined;
@@ -2106,15 +2019,14 @@ export class HoneycombClient implements PluginClient {
             (k) => k in fields,
           );
           if (settingsChanged) {
-            const current = await v1<HnyDataset>(this.ctx, key, `/1/datasets/${ds(b)}`);
-            await v1(this.ctx, key, `/1/datasets/${ds(b)}`, {
-              method: "PUT",
-              body: JSON.stringify({
+            const current = await v1(this.ctx, key).get(`/1/datasets/${pathEncode(b)}`);
+            await v1(this.ctx, key).put(`/1/datasets/${pathEncode(b)}`, {
+              body: {
                 description:
                   "description" in fields ? fields["description"] : (current.description ?? ""),
                 expand_json_depth:
                   "expandJsonDepth" in fields
-                    ? (numberOr(fields["expandJsonDepth"], 0) as number)
+                    ? numberOr(fields["expandJsonDepth"], 0)
                     : (current.expand_json_depth ?? 0),
                 settings: {
                   delete_protected:
@@ -2122,17 +2034,16 @@ export class HoneycombClient implements PluginClient {
                       ? boolField(fields["deleteProtected"])
                       : (current.settings?.delete_protected ?? false),
                 },
-              }),
+              },
             });
           }
-          const defs: Record<string, { name: string }> = {};
+          const defs: HnyDatasetDefinitions = {};
           for (const k of DEFINITION_KEYS) {
             if (`def_${k}` in fields) defs[k] = { name: (fields[`def_${k}`] ?? "").trim() };
           }
           if (Object.keys(defs).length > 0) {
-            await v1(this.ctx, key, `/1/dataset_definitions/${ds(b)}`, {
-              method: "PATCH",
-              body: JSON.stringify(defs),
+            await v1(this.ctx, key).patch(`/1/dataset_definitions/${pathEncode(b)}`, {
+              body: defs,
             });
           }
           this.datasetCache.delete(a);
@@ -2140,41 +2051,35 @@ export class HoneycombClient implements PluginClient {
         }
         case "column": {
           const { env, key } = await this.keyFor(accountId, a);
-          const current = await v1<HnyColumn>(
-            this.ctx,
-            key,
-            `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
+          const current = await v1(this.ctx, key).get(
+            `/1/columns/${pathEncode(b)}/${pathEncode(c)}`,
           );
-          const updated = await v1<HnyColumn>(
-            this.ctx,
-            key,
-            `/1/columns/${ds(b)}/${encodeURIComponent(c)}`,
+          const updated = await v1(this.ctx, key).put(
+            `/1/columns/${pathEncode(b)}/${pathEncode(c)}`,
             {
-              method: "PUT",
-              body: JSON.stringify({
+              body: {
                 key_name: current.key_name,
                 type: fields["type"] || current.type,
                 description:
                   "description" in fields ? fields["description"] : (current.description ?? ""),
                 hidden:
                   "hidden" in fields ? boolField(fields["hidden"]) : (current.hidden ?? false),
-              }),
+              },
             },
           );
           return mapColumn(accountId, env, b, updated);
         }
         case "derived-column": {
           const { env, key } = await this.keyFor(accountId, a);
-          const path = `/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`;
-          const current = await v1<HnyDerivedColumn>(this.ctx, key, path);
-          const updated = await v1<HnyDerivedColumn>(this.ctx, key, path, {
-            method: "PUT",
-            body: JSON.stringify({
+          const path = `/1/derived_columns/${pathEncode(b)}/${pathEncode(c)}` as const;
+          const current = await v1(this.ctx, key).get(path);
+          const updated = await v1(this.ctx, key).put(path, {
+            body: {
               alias: current.alias,
               expression: "expression" in fields ? fields["expression"] : current.expression,
               description:
                 "description" in fields ? fields["description"] : (current.description ?? ""),
-            }),
+            },
           });
           return mapDerivedColumn(accountId, env, b, updated);
         }
@@ -2190,7 +2095,7 @@ export class HoneycombClient implements PluginClient {
               const limit = numberOr(fields["exceededLimit"], t.threshold?.exceeded_limit);
               t.threshold = {
                 op: fields["thresholdOp"] || t.threshold?.op || ">",
-                value: numberOr(fields["thresholdValue"], t.threshold?.value ?? 0) as number,
+                value: numberOr(fields["thresholdValue"], t.threshold?.value ?? 0),
                 ...(limit !== undefined ? { exceeded_limit: limit } : {}),
               };
             }
@@ -2202,11 +2107,10 @@ export class HoneycombClient implements PluginClient {
           });
         case "slo": {
           const { env, key } = await this.keyFor(accountId, a);
-          const path = `/1/slos/${ds(b)}/${encodeURIComponent(c)}`;
-          const current = await v1<HnySlo>(this.ctx, key, path);
-          const updated = await v1<HnySlo>(this.ctx, key, path, {
-            method: "PUT",
-            body: JSON.stringify({
+          const path = `/1/slos/${pathEncode(b)}/${pathEncode(c)}` as const;
+          const current = await v1(this.ctx, key).get(path);
+          const updated = await v1(this.ctx, key).put(path, {
+            body: {
               name: "name" in fields ? fields["name"] : current.name,
               description:
                 "description" in fields ? fields["description"] : (current.description ?? ""),
@@ -2217,162 +2121,146 @@ export class HoneycombClient implements PluginClient {
                   : current.time_period_days,
               target_per_million:
                 "targetPercent" in fields
-                  ? Math.round((numberOr(fields["targetPercent"], 0) as number) * 10_000)
+                  ? Math.round(numberOr(fields["targetPercent"], 0) * 10_000)
                   : current.target_per_million,
               tags: current.tags ?? [],
               ...(b === ALL_DATASETS ? { dataset_slugs: current.dataset_slugs ?? [] } : {}),
-            }),
+            },
           });
           return mapSlo(accountId, env, sloDatasetPath(updated, b), updated);
         }
         case "burn-alert": {
           const { env, key } = await this.keyFor(accountId, a);
-          const path = `/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`;
-          const current = await v1<HnyBurnAlert>(this.ctx, key, path);
-          const body: Record<string, unknown> = {
-            alert_type: current.alert_type,
-            slo: current.slo,
-            description:
-              "description" in fields ? fields["description"] : (current.description ?? ""),
-            recipients: (current.recipients ?? []).map((r) => ({ id: r.id })),
-          };
-          if (current.alert_type === "budget_rate") {
-            body["budget_rate_window_minutes"] = numberOr(
-              fields["budgetRateWindowMinutes"],
-              current.budget_rate_window_minutes,
-            );
-            body["budget_rate_decrease_threshold_per_million"] =
-              "budgetRateDecreasePercent" in fields
-                ? Math.round((numberOr(fields["budgetRateDecreasePercent"], 0) as number) * 10_000)
-                : current.budget_rate_decrease_threshold_per_million;
-          } else {
-            body["exhaustion_minutes"] = numberOr(
-              fields["exhaustionMinutes"],
-              current.exhaustion_minutes,
-            );
-          }
-          const updated = await v1<HnyBurnAlert>(this.ctx, key, path, {
-            method: "PUT",
-            body: JSON.stringify(body),
+          const path = `/1/burn_alerts/${pathEncode(b)}/${pathEncode(c)}` as const;
+          const current = await v1(this.ctx, key).get(path);
+          const updated = await v1(this.ctx, key).put(path, {
+            body: {
+              alert_type: current.alert_type,
+              slo: current.slo,
+              description:
+                "description" in fields ? fields["description"] : (current.description ?? ""),
+              recipients: (current.recipients ?? []).map((r) => ({ id: r.id })),
+              ...(current.alert_type === "budget_rate"
+                ? {
+                    budget_rate_window_minutes: numberOr(
+                      fields["budgetRateWindowMinutes"],
+                      current.budget_rate_window_minutes,
+                    ),
+                    budget_rate_decrease_threshold_per_million:
+                      "budgetRateDecreasePercent" in fields
+                        ? Math.round(numberOr(fields["budgetRateDecreasePercent"], 0) * 10_000)
+                        : current.budget_rate_decrease_threshold_per_million,
+                  }
+                : {
+                    exhaustion_minutes: numberOr(
+                      fields["exhaustionMinutes"],
+                      current.exhaustion_minutes,
+                    ),
+                  }),
+            },
           });
           return mapBurnAlert(accountId, env, b, current.slo?.id ?? "", updated);
         }
         case "board": {
           const { env, key } = await this.keyFor(accountId, a);
-          const path = `/1/boards/${encodeURIComponent(b)}`;
-          const current = await v1<HnyBoard>(this.ctx, key, path);
+          const path = `/1/boards/${pathEncode(b)}` as const;
+          const current = await v1(this.ctx, key).get(path);
           const { id: _id, links: _links, ...rest } = current;
-          const updated = await v1<HnyBoard>(this.ctx, key, path, {
-            method: "PUT",
-            body: JSON.stringify({
+          const updated = await v1(this.ctx, key).put(path, {
+            body: {
               ...rest,
               ...("name" in fields ? { name: fields["name"] } : {}),
               ...("description" in fields ? { description: fields["description"] } : {}),
               tags: current.tags ?? [],
-            }),
+            },
           });
           return mapBoard(accountId, env, updated);
         }
         case "board-view": {
           const { env, key } = await this.keyFor(accountId, a);
-          const path = `/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`;
-          const current = await v1<HnyBoardView>(this.ctx, key, path);
-          const updated = await v1<HnyBoardView>(this.ctx, key, path, {
-            method: "PUT",
-            body: JSON.stringify({
+          const path = `/1/boards/${pathEncode(b)}/views/${pathEncode(c)}` as const;
+          const current = await v1(this.ctx, key).get(path);
+          const updated = await v1(this.ctx, key).put(path, {
+            body: {
               name: fields["name"] ?? current.name,
               filters: current.filters ?? [],
-            }),
+            },
           });
           return mapBoardView(accountId, env, b, updated);
         }
         case "marker": {
           const { env, key } = await this.keyFor(accountId, a);
-          const list = await v1<HnyMarker[]>(this.ctx, key, `/1/markers/${ds(b)}`);
+          const list = await v1(this.ctx, key).get(`/1/markers/${pathEncode(b)}`);
           const current = (list ?? []).find((m) => m.id === c);
           if (!current) throw new Error("Marker not found");
-          const updated = await v1<HnyMarker>(
-            this.ctx,
-            key,
-            `/1/markers/${ds(b)}/${encodeURIComponent(c)}`,
+          const updated = await v1(this.ctx, key).put(
+            `/1/markers/${pathEncode(b)}/${pathEncode(c)}`,
             {
-              method: "PUT",
-              body: JSON.stringify({
+              body: {
                 ...(current.start_time ? { start_time: current.start_time } : {}),
                 ...(current.end_time ? { end_time: current.end_time } : {}),
                 message: "message" in fields ? fields["message"] : current.message,
                 type: "type" in fields ? fields["type"] : current.type,
                 url: "url" in fields ? fields["url"] : current.url,
-              }),
+              },
             },
           );
           return mapMarker(accountId, env, b, updated);
         }
         case "marker-setting": {
           const { env, key } = await this.keyFor(accountId, a);
-          const list = await v1<HnyMarkerSetting[]>(this.ctx, key, `/1/marker_settings/${ds(b)}`);
+          const list = await v1(this.ctx, key).get(`/1/marker_settings/${pathEncode(b)}`);
           const current = (list ?? []).find((m) => m.id === c);
-          const updated = await v1<HnyMarkerSetting>(
-            this.ctx,
-            key,
-            `/1/marker_settings/${ds(b)}/${encodeURIComponent(c)}`,
+          const updated = await v1(this.ctx, key).put(
+            `/1/marker_settings/${pathEncode(b)}/${pathEncode(c)}`,
             {
-              method: "PUT",
-              body: JSON.stringify({
+              body: {
                 type: current?.type,
                 color: fields["color"] ?? current?.color,
-              }),
+              },
             },
           );
           return mapMarkerSetting(accountId, env, b, updated);
         }
         case "saved-query": {
           const { env, key } = await this.keyFor(accountId, a);
-          const path = `/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`;
-          const current = await v1<HnyQueryAnnotation>(this.ctx, key, path);
-          const updated = await v1<HnyQueryAnnotation>(this.ctx, key, path, {
-            method: "PUT",
-            body: JSON.stringify({
+          const path = `/1/query_annotations/${pathEncode(b)}/${pathEncode(c)}` as const;
+          const current = await v1(this.ctx, key).get(path);
+          const updated = await v1(this.ctx, key).put(path, {
+            body: {
               name: "name" in fields ? fields["name"] : current.name,
               description:
                 "description" in fields ? fields["description"] : (current.description ?? ""),
               query_id: current.query_id,
-            }),
+            },
           });
           return mapSavedQuery(accountId, env, b, updated);
         }
         case "recipient": {
           const key = await this.recipientKey(accountId);
-          const path = `/1/recipients/${encodeURIComponent(ext)}`;
-          const current = await v1<HnyRecipient>(this.ctx, key, path);
+          const path = `/1/recipients/${pathEncode(ext)}` as const;
+          const current: HnyRecipient = await v1(this.ctx, key).get(path);
           const merged: Record<string, string> = {
             target: "target" in fields ? (fields["target"] ?? "") : recipientTarget(current),
             url: "url" in fields ? (fields["url"] ?? "") : (current.details?.webhook_url ?? ""),
             secret: fields["secret"] ?? "",
           };
           const body = recipientBody(current.type ?? "", merged, current);
-          const updated = await v1<HnyRecipient>(this.ctx, key, path, {
-            method: "PUT",
-            body: JSON.stringify(body),
+          const updated = await v1(this.ctx, key).put(path, {
+            body: body,
           });
           return mapRecipient(accountId, updated);
         }
         case "signal": {
           const { env, key } = await this.keyFor(accountId, a);
-          const updated = await v1<HnySignal>(
-            this.ctx,
-            key,
-            `/1/signals/${encodeURIComponent(b)}`,
-            {
-              method: "PUT",
-              body: JSON.stringify({ sensitivity: fields["sensitivity"] || "medium" }),
-            },
-          );
+          const updated = await v1(this.ctx, key).put(`/1/signals/${pathEncode(b)}`, {
+            body: { sensitivity: fields["sensitivity"] || "medium" },
+          });
           return mapSignal(accountId, env, updated);
         }
         case "api-key":
           return this.patchApiKey(accountId, ext, {
-            ...("name" in fields ? { name: fields["name"] } : {}),
+            ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
           });
         default:
           throw new Error(`Honeycomb plugin: "${typeId}" cannot be edited from Infrawrench`);
@@ -2388,21 +2276,23 @@ export class HoneycombClient implements PluginClient {
     mutate: (t: HnyTrigger) => void,
   ): Promise<ResourceInstance> {
     const { env, key } = await this.keyFor(accountId, envSlug);
-    const path = `/1/triggers/${ds(dataset)}/${encodeURIComponent(id)}`;
-    const current = await v1<HnyTrigger>(this.ctx, key, path);
+    const path = `/1/triggers/${pathEncode(dataset)}/${pathEncode(id)}` as const;
+    const current = await v1(this.ctx, key).get(path);
     mutate(current);
-    const updated = await v1<HnyTrigger>(this.ctx, key, path, {
-      method: "PUT",
-      body: JSON.stringify(triggerBody(current)),
+    const updated = await v1(this.ctx, key).put(path, {
+      body: triggerBody(current),
     });
     return mapTrigger(accountId, env, dataset, updated);
   }
 
-  private async patchApiKey(accountId: string, id: string, attrs: Record<string, unknown>) {
+  private async patchApiKey(
+    accountId: string,
+    id: string,
+    attrs: { name?: string; disabled?: boolean },
+  ) {
     const team = await this.teamSlug();
-    await v2(this.ctx, `/2/teams/${encodeURIComponent(team)}/api-keys/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ data: { id, type: "api-keys", attributes: attrs } }),
+    await v2(this.ctx).patch(`/2/teams/${pathEncode(team)}/api-keys/${pathEncode(id)}`, {
+      body: { data: { id, type: "api-keys", attributes: attrs } },
     });
     return runPluginEffect(
       this.getResource("api-key", resourceIdFor(accountId, "api-key", id), accountId),
@@ -2417,9 +2307,9 @@ export class HoneycombClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       const [a = "", b = "", c = ""] = ext.split("/");
-      const del = async (path: string) => {
+      const del = async (call: (api: ConfigApi) => Promise<unknown>) => {
         const { key } = await this.keyFor(accountId, a);
-        await v1(this.ctx, key, path, { method: "DELETE" });
+        await call(v1(this.ctx, key));
       };
       switch (typeId) {
         case "environment": {
@@ -2427,59 +2317,44 @@ export class HoneycombClient implements PluginClient {
           if (!env.id)
             throw new Error("Deleting an environment needs a management key on the account.");
           const team = await this.teamSlug();
-          await v2(
-            this.ctx,
-            `/2/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(env.id)}`,
-            {
-              method: "DELETE",
-            },
+          await v2(this.ctx).delete(
+            `/2/teams/${pathEncode(team)}/environments/${pathEncode(env.id)}`,
           );
           this.envCache = undefined;
           return;
         }
         case "dataset":
-          await del(`/1/datasets/${ds(b)}`);
+          await del((api) => api.delete(`/1/datasets/${pathEncode(b)}`));
           this.datasetCache.delete(a);
           return;
         case "column":
-          return del(`/1/columns/${ds(b)}/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/columns/${pathEncode(b)}/${pathEncode(c)}`));
         case "derived-column":
-          return del(`/1/derived_columns/${ds(b)}/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/derived_columns/${pathEncode(b)}/${pathEncode(c)}`));
         case "trigger":
-          return del(`/1/triggers/${ds(b)}/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/triggers/${pathEncode(b)}/${pathEncode(c)}`));
         case "slo":
-          return del(`/1/slos/${ds(b)}/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/slos/${pathEncode(b)}/${pathEncode(c)}`));
         case "burn-alert":
-          return del(`/1/burn_alerts/${ds(b)}/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/burn_alerts/${pathEncode(b)}/${pathEncode(c)}`));
         case "board":
-          return del(`/1/boards/${encodeURIComponent(b)}`);
+          return del((api) => api.delete(`/1/boards/${pathEncode(b)}`));
         case "board-view":
-          return del(`/1/boards/${encodeURIComponent(b)}/views/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/boards/${pathEncode(b)}/views/${pathEncode(c)}`));
         case "marker":
-          return del(`/1/markers/${ds(b)}/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/markers/${pathEncode(b)}/${pathEncode(c)}`));
         case "marker-setting":
-          return del(`/1/marker_settings/${ds(b)}/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/marker_settings/${pathEncode(b)}/${pathEncode(c)}`));
         case "saved-query":
-          return del(`/1/query_annotations/${ds(b)}/${encodeURIComponent(c)}`);
+          return del((api) => api.delete(`/1/query_annotations/${pathEncode(b)}/${pathEncode(c)}`));
         case "recipient":
-          await v1(
-            this.ctx,
-            await this.recipientKey(accountId),
-            `/1/recipients/${encodeURIComponent(ext)}`,
-            {
-              method: "DELETE",
-            },
+          await v1(this.ctx, await this.recipientKey(accountId)).delete(
+            `/1/recipients/${pathEncode(ext)}`,
           );
           return;
         case "api-key": {
           const team = await this.teamSlug();
-          await v2(
-            this.ctx,
-            `/2/teams/${encodeURIComponent(team)}/api-keys/${encodeURIComponent(ext)}`,
-            {
-              method: "DELETE",
-            },
-          );
+          await v2(this.ctx).delete(`/2/teams/${pathEncode(team)}/api-keys/${pathEncode(ext)}`);
           return;
         }
         default:
@@ -2516,9 +2391,8 @@ export class HoneycombClient implements PluginClient {
       }
       if (typeId === "signal" && (actionId === "enable" || actionId === "disable")) {
         const { key } = await this.keyFor(accountId, a);
-        await v1(this.ctx, key, `/1/signals/${encodeURIComponent(b)}`, {
-          method: "PUT",
-          body: JSON.stringify({ enabled: actionId === "enable" }),
+        await v1(this.ctx, key).put(`/1/signals/${pathEncode(b)}`, {
+          body: { enabled: actionId === "enable" },
         });
         return;
       }
@@ -2548,7 +2422,7 @@ export class HoneycombClient implements PluginClient {
  * fields. When the trigger references a stored query, only `query_id` goes
  * back (sending both is rejected), as the official Go client does.
  */
-export function triggerBody(t: HnyTrigger): Record<string, unknown> {
+export function triggerBody(t: HnyTrigger): ApiBody<operations["updateTrigger"]> {
   const {
     id: _id,
     dataset_slug: _ds,
@@ -2581,7 +2455,7 @@ export function recipientBody(
   type: string,
   fields: Record<string, string>,
   current?: HnyRecipient,
-): Record<string, unknown> {
+): ApiBody<operations["createRecipient"]> {
   const target = (fields["target"] ?? "").trim();
   const url = (fields["url"] ?? "").trim();
   const secret = (fields["secret"] ?? "").trim();

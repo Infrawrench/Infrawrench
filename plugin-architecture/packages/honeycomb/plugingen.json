@@ -1,0 +1,295 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "config",
+      "specUrl": "https://docs.honeycomb.io/api/openapi-public.yaml",
+      "paths": {
+        "/1/auth": ["get"],
+        "/1/boards": ["get", "post"],
+        "/1/boards/{boardId}": ["get", "put", "delete"],
+        "/1/boards/{boardId}/views": ["get", "post"],
+        "/1/boards/{boardId}/views/{viewId}": ["get", "put", "delete"],
+        "/1/burn_alerts/{datasetSlug}": ["get", "post"],
+        "/1/burn_alerts/{datasetSlug}/{burnAlertId}": ["get", "put", "delete"],
+        "/1/columns/{datasetSlug}": ["get", "post"],
+        "/1/columns/{datasetSlug}/{columnId}": ["get", "put", "delete"],
+        "/1/dataset_definitions/{datasetSlug}": ["get", "patch"],
+        "/1/datasets": ["get", "post"],
+        "/1/datasets/{datasetSlug}": ["get", "put", "delete"],
+        "/1/derived_columns/{datasetSlug}": ["get", "post"],
+        "/1/derived_columns/{datasetSlug}/{derivedColumnId}": ["get", "put", "delete"],
+        "/1/marker_settings/{datasetSlug}": ["get", "post"],
+        "/1/marker_settings/{datasetSlug}/{markerSettingId}": ["put", "delete"],
+        "/1/markers/{datasetSlug}": ["get", "post"],
+        "/1/markers/{datasetSlug}/{markerId}": ["put", "delete"],
+        "/1/queries/{datasetSlug}": ["post"],
+        "/1/queries/{datasetSlug}/{queryId}": ["get"],
+        "/1/query_annotations/{datasetSlug}": ["get", "post"],
+        "/1/query_annotations/{datasetSlug}/{queryAnnotationId}": ["get", "put", "delete"],
+        "/1/query_results/{datasetSlug}": ["post"],
+        "/1/query_results/{datasetSlug}/{queryResultId}": ["get"],
+        "/1/recipients": ["get", "post"],
+        "/1/recipients/{recipientId}": ["get", "put", "delete"],
+        "/1/recipients/{recipientId}/triggers": ["get"],
+        "/1/signals": ["get"],
+        "/1/signals/{signalId}": ["get", "put"],
+        "/1/slos/{datasetSlug}": ["get", "post"],
+        "/1/slos/{datasetSlug}/{sloId}": ["get", "put", "delete"],
+        "/1/slos/{datasetSlug}/{sloId}/counts/history": ["get"],
+        "/1/triggers/{datasetSlug}": ["get", "post"],
+        "/1/triggers/{datasetSlug}/{triggerId}": ["get", "put", "delete"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/TriggerWithInlineQuery/allOf/1/properties/query",
+          "value": {
+            "$ref": "#/components/schemas/Query"
+          },
+          "why": "Documented as a bare object with its fields in prose. It is a query specification: the plugin reads it back and sends it again."
+        },
+        {
+          "pointer": "/components/schemas/QueryOp",
+          "value": {
+            "type": "string"
+          },
+          "why": "The query builder sends the operator as typed, and a query pasted as JSON can hold anything. Honeycomb judges it."
+        },
+        {
+          "pointer": "/components/schemas/FilterOp",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and Honeycomb judges it, so this cannot be a closed set here."
+        },
+        {
+          "pointer": "/components/schemas/CreateColumn/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and Honeycomb judges it, so this cannot be a closed set here."
+        },
+        {
+          "pointer": "/components/schemas/BaseTrigger/properties/alert_type",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and Honeycomb judges it, so this cannot be a closed set here."
+        },
+        {
+          "pointer": "/components/schemas/BaseTrigger/properties/threshold/properties/op",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and Honeycomb judges it, so this cannot be a closed set here."
+        },
+        {
+          "pointer": "/components/schemas/BoardViewFilter/properties/operation",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and Honeycomb judges it, so this cannot be a closed set here."
+        },
+        {
+          "pointer": "/components/schemas/AnomalySignalSensitivity",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and Honeycomb judges it, so this cannot be a closed set here."
+        },
+        {
+          "pointer": "/components/schemas/CalculatedField/required",
+          "value": ["alias", "expression"],
+          "why": "`id` and the timestamps are read-only and marked required, which would make them compulsory in the request bodies this schema also describes."
+        },
+        {
+          "pointer": "/components/schemas/NotificationRecipient/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, since `target` and `type` are a deprecated way to name one. The plugin only ever names a recipient by id."
+        },
+        {
+          "pointer": "/components/schemas/SLO/properties/dataset_slugs",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "why": "Documented as an array of anything; its example and the API hold dataset slugs."
+        },
+        {
+          "pointer": "/components/schemas/SLOCreate/properties/dataset_slugs",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "why": "Documented as an array of anything; its example and the API hold dataset slugs."
+        },
+        {
+          "pointer": "/paths/~11~1columns~1{datasetSlug}/get/responses/200/content/application~1json/schema",
+          "value": {
+            "$ref": "#/components/schemas/ColumnList"
+          },
+          "why": "The single-column form of this answer only comes with `?key_name=`, which the plugin never sends."
+        },
+        {
+          "pointer": "/paths/~11~1derived_columns~1{datasetSlug}/get/responses/200/content/application~1json/schema",
+          "value": {
+            "$ref": "#/components/schemas/CalculatedFieldList"
+          },
+          "why": "The single-column form of this answer only comes with `?alias=`, which the plugin never sends."
+        },
+        {
+          "pointer": "/paths/~11~1burn_alerts~1{datasetSlug}/post/requestBody/content/application~1json/schema",
+          "value": {
+            "type": "object",
+            "required": ["alert_type", "slo", "recipients"],
+            "properties": {
+              "alert_type": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "slo": {
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "recipients": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationRecipient"
+                }
+              },
+              "exhaustion_minutes": {
+                "type": "integer"
+              },
+              "budget_rate_window_minutes": {
+                "type": "integer"
+              },
+              "budget_rate_decrease_threshold_per_million": {
+                "type": "integer"
+              }
+            }
+          },
+          "why": "A union keyed on `alert_type`, which comes from the form as typed, so no member can be picked at compile time."
+        },
+        {
+          "pointer": "/paths/~11~1burn_alerts~1{datasetSlug}~1{burnAlertId}/put/requestBody/content/application~1json/schema",
+          "value": {
+            "type": "object",
+            "required": ["alert_type", "recipients"],
+            "properties": {
+              "alert_type": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "slo": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "recipients": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NotificationRecipient"
+                }
+              },
+              "exhaustion_minutes": {
+                "type": "integer"
+              },
+              "budget_rate_window_minutes": {
+                "type": "integer"
+              },
+              "budget_rate_decrease_threshold_per_million": {
+                "type": "integer"
+              }
+            }
+          },
+          "why": "The same union, re-sending what was read. The plugin has always sent `slo` back as well, which the document leaves out of this body."
+        }
+      ]
+    },
+    {
+      "name": "management",
+      "specUrl": "https://docs.honeycomb.io/api/openapi-public.yaml",
+      "paths": {
+        "/2/auth": ["get"],
+        "/2/teams/{teamSlug}/api-keys": ["get", "post"],
+        "/2/teams/{teamSlug}/api-keys/{ID}": ["get", "patch", "delete"],
+        "/2/teams/{teamSlug}/environments": ["get", "post"],
+        "/2/teams/{teamSlug}/environments/{ID}": ["patch", "delete"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/EnvironmentColor",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's text goes through as typed and Honeycomb judges it, so this cannot be a closed set here."
+        },
+        {
+          "pointer": "/components/schemas/IncludedResource/properties/attributes",
+          "value": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              }
+            }
+          },
+          "why": "Documented as a bare object. Each included team has its name and slug here, and the slug is how the plugin finds its team."
+        },
+        {
+          "pointer": "/components/schemas/ApiKeyObject/required",
+          "value": ["id"],
+          "why": "A key always has an id; it is what the plugin identifies the resource by."
+        },
+        {
+          "pointer": "/components/schemas/ApiKeyCreateRequest/properties/data/properties/attributes",
+          "value": {
+            "type": "object",
+            "required": ["key_type", "name"],
+            "properties": {
+              "key_type": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "permissions": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "why": "A union keyed on `key_type`, which comes from the form as typed, with permissions picked at run time."
+        },
+        {
+          "pointer": "/components/schemas/UpdateEnvironmentRequest/properties/data/properties/attributes/properties/name",
+          "value": {
+            "type": "string"
+          },
+          "why": "Not documented for this PATCH, and the plugin has always sent it when renaming. See #467."
+        }
+      ]
+    }
+  ]
+}

@@ -249,12 +249,9 @@ function renderBody(r: ResourceInstance): DetailViewSchema {
         headerActions: [REFRESH],
       };
     case "recipient": {
-      const triggers = (() => {
+      const triggers = ((): Array<{ name?: string; dataset?: string }> => {
         try {
-          return JSON.parse(r.resolvedOutputs[RECIPIENT_TRIGGERS_KEY] ?? "[]") as Array<{
-            name?: string;
-            dataset?: string;
-          }>;
+          return JSON.parse(r.resolvedOutputs[RECIPIENT_TRIGGERS_KEY] ?? "[]");
         } catch {
           return [];
         }

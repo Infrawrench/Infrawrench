@@ -352,6 +352,8 @@ describe("mappers and bodies", () => {
     const slo = mapSlo(ACCOUNT, { slug: "production", region: "us1" }, "api", {
       id: "s1",
       name: "Avail",
+      sli: { alias: "sli" },
+      time_period_days: 30,
       target_per_million: 999000,
       dataset_slugs: ["a", "b"],
     });
@@ -385,7 +387,10 @@ describe("mappers and bodies", () => {
       recipientBody(
         "pagerduty",
         { target: "Ops" },
-        { details: { pagerduty_integration_key: "old" } },
+        {
+          type: "pagerduty",
+          details: { pagerduty_integration_name: "Old", pagerduty_integration_key: "old" },
+        },
       ),
     ).toEqual({
       type: "pagerduty",

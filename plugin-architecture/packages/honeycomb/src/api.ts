@@ -1,5 +1,11 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  type ApiClient,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type { paths as ConfigPaths } from "./api-types.config.gen.js";
+import type { paths as ManagementPaths } from "./api-types.management.gen.js";
 import type { HoneycombRegion } from "./regions.js";
 
 /**
@@ -31,32 +37,17 @@ export class HoneycombApiError extends Error {
   }
 }
 
-const STATUS_IN_MESSAGE = /Honeycomb API error (\d{3})/;
-
-type Query = Record<string, string | number | boolean | undefined>;
-
-function withQuery(path: string, query?: Query): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  }
-  const qs = params.toString();
-  if (!qs) return path;
-  return `${path}${path.includes("?") ? "&" : "?"}${qs}`;
+interface ErrorBody {
+  error?: string;
+  title?: string;
+  errors?: Array<{ title?: string; detail?: string }>;
+  type_detail?: Array<{ field?: string; description?: string }>;
 }
 
 /** Pull Honeycomb's own error text out of a v1 `{error}` or v2 JSON:API body. */
-function honeycombMessage(raw: string, path: string): string {
-  const prefix = `for ${path}: `;
-  const i = raw.indexOf(prefix);
-  const body = i >= 0 ? raw.slice(i + prefix.length) : raw;
+function honeycombMessage(body: string): string {
   try {
-    const parsed = JSON.parse(body) as {
-      error?: string;
-      title?: string;
-      errors?: Array<{ title?: string; detail?: string }>;
-      type_detail?: Array<{ field?: string; description?: string }>;
-    };
+    const parsed: ErrorBody = JSON.parse(body);
     const details = (parsed.type_detail ?? [])
       .map((d) => [d.field, d.description].filter(Boolean).join(": "))
       .filter(Boolean);
@@ -73,101 +64,103 @@ function honeycombMessage(raw: string, path: string): string {
   }
 }
 
-async function request<T>(
-  ctx: HoneycombContext,
-  path: string,
-  headers: Record<string, string>,
-  init?: RequestInit & { query?: Query },
-): Promise<T> {
-  const { query, ...rest } = init ?? {};
-  const fullPath = withQuery(path, query);
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "Honeycomb",
-      url: `${ctx.region.apiUrl}${fullPath}`,
-      errorPath: path,
-      headers,
-      ...(Object.keys(rest).length > 0 ? { init: rest } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) {
-      throw new HoneycombApiError(
-        status,
-        `Honeycomb API error ${status} for ${path}: ${honeycombMessage(message, path)}`,
-      );
-    }
-    throw err;
-  }
+function apiError(status: number, path: string, body: string): HoneycombApiError {
+  return new HoneycombApiError(
+    status,
+    `Honeycomb API error ${status} for ${path}: ${honeycombMessage(body)}`,
+  );
 }
 
-/** A `/1/...` call with an environment's configuration key. */
-export function v1<T>(
-  ctx: HoneycombContext,
-  key: string,
-  path: string,
-  init?: RequestInit & { query?: Query },
-): Promise<T> {
-  return request<T>(ctx, path, { Accept: "application/json", "X-Honeycomb-Team": key }, init);
+const transport = (ctx: HoneycombContext) => ({
+  ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+  ...(ctx.http ? { http: ctx.http } : {}),
+});
+
+export type ConfigApi = ApiClient<ConfigPaths>;
+
+/** The `/1/...` routes with an environment's configuration key. */
+export function v1(ctx: HoneycombContext, key: string): ConfigApi {
+  return createApiClient<ConfigPaths>({
+    vendor: "Honeycomb",
+    baseUrl: ctx.region.apiUrl,
+    headers: { Accept: "application/json", "X-Honeycomb-Team": key },
+    ...transport(ctx),
+    // Error text names the path alone, without the call's query.
+    httpError: ({ status, path, body }) => apiError(status, path, body),
+  });
 }
 
-/** A `/2/...` call with the team's management key (JSON:API bodies). */
-export function v2<T>(
-  ctx: HoneycombContext,
-  path: string,
-  init?: RequestInit & { query?: Query },
-): Promise<T> {
+function managementHeaders(token: string) {
+  return {
+    Accept: "application/vnd.api+json",
+    "Content-Type": "application/vnd.api+json",
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+function managementToken(ctx: HoneycombContext): string {
   if (!ctx.managementToken) {
     throw new HoneycombApiError(
       401,
       "This account has no Honeycomb management key. Edit the account's credentials and add one to manage environments and API keys.",
     );
   }
-  return request<T>(
-    ctx,
-    path,
-    {
-      Accept: "application/vnd.api+json",
-      "Content-Type": "application/vnd.api+json",
-      Authorization: `Bearer ${ctx.managementToken}`,
-    },
-    init,
-  );
+  return ctx.managementToken;
 }
 
-export interface JsonApiResource<A> {
-  id: string;
-  type?: string;
-  attributes?: A;
-  relationships?: Record<string, { data?: { id?: string; type?: string } | null }>;
-  links?: { self?: string };
+/** The `/2/...` routes with the team's management key (JSON:API bodies). */
+export function v2(ctx: HoneycombContext): ApiClient<ManagementPaths> {
+  return createApiClient<ManagementPaths>({
+    vendor: "Honeycomb",
+    baseUrl: ctx.region.apiUrl,
+    headers: managementHeaders(managementToken(ctx)),
+    ...transport(ctx),
+    // Only a list carries a query here, and its error text names it.
+    httpError: ({ status, target, body }) => apiError(status, target, body),
+  });
+}
+
+interface JsonApiPage<Row> {
+  data?: Row[];
+  links?: { next?: string | null };
 }
 
 /**
- * Page through a v2 list. Pagination is a cursor: `links.next` is a
- * ready-made relative URL (with `page[after]`), or null on the last page.
+ * Walk a v2 list from its first page. Pagination is a cursor: `links.next` is a
+ * ready-made relative URL (with `page[after]`), or null on the last page. A link
+ * is sent to the region's API host whatever host it names.
+ *
+ * This is a hand loop rather than `withLinkPagination` because that reads a `data`
+ * that is not an array as an empty page, and the host prunes what a sync stops
+ * seeing. Here it fails the sync, as it always has.
  */
-export async function v2Paged<A>(
+export async function v2Paged<Row>(
   ctx: HoneycombContext,
-  path: string,
-  query: Query = {},
+  first: () => Promise<JsonApiPage<Row>>,
   maxPages = 50,
-): Promise<Array<JsonApiResource<A>>> {
-  const out: Array<JsonApiResource<A>> = [];
-  let next: string | null = withQuery(path, { "page[size]": 100, ...query });
-  for (let page = 0; page < maxPages && next; page++) {
-    const res: { data?: Array<JsonApiResource<A>>; links?: { next?: string | null } } = await v2(
-      ctx,
-      next,
-    );
+): Promise<Row[]> {
+  const out: Row[] = [];
+  let next: string | null = null;
+  for (let page = 0; page < maxPages && (page === 0 || next); page++) {
+    const res: JsonApiPage<Row> = next === null ? await first() : await followLink(ctx, next);
     out.push(...(res.data ?? []));
-    const link = res.links?.next ?? null;
+    const link: string | null = res.links?.next ?? null;
     next = link ? relativePath(link) : null;
   }
   return out;
+}
+
+/** A next link as Honeycomb wrote it: no operation in the document has this shape. */
+async function followLink<Row>(ctx: HoneycombContext, path: string): Promise<JsonApiPage<Row>> {
+  const { body } = await restRequest<JsonApiPage<Row>>({
+    vendor: "Honeycomb",
+    url: `${ctx.region.apiUrl}${path}`,
+    errorPath: path,
+    headers: managementHeaders(managementToken(ctx)),
+    ...transport(ctx),
+    httpError: ({ status, body: text }) => apiError(status, path, text),
+  });
+  return body;
 }
 
 function relativePath(link: string): string {
@@ -183,11 +176,6 @@ function relativePath(link: string): string {
 /** HTTP status of a failed call, or 0 for a transport error. */
 export function statusOf(err: unknown): number {
   return err instanceof HoneycombApiError ? err.status : 0;
-}
-
-/** Path segment for a dataset slug (`__all__` for environment-wide routes). */
-export function ds(slug: string): string {
-  return encodeURIComponent(slug);
 }
 
 /** Run `fn` over `items` with at most `limit` in flight, keeping order. */

@@ -16,7 +16,8 @@
 
 import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
 import type { HoneycombContext } from "./api.js";
-import { ds, v1 } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { v1 } from "./api.js";
 import type { HnyQueryResult, HnyQuerySpec } from "./types.js";
 
 export interface TimeRange {
@@ -88,9 +89,8 @@ export async function runQuery(
   spec: HnyQuerySpec,
   wait: (ms: number) => Promise<unknown> = sleep,
 ): Promise<HnyQueryResult> {
-  const query = await v1<HnyQuerySpec>(ctx, key, `/1/queries/${ds(dataset)}`, {
-    method: "POST",
-    body: JSON.stringify(spec),
+  const query = await v1(ctx, key).post(`/1/queries/${pathEncode(dataset)}`, {
+    body: spec,
   });
   if (!query?.id) throw new Error("Honeycomb did not return a query id");
   return runSavedQuery(ctx, key, dataset, query.id, wait);
@@ -104,18 +104,15 @@ export async function runSavedQuery(
   queryId: string,
   wait: (ms: number) => Promise<unknown> = sleep,
 ): Promise<HnyQueryResult> {
-  const started = await v1<HnyQueryResult>(ctx, key, `/1/query_results/${ds(dataset)}`, {
-    method: "POST",
-    body: JSON.stringify({ query_id: queryId, disable_series: false, limit: 1000 }),
+  const started = await v1(ctx, key).post(`/1/query_results/${pathEncode(dataset)}`, {
+    body: { query_id: queryId, disable_series: false, limit: 1000 },
   });
-  let result = started;
+  let result: HnyQueryResult = started;
   for (let i = 0; i < POLL_ATTEMPTS && !result.complete; i++) {
     if (!result.id) break;
     await wait(POLL_INTERVAL_MS);
-    result = await v1<HnyQueryResult>(
-      ctx,
-      key,
-      `/1/query_results/${ds(dataset)}/${encodeURIComponent(result.id)}`,
+    result = await v1(ctx, key).get(
+      `/1/query_results/${pathEncode(dataset)}/${pathEncode(result.id)}`,
     );
   }
   if (result.error) throw new Error(`Honeycomb query failed: ${result.error}`);
