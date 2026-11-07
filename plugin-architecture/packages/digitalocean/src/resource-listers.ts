@@ -8,7 +8,8 @@
  * `fetch`, and so `client.ts` stays a dispatcher.
  */
 import type { ApiListItem, ResourceInstance } from "@infrawrench/plugin-base";
-import { signedS3Fetch, unencodedSegment } from "@infrawrench/plugin-base";
+import { signedS3Fetch } from "@infrawrench/plugin-base";
+import { idSegment } from "./api.js";
 import type { DoApi, DoResponse } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import { SPACES_REGIONS } from "./constants.js";
@@ -464,9 +465,9 @@ async function listAgentApiKeys(
     agents.map(async (a: DoAgentRow): Promise<ResourceInstance[]> => {
       const agentUuid = String(a.uuid ?? a.id ?? "");
       if (!agentUuid) return [];
-      const resp = await ctx.api.written<"genai_list_agent_api_keys">(
-        `/gen-ai/agents/${agentUuid}/api_keys?per_page=200`,
-      );
+      const resp = await ctx.api.get(`/gen-ai/agents/${idSegment(agentUuid)}/api_keys`, {
+        query: { per_page: 200 },
+      });
       const now = new Date().toISOString();
       return (resp.api_key_infos ?? []).map<ResourceInstance>((k: DoAgentApiKeyRow) => {
         const keyUuid = String(k.uuid ?? k.id ?? "");
@@ -810,7 +811,7 @@ async function listDatabaseUsers(
     clusters.map(async (db): Promise<ResourceInstance[]> => {
       const clusterId = String(db.id ?? "");
       if (!clusterId) return [];
-      const resp = await ctx.api.get(`/databases/${unencodedSegment(clusterId)}/users`);
+      const resp = await ctx.api.get(`/databases/${idSegment(clusterId)}/users`);
       const now = String(db.created_at ?? new Date().toISOString());
       return (resp.users ?? []).map<ResourceInstance>((u) => ({
         id: `${accountId}:db-user:${clusterId}:${u.name ?? ""}`,
@@ -1021,9 +1022,9 @@ async function listAllDnsRecords(
   for (const domain of domains) {
     const domainName = String(domain.fields["name"]);
     try {
-      const data = await ctx.api.written<"domains_list_records">(
-        `/domains/${domainName}/records?per_page=200`,
-      );
+      const data = await ctx.api.get(`/domains/${idSegment(domainName)}/records`, {
+        query: { per_page: 200 },
+      });
       for (const r of data.domain_records ?? []) {
         const type = String(r.type ?? "");
         const name = String(r.name ?? "@");

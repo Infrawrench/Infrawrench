@@ -3,11 +3,11 @@
  * routers, dedicated inference endpoints and agent API keys.
  */
 import {
-  unencodedSegment,
   type ApiListItem,
   type CreateResourceConfig,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
+import { idSegment } from "../api.js";
 import type { DoResponse } from "../api.js";
 import type { operations } from "../api-types.gen.js";
 import { regionDisplay } from "../constants.js";
@@ -713,7 +713,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
     // one-shot secret) inside `api_key_info`. Older/model-key endpoints
     // return a top-level `secret_key`, so read both for resilience.
     const data: DoResponse<"genai_create_agent_api_key"> & { secret_key?: string } =
-      await ctx.api.post(`/gen-ai/agents/${unencodedSegment(agentUuid)}/api_keys`, {
+      await ctx.api.post(`/gen-ai/agents/${idSegment(agentUuid)}/api_keys`, {
         body: { name: fields["name"] },
       });
     const info = data.api_key_info ?? {};

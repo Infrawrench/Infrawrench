@@ -11,13 +11,13 @@
  * the object and echoes it back with only the changed keys swapped.
  */
 import {
-  unencodedSegment,
   type ApiBody,
   type ApiListItem,
   type MetricSeries,
   type NoSlashString,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
+import { idSegment } from "./api.js";
 import type { DoApi, DoResponse } from "./api.js";
 import type { operations, paths } from "./api-types.gen.js";
 import {
@@ -123,7 +123,7 @@ export function loadBalancerPutBody(lb: {
 }
 
 async function putLoadBalancer(ctx: DoServiceContext, id: string, mutate: (b: Json) => void) {
-  const path = `/load_balancers/${unencodedSegment(id)}` as const;
+  const path = `/load_balancers/${idSegment(id)}` as const;
   const current = await ctx.api.get(path);
   const body = loadBalancerPutBody(current.load_balancer ?? {});
   mutate(body);
@@ -159,7 +159,7 @@ export async function updateDoServiceResource(
   fields: Record<string, string>,
 ): Promise<ResourceInstance | null> {
   const id = externalIdOf(resourceId);
-  const segment = unencodedSegment(id);
+  const segment = idSegment(id);
   const has = (k: string) => fields[k] !== undefined;
 
   switch (typeId) {
@@ -354,7 +354,7 @@ export async function deleteDoServiceResource(
 ): Promise<boolean> {
   const remove = DELETERS[typeId];
   if (!remove) return false;
-  await remove(ctx.api, unencodedSegment(externalIdOf(resourceId)));
+  await remove(ctx.api, idSegment(externalIdOf(resourceId)));
   return true;
 }
 
@@ -366,7 +366,7 @@ export async function invokeDoServiceAction(
   resourceId: string,
   actionId: string,
 ): Promise<boolean> {
-  const id = unencodedSegment(externalIdOf(resourceId));
+  const id = idSegment(externalIdOf(resourceId));
   if (typeId === "app") {
     switch (actionId) {
       case "app-deploy":
@@ -384,7 +384,7 @@ export async function invokeDoServiceAction(
           obj(app.app?.in_progress_deployment).id ?? obj(app.app?.pending_deployment).id ?? "",
         );
         if (!deploymentId) throw new Error("This app has no deployment in progress.");
-        await ctx.api.post(`/apps/${id}/deployments/${unencodedSegment(deploymentId)}/cancel`);
+        await ctx.api.post(`/apps/${id}/deployments/${idSegment(deploymentId)}/cancel`);
         return true;
       }
       case "app-commit-rollback":
@@ -439,7 +439,7 @@ export async function executeDoServiceCommand(
   args: (string | number)[],
 ): Promise<unknown> {
   const id = externalIdOf(resourceId);
-  const segment = unencodedSegment(id);
+  const segment = idSegment(id);
   const values = parsePromptArgs(args);
   const ids = (key: string) => parseIdList(values[key]);
 
@@ -606,7 +606,7 @@ export async function executeDoServiceCommand(
     if (command === "uptime-delete-alert") {
       const alertId = values["alertId"] ?? "";
       if (!alertId) throw new Error("Missing alert id.");
-      await ctx.api.delete(`/uptime/checks/${segment}/alerts/${unencodedSegment(alertId)}`);
+      await ctx.api.delete(`/uptime/checks/${segment}/alerts/${idSegment(alertId)}`);
       return { ok: true };
     }
   }
@@ -662,7 +662,7 @@ export async function enrichDoServiceDetail(
   resource: ResourceInstance,
 ): Promise<ResourceInstance> {
   const id = resource.externalId ?? externalIdOf(resource.id);
-  const segment = unencodedSegment(id);
+  const segment = idSegment(id);
   const extra: Record<string, string> = {};
   const safe = async <T>(p: Promise<T>, fallback: Partial<T>): Promise<Partial<T>> =>
     p.catch(() => fallback);
@@ -710,9 +710,7 @@ export async function enrichDoServiceDetail(
     case "uptime-check": {
       const [state, alerts] = await Promise.all([
         safe(ctx.api.get(`/uptime/checks/${segment}/state`), { state: {} }),
-        safe(ctx.api.written<"uptime_list_alerts">(`/uptime/checks/${id}/alerts?per_page=200`), {
-          alerts: [],
-        }),
+        safe(ctx.api.get(`/uptime/checks/${segment}/alerts`, page), { alerts: [] }),
       ]);
       extra["__state__"] = JSON.stringify(state.state ?? {});
       extra["__alerts__"] = JSON.stringify(alerts.alerts ?? []);
@@ -721,7 +719,7 @@ export async function enrichDoServiceDetail(
     case "app": {
       const [app, deployments] = await Promise.all([
         safe(ctx.api.get(`/apps/${segment}`), {}),
-        safe(ctx.api.written<"apps_list_deployments">(`/apps/${id}/deployments?per_page=20`), {
+        safe(ctx.api.get(`/apps/${segment}/deployments`, { query: { per_page: 20 } }), {
           deployments: [],
         }),
       ]);
@@ -744,18 +742,10 @@ export async function enrichDoServiceDetail(
     }
     case "autoscale-pool": {
       const [members, history] = await Promise.all([
-        safe(
-          ctx.api.written<"autoscalepools_list_members">(
-            `/droplets/autoscale/${id}/members?per_page=200`,
-          ),
-          { droplets: [] },
-        ),
-        safe(
-          ctx.api.written<"autoscalepools_list_history">(
-            `/droplets/autoscale/${id}/history?per_page=20`,
-          ),
-          { history: [] },
-        ),
+        safe(ctx.api.get(`/droplets/autoscale/${segment}/members`, page), { droplets: [] }),
+        safe(ctx.api.get(`/droplets/autoscale/${segment}/history`, { query: { per_page: 20 } }), {
+          history: [],
+        }),
       ]);
       extra["__members__"] = JSON.stringify(members.droplets ?? []);
       extra["__history__"] = JSON.stringify(history.history ?? []);
@@ -790,8 +780,9 @@ export async function fetchDoAppLogs(
   const containers = [...APP_LOG_TYPES];
   let resp: DoResponse<"apps_get_logs_active_deployment_aggregate">;
   try {
+    // `tail_lines` is not in the document, so the typed client would not take it.
     resp = await ctx.api.written<"apps_get_logs_active_deployment_aggregate">(
-      `/apps/${id}/logs?type=${type}&follow=false&tail_lines=${tail}`,
+      `/apps/${idSegment(id)}/logs?type=${type}&follow=false&tail_lines=${encodeURIComponent(tail)}`,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -822,7 +813,7 @@ export async function fetchDoAppLogs(
 
 /** The app spec as pretty JSON, for the Spec tab. */
 export async function getDoAppSpec(ctx: DoServiceContext, resourceId: string): Promise<string> {
-  const data = await ctx.api.get(`/apps/${unencodedSegment(externalIdOf(resourceId))}`);
+  const data = await ctx.api.get(`/apps/${idSegment(externalIdOf(resourceId))}`);
   return JSON.stringify(obj(data.app?.spec), null, 2);
 }
 
@@ -844,7 +835,7 @@ export async function applyDoAppSpec(
   if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
     throw new Error("The app spec must be a JSON object.");
   }
-  await ctx.api.put(`/apps/${unencodedSegment(externalIdOf(resourceId))}`, { body: { spec } });
+  await ctx.api.put(`/apps/${idSegment(externalIdOf(resourceId))}`, { body: { spec } });
 }
 
 // ── Metrics ─────────────────────────────────────────────────────────────
@@ -982,9 +973,9 @@ async function appDailyBandwidth(
   const points = await Promise.all(
     days.map(async (day) => {
       try {
-        const resp = await ctx.api.written<"apps_get_metrics_bandwidth_daily">(
-          `/apps/${appId}/metrics/bandwidth_daily?date=${encodeURIComponent(new Date(day).toISOString())}`,
-        );
+        const resp = await ctx.api.get(`/apps/${idSegment(appId)}/metrics/bandwidth_daily`, {
+          query: { date: new Date(day).toISOString() },
+        });
         const row = (resp.app_bandwidth_usage ?? []).find((r) => !r.app_id || r.app_id === appId);
         const value = Number(row?.bandwidth_bytes);
         return row && Number.isFinite(value) ? { timestamp: day, value } : null;
@@ -1067,7 +1058,7 @@ export async function fetchDoServiceMetrics(
               ctx.api.get(`/monitoring/metrics/apps/${m.name}`, {
                 query: {
                   app_id: id,
-                  ...(component ? { app_component: encodeURIComponent(component) } : {}),
+                  ...(component ? { app_component: component } : {}),
                   ...span,
                 },
               }),

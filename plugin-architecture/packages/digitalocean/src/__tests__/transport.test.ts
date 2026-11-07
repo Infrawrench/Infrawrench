@@ -139,3 +139,55 @@ describe("every provider call goes through the host's HTTP service (#370)", () =
     );
   });
 });
+
+describe("ids go on the wire encoded (#417)", () => {
+  const seen: string[] = [];
+  const answer = (body: unknown) =>
+    new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+  const client = () => hostClient(new DigitalOceanClient({ apiToken: "tok" }));
+
+  beforeEach(() => {
+    seen.length = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        seen.push(String(input).replace("https://api.digitalocean.com/v2", ""));
+        return answer({
+          data: { result: [] },
+          droplet: { id: "1&evil=1", name: "d" },
+          projects: [],
+        });
+      }),
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps a `/` or `?` in an id from changing the route a delete reaches", async () => {
+    await client().deleteResource("droplet", `${ACC}:droplet:1/../2?force=1`, ACC);
+    expect(seen).toEqual(["/droplets/1%2F..%2F2%3Fforce%3D1"]);
+  });
+
+  it("encodes the halves of a composite id on their own", async () => {
+    await client().deleteResource("dns-record", `${ACC}:dns-record:a.example/7?x`, ACC);
+    expect(seen).toEqual(["/domains/a.example/records/7%3Fx"]);
+  });
+
+  it("keeps a `&` in an id from adding a query parameter", async () => {
+    await client().fetchMetricSeries("droplet", `${ACC}:droplet:1&evil=1`, ACC, {
+      startMs: 1_000,
+      endMs: 2_000,
+    });
+    const cpu = seen.find((path) => path.startsWith("/monitoring/metrics/droplet/cpu"));
+    expect(cpu).toContain("host_id=1%26evil%3D1");
+    expect(seen.every((path) => !path.includes("&evil="))).toBe(true);
+  });
+
+  it.each([
+    ["droplet", `${ACC}:droplet:`],
+    ["dns-record", `${ACC}:dns-record:a.example/`],
+    ["agent-api-key", `${ACC}:agent-api-key:/key-1`],
+  ])("refuses to delete a %s with a blank id", async (typeId, resourceId) => {
+    await expect(client().deleteResource(typeId, resourceId, ACC)).rejects.toThrow();
+    expect(seen).toEqual([]);
+  });
+});

@@ -3,11 +3,8 @@
  * database load, DOKS node metrics and Spaces usage) read from DO's
  * `/v2/monitoring/metrics/*` Prometheus-shaped endpoints.
  */
-import {
-  unencodedSegment,
-  type MetricSeries,
-  type ResourceInstance,
-} from "@infrawrench/plugin-base";
+import { type MetricSeries, type ResourceInstance } from "@infrawrench/plugin-base";
+import { idSegment } from "./api.js";
 import type { DoApi, DoResponse } from "./api.js";
 
 /** What every `/v2/monitoring/metrics/*` family answers with. */
@@ -138,7 +135,7 @@ export async function fetchDoMetricSeries(
     if (!clusterId) return [];
     let dropletIds: string[];
     try {
-      const cluster = await ctx.api.get(`/kubernetes/clusters/${unencodedSegment(clusterId)}`);
+      const cluster = await ctx.api.get(`/kubernetes/clusters/${idSegment(clusterId)}`);
       dropletIds = (cluster.kubernetes_cluster?.node_pools ?? [])
         .flatMap((pool) => pool.nodes ?? [])
         .map((n) => String(n.droplet_id ?? ""))
@@ -234,7 +231,7 @@ export async function fetchDoMetricSeries(
     };
     const engineSlug = engineMap[String(resource.fields["engine"] ?? "")] ?? "";
     if (!engineSlug) return [];
-    const engine = unencodedSegment(engineSlug);
+    const engine = idSegment(engineSlug);
     const metric = { db_id: dbId, aggregate: "avg", start, end };
     const span = { db_id: dbId, start, end };
     // DO's API reference documents the database metrics for MySQL only:
@@ -328,9 +325,9 @@ export async function fetchDoMetricSeries(
     const startIso = new Date(timeRange?.startMs ?? now - 3_600_000).toISOString();
     const stopIso = new Date(timeRange?.endMs ?? now).toISOString();
     try {
-      const resp = await ctx.api.written<"genai_get_agent_usage">(
-        `/gen-ai/agents/${agentUuid}/usage?start=${encodeURIComponent(startIso)}&stop=${encodeURIComponent(stopIso)}`,
-      );
+      const resp = await ctx.api.get(`/gen-ai/agents/${idSegment(agentUuid)}/usage`, {
+        query: { start: startIso, stop: stopIso },
+      });
       const usage: AgentUsage = resp.usage ?? {};
       const buckets = Array.isArray(usage.usage) ? usage.usage : [];
 

@@ -5,7 +5,8 @@
  * URL, using an endpoint access key minted and persisted on first use).
  */
 import type { ApiBody, ChatMessage, ChatStreamEvent, HostServices } from "@infrawrench/plugin-base";
-import { streamOpenAiSseChat, unencodedSegment } from "@infrawrench/plugin-base";
+import { streamOpenAiSseChat } from "@infrawrench/plugin-base";
+import { idSegment } from "./api.js";
 import type { DoApi, DoResponse } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import {
@@ -94,7 +95,7 @@ export async function executeDoNoSqlCommand(
     // (defaults to admin on `*` so the minted user can actually drive the
     // console; the form lets the user narrow the topic/permission).
     let engine = "";
-    const clusterPath = `/databases/${unencodedSegment(clusterId)}` as const;
+    const clusterPath = `/databases/${idSegment(clusterId)}` as const;
     try {
       const cluster = await ctx.api.get(clusterPath);
       engine = String(cluster.database?.engine ?? "");
@@ -134,42 +135,35 @@ export async function executeDoNoSqlCommand(
     return;
   }
   if (typeId === "gen-ai-agent") {
-    const agentUuid = unencodedSegment(resourceId.split(":").slice(2).join(":"));
+    const agentUuid = idSegment(resourceId.split(":").slice(2).join(":"));
     const values = promptValues(args);
     if (command === "attach-knowledge-base") {
       const kbUuid = String(values["knowledgeBaseUuid"] ?? "");
       if (!kbUuid) throw new Error("Pick a knowledge base.");
-      await ctx.api.post(`/gen-ai/agents/${agentUuid}/knowledge_bases/${unencodedSegment(kbUuid)}`);
+      await ctx.api.post(`/gen-ai/agents/${agentUuid}/knowledge_bases/${idSegment(kbUuid)}`);
       return;
     }
     if (command === "detach-knowledge-base") {
       const kbUuid = String(values["knowledgeBaseUuid"] ?? "");
       if (!kbUuid) throw new Error("Missing knowledge base UUID.");
-      await ctx.api.delete(
-        `/gen-ai/agents/${agentUuid}/knowledge_bases/${unencodedSegment(kbUuid)}`,
-      );
+      await ctx.api.delete(`/gen-ai/agents/${agentUuid}/knowledge_bases/${idSegment(kbUuid)}`);
       return;
     }
     if (command === "attach-child-agent") {
       const childUuid = String(values["childAgentUuid"] ?? "");
       if (!childUuid) throw new Error("Pick an agent to route to.");
-      await ctx.api.post(
-        `/gen-ai/agents/${agentUuid}/child_agents/${unencodedSegment(childUuid)}`,
-        {
-          body: {
-            ...(values["routeName"] ? { route_name: values["routeName"] } : {}),
-            ...(values["ifCase"] ? { if_case: values["ifCase"] } : {}),
-          },
+      await ctx.api.post(`/gen-ai/agents/${agentUuid}/child_agents/${idSegment(childUuid)}`, {
+        body: {
+          ...(values["routeName"] ? { route_name: values["routeName"] } : {}),
+          ...(values["ifCase"] ? { if_case: values["ifCase"] } : {}),
         },
-      );
+      });
       return;
     }
     if (command === "detach-child-agent") {
       const childUuid = String(values["childAgentUuid"] ?? "");
       if (!childUuid) throw new Error("Missing child agent UUID.");
-      await ctx.api.delete(
-        `/gen-ai/agents/${agentUuid}/child_agents/${unencodedSegment(childUuid)}`,
-      );
+      await ctx.api.delete(`/gen-ai/agents/${agentUuid}/child_agents/${idSegment(childUuid)}`);
       return;
     }
     if (command === "attach-function") {
@@ -197,13 +191,13 @@ export async function executeDoNoSqlCommand(
     if (command === "detach-function") {
       const fnUuid = String(values["functionUuid"] ?? "");
       if (!fnUuid) throw new Error("Missing function UUID.");
-      await ctx.api.delete(`/gen-ai/agents/${agentUuid}/functions/${unencodedSegment(fnUuid)}`);
+      await ctx.api.delete(`/gen-ai/agents/${agentUuid}/functions/${idSegment(fnUuid)}`);
       return;
     }
   }
   if (typeId === "gen-ai-knowledge-base") {
     const kbUuid = resourceId.split(":").slice(2).join(":");
-    const kbSegment = unencodedSegment(kbUuid);
+    const kbSegment = idSegment(kbUuid);
     const values = promptValues(args);
 
     if (command === "add-spaces-source") {
@@ -258,7 +252,7 @@ export async function executeDoNoSqlCommand(
       const dsUuid = String(values["dataSourceUuid"] ?? "").trim();
       if (!dsUuid) throw new Error("Missing data source UUID.");
       await ctx.api.delete(
-        `/gen-ai/knowledge_bases/${kbSegment}/data_sources/${unencodedSegment(dsUuid)}`,
+        `/gen-ai/knowledge_bases/${kbSegment}/data_sources/${idSegment(dsUuid)}`,
       );
       return;
     }
@@ -279,7 +273,7 @@ export async function executeDoNoSqlCommand(
     if (command === "cancel-indexing") {
       const jobUuid = String(values["jobUuid"] ?? "").trim();
       if (!jobUuid) throw new Error("Missing indexing job UUID.");
-      await ctx.api.put(`/gen-ai/indexing_jobs/${unencodedSegment(jobUuid)}/cancel`, {
+      await ctx.api.put(`/gen-ai/indexing_jobs/${idSegment(jobUuid)}/cancel`, {
         body: { uuid: jobUuid },
       });
       return;
@@ -294,7 +288,7 @@ export async function executeDoNoSqlCommand(
     // the current router, mutate the list, and PUT it back. Existing
     // policies are normalized to the request shape (models as id strings);
     // `fallback_models` is passed through verbatim so we don't disturb it.
-    const routerPath = `/gen-ai/models/routers/${unencodedSegment(routerUuid)}` as const;
+    const routerPath = `/gen-ai/models/routers/${idSegment(routerUuid)}` as const;
     const loadRouter = async (): Promise<{
       name: string;
       description: string;
@@ -432,7 +426,7 @@ async function getOrMintPlaygroundKey(
   // `api_key_info.secret_key` (unlike model API keys, which return a
   // top-level `secret_key`). Read both spots to be safe.
   const data: DoResponse<"genai_create_agent_api_key"> & { secret_key?: string } =
-    await ctx.api.post(`/gen-ai/agents/${unencodedSegment(agentUuid)}/api_keys`, {
+    await ctx.api.post(`/gen-ai/agents/${idSegment(agentUuid)}/api_keys`, {
       body: { name },
     });
   const secret = String(data.api_key_info?.secret_key ?? data.secret_key ?? "");
@@ -490,7 +484,7 @@ export async function* streamDoChatMessage(
   let deploymentUrl: string;
   let secretKey: string;
   try {
-    const agentRes = await ctx.api.get(`/gen-ai/agents/${unencodedSegment(agentUuid)}`);
+    const agentRes = await ctx.api.get(`/gen-ai/agents/${idSegment(agentUuid)}`);
     deploymentUrl = String(agentRes.agent?.deployment?.url ?? "");
     if (!deploymentUrl) {
       yield {

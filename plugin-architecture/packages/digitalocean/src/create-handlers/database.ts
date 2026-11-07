@@ -1,9 +1,6 @@
 /** Create handlers for DigitalOcean managed database clusters and their users. */
-import {
-  unencodedSegment,
-  type CreateResourceConfig,
-  type ResourceInstance,
-} from "@infrawrench/plugin-base";
+import { type CreateResourceConfig, type ResourceInstance } from "@infrawrench/plugin-base";
+import { idSegment } from "../api.js";
 import { regionDisplay } from "../constants.js";
 import { kafkaAclFields } from "../resources/managed-database.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
@@ -247,7 +244,7 @@ export async function databaseGetCreateConfig(
     if (parentResourceId) {
       const clusterId = parentResourceId.split(":").slice(2).join(":");
       try {
-        const cluster = await ctx.api.get(`/databases/${unencodedSegment(clusterId)}`);
+        const cluster = await ctx.api.get(`/databases/${idSegment(clusterId)}`);
         if (String(cluster.database?.engine ?? "") === "kafka") {
           kafkaFields = kafkaAclFields();
         }
@@ -345,7 +342,7 @@ export async function databaseCreateResource(args: DoCreateArgs): Promise<Resour
     // "settings is required". Default to full access on every topic; the
     // engine is read off the cluster so other engines stay on the bare
     // `{ name }` body they expect.
-    const clusterPath = `/databases/${unencodedSegment(clusterId)}` as const;
+    const clusterPath = `/databases/${idSegment(clusterId)}` as const;
     let kafkaSettings: { settings: { acl: Array<{ topic: string; permission: string }> } } | null =
       null;
     try {

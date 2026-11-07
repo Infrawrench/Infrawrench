@@ -2,22 +2,30 @@
  * The DigitalOcean control-plane client, typed from DO's OpenAPI document by
  * plugingen (`../plugingen.json`). Every provider call goes through the host's HTTP
  * service when there is one, including the ones `DoApi.fetch` makes off this API.
- *
- * Ids go into paths and queries as written, which is what the plugin has always
- * sent (#417): `unencodedSegment` where a path holds one, `encodeQuery` for the query.
  */
 import {
   createApiClient,
   hostFetch,
   hostTransport,
+  pathEncode,
   restRequest,
   type ApiClient,
   type ApiResponse,
   type HttpHostServices,
+  type NoSlashString,
 } from "@infrawrench/plugin-base";
 import type { operations, paths } from "./api-types.gen.js";
 
 const BASE_URL = "https://api.digitalocean.com/v2";
+
+/**
+ * An id as one path segment. A blank one would address the collection rather than
+ * the resource, which on a delete is the last thing anybody wants.
+ */
+export function idSegment(id: string | undefined): NoSlashString {
+  if (!id) throw new Error("DigitalOcean plugin: this needs a resource id, and it is blank.");
+  return pathEncode(id);
+}
 
 /** An operation's response, by its `operationId`. */
 export type DoResponse<Op extends keyof operations> = ApiResponse<operations[Op]>;
@@ -32,9 +40,8 @@ export interface WrittenRequest {
 export type DoApi = ApiClient<paths> & {
   /**
    * A request written out whole, typed by the operation it calls, for what the
-   * typed client cannot send unchanged: a query after a path whose id may hold a
-   * `?` (the client would write `&` rather than a second `?`), or a body that does
-   * not fit the document, such as one echoed from whatever the last GET returned.
+   * typed client cannot send: a query the document does not list, or a body that does
+   * not fit it, such as one echoed from whatever the last GET returned.
    */
   written<Op extends keyof operations>(
     path: string,
@@ -92,7 +99,6 @@ export function createDoApi(token: string, http?: HttpHostServices): DoApi {
     vendor: "DO",
     baseUrl: BASE_URL,
     headers,
-    encodeQuery: (value) => value,
     http,
   });
   const sendWritten = async <Body>(path: string, request?: WrittenRequest) => {

@@ -12,12 +12,12 @@
  * `doCreateResource` from here exactly as they always have.
  */
 import {
-  unencodedSegment,
   type CreateResourceConfig,
   type ResourceCreateResult,
   type ResourceInstance,
   type ResourceWarning,
 } from "@infrawrench/plugin-base";
+import { idSegment } from "./api.js";
 import type {
   CreateHandler,
   DoCreateArgs,
@@ -114,7 +114,7 @@ export async function doCreateResource(
   const assignToProjectIfNeeded = async (urn: string): Promise<void> => {
     if (!parentExternalId) return;
     try {
-      await ctx.api.post(`/projects/${unencodedSegment(parentExternalId)}/resources`, {
+      await ctx.api.post(`/projects/${idSegment(parentExternalId)}/resources`, {
         body: { resources: [urn] },
       });
     } catch (err) {

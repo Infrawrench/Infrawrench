@@ -4,12 +4,8 @@
  * images, backups, snapshots) and per-product summaries into
  * `resource.resolvedOutputs`, so the renderers themselves stay synchronous.
  */
-import {
-  unencodedSegment,
-  type ImageOption,
-  type ResourceInstance,
-  type SizeOption,
-} from "@infrawrench/plugin-base";
+import { type ImageOption, type ResourceInstance, type SizeOption } from "@infrawrench/plugin-base";
+import { idSegment } from "./api.js";
 import type { DoApi } from "./api.js";
 
 /** The slice of `DigitalOceanClient` the enrichers need. */
@@ -104,14 +100,10 @@ export async function enrichDoDetail(
       .get("/images", { query: { private: true, per_page: 200 } })
       .catch(() => ({ images: [] })),
     hasBackups && externalId
-      ? ctx.api
-          .get(`/droplets/${unencodedSegment(externalId)}/backups`)
-          .catch(() => ({ backups: [] }))
+      ? ctx.api.get(`/droplets/${idSegment(externalId)}/backups`).catch(() => ({ backups: [] }))
       : Promise.resolve(null),
     hasSnapshots && externalId
-      ? ctx.api
-          .get(`/droplets/${unencodedSegment(externalId)}/snapshots`)
-          .catch(() => ({ snapshots: [] }))
+      ? ctx.api.get(`/droplets/${idSegment(externalId)}/snapshots`).catch(() => ({ snapshots: [] }))
       : Promise.resolve(null),
   ]);
 
@@ -245,7 +237,7 @@ async function enrichGenAiAgent(
   const agentUuid = resource.externalId ?? resource.id.split(":").pop() ?? "";
   if (!agentUuid) return resource;
   const [fullRes, allAgentsRes, allKbsRes, namespacesRes] = await Promise.all([
-    ctx.api.get(`/gen-ai/agents/${unencodedSegment(agentUuid)}`).catch(() => null),
+    ctx.api.get(`/gen-ai/agents/${idSegment(agentUuid)}`).catch(() => null),
     ctx.api.get("/gen-ai/agents", { query: { per_page: 200 } }).catch(() => ({ agents: [] })),
     ctx.api
       .get("/gen-ai/knowledge_bases", { query: { per_page: 200 } })
@@ -383,12 +375,12 @@ async function enrichGenAiKnowledgeBase(
   if (!kbUuid) return resource;
   const [dsRes, jobsRes, buckets] = await Promise.all([
     ctx.api
-      .written<"genai_list_knowledge_base_data_sources">(
-        `/gen-ai/knowledge_bases/${kbUuid}/data_sources?per_page=100`,
-      )
+      .get(`/gen-ai/knowledge_bases/${idSegment(kbUuid)}/data_sources`, {
+        query: { per_page: 100 },
+      })
       .catch(() => ({ knowledge_base_data_sources: [] })),
     ctx.api
-      .get(`/gen-ai/knowledge_bases/${unencodedSegment(kbUuid)}/indexing_jobs`)
+      .get(`/gen-ai/knowledge_bases/${idSegment(kbUuid)}/indexing_jobs`)
       .catch(() => ({ jobs: [] })),
     // Best-effort: returns [] when the account has no Spaces keys configured.
     ctx.listSpacesBuckets(resource.accountId).catch((): ResourceInstance[] => []),

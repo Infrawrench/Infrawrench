@@ -18,7 +18,12 @@
  * account lookup needs `account:read`, which read tokens carry already.
  */
 
-import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import {
+  pathEncode,
+  unencodedSegment,
+  type CostFetchRange,
+  type CostRow,
+} from "@infrawrench/plugin-base";
 import type { DoApi, DoResponse } from "./api.js";
 
 /** The client's API, passed in (same shape as DoCreateContext). */
@@ -42,7 +47,8 @@ export async function fetchDoCostData(
         "team-scoped API token (all tokens minted since DO's teams migration are).",
     );
   }
-  const urn = `do:team:${teamUuid}`;
+  // The colons are legal in a segment, and this is how the document writes a URN.
+  const urn = unencodedSegment(`do:team:${encodeURIComponent(teamUuid)}`);
 
   // Aggregate per (day, service, region) so re-fetching a day reproduces the
   // same dimension keys for the host's dedupe. `service` is the invoice item
@@ -59,8 +65,9 @@ export async function fetchDoCostData(
   do {
     let data: DoResponse<"billingInsights_list">;
     try {
-      data = await ctx.api.written<"billingInsights_list">(
-        `/billing/${urn}/insights/${range.fromDate}/${range.toDate}?per_page=200&page=${page}`,
+      data = await ctx.api.get(
+        `/billing/${urn}/insights/${pathEncode(range.fromDate)}/${pathEncode(range.toDate)}`,
+        { query: { per_page: 200, page } },
       );
     } catch (err) {
       // Windows entirely before the 2025-12-01 data start don't return an

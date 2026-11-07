@@ -31,18 +31,17 @@ import {
   joinSubtitle,
   labeledFieldItems,
   listS3Objects,
-  pathEncode,
   makeS3Folder,
   putS3BucketPolicy,
   renderDnsRecordSidebar,
   resourceTypeDisplayName,
   signedS3Fetch,
-  unencodedSegment,
   uploadS3Object,
   virtualHostedUrl,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
+import { idSegment } from "./api.js";
 import { createDoApi, type DoApi } from "./api.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
@@ -250,9 +249,9 @@ export class DigitalOceanClient implements PluginClient {
       await Promise.all(
         (projects.projects ?? []).map(async (p) => {
           try {
-            const data = await this.api.written<"projects_list_resources">(
-              `/projects/${p.id}/resources?per_page=200`,
-            );
+            const data = await this.api.get(`/projects/${idSegment(p.id)}/resources`, {
+              query: { per_page: 200 },
+            });
             for (const r of data.resources ?? []) {
               if (r.urn) map.set(r.urn, p.id);
             }
@@ -314,7 +313,7 @@ export class DigitalOceanClient implements PluginClient {
       if (typeId === "droplet" && externalId) {
         try {
           const [data, projectMap] = await Promise.all([
-            this.api.get(`/droplets/${unencodedSegment(externalId)}`),
+            this.api.get(`/droplets/${idSegment(externalId)}`),
             this.getProjectUrnMap(),
           ]);
           return mapDroplet(this.listerCtx, data.droplet, accountId, projectMap);
@@ -403,7 +402,7 @@ export class DigitalOceanClient implements PluginClient {
    */
   private async doksNodeHourlyRates(clusterId: string): Promise<string> {
     const [cluster, sizes] = await Promise.all([
-      this.api.get(`/kubernetes/clusters/${unencodedSegment(clusterId)}`),
+      this.api.get(`/kubernetes/clusters/${idSegment(clusterId)}`),
       this.api.get("/sizes", { query: { per_page: 200 } }),
     ]);
 
@@ -460,7 +459,7 @@ export class DigitalOceanClient implements PluginClient {
         // JSON envelope (verified in digitalocean/openapi
         // resources/kubernetes/responses/kubeconfig.yml). Bypass
         // jsonRestFetch and read the body as text directly.
-        const url = `${this.baseUrl}/kubernetes/clusters/${externalId}/kubeconfig`;
+        const url = `${this.baseUrl}/kubernetes/clusters/${idSegment(externalId)}/kubeconfig`;
         const res = await this.api.fetch(url, {
           headers: { Authorization: `Bearer ${this.token}`, Accept: "application/yaml" },
         });
@@ -474,7 +473,7 @@ export class DigitalOceanClient implements PluginClient {
       }
 
       if (typeId === "managed-database") {
-        const data = await this.api.get(`/databases/${unencodedSegment(externalId)}`);
+        const data = await this.api.get(`/databases/${idSegment(externalId)}`);
         const conn = data.database.connection;
         const engine = String(data.database.engine ?? "");
         switch (outputKey) {
@@ -533,9 +532,7 @@ export class DigitalOceanClient implements PluginClient {
             const captureFromDefault = engine === "pg" || engine === "mysql";
             if (captureFromDefault && !uriHasPassword(uri) && conn["user"]) {
               try {
-                const usersData = await this.api.get(
-                  `/databases/${unencodedSegment(externalId)}/users`,
-                );
+                const usersData = await this.api.get(`/databases/${idSegment(externalId)}/users`);
                 const list = usersData.users ?? [];
                 const match = list.find((u) => u.name === conn["user"]);
                 if (match?.password) {
@@ -694,7 +691,7 @@ export class DigitalOceanClient implements PluginClient {
     if (!secrets) return null;
     let users: Array<{ name?: string }> = [];
     try {
-      const resp = await this.api.get(`/databases/${unencodedSegment(clusterId)}/users`);
+      const resp = await this.api.get(`/databases/${idSegment(clusterId)}/users`);
       users = resp.users ?? [];
     } catch {
       return null;
@@ -726,7 +723,7 @@ export class DigitalOceanClient implements PluginClient {
    * and the Kafka mTLS connection-string builder.
    */
   private async resolveCaCertificate(clusterId: string): Promise<string> {
-    const caData = await this.api.get(`/databases/${unencodedSegment(clusterId)}/ca`);
+    const caData = await this.api.get(`/databases/${idSegment(clusterId)}/ca`);
     const raw = caData.ca.certificate ?? "";
     // Already PEM? Pass through. Otherwise base64 → utf8. `atob` is the
     // cross-runtime decoder (Node ≥18 + browser); we can't import `Buffer`
@@ -905,7 +902,7 @@ export class DigitalOceanClient implements PluginClient {
       if (await deleteDoServiceResource(this.serviceCtx, typeId, resourceId)) return;
       const externalId = resourceId.split(":").pop();
       if (!externalId) throw new Error("Cannot parse resource ID");
-      const id = unencodedSegment(externalId);
+      const id = idSegment(externalId);
 
       switch (typeId) {
         case "droplet":
@@ -928,9 +925,7 @@ export class DigitalOceanClient implements PluginClient {
           if (!username || !clusterId) {
             throw new Error("Cannot parse db-user resource ID");
           }
-          await this.api.delete(
-            `/databases/${unencodedSegment(clusterId)}/users/${pathEncode(username)}`,
-          );
+          await this.api.delete(`/databases/${idSegment(clusterId)}/users/${idSegment(username)}`);
           break;
         }
         case "spaces-bucket": {
@@ -996,9 +991,7 @@ export class DigitalOceanClient implements PluginClient {
           const parts = externalId.split("/");
           const domainName = parts[0]!;
           const recordId = parts[1]!;
-          await this.api.delete(
-            `/domains/${unencodedSegment(domainName)}/records/${unencodedSegment(recordId)}`,
-          );
+          await this.api.delete(`/domains/${idSegment(domainName)}/records/${idSegment(recordId)}`);
           break;
         }
         case "project":
@@ -1037,10 +1030,7 @@ export class DigitalOceanClient implements PluginClient {
           const parts = externalId.split("/");
           const region = parts[0]!;
           const shareId = parts[1]!;
-          await this.api.written<"nfs_delete">(
-            `/nfs/${shareId}?region=${encodeURIComponent(region)}`,
-            { method: "DELETE" },
-          );
+          await this.api.delete(`/nfs/${idSegment(shareId)}`, { query: { region } });
           break;
         }
         case "gen-ai-agent":
@@ -1058,7 +1048,7 @@ export class DigitalOceanClient implements PluginClient {
         case "inference-batch": {
           // Batch jobs are cancelled rather than deleted. The endpoint lives on the
           // data-plane host, off the typed client, and takes the same bearer.
-          const url = `https://inference.do-ai.run/v1/batches/${externalId}/cancel`;
+          const url = `https://inference.do-ai.run/v1/batches/${id}/cancel`;
           const res = await this.api.fetch(url, {
             method: "POST",
             headers: { Authorization: `Bearer ${this.token}` },
@@ -1078,7 +1068,7 @@ export class DigitalOceanClient implements PluginClient {
           const agentUuid = parts[0]!;
           const keyUuid = parts[1]!;
           await this.api.delete(
-            `/gen-ai/agents/${unencodedSegment(agentUuid)}/api_keys/${unencodedSegment(keyUuid)}`,
+            `/gen-ai/agents/${idSegment(agentUuid)}/api_keys/${idSegment(keyUuid)}`,
           );
           break;
         }
@@ -1135,7 +1125,7 @@ export class DigitalOceanClient implements PluginClient {
             // Router was cleared but a model UUID is still present: switch back
             // to the single-model path explicitly.
             (routerTouched && !fields["modelRouterUuid"] && !!fields["modelUuid"]));
-        const data = await this.api.put(`/gen-ai/agents/${unencodedSegment(externalId)}`, {
+        const data = await this.api.put(`/gen-ai/agents/${idSegment(externalId)}`, {
           body: {
             ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
             ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
@@ -1195,7 +1185,7 @@ export class DigitalOceanClient implements PluginClient {
         // project_id, and database_id: region + embedding model are immutable
         // (they're locked `editable: false` on the resource type). `tags` is a
         // comma-separated string in the host diff; split it into the API's array.
-        const data = await this.api.put(`/gen-ai/knowledge_bases/${unencodedSegment(externalId)}`, {
+        const data = await this.api.put(`/gen-ai/knowledge_bases/${idSegment(externalId)}`, {
           body: {
             uuid: externalId,
             ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
@@ -1249,7 +1239,7 @@ export class DigitalOceanClient implements PluginClient {
         const domainName = parts[0]!;
         const recordId = parts[1]!;
         const data = await this.api.put(
-          `/domains/${unencodedSegment(domainName)}/records/${unencodedSegment(recordId)}`,
+          `/domains/${idSegment(domainName)}/records/${idSegment(recordId)}`,
           {
             body: {
               ...(fields["type"] !== undefined ? { type: fields["type"] } : {}),
@@ -1306,7 +1296,7 @@ export class DigitalOceanClient implements PluginClient {
         const name = fields["name"];
         if (name !== undefined && name !== "") {
           try {
-            await this.api.post(`/droplets/${unencodedSegment(externalId)}/actions`, {
+            await this.api.post(`/droplets/${idSegment(externalId)}/actions`, {
               body: { type: "rename", name },
             });
           } catch (e) {
@@ -1316,7 +1306,7 @@ export class DigitalOceanClient implements PluginClient {
         const size = fields["size"];
         if (size !== undefined && size !== "") {
           try {
-            await this.api.post(`/droplets/${unencodedSegment(externalId)}/actions`, {
+            await this.api.post(`/droplets/${idSegment(externalId)}/actions`, {
               body: { type: "resize", size, disk: false },
             });
           } catch (e) {
@@ -1350,7 +1340,7 @@ export class DigitalOceanClient implements PluginClient {
       // DO's PATCH /v2/projects/{id} accepts only the fields supplied: name,
       // description, purpose, environment. Send through whatever the caller
       // changed; the host has already diffed against the prior values.
-      const data = await this.api.patch(`/projects/${unencodedSegment(externalId)}`, {
+      const data = await this.api.patch(`/projects/${idSegment(externalId)}`, {
         body: {
           ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
           ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
@@ -1405,7 +1395,7 @@ export class DigitalOceanClient implements PluginClient {
         if (!volumeId || !Number.isFinite(dropletId)) {
           throw new Error("Cannot determine volume or droplet id for attachment");
         }
-        await this.api.post(`/volumes/${unencodedSegment(volumeId)}/actions`, {
+        await this.api.post(`/volumes/${idSegment(volumeId)}/actions`, {
           body: { type: "attach", droplet_id: dropletId, region: volumeRegion },
         });
         return;
@@ -1432,7 +1422,7 @@ export class DigitalOceanClient implements PluginClient {
         if (!ip || !Number.isFinite(dropletId)) {
           throw new Error("Cannot determine reserved IP or droplet id for assignment");
         }
-        await this.api.post(`/reserved_ips/${unencodedSegment(ip)}/actions`, {
+        await this.api.post(`/reserved_ips/${idSegment(ip)}/actions`, {
           body: { type: "assign", droplet_id: dropletId },
         });
         return;
@@ -1472,7 +1462,7 @@ export class DigitalOceanClient implements PluginClient {
           ? shareExternalId.split("/")[1]!
           : shareExternalId;
         // The document wants `params: { vpc_id }` (#411).
-        await this.api.written<"nfs_create_action">(`/nfs/${shareId}/actions`, {
+        await this.api.written<"nfs_create_action">(`/nfs/${idSegment(shareId)}/actions`, {
           method: "POST",
           body: JSON.stringify({ type: "attach", vpc_id: dropletVpc, region: shareRegion }),
         });
@@ -1485,7 +1475,7 @@ export class DigitalOceanClient implements PluginClient {
           throw new Error("Cannot determine knowledge base or agent UUID for attachment.");
         }
         await this.api.post(
-          `/gen-ai/agents/${unencodedSegment(agentUuid)}/knowledge_bases/${unencodedSegment(kbUuid)}`,
+          `/gen-ai/agents/${idSegment(agentUuid)}/knowledge_bases/${idSegment(kbUuid)}`,
         );
         return;
       }
@@ -1603,10 +1593,9 @@ export class DigitalOceanClient implements PluginClient {
         if (actionId === "make-public" || actionId === "make-private") {
           const visibility =
             actionId === "make-public" ? "VISIBILITY_PUBLIC" : "VISIBILITY_PRIVATE";
-          await this.api.put(
-            `/gen-ai/agents/${unencodedSegment(agentUuid)}/deployment_visibility`,
-            { body: { visibility } },
-          );
+          await this.api.put(`/gen-ai/agents/${idSegment(agentUuid)}/deployment_visibility`, {
+            body: { visibility },
+          });
           return;
         }
         if (actionId === "regenerate-key") {
@@ -1624,7 +1613,7 @@ export class DigitalOceanClient implements PluginClient {
         const agentUuid = parts[0]!;
         const keyUuid = parts[1]!;
         await this.api.put(
-          `/gen-ai/agents/${unencodedSegment(agentUuid)}/api_keys/${unencodedSegment(keyUuid)}/regenerate`,
+          `/gen-ai/agents/${idSegment(agentUuid)}/api_keys/${idSegment(keyUuid)}/regenerate`,
         );
         return;
       }
@@ -1895,7 +1884,7 @@ export class DigitalOceanClient implements PluginClient {
         return { text: "", containers: [], activeContainer: "" };
       }
       const externalId = resourceId.split(":").slice(2).join(":");
-      const resp = await this.api.get(`/databases/${unencodedSegment(externalId)}/events`);
+      const resp = await this.api.get(`/databases/${idSegment(externalId)}/events`);
       const events = resp.events ?? [];
       const tail = params.tailLines ?? 200;
       const lines = events

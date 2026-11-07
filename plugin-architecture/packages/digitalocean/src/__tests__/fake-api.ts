@@ -19,7 +19,7 @@ export function fakeApi(fetch: Fetch): DoApi {
     async (path: string, { query, body, headers }: Call = {}) => {
       const written = Object.entries(query ?? {})
         .filter(([, value]) => value !== undefined && value !== null)
-        .map(([key, value]) => `${key}=${String(value)}`)
+        .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
         .join("&");
       const target = written ? `${path}?${written}` : path;
       if (method === "GET") return fetch(target);

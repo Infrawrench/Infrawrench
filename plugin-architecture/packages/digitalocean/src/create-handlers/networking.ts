@@ -1,11 +1,11 @@
 /** Create handlers for DigitalOcean domains, DNS records, VPCs and reserved IPs. */
 import {
   dnsContentField,
-  unencodedSegment,
   type ApiBody,
   type CreateResourceConfig,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
+import { idSegment } from "../api.js";
 import type { operations } from "../api-types.gen.js";
 import { regionDisplay } from "../constants.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
@@ -269,7 +269,7 @@ export async function networkingCreateResource(
     const domainName = fields["domainName"] || parentExternalId;
     if (!domainName)
       throw new Error("DigitalOcean plugin: domainName is required to create a DNS record");
-    const data = await ctx.api.post(`/domains/${unencodedSegment(domainName)}/records`, {
+    const data = await ctx.api.post(`/domains/${idSegment(domainName)}/records`, {
       body: {
         type: fields["type"],
         name: fields["name"],
