@@ -1,0 +1,234 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://auth0.com/docs/oas/management/v2/management-api-oas.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1logs/get/parameters/9",
+      "value": {
+        "name": "q",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "Auth0's API reference filters this route with `q` in Lucene syntax, which is what the plugin sends; the document only lists `search`."
+    },
+    {
+      "pointer": "/paths/~1actions~1actions/get/parameters/6",
+      "value": {
+        "name": "include_totals",
+        "in": "query",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "why": "Every paged list sends `include_totals=true`, and this route is documented without it. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1tenants~1settings/get/parameters/2",
+      "value": {
+        "name": "per_page",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "The preflight probe sends `per_page=1` to every route it checks, and this one is documented without it. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1stats~1daily/get/parameters/2",
+      "value": {
+        "name": "per_page",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "The preflight probe sends `per_page=1` to every route it checks, and this one is documented without it. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/components/schemas/CreateClientRequestContent/properties/app_type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/CreateResourceServerRequestContent/properties/signing_alg",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/UpdateResourceServerRequestContent/properties/signing_alg",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/UpdateResourceServerRequestContent/properties/token_dialect",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/CreateConnectionRequestContent/properties/strategy",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/CreateCustomDomainRequestContent/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/UpdateCustomDomainRequestContent/properties/tls_policy",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/UpdateCustomDomainRequestContent/properties/custom_client_ip_header",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/UpdateLogStreamRequestContent/properties/status",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/UpdateTenantSettingsRequestContent/properties/enabled_locales/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/ActionTriggerTypeEnum",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's text goes through as typed and Auth0 validates it, so a value outside this enum stays Auth0's error."
+    },
+    {
+      "pointer": "/components/schemas/UpdateResourceServerRequestContent/properties/token_lifetime_for_web",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The update form sets this, the document's responses carry it, and Auth0's own Terraform provider sends it; only the request schema leaves it out."
+    },
+    {
+      "pointer": "/components/schemas/CreateLogStreamRequestContent",
+      "value": {
+        "type": "object",
+        "required": ["type", "sink"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "sink": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "why": "The document's union is discriminated on `type`. The plugin sends the sink of whichever type the form chose, with the form's text as typed and blank fields left out, so Auth0's validation stays the error."
+    },
+    {
+      "pointer": "/components/schemas/ListLogResponseContent",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Log"
+        }
+      },
+      "why": "Asked without `include_totals`, this route answers the array and the plugin reads it as one."
+    },
+    {
+      "pointer": "/components/schemas/UserListLogResponseContent",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Log"
+        }
+      },
+      "why": "Asked without `include_totals`, this route answers the array and the plugin reads it as one."
+    },
+    {
+      "pointer": "/components/schemas/ListOrganizationMembersResponseContent",
+      "value": {
+        "$ref": "#/components/schemas/ListOrganizationMembersOffsetPaginatedResponseContent"
+      },
+      "why": "Only ever asked with `include_totals=true`, which answers the offset form carrying `total`."
+    },
+    {
+      "pointer": "/components/schemas/ListRoleUsersResponseContent",
+      "value": {
+        "$ref": "#/components/schemas/ListRoleUsersOffsetPaginatedResponseContent"
+      },
+      "why": "Only ever asked with `include_totals=true`, which answers the offset form carrying `total`."
+    }
+  ],
+  "paths": {
+    "/actions/actions": ["get", "post"],
+    "/actions/actions/{id}": ["get", "patch", "delete"],
+    "/actions/actions/{id}/deploy": ["post"],
+    "/actions/triggers": ["get"],
+    "/actions/triggers/{triggerId}/bindings": ["get", "patch"],
+    "/attack-protection/breached-password-detection": ["get", "patch"],
+    "/attack-protection/brute-force-protection": ["get", "patch"],
+    "/attack-protection/suspicious-ip-throttling": ["get", "patch"],
+    "/branding": ["get", "patch"],
+    "/clients": ["get", "post"],
+    "/clients/{id}": ["get", "patch", "delete"],
+    "/clients/{id}/rotate-secret": ["post"],
+    "/connections": ["get", "post"],
+    "/connections/{id}": ["get", "patch", "delete"],
+    "/connections/{id}/clients": ["get", "patch"],
+    "/connections/{id}/status": ["get"],
+    "/custom-domains": ["get", "post"],
+    "/custom-domains/{id}": ["get", "patch", "delete"],
+    "/custom-domains/{id}/verify": ["post"],
+    "/jobs/verification-email": ["post"],
+    "/log-streams": ["get", "post"],
+    "/log-streams/{id}": ["get", "patch", "delete"],
+    "/logs": ["get"],
+    "/organizations": ["get", "post"],
+    "/organizations/{id}": ["get", "patch", "delete"],
+    "/organizations/{id}/enabled_connections": ["get", "post"],
+    "/organizations/{id}/enabled_connections/{connectionId}": ["delete"],
+    "/organizations/{id}/invitations": ["post"],
+    "/organizations/{id}/members": ["get", "post", "delete"],
+    "/resource-servers": ["get", "post"],
+    "/resource-servers/{id}": ["get", "patch", "delete"],
+    "/roles": ["get", "post"],
+    "/roles/{id}": ["get", "patch", "delete"],
+    "/roles/{id}/permissions": ["get", "post", "delete"],
+    "/roles/{id}/users": ["get"],
+    "/stats/active-users": ["get"],
+    "/stats/daily": ["get"],
+    "/tenants/settings": ["get", "patch"],
+    "/tickets/password-change": ["post"],
+    "/users": ["get", "post"],
+    "/users/{id}": ["get", "patch", "delete"],
+    "/users/{id}/authentication-methods": ["delete"],
+    "/users/{id}/logs": ["get"],
+    "/users/{id}/roles": ["get", "post", "delete"]
+  }
+}

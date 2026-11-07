@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiBody, ApiClient, ApiResponse, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   CredentialExport,
@@ -20,24 +20,22 @@ import type {
   SettingDescriptor,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import { Auth0Api, readCredentials, regionOfDomain } from "./api.js";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { operations, paths } from "./api-types.gen.js";
+import { Auth0Api, pages, readCredentials, regionOfDomain } from "./api.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 import type {
   A0Action,
-  A0Binding,
   A0Branding,
   A0Client,
   A0Connection,
   A0CustomDomain,
-  A0DailyStat,
   A0Log,
   A0LogStream,
   A0Organization,
   A0ResourceServer,
   A0Role,
   A0TenantSettings,
-  A0Trigger,
   A0User,
 } from "./types.js";
 
@@ -54,7 +52,10 @@ exports.onExecutePostLogin = async (event, api) => {
 };
 `;
 
-function str(value: unknown): string {
+/** Whatever a response field turned out to hold: responses are not validated. */
+type Loose = string | number | boolean | object | null | undefined;
+
+function str(value: Loose): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
@@ -108,11 +109,15 @@ export const LOG_TYPES: Record<string, string> = {
   api_limit: "Rate limit reached",
 };
 
+type ActionBindingUpdate = NonNullable<ApiBody<operations["patch_bindings"]>["bindings"]>[number];
+
 export class Auth0Client implements PluginClient {
   readonly api: Auth0Api;
+  private readonly rest: ApiClient<paths>;
 
   constructor(credentials: Credentials, services?: HostServices) {
     this.api = new Auth0Api(readCredentials(credentials), services);
+    this.rest = this.api.rest;
   }
 
   // -------------------------------------------------------------------------
@@ -125,44 +130,50 @@ export class Auth0Client implements PluginClient {
         case "tenant":
           return [await this.tenantResource(accountId)];
         case "application":
-          return (await this.api.pages<A0Client>("/clients", "clients", { is_global: false })).map(
-            (c) => this.mapClient(accountId, c),
-          );
+          return (
+            await pages("clients", (paging) =>
+              this.rest.get("/clients", { query: { is_global: false, ...paging } }),
+            )
+          ).map((c) => this.mapClient(accountId, c));
         case "api":
           return (
-            await this.api.pages<A0ResourceServer>("/resource-servers", "resource_servers")
+            await pages("resource_servers", (paging) =>
+              this.rest.get("/resource-servers", { query: paging }),
+            )
           ).map((r) => this.mapApi(accountId, r));
         case "connection": {
-          const connections = await this.api.pages<A0Connection>("/connections", "connections");
+          const connections = await pages("connections", (paging) =>
+            this.rest.get("/connections", { query: paging }),
+          );
           return connections.map((c) => this.mapConnection(accountId, c));
         }
         case "user":
-          return (await this.api.pages<A0User>("/users", "users", { sort: "created_at:-1" })).map(
-            (u) => this.mapUser(accountId, u),
-          );
+          return (
+            await pages("users", (paging) =>
+              this.rest.get("/users", { query: { sort: "created_at:-1", ...paging } }),
+            )
+          ).map((u) => this.mapUser(accountId, u));
         case "role":
-          return (await this.api.pages<A0Role>("/roles", "roles")).map((r) =>
-            this.mapRole(accountId, r),
+          return (await pages("roles", (paging) => this.rest.get("/roles", { query: paging }))).map(
+            (r) => this.mapRole(accountId, r),
           );
         case "organization":
-          return (await this.api.pages<A0Organization>("/organizations", "organizations")).map(
-            (o) => this.mapOrganization(accountId, o),
-          );
+          return (
+            await pages("organizations", (paging) =>
+              this.rest.get("/organizations", { query: paging }),
+            )
+          ).map((o) => this.mapOrganization(accountId, o));
         case "action": {
           const [actions, bound] = await Promise.all([
-            this.api.pages<A0Action>("/actions/actions", "actions"),
+            pages("actions", (paging) => this.rest.get("/actions/actions", { query: paging })),
             this.boundActionIds(),
           ]);
           return actions.map((a) => this.mapAction(accountId, a, bound));
         }
         case "log-stream":
-          return (await this.api.request<A0LogStream[]>("/log-streams")).map((s) =>
-            this.mapLogStream(accountId, s),
-          );
+          return (await this.rest.get("/log-streams")).map((s) => this.mapLogStream(accountId, s));
         case "custom-domain": {
-          const body = await this.api.request<
-            A0CustomDomain[] | { custom_domains?: A0CustomDomain[] }
-          >("/custom-domains");
+          const body = await this.rest.get("/custom-domains");
           const domains = Array.isArray(body) ? body : (body.custom_domains ?? []);
           return domains.map((d) => this.mapCustomDomain(accountId, d));
         }
@@ -178,27 +189,21 @@ export class Auth0Client implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case "tenant":
           return this.tenantResource(accountId);
         case "application":
-          return this.mapClient(accountId, await this.api.request<A0Client>(`/clients/${id}`));
+          return this.mapClient(accountId, await this.rest.get(`/clients/${id}`));
         case "api":
-          return this.mapApi(
-            accountId,
-            await this.api.request<A0ResourceServer>(`/resource-servers/${id}`),
-          );
+          return this.mapApi(accountId, await this.rest.get(`/resource-servers/${id}`));
         case "connection":
-          return this.mapConnection(
-            accountId,
-            await this.api.request<A0Connection>(`/connections/${id}`),
-          );
+          return this.mapConnection(accountId, await this.rest.get(`/connections/${id}`));
         case "user":
-          return this.mapUser(accountId, await this.api.request<A0User>(`/users/${id}`));
+          return this.mapUser(accountId, await this.rest.get(`/users/${id}`));
         case "role": {
           const [role, permissions] = await Promise.all([
-            this.api.request<A0Role>(`/roles/${id}`),
+            this.rest.get(`/roles/${id}`),
             this.rolePermissions(externalIdOf(resourceId)).catch(() => []),
           ]);
           return this.mapRole(
@@ -208,27 +213,18 @@ export class Auth0Client implements PluginClient {
           );
         }
         case "organization":
-          return this.mapOrganization(
-            accountId,
-            await this.api.request<A0Organization>(`/organizations/${id}`),
-          );
+          return this.mapOrganization(accountId, await this.rest.get(`/organizations/${id}`));
         case "action": {
           const [action, bound] = await Promise.all([
-            this.api.request<A0Action>(`/actions/actions/${id}`),
+            this.rest.get(`/actions/actions/${id}`),
             this.boundActionIds(),
           ]);
           return this.mapAction(accountId, action, bound);
         }
         case "log-stream":
-          return this.mapLogStream(
-            accountId,
-            await this.api.request<A0LogStream>(`/log-streams/${id}`),
-          );
+          return this.mapLogStream(accountId, await this.rest.get(`/log-streams/${id}`));
         case "custom-domain":
-          return this.mapCustomDomain(
-            accountId,
-            await this.api.request<A0CustomDomain>(`/custom-domains/${id}`),
-          );
+          return this.mapCustomDomain(accountId, await this.rest.get(`/custom-domains/${id}`));
         default:
           throw new Error(`Auth0 plugin: unknown resource type "${typeId}"`);
       }
@@ -243,12 +239,9 @@ export class Auth0Client implements PluginClient {
   ): PluginEffect<string> {
     return attempt(async () => {
       if (typeId === "application" && outputKey === "clientSecret") {
-        const client = await this.api.request<A0Client>(
-          `/clients/${encodeURIComponent(externalIdOf(resourceId))}`,
-          {
-            query: { fields: "client_secret", include_fields: true },
-          },
-        );
+        const client = await this.rest.get(`/clients/${pathEncode(externalIdOf(resourceId))}`, {
+          query: { fields: "client_secret", include_fields: true },
+        });
         if (!client.client_secret)
           throw new Error("Auth0 plugin: this application has no client secret");
         return client.client_secret;
@@ -263,10 +256,7 @@ export class Auth0Client implements PluginClient {
   rerollOutput(typeId: string, resourceId: string, outputKey: string): PluginEffect<void> {
     return attempt(async () => {
       if (typeId === "application" && outputKey === "clientSecret") {
-        await this.api.request(
-          `/clients/${encodeURIComponent(externalIdOf(resourceId))}/rotate-secret`,
-          { method: "POST" },
-        );
+        await this.rest.post(`/clients/${pathEncode(externalIdOf(resourceId))}/rotate-secret`);
         return;
       }
       throw new Error(`Auth0 plugin: cannot reissue "${outputKey}"`);
@@ -274,25 +264,24 @@ export class Auth0Client implements PluginClient {
   }
 
   private async rolePermissions(roleId: string) {
-    return this.api.pages<{ resource_server_identifier?: string; permission_name?: string }>(
-      `/roles/${encodeURIComponent(roleId)}/permissions`,
-      "permissions",
+    return pages("permissions", (paging) =>
+      this.rest.get(`/roles/${pathEncode(roleId)}/permissions`, { query: paging }),
     );
+  }
+
+  private actionTriggers() {
+    return this.rest
+      .get("/actions/triggers")
+      .catch((): ApiResponse<operations["get_triggers"]> => ({ triggers: [] }));
   }
 
   /** Action ids currently bound into any flow (one call per trigger). */
   private async boundActionIds(): Promise<Set<string>> {
-    const triggers = await this.api
-      .request<{ triggers?: A0Trigger[] }>("/actions/triggers")
-      .catch(() => ({ triggers: [] }));
+    const triggers = await this.actionTriggers();
     const ids = new Set<string>();
     const unique = [...new Set((triggers.triggers ?? []).map((t) => str(t.id)).filter(Boolean))];
     const settled = await Promise.allSettled(
-      unique.map((t) =>
-        this.api.request<{ bindings?: A0Binding[] }>(
-          `/actions/triggers/${encodeURIComponent(t)}/bindings`,
-        ),
-      ),
+      unique.map((t) => this.rest.get(`/actions/triggers/${pathEncode(t)}/bindings`)),
     );
     for (const result of settled) {
       if (result.status !== "fulfilled") continue;
@@ -333,9 +322,9 @@ export class Auth0Client implements PluginClient {
 
   private async tenantResource(accountId: string): Promise<ResourceInstance> {
     const [settings, branding, active] = await Promise.all([
-      this.api.request<A0TenantSettings>("/tenants/settings"),
-      this.api.request<A0Branding>("/branding").catch(() => ({}) as A0Branding),
-      this.api.request<number>("/stats/active-users").catch(() => undefined),
+      this.rest.get("/tenants/settings"),
+      this.rest.get("/branding").catch((): A0Branding => ({})),
+      this.rest.get("/stats/active-users").catch(() => undefined),
     ]);
     return this.mapTenant(accountId, settings, branding, active);
   }
@@ -550,7 +539,7 @@ export class Auth0Client implements PluginClient {
   }
 
   mapLogStream(accountId: string, s: A0LogStream): ResourceInstance {
-    const sink = s.sink ?? {};
+    const sink: { [key: string]: Loose } = s.sink ?? {};
     const target =
       str(sink["httpEndpoint"]) ||
       (sink["datadogRegion"] ? `Datadog ${str(sink["datadogRegion"])}` : "") ||
@@ -610,30 +599,36 @@ export class Auth0Client implements PluginClient {
   verifyCredentials(): PluginEffect<PreflightResult> {
     return attempt(async () => {
       const checks: PreflightCapabilityCheck[] = [];
-      const probe = async (capabilityId: string, path: string, scope: string) => {
-        try {
-          await this.api.request(path, { query: { per_page: 1 } });
-          checks.push({ capabilityId, status: "ok" });
-        } catch (error) {
-          const status = (error as { status?: number }).status;
-          checks.push(
-            status === 401 || status === 403
-              ? {
-                  capabilityId,
-                  status: "missing",
-                  missingPermissions: [{ id: scope, label: scope }],
-                  message: (error as Error).message,
-                }
-              : { capabilityId, status: "unknown", message: (error as Error).message },
-          );
-        }
+      const probe = async <T>(capabilityId: string, read: () => Promise<T>, scope: string) => {
+        await read().then(
+          () => {
+            checks.push({ capabilityId, status: "ok" });
+          },
+          (error: { status?: number; message: string }) => {
+            checks.push(
+              error.status === 401 || error.status === 403
+                ? {
+                    capabilityId,
+                    status: "missing",
+                    missingPermissions: [{ id: scope, label: scope }],
+                    message: error.message,
+                  }
+                : { capabilityId, status: "unknown", message: error.message },
+            );
+          },
+        );
       };
-      await probe("tenant", "/tenants/settings", "read:tenant_settings");
-      await probe("applications", "/clients", "read:clients");
-      await probe("users", "/users", "read:users");
-      await probe("actions", "/actions/actions", "read:actions");
-      await probe("logs", "/logs", "read:logs");
-      await probe("stats", "/stats/daily", "read:stats");
+      const query = { per_page: 1 };
+      await probe(
+        "tenant",
+        () => this.rest.get("/tenants/settings", { query }),
+        "read:tenant_settings",
+      );
+      await probe("applications", () => this.rest.get("/clients", { query }), "read:clients");
+      await probe("users", () => this.rest.get("/users", { query }), "read:users");
+      await probe("actions", () => this.rest.get("/actions/actions", { query }), "read:actions");
+      await probe("logs", () => this.rest.get("/logs", { query }), "read:logs");
+      await probe("stats", () => this.rest.get("/stats/daily", { query }), "read:stats");
       return { checks, identity: this.api.domain };
     });
   }
@@ -653,10 +648,10 @@ export class Auth0Client implements PluginClient {
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - METRICS_DEFAULT_RANGE_MS;
       const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, "");
-      const days = await this.api.request<A0DailyStat[]>("/stats/daily", {
+      const days = await this.rest.get("/stats/daily", {
         query: { from: ymd(startMs), to: ymd(endMs) },
       });
-      const points = (pick: (d: A0DailyStat) => number | undefined) =>
+      const points = (pick: (d: (typeof days)[number]) => number | undefined) =>
         (days ?? [])
           .map((d) => ({ timestamp: Date.parse(str(d.date)), value: pick(d) ?? 0 }))
           .filter((p) => Number.isFinite(p.timestamp))
@@ -676,7 +671,7 @@ export class Auth0Client implements PluginClient {
    */
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
-      const res = await this.api.call<unknown>("/stats/active-users");
+      const res = await this.rest.getResponse("/stats/active-users");
       const limit = Number(res.headers["x-ratelimit-limit"]);
       const remaining = Number(res.headers["x-ratelimit-remaining"]);
       if (!Number.isFinite(limit) || !Number.isFinite(remaining) || limit <= 0) return [];
@@ -698,14 +693,12 @@ export class Auth0Client implements PluginClient {
 
   fetchDashboardStats(resourceTypeId: string, resourceId: string): PluginEffect<DashboardStat[]> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       if (resourceTypeId === "tenant") {
         const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
         const [active, days] = await Promise.all([
-          this.api.request<number>("/stats/active-users").catch(() => undefined),
-          this.api
-            .request<A0DailyStat[]>("/stats/daily", { query: { from: today, to: today } })
-            .catch(() => []),
+          this.rest.get("/stats/active-users").catch(() => undefined),
+          this.rest.get("/stats/daily", { query: { from: today, to: today } }).catch(() => []),
         ]);
         return [
           { label: "Active users (30d)", value: active === undefined ? "—" : String(active) },
@@ -714,8 +707,8 @@ export class Auth0Client implements PluginClient {
         ];
       }
       if (resourceTypeId === "organization") {
-        const members = await this.api
-          .request<{ total?: number }>(`/organizations/${id}/members`, {
+        const members = await this.rest
+          .get(`/organizations/${id}/members`, {
             query: { per_page: 1, include_totals: true },
           })
           .catch(() => ({ total: undefined }));
@@ -724,8 +717,8 @@ export class Auth0Client implements PluginClient {
         ];
       }
       if (resourceTypeId === "role") {
-        const users = await this.api
-          .request<{ total?: number }>(`/roles/${id}/users`, {
+        const users = await this.rest
+          .get(`/roles/${id}/users`, {
             query: { per_page: 1, include_totals: true },
           })
           .catch(() => ({ total: undefined }));
@@ -746,7 +739,7 @@ export class Auth0Client implements PluginClient {
       const perPage = Math.min(Math.max(params.tailLines ?? 100, 1), 100);
       let logs: A0Log[];
       if (typeId === "user") {
-        logs = await this.api.request<A0Log[]>(`/users/${encodeURIComponent(id)}/logs`, {
+        logs = await this.rest.get(`/users/${pathEncode(id)}/logs`, {
           query: { per_page: perPage, sort: "date:-1" },
         });
       } else {
@@ -758,7 +751,7 @@ export class Auth0Client implements PluginClient {
           throw new Error(
             "Auth0 plugin: logs are shown on the tenant, applications, connections, users and organizations",
           );
-        logs = await this.api.request<A0Log[]>("/logs", {
+        logs = await this.rest.get("/logs", {
           query: { per_page: perPage, sort: "date:-1", ...(q ? { q } : {}) },
         });
       }
@@ -794,16 +787,12 @@ export class Auth0Client implements PluginClient {
   getManifest(): PluginEffect<string> {
     return attempt(async () => {
       const [bf, bp, sit, flags] = await Promise.all([
-        this.api.request<{ enabled?: boolean; max_attempts?: number; shields?: string[] }>(
-          "/attack-protection/brute-force-protection",
-        ),
-        this.api.request<{ enabled?: boolean; shields?: string[] }>(
-          "/attack-protection/breached-password-detection",
-        ),
-        this.api.request<{ enabled?: boolean }>("/attack-protection/suspicious-ip-throttling"),
-        this.api.request<A0TenantSettings>("/tenants/settings"),
+        this.rest.get("/attack-protection/brute-force-protection"),
+        this.rest.get("/attack-protection/breached-password-detection"),
+        this.rest.get("/attack-protection/suspicious-ip-throttling"),
+        this.rest.get("/tenants/settings"),
       ]);
-      const tf = flags.flags ?? {};
+      const tf = flags.flags;
       const settings: SettingDescriptor[] = [
         {
           id: "bf.enabled",
@@ -838,21 +827,21 @@ export class Auth0Client implements PluginClient {
           label: "Enable new connections for all applications",
           group: "Tenant flags",
           control: "toggle",
-          value: tf["enable_client_connections"] ? "on" : "off",
+          value: tf?.enable_client_connections ? "on" : "off",
         },
         {
           id: "flags.disable_clickjack_protection_headers",
           label: "Disable clickjacking protection headers",
           group: "Tenant flags",
           control: "toggle",
-          value: tf["disable_clickjack_protection_headers"] ? "on" : "off",
+          value: tf?.disable_clickjack_protection_headers ? "on" : "off",
         },
         {
           id: "flags.enable_public_signup_user_exists_error",
           label: "Tell sign-up that the user already exists",
           group: "Tenant flags",
           control: "toggle",
-          value: tf["enable_public_signup_user_exists_error"] ? "on" : "off",
+          value: tf?.enable_public_signup_user_exists_error ? "on" : "off",
         },
       ];
       return JSON.stringify({ settings });
@@ -861,33 +850,28 @@ export class Auth0Client implements PluginClient {
 
   applyManifest(_resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
     return attempt(async () => {
-      const changes = JSON.parse(manifest) as Array<{ id: string; value: string }>;
+      const changes: Array<{ id: string; value: string }> = JSON.parse(manifest);
       const on = (v: string) => v === "on" || v === "true";
-      const bf: Record<string, unknown> = {};
+      const bf: ApiBody<operations["patch_brute-force-protection"]> = {};
       const flags: Record<string, boolean> = {};
       for (const { id, value } of changes) {
-        if (id === "bf.enabled") bf["enabled"] = on(value);
-        else if (id === "bf.max_attempts") bf["max_attempts"] = Number(value);
+        if (id === "bf.enabled") bf.enabled = on(value);
+        else if (id === "bf.max_attempts") bf.max_attempts = Number(value);
         else if (id === "bp.enabled") {
-          await this.api.request("/attack-protection/breached-password-detection", {
-            method: "PATCH",
+          await this.rest.patch("/attack-protection/breached-password-detection", {
             body: { enabled: on(value) },
           });
         } else if (id === "sit.enabled") {
-          await this.api.request("/attack-protection/suspicious-ip-throttling", {
-            method: "PATCH",
+          await this.rest.patch("/attack-protection/suspicious-ip-throttling", {
             body: { enabled: on(value) },
           });
         } else if (id.startsWith("flags.")) flags[id.slice(6)] = on(value);
       }
       if (Object.keys(bf).length > 0) {
-        await this.api.request("/attack-protection/brute-force-protection", {
-          method: "PATCH",
-          body: bf,
-        });
+        await this.rest.patch("/attack-protection/brute-force-protection", { body: bf });
       }
       if (Object.keys(flags).length > 0) {
-        await this.api.request("/tenants/settings", { method: "PATCH", body: { flags } });
+        await this.rest.patch("/tenants/settings", { body: { flags } });
       }
     });
   }
@@ -896,10 +880,15 @@ export class Auth0Client implements PluginClient {
   // Create
   // -------------------------------------------------------------------------
 
-  private async connectionOptions(strategy?: string): Promise<SelectOption[]> {
-    const connections = await this.api
-      .pages<A0Connection>("/connections", "connections", strategy ? { strategy } : {}, 3)
-      .catch(() => [] as A0Connection[]);
+  private async connectionOptions(strategy?: "auth0"): Promise<SelectOption[]> {
+    const connections = await pages(
+      "connections",
+      (paging) =>
+        this.rest.get("/connections", {
+          query: { ...(strategy ? { strategy: [strategy] } : {}), ...paging },
+        }),
+      3,
+    ).catch((): A0Connection[] => []);
     return connections.map((c) => ({
       id: str(c.name),
       label: str(c.display_name) || str(c.name),
@@ -1090,9 +1079,7 @@ export class Auth0Client implements PluginClient {
             ],
           };
         case "action": {
-          const triggers = await this.api
-            .request<{ triggers?: A0Trigger[] }>("/actions/triggers")
-            .catch(() => ({ triggers: [] }));
+          const triggers = await this.actionTriggers();
           const current = (triggers.triggers ?? []).filter(
             (t) => !t.status || t.status === "CURRENT",
           );
@@ -1260,9 +1247,11 @@ export class Auth0Client implements PluginClient {
   }
 
   private async clientPolicies(): Promise<PolicyOption[]> {
-    const clients = await this.api
-      .pages<A0Client>("/clients", "clients", { is_global: false }, 3)
-      .catch(() => [] as A0Client[]);
+    const clients = await pages(
+      "clients",
+      (paging) => this.rest.get("/clients", { query: { is_global: false, ...paging } }),
+      3,
+    ).catch((): A0Client[] => []);
     return clients.map((c) => ({
       id: str(c.client_id),
       label: str(c.name),
@@ -1271,9 +1260,11 @@ export class Auth0Client implements PluginClient {
   }
 
   private async connectionIdOptions(): Promise<SelectOption[]> {
-    const connections = await this.api
-      .pages<A0Connection>("/connections", "connections", {}, 3)
-      .catch(() => [] as A0Connection[]);
+    const connections = await pages(
+      "connections",
+      (paging) => this.rest.get("/connections", { query: paging }),
+      3,
+    ).catch((): A0Connection[] => []);
     return connections.map((c) => ({
       id: str(c.id),
       label: str(c.display_name) || str(c.name),
@@ -1283,9 +1274,11 @@ export class Auth0Client implements PluginClient {
 
   /** Every API permission, as `identifier|scope` ids. */
   async permissionPolicies(): Promise<PolicyOption[]> {
-    const apis = await this.api
-      .pages<A0ResourceServer>("/resource-servers", "resource_servers", {}, 3)
-      .catch(() => [] as A0ResourceServer[]);
+    const apis = await pages(
+      "resource_servers",
+      (paging) => this.rest.get("/resource-servers", { query: paging }),
+      3,
+    ).catch((): A0ResourceServer[] => []);
     return apis.flatMap((api) =>
       (api.scopes ?? []).map((scope) => ({
         id: `${str(api.identifier)}|${str(scope.value)}`,
@@ -1296,7 +1289,7 @@ export class Auth0Client implements PluginClient {
     );
   }
 
-  private permissionsBody(ids: string[]) {
+  private permissionsBody(ids: string[]): ApiBody<operations["post_role_permission_assignment"]> {
     return {
       permissions: ids.map((id) => {
         const bar = id.lastIndexOf("|");
@@ -1314,8 +1307,7 @@ export class Auth0Client implements PluginClient {
       switch (typeId) {
         case "application": {
           const appType = fields["appType"] || "regular_web";
-          const client = await this.api.request<A0Client>("/clients", {
-            method: "POST",
+          const client = await this.rest.post("/clients", {
             body: {
               name: fields["name"],
               app_type: appType,
@@ -1334,8 +1326,7 @@ export class Auth0Client implements PluginClient {
           return this.mapClient(accountId, client);
         }
         case "api": {
-          const server = await this.api.request<A0ResourceServer>("/resource-servers", {
-            method: "POST",
+          const server = await this.rest.post("/resource-servers", {
             body: {
               name: fields["name"],
               identifier: fields["identifier"],
@@ -1346,26 +1337,20 @@ export class Auth0Client implements PluginClient {
           return this.mapApi(accountId, server);
         }
         case "connection": {
-          const connection = await this.api.request<A0Connection>("/connections", {
-            method: "POST",
+          const connection = await this.rest.post("/connections", {
             body: { name: fields["name"], strategy: fields["strategy"] || "auth0" },
           });
           const clients = list(fields["enabledClients"]);
           if (clients.length > 0) {
-            await this.api.request(
-              `/connections/${encodeURIComponent(str(connection.id))}/clients`,
-              {
-                method: "PATCH",
-                body: clients.map((client_id) => ({ client_id, status: true })),
-              },
-            );
+            await this.rest.patch(`/connections/${pathEncode(str(connection.id))}/clients`, {
+              body: clients.map((client_id) => ({ client_id, status: true })),
+            });
           }
           return this.mapConnection(accountId, connection);
         }
         case "user": {
           const verified = fields["emailVerified"] === "true";
-          const user = await this.api.request<A0User>("/users", {
-            method: "POST",
+          const user = await this.rest.post("/users", {
             body: {
               connection: fields["connection"],
               email: fields["email"],
@@ -1378,8 +1363,7 @@ export class Auth0Client implements PluginClient {
           return this.mapUser(accountId, user);
         }
         case "role": {
-          const role = await this.api.request<A0Role>("/roles", {
-            method: "POST",
+          const role = await this.rest.post("/roles", {
             body: {
               name: fields["name"],
               ...(fields["description"] ? { description: fields["description"] } : {}),
@@ -1387,8 +1371,7 @@ export class Auth0Client implements PluginClient {
           });
           const permissions = list(fields["permissions"]);
           if (permissions.length > 0) {
-            await this.api.request(`/roles/${encodeURIComponent(str(role.id))}/permissions`, {
-              method: "POST",
+            await this.rest.post(`/roles/${pathEncode(str(role.id))}/permissions`, {
               body: this.permissionsBody(permissions),
             });
           }
@@ -1399,8 +1382,7 @@ export class Auth0Client implements PluginClient {
           );
         }
         case "organization": {
-          const org = await this.api.request<A0Organization>("/organizations", {
-            method: "POST",
+          const org = await this.rest.post("/organizations", {
             body: {
               name: fields["name"],
               ...(fields["displayName"] ? { display_name: fields["displayName"] } : {}),
@@ -1417,12 +1399,11 @@ export class Auth0Client implements PluginClient {
           return this.mapOrganization(accountId, org);
         }
         case "action": {
-          const [id, version] = (fields["trigger"] || "post-login@v3").split("@");
-          const action = await this.api.request<A0Action>("/actions/actions", {
-            method: "POST",
+          const [id = "", version] = (fields["trigger"] || "post-login@v3").split("@");
+          const action = await this.rest.post("/actions/actions", {
             body: {
               name: fields["name"],
-              supported_triggers: [{ id, version }],
+              supported_triggers: [{ id, ...(version !== undefined ? { version } : {}) }],
               code: fields["code"] || ACTION_TEMPLATE,
               runtime: fields["runtime"] || "node22",
             },
@@ -1431,7 +1412,7 @@ export class Auth0Client implements PluginClient {
         }
         case "log-stream": {
           const type = fields["type"] || "http";
-          const sinks: Record<string, Record<string, unknown>> = {
+          const sinks: Record<string, Record<string, string | boolean | undefined>> = {
             http: {
               httpEndpoint: fields["httpEndpoint"],
               httpContentType: "application/json",
@@ -1454,15 +1435,13 @@ export class Auth0Client implements PluginClient {
           };
           const sink = sinks[type];
           if (!sink) throw new Error(`Auth0 plugin: unsupported log stream type "${type}"`);
-          const stream = await this.api.request<A0LogStream>("/log-streams", {
-            method: "POST",
+          const stream = await this.rest.post("/log-streams", {
             body: { name: fields["name"], type, sink },
           });
           return this.mapLogStream(accountId, stream);
         }
         case "custom-domain": {
-          const domain = await this.api.request<A0CustomDomain>("/custom-domains", {
-            method: "POST",
+          const domain = await this.rest.post("/custom-domains", {
             body: { domain: fields["domain"], type: fields["type"] || "auth0_managed_certs" },
           });
           return this.mapCustomDomain(accountId, domain);
@@ -1484,161 +1463,146 @@ export class Auth0Client implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       const has = (key: string) => fields[key] !== undefined;
       switch (typeId) {
         case "tenant": {
-          const settings: Record<string, unknown> = {};
-          const map: Array<[string, string]> = [
-            ["friendlyName", "friendly_name"],
-            ["supportEmail", "support_email"],
-            ["supportUrl", "support_url"],
-            ["pictureUrl", "picture_url"],
-            ["defaultAudience", "default_audience"],
-            ["defaultDirectory", "default_directory"],
-          ];
-          for (const [key, api] of map) if (has(key)) settings[api] = fields[key];
+          const settings: ApiBody<operations["patch_settings"]> = {};
+          if (has("friendlyName")) settings.friendly_name = fields["friendlyName"];
+          if (has("supportEmail")) settings.support_email = fields["supportEmail"];
+          if (has("supportUrl")) settings.support_url = fields["supportUrl"];
+          if (has("pictureUrl")) settings.picture_url = fields["pictureUrl"];
+          if (has("defaultAudience")) settings.default_audience = fields["defaultAudience"];
+          if (has("defaultDirectory")) settings.default_directory = fields["defaultDirectory"];
           if (fields["sessionLifetime"])
-            settings["session_lifetime"] = Number(fields["sessionLifetime"]);
+            settings.session_lifetime = Number(fields["sessionLifetime"]);
           if (fields["idleSessionLifetime"])
-            settings["idle_session_lifetime"] = Number(fields["idleSessionLifetime"]);
-          if (has("enabledLocales")) settings["enabled_locales"] = list(fields["enabledLocales"]);
+            settings.idle_session_lifetime = Number(fields["idleSessionLifetime"]);
+          if (has("enabledLocales")) settings.enabled_locales = list(fields["enabledLocales"]);
           if (Object.keys(settings).length > 0)
-            await this.api.request("/tenants/settings", { method: "PATCH", body: settings });
-          const branding: Record<string, unknown> = {};
-          const colors: Record<string, string> = {};
-          if (fields["brandPrimaryColor"]) colors["primary"] = fields["brandPrimaryColor"];
+            await this.rest.patch("/tenants/settings", { body: settings });
+          const branding: ApiBody<operations["patch_branding"]> = {};
+          const colors: NonNullable<ApiBody<operations["patch_branding"]>["colors"]> = {};
+          if (fields["brandPrimaryColor"]) colors.primary = fields["brandPrimaryColor"];
           if (fields["brandBackgroundColor"])
-            colors["page_background"] = fields["brandBackgroundColor"];
-          if (Object.keys(colors).length > 0) branding["colors"] = colors;
-          if (has("brandLogoUrl")) branding["logo_url"] = fields["brandLogoUrl"];
-          if (has("brandFaviconUrl")) branding["favicon_url"] = fields["brandFaviconUrl"];
+            colors.page_background = fields["brandBackgroundColor"];
+          if (Object.keys(colors).length > 0) branding.colors = colors;
+          if (has("brandLogoUrl")) branding.logo_url = fields["brandLogoUrl"];
+          if (has("brandFaviconUrl")) branding.favicon_url = fields["brandFaviconUrl"];
           if (Object.keys(branding).length > 0)
-            await this.api.request("/branding", { method: "PATCH", body: branding });
+            await this.rest.patch("/branding", { body: branding });
           return this.tenantResource(accountId);
         }
         case "application": {
-          const body: Record<string, unknown> = {};
-          if (has("name")) body["name"] = fields["name"];
-          if (has("description")) body["description"] = fields["description"];
-          if (has("callbacks")) body["callbacks"] = list(fields["callbacks"]);
+          const body: ApiBody<operations["patch_clients_by_id"]> = {};
+          if (has("name")) body.name = fields["name"];
+          if (has("description")) body.description = fields["description"];
+          if (has("callbacks")) body.callbacks = list(fields["callbacks"]);
           if (has("allowedLogoutUrls"))
-            body["allowed_logout_urls"] = list(fields["allowedLogoutUrls"]);
-          if (has("webOrigins")) body["web_origins"] = list(fields["webOrigins"]);
-          if (has("allowedOrigins")) body["allowed_origins"] = list(fields["allowedOrigins"]);
-          if (has("initiateLoginUri")) body["initiate_login_uri"] = fields["initiateLoginUri"];
-          if (has("logoUri")) body["logo_uri"] = fields["logoUri"];
-          return this.mapClient(
-            accountId,
-            await this.api.request<A0Client>(`/clients/${id}`, { method: "PATCH", body }),
-          );
+            body.allowed_logout_urls = list(fields["allowedLogoutUrls"]);
+          if (has("webOrigins")) body.web_origins = list(fields["webOrigins"]);
+          if (has("allowedOrigins")) body.allowed_origins = list(fields["allowedOrigins"]);
+          if (has("initiateLoginUri")) body.initiate_login_uri = fields["initiateLoginUri"];
+          if (has("logoUri")) body.logo_uri = fields["logoUri"];
+          return this.mapClient(accountId, await this.rest.patch(`/clients/${id}`, { body }));
         }
         case "api": {
-          const body: Record<string, unknown> = {};
-          if (has("name")) body["name"] = fields["name"];
-          if (fields["signingAlg"]) body["signing_alg"] = fields["signingAlg"];
-          if (fields["tokenLifetime"]) body["token_lifetime"] = Number(fields["tokenLifetime"]);
+          const body: ApiBody<operations["patch_resource-servers_by_id"]> = {};
+          if (has("name")) body.name = fields["name"];
+          if (fields["signingAlg"]) body.signing_alg = fields["signingAlg"];
+          if (fields["tokenLifetime"]) body.token_lifetime = Number(fields["tokenLifetime"]);
           if (fields["tokenLifetimeForWeb"])
-            body["token_lifetime_for_web"] = Number(fields["tokenLifetimeForWeb"]);
-          for (const [key, api] of [
-            ["allowOfflineAccess", "allow_offline_access"],
-            ["skipConsent", "skip_consent_for_verifiable_first_party_clients"],
-            ["enforcePolicies", "enforce_policies"],
-          ] as const) {
-            const value = bool(fields[key]);
-            if (value !== undefined) body[api] = value;
-          }
-          if (fields["tokenDialect"]) body["token_dialect"] = fields["tokenDialect"];
-          return this.mapApi(
-            accountId,
-            await this.api.request<A0ResourceServer>(`/resource-servers/${id}`, {
-              method: "PATCH",
-              body,
-            }),
-          );
+            body.token_lifetime_for_web = Number(fields["tokenLifetimeForWeb"]);
+          const offline = bool(fields["allowOfflineAccess"]);
+          if (offline !== undefined) body.allow_offline_access = offline;
+          const skipConsent = bool(fields["skipConsent"]);
+          if (skipConsent !== undefined)
+            body.skip_consent_for_verifiable_first_party_clients = skipConsent;
+          const enforce = bool(fields["enforcePolicies"]);
+          if (enforce !== undefined) body.enforce_policies = enforce;
+          if (fields["tokenDialect"]) body.token_dialect = fields["tokenDialect"];
+          return this.mapApi(accountId, await this.rest.patch(`/resource-servers/${id}`, { body }));
         }
         case "connection": {
-          const body: Record<string, unknown> = {};
-          if (has("displayName")) body["display_name"] = fields["displayName"];
+          const body: ApiBody<operations["patch_connections_by_id"]> = {};
+          if (has("displayName")) body.display_name = fields["displayName"];
           const domain = bool(fields["isDomainConnection"]);
-          if (domain !== undefined) body["is_domain_connection"] = domain;
+          if (domain !== undefined) body.is_domain_connection = domain;
           const button = bool(fields["showAsButton"]);
-          if (button !== undefined) body["show_as_button"] = button;
+          if (button !== undefined) body.show_as_button = button;
           return this.mapConnection(
             accountId,
-            await this.api.request<A0Connection>(`/connections/${id}`, { method: "PATCH", body }),
+            await this.rest.patch(`/connections/${id}`, { body }),
           );
         }
         case "user": {
-          const body: Record<string, unknown> = {};
-          for (const key of ["email", "name", "nickname"]) if (has(key)) body[key] = fields[key];
+          const body: ApiBody<operations["patch_users_by_id"]> = {};
+          if (has("email")) body.email = fields["email"];
+          if (has("name")) body.name = fields["name"];
+          if (has("nickname")) body.nickname = fields["nickname"];
           const verified = bool(fields["emailVerified"]);
-          if (verified !== undefined) body["email_verified"] = verified;
+          if (verified !== undefined) body.email_verified = verified;
           const blocked = bool(fields["blocked"]);
-          if (blocked !== undefined) body["blocked"] = blocked;
-          return this.mapUser(
-            accountId,
-            await this.api.request<A0User>(`/users/${id}`, { method: "PATCH", body }),
-          );
+          if (blocked !== undefined) body.blocked = blocked;
+          return this.mapUser(accountId, await this.rest.patch(`/users/${id}`, { body }));
         }
         case "role": {
-          const body: Record<string, unknown> = {};
-          if (has("name")) body["name"] = fields["name"];
-          if (has("description")) body["description"] = fields["description"];
-          await this.api.request(`/roles/${id}`, { method: "PATCH", body });
+          const body: ApiBody<operations["patch_roles_by_id"]> = {};
+          if (has("name")) body.name = fields["name"];
+          if (has("description")) body.description = fields["description"];
+          await this.rest.patch(`/roles/${id}`, { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "organization": {
-          const current = await this.api.request<A0Organization>(`/organizations/${id}`);
-          const body: Record<string, unknown> = {};
-          if (has("name")) body["name"] = fields["name"];
-          if (has("displayName")) body["display_name"] = fields["displayName"];
+          const current = await this.rest.get(`/organizations/${id}`);
+          const body: ApiBody<operations["patch_organizations_by_id"]> = {};
+          if (has("name")) body.name = fields["name"];
+          if (has("displayName")) body.display_name = fields["displayName"];
           if (has("logoUrl") || has("primaryColor") || has("backgroundColor")) {
-            const branding = { ...(current.branding ?? {}) } as Record<string, unknown>;
-            const colors = {
-              ...((current.branding?.colors as Record<string, unknown> | undefined) ?? {}),
+            const branding: Partial<NonNullable<typeof current.branding>> = {
+              ...(current.branding ?? {}),
             };
-            if (has("logoUrl")) branding["logo_url"] = fields["logoUrl"];
-            if (fields["primaryColor"]) colors["primary"] = fields["primaryColor"];
-            if (fields["backgroundColor"]) colors["page_background"] = fields["backgroundColor"];
-            if (colors["primary"] && colors["page_background"]) branding["colors"] = colors;
-            body["branding"] = branding;
+            const colors: Partial<NonNullable<NonNullable<typeof current.branding>["colors"]>> = {
+              ...(current.branding?.colors ?? {}),
+            };
+            const logoUrl = fields["logoUrl"];
+            if (logoUrl !== undefined) branding.logo_url = logoUrl;
+            if (fields["primaryColor"]) colors.primary = fields["primaryColor"];
+            if (fields["backgroundColor"]) colors.page_background = fields["backgroundColor"];
+            const { primary, page_background } = colors;
+            if (primary && page_background)
+              branding.colors = { ...colors, primary, page_background };
+            body.branding = branding;
           }
           return this.mapOrganization(
             accountId,
-            await this.api.request<A0Organization>(`/organizations/${id}`, {
-              method: "PATCH",
-              body,
-            }),
+            await this.rest.patch(`/organizations/${id}`, { body }),
           );
         }
         case "action": {
-          const body: Record<string, unknown> = {};
-          if (has("name")) body["name"] = fields["name"];
-          if (fields["runtime"]) body["runtime"] = fields["runtime"];
-          await this.api.request(`/actions/actions/${id}`, { method: "PATCH", body });
+          const body: ApiBody<operations["patch_action"]> = {};
+          if (has("name")) body.name = fields["name"];
+          if (fields["runtime"]) body.runtime = fields["runtime"];
+          await this.rest.patch(`/actions/actions/${id}`, { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "log-stream": {
-          const body: Record<string, unknown> = {};
-          if (has("name")) body["name"] = fields["name"];
-          if (fields["status"]) body["status"] = fields["status"];
+          const body: ApiBody<operations["patch_log-streams_by_id"]> = {};
+          if (has("name")) body.name = fields["name"];
+          if (fields["status"]) body.status = fields["status"];
           return this.mapLogStream(
             accountId,
-            await this.api.request<A0LogStream>(`/log-streams/${id}`, { method: "PATCH", body }),
+            await this.rest.patch(`/log-streams/${id}`, { body }),
           );
         }
         case "custom-domain": {
-          const body: Record<string, unknown> = {};
-          if (fields["tlsPolicy"]) body["tls_policy"] = fields["tlsPolicy"];
+          const body: ApiBody<operations["patch_custom-domains_by_id"]> = {};
+          if (fields["tlsPolicy"]) body.tls_policy = fields["tlsPolicy"];
           if (has("customClientIpHeader"))
-            body["custom_client_ip_header"] = fields["customClientIpHeader"];
+            body.custom_client_ip_header = fields["customClientIpHeader"];
           return this.mapCustomDomain(
             accountId,
-            await this.api.request<A0CustomDomain>(`/custom-domains/${id}`, {
-              method: "PATCH",
-              body,
-            }),
+            await this.rest.patch(`/custom-domains/${id}`, { body }),
           );
         }
         default:
@@ -1649,25 +1613,39 @@ export class Auth0Client implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
-      const paths: Record<string, string> = {
-        application: `/clients/${id}`,
-        api: `/resource-servers/${id}`,
-        connection: `/connections/${id}`,
-        user: `/users/${id}`,
-        role: `/roles/${id}`,
-        organization: `/organizations/${id}`,
-        action: `/actions/actions/${id}`,
-        "log-stream": `/log-streams/${id}`,
-        "custom-domain": `/custom-domains/${id}`,
-      };
-      const path = paths[typeId];
-      if (!path) throw new Error(`Auth0 plugin: cannot delete resource type "${typeId}"`);
-      // Actions still bound into a flow need `force` to delete.
-      await this.api.request(path, {
-        method: "DELETE",
-        ...(typeId === "action" ? { query: { force: true } } : {}),
-      });
+      const id = pathEncode(externalIdOf(resourceId));
+      switch (typeId) {
+        case "application":
+          await this.rest.delete(`/clients/${id}`);
+          return;
+        case "api":
+          await this.rest.delete(`/resource-servers/${id}`);
+          return;
+        case "connection":
+          await this.rest.delete(`/connections/${id}`);
+          return;
+        case "user":
+          await this.rest.delete(`/users/${id}`);
+          return;
+        case "role":
+          await this.rest.delete(`/roles/${id}`);
+          return;
+        case "organization":
+          await this.rest.delete(`/organizations/${id}`);
+          return;
+        case "action":
+          // Actions still bound into a flow need `force` to delete.
+          await this.rest.delete(`/actions/actions/${id}`, { query: { force: true } });
+          return;
+        case "log-stream":
+          await this.rest.delete(`/log-streams/${id}`);
+          return;
+        case "custom-domain":
+          await this.rest.delete(`/custom-domains/${id}`);
+          return;
+        default:
+          throw new Error(`Auth0 plugin: cannot delete resource type "${typeId}"`);
+      }
     });
   }
 
@@ -1678,74 +1656,61 @@ export class Auth0Client implements PluginClient {
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
       const raw = externalIdOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       switch (`${typeId}:${actionId}`) {
         case "application:rotate-secret":
-          await this.api.request(`/clients/${id}/rotate-secret`, { method: "POST" });
+          await this.rest.post(`/clients/${id}/rotate-secret`);
           return;
         case "user:block":
         case "user:unblock":
-          await this.api.request(`/users/${id}`, {
-            method: "PATCH",
-            body: { blocked: actionId === "block" },
-          });
+          await this.rest.patch(`/users/${id}`, { body: { blocked: actionId === "block" } });
           return;
         case "user:send-verification":
-          await this.api.request("/jobs/verification-email", {
-            method: "POST",
-            body: { user_id: raw },
-          });
+          await this.rest.post("/jobs/verification-email", { body: { user_id: raw } });
           return;
         case "user:reset-mfa":
-          await this.api.request(`/users/${id}/authentication-methods`, { method: "DELETE" });
+          await this.rest.delete(`/users/${id}/authentication-methods`);
           return;
         case "action:deploy":
-          await this.api.request(`/actions/actions/${id}/deploy`, { method: "POST" });
+          await this.rest.post(`/actions/actions/${id}/deploy`);
           return;
         case "action:bind": {
-          const action = await this.api.request<A0Action>(`/actions/actions/${id}`);
+          const action = await this.rest.get(`/actions/actions/${id}`);
           const trigger = str(action.supported_triggers?.[0]?.id);
           if (!trigger) throw new Error("Auth0 plugin: the action has no trigger");
-          const current = await this.api.request<{ bindings?: A0Binding[] }>(
-            `/actions/triggers/${encodeURIComponent(trigger)}/bindings`,
-          );
-          const bindings = (current.bindings ?? []).map((b) => ({
+          const current = await this.rest.get(`/actions/triggers/${pathEncode(trigger)}/bindings`);
+          const bindings = (current.bindings ?? []).map((b): ActionBindingUpdate => ({
             ref: { type: "binding_id", value: str(b.id) },
             display_name: str(b.display_name),
           }));
           if ((current.bindings ?? []).some((b) => b.action?.id === raw)) return;
           bindings.push({ ref: { type: "action_id", value: raw }, display_name: str(action.name) });
-          await this.api.request(`/actions/triggers/${encodeURIComponent(trigger)}/bindings`, {
-            method: "PATCH",
+          await this.rest.patch(`/actions/triggers/${pathEncode(trigger)}/bindings`, {
             body: { bindings },
           });
           return;
         }
         case "action:unbind": {
-          const action = await this.api.request<A0Action>(`/actions/actions/${id}`);
+          const action = await this.rest.get(`/actions/actions/${id}`);
           const trigger = str(action.supported_triggers?.[0]?.id);
-          const current = await this.api.request<{ bindings?: A0Binding[] }>(
-            `/actions/triggers/${encodeURIComponent(trigger)}/bindings`,
-          );
+          const current = await this.rest.get(`/actions/triggers/${pathEncode(trigger)}/bindings`);
           const bindings = (current.bindings ?? [])
             .filter((b) => b.action?.id !== raw)
-            .map((b) => ({
+            .map((b): ActionBindingUpdate => ({
               ref: { type: "binding_id", value: str(b.id) },
               display_name: str(b.display_name),
             }));
-          await this.api.request(`/actions/triggers/${encodeURIComponent(trigger)}/bindings`, {
-            method: "PATCH",
+          await this.rest.patch(`/actions/triggers/${pathEncode(trigger)}/bindings`, {
             body: { bindings },
           });
           return;
         }
         case "custom-domain:verify":
-          await this.api.request(`/custom-domains/${id}/verify`, { method: "POST" });
+          await this.rest.post(`/custom-domains/${id}/verify`);
           return;
         case "log-stream:pause":
         case "log-stream:resume":
-          await this.api.request(`/log-streams/${id}`, {
-            method: "PATCH",
+          await this.rest.patch(`/log-streams/${id}`, {
             body: { status: actionId === "pause" ? "paused" : "active" },
           });
           return;
@@ -1763,9 +1728,9 @@ export class Auth0Client implements PluginClient {
     args: (string | number)[],
   ): PluginEffect<unknown> {
     return attempt(async () => {
-      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      const values: Record<string, string> = JSON.parse(String(args[0] ?? "{}"));
       const raw = externalIdOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       const need = (key: string, what: string): string => {
         const value = values[key];
         if (!value) throw new Error(`Auth0 plugin: choose ${what}`);
@@ -1773,76 +1738,60 @@ export class Auth0Client implements PluginClient {
       };
       switch (`${typeId}:${command}`) {
         case "action:edit-code": {
-          await this.api.request(`/actions/actions/${id}`, {
-            method: "PATCH",
+          await this.rest.patch(`/actions/actions/${id}`, {
             body: { code: values["code"] ?? "" },
           });
-          if (values["deploy"] === "true")
-            await this.api.request(`/actions/actions/${id}/deploy`, { method: "POST" });
+          if (values["deploy"] === "true") await this.rest.post(`/actions/actions/${id}/deploy`);
           return { ok: true };
         }
         case "api:set-scopes": {
           const scopes = list(values["scopes"]).map((value) => ({ value, description: value }));
-          return this.api.request(`/resource-servers/${id}`, { method: "PATCH", body: { scopes } });
+          return this.rest.patch(`/resource-servers/${id}`, { body: { scopes } });
         }
         case "role:add-permissions":
-          return this.api.request(`/roles/${id}/permissions`, {
-            method: "POST",
+          return this.rest.post(`/roles/${id}/permissions`, {
             body: this.permissionsBody(list(values["permissions"])),
           });
         case "role:remove-permissions":
-          return this.api.request(`/roles/${id}/permissions`, {
-            method: "DELETE",
+          return this.rest.delete(`/roles/${id}/permissions`, {
             body: this.permissionsBody(list(values["permissions"])),
           });
         case "user:assign-roles":
-          return this.api.request(`/users/${id}/roles`, {
-            method: "POST",
-            body: { roles: list(values["roles"]) },
-          });
+          return this.rest.post(`/users/${id}/roles`, { body: { roles: list(values["roles"]) } });
         case "user:remove-roles":
-          return this.api.request(`/users/${id}/roles`, {
-            method: "DELETE",
+          return this.rest.delete(`/users/${id}/roles`, {
             body: { roles: list(values["roles"]) },
           });
         case "connection:enable-clients":
         case "connection:disable-clients":
-          return this.api.request(`/connections/${id}/clients`, {
-            method: "PATCH",
+          return this.rest.patch(`/connections/${id}/clients`, {
             body: list(values["clients"]).map((client_id) => ({
               client_id,
               status: command === "enable-clients",
             })),
           });
         case "organization:add-members":
-          return this.api.request(`/organizations/${id}/members`, {
-            method: "POST",
+          return this.rest.post(`/organizations/${id}/members`, {
             body: { members: list(values["users"]) },
           });
         case "organization:remove-members":
-          return this.api.request(`/organizations/${id}/members`, {
-            method: "DELETE",
+          return this.rest.delete(`/organizations/${id}/members`, {
             body: { members: list(values["users"]) },
           });
         case "organization:enable-connection":
-          return this.api.request(`/organizations/${id}/enabled_connections`, {
-            method: "POST",
+          return this.rest.post(`/organizations/${id}/enabled_connections`, {
             body: {
               connection_id: need("connectionId", "a connection"),
               assign_membership_on_login: values["autoMembership"] === "true",
             },
           });
         case "organization:disable-connection":
-          return this.api.request(
-            `/organizations/${id}/enabled_connections/${encodeURIComponent(need("connectionId", "a connection"))}`,
-            {
-              method: "DELETE",
-            },
+          return this.rest.delete(
+            `/organizations/${id}/enabled_connections/${pathEncode(need("connectionId", "a connection"))}`,
           );
         case "organization:invite": {
           const clientId = need("clientId", "an application");
-          return this.api.request(`/organizations/${id}/invitations`, {
-            method: "POST",
+          return this.rest.post(`/organizations/${id}/invitations`, {
             body: {
               inviter: { name: values["inviter"] || "Infrawrench" },
               invitee: { email: need("email", "an email address") },
@@ -1866,8 +1815,7 @@ export class Auth0Client implements PluginClient {
   ): PluginEffect<CredentialExport> {
     return attempt(async () => {
       if (typeId === "user" && formatId === "password-reset-link") {
-        const body = await this.api.request<{ ticket?: string }>("/tickets/password-change", {
-          method: "POST",
+        const body = await this.rest.post("/tickets/password-change", {
           body: { user_id: externalIdOf(resourceId), ttl_sec: 86400 },
         });
         const ticket = str(body.ticket);
@@ -1898,15 +1846,19 @@ export class Auth0Client implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const raw = externalIdOf(resource.id);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       const extra: Record<string, string> = {};
       switch (resource.resourceTypeId) {
         case "user": {
           const [roles, allRoles] = await Promise.all([
-            this.api
-              .pages<A0Role>(`/users/${id}/roles`, "roles", {}, 2)
-              .catch(() => [] as A0Role[]),
-            this.api.pages<A0Role>("/roles", "roles", {}, 3).catch(() => [] as A0Role[]),
+            pages(
+              "roles",
+              (paging) => this.rest.get(`/users/${id}/roles`, { query: paging }),
+              2,
+            ).catch((): A0Role[] => []),
+            pages("roles", (paging) => this.rest.get("/roles", { query: paging }), 3).catch(
+              (): A0Role[] => [],
+            ),
           ]);
           extra["__roles__"] = JSON.stringify(
             roles.map((r) => ({ id: str(r.id), label: str(r.name) })),
@@ -1933,13 +1885,13 @@ export class Auth0Client implements PluginClient {
         }
         case "connection": {
           const [enabled, clients, status] = await Promise.all([
-            this.api
-              .request<{ clients?: Array<{ client_id?: string }> }>(`/connections/${id}/clients`)
+            this.rest
+              .get(`/connections/${id}/clients`)
               .then((b) => (b.clients ?? []).map((c) => str(c.client_id)))
-              .catch(() => [] as string[]),
+              .catch((): string[] => []),
             this.clientPolicies(),
-            this.api
-              .call<unknown>(`/connections/${id}/status`)
+            this.rest
+              .get(`/connections/${id}/status`)
               .then(() => "online")
               .catch((e: { status?: number }) => (e.status === 404 ? "" : "offline")),
           ]);
@@ -1952,24 +1904,21 @@ export class Auth0Client implements PluginClient {
         }
         case "organization": {
           const [members, users, connections, enabled, clients] = await Promise.all([
-            this.api
-              .pages<{ user_id?: string; email?: string; name?: string }>(
-                `/organizations/${id}/members`,
-                "members",
-                {},
-                2,
-              )
-              .catch(() => []),
-            this.api.pages<A0User>("/users", "users", {}, 2).catch(() => [] as A0User[]),
+            pages(
+              "members",
+              (paging) => this.rest.get(`/organizations/${id}/members`, { query: paging }),
+              2,
+            ).catch(() => []),
+            pages("users", (paging) => this.rest.get("/users", { query: paging }), 2).catch(
+              (): A0User[] => [],
+            ),
             this.connectionIdOptions(),
-            this.api
-              .pages<{ connection_id?: string; connection?: { name?: string } }>(
-                `/organizations/${id}/enabled_connections`,
-                "enabled_connections",
-                {},
-                2,
-              )
-              .catch(() => []),
+            pages(
+              "enabled_connections",
+              (paging) =>
+                this.rest.get(`/organizations/${id}/enabled_connections`, { query: paging }),
+              2,
+            ).catch(() => []),
             this.clientPolicies(),
           ]);
           extra["__members__"] = JSON.stringify(

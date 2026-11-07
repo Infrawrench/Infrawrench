@@ -61,12 +61,12 @@ function lowerKeys(headers: Record<string, string> | undefined): Record<string, 
 export function apiError(status: number, path: string, body: string): Error {
   let detail = body.slice(0, 500);
   try {
-    const parsed = JSON.parse(body) as {
+    const parsed: {
       message?: unknown;
       error?: unknown;
       error_description?: unknown;
       errorCode?: unknown;
-    };
+    } = JSON.parse(body);
     const message =
       typeof parsed.message === "string"
         ? parsed.message
