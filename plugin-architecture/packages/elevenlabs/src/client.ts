@@ -30,14 +30,43 @@ import {
   joinSubtitle,
   jsonRestFetch,
   externalIdOf,
+  pathEncode,
 } from "@infrawrench/plugin-base";
+import {
+  API_BASE,
+  createElevenLabsApis,
+  type AgentConfigInput,
+  type AgentPatchBody,
+  type AgentPromptInput,
+  type AgentTtsInput,
+  type AgentDetailWire,
+  type AgentsPage,
+  type AgentSummaryWire,
+  type ConversationsPage,
+  type ConversationWire,
+  type DictionaryRule,
+  type EditVoiceResponse,
+  type ElevenLabsApi,
+  type ElevenLabsHistoryItem,
+  type ElevenLabsModel,
+  type ElevenLabsPronunciationDictionary,
+  type ElevenLabsSubscription,
+  type ElevenLabsVoice,
+  type HistoryPage,
+  type KnowledgeBaseDocumentWire,
+  type KnowledgeBasePage,
+  type PronunciationDictionaryPage,
+  type ScribeResponse,
+  type ScribeWord,
+  type SynthesisBody,
+  type VoicesPage,
+} from "./api.js";
 import { fetchElevenLabsCostData } from "./cost-data.js";
 import {
   USAGE_QUERY_PATH,
   usageQueryBody,
   usageSeriesFor,
   type UsageGroup,
-  type UsageQueryResponse,
 } from "./usage-metrics.js";
 import {
   AGENT_LANGUAGES,
@@ -51,19 +80,6 @@ import {
   renderKnowledgeBaseDocumentDetail,
   renderPhoneNumberDetail,
 } from "./agents.js";
-import type {
-  AgentDetailWire,
-  AgentSummaryWire,
-  AgentsPage,
-  ConversationWire,
-  ConversationsPage,
-  KnowledgeBaseDocumentWire,
-  KnowledgeBasePage,
-  LlmListWire,
-  PhoneNumberWire,
-} from "./agents.js";
-
-const API_BASE = "https://api.elevenlabs.io";
 
 /** Requested explicitly so the browser `<audio>` element can play the result. */
 const MP3_OUTPUT_FORMAT = "mp3_44100_128";
@@ -106,116 +122,8 @@ const FALLBACK_MAX_CHARACTERS = 10_000;
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
-// Wire shapes
+// What `renderDetail` reads back
 // ---------------------------------------------------------------------------
-
-interface ElevenLabsVoice {
-  voice_id: string;
-  name?: string | null;
-  category?: string | null;
-  description?: string | null;
-  preview_url?: string | null;
-  labels?: Record<string, string> | null;
-  high_quality_base_model_ids?: string[] | null;
-  is_owner?: boolean | null;
-  created_at_unix?: number | null;
-}
-
-interface VoicesPage {
-  voices?: ElevenLabsVoice[];
-  has_more?: boolean;
-  next_page_token?: string | null;
-  total_count?: number;
-}
-
-interface ElevenLabsModel {
-  model_id: string;
-  name?: string | null;
-  description?: string | null;
-  can_do_text_to_speech?: boolean;
-  can_do_voice_conversion?: boolean;
-  can_use_style?: boolean;
-  can_use_speaker_boost?: boolean;
-  requires_alpha_access?: boolean;
-  token_cost_factor?: number;
-  maximum_text_length_per_request?: number | null;
-  languages?: Array<{ language_id: string; name?: string | null }> | null;
-}
-
-interface ElevenLabsHistoryItem {
-  history_item_id: string;
-  request_id?: string | null;
-  voice_id?: string | null;
-  voice_name?: string | null;
-  model_id?: string | null;
-  text?: string | null;
-  date_unix?: number | null;
-  character_count_change_from?: number | null;
-  character_count_change_to?: number | null;
-  content_type?: string | null;
-  state?: string | null;
-  source?: string | null;
-}
-
-interface HistoryPage {
-  history?: ElevenLabsHistoryItem[];
-  last_history_item_id?: string | null;
-  has_more?: boolean;
-}
-
-interface ElevenLabsPronunciationDictionary {
-  id: string;
-  latest_version_id?: string | null;
-  latest_version_rules_num?: number | null;
-  name?: string | null;
-  permission_on_resource?: string | null;
-  created_by?: string | null;
-  creation_time_unix?: number | null;
-  description?: string | null;
-}
-
-interface PronunciationDictionaryPage {
-  pronunciation_dictionaries?: ElevenLabsPronunciationDictionary[];
-  has_more?: boolean;
-  next_cursor?: string | null;
-}
-
-interface ElevenLabsSubscription {
-  tier?: string | null;
-  status?: string | null;
-  currency?: string | null;
-  billing_period?: string | null;
-  character_count?: number | null;
-  character_limit?: number | null;
-  next_character_count_reset_unix?: number | null;
-  can_extend_character_limit?: boolean | null;
-  voice_limit?: number | null;
-  voice_slots_used?: number | null;
-}
-
-interface ScribeWord {
-  text?: string | null;
-  start?: number | null;
-  end?: number | null;
-  type?: string | null;
-  speaker_id?: string | null;
-  /**
-   * "The log of the probability with which this word was predicted." Range is
-   * (-∞, 0], so `Math.exp` turns it back into a 0..1 probability. This is the
-   * only per-transcript confidence Scribe exposes: `language_probability` is
-   * a language-ID score and says nothing about transcript quality.
-   */
-  logprob?: number | null;
-}
-
-interface ScribeResponse {
-  language_code?: string | null;
-  language_probability?: number | null;
-  text?: string | null;
-  words?: ScribeWord[] | null;
-  audio_duration_secs?: number | null;
-  transcription_id?: string | null;
-}
 
 /** Shape stashed under the `__models__` resolved output. */
 interface StashedModel {
@@ -280,8 +188,8 @@ function meterBar(fraction: number): string {
 function parseJsonStash<T>(raw: string | undefined): T[] {
   if (!raw) return [];
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
+    const parsed: T[] = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -290,24 +198,21 @@ function parseJsonStash<T>(raw: string | undefined): T[] {
 function parseQuotaStash(raw: string | undefined): StashedQuota | null {
   if (!raw) return null;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && "limit" in parsed) return parsed as StashedQuota;
+    const parsed: StashedQuota | null = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && "limit" in parsed) return parsed;
     return null;
   } catch {
     return null;
   }
 }
 
-/**
- * ElevenLabs plugin client. One instance per account (per API key).
- * Every JSON call authenticates with the raw `xi-api-key` header: ElevenLabs
- * does not use `Authorization: Bearer`.
- * https://elevenlabs.io/docs/api-reference/authentication
- */
+/** ElevenLabs plugin client. One instance per account (per API key). */
 export class ElevenLabsClient implements PluginClient {
   private readonly apiKey: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  private readonly api: ElevenLabsApi;
+  private readonly formQueryApi: ElevenLabsApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -315,18 +220,13 @@ export class ElevenLabsClient implements PluginClient {
     this.apiKey = apiKey;
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "ElevenLabs",
-      url: `${API_BASE}${path}`,
-      errorPath: path,
-      headers: { "xi-api-key": this.apiKey, Accept: "application/json" },
-      ...(options ? { init: options } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
+    const { api, formQueryApi } = createElevenLabsApis({
+      apiKey,
+      caCert: this.caCert,
+      http: services?.http,
     });
+    this.api = api;
+    this.formQueryApi = formQueryApi;
   }
 
   // -------------------------------------------------------------------------
@@ -367,7 +267,7 @@ export class ElevenLabsClient implements PluginClient {
           return summaries.map((summary, index) => mapAgent(summary, details[index], accountId));
         }
         case "phone-number": {
-          const phones = await this.fetch<PhoneNumberWire[]>("/v1/convai/phone-numbers");
+          const phones = await this.api.get("/v1/convai/phone-numbers");
           return (Array.isArray(phones) ? phones : []).map((phone) =>
             mapPhoneNumber(phone, accountId),
           );
@@ -389,11 +289,12 @@ export class ElevenLabsClient implements PluginClient {
    */
   private async fetchVoices(): Promise<ElevenLabsVoice[]> {
     const voices: ElevenLabsVoice[] = [];
-    let pageToken: string | undefined;
+    let pageToken: string | null = null;
     // Bounded so a pathological workspace can't spin forever.
     for (let page = 0; page < 50; page += 1) {
-      const cursor = pageToken ? `&next_page_token=${encodeURIComponent(pageToken)}` : "";
-      const data = await this.fetch<VoicesPage>(`/v2/voices?page_size=100${cursor}`);
+      const data: VoicesPage = await this.api.get("/v2/voices", {
+        query: { page_size: 100, next_page_token: pageToken },
+      });
       voices.push(...(data.voices ?? []));
       if (!data.has_more || !data.next_page_token) break;
       pageToken = data.next_page_token;
@@ -406,7 +307,7 @@ export class ElevenLabsClient implements PluginClient {
    * https://elevenlabs.io/docs/api-reference/models/list
    */
   private async fetchModels(): Promise<ElevenLabsModel[]> {
-    const data = await this.fetch<ElevenLabsModel[]>("/v1/models");
+    const data = await this.api.get("/v1/models");
     return Array.isArray(data) ? data : [];
   }
 
@@ -419,11 +320,13 @@ export class ElevenLabsClient implements PluginClient {
    */
   private async fetchPronunciationDictionaries(): Promise<ElevenLabsPronunciationDictionary[]> {
     const dictionaries: ElevenLabsPronunciationDictionary[] = [];
-    let cursor: string | undefined;
+    let cursor: string | null = null;
     for (let page = 0; page < 50; page += 1) {
-      const suffix = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-      const data = await this.fetch<PronunciationDictionaryPage>(
-        `/v1/pronunciation-dictionaries?page_size=100&include_archived=false${suffix}`,
+      const data: PronunciationDictionaryPage = await this.api.get(
+        "/v1/pronunciation-dictionaries",
+        {
+          query: { page_size: 100, include_archived: false, cursor },
+        },
       );
       dictionaries.push(...(data.pronunciation_dictionaries ?? []));
       if (!data.has_more || !data.next_cursor) break;
@@ -440,12 +343,13 @@ export class ElevenLabsClient implements PluginClient {
    */
   private async fetchHistory(): Promise<ElevenLabsHistoryItem[]> {
     const items: ElevenLabsHistoryItem[] = [];
-    let after: string | undefined;
+    let after: string | null = null;
     // History is unbounded over an account's lifetime: cap at 5 pages (500
     // clips), newest first, which is what the sidebar can usefully show.
     for (let page = 0; page < 5; page += 1) {
-      const suffix = after ? `&start_after_history_item_id=${encodeURIComponent(after)}` : "";
-      const data = await this.fetch<HistoryPage>(`/v1/history?page_size=100${suffix}`);
+      const data: HistoryPage = await this.api.get("/v1/history", {
+        query: { page_size: 100, start_after_history_item_id: after },
+      });
       items.push(...(data.history ?? []));
       if (!data.has_more || !data.last_history_item_id) break;
       after = data.last_history_item_id;
@@ -460,10 +364,11 @@ export class ElevenLabsClient implements PluginClient {
    */
   private async fetchAgents(): Promise<AgentSummaryWire[]> {
     const agents: AgentSummaryWire[] = [];
-    let cursor: string | undefined;
+    let cursor: string | null = null;
     for (let page = 0; page < 20; page += 1) {
-      const suffix = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-      const data = await this.fetch<AgentsPage>(`/v1/convai/agents?page_size=100${suffix}`);
+      const data: AgentsPage = await this.api.get("/v1/convai/agents", {
+        query: { page_size: 100, cursor },
+      });
       agents.push(...(data.agents ?? []));
       if (!data.has_more || !data.next_cursor) break;
       cursor = data.next_cursor;
@@ -473,7 +378,7 @@ export class ElevenLabsClient implements PluginClient {
 
   /** `GET /v1/convai/agents/{agent_id}`: https://elevenlabs.io/docs/api-reference/agents/get */
   private async fetchAgent(agentId: string): Promise<AgentDetailWire> {
-    return this.fetch<AgentDetailWire>(`/v1/convai/agents/${encodeURIComponent(agentId)}`);
+    return this.api.get(`/v1/convai/agents/${pathEncode(agentId)}`);
   }
 
   /**
@@ -489,16 +394,16 @@ export class ElevenLabsClient implements PluginClient {
     pageSize = 100,
   ): Promise<ConversationWire[]> {
     const conversations: ConversationWire[] = [];
-    let cursor: string | undefined;
+    let cursor: string | null = null;
     for (let page = 0; page < maxPages; page += 1) {
-      const query = new URLSearchParams();
-      query.set("agent_id", agentId);
-      query.set("page_size", String(pageSize));
-      if (afterUnix !== undefined) query.set("call_start_after_unix", String(afterUnix));
-      if (cursor) query.set("cursor", cursor);
-      const data = await this.fetch<ConversationsPage>(
-        `/v1/convai/conversations?${query.toString()}`,
-      );
+      const data: ConversationsPage = await this.formQueryApi.get("/v1/convai/conversations", {
+        query: {
+          agent_id: agentId,
+          page_size: pageSize,
+          call_start_after_unix: afterUnix ?? null,
+          cursor,
+        },
+      });
       conversations.push(...(data.conversations ?? []));
       if (!data.has_more || !data.next_cursor) break;
       cursor = data.next_cursor;
@@ -512,12 +417,11 @@ export class ElevenLabsClient implements PluginClient {
    */
   private async fetchKnowledgeBase(): Promise<KnowledgeBaseDocumentWire[]> {
     const documents: KnowledgeBaseDocumentWire[] = [];
-    let cursor: string | undefined;
+    let cursor: string | null = null;
     for (let page = 0; page < 20; page += 1) {
-      const suffix = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-      const data = await this.fetch<KnowledgeBasePage>(
-        `/v1/convai/knowledge-base?page_size=100${suffix}`,
-      );
+      const data: KnowledgeBasePage = await this.api.get("/v1/convai/knowledge-base", {
+        query: { page_size: 100, cursor },
+      });
       documents.push(...(data.documents ?? []));
       if (!data.has_more || !data.next_cursor) break;
       cursor = data.next_cursor;
@@ -531,7 +435,7 @@ export class ElevenLabsClient implements PluginClient {
    * https://elevenlabs.io/docs/eleven-agents/api-reference/llm/list
    */
   private async fetchAgentLlms(): Promise<SelectOption[]> {
-    const data = await this.fetch<LlmListWire>("/v1/convai/llm/list");
+    const data = await this.api.get("/v1/convai/llm/list");
     return (data.llms ?? [])
       .filter((entry) => entry.llm && entry.deprecation_info?.is_deprecated !== true)
       .map((entry) => ({
@@ -550,7 +454,7 @@ export class ElevenLabsClient implements PluginClient {
    * https://elevenlabs.io/docs/api-reference/user/subscription/get
    */
   private async fetchSubscription(): Promise<ElevenLabsSubscription> {
-    return this.fetch<ElevenLabsSubscription>("/v1/user/subscription");
+    return this.api.get("/v1/user/subscription");
   }
 
   // -------------------------------------------------------------------------
@@ -835,34 +739,30 @@ export class ElevenLabsClient implements PluginClient {
       const externalId = externalIdOf(resourceId);
       if (!externalId)
         throw new Error(`ElevenLabs plugin: cannot parse resource id "${resourceId}"`);
-      if (typeId === "voice") {
-        await this.fetch<unknown>(`/v1/voices/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      }
-      const deletePaths: Record<string, string> = {
-        "history-item": "/v1/history/",
-        agent: "/v1/convai/agents/",
-        "phone-number": "/v1/convai/phone-numbers/",
-        "knowledge-base-document": "/v1/convai/knowledge-base/",
-      };
-      const prefix = deletePaths[typeId];
-      if (prefix) {
-        await this.fetch<unknown>(`${prefix}${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      }
-      if (typeId === "pronunciation-dictionary") {
-        await this.fetch<unknown>(
-          `/v1/pronunciation-dictionaries/${encodeURIComponent(externalId)}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify({ archived: true }),
-          },
-        );
-        return;
+      const id = pathEncode(externalId);
+      switch (typeId) {
+        case "voice":
+          await this.api.delete(`/v1/voices/${id}`);
+          return;
+        case "history-item":
+          await this.api.delete(`/v1/history/${id}`);
+          return;
+        case "agent":
+          await this.api.delete(`/v1/convai/agents/${id}`);
+          return;
+        case "phone-number":
+          await this.api.delete(`/v1/convai/phone-numbers/${id}`);
+          return;
+        case "knowledge-base-document":
+          await this.api.delete(`/v1/convai/knowledge-base/${id}`);
+          return;
+        case "pronunciation-dictionary":
+          await this.api.patch(`/v1/pronunciation-dictionaries/${id}`, {
+            body: { archived: true },
+          });
+          return;
+        default:
+          break;
       }
       throw new Error(`ElevenLabs plugin: deleteResource not supported for type "${typeId}"`);
     });
@@ -953,9 +853,9 @@ export class ElevenLabsClient implements PluginClient {
               (): ConversationWire[] | null => null,
             ),
             // GET /v1/convai/analytics/live-count: conversations in progress now.
-            this.fetch<{ count?: number }>(
-              `/v1/convai/analytics/live-count?agent_id=${encodeURIComponent(agentId)}`,
-            ).catch(() => null),
+            this.api
+              .get("/v1/convai/analytics/live-count", { query: { agent_id: agentId } })
+              .catch(() => null),
           ]);
           if (typeof live?.count === "number") {
             stats.push({ label: "Live Conversations", value: formatNumber(live.count) });
@@ -1017,10 +917,8 @@ export class ElevenLabsClient implements PluginClient {
         const group: UsageGroup = resourceTypeId === "voice" ? "voice_id" : "model";
         const endMs = timeRange?.endMs ?? Date.now();
         const range = { startMs: timeRange?.startMs ?? endMs - 30 * DAY_MS, endMs };
-        const body = await this.fetch<UsageQueryResponse>(USAGE_QUERY_PATH, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(usageQueryBody(group, range)),
+        const body = await this.api.post(USAGE_QUERY_PATH, {
+          body: usageQueryBody(group, range),
         });
         return usageSeriesFor(body, group, externalIdOf(resourceId));
       }
@@ -1201,18 +1099,14 @@ export class ElevenLabsClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "pronunciation-dictionary") {
         const rules = parseDictionaryRules(fields);
-        const created = await this.fetch<{ id: string }>(
-          "/v1/pronunciation-dictionaries/add-from-rules",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              name: fields["name"],
-              rules,
-              ...(fields["description"] ? { description: fields["description"] } : {}),
-              ...(fields["workspaceAccess"] ? { workspace_access: fields["workspaceAccess"] } : {}),
-            }),
+        const created = await this.api.post("/v1/pronunciation-dictionaries/add-from-rules", {
+          body: {
+            name: fields["name"],
+            rules,
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            ...(fields["workspaceAccess"] ? { workspace_access: fields["workspaceAccess"] } : {}),
           },
-        );
+        });
         return runPluginEffect(
           this.getResource(
             "pronunciation-dictionary",
@@ -1225,24 +1119,27 @@ export class ElevenLabsClient implements PluginClient {
       if (typeId === "agent") {
         const name = (fields["name"] ?? "").trim();
         if (!name) throw new Error("ElevenLabs plugin: an agent needs a name");
-        const prompt: Record<string, unknown> = {};
-        if (fields["systemPrompt"]) prompt["prompt"] = fields["systemPrompt"];
-        if (fields["llm"]) prompt["llm"] = fields["llm"];
-        const agent: Record<string, unknown> = { language: fields["language"] || "en" };
-        if (fields["firstMessage"]) agent["first_message"] = fields["firstMessage"];
-        if (Object.keys(prompt).length) agent["prompt"] = prompt;
-        const tts: Record<string, unknown> = {};
-        if (fields["voiceId"]) tts["voice_id"] = fields["voiceId"];
-        if (fields["ttsModelId"]) tts["model_id"] = fields["ttsModelId"];
+        const prompt: AgentPromptInput = {
+          ...(fields["systemPrompt"] ? { prompt: fields["systemPrompt"] } : {}),
+          ...(fields["llm"] ? { llm: fields["llm"] } : {}),
+        };
+        const agent: AgentConfigInput = {
+          language: fields["language"] || "en",
+          ...(fields["firstMessage"] ? { first_message: fields["firstMessage"] } : {}),
+          ...(Object.keys(prompt).length ? { prompt } : {}),
+        };
+        const tts: AgentTtsInput = {
+          ...(fields["voiceId"] ? { voice_id: fields["voiceId"] } : {}),
+          ...(fields["ttsModelId"] ? { model_id: fields["ttsModelId"] } : {}),
+        };
         const tags = parseTags(fields["tags"] ?? "");
 
-        const created = await this.fetch<{ agent_id: string }>("/v1/convai/agents/create", {
-          method: "POST",
-          body: JSON.stringify({
+        const created = await this.api.post("/v1/convai/agents/create", {
+          body: {
             name,
             conversation_config: { agent, ...(Object.keys(tts).length ? { tts } : {}) },
             ...(tags.length ? { tags } : {}),
-          }),
+          },
         });
         return mapAgent(undefined, await this.fetchAgent(created.agent_id), accountId);
       }
@@ -1270,7 +1167,7 @@ export class ElevenLabsClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
-      const encoded = encodeURIComponent(externalId);
+      const id = pathEncode(externalId);
 
       if (typeId === "voice") {
         const current = await runPluginEffect(this.getResource("voice", resourceId, accountId));
@@ -1283,42 +1180,53 @@ export class ElevenLabsClient implements PluginClient {
             ? [{ kind: "field" as const, name: "description", value: description }]
             : []),
         ]);
-        await this.fetch<unknown>(`/v1/voices/${encoded}/edit`, {
-          method: "POST",
-          headers: { "Content-Type": multipart.contentType },
-          body: multipart.body,
+        // Multipart, which the typed client cannot write.
+        await jsonRestFetch<EditVoiceResponse>({
+          vendor: "ElevenLabs",
+          url: `${API_BASE}/v1/voices/${id}/edit`,
+          errorPath: `/v1/voices/${id}/edit`,
+          headers: { "xi-api-key": this.apiKey, Accept: "application/json" },
+          init: {
+            method: "POST",
+            headers: { "Content-Type": multipart.contentType },
+            body: multipart.body,
+          },
+          ...(this.services?.http ? { http: this.services.http } : {}),
+          ...(this.caCert ? { caCert: this.caCert } : {}),
         });
         return runPluginEffect(this.getResource("voice", resourceId, accountId));
       }
 
       if (typeId === "agent") {
-        const body: Record<string, unknown> = {};
-        if (fields["name"] !== undefined) {
-          if (!fields["name"].trim()) throw new Error("ElevenLabs plugin: an agent needs a name");
-          body["name"] = fields["name"].trim();
+        if (fields["name"] !== undefined && !fields["name"].trim()) {
+          throw new Error("ElevenLabs plugin: an agent needs a name");
         }
-        if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
-        const agent: Record<string, unknown> = {};
-        if (fields["language"] !== undefined) agent["language"] = fields["language"];
-        if (fields["firstMessage"] !== undefined) agent["first_message"] = fields["firstMessage"];
-        if (fields["systemPrompt"] !== undefined) {
-          agent["prompt"] = { prompt: fields["systemPrompt"] };
-        }
-        if (Object.keys(agent).length) body["conversation_config"] = { agent };
+        // The document types `conversation_config` here as an open map, so the
+        // create schema is what keeps a misspelt key from going out.
+        const agent: AgentConfigInput = {
+          ...(fields["language"] !== undefined ? { language: fields["language"] } : {}),
+          ...(fields["firstMessage"] !== undefined
+            ? { first_message: fields["firstMessage"] }
+            : {}),
+          ...(fields["systemPrompt"] !== undefined
+            ? { prompt: { prompt: fields["systemPrompt"] } }
+            : {}),
+        };
+        const body: AgentPatchBody = {
+          ...(fields["name"] !== undefined ? { name: fields["name"].trim() } : {}),
+          ...(fields["tags"] !== undefined ? { tags: parseTags(fields["tags"]) } : {}),
+          ...(Object.keys(agent).length ? { conversation_config: { agent } } : {}),
+        };
         if (Object.keys(body).length) {
-          await this.fetch<unknown>(`/v1/convai/agents/${encoded}`, {
-            method: "PATCH",
-            body: JSON.stringify(body),
-          });
+          await this.api.patch(`/v1/convai/agents/${id}`, { body });
         }
         return runPluginEffect(this.getResource("agent", resourceId, accountId));
       }
 
       if (typeId === "phone-number") {
         if (fields["label"] !== undefined) {
-          await this.fetch<unknown>(`/v1/convai/phone-numbers/${encoded}`, {
-            method: "PATCH",
-            body: JSON.stringify({ label: fields["label"] || null }),
+          await this.api.patch(`/v1/convai/phone-numbers/${id}`, {
+            body: { label: fields["label"] || null },
           });
         }
         return runPluginEffect(this.getResource("phone-number", resourceId, accountId));
@@ -1329,9 +1237,8 @@ export class ElevenLabsClient implements PluginClient {
           if (!fields["name"].trim()) {
             throw new Error("ElevenLabs plugin: a pronunciation dictionary needs a name");
           }
-          await this.fetch<unknown>(`/v1/pronunciation-dictionaries/${encoded}`, {
-            method: "PATCH",
-            body: JSON.stringify({ name: fields["name"].trim() }),
+          await this.api.patch(`/v1/pronunciation-dictionaries/${id}`, {
+            body: { name: fields["name"].trim() },
           });
         }
         return runPluginEffect(this.getResource("pronunciation-dictionary", resourceId, accountId));
@@ -1409,7 +1316,7 @@ export class ElevenLabsClient implements PluginClient {
    */
   private async requestSynthesisAudio(
     voiceId: string,
-    body: Record<string, unknown>,
+    body: SynthesisBody,
   ): Promise<{
     bytes: Uint8Array;
     characterCost: number | undefined;
@@ -1493,7 +1400,7 @@ export class ElevenLabsClient implements PluginClient {
         );
       }
       const elapsedMs = Date.now() - started;
-      const data = (await response.json()) as ScribeResponse;
+      const data: ScribeResponse = await response.json();
 
       const spoken = (data.words ?? []).filter(
         (word) => (word.type ?? "word") === "word" && Boolean(word.text),
@@ -2130,12 +2037,11 @@ async function mapWithConcurrency<T, R>(
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = new Array<R>(items.length);
-  let next = 0;
+  // One iterator shared by every worker, so each takes the next unclaimed item.
+  const queue = items.entries();
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      results[index] = await fn(items[index] as T);
+    for (const [index, item] of queue) {
+      results[index] = await fn(item);
     }
   });
   await Promise.all(workers);
@@ -2149,10 +2055,10 @@ async function mapWithConcurrency<T, R>(
  * than skipped, so a typo cannot silently drop a rule.
  * https://elevenlabs.io/docs/api-reference/pronunciation-dictionaries/create-from-rules
  */
-export function parseDictionaryRules(fields: Record<string, string>): Record<string, unknown>[] {
+export function parseDictionaryRules(fields: Record<string, string>): DictionaryRule[] {
   const ruleType = fields["ruleType"] === "phoneme" ? "phoneme" : "alias";
   const caseSensitive = fields["caseSensitive"] !== "false";
-  const rules: Record<string, unknown>[] = [];
+  const rules: DictionaryRule[] = [];
   const lines = (fields["rules"] ?? "").split(/\r?\n/);
   for (const [index, raw] of lines.entries()) {
     const line = raw.trim();

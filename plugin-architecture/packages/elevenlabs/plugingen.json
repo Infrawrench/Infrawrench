@@ -1,0 +1,47 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.elevenlabs.io/openapi.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/Body_Add_a_pronunciation_dictionary_v1_pronunciation_dictionaries_add_from_rules_post/properties/workspace_access",
+      "value": { "type": ["string", "null"] },
+      "why": "An enum in the document; the create form's value goes through as chosen, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/PromptAgentAPIModel-Input/properties/llm",
+      "value": { "type": "string" },
+      "why": "An enum in the document; the picker is filled at runtime from GET /v1/convai/llm/list and its value goes through as chosen, so the enum would only lag it."
+    },
+    {
+      "pointer": "/components/schemas/TTSConversationalConfig-Input/properties/model_id",
+      "value": { "type": "string" },
+      "why": "An enum in the document; the picker is filled at runtime from GET /v1/models and its value goes through as chosen, so the enum would only lag it."
+    }
+  ],
+  "paths": {
+    "/v1/convai/agents": ["get"],
+    "/v1/convai/agents/create": ["post"],
+    "/v1/convai/agents/{agent_id}": ["get", "patch", "delete"],
+    "/v1/convai/analytics/live-count": ["get"],
+    "/v1/convai/conversations": ["get"],
+    "/v1/convai/knowledge-base": ["get"],
+    "/v1/convai/knowledge-base/{documentation_id}": ["delete"],
+    "/v1/convai/llm/list": ["get"],
+    "/v1/convai/phone-numbers": ["get"],
+    "/v1/convai/phone-numbers/{phone_number_id}": ["patch", "delete"],
+    "/v1/history": ["get"],
+    "/v1/history/{history_item_id}": ["delete"],
+    "/v1/models": ["get"],
+    "/v1/pronunciation-dictionaries": ["get"],
+    "/v1/pronunciation-dictionaries/add-from-rules": ["post"],
+    "/v1/pronunciation-dictionaries/{pronunciation_dictionary_id}": ["patch"],
+    "/v1/speech-to-text": ["post"],
+    "/v1/text-to-speech/{voice_id}": ["post"],
+    "/v1/usage/character-stats": ["get"],
+    "/v1/user/subscription": ["get"],
+    "/v1/voices/{voice_id}": ["delete"],
+    "/v1/voices/{voice_id}/edit": ["post"],
+    "/v1/workspace/analytics/query/usage-by-product-over-time": ["post"],
+    "/v2/voices": ["get"]
+  }
+}

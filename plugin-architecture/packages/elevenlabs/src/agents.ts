@@ -7,126 +7,24 @@ import type {
   SectionNode,
   SelectOption,
 } from "@infrawrench/plugin-base";
+import type {
+  AgentDetailWire,
+  AgentSummaryWire,
+  ConversationWire,
+  KnowledgeBaseDocumentWire,
+  PhoneNumberWire,
+} from "./api.js";
 
 /**
  * ElevenAgents (formerly Conversational AI): agents, their phone numbers and
- * the knowledge base documents they draw on. Wire shapes, mapping and
- * rendering live here; the client owns transport and dispatch.
+ * the knowledge base documents they draw on. Mapping and rendering live here;
+ * the client owns transport and dispatch.
  *
  * https://elevenlabs.io/docs/api-reference/agents/list
  * https://elevenlabs.io/docs/api-reference/conversations/list
  * https://elevenlabs.io/docs/api-reference/phone-numbers/list
  * https://elevenlabs.io/docs/api-reference/knowledge-base/list
  */
-
-// ---------------------------------------------------------------------------
-// Wire shapes
-// ---------------------------------------------------------------------------
-
-export interface AgentSummaryWire {
-  agent_id: string;
-  name?: string | null;
-  voice_id?: string | null;
-  tags?: string[] | null;
-  created_at_unix_secs?: number | null;
-  last_call_time_unix_secs?: number | null;
-  archived?: boolean | null;
-  access_info?: {
-    is_creator?: boolean | null;
-    creator_name?: string | null;
-    creator_email?: string | null;
-    role?: string | null;
-  } | null;
-}
-
-export interface AgentsPage {
-  agents?: AgentSummaryWire[];
-  has_more?: boolean;
-  next_cursor?: string | null;
-}
-
-export interface AgentDetailWire {
-  agent_id: string;
-  name?: string | null;
-  tags?: string[] | null;
-  conversation_config?: {
-    agent?: {
-      first_message?: string | null;
-      language?: string | null;
-      prompt?: {
-        prompt?: string | null;
-        llm?: string | null;
-        temperature?: number | null;
-      } | null;
-    } | null;
-    tts?: { voice_id?: string | null; model_id?: string | null } | null;
-  } | null;
-  metadata?: {
-    created_at_unix_secs?: number | null;
-    updated_at_unix_secs?: number | null;
-  } | null;
-  phone_numbers?: Array<{
-    phone_number?: string | null;
-    phone_number_id?: string | null;
-    label?: string | null;
-    provider?: string | null;
-  }> | null;
-  access_info?: AgentSummaryWire["access_info"];
-}
-
-export interface ConversationWire {
-  agent_id?: string | null;
-  conversation_id: string;
-  start_time_unix_secs?: number | null;
-  call_duration_secs?: number | null;
-  message_count?: number | null;
-  status?: string | null;
-  call_successful?: string | null;
-  call_summary_title?: string | null;
-  direction?: string | null;
-  main_language?: string | null;
-  termination_reason?: string | null;
-}
-
-export interface ConversationsPage {
-  conversations?: ConversationWire[];
-  has_more?: boolean;
-  next_cursor?: string | null;
-}
-
-export interface PhoneNumberWire {
-  phone_number_id: string;
-  phone_number?: string | null;
-  label?: string | null;
-  provider?: string | null;
-  assigned_agent?: { agent_id?: string | null; agent_name?: string | null } | null;
-}
-
-export interface KnowledgeBaseDocumentWire {
-  id: string;
-  name?: string | null;
-  type?: string | null;
-  metadata?: {
-    created_at_unix_secs?: number | null;
-    last_updated_at_unix_secs?: number | null;
-    size_bytes?: number | null;
-  } | null;
-  dependent_agents?: unknown[] | null;
-}
-
-export interface KnowledgeBasePage {
-  documents?: KnowledgeBaseDocumentWire[];
-  has_more?: boolean;
-  next_cursor?: string | null;
-}
-
-export interface LlmListWire {
-  llms?: Array<{
-    llm?: string | null;
-    max_context_limit?: number | null;
-    deprecation_info?: { is_deprecated?: boolean | null } | null;
-  }>;
-}
 
 /**
  * Languages an agent can be set to. The agent's `language` is free-form on the
@@ -177,7 +75,10 @@ function unixToIso(unix: number | null | undefined): string {
   return new Date(unix * 1000).toISOString();
 }
 
-function str(value: unknown): string {
+/** What a detail row can be handed: a resource field, or a wire value already read out. */
+type Printable = string | number | boolean | null | undefined;
+
+function str(value: Printable): string {
   return value == null ? "" : String(value);
 }
 
@@ -414,15 +315,15 @@ export function conversationStats(conversations: ConversationWire[]): DashboardS
 // Rendering
 // ---------------------------------------------------------------------------
 
-function kv(key: string, value: unknown, copyable = false) {
+function kv(key: string, value: Printable, copyable = false) {
   return { key, value: str(value), ...(copyable ? { copyable: true } : {}) };
 }
 
 function parseConversations(raw: string | undefined): ConversationWire[] {
   if (!raw) return [];
   try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as ConversationWire[]) : [];
+    const parsed: ConversationWire[] = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -492,7 +393,7 @@ export function renderAgentDetail(resource: ResourceInstance): DetailViewSchema 
         duration: c.call_duration_secs != null ? formatDuration(c.call_duration_secs) : "-",
         messages: str(c.message_count ?? "-"),
         result: str(c.call_successful || c.status) || "-",
-      } as Record<string, string>,
+      },
     }));
     const table: SchemaNode = {
       kind: "table",
