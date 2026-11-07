@@ -396,10 +396,11 @@ describe("lists that cannot say they are whole", () => {
       ).rejects.toMatchObject({ status: 403 });
     });
 
-    it("still shows what it read on a host that keeps no track", async () => {
+    it("shows a refusal of one architecture on a host that keeps no track", async () => {
       const { http } = archs({ status: 403, body: "no" }, "good", "bad");
-      const rows = await client(http).listResources("cerebras-model-version", ACCOUNT);
-      expect(rows.map((r) => r.externalId)).toEqual(["good/1"]);
+      await expect(
+        client(http).listResources("cerebras-model-version", ACCOUNT),
+      ).rejects.toMatchObject({ status: 403 });
     });
   });
 

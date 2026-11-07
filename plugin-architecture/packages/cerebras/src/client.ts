@@ -495,11 +495,11 @@ export class CerebrasClient implements PluginClient {
     );
     if (refusals.length > 0) {
       // These stored rows stay. A host that keeps no track (the desktop) answers false, and
-      // there a refusal of everything should still show.
+      // there the list would be short, so the refusal shows.
       const tracked = reportUnreadListPart({
         idPrefixes: refusals.map(({ arch }) => `${accountId}:cerebras-model-version:${arch}/`),
       });
-      if (!tracked && refusals.length === archs.length) throw refusals[0]?.err;
+      if (!tracked) throw refusals[0]?.err;
     }
     return lists
       .flat()
