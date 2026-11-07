@@ -19,11 +19,20 @@ import type {
   SeatRemovalResult,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, utf8ToBase64 } from "@infrawrench/plugin-base";
-import type { HubContext } from "./api.js";
 import {
+  decodePromptArgs,
+  externalIdOf,
+  pathEncode,
+  unencodedSegment,
+  utf8ToBase64,
+  type ApiBody,
+} from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
+import type { HubApi, HubContext } from "./api.js";
+import {
+  FIRST_PAGE,
   HubApiError,
-  hubFetch,
+  hubApi,
   hubPaged,
   hubPagedAll,
   rawRequest,
@@ -31,19 +40,7 @@ import {
   statusOf,
 } from "./api.js";
 import { dockerSeatPrice, mapDockerSeats } from "./seats.js";
-import type {
-  HubAuditLog,
-  HubInvite,
-  HubMember,
-  HubOat,
-  HubOatResource,
-  HubOrg,
-  HubPat,
-  HubRepository,
-  HubTag,
-  HubTeam,
-  HubUser,
-} from "./mappers.js";
+import type { HubMember, HubOatResource, HubOrg, HubRepository, HubTeam } from "./mappers.js";
 import {
   mapInvite,
   mapMember,
@@ -58,7 +55,7 @@ import {
 } from "./mappers.js";
 import { COMMANDS, TEAMS_KEY, renderDockerHubDetail, renderDockerHubSidebar } from "./render.js";
 
-const enc = encodeURIComponent;
+const enc = pathEncode;
 const TAGS_PER_REPO = 25;
 const MAX_TAG_REPOS = 100;
 
@@ -116,7 +113,7 @@ function pickList(raw: string | undefined): string[] {
   const value = (raw ?? "").trim();
   if (value.startsWith("[")) {
     try {
-      const parsed = JSON.parse(value) as unknown;
+      const parsed: unknown = JSON.parse(value);
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
       // fall through
@@ -148,10 +145,13 @@ export async function listNamespaces(
   if (secretKind(ctx.secret) === "oat") return [{ name: ctx.identifier, kind: "organization" }];
   // A 401 here is a bad credential and must surface; anything else just
   // means the organization list is unavailable to this token.
-  const orgs = await hubPaged<HubOrg>(ctx, "/v2/user/orgs/").catch((err: unknown) => {
-    if (statusOf(err) === 401) throw err;
-    return [] as HubOrg[];
-  });
+  const api = hubApi(ctx);
+  const orgs = await hubPaged(ctx, () => api.get("/v2/user/orgs/", FIRST_PAGE)).catch(
+    (err: unknown): HubOrg[] => {
+      if (statusOf(err) === 401) throw err;
+      return [];
+    },
+  );
   return [
     { name: ctx.identifier, kind: "user" },
     ...orgs
@@ -166,6 +166,7 @@ export async function listNamespaces(
 
 export class DockerHubClient implements PluginClient {
   private readonly ctx: HubContext;
+  private readonly api: HubApi;
   private readonly services: HostServices | undefined;
   private readonly configured: string[];
   private readonly seatPriceMonthly: string | undefined;
@@ -179,6 +180,7 @@ export class DockerHubClient implements PluginClient {
       throw new Error("Docker Hub plugin: missing the Docker ID (or organization name)");
     if (!secret) throw new Error("Docker Hub plugin: missing the access token");
     this.ctx = { identifier, secret, ...(services?.http ? { http: services.http } : {}) };
+    this.api = hubApi(this.ctx);
     this.services = services;
     this.configured = list(credentials["namespaces"]);
     this.seatPriceMonthly = credentials["seatPriceMonthly"];
@@ -210,21 +212,26 @@ export class DockerHubClient implements PluginClient {
   }
 
   private repos(ns: string): Promise<HubRepository[]> {
-    return hubPaged<HubRepository>(this.ctx, `/v2/namespaces/${enc(ns)}/repositories`);
+    return hubPaged(this.ctx, () =>
+      this.api.get(`/v2/namespaces/${enc(ns)}/repositories`, FIRST_PAGE),
+    );
   }
 
-  private repo(ns: string, name: string): Promise<HubRepository> {
-    return hubFetch<HubRepository>(this.ctx, `/v2/namespaces/${enc(ns)}/repositories/${enc(name)}`);
+  private repo(ns: string, name: string) {
+    return this.api.get(`/v2/namespaces/${enc(ns)}/repositories/${enc(name)}`);
   }
 
   private teams(org: string): Promise<HubTeam[]> {
-    return hubPaged<HubTeam>(this.ctx, `/v2/orgs/${enc(org)}/groups`);
+    return hubPaged(this.ctx, () => this.api.get(`/v2/orgs/${enc(org)}/groups`, FIRST_PAGE));
+  }
+
+  private members(org: string): Promise<HubMember[]> {
+    return hubPaged(this.ctx, () => this.api.get(`/v2/orgs/${enc(org)}/members`, FIRST_PAGE));
   }
 
   private async teamMembers(org: string, team: string): Promise<string[]> {
-    const members = await hubPaged<HubMember>(
-      this.ctx,
-      `/v2/orgs/${enc(org)}/groups/${enc(team)}/members`,
+    const members = await hubPaged(this.ctx, () =>
+      this.api.get(`/v2/orgs/${enc(org)}/groups/${enc(team)}/members`, FIRST_PAGE),
     );
     return members.map((m) => m.username).filter(Boolean);
   }
@@ -264,7 +271,9 @@ export class DockerHubClient implements PluginClient {
       for (const org of await this.orgs()) {
         let members: HubMember[];
         try {
-          members = await hubPagedAll<HubMember>(this.ctx, `/v2/orgs/${enc(org)}/members`);
+          members = await hubPagedAll(this.ctx, `/v2/orgs/${enc(org)}/members`, () =>
+            this.api.get(`/v2/orgs/${enc(org)}/members`, FIRST_PAGE),
+          );
         } catch (err) {
           if (statusOf(err) === 403 || statusOf(err) === 404) {
             throw new HubApiError(
@@ -295,9 +304,7 @@ export class DockerHubClient implements PluginClient {
       const username = seat.login || fromId?.rest || "";
       if (!org || !username)
         throw new Error("Docker Hub plugin: the seat does not name an organization and username");
-      await hubFetch(this.ctx, `/v2/orgs/${enc(org)}/members/${enc(username)}`, {
-        method: "DELETE",
-      });
+      await this.api.delete(`/v2/orgs/${enc(org)}/members/${enc(username)}`);
       return {
         effective: "end-of-cycle",
         message: `Removed ${username} from ${org}. Docker keeps billing for purchased seats: reduce the seat count in Billing to stop paying for it from the next billing cycle.`,
@@ -330,11 +337,11 @@ export class DockerHubClient implements PluginClient {
           for (const ns of await this.namespaces()) {
             for (const r of await this.repos(ns.name)) {
               if (repos++ >= MAX_TAG_REPOS) return out;
-              const page = await hubFetch<{ results?: HubTag[] }>(
-                this.ctx,
-                `/v2/namespaces/${enc(ns.name)}/repositories/${enc(r.name)}/tags`,
-                { query: { page_size: TAGS_PER_REPO } },
-              ).catch(() => undefined);
+              const page = await this.api
+                .get(`/v2/namespaces/${enc(ns.name)}/repositories/${enc(r.name)}/tags`, {
+                  query: { page_size: TAGS_PER_REPO },
+                })
+                .catch(() => undefined);
               out.push(...(page?.results ?? []).map((t) => mapTag(accountId, ns.name, r.name, t)));
             }
           }
@@ -352,29 +359,26 @@ export class DockerHubClient implements PluginClient {
           });
         case "dockerhub-member":
           return this.perOrg(async (org) =>
-            (await hubPaged<HubMember>(this.ctx, `/v2/orgs/${enc(org)}/members`)).map((m) =>
-              mapMember(accountId, org, m),
-            ),
+            (await this.members(org)).map((m) => mapMember(accountId, org, m)),
           );
         case "dockerhub-invite":
           return this.perOrg(async (org) => {
-            const res = await hubFetch<{ data?: HubInvite[] }>(
-              this.ctx,
-              `/v2/orgs/${enc(org)}/invites`,
-            );
+            const res = await this.api.get(`/v2/orgs/${enc(org)}/invites`);
             return (res?.data ?? []).map((i) => mapInvite(accountId, org, i));
           });
         case "dockerhub-access-token": {
           if (this.isOat) return [];
-          return (await hubPaged<HubPat>(this.ctx, "/v2/access-tokens")).map((t) =>
-            mapPat(accountId, t),
-          );
+          return (
+            await hubPaged(this.ctx, () => this.api.get("/v2/access-tokens", FIRST_PAGE))
+          ).map((t) => mapPat(accountId, t));
         }
         case "dockerhub-org-access-token":
           return this.perOrg(async (org) =>
-            (await hubPaged<HubOat>(this.ctx, `/v2/orgs/${enc(org)}/access-tokens`)).map((t) =>
-              mapOat(accountId, org, t),
-            ),
+            (
+              await hubPaged(this.ctx, () =>
+                this.api.get(`/v2/orgs/${enc(org)}/access-tokens`, FIRST_PAGE),
+              )
+            ).map((t) => mapOat(accountId, org, t)),
           );
         default:
           throw new Error(`Docker Hub plugin: unknown resource type "${typeId}"`);
@@ -389,8 +393,8 @@ export class DockerHubClient implements PluginClient {
   ): Promise<ResourceInstance> {
     const info =
       kind === "user"
-        ? await hubFetch<HubUser>(this.ctx, "/v2/user/").catch(() => undefined)
-        : await hubFetch<HubOrg>(this.ctx, `/v2/orgs/${enc(ns)}`).catch(() => undefined);
+        ? await this.api.get("/v2/user/").catch(() => undefined)
+        : await this.api.get(`/v2/orgs/${enc(ns)}`).catch(() => undefined);
     const repos = await this.repos(ns).catch(() => undefined);
     const stats = repos
       ? {
@@ -403,19 +407,13 @@ export class DockerHubClient implements PluginClient {
     let org: Parameters<typeof mapNamespace>[5];
     if (kind === "organization") {
       const [members, teams, settings] = await Promise.all([
-        hubFetch<{ count?: number }>(this.ctx, `/v2/orgs/${enc(ns)}/members`, {
-          query: { page_size: 1 },
-        }).catch(() => undefined),
-        hubFetch<{ count?: number }>(this.ctx, `/v2/orgs/${enc(ns)}/groups`, {
-          query: { page_size: 1 },
-        }).catch(() => undefined),
-        hubFetch<{
-          restricted_images?: {
-            enabled?: boolean;
-            allow_official_images?: boolean;
-            allow_verified_publishers?: boolean;
-          };
-        }>(this.ctx, `/v2/orgs/${enc(ns)}/settings`).catch(() => undefined),
+        this.api
+          .get(`/v2/orgs/${enc(ns)}/members`, { query: { page_size: 1 } })
+          .catch(() => undefined),
+        this.api
+          .get(`/v2/orgs/${enc(ns)}/groups`, { query: { page_size: 1 } })
+          .catch(() => undefined),
+        this.api.get(`/v2/orgs/${enc(ns)}/settings`).catch(() => undefined),
       ]);
       org = {
         ...(members?.count !== undefined ? { members: members.count } : {}),
@@ -447,7 +445,7 @@ export class DockerHubClient implements PluginClient {
           const r = mapRepository(accountId, await this.repo(ns, rest));
           const isOrg = (await this.orgs()).includes(ns);
           if (!isOrg) return r;
-          const teams = await this.teams(ns).catch(() => [] as HubTeam[]);
+          const teams = await this.teams(ns).catch((): HubTeam[] => []);
           const slim = teams
             .filter((t) => t.id !== undefined)
             .map((t) => ({ id: t.id, name: t.name }));
@@ -457,46 +455,39 @@ export class DockerHubClient implements PluginClient {
         }
         case "dockerhub-tag": {
           const { ns, repo, tag } = splitTagId(id);
-          const t = await hubFetch<HubTag>(
-            this.ctx,
+          const t = await this.api.get(
             `/v2/namespaces/${enc(ns)}/repositories/${enc(repo)}/tags/${enc(tag)}`,
           );
           return mapTag(accountId, ns, repo, t);
         }
         case "dockerhub-team": {
           const { ns, rest } = splitScoped(id);
-          const t = await hubFetch<HubTeam>(this.ctx, `/v2/orgs/${enc(ns)}/groups/${enc(rest)}`);
+          const t = await this.api.get(`/v2/orgs/${enc(ns)}/groups/${enc(rest)}`);
           return mapTeam(accountId, ns, t, await this.teamMembers(ns, rest).catch(() => undefined));
         }
         case "dockerhub-member": {
           const { ns, rest } = splitScoped(id);
-          const members = await hubPaged<HubMember>(this.ctx, `/v2/orgs/${enc(ns)}/members`);
+          const members = await this.members(ns);
           const m = members.find((x) => x.username === rest);
           if (!m) throw new HubApiError(404, `Docker Hub plugin: ${rest} is not a member of ${ns}`);
           return mapMember(accountId, ns, m);
         }
         case "dockerhub-invite": {
           for (const org of await this.orgs()) {
-            const res = await hubFetch<{ data?: HubInvite[] }>(
-              this.ctx,
-              `/v2/orgs/${enc(org)}/invites`,
-            ).catch(() => undefined);
+            const res = await this.api.get(`/v2/orgs/${enc(org)}/invites`).catch(() => undefined);
             const hit = res?.data?.find((i) => i.id === id);
             if (hit) return mapInvite(accountId, org, hit);
           }
           throw new HubApiError(404, `Docker Hub plugin: invite ${id} not found`);
         }
         case "dockerhub-access-token":
-          return mapPat(
-            accountId,
-            await hubFetch<HubPat>(this.ctx, `/v2/access-tokens/${enc(id)}`),
-          );
+          return mapPat(accountId, await this.api.get(`/v2/access-tokens/${enc(id)}`));
         case "dockerhub-org-access-token": {
           const { ns, rest } = splitScoped(id);
           return mapOat(
             accountId,
             ns,
-            await hubFetch<HubOat>(this.ctx, `/v2/orgs/${enc(ns)}/access-tokens/${enc(rest)}`),
+            await this.api.get(`/v2/orgs/${enc(ns)}/access-tokens/${enc(rest)}`),
           );
         }
         default:
@@ -612,7 +603,8 @@ export class DockerHubClient implements PluginClient {
       if (auth.status < 200 || auth.status >= 300) {
         throw new HubApiError(auth.status, `Docker Hub registry auth failed (${auth.status})`);
       }
-      const token = (JSON.parse(auth.text) as { token?: string }).token ?? "";
+      const answer: { token?: string } = JSON.parse(auth.text);
+      const token = answer.token ?? "";
       const head = await rawRequest(
         this.ctx.http,
         "https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest",
@@ -651,7 +643,7 @@ export class DockerHubClient implements PluginClient {
       if (typeId !== "dockerhub-namespace")
         return { text: "", containers: [], activeContainer: "" };
       const ns = externalIdOf(resourceId);
-      const res = await hubFetch<{ logs?: HubAuditLog[] }>(this.ctx, `/v2/auditlogs/${enc(ns)}`, {
+      const res = await this.api.get(`/v2/auditlogs/${enc(ns)}`, {
         query: { page_size: Math.min(params.tailLines ?? 100, 100) },
       });
       const lines = (res?.logs ?? [])
@@ -675,11 +667,9 @@ export class DockerHubClient implements PluginClient {
       if (typeId !== "dockerhub-repository") return { items: [] };
       const { ns, rest } = splitScoped(externalIdOf(resourceId));
       const page = Number(params?.pageToken ?? "1") || 1;
-      const res = await hubFetch<{ results?: HubTag[]; next?: string | null }>(
-        this.ctx,
-        `/v2/namespaces/${enc(ns)}/repositories/${enc(rest)}/tags`,
-        { query: { page, page_size: 100, ...(params?.prefix ? { name: params.prefix } : {}) } },
-      );
+      const res = await this.api.get(`/v2/namespaces/${enc(ns)}/repositories/${enc(rest)}/tags`, {
+        query: { page, page_size: 100, ...(params?.prefix ? { name: params.prefix } : {}) },
+      });
       const items = (res?.results ?? []).map<ArtifactEntry>((t) => {
         const digest = t.digest ?? t.images?.[0]?.digest ?? undefined;
         return {
@@ -765,7 +755,7 @@ export class DockerHubClient implements PluginClient {
           };
         case "dockerhub-invite": {
           const org = parentNs ?? (await this.orgs().catch(() => []))[0];
-          const teams = org ? await this.teams(org).catch(() => [] as HubTeam[]) : [];
+          const teams = org ? await this.teams(org).catch((): HubTeam[] => []) : [];
           return {
             fields: [
               ...(await nsField(true)),
@@ -831,7 +821,7 @@ export class DockerHubClient implements PluginClient {
           };
         case "dockerhub-org-access-token": {
           const org = parentNs ?? (await this.orgs().catch(() => []))[0];
-          const repos = org ? await this.repos(org).catch(() => [] as HubRepository[]) : [];
+          const repos = org ? await this.repos(org).catch((): HubRepository[] => []) : [];
           return {
             fields: [
               ...(await nsField(true)),
@@ -906,29 +896,23 @@ export class DockerHubClient implements PluginClient {
         case "dockerhub-repository": {
           const name = text("name");
           if (!ns || !name) throw new Error("Docker Hub plugin: pick a namespace and enter a name");
-          const r = await hubFetch<HubRepository>(
-            this.ctx,
-            `/v2/namespaces/${enc(ns)}/repositories`,
-            {
-              method: "POST",
-              body: {
-                name,
-                namespace: ns,
-                description: text("description"),
-                full_description: fields["fullDescription"] ?? "",
-                registry: "docker.io",
-                is_private: text("visibility") !== "public",
-              },
+          const r = await this.api.post(`/v2/namespaces/${enc(ns)}/repositories`, {
+            body: {
+              name,
+              namespace: ns,
+              description: text("description"),
+              full_description: fields["fullDescription"] ?? "",
+              registry: "docker.io",
+              is_private: text("visibility") !== "public",
             },
-          );
+          });
           return mapRepository(accountId, r?.name ? r : await this.repo(ns, name));
         }
         case "dockerhub-team": {
           const name = text("name");
           if (!ns || !name)
             throw new Error("Docker Hub plugin: pick an organization and enter a name");
-          const t = await hubFetch<HubTeam>(this.ctx, `/v2/orgs/${enc(ns)}/groups`, {
-            method: "POST",
+          const t = await this.api.post(`/v2/orgs/${enc(ns)}/groups`, {
             body: { name, description: text("description") },
           });
           return mapTeam(accountId, ns, t?.name ? t : { name }, []);
@@ -937,10 +921,7 @@ export class DockerHubClient implements PluginClient {
           const invitees = pickList(fields["invitees"]);
           if (!ns || invitees.length === 0)
             throw new Error("Docker Hub plugin: pick an organization and enter who to invite");
-          const res = await hubFetch<{
-            invitees?: Array<{ invitee?: string; status?: string; invite?: HubInvite }>;
-          }>(this.ctx, "/v2/invites/bulk", {
-            method: "POST",
+          const res = await this.api.post("/v2/invites/bulk", {
             body: {
               org: ns,
               role: text("role") || "member",
@@ -962,8 +943,7 @@ export class DockerHubClient implements PluginClient {
         }
         case "dockerhub-access-token": {
           const expires = expiryFrom(fields["expiresInDays"]);
-          const t = await hubFetch<HubPat & { token?: string }>(this.ctx, "/v2/access-tokens", {
-            method: "POST",
+          const t = await this.api.post("/v2/access-tokens", {
             body: {
               token_label: text("label"),
               scopes: [text("scope") || "repo:read"],
@@ -999,8 +979,7 @@ export class DockerHubClient implements PluginClient {
               "Docker Hub plugin: give the token at least one repository or organization permission",
             );
           const expires = expiryFrom(fields["expiresInDays"]);
-          const t = await hubFetch<HubOat>(this.ctx, `/v2/orgs/${enc(ns)}/access-tokens`, {
-            method: "POST",
+          const t = await this.api.post(`/v2/orgs/${enc(ns)}/access-tokens`, {
             body: {
               label: text("label"),
               description: text("description"),
@@ -1009,7 +988,7 @@ export class DockerHubClient implements PluginClient {
             },
           });
           const r = mapOat(accountId, ns, t);
-          const token = (t as HubOat & { token?: string }).token;
+          const token = t.token;
           return token
             ? {
                 ...r,
@@ -1043,10 +1022,7 @@ export class DockerHubClient implements PluginClient {
             has("allowOfficialImages") ||
             has("allowVerifiedPublishers")
           ) {
-            const current = await hubFetch<{ restricted_images?: Record<string, boolean> }>(
-              this.ctx,
-              `/v2/orgs/${enc(id)}/settings`,
-            );
+            const current = await this.api.get(`/v2/orgs/${enc(id)}/settings`);
             const ri = {
               enabled: false,
               allow_official_images: true,
@@ -1058,8 +1034,7 @@ export class DockerHubClient implements PluginClient {
               ri.allow_official_images = bool(fields["allowOfficialImages"]);
             if (has("allowVerifiedPublishers"))
               ri.allow_verified_publishers = bool(fields["allowVerifiedPublishers"]);
-            await hubFetch(this.ctx, `/v2/orgs/${enc(id)}/settings`, {
-              method: "PUT",
+            await this.api.put(`/v2/orgs/${enc(id)}/settings`, {
               body: { restricted_images: ri },
             });
           }
@@ -1070,8 +1045,7 @@ export class DockerHubClient implements PluginClient {
           if (has("description") || has("fullDescription")) {
             // The PATCH writes both descriptions; send the untouched one back.
             const current = await this.repo(ns, rest);
-            await hubFetch(this.ctx, `/v2/repositories/${enc(ns)}/${enc(rest)}/`, {
-              method: "PATCH",
+            await this.api.patch(`/v2/repositories/${enc(ns)}/${enc(rest)}/`, {
               body: {
                 description: has("description") ? text("description") : (current.description ?? ""),
                 full_description: has("fullDescription")
@@ -1081,8 +1055,7 @@ export class DockerHubClient implements PluginClient {
             });
           }
           if (has("isPrivate")) {
-            await hubFetch(this.ctx, `/v2/repositories/${enc(ns)}/${enc(rest)}/privacy`, {
-              method: "POST",
+            await this.api.post(`/v2/repositories/${enc(ns)}/${enc(rest)}/privacy`, {
               body: { is_private: bool(fields["isPrivate"]) },
             });
           }
@@ -1094,11 +1067,9 @@ export class DockerHubClient implements PluginClient {
             const rules = has("immutableTagsRules")
               ? list(fields["immutableTagsRules"])
               : (current.immutable_tags_settings?.rules ?? []);
-            await hubFetch(
-              this.ctx,
+            await this.api.patch(
               `/v2/namespaces/${enc(ns)}/repositories/${enc(rest)}/immutabletags`,
               {
-                method: "PATCH",
                 body: {
                   immutable_tags: enabled,
                   ...(rules.length ? { immutable_tags_rules: rules } : {}),
@@ -1111,34 +1082,26 @@ export class DockerHubClient implements PluginClient {
         case "dockerhub-team": {
           const { ns, rest } = splitScoped(id);
           let name = rest;
-          const body: Record<string, unknown> = {};
-          if (has("name") && text("name") && text("name") !== rest) body["name"] = text("name");
-          if (has("description")) body["description"] = text("description");
+          const body: ApiBody<operations["patchV2OrgsByOrgNameGroupsByGroupName"]> = {};
+          if (has("name") && text("name") && text("name") !== rest) body.name = text("name");
+          if (has("description")) body.description = text("description");
           if (Object.keys(body).length > 0) {
-            await hubFetch(this.ctx, `/v2/orgs/${enc(ns)}/groups/${enc(rest)}`, {
-              method: "PATCH",
-              body,
-            });
-            if (body["name"]) name = String(body["name"]);
+            await this.api.patch(`/v2/orgs/${enc(ns)}/groups/${enc(rest)}`, { body });
+            if (body.name) name = body.name;
           }
           if (has("members")) {
             const current = new Set(await this.teamMembers(ns, name));
             const wanted = new Set(list(fields["members"]));
             for (const m of wanted) {
               if (!current.has(m)) {
-                await hubFetch(this.ctx, `/v2/orgs/${enc(ns)}/groups/${enc(name)}/members`, {
-                  method: "POST",
+                await this.api.post(`/v2/orgs/${enc(ns)}/groups/${enc(name)}/members`, {
                   body: { member: m },
                 });
               }
             }
             for (const m of current) {
               if (!wanted.has(m)) {
-                await hubFetch(
-                  this.ctx,
-                  `/v2/orgs/${enc(ns)}/groups/${enc(name)}/members/${enc(m)}`,
-                  { method: "DELETE" },
-                );
+                await this.api.delete(`/v2/orgs/${enc(ns)}/groups/${enc(name)}/members/${enc(m)}`);
               }
             }
           }
@@ -1149,8 +1112,7 @@ export class DockerHubClient implements PluginClient {
         case "dockerhub-member": {
           const { ns, rest } = splitScoped(id);
           if (has("role") && text("role")) {
-            await hubFetch(this.ctx, `/v2/orgs/${enc(ns)}/members/${enc(rest)}`, {
-              method: "PUT",
+            await this.api.put(`/v2/orgs/${enc(ns)}/members/${enc(rest)}`, {
               body: { role: text("role") },
             });
           }
@@ -1158,22 +1120,18 @@ export class DockerHubClient implements PluginClient {
         }
         case "dockerhub-access-token":
           if (has("label") && text("label")) {
-            await hubFetch(this.ctx, `/v2/access-tokens/${enc(id)}`, {
-              method: "PATCH",
+            await this.api.patch(`/v2/access-tokens/${enc(id)}`, {
               body: { token_label: text("label") },
             });
           }
           break;
         case "dockerhub-org-access-token": {
           const { ns, rest } = splitScoped(id);
-          const body: Record<string, unknown> = {};
-          if (has("label") && text("label")) body["label"] = text("label");
-          if (has("description")) body["description"] = text("description");
+          const body: ApiBody<operations["patchV2OrgsByOrgNameAccessTokensByAccessTokenId"]> = {};
+          if (has("label") && text("label")) body.label = text("label");
+          if (has("description")) body.description = text("description");
           if (Object.keys(body).length > 0) {
-            await hubFetch(this.ctx, `/v2/orgs/${enc(ns)}/access-tokens/${enc(rest)}`, {
-              method: "PATCH",
-              body,
-            });
+            await this.api.patch(`/v2/orgs/${enc(ns)}/access-tokens/${enc(rest)}`, { body });
           }
           break;
         }
@@ -1187,37 +1145,36 @@ export class DockerHubClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const del = (path: string) => hubFetch(this.ctx, path, { method: "DELETE" });
       switch (typeId) {
         case "dockerhub-repository": {
           const { ns, rest } = splitScoped(id);
-          await del(`/v2/repositories/${enc(ns)}/${enc(rest)}/`);
+          await this.api.delete(`/v2/repositories/${enc(ns)}/${enc(rest)}/`);
           return;
         }
         case "dockerhub-tag": {
           const { ns, repo, tag } = splitTagId(id);
-          await del(`/v2/repositories/${enc(ns)}/${enc(repo)}/tags/${enc(tag)}/`);
+          await this.api.delete(`/v2/repositories/${enc(ns)}/${enc(repo)}/tags/${enc(tag)}/`);
           return;
         }
         case "dockerhub-team": {
           const { ns, rest } = splitScoped(id);
-          await del(`/v2/orgs/${enc(ns)}/groups/${enc(rest)}`);
+          await this.api.delete(`/v2/orgs/${enc(ns)}/groups/${enc(rest)}`);
           return;
         }
         case "dockerhub-member": {
           const { ns, rest } = splitScoped(id);
-          await del(`/v2/orgs/${enc(ns)}/members/${enc(rest)}`);
+          await this.api.delete(`/v2/orgs/${enc(ns)}/members/${enc(rest)}`);
           return;
         }
         case "dockerhub-invite":
-          await del(`/v2/invites/${enc(id)}`);
+          await this.api.delete(`/v2/invites/${enc(id)}`);
           return;
         case "dockerhub-access-token":
-          await del(`/v2/access-tokens/${enc(id)}`);
+          await this.api.delete(`/v2/access-tokens/${enc(id)}`);
           return;
         case "dockerhub-org-access-token": {
           const { ns, rest } = splitScoped(id);
-          await del(`/v2/orgs/${enc(ns)}/access-tokens/${enc(rest)}`);
+          await this.api.delete(`/v2/orgs/${enc(ns)}/access-tokens/${enc(rest)}`);
           return;
         }
         default:
@@ -1237,23 +1194,21 @@ export class DockerHubClient implements PluginClient {
       const active = actionId === "activate";
       if (actionId === "activate" || actionId === "deactivate") {
         if (typeId === "dockerhub-access-token") {
-          await hubFetch(this.ctx, `/v2/access-tokens/${enc(id)}`, {
-            method: "PATCH",
+          await this.api.patch(`/v2/access-tokens/${enc(id)}`, {
             body: { is_active: active },
           });
           return;
         }
         if (typeId === "dockerhub-org-access-token") {
           const { ns, rest } = splitScoped(id);
-          await hubFetch(this.ctx, `/v2/orgs/${enc(ns)}/access-tokens/${enc(rest)}`, {
-            method: "PATCH",
+          await this.api.patch(`/v2/orgs/${enc(ns)}/access-tokens/${enc(rest)}`, {
             body: { is_active: active },
           });
           return;
         }
       }
       if (typeId === "dockerhub-invite" && actionId === "resend") {
-        await hubFetch(this.ctx, `/v2/invites/${enc(id)}/resend`, { method: "PATCH" });
+        await this.api.patch(`/v2/invites/${enc(id)}/resend`);
         return;
       }
       throw new Error(`Docker Hub plugin: unknown action "${actionId}" for "${typeId}"`);
@@ -1277,15 +1232,15 @@ export class DockerHubClient implements PluginClient {
       if (!Number.isFinite(teamId)) throw new Error("Docker Hub plugin: pick a team");
       const { ns, rest } = splitScoped(externalIdOf(resourceId));
       try {
-        return await hubFetch(this.ctx, `/v2/repositories/${enc(ns)}/${enc(rest)}/groups`, {
-          method: "POST",
+        return await this.api.post(`/v2/repositories/${enc(ns)}/${enc(rest)}/groups`, {
           body: { group_id: teamId, permission },
         });
       } catch (err) {
         // The team already has a permission here: change it instead.
         if (statusOf(err) !== 400 && statusOf(err) !== 409) throw err;
-        return hubFetch(this.ctx, `/v2/repositories/${enc(ns)}/${enc(rest)}/groups/${teamId}/`, {
-          method: "PATCH",
+        // The id goes in as JavaScript writes the number, `1e+21` included.
+        const group = unencodedSegment(String(teamId));
+        return await this.api.patch(`/v2/repositories/${enc(ns)}/${enc(rest)}/groups/${group}/`, {
           body: { permission },
         });
       }

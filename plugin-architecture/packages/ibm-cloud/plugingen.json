@@ -1,0 +1,148 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "vpc",
+      "specUrl": "https://cloud.ibm.com/apidocs/vpc/latest.json",
+      "paths": {
+        "/regions": ["get"],
+        "/regions/{region_name}/zones": ["get"],
+        "/images": ["get"],
+        "/instance/profiles": ["get"],
+        "/instances": ["get", "post"],
+        "/instances/{id}": ["get", "patch", "delete"],
+        "/instances/{instance_id}/actions": ["post"],
+        "/instances/{instance_id}/volume_attachments": ["post"],
+        "/floating_ips": ["get", "post"],
+        "/floating_ips/{id}": ["patch", "delete"],
+        "/volumes": ["get", "post"],
+        "/volumes/{id}": ["patch", "delete"],
+        "/vpcs": ["get", "post"],
+        "/vpcs/{id}": ["patch", "delete"],
+        "/subnets": ["get", "post"],
+        "/subnets/{id}": ["get", "patch", "delete"],
+        "/security_groups": ["get", "post"],
+        "/security_groups/{id}": ["patch", "delete"],
+        "/load_balancers": ["get"],
+        "/load_balancers/{id}": ["patch", "delete"],
+        "/keys": ["get", "post"],
+        "/keys/{id}": ["patch", "delete"]
+      }
+    },
+    {
+      "name": "resource-controller",
+      "specUrl": "https://cloud.ibm.com/apidocs/resource-controller/resource-controller.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/ResourceInstance/required",
+          "value": ["id", "name"],
+          "why": "The document marks nothing required. Every instance has both, and the plugin identifies it by them."
+        }
+      ],
+      "paths": {
+        "/v2/resource_instances": ["get"],
+        "/v2/resource_instances/{id}": ["get", "patch", "delete"]
+      }
+    },
+    {
+      "name": "resource-manager",
+      "specUrl": "https://cloud.ibm.com/apidocs/resource-controller/resource-manager.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/ResourceGroup/required",
+          "value": ["id", "name"],
+          "why": "The document marks nothing required. Every resource group has both, and the plugin identifies it by them."
+        },
+        {
+          "pointer": "/components/schemas/ResCreateResourceGroup/required",
+          "value": ["id"],
+          "why": "The document marks nothing required. A created group always has an id, and the plugin reads it straight back by that."
+        }
+      ],
+      "paths": {
+        "/v2/resource_groups": ["get", "post"],
+        "/v2/resource_groups/{id}": ["patch", "delete"]
+      }
+    },
+    {
+      "name": "containers",
+      "specUrl": "https://containers.cloud.ibm.com/global/swagger-global-api/swagger.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/GetClustersResponse/required",
+          "value": ["id", "name"],
+          "why": "The document marks nothing required. Every cluster has both, and the plugin identifies it by them."
+        },
+        {
+          "pointer": "/components/schemas/GetClusterResponse/required",
+          "value": ["id", "name"],
+          "why": "The document marks nothing required. Every cluster has both, and the plugin identifies it by them."
+        },
+        {
+          "pointer": "/components/schemas/GetCombinedWorkerPoolResponse/required",
+          "value": ["id"],
+          "why": "The document marks nothing required. Every worker pool has an id, and the plugin identifies it by that."
+        }
+      ],
+      "paths": {
+        "/v2/vpc/getClusters": ["get"],
+        "/v2/classic/getClusters": ["get"],
+        "/v2/getCluster": ["get"],
+        "/v2/getWorkerPools": ["get"],
+        "/v2/updateMaster": ["post"],
+        "/v2/resizeWorkerPool": ["post"],
+        "/v1/clusters/{idOrName}": ["delete"],
+        "/v1/clusters/{idOrName}/workerpools/{poolidOrName}": ["delete"]
+      }
+    },
+    {
+      "name": "code-engine",
+      "specUrl": "https://cloud.ibm.com/apidocs/codeengine/v2.json",
+      "paths": {
+        "/projects": ["get", "post"],
+        "/projects/{id}": ["delete"],
+        "/projects/{project_id}/apps": ["get", "post"],
+        "/projects/{project_id}/apps/{name}": ["get", "patch", "delete"]
+      }
+    },
+    {
+      "name": "databases",
+      "specUrl": "https://cloud.ibm.com/apidocs/cloud-databases-api/cloud-databases-api-v5.json",
+      "paths": {
+        "/deployments/{id}": ["get"],
+        "/deployments/{id}/groups": ["get"],
+        "/deployments/{id}/groups/{group_id}": ["patch"],
+        "/deployments/{id}/users/{user_type}/{user_id}/connections/{endpoint_type}": ["get"]
+      }
+    },
+    {
+      "name": "usage",
+      "specUrl": "https://cloud.ibm.com/apidocs/metering-reporting.json",
+      "paths": {
+        "/v4/accounts/{account_id}/resource_instances/usage/{billingmonth}": ["get"],
+        "/v4/accounts/{account_id}/summary/{billingmonth}": ["get"]
+      }
+    },
+    {
+      "name": "cos-config",
+      "specUrl": "https://cloud.ibm.com/apidocs/cos/cos-configuration.json",
+      "paths": {
+        "/b/{bucket}": ["get"]
+      }
+    },
+    {
+      "name": "iam",
+      "specUrl": "https://cloud.ibm.com/apidocs/iam-identity-token-api.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/token-response/required",
+          "value": ["access_token"],
+          "why": "The document marks nothing required here. The grant always answers with an access token, and the plugin decodes it without a check."
+        }
+      ],
+      "paths": {
+        "/identity/token#apikey": ["post"]
+      }
+    }
+  ]
+}

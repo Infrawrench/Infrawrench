@@ -47,12 +47,7 @@ export async function fetchRenderLogs(
   let end = new Date().toISOString();
   let start = new Date(Date.now() - WINDOW_MS).toISOString();
   for (let page = 0; page < MAX_PAGES && lines.length < want; page++) {
-    const res = await api.request<{
-      hasMore?: boolean;
-      nextStartTime?: string;
-      nextEndTime?: string;
-      logs?: RenderLogLine[];
-    }>("/logs", {
+    const res = await api.get("/logs", {
       query: {
         ownerId,
         resource: [resourceId],

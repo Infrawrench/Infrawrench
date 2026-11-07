@@ -1,0 +1,34 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://cloud.lambda.ai/api/v1/openapi.json",
+  "pathPrefix": "/api/v1",
+  "paths": {
+    "/instances": ["get"],
+    "/instances/{id}": ["get", "post"],
+    "/instance-types": ["get"],
+    "/instance-operations/launch": ["post"],
+    "/instance-operations/restart": ["post"],
+    "/instance-operations/terminate": ["post"],
+    "/regions": ["get"],
+    "/images": ["get"],
+    "/filesystems": ["get", "post"],
+    "/filesystems/{id}": ["delete"],
+    "/firewall-rulesets": ["get", "post"],
+    "/firewall-rulesets/global": ["get", "patch"],
+    "/firewall-rulesets/{id}": ["get", "patch", "delete"],
+    "/ssh-keys": ["get", "post"],
+    "/ssh-keys/{id}": ["delete"]
+  },
+  "patches": [
+    {
+      "pointer": "/components/schemas/FirewallRule/properties/port_range",
+      "value": {
+        "type": "array",
+        "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "why": "The document means exactly `[min, max]` (minItems and maxItems are both 2), which the generator can only write as `number[]`. A tuple is what the plugin builds and reads."
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "plugingen.json",
+  "description": "Which operations of a provider's OpenAPI document a plugin calls. plugingen generates src/api-types.gen.ts from them.",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "A provider with one document.",
+      "required": ["specUrl", "paths"],
+      "additionalProperties": false,
+      "properties": {
+        "$schema": { "type": "string" },
+        "specUrl": { "$ref": "#/definitions/specUrl" },
+        "pathPrefix": { "$ref": "#/definitions/pathPrefix" },
+        "paths": { "$ref": "#/definitions/paths" },
+        "patches": { "$ref": "#/definitions/patches" }
+      }
+    },
+    {
+      "type": "object",
+      "description": "A provider with several documents. Each writes src/api-types.<name>.gen.ts.",
+      "required": ["documents"],
+      "additionalProperties": false,
+      "properties": {
+        "$schema": { "type": "string" },
+        "documents": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "specUrl", "paths"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_-]*$",
+                "description": "Names the generated file: src/api-types.<name>.gen.ts."
+              },
+              "specUrl": { "$ref": "#/definitions/specUrl" },
+              "pathPrefix": { "$ref": "#/definitions/pathPrefix" },
+              "paths": { "$ref": "#/definitions/paths" },
+              "patches": { "$ref": "#/definitions/patches" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "specUrl": {
+      "type": "string",
+      "pattern": "^https://[^\\s]+$",
+      "description": "Where the provider publishes the document (JSON or YAML, OpenAPI 3 or Swagger 2)."
+    },
+    "pathPrefix": {
+      "type": "string",
+      "pattern": "^/[^\\s]*[^/\\s]$",
+      "description": "A version prefix the document writes into every path, where the client's base URL has to hold it. Paths outside it are dropped, and `paths` and `patches` are written without it."
+    },
+    "paths": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "The operations the plugin calls. Everything else is left out of the generated types.",
+      "propertyNames": { "pattern": "^/" },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+          "enum": ["get", "put", "post", "delete", "patch", "head", "options", "trace"]
+        }
+      }
+    },
+    "patches": {
+      "type": "array",
+      "description": "Overwrite one value of the document, before anything else runs, where it is wrong or too strict for what the plugin sends. A patch that no longer changes anything, or whose parent has gone, fails the run.",
+      "items": {
+        "type": "object",
+        "required": ["pointer", "value", "why"],
+        "additionalProperties": false,
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "pattern": "^/",
+            "description": "A JSON pointer into the document in its OpenAPI 3 form: `/` in a name is `~1`, `~` is `~0`, and percent-encoding is decoded. A Swagger 2 `definitions` schema is at `/components/schemas`."
+          },
+          "value": { "description": "The value to write there." },
+          "why": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why the document is wrong here."
+          }
+        }
+      }
+    }
+  }
+}

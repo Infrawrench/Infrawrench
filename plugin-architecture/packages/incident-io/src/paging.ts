@@ -42,19 +42,14 @@ import {
   bytesToBase64,
   constantTimeEqual,
   hmacSha256,
+  pathEncode,
   rejectedPagingWebhook,
+  type ApiBody,
 } from "@infrawrench/plugin-base";
-import type { IncidentIoTransport } from "./api.js";
-import { IncidentIoApiError, ioFetch, ioList, statusOf } from "./api.js";
-import type {
-  IoAlertSource,
-  IoEscalation,
-  IoEscalationPath,
-  IoIncident,
-  IoIncidentStatus,
-  IoSchedule,
-  IoShift,
-} from "./mappers.js";
+import type { IoApi } from "./api.js";
+import { IncidentIoApiError, statusOf, upTo } from "./api.js";
+import type { operations } from "./api-types.gen.js";
+import type { IoAlertSource, IoEscalation, IoIncident, IoIncidentStatus } from "./mappers.js";
 import { OPEN_CATEGORIES, toPagingIncident } from "./mappers.js";
 
 export const SCHEDULE_PREFIX = "schedule:";
@@ -64,7 +59,7 @@ export const WEBHOOK_TOLERANCE_MS = 5 * 60_000;
 const TITLE_LIMIT = 500;
 
 export interface PagingContext {
-  transport: IncidentIoTransport;
+  api: IoApi;
   /** Sources read this client's lifetime, by id. */
   sources: Map<string, Promise<IoAlertSource | null>>;
 }
@@ -75,10 +70,7 @@ export function isSendableSource(s: IoAlertSource): boolean {
 }
 
 async function alertSources(ctx: PagingContext): Promise<IoAlertSource[]> {
-  const res = await ioFetch<{ alert_sources?: IoAlertSource[] }>(
-    ctx.transport,
-    "/v2/alert_sources",
-  );
+  const res = await ctx.api.get("/v2/alert_sources");
   return res?.alert_sources ?? [];
 }
 
@@ -93,10 +85,8 @@ export async function listTargets(ctx: PagingContext): Promise<PagingTarget[]> {
 function sourceFor(ctx: PagingContext, targetId: string): Promise<IoAlertSource | null> {
   const cached = ctx.sources.get(targetId);
   if (cached) return cached;
-  const lookup = ioFetch<{ alert_source?: IoAlertSource }>(
-    ctx.transport,
-    `/v2/alert_sources/${encodeURIComponent(targetId)}`,
-  )
+  const lookup = ctx.api
+    .get(`/v2/alert_sources/${pathEncode(targetId)}`)
     .then((res) => res?.alert_source ?? null)
     .catch((err: unknown) => {
       ctx.sources.delete(targetId);
@@ -106,7 +96,9 @@ function sourceFor(ctx: PagingContext, targetId: string): Promise<IoAlertSource 
   return lookup;
 }
 
-export function buildAlertEvent(event: PagingEvent): Record<string, unknown> {
+export function buildAlertEvent(
+  event: PagingEvent,
+): ApiBody<operations["Alert Events V2/CreateHTTP"]> {
   const title =
     event.summary.length > TITLE_LIMIT
       ? `${event.summary.slice(0, TITLE_LIMIT - 1)}…`
@@ -143,11 +135,11 @@ export async function sendPagingEvent(
     );
   }
   try {
-    const res = await ioFetch<{ deduplication_key?: string }>(
-      ctx.transport,
-      `/v2/alert_events/http/${encodeURIComponent(targetId)}`,
-      { body: buildAlertEvent(event), token: source.secret_token },
-    );
+    const res = await ctx.api.post(`/v2/alert_events/http/${pathEncode(targetId)}`, {
+      body: buildAlertEvent(event),
+      // The source's own token, not the API key.
+      headers: { Authorization: `Bearer ${source.secret_token}` },
+    });
     return { dedupKey: res?.deduplication_key ?? event.dedupKey };
   } catch (err) {
     // A rotated token answers 401; read the source again next time.
@@ -158,16 +150,8 @@ export async function sendPagingEvent(
 
 export async function listOnCallSources(ctx: PagingContext): Promise<PagingOnCallSource[]> {
   const [schedules, paths] = await Promise.all([
-    ioList<IoSchedule>(ctx.transport, "/v2/schedules", "schedules", {}, { pageSize: 100 }),
-    ioList<IoEscalationPath>(
-      ctx.transport,
-      "/v2/escalation_paths",
-      "escalation_paths",
-      {},
-      {
-        pageSize: 25,
-      },
-    ),
+    ctx.api.getAll("/v2/schedules", "schedules", { pageSize: 100, stopWhen: upTo() }),
+    ctx.api.getAll("/v2/escalation_paths", "escalation_paths", { pageSize: 25, stopWhen: upTo() }),
   ]);
   return [
     ...schedules.map((s) => ({
@@ -190,17 +174,13 @@ export async function resolveOnCall(
 ): Promise<PagingOnCallPerson[]> {
   if (sourceId.startsWith(SCHEDULE_PREFIX)) {
     const id = sourceId.slice(SCHEDULE_PREFIX.length);
-    const res = await ioFetch<{ schedule_entries?: { final?: IoShift[] } }>(
-      ctx.transport,
-      "/v2/schedule_entries",
-      {
-        query: {
-          schedule_id: id,
-          entry_window_start: at.toISOString(),
-          entry_window_end: new Date(at.getTime() + 60_000).toISOString(),
-        },
+    const res = await ctx.api.get("/v2/schedule_entries", {
+      query: {
+        schedule_id: id,
+        entry_window_start: at.toISOString(),
+        entry_window_end: new Date(at.getTime() + 60_000).toISOString(),
       },
-    );
+    });
     const seen = new Set<string>();
     const out: PagingOnCallPerson[] = [];
     for (const entry of res?.schedule_entries?.final ?? []) {
@@ -222,10 +202,7 @@ export async function resolveOnCall(
   }
   if (sourceId.startsWith(PATH_PREFIX)) {
     const id = sourceId.slice(PATH_PREFIX.length);
-    const res = await ioFetch<{ escalation_path?: IoEscalationPath }>(
-      ctx.transport,
-      `/v2/escalation_paths/${encodeURIComponent(id)}`,
-    );
+    const res = await ctx.api.get(`/v2/escalation_paths/${pathEncode(id)}`);
     return (res?.escalation_path?.current_responders ?? []).map((u) => ({
       userId: u.id ?? "",
       name: u.name ?? null,
@@ -243,23 +220,19 @@ export async function listIncidents(
   query: PagingIncidentQuery,
 ): Promise<PagingIncident[]> {
   const [open, recent] = await Promise.all([
-    ioList<IoIncident>(
-      ctx.transport,
-      "/v2/incidents",
-      "incidents",
-      { status_category: { one_of: OPEN_CATEGORIES } },
-      { pageSize: 250, maxItems: 1000 },
-    ),
+    ctx.api.getAll("/v2/incidents", "incidents", {
+      query: { status_category: { one_of: OPEN_CATEGORIES } },
+      pageSize: 250,
+      stopWhen: upTo(1000),
+    }),
     query.includeResolved === false
-      ? Promise.resolve([] as IoIncident[])
-      : ioList<IoIncident>(
-          ctx.transport,
-          "/v2/incidents",
-          "incidents",
+      ? Promise.resolve<IoIncident[]>([])
+      : ctx.api.getAll("/v2/incidents", "incidents", {
           // The date filters take a day; the window is widened to it.
-          { updated_at: { gte: [day(query.since)] } },
-          { pageSize: 250, maxItems: 1000 },
-        ),
+          query: { updated_at: { gte: [day(query.since)] } },
+          pageSize: 250,
+          stopWhen: upTo(1000),
+        }),
   ]);
   const byId = new Map<string, IoIncident>();
   for (const i of [...recent, ...open]) {
@@ -274,10 +247,7 @@ export async function getIncident(
   incidentId: string,
 ): Promise<PagingIncident | null> {
   try {
-    const res = await ioFetch<{ incident?: IoIncident }>(
-      ctx.transport,
-      `/v2/incidents/${encodeURIComponent(incidentId)}`,
-    );
+    const res = await ctx.api.get(`/v2/incidents/${pathEncode(incidentId)}`);
     return res?.incident ? toPagingIncident(res.incident) : null;
   } catch (err) {
     if (statusOf(err) === 404) return null;
@@ -286,26 +256,19 @@ export async function getIncident(
 }
 
 /** The account's statuses in rank order, for picking where to move an incident. */
-export async function incidentStatuses(
-  transport: IncidentIoTransport,
-): Promise<IoIncidentStatus[]> {
-  const res = await ioFetch<{ incident_statuses?: IoIncidentStatus[] }>(
-    transport,
-    "/v1/incident_statuses",
-  );
+export async function incidentStatuses(api: IoApi): Promise<IoIncidentStatus[]> {
+  const res = await api.get("/v1/incident_statuses");
   return [...(res?.incident_statuses ?? [])].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
 }
 
 async function editStatus(
-  transport: IncidentIoTransport,
+  api: IoApi,
   incidentId: string,
   statusId: string,
 ): Promise<IoIncident | undefined> {
-  const res = await ioFetch<{ incident?: IoIncident }>(
-    transport,
-    `/v2/incidents/${encodeURIComponent(incidentId)}/actions/edit`,
-    { body: { incident: { incident_status_id: statusId }, notify_incident_channel: true } },
-  );
+  const res = await api.post(`/v2/incidents/${pathEncode(incidentId)}/actions/edit`, {
+    body: { incident: { incident_status_id: statusId }, notify_incident_channel: true },
+  });
   return res?.incident;
 }
 
@@ -314,7 +277,7 @@ export async function updateIncident(
   incidentId: string,
   update: PagingIncidentUpdate,
 ): Promise<PagingIncident> {
-  const statuses = await incidentStatuses(ctx.transport);
+  const statuses = await incidentStatuses(ctx.api);
   const candidates =
     update.action === "acknowledge"
       ? statuses.filter((s) => s.category === "live")
@@ -331,15 +294,17 @@ export async function updateIncident(
   let lastError: unknown;
   for (const status of candidates) {
     try {
-      const updated = await editStatus(ctx.transport, incidentId, status.id ?? "");
+      const updated = await editStatus(ctx.api, incidentId, status.id ?? "");
       if (update.note) {
-        await ioFetch(ctx.transport, "/v2/incident_updates", {
-          body: {
-            incident_id: incidentId,
-            message: update.note,
-            idempotency_key: `infrawrench-${incidentId}-${Date.now()}`,
-          },
-        }).catch(() => undefined);
+        await ctx.api
+          .post("/v2/incident_updates", {
+            body: {
+              incident_id: incidentId,
+              message: update.note,
+              idempotency_key: `infrawrench-${incidentId}-${Date.now()}`,
+            },
+          })
+          .catch(() => undefined);
       }
       return (
         (await getIncident(ctx, incidentId)) ??

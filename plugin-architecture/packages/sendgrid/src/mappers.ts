@@ -1,175 +1,76 @@
 /**
- * SendGrid response shapes (the fields this plugin reads, verified against
- * `twilio/sendgrid-oai` 2026-10) and their mapping to `ResourceInstance`s.
+ * SendGrid response shapes, from `twilio/sendgrid-oai`, and their mapping to
+ * `ResourceInstance`s. Each is the widest response of its entity, with every field
+ * optional: these documents are often wrong in small ways, and a row missing
+ * something should map to a resource missing that field.
  */
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiListItem, ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
+import type { operations as AlertOperations } from "./api-types.alerts.gen.js";
+import type { operations as ApiKeyOperations } from "./api-types.api-keys.gen.js";
+import type {
+  components as DomainComponents,
+  operations as DomainOperations,
+} from "./api-types.domain-authentication.gen.js";
+import type { operations as IpOperations } from "./api-types.ips.gen.js";
+import type { components as LinkComponents } from "./api-types.link-branding.gen.js";
+import type { components as ReverseDnsComponents } from "./api-types.reverse-dns.gen.js";
+import type { components as SubuserComponents } from "./api-types.subusers.gen.js";
+import type { components as SuppressionComponents } from "./api-types.suppressions.gen.js";
+import type { components as TemplateComponents } from "./api-types.templates.gen.js";
+import type { operations as UserOperations } from "./api-types.user.gen.js";
+import type { components as VerifiedSenderComponents } from "./api-types.verified-senders.gen.js";
+import type { components as WebhookComponents } from "./api-types.webhooks.gen.js";
 import { EVENT_KEYS, eventFieldKey } from "./resource-types.js";
 
 export const PLUGIN_ID = "sendgrid";
 
-export interface SgDnsEntry {
-  valid?: boolean;
-  type?: string;
-  host?: string;
-  data?: string;
-}
+export type SgDnsEntry = Partial<
+  DomainComponents["schemas"]["AuthenticatedDomain"]["dns"]["dkim1"]
+>;
 
-export interface SgDomain {
-  id?: number;
-  user_id?: number;
-  subdomain?: string;
-  domain?: string;
-  username?: string;
-  ips?: string[];
-  custom_spf?: boolean;
-  default?: boolean;
-  legacy?: boolean;
-  automatic_security?: boolean;
-  valid?: boolean;
-  dns?: Record<string, SgDnsEntry | undefined>;
-  subusers?: Array<{ user_id?: number; username?: string }>;
-  last_validation_attempt_at?: number;
-}
+/** By purpose. The documents list a few, and automated security off brings others. */
+type SgDnsEntries = Record<string, SgDnsEntry | undefined>;
 
-export interface SgLink {
-  id?: number;
-  domain?: string;
-  subdomain?: string;
-  username?: string;
-  default?: boolean;
-  valid?: boolean;
-  legacy?: boolean;
-  dns?: Record<string, SgDnsEntry | undefined>;
-}
+export type SgDomain = Partial<
+  Omit<ApiListItem<DomainOperations["ListAuthenticatedDomain"], null>, "dns">
+> & { dns?: SgDnsEntries };
 
-export interface SgReverseDns {
-  id?: number;
-  ip?: string;
-  rdns?: string;
-  subdomain?: string;
-  domain?: string;
-  valid?: boolean;
-  a_record?: SgDnsEntry;
-}
+export type SgLink = Partial<Omit<LinkComponents["schemas"]["LinkBranding200"], "dns">> & {
+  dns?: SgDnsEntries;
+};
 
-export interface SgIp {
-  ip?: string;
-  subusers?: string[];
-  rdns?: string;
-  pools?: string[];
-  warmup?: boolean;
-  start_date?: number | null;
-  whitelabeled?: boolean;
-  assigned_at?: number | null;
-}
+export type SgReverseDns = Partial<ReverseDnsComponents["schemas"]["ReverseDns"]>;
 
-export interface SgApiKey {
-  api_key_id?: string;
-  name?: string;
-  scopes?: string[];
-  api_key?: string;
-}
+export type SgIp = Partial<ApiListItem<IpOperations["ListIp"], null>>;
 
-export interface SgSubuser {
-  id?: number;
-  username?: string;
-  email?: string;
-  disabled?: boolean;
-  region?: string;
-}
+/** Answered with `api_key` on a create, and with `scopes` on a single read. */
+export type SgApiKey = ApiResponse<ApiKeyOperations["CreateApiKey"]>;
 
-export interface SgSubuserCredits {
-  type?: string;
-  reset_frequency?: string | null;
-  remain?: number | null;
-  total?: number | null;
-  used?: number | null;
-}
+export type SgSubuser = Partial<SubuserComponents["schemas"]["Subuser"]>;
 
-export interface SgEventWebhook {
-  id?: string;
-  enabled?: boolean;
-  url?: string;
-  friendly_name?: string | null;
-  created_date?: string | null;
-  updated_date?: string | null;
-  oauth_client_id?: string | null;
-  public_key?: string | null;
-  [event: string]: unknown;
-}
+export type SgSubuserCredits = Partial<SubuserComponents["schemas"]["SubuserCredits"]>;
 
-export interface SgParse {
-  url?: string;
-  hostname?: string;
-  spam_check?: boolean;
-  send_raw?: boolean;
-}
+export type SgEventWebhook = WebhookComponents["schemas"]["EventWebhookSignedResponse"];
 
-export interface SgTemplateVersion {
-  id?: string;
-  active?: number;
-  name?: string;
-  subject?: string;
-  updated_at?: string;
-  html_content?: string;
-  plain_content?: string;
-  editor?: string;
-}
+export type SgParse = WebhookComponents["schemas"]["ParseSetting"];
 
-export interface SgTemplate {
-  id?: string;
-  name?: string;
-  generation?: string;
-  updated_at?: string;
-  versions?: SgTemplateVersion[];
-}
+export type SgTemplateVersion =
+  TemplateComponents["schemas"]["TransactionalTemplatesVersionOutputLean"];
 
-export interface SgAsmGroup {
-  id?: number;
-  name?: string;
-  description?: string;
-  is_default?: boolean;
-  unsubscribes?: number;
-}
+export type SgTemplate = Partial<TemplateComponents["schemas"]["TransactionalTemplate"]>;
 
-export interface SgVerifiedSender {
-  id?: number;
-  nickname?: string;
-  from_email?: string;
-  from_name?: string;
-  reply_to?: string;
-  reply_to_name?: string;
-  address?: string;
-  address2?: string;
-  state?: string;
-  city?: string;
-  zip?: string;
-  country?: string;
-  verified?: boolean;
-  locked?: boolean;
-}
+export type SgAsmGroup = Partial<SuppressionComponents["schemas"]["SuppressionGroup"]>;
 
-export interface SgAlert {
-  id?: number;
-  type?: string;
-  email_to?: string;
-  frequency?: string | null;
-  percentage?: number | null;
-}
+export type SgVerifiedSender = VerifiedSenderComponents["schemas"]["VerifiedSenderResponse"];
+
+export type SgAlert = Partial<ApiResponse<AlertOperations["CreateAlert"]>>;
 
 export interface AccountSummary {
   username: string;
   userId?: number;
   type?: string;
   reputation?: number;
-  credits?: {
-    remain?: number;
-    total?: number;
-    used?: number;
-    overage?: number;
-    next_reset?: string;
-    reset_frequency?: string;
-  };
+  credits?: Partial<ApiResponse<UserOperations["ListCredit"]>>;
   company?: string;
   region: string;
   onBehalfOf: string;
@@ -540,8 +441,8 @@ export function mapEventWebhook(accountId: string, w: SgEventWebhook): ResourceI
 /** Event flags from form values (strings or booleans), for create/PATCH bodies. */
 export function eventBody(
   values: Record<string, string | boolean | number | undefined>,
-): Record<string, boolean> {
-  const out: Record<string, boolean> = {};
+): Partial<Record<(typeof EVENT_KEYS)[number][0], boolean>> {
+  const out: Partial<Record<(typeof EVENT_KEYS)[number][0], boolean>> = {};
   for (const [event] of EVENT_KEYS) {
     const v = values[eventFieldKey(event)];
     if (v === undefined || v === "") continue;

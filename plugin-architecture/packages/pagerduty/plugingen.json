@@ -1,0 +1,311 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "rest",
+      "specUrl": "https://raw.githubusercontent.com/PagerDuty/api-schema/main/reference/REST/openapiv3.json",
+      "paths": {
+        "/analytics/metrics/incidents/services": ["post"],
+        "/business_services": ["get", "post"],
+        "/business_services/{id}": ["get", "put", "delete"],
+        "/escalation_policies": ["get", "post"],
+        "/escalation_policies/{id}": ["get", "put", "delete"],
+        "/event_orchestrations": ["get"],
+        "/event_orchestrations/{id}": ["get", "put", "delete"],
+        "/event_orchestrations/{id}/integrations": ["get"],
+        "/incidents": ["get", "post"],
+        "/incidents/{id}": ["get", "put"],
+        "/incidents/{id}/alerts": ["get"],
+        "/incidents/{id}/notes": ["get", "post"],
+        "/incidents/{id}/snooze": ["post"],
+        "/maintenance_windows": ["get", "post"],
+        "/maintenance_windows/{id}": ["get", "put", "delete"],
+        "/oncalls": ["get"],
+        "/priorities": ["get"],
+        "/schedules": ["get"],
+        "/schedules/{id}": ["get", "delete"],
+        "/schedules/{id}/overrides": ["get", "post"],
+        "/schedules/{id}/overrides/{override_id}": ["delete"],
+        "/schedules/{id}/users": ["get"],
+        "/services": ["get", "post"],
+        "/services/{id}": ["get", "put", "delete"],
+        "/services/{id}/integrations": ["post"],
+        "/services/{id}/integrations/{integration_id}": ["get"],
+        "/teams": ["get", "post"],
+        "/teams/{id}": ["get", "put", "delete"],
+        "/users": ["get"],
+        "/users/me": ["get"],
+        "/users/{id}": ["get"],
+        "/webhook_subscriptions": ["post"],
+        "/webhook_subscriptions/{id}": ["delete"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/parameters/include_user/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["contact_methods", "notification_rules", "teams", "subdomains"]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/include_user_detail/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "contact_methods",
+                "notification_rules",
+                "teams",
+                "subdomains",
+                "calendar_urls"
+              ]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/include_escalation_policy/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["services", "teams", "targets", "escalation_rule_assignment_strategies"]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/include_services/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "escalation_policies",
+                "teams",
+                "integrations",
+                "auto_pause_notifications_parameters"
+              ]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/include_services_id/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "escalation_policies",
+                "teams",
+                "auto_pause_notifications_parameters",
+                "integrations"
+              ]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/statuses_incidents/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["triggered", "acknowledged", "resolved"]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/include_incidents/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "acknowledgers",
+                "agents",
+                "assignees",
+                "conference_bridge",
+                "escalation_policies",
+                "first_trigger_log_entries",
+                "priorities",
+                "services",
+                "teams",
+                "users"
+              ]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/include_incident/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "acknowledgers",
+                "agents",
+                "assignees",
+                "conference_bridge",
+                "custom_fields",
+                "escalation_policies",
+                "first_trigger_log_entries",
+                "priorities",
+                "services",
+                "teams",
+                "users"
+              ]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/include_oncalls/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["escalation_policies", "users", "schedules"]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/parameters/include_maintenance_window/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["teams", "services", "users"]
+            }
+          },
+          "why": "Typed as one string, though `[]` in the name, `explode` and `uniqueItems` all say a list; the plugin asks for several."
+        },
+        {
+          "pointer": "/components/schemas/Reference/allOf/1",
+          "value": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "id"]
+          },
+          "why": "Lists `required` with no `properties`, which generates `Record<string, never>` and makes every field of every reference `never`."
+        },
+        {
+          "pointer": "/components/schemas/Service/allOf/1/properties/auto_resolve_timeout/nullable",
+          "value": true,
+          "why": "The description says null turns the feature off, and the plugin sends null for that."
+        },
+        {
+          "pointer": "/components/schemas/Service/allOf/1/properties/acknowledgement_timeout/nullable",
+          "value": true,
+          "why": "The description says null turns the feature off, and the plugin sends null for that."
+        },
+        {
+          "pointer": "/components/schemas/Service/allOf/1/required",
+          "value": ["type"],
+          "why": "PUT /services/{id} shares this schema and takes any subset of fields; the plugin sends only what changed."
+        },
+        {
+          "pointer": "/components/schemas/Team/allOf/1/required",
+          "value": ["type"],
+          "why": "PUT /teams/{id} shares this schema and takes any subset of fields; the plugin sends only what changed."
+        },
+        {
+          "pointer": "/components/schemas/Team/allOf/1/properties/parent",
+          "value": {
+            "type": "object",
+            "nullable": true,
+            "readOnly": true,
+            "properties": {
+              "summary": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "why": "Not in the document; the plugin reads a team's parent for the Parent Team field."
+        },
+        {
+          "pointer": "/components/schemas/MaintenanceWindow/allOf/1/required",
+          "value": ["type"],
+          "why": "PUT /maintenance_windows/{id} shares this schema and takes any subset of fields; the plugin sends only what changed."
+        },
+        {
+          "pointer": "/components/schemas/IncidentUrgencyType/properties/urgency",
+          "value": {
+            "type": "string"
+          },
+          "why": "The urgency from the create form goes through as typed."
+        },
+        {
+          "pointer": "/components/schemas/EscalationTargetReference/allOf/1/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "The target type from the policy picker goes through as typed."
+        },
+        {
+          "pointer": "/paths/~1incidents/post/requestBody/content/application~1json/schema/properties/incident/properties/urgency",
+          "value": {
+            "type": "string"
+          },
+          "why": "The urgency from the create form goes through as typed."
+        },
+        {
+          "pointer": "/components/schemas/IncidentBody",
+          "value": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["incident_body"]
+              },
+              "details": {
+                "type": "string"
+              }
+            },
+            "required": ["type"]
+          },
+          "why": "`required` names `type` with no such property, and `details` is an object where the document's own examples send a string."
+        },
+        {
+          "pointer": "/components/schemas/Integration/allOf/1/properties/integration_key",
+          "value": {
+            "type": "string",
+            "readOnly": true
+          },
+          "why": "Not in the document; it is what an Events API v2 integration routes alerts with, and why the plugin reads integrations at all."
+        }
+      ]
+    },
+    {
+      "name": "events",
+      "specUrl": "https://raw.githubusercontent.com/PagerDuty/api-schema/main/reference/events-v2/openapiv3.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/Payload/properties/custom_details/additionalProperties",
+          "value": true,
+          "why": "An object with no properties generates `Record<string, never>`, which takes no details at all."
+        }
+      ],
+      "paths": {
+        "/enqueue": ["post"]
+      }
+    }
+  ]
+}

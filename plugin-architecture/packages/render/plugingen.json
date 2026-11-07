@@ -1,0 +1,218 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api-docs.render.com/openapi/render-public-api-1.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/keyValuePlan",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/maxmemoryPolicy",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/paidPlan",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/persistenceMode",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/plan",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/postgresVersion",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/protectedStatus",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/region",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/serviceRuntime",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/serviceType",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/postgresPOSTInput/properties/plan",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/postgresPATCHInput/properties/plan",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/previews/properties/generation",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/servicePOST/properties/autoDeployTrigger",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/servicePATCH/properties/autoDeployTrigger",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes the text the user picked straight through and Render validates it, so a value outside this enum should get Render's own error rather than a compile error."
+    },
+    {
+      "pointer": "/components/schemas/ownerWithCursor/required",
+      "value": ["owner", "cursor"],
+      "why": "The document omits `required` here, unlike its sibling wrappers. Each row carries the owner."
+    },
+    {
+      "pointer": "/components/schemas/deployWithCursor/required",
+      "value": ["deploy", "cursor"],
+      "why": "The document omits `required` here, unlike its sibling wrappers. Each row carries the deploy."
+    },
+    {
+      "pointer": "/components/schemas/serviceAndDeploy/required",
+      "value": ["service"],
+      "why": "The document omits `required` here. Creating a service answers with the service."
+    },
+    {
+      "pointer": "/components/schemas/cronJobDetailsPOST/properties/envSpecificDetails",
+      "value": {
+        "$ref": "#/components/schemas/envSpecificDetailsPOST"
+      },
+      "why": "This reuses the response shape, with every Docker field required. The other service types take the POST shape, and the plugin sends that for a cron job too."
+    },
+    {
+      "pointer": "/paths/~1metrics~1memory/parameters/6",
+      "value": {
+        "name": "aggregationMethod",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["AVG", "MAX", "MIN"]
+        }
+      },
+      "why": "The plugin sends `aggregationMethod` on memory as it does on CPU, where it is documented."
+    }
+  ],
+  "paths": {
+    "/owners": ["get"],
+    "/services": ["get", "post"],
+    "/services/{serviceId}": ["get", "patch", "delete"],
+    "/services/{serviceId}/deploys": ["get", "post"],
+    "/services/{serviceId}/deploys/{deployId}": ["get"],
+    "/services/{serviceId}/deploys/{deployId}/cancel": ["post"],
+    "/services/{serviceId}/rollback": ["post"],
+    "/services/{serviceId}/env-vars": ["get"],
+    "/services/{serviceId}/env-vars/{envVarKey}": ["get", "put", "delete"],
+    "/services/{serviceId}/custom-domains": ["get", "post"],
+    "/services/{serviceId}/custom-domains/{customDomainNameOrID}": ["get", "delete"],
+    "/services/{serviceId}/custom-domains/{customDomainNameOrID}/verify": ["post"],
+    "/services/{serviceId}/jobs": ["get", "post"],
+    "/services/{serviceId}/jobs/{jobId}": ["get"],
+    "/services/{serviceId}/jobs/{jobId}/cancel": ["post"],
+    "/services/{serviceId}/events": ["get"],
+    "/services/{serviceId}/instances": ["get"],
+    "/services/{serviceId}/restart": ["post"],
+    "/services/{serviceId}/suspend": ["post"],
+    "/services/{serviceId}/resume": ["post"],
+    "/services/{serviceId}/cache/purge": ["post"],
+    "/services/{serviceId}/scale": ["post"],
+    "/services/{serviceId}/autoscaling": ["put", "delete"],
+    "/cron-jobs/{cronJobId}/runs": ["post", "delete"],
+    "/disks": ["get", "post"],
+    "/disks/{diskId}": ["get", "patch", "delete"],
+    "/disks/{diskId}/snapshots": ["get"],
+    "/disks/{diskId}/snapshots/restore": ["post"],
+    "/postgres": ["get", "post"],
+    "/postgres/{postgresId}": ["get", "patch", "delete"],
+    "/postgres/{postgresId}/connection-info": ["get"],
+    "/postgres/{postgresId}/credentials": ["get", "post"],
+    "/postgres/{postgresId}/credentials/{username}": ["delete"],
+    "/postgres/{postgresId}/recovery": ["get", "post"],
+    "/postgres/{postgresId}/export": ["get", "post"],
+    "/postgres/{postgresId}/suspend": ["post"],
+    "/postgres/{postgresId}/resume": ["post"],
+    "/postgres/{postgresId}/restart": ["post"],
+    "/postgres/{postgresId}/failover": ["post"],
+    "/key-value": ["get", "post"],
+    "/key-value/{redisId}": ["get", "patch", "delete"],
+    "/key-value/{redisId}/connection-info": ["get"],
+    "/key-value/{redisId}/suspend": ["post"],
+    "/key-value/{redisId}/resume": ["post"],
+    "/env-groups": ["get", "post"],
+    "/env-groups/{envGroupId}": ["get", "patch", "delete"],
+    "/env-groups/{envGroupId}/env-vars/{envVarKey}": ["get", "put", "delete"],
+    "/env-groups/{envGroupId}/services/{serviceId}": ["post", "delete"],
+    "/blueprints": ["get"],
+    "/blueprints/{blueprintId}": ["get", "patch", "delete"],
+    "/blueprints/{blueprintId}/syncs": ["get"],
+    "/projects": ["get", "post"],
+    "/projects/{projectId}": ["get", "patch", "delete"],
+    "/environments": ["get", "post"],
+    "/environments/{environmentId}": ["get", "patch", "delete"],
+    "/maintenance": ["get"],
+    "/maintenance/{maintenanceRunID}": ["patch"],
+    "/maintenance/{maintenanceRunID}/trigger": ["post"],
+    "/owners/{ownerId}/members": ["get"],
+    "/logs": ["get"],
+    "/metrics/cpu": ["get"],
+    "/metrics/memory": ["get"],
+    "/metrics/instance-count": ["get"],
+    "/metrics/http-requests": ["get"],
+    "/metrics/http-latency": ["get"],
+    "/metrics/bandwidth": ["get"],
+    "/metrics/disk-usage": ["get"],
+    "/metrics/disk-capacity": ["get"],
+    "/metrics/active-connections": ["get"],
+    "/metrics/replication-lag": ["get"]
+  }
+}

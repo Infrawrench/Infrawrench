@@ -1,218 +1,37 @@
-// Wire shapes for https://api.tailscale.com/api/v2, verified against the
-// published OpenAPI document (https://api.tailscale.com/api/v2?outputOpenapiSchema=true)
-// and Tailscale's official client:
-// https://github.com/tailscale/tailscale-client-go-v2
+import {
+  createApiClient,
+  type ApiClient,
+  type ApiResponse,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type { components, operations, paths } from "./api-types.gen.js";
 
-export interface Device {
-  id: string;
-  nodeId?: string;
-  name: string;
-  hostname: string;
-  addresses: string[];
-  os?: string;
-  user?: string;
-  tags?: string[];
-  authorized?: boolean;
-  connectedToControl?: boolean;
-  clientVersion?: string;
-  updateAvailable?: boolean;
-  lastSeen?: string | null;
-  created?: string;
-  expires?: string;
-  keyExpiryDisabled?: boolean;
-  /** Shared in from another tailnet, not a member of this one. */
-  isExternal?: boolean;
-  multipleConnections?: boolean;
-  blocksIncomingConnections?: boolean;
-  enabledRoutes?: string[];
-  advertisedRoutes?: string[];
-  tailnetLockError?: string;
-  sshEnabled?: boolean;
-  isEphemeral?: boolean;
-  distro?: { name?: string; version?: string; codeName?: string };
-  clientConnectivity?: {
-    endpoints?: string[];
-    mappingVariesByDestIP?: boolean;
-    latency?: Record<string, { latencyMs?: number; preferred?: boolean }>;
-  };
-}
+export type { operations };
 
-export interface User {
-  id: string;
-  displayName?: string;
-  loginName?: string;
-  profilePicUrl?: string;
-  created?: string;
-  type?: string;
-  role?: string;
-  status?: string;
-  deviceCount?: number;
-  lastSeen?: string;
-  currentlyConnected?: boolean;
-}
+// Wire shapes for https://api.tailscale.com/api/v2, generated from the published
+// OpenAPI document (https://api.tailscale.com/api/v2?outputOpenapiSchema=true).
 
-export interface UserInvite {
-  id: string;
-  role?: string;
-  email?: string;
-  lastEmailSentAt?: string;
-  inviteUrl?: string;
-}
+type Schemas = components["schemas"];
 
-export interface Key {
-  id: string;
-  key?: string;
-  keyType?: string;
-  description?: string;
-  created?: string;
-  expires?: string;
-  revoked?: string;
-  invalid?: boolean;
-  userId?: string;
-  scopes?: string[];
-  tags?: string[];
-  issuer?: string;
-  subject?: string;
-  capabilities?: {
-    devices?: {
-      create?: {
-        reusable?: boolean;
-        ephemeral?: boolean;
-        preauthorized?: boolean;
-        tags?: string[];
-      };
-    };
-  };
-}
-
-export interface Webhook {
-  endpointId: string;
-  endpointUrl?: string;
-  providerType?: string;
-  creatorLoginName?: string;
-  created?: string;
-  lastModified?: string;
-  subscriptions?: string[];
-  secret?: string;
-}
-
-export interface Service {
-  name: string;
-  displayName?: string;
-  addrs?: string[];
-  comment?: string;
-  ports?: string[];
-  tags?: string[];
-}
-
-export interface ServiceHost {
-  stableNodeID: string;
-  approvalLevel?: string;
-  configured?: string;
-}
-
-export interface PostureIntegration {
-  id: string;
-  provider?: string;
-  cloudId?: string;
-  clientId?: string;
-  tenantId?: string;
-  configUpdated?: string;
-  status?: {
-    lastSync?: string;
-    error?: string;
-    providerHostCount?: number;
-    matchedCount?: number;
-    possibleMatchedCount?: number;
-  };
-}
-
-export interface TailnetSettings {
-  aclsExternallyManagedOn?: boolean | null;
-  aclsExternalLink?: string;
-  devicesApprovalOn?: boolean | null;
-  devicesAutoUpdatesOn?: boolean | null;
-  devicesKeyDurationDays?: number;
-  usersApprovalOn?: boolean | null;
-  usersRoleAllowedToJoinExternalTailnets?: string;
-  networkFlowLoggingOn?: boolean | null;
-  regionalRoutingOn?: boolean | null;
-  postureIdentityCollectionOn?: boolean | null;
-  httpsEnabled?: boolean | null;
-}
-
-export interface DnsConfiguration {
-  nameservers?: Array<{ address: string; useWithExitNode?: boolean }>;
-  splitDNS?: Record<string, Array<{ address: string; useWithExitNode?: boolean }> | null>;
-  searchPaths?: string[];
-  preferences?: { overrideLocalDNS?: boolean; magicDNS?: boolean };
-}
-
-export interface Contact {
-  email?: string;
-  fallbackEmail?: string;
-  needsVerification?: boolean;
-}
-
-export interface Contacts {
-  account?: Contact;
-  support?: Contact;
-  security?: Contact;
-}
-
-export interface LogStreamConfig {
-  logType?: string;
-  destinationType?: string;
-  url?: string;
-  uploadPeriodMinutes?: number;
-  compressionFormat?: string;
-  s3Bucket?: string;
-  s3Region?: string;
-}
-
-export interface LogStreamStatus {
-  lastActivity?: string;
-  lastError?: string;
-  numEntriesSent?: number;
-  numBytesSent?: number;
-  numFailedRequests?: number;
-  numTotalRequests?: number;
-}
-
+export type Device = Schemas["Device"];
+export type User = Schemas["User"];
+export type UserInvite = Schemas["UserInvite"];
+export type Key = Schemas["Key"];
+export type Webhook = Schemas["Webhook"];
+export type Service = Schemas["VIPServiceInfo"];
+export type ServiceHost = Schemas["ServiceHostInfo"];
+export type PostureIntegration = Schemas["PostureIntegration"];
+export type TailnetSettings = Schemas["TailnetSettings"];
+export type DnsConfiguration = Schemas["DnsConfiguration"];
+export type Contact = Schemas["Contact"];
+export type Contacts = ApiResponse<operations["getContacts"]>;
+export type LogStreamConfig = Schemas["LogstreamEndpointConfiguration"];
+export type LogStreamStatus = Schemas["LogstreamEndpointPublishingStatus"];
 /** One direction-pair of a flow, counted from the logging node's side. */
-export interface ConnectionCounts {
-  proto?: string;
-  src?: string;
-  dst?: string;
-  txPkts?: number;
-  txBytes?: number;
-  rxPkts?: number;
-  rxBytes?: number;
-}
-
+export type ConnectionCounts = Schemas["ConnectionCounts"];
 /** One node's traffic over one logging window (about five seconds). */
-export interface NetworkFlowLog {
-  logged?: string;
-  nodeId?: string;
-  start?: string;
-  end?: string;
-  virtualTraffic?: ConnectionCounts[];
-  subnetTraffic?: ConnectionCounts[];
-  exitTraffic?: ConnectionCounts[];
-  physicalTraffic?: ConnectionCounts[];
-}
-
-export interface ConfigurationAuditLog {
-  eventTime?: string;
-  origin?: string;
-  action?: string;
-  actionDetails?: string;
-  error?: string;
-  actor?: { id?: string; type?: string; loginName?: string; displayName?: string };
-  target?: { id?: string; name?: string; type?: string; property?: string };
-  old?: unknown;
-  new?: unknown;
-}
+export type NetworkFlowLog = Schemas["NetworkFlowLog"];
+export type ConfigurationAuditLog = Schemas["ConfigurationAuditLog"];
 
 /** Settings keys that `PATCH /tailnet/{tailnet}/settings` accepts as booleans. */
 export const BOOLEAN_SETTINGS = [
@@ -225,3 +44,56 @@ export const BOOLEAN_SETTINGS = [
   "httpsEnabled",
   "aclsExternallyManagedOn",
 ] as const;
+
+export type TailscaleApi = ApiClient<paths>;
+
+type HostRequest = Parameters<HttpHostServices["request"]>[0];
+
+/**
+ * Every call reads this one transport, which is also what keeps a token out of
+ * any message that leaves it: the error of a failed status, a dropped connection
+ * or a body that is not JSON.
+ */
+export function createTailscaleApi(
+  apiKey: string | undefined,
+  http: HttpHostServices | undefined,
+): TailscaleApi {
+  const token = apiKey?.trim() ?? "";
+  const overFetch = async ({ url, method, headers, body }: HostRequest) => {
+    const response = await fetch(url, {
+      method,
+      headers,
+      ...(typeof body === "string" ? { body } : {}),
+      signal: AbortSignal.timeout(30_000),
+    });
+    return { status: response.status, headers: {}, body: await response.text() };
+  };
+  const transport: HttpHostServices = {
+    request: async (request) => {
+      try {
+        const response = http ? await http.request(request) : await overFetch(request);
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`Tailscale API error ${response.status}: ${response.body}`);
+        }
+        // Several device mutations return 200 with an empty body, not 204.
+        const body = response.body.trim() ? response.body : "";
+        // The client parses this again, past the redaction below: a parse failure
+        // quotes the body, so it has to surface here.
+        if (body) JSON.parse(body);
+        // The status has done its job, and the client ignores the body of a 204.
+        return { ...response, status: 200, body };
+      } catch (error) {
+        let message = error instanceof Error ? error.message : String(error);
+        if (token) message = message.replaceAll(token, "[redacted]");
+        throw new Error(message.replace(/tskey-[\w-]+/g, "[redacted]"));
+      }
+    },
+  };
+  return createApiClient<paths>({
+    vendor: "Tailscale",
+    baseUrl: "https://api.tailscale.com/api/v2",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    contentType: "with-body",
+    http: transport,
+  });
+}

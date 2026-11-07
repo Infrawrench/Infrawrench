@@ -6,19 +6,11 @@
  * The `bucket` argument is the resource's external id, `{region}/{name}`.
  */
 
-import type { StorageObject } from "@infrawrench/plugin-base";
-import type { LinodeApi } from "./api.js";
+import { pathEncode, type ApiListItem, type StorageObject } from "@infrawrench/plugin-base";
+import { type LinodeApi, segment } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
-interface ObjectListResponse {
-  data?: Array<{
-    name: string;
-    size?: number | null;
-    last_modified?: string | null;
-    etag?: string | null;
-  }>;
-  is_truncated?: boolean;
-  next_marker?: string | null;
-}
+type ObjectRow = ApiListItem<operations["get-object-storage-bucket-content"], "data">;
 
 export function splitBucket(bucket: string): { region: string; name: string } {
   const i = bucket.indexOf("/");
@@ -26,9 +18,10 @@ export function splitBucket(bucket: string): { region: string; name: string } {
   return { region: bucket.slice(0, i), name: bucket.slice(i + 1) };
 }
 
-function base(bucket: string): string {
+/** The two path segments of a bucket: the region as it came, the name encoded. */
+function bucketSegments(bucket: string) {
   const { region, name } = splitBucket(bucket);
-  return `/object-storage/buckets/${region}/${encodeURIComponent(name)}`;
+  return { region: segment(region), name: pathEncode(name) };
 }
 
 async function listRaw(
@@ -36,13 +29,15 @@ async function listRaw(
   bucket: string,
   prefix: string,
   delimiter: boolean,
-): Promise<NonNullable<ObjectListResponse["data"]>> {
-  const out: NonNullable<ObjectListResponse["data"]> = [];
+): Promise<ObjectRow[]> {
+  const { region, name } = bucketSegments(bucket);
+  const out: ObjectRow[] = [];
   let marker: string | undefined;
   for (let i = 0; i < 200; i++) {
-    const res = await api.get<ObjectListResponse>(`${base(bucket)}/object-list`, {
+    const res = await api.get(`/object-storage/buckets/${region}/${name}/object-list`, {
       query: {
-        prefix,
+        // An empty prefix is left off rather than sent empty.
+        ...(prefix ? { prefix } : {}),
         ...(delimiter ? { delimiter: "/" } : {}),
         page_size: 500,
         ...(marker ? { marker } : {}),
@@ -83,11 +78,14 @@ async function signedUrl(
   method: "PUT" | "DELETE",
   contentType?: string,
 ): Promise<string> {
-  const res = await api.send<{ url?: string }>("POST", `${base(bucket)}/object-url`, {
-    name,
-    method,
-    expires_in: 600,
-    ...(contentType ? { content_type: contentType } : {}),
+  const { region, name: bucketName } = bucketSegments(bucket);
+  const res = await api.post(`/object-storage/buckets/${region}/${bucketName}/object-url`, {
+    body: {
+      name,
+      method,
+      expires_in: 600,
+      ...(contentType ? { content_type: contentType } : {}),
+    },
   });
   if (!res.url) throw new Error("Linode did not return a signed URL");
   return res.url;

@@ -1,0 +1,201 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.sdk.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1v2~1core~1event_destinations~1{id}~1enable/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1v2~1core~1event_destinations~1{id}~1disable/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1v2~1core~1event_destinations~1{id}~1ping/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "why": "The document gives this action no request body, and the plugin has always posted an empty JSON object. Requests stay as they were."
+    },
+    {
+      "pointer": "/paths/~1v1~1webhook_endpoints/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/enabled_events",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "Event names go through as the user picked or typed them and Stripe validates them. The plugin's picker carries its own snapshot of this list (event-types.ts), and an enum of 269 names would only repeat it here."
+    },
+    {
+      "pointer": "/paths/~1v1~1webhook_endpoints~1{webhook_endpoint}/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/enabled_events",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "Event names go through as the user picked or typed them and Stripe validates them. The plugin's picker carries its own snapshot of this list (event-types.ts), and an enum of 269 names would only repeat it here."
+    },
+    {
+      "pointer": "/paths/~1v1~1webhook_endpoints/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/api_version",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v2~1core~1event_destinations/post/requestBody/content/application~1json/schema/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v2~1core~1event_destinations/post/requestBody/content/application~1json/schema/properties/event_payload",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v1~1products/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/default_price_data/properties/recurring/properties/interval",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v1~1prices/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/tax_behavior",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v1~1prices/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/recurring/properties/interval",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v1~1prices/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/recurring/properties/usage_type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v1~1prices~1{price}/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/tax_behavior",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v1~1billing~1meters/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/default_aggregation/properties/formula",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v1~1billing~1meters/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/event_time_window",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Stripe validates it, so a value outside this enum stays Stripe's error."
+    },
+    {
+      "pointer": "/paths/~1v1~1balance/get/parameters/1",
+      "value": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "The document gives this route no limit, and the preflight probe has always sent limit=1 like every other probe. Requests stay as they were; the bug is filed separately."
+    },
+    {
+      "pointer": "/paths/~1v1~1subscriptions/get/parameters/15",
+      "value": {
+        "name": "expand[]",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document writes this as an expand array, which this client sends as expand[0]. The meter metrics have always sent expand[]=data.customer, so that spelling stays."
+    }
+  ],
+  "paths": {
+    "/v1/account": ["get"],
+    "/v1/accounts": ["get"],
+    "/v1/accounts/{account}": ["get", "delete"],
+    "/v1/accounts/{account}/reject": ["post"],
+    "/v1/accounts/{account}/unreject": ["post"],
+    "/v1/balance": ["get"],
+    "/v1/balance_transactions": ["get"],
+    "/v1/billing/meters": ["get", "post"],
+    "/v1/billing/meters/{id}": ["get", "post"],
+    "/v1/billing/meters/{id}/deactivate": ["post"],
+    "/v1/billing/meters/{id}/event_summaries": ["get"],
+    "/v1/billing/meters/{id}/reactivate": ["post"],
+    "/v1/country_specs/{country}": ["get"],
+    "/v1/events": ["get"],
+    "/v1/payouts": ["get"],
+    "/v1/payouts/{payout}": ["get"],
+    "/v1/payouts/{payout}/cancel": ["post"],
+    "/v1/prices": ["get", "post"],
+    "/v1/prices/{price}": ["get", "post"],
+    "/v1/products": ["get", "post"],
+    "/v1/products/{id}": ["get", "post", "delete"],
+    "/v1/reporting/report_runs": ["get", "post"],
+    "/v1/reporting/report_runs/{report_run}": ["get"],
+    "/v1/reporting/report_types": ["get"],
+    "/v1/reporting/report_types/{report_type}": ["get"],
+    "/v1/sigma/scheduled_query_runs": ["get"],
+    "/v1/sigma/scheduled_query_runs/{scheduled_query_run}": ["get"],
+    "/v1/subscriptions": ["get"],
+    "/v1/tax_codes": ["get"],
+    "/v1/webhook_endpoints": ["get", "post"],
+    "/v1/webhook_endpoints/{webhook_endpoint}": ["get", "post", "delete"],
+    "/v2/core/event_destinations": ["get", "post"],
+    "/v2/core/event_destinations/{id}": ["get", "post", "delete"],
+    "/v2/core/event_destinations/{id}/disable": ["post"],
+    "/v2/core/event_destinations/{id}/enable": ["post"],
+    "/v2/core/event_destinations/{id}/ping": ["post"],
+    "/v2/core/events": ["get"]
+  }
+}

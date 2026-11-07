@@ -1,5 +1,14 @@
-import type { HostServices } from "@infrawrench/plugin-base";
-import { canonicalQuery, signRequest, type QueryValue } from "./signing.js";
+import {
+  createApiClient,
+  type ApiClient,
+  type HostServices,
+  type HttpHostServices,
+  type NoSlashString,
+  type ParamValue,
+  unencodedSegment,
+} from "@infrawrench/plugin-base";
+import type { paths } from "./api-types.gen.js";
+import { canonicalQuery, signRequest } from "./signing.js";
 
 /**
  * Transport for the Crusoe Cloud API (`https://api.cloud.crusoe.ai/v1`, the
@@ -7,10 +16,16 @@ import { canonicalQuery, signRequest, type QueryValue } from "./signing.js";
  * `api.crusoecloud.com/v1alpha5`). Every request is HMAC-signed; see
  * `signing.ts`. Goes through `services.http` when the host provides it, which
  * is what keeps bastion routing and custom CAs working.
+ *
+ * Requests are typed from Crusoe's OpenAPI document (`plugingen.json`). The
+ * signature covers the exact path and query, so it is added in `crusoeTransport`,
+ * which is what the typed client gets as its `http`.
  */
 
 export const API_HOST = "https://api.cloud.crusoe.ai";
 export const API_PREFIX = "/v1";
+
+const ACCEPT = "application/json, text/csv";
 
 export class CrusoeApiError extends Error {
   readonly status: number;
@@ -26,23 +41,12 @@ export class CrusoeApiError extends Error {
 /** Crusoe errors are `{code, message}`; show the message, not the JSON. */
 function summarizeBody(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { message?: unknown; code?: unknown };
+    const parsed: { message?: string } = JSON.parse(body);
     if (typeof parsed.message === "string") return parsed.message;
   } catch {
     /* not JSON */
   }
   return body.slice(0, 500);
-}
-
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-  /**
-   * Send `Authorization: Bearer <token>` instead of an HMAC signature. Only
-   * the metrics endpoints use this, with a monitoring token.
-   */
-  bearerToken?: string;
 }
 
 export interface CrusoeCredentials {
@@ -52,88 +56,125 @@ export interface CrusoeCredentials {
   caCert: string;
 }
 
-export class CrusoeApi {
-  constructor(
-    private readonly creds: CrusoeCredentials,
-    private readonly services: HostServices | undefined,
-  ) {}
+/**
+ * A path segment as Crusoe's id came. These have never been encoded, and the
+ * signature covers the path as sent.
+ */
+export const seg = (id: string): NoSlashString => unencodedSegment(id);
 
-  get monitoringToken(): string {
-    return this.creds.monitoringToken;
-  }
+/**
+ * Written in front of the query so the transport can find where it starts: an id
+ * can hold a `?`, and what gets signed is the path and query apart. Nothing the
+ * query holds can be mistaken for it, because `canonicalQuery` escapes it.
+ */
+const QUERY_START = "\0";
 
-  /** Raw request: returns the response body as text. Throws on non-2xx. */
-  async requestText(path: string, opts: RequestOptions = {}): Promise<string> {
-    const method = opts.method ?? "GET";
-    const fullPath = `${API_PREFIX}${path}`;
-    const query = canonicalQuery(opts.query);
-    const url = `${API_HOST}${fullPath}${query ? `?${query}` : ""}`;
-    const auth = opts.bearerToken
-      ? { Authorization: `Bearer ${opts.bearerToken}` }
-      : await signRequest({
-          accessKeyId: this.creds.accessKeyId,
-          secretKey: this.creds.secretKey,
+function serializeQuery(query: Record<string, ParamValue>): string {
+  const canonical = canonicalQuery(query);
+  return canonical && `${QUERY_START}${canonical}`;
+}
+
+type Authenticate = (
+  method: string,
+  path: string,
+  query: string,
+) => Promise<Record<string, string>>;
+
+/** The whole of a request but its typed shape: the URL, auth, and which way it goes out. */
+function crusoeTransport(auth: Authenticate, services: HostServices | undefined): HttpHostServices {
+  const http = services?.http;
+  return {
+    request: async ({ url, method, headers: extra, body, caCert }) => {
+      const start = url.indexOf(QUERY_START);
+      // One character before the marker is the separator the client chose.
+      const path = url.slice(API_HOST.length, start < 0 ? undefined : start - 1);
+      const query = start < 0 ? "" : url.slice(start + QUERY_START.length);
+      const target = `${API_HOST}${path}${query ? `?${query}` : ""}`;
+      const headers = { Accept: ACCEPT, ...(await auth(method, path, query)), ...extra };
+      if (http) {
+        return http.request({
+          url: target,
           method,
-          path: fullPath,
-          query,
+          headers,
+          ...(body !== undefined ? { body } : {}),
+          ...(caCert ? { caCert } : {}),
         });
-    const headers: Record<string, string> = {
-      Accept: "application/json, text/csv",
-      ...auth,
-    };
-    const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-
-    const http = this.services?.http;
-    if (http) {
-      const res = await http.request({
-        url,
+      }
+      // The typed client only ever writes text.
+      const res = await fetch(target, {
         method,
         headers,
-        ...(body !== undefined ? { body } : {}),
-        ...(this.creds.caCert ? { caCert: this.creds.caCert } : {}),
+        ...(typeof body === "string" ? { body } : {}),
       });
-      if (res.status < 200 || res.status >= 300) {
-        throw new CrusoeApiError(res.status, path, res.body);
-      }
-      return res.body ?? "";
-    }
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    const text = await res.text();
-    if (!res.ok) throw new CrusoeApiError(res.status, path, text);
-    return text;
-  }
+      return { status: res.status, headers: {}, body: await res.text() };
+    },
+  };
+}
 
-  async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    const text = await this.requestText(path, opts);
-    if (!text) return undefined as unknown as T;
-    return JSON.parse(text) as T;
-  }
-
+export type CrusoeApi = ApiClient<paths> & {
   /**
-   * Every page of a list endpoint. Crusoe paginates with `next_token` in the
-   * request and `next_page_token` in the response, and only some lists
-   * paginate at all; one that returns no token is simply a single page.
+   * For the metrics endpoints: `Authorization: Bearer <token>` when the account
+   * has a monitoring token, and an HMAC signature like everything else when not.
    */
-  async listAll<T>(path: string, query: Record<string, QueryValue> = {}): Promise<T[]> {
-    const items: T[] = [];
-    let token: string | undefined;
-    for (let page = 0; page < 100; page++) {
-      const res = await this.request<{ items?: T[]; next_page_token?: string }>(path, {
-        query: { ...query, ...(token ? { next_token: token } : {}) },
-      });
-      items.push(...(res?.items ?? []));
-      token = res?.next_page_token || undefined;
-      if (!token) break;
-    }
-    return items;
+  metrics: ApiClient<paths>;
+};
+
+export function createCrusoeApi(
+  creds: CrusoeCredentials,
+  services: HostServices | undefined,
+): CrusoeApi {
+  const client = (auth: Authenticate) =>
+    createApiClient<paths>({
+      vendor: "Crusoe",
+      baseUrl: `${API_HOST}${API_PREFIX}`,
+      headers: {},
+      http: crusoeTransport(auth, services),
+      caCert: creds.caCert,
+      contentType: "with-body",
+      emptyBodyIsUndefined: true,
+      serializeQuery,
+      httpError: ({ status, path, body }) => new CrusoeApiError(status, path, body),
+    });
+  const signed = client((method, path, query) =>
+    signRequest({
+      accessKeyId: creds.accessKeyId,
+      secretKey: creds.secretKey,
+      method,
+      path,
+      query,
+    }),
+  );
+  const token = creds.monitoringToken;
+  return {
+    ...signed,
+    metrics: token ? client(async () => ({ Authorization: `Bearer ${token}` })) : signed,
+  };
+}
+
+/**
+ * Every page of a list endpoint. Crusoe paginates with `next_token` in the
+ * request and `next_page_token` in the response, and only some lists
+ * paginate at all; one that returns no token is simply a single page.
+ *
+ * A loop rather than `withCursorPagination`, whose `getAll` reads a list that is
+ * not an array as empty, where this has always failed on it.
+ */
+export async function listAll<Item>(
+  fetchPage: (query: {
+    next_token?: string;
+  }) => Promise<{ items?: readonly Item[]; next_page_token?: string } | undefined>,
+): Promise<Item[]> {
+  const items: Item[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const res = await fetchPage(token ? { next_token: token } : {});
+    items.push(...(res?.items ?? []));
+    token = res?.next_page_token || undefined;
+    if (!token) break;
   }
+  return items;
 }
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {
   return err instanceof CrusoeApiError && statuses.includes(err.status);
-}
-
-export function errorText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }

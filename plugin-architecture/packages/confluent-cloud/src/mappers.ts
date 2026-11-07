@@ -5,12 +5,11 @@ import type {
   CcByokKey,
   CcComputePool,
   CcConnectorExpanded,
+  CcConnection,
   CcEnvironment,
   CcKafkaCluster,
   CcKsqlCluster,
   CcNetwork,
-  CcNetworkConnection,
-  CcPrivateLinkAttachment,
   CcSchemaRegistry,
   CcServiceAccount,
 } from "./types.js";
@@ -144,11 +143,12 @@ export function mapKafkaCluster(
   const id = c.id ?? "";
   const env = c.spec?.environment?.id ?? "";
   const spec = c.spec ?? {};
-  const kind = spec.config?.kind ?? "";
+  const config = spec.config;
+  const kind = config?.kind ?? "";
   const fields: Fields = {};
   put(fields, "name", spec.display_name ?? id);
-  if (kind === "Dedicated") put(fields, "cku", c.status?.cku ?? spec.config?.cku);
-  else put(fields, "maxEcku", spec.config?.max_ecku);
+  if (config?.kind === "Dedicated") put(fields, "cku", c.status?.cku ?? config.cku);
+  else put(fields, "maxEcku", config?.max_ecku);
   put(fields, "clusterType", kind);
   put(fields, "availability", spec.availability);
   put(fields, "cloud", spec.cloud);
@@ -394,51 +394,48 @@ export function mapNetwork(accountId: string, n: CcNetwork): ResourceInstance {
   });
 }
 
-export type ConnectionKind =
-  "Peering" | "Transit Gateway Attachment" | "Private Link Access" | "Private Link Attachment";
+export const CONNECTION_KINDS = [
+  "Peering",
+  "Transit Gateway Attachment",
+  "Private Link Access",
+  "Private Link Attachment",
+] as const;
+
+export type ConnectionKind = (typeof CONNECTION_KINDS)[number];
 
 /** Route segment per connection kind, so `getResource` knows which endpoint. */
-export const CONNECTION_PATHS: Record<ConnectionKind, { slug: string; path: string }> = {
-  Peering: { slug: "peering", path: "/networking/v1/peerings" },
-  "Transit Gateway Attachment": {
-    slug: "tgwa",
-    path: "/networking/v1/transit-gateway-attachments",
-  },
-  "Private Link Access": { slug: "pla", path: "/networking/v1/private-link-accesses" },
-  "Private Link Attachment": { slug: "platt", path: "/networking/v1/private-link-attachments" },
+const CONNECTION_SLUGS: Record<ConnectionKind, string> = {
+  Peering: "peering",
+  "Transit Gateway Attachment": "tgwa",
+  "Private Link Access": "pla",
+  "Private Link Attachment": "platt",
 };
 
 export function connectionKindForSlug(slug: string): ConnectionKind | undefined {
-  return (Object.keys(CONNECTION_PATHS) as ConnectionKind[]).find(
-    (k) => CONNECTION_PATHS[k].slug === slug,
-  );
+  return CONNECTION_KINDS.find((k) => CONNECTION_SLUGS[k] === slug);
 }
 
 export function mapNetworkConnection(
   accountId: string,
   kind: ConnectionKind,
-  c: CcNetworkConnection | CcPrivateLinkAttachment,
+  c: CcConnection,
 ): ResourceInstance {
   const id = c.id ?? "";
   const env = c.spec?.environment?.id ?? "";
-  const spec = c.spec as Record<string, unknown> | undefined;
-  const cloudValue = spec?.["cloud"];
-  const cloud =
-    typeof cloudValue === "string"
-      ? cloudValue
-      : String((cloudValue as { kind?: string } | undefined)?.kind ?? "");
-  const network = (spec?.["network"] as { id?: string } | undefined)?.id;
+  const cloudValue = c.spec?.cloud;
+  const cloud = typeof cloudValue === "string" ? cloudValue : String(cloudValue?.kind ?? "");
+  const network = c.spec?.network?.id;
   const fields: Fields = {};
   put(fields, "name", c.spec?.display_name ?? id);
   put(fields, "connectionKind", kind);
   put(fields, "cloud", cloud);
-  put(fields, "region", typeof spec?.["region"] === "string" ? (spec["region"] as string) : "");
+  put(fields, "region", typeof c.spec?.region === "string" ? c.spec.region : "");
   put(fields, "networkId", network);
   put(fields, "phase", c.status?.phase);
   put(fields, "error", c.status?.error_message);
   put(fields, "environmentId", env);
   put(fields, "connectionId", id);
-  const slug = CONNECTION_PATHS[kind].slug;
+  const slug = CONNECTION_SLUGS[kind];
   return instance(
     accountId,
     "network-connection",

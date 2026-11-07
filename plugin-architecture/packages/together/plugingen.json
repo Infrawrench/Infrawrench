@@ -1,0 +1,55 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.together.ai/openapi.yaml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/GPUClusterCreateRequest",
+      "value": {
+        "$ref": "#/components/schemas/GPUClusterCreateRequestCommon"
+      },
+      "why": "A union of two allOfs that only add `required`, which render as `Common & Record<string, never>` and fit no value. buildClusterCreateBody checks the driver choice itself."
+    },
+    {
+      "pointer": "/components/schemas/GPUClusterCreateRequestCommon/properties/gpu_type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field whose options come from /v1/compute/regions, which can offer types this enum does not list yet."
+    },
+    {
+      "pointer": "/components/schemas/CreateBatchRequest/properties/endpoint",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Together validates whatever else arrives."
+    }
+  ],
+  "paths": {
+    "/v1/fine-tunes": ["get"],
+    "/v1/fine-tunes/{id}": ["get", "delete"],
+    "/v1/fine-tunes/{id}/events": ["get"],
+    "/v1/fine-tunes/{id}/checkpoints": ["get"],
+    "/v1/fine-tunes/{id}/cancel": ["post"],
+    "/v1/files": ["get"],
+    "/v1/files/{id}": ["get", "delete"],
+    "/v1/batches": ["get", "post"],
+    "/v1/batches/{id}": ["get"],
+    "/v1/batches/{id}/cancel": ["post"],
+    "/v1/evaluation": ["get"],
+    "/v1/evaluation/{id}": ["get"],
+    "/v1/compute/regions": ["get"],
+    "/v1/compute/clusters": ["get", "post"],
+    "/v1/compute/clusters/{cluster_id}": ["get", "put", "delete"],
+    "/v1/compute/clusters/storage/volumes": ["get", "post", "put"],
+    "/v1/compute/clusters/storage/volumes/{volume_id}": ["get", "delete"],
+    "/v1/voices": ["get"],
+    "/v1/audio/transcriptions": ["post"],
+    "/v1/billing/usage": ["get"],
+    "/v2/projects/{projectId}/endpoints": ["get"],
+    "/v2/projects/{projectId}/endpoints/{id}": ["delete"],
+    "/v2/projects/{projectId}/endpoints/{endpointId}/deployments": ["get"],
+    "/v2/projects/{projectId}/endpoints/{endpointId}/deployments/{id}": ["delete"],
+    "/v2/projects/{projectId}/endpoints/{id}/events": ["get"],
+    "/v2/projects/{projectId}/endpoints/{id}/analytics": ["get"]
+  }
+}

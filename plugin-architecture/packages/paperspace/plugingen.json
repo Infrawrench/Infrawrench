@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.paperspace.com/v1/openapi.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1container-registries/post/requestBody/content/application~1json/schema/properties/kind",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Paperspace validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1container-registries~1{id}/put/requestBody/content/application~1json/schema/properties/kind",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Paperspace validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1machines/post/requestBody/content/application~1json/schema/properties/publicIpType",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Paperspace validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1machines~1{id}/put/requestBody/content/application~1json/schema/properties/publicIpType",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Paperspace validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1machines~1{id}/put/requestBody/content/application~1json/schema/properties/autoSnapshotFrequency",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Paperspace validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1private-networks~1{id}/get/responses/200/content/application~1json/schema/nullable",
+      "value": false,
+      "why": "Nullable in the document, unlike every sibling; the plugin has always mapped the answer without a check, so a null fails on reading its id. Remove this when it handles one."
+    }
+  ],
+  "paths": {
+    "/container-registries": ["get", "post"],
+    "/container-registries/{id}": ["get", "put", "delete"],
+    "/container-registries/{id}/test-connection": ["get"],
+    "/custom-templates": ["get", "post"],
+    "/custom-templates/{id}": ["get", "put", "delete"],
+    "/deployments": ["get"],
+    "/deployments/{id}": ["get", "delete"],
+    "/deployments/{id}/metrics": ["get"],
+    "/machine-events/{id}": ["get"],
+    "/machines": ["get", "post"],
+    "/machines/{id}": ["get", "put", "delete"],
+    "/machines/{id}/restart": ["patch"],
+    "/machines/{id}/start": ["patch"],
+    "/machines/{id}/stop": ["patch"],
+    "/os-templates": ["get"],
+    "/private-networks": ["get", "post"],
+    "/private-networks/{id}": ["get", "put", "delete"],
+    "/projects": ["get", "post"],
+    "/projects/{id}": ["get", "put", "delete"],
+    "/public-ips": ["get", "post"],
+    "/public-ips/{ip}": ["put", "delete"],
+    "/shared-drives": ["get", "post"],
+    "/shared-drives/{id}": ["get", "put", "delete"],
+    "/snapshots": ["get", "post"],
+    "/snapshots/{id}": ["get", "put", "delete"],
+    "/snapshots/{id}/restore": ["post"],
+    "/startup-scripts": ["get", "post"],
+    "/startup-scripts/{id}": ["get", "put", "delete"],
+    "/startup-scripts/{id}/assign": ["post"],
+    "/startup-scripts/{id}/unassign": ["post"]
+  }
+}

@@ -1,7 +1,9 @@
 import type {
   ActionNode,
   HostServices,
+  HttpHostServices,
   KVItem,
+  ParamValue,
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
@@ -10,11 +12,9 @@ import type {
 
 export const PLUGIN_ID = "render";
 
-export function str(v: unknown): string {
+export function str(v: string | number | boolean | null | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
-
-export const enc = encodeURIComponent;
 
 type Fields = ResourceInstance["fields"];
 
@@ -73,7 +73,7 @@ export function parseScopedId(resourceIdOrExternal: string): { scope: string; id
 export function parseFormArg(raw: string | number | undefined): Record<string, string> {
   if (typeof raw !== "string") return {};
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed: Record<string, string | number | boolean | null> = JSON.parse(raw);
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
     return out;
@@ -82,10 +82,11 @@ export function parseFormArg(raw: string | number | undefined): Record<string, s
   }
 }
 
-export function parseJson<T>(v: unknown, fallback: T): T {
+export function parseJson<T>(v: Fields[string] | undefined, fallback: T): T {
   if (typeof v !== "string" || !v) return fallback;
   try {
-    return JSON.parse(v) as T;
+    const parsed: T = JSON.parse(v);
+    return parsed;
   } catch {
     return fallback;
   }
@@ -185,7 +186,8 @@ export class RenderApiError extends Error {
 /** Render errors are `{id, message}`. */
 export function summarizeBody(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { message?: unknown; error?: unknown };
+    const parsed: { message?: string | number | null; error?: string | number | null } =
+      JSON.parse(body);
     for (const c of [parsed.message, parsed.error]) {
       if (typeof c === "string" && c) return c;
     }
@@ -200,19 +202,18 @@ export function isStatus(err: unknown, ...statuses: number[]): boolean {
     typeof err === "object" &&
     err !== null &&
     "status" in err &&
-    statuses.includes((err as { status: number }).status)
+    typeof err.status === "number" &&
+    statuses.includes(err.status)
   );
 }
 
-export type QueryValue = string | number | boolean | undefined | null | string[];
-
-export function buildQuery(query: Record<string, QueryValue> | undefined): string {
-  if (!query) return "";
+/** Form-encoded; an empty string is not sent and a list repeats its key. */
+export function buildQuery(query: Record<string, ParamValue>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null || value === "") continue;
     if (Array.isArray(value)) {
-      for (const v of value) params.append(key, v);
+      for (const v of value) params.append(key, String(v));
     } else {
       params.append(key, String(value));
     }
@@ -232,18 +233,11 @@ export interface RawResponse {
  */
 export async function sendRequest(
   services: HostServices | undefined,
-  caCert: string,
-  req: { url: string; method: string; headers: Record<string, string>; body?: string },
+  req: Parameters<HttpHostServices["request"]>[0],
 ): Promise<RawResponse> {
   const http = services?.http;
   if (http) {
-    const res = await http.request({
-      url: req.url,
-      method: req.method,
-      headers: req.headers,
-      ...(req.body !== undefined ? { body: req.body } : {}),
-      ...(caCert ? { caCert } : {}),
-    });
+    const res = await http.request(req);
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(res.headers ?? {})) headers[k.toLowerCase()] = v;
     return { status: res.status, headers, body: res.body ?? "" };
@@ -251,7 +245,9 @@ export async function sendRequest(
   const res = await fetch(req.url, {
     method: req.method,
     headers: req.headers,
-    ...(req.body !== undefined ? { body: req.body } : {}),
+    ...(req.body !== undefined
+      ? { body: typeof req.body === "string" ? req.body : req.body.slice() }
+      : {}),
   });
   const headers: Record<string, string> = {};
   res.headers?.forEach?.((v, k) => {

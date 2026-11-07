@@ -9,7 +9,6 @@ import type {
   CreateResourceConfig,
   DetailViewSchema,
   HostServices,
-  HttpHostServices,
   PluginClient,
   PreflightResult,
   ResourceInstance,
@@ -18,38 +17,18 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { formatBytes, joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
+import { formatBytes, joinSubtitle, pathEncode } from "@infrawrench/plugin-base";
+import {
+  API_BASE,
+  createVoyageApi,
+  type Batch,
+  type PageQuery,
+  type VoyageApi,
+  type VoyageFile,
+} from "./api.js";
 import { BATCH_ENDPOINTS, VOYAGE_MODELS, type VoyageKind } from "./catalog.js";
 
-/** Voyage API v1 (spec fragments embedded in docs.voyageai.com/reference/*.md, Oct 2026). */
-export const API_BASE = "https://api.voyageai.com/v1";
 const DASHBOARD = "https://dashboard.voyageai.com";
-
-interface Batch {
-  id?: string;
-  endpoint?: string;
-  errors?: unknown;
-  input_file_id?: string;
-  completion_window?: string;
-  model?: string;
-  status?: string;
-  output_file_id?: string | null;
-  error_file_id?: string | null;
-  request_counts?: { total?: number; completed?: number; failed?: number };
-  metadata?: Record<string, string> | null;
-  created_at?: string;
-  completed_at?: string | null;
-  expected_completion_at?: string | null;
-}
-
-interface VoyageFile {
-  id?: string;
-  bytes?: number;
-  created_at?: string;
-  expires_at?: string;
-  filename?: string;
-  purpose?: string;
-}
 
 interface Page<T> {
   data?: T[];
@@ -57,7 +36,9 @@ interface Page<T> {
   last_id?: string;
 }
 
-function s(value: unknown): string {
+type Scalar = string | number | boolean | null | undefined;
+
+function s(value: Scalar): string {
   return value === undefined || value === null ? "" : String(value);
 }
 
@@ -81,7 +62,7 @@ function section(title: string, children: SchemaNode[]): SectionNode {
   return { kind: "section", title, children };
 }
 
-function kv(items: Array<[string, unknown]>, copyable: string[] = []): SchemaNode {
+function kv(items: Array<[string, Scalar]>, copyable: string[] = []): SchemaNode {
   return {
     kind: "key-value-list",
     items: items.map(([key, value]) => ({
@@ -96,6 +77,17 @@ const REFRESH: ActionNode = {
   kind: "action",
   label: "Refresh",
   action: { type: "refresh-resource" },
+};
+
+const CANCEL_BATCH: ActionNode = {
+  kind: "action",
+  label: "Cancel batch",
+  action: {
+    type: "plugin-action",
+    actionId: "cancel",
+    confirmMessage: "Cancel this batch? It can stay in cancelling for up to 10 minutes.",
+    successMessage: "Batch cancellation requested.",
+  },
 };
 
 export function batchStatus(status: string): ResourceStatus {
@@ -135,29 +127,21 @@ export function parseRerankInput(text: string): { query: string; documents: stri
  * Voyage publishes no model-listing, usage, billing or key-management API.
  */
 export class VoyageClient implements PluginClient {
-  private readonly apiKey: string;
-  private readonly caCert: string;
-  private readonly http: HttpHostServices | undefined;
+  private readonly api: VoyageApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Voyage plugin: missing apiKey credential");
-    this.apiKey = apiKey;
-    this.caCert = credentials["caCert"] ?? "";
-    this.http = services?.http;
+    this.api = createVoyageApi({
+      apiKey,
+      caCert: credentials["caCert"] ?? "",
+      http: services?.http,
+    });
   }
 
-  private async fetch<T>(path: string, init?: RequestInit): Promise<T> {
+  private async call<T>(request: (api: VoyageApi) => Promise<T>): Promise<T> {
     try {
-      return await jsonRestFetch<T>({
-        vendor: "Voyage AI",
-        url: `${API_BASE}${path}`,
-        errorPath: path.split("?")[0] ?? path,
-        headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
-        ...(init ? { init } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-        ...(this.http ? { http: this.http } : {}),
-      });
+      return await request(this.api);
     } catch (err) {
       throw withStatus(err);
     }
@@ -167,10 +151,11 @@ export class VoyageClient implements PluginClient {
   verifyCredentials(): PluginEffect<PreflightResult> {
     return attempt(async () => {
       try {
-        await this.fetch("/files?limit=1");
+        await this.call((api) => api.get("/files", { query: { limit: 1 } }));
         return { checks: [{ capabilityId: "api", status: "ok" }] };
       } catch (err) {
-        const status = (err as { status?: number }).status;
+        const failure = typeof err === "object" && err !== null ? err : {};
+        const status = "status" in failure ? failure.status : undefined;
         if (status === 401 || status === 403) {
           return {
             checks: [
@@ -186,7 +171,11 @@ export class VoyageClient implements PluginClient {
         }
         return {
           checks: [
-            { capabilityId: "api", status: "unknown", message: String((err as Error).message) },
+            {
+              capabilityId: "api",
+              status: "unknown",
+              message: String("message" in failure ? failure.message : undefined),
+            },
           ],
         };
       }
@@ -240,9 +229,9 @@ export class VoyageClient implements PluginClient {
             ),
           );
         case "voyage-batch":
-          return (await this.paged<Batch>("/batches")).map((b) => this.mapBatch(accountId, b));
+          return (await this.listBatches()).map((b) => this.mapBatch(accountId, b));
         case "voyage-file":
-          return (await this.paged<VoyageFile>("/files")).map((f) => this.mapFile(accountId, f));
+          return (await this.listFiles()).map((f) => this.mapFile(accountId, f));
         default:
           throw new Error(`Voyage plugin: unknown resource type "${typeId}"`);
       }
@@ -250,19 +239,27 @@ export class VoyageClient implements PluginClient {
   }
 
   /** `limit≤100` + `after=<last_id>` while `has_more`. */
-  private async paged<T extends { id?: string }>(path: string): Promise<T[]> {
+  private async paged<T extends { id?: string }>(
+    list: (query: PageQuery) => Promise<Page<T>>,
+  ): Promise<T[]> {
     const out: T[] = [];
     let after = "";
     for (let i = 0; i < 50; i++) {
-      const page = await this.fetch<Page<T>>(
-        `${path}?limit=100${after ? `&after=${encodeURIComponent(after)}` : ""}`,
-      );
+      const page = await list({ limit: 100, ...(after ? { after } : {}) });
       const data = page.data ?? [];
       out.push(...data);
       if (!page.has_more || data.length === 0) break;
       after = s(page.last_id) || s(data[data.length - 1]?.id);
     }
     return out.filter((x) => x.id);
+  }
+
+  private listBatches(): Promise<Batch[]> {
+    return this.paged((query) => this.call((api) => api.get("/batches", { query })));
+  }
+
+  private listFiles(): Promise<VoyageFile[]> {
+    return this.paged((query) => this.call((api) => api.get("/files", { query })));
   }
 
   private mapBatch(accountId: string, b: Batch): ResourceInstance {
@@ -323,12 +320,12 @@ export class VoyageClient implements PluginClient {
       if (typeId === "voyage-batch")
         return this.mapBatch(
           accountId,
-          await this.fetch<Batch>(`/batches/${encodeURIComponent(id)}`),
+          await this.call((api) => api.get(`/batches/${pathEncode(id)}`)),
         );
       if (typeId === "voyage-file")
         return this.mapFile(
           accountId,
-          await this.fetch<VoyageFile>(`/files/${encodeURIComponent(id)}`),
+          await this.call((api) => api.get(`/files/${pathEncode(id)}`)),
         );
       const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
         (r) => r.externalId === id,
@@ -356,7 +353,7 @@ export class VoyageClient implements PluginClient {
   getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
       if (typeId !== "voyage-batch") throw new Error(`Voyage plugin: ${typeId} cannot be created`);
-      const files = (await this.paged<VoyageFile>("/files").catch(() => [] as VoyageFile[])).filter(
+      const files = (await this.listFiles().catch((): VoyageFile[] => [])).filter(
         (f) => (f.purpose ?? "batch") === "batch",
       );
       const fileOptions = files.map((f) => ({
@@ -438,17 +435,19 @@ export class VoyageClient implements PluginClient {
             .trim()
             .slice(0, 512);
       }
-      const created = await this.fetch<Batch>("/batches", {
-        method: "POST",
-        body: JSON.stringify({
-          input_file_id: fields["inputFileId"],
-          endpoint,
-          // The only window Voyage accepts today.
-          completion_window: "12h",
-          request_params: { model },
-          ...(Object.keys(metadata).length ? { metadata } : {}),
+      const inputFileId = fields["inputFileId"];
+      const created = await this.call((api) =>
+        api.post("/batches", {
+          body: {
+            input_file_id: inputFileId,
+            endpoint,
+            // The only window Voyage accepts today.
+            completion_window: "12h",
+            request_params: { model },
+            ...(Object.keys(metadata).length ? { metadata } : {}),
+          },
         }),
-      });
+      );
       return this.mapBatch(accountId, created);
     });
   }
@@ -456,12 +455,8 @@ export class VoyageClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
     return attempt(async () => {
       if (typeId !== "voyage-file") throw new Error(`Voyage plugin: ${typeId} cannot be deleted`);
-      await this.fetch(
-        `/files/${encodeURIComponent(externalIdOf(resourceId, accountId, typeId))}`,
-        {
-          method: "DELETE",
-        },
-      );
+      const id = externalIdOf(resourceId, accountId, typeId);
+      await this.call((api) => api.delete(`/files/${pathEncode(id)}`));
     });
   }
 
@@ -474,12 +469,8 @@ export class VoyageClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       if (typeId === "voyage-batch" && actionId === "cancel") {
-        await this.fetch(
-          `/batches/${encodeURIComponent(externalIdOf(resourceId, accountId, typeId))}/cancel`,
-          {
-            method: "POST",
-          },
-        );
+        const id = externalIdOf(resourceId, accountId, typeId);
+        await this.call((api) => api.post(`/batches/${pathEncode(id)}/cancel`));
         return;
       }
       throw new Error(`Voyage plugin: unknown action "${actionId}" for ${typeId}`);
@@ -498,7 +489,7 @@ export class VoyageClient implements PluginClient {
     resourceId: string,
     accountId: string,
     messages: ChatMessage[],
-  ): AsyncGenerator<ChatStreamEvent, void, unknown> {
+  ): AsyncGenerator<ChatStreamEvent, void, void> {
     const model = externalIdOf(resourceId, accountId, typeId);
     const meta = VOYAGE_MODELS.find((m) => m.id === model);
     const text =
@@ -522,10 +513,9 @@ export class VoyageClient implements PluginClient {
           };
           return;
         }
-        const res = await this.fetch<{
-          data?: Array<{ index?: number; relevance_score?: number }>;
-          usage?: { total_tokens?: number };
-        }>("/rerank", { method: "POST", body: JSON.stringify({ query, documents, model }) });
+        const res = await this.call((api) =>
+          api.post("/rerank", { body: { query, documents, model } }),
+        );
         tokens = res.usage?.total_tokens;
         reply = [
           `Ranked ${documents.length} documents for "${query}":`,
@@ -535,31 +525,26 @@ export class VoyageClient implements PluginClient {
           ),
         ].join("\n");
       } else if (meta?.kind === "contextualized") {
-        const res = await this.fetch<{
-          data?: Array<{ data?: Array<{ embedding?: number[] }> }>;
-          usage?: { total_tokens?: number };
-        }>("/contextualizedembeddings", {
-          method: "POST",
-          body: JSON.stringify({ inputs: [text.split("\n\n")], model, input_type: "document" }),
-        });
+        const res = await this.call((api) =>
+          api.post("/contextualizedembeddings", {
+            body: { inputs: [text.split("\n\n")], model, input_type: "document" },
+          }),
+        );
         tokens = res.usage?.total_tokens;
         const chunks = res.data?.[0]?.data ?? [];
         reply = `${chunks.length} chunk embedding${chunks.length === 1 ? "" : "s"} of ${chunks[0]?.embedding?.length ?? 0} dimensions (separate chunks with a blank line).`;
       } else if (meta?.kind === "multimodal") {
-        const res = await this.fetch<{
-          data?: Array<{ embedding?: number[] }>;
-          usage?: { total_tokens?: number };
-        }>("/multimodalembeddings", {
-          method: "POST",
-          body: JSON.stringify({ inputs: [{ content: [{ type: "text", text }] }], model }),
-        });
+        const res = await this.call((api) =>
+          api.post("/multimodalembeddings", {
+            body: { inputs: [{ content: [{ type: "text", text }] }], model },
+          }),
+        );
         tokens = res.usage?.total_tokens;
         reply = vectorSummary(res.data?.[0]?.embedding);
       } else {
-        const res = await this.fetch<{
-          data?: Array<{ embedding?: number[] }>;
-          usage?: { total_tokens?: number };
-        }>("/embeddings", { method: "POST", body: JSON.stringify({ input: [text], model }) });
+        const res = await this.call((api) =>
+          api.post("/embeddings", { body: { input: [text], model } }),
+        );
         tokens = res.usage?.total_tokens;
         reply = vectorSummary(res.data?.[0]?.embedding);
       }
@@ -695,24 +680,7 @@ export class VoyageClient implements PluginClient {
               ? [section("Errors", [{ kind: "text", variant: "mono", content: s(f["errors"]) }])]
               : []),
           ],
-          headerActions: [
-            REFRESH,
-            ...(cancellable
-              ? [
-                  {
-                    kind: "action" as const,
-                    label: "Cancel batch",
-                    action: {
-                      type: "plugin-action" as const,
-                      actionId: "cancel",
-                      confirmMessage:
-                        "Cancel this batch? It can stay in cancelling for up to 10 minutes.",
-                      successMessage: "Batch cancellation requested.",
-                    },
-                  },
-                ]
-              : []),
-          ],
+          headerActions: [REFRESH, ...(cancellable ? [CANCEL_BATCH] : [])],
         };
       }
       case "voyage-file": {

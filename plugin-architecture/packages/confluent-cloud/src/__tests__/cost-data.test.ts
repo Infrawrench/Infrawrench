@@ -7,6 +7,7 @@ import {
   normalizeCosts,
   productLabel,
 } from "../cost-data.js";
+import { createConfluentContext } from "../api.js";
 import { makeHttp } from "./helpers.js";
 
 describe("costWindows", () => {
@@ -139,7 +140,7 @@ describe("fetchConfluentCostData", () => {
         },
       };
     });
-    const ctx = { apiKey: "k", apiSecret: "s", http };
+    const ctx = createConfluentContext({ apiKey: "k", apiSecret: "s", http });
     const rows = await fetchConfluentCostData(ctx, {
       fromDate: "2026-09-01",
       toDate: "2026-09-01",
@@ -152,7 +153,7 @@ describe("fetchConfluentCostData", () => {
     const denied = makeHttp(() => ({ status: 403, body: { errors: [] } }));
     await expect(
       fetchConfluentCostData(
-        { apiKey: "k", apiSecret: "s", http: denied.http },
+        createConfluentContext({ apiKey: "k", apiSecret: "s", http: denied.http }),
         { fromDate: "2026-09-01", toDate: "2026-09-01" },
       ),
     ).rejects.toBeInstanceOf(CostSetupError);

@@ -14,8 +14,8 @@
  * modelled: rows are the list value of what was consumed.
  */
 import type { CostFetchRange, CostRow, MetricSeries } from "@infrawrench/plugin-base";
-import type { PuContext } from "./api.js";
-import { enc, puRaw } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { PulumiApi } from "./api.js";
 
 export interface PlanRates {
   id: string;
@@ -88,28 +88,19 @@ export interface DayUsage {
   resources?: number;
 }
 
-interface SummaryRow {
-  year?: number;
-  month?: number;
-  day?: number;
-  resourceHours?: number;
-  resources?: number;
-}
-
 /** One summary endpoint as daily rows; an empty (204) answer is no usage. */
 export async function fetchSummary(
-  ctx: PuContext,
+  api: PulumiApi,
   org: string,
   kind: "resources" | "deployments" | "secrets",
   sinceMs: number,
 ): Promise<DayUsage[]> {
   const floor = Date.now() - 364 * 24 * 3600 * 1000;
   const start = Math.floor(Math.max(sinceMs, floor) / 1000);
-  const text = await puRaw(ctx, `/api/orgs/${enc(org)}/${kind}/summary`, {
+  const parsed = await api.get(`/api/orgs/${pathEncode(org)}/${kind}/summary`, {
     query: { granularity: "daily", lookbackStart: start },
   });
-  if (!text) return [];
-  const parsed = JSON.parse(text) as { summary?: SummaryRow[] };
+  if (parsed === undefined) return [];
   const out: DayUsage[] = [];
   for (const r of parsed.summary ?? []) {
     if (!r.year || !r.month || !r.day) continue;
@@ -124,16 +115,16 @@ export async function fetchSummary(
 }
 
 export async function fetchUsageCost(
-  ctx: PuContext,
+  api: PulumiApi,
   org: string,
   rates: PlanRates,
   range: CostFetchRange,
 ): Promise<CostRow[]> {
   const since = Date.parse(`${range.fromDate}T00:00:00Z`);
   const [resources, deployments, secrets] = await Promise.all([
-    fetchSummary(ctx, org, "resources", since),
-    fetchSummary(ctx, org, "deployments", since),
-    fetchSummary(ctx, org, "secrets", since),
+    fetchSummary(api, org, "resources", since),
+    fetchSummary(api, org, "deployments", since),
+    fetchSummary(api, org, "secrets", since),
   ]);
   const rows: CostRow[] = [];
   const add = (days: DayUsage[], service: string, unit: string, rate: number) => {
@@ -158,15 +149,15 @@ export async function fetchUsageCost(
 
 /** Usage summaries as metric series for the organization's Metrics tab. */
 export async function usageSeries(
-  ctx: PuContext,
+  api: PulumiApi,
   org: string,
   startMs: number,
   endMs: number,
 ): Promise<MetricSeries[]> {
   const [resources, deployments, secrets] = await Promise.all([
-    fetchSummary(ctx, org, "resources", startMs).catch(() => [] as DayUsage[]),
-    fetchSummary(ctx, org, "deployments", startMs).catch(() => [] as DayUsage[]),
-    fetchSummary(ctx, org, "secrets", startMs).catch(() => [] as DayUsage[]),
+    fetchSummary(api, org, "resources", startMs).catch((): DayUsage[] => []),
+    fetchSummary(api, org, "deployments", startMs).catch((): DayUsage[] => []),
+    fetchSummary(api, org, "secrets", startMs).catch((): DayUsage[] => []),
   ]);
   const pts = (days: DayUsage[], pick: (d: DayUsage) => number | undefined) =>
     days

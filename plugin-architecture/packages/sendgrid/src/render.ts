@@ -89,7 +89,8 @@ function muted(content: string): SchemaNode {
 function parseJson<T>(raw: string | undefined): T | undefined {
   if (!raw) return undefined;
   try {
-    return JSON.parse(raw) as T;
+    const parsed: T = JSON.parse(raw);
+    return parsed;
   } catch {
     return undefined;
   }
@@ -314,9 +315,10 @@ function creditStatus(f: ResourceInstance["fields"]) {
 }
 
 function validStatus(valid: unknown) {
+  const status: ResourceStatus = valid === true ? "healthy" : "error";
   return {
     kind: "status-dot" as const,
-    status: (valid === true ? "healthy" : "error") as ResourceStatus,
+    status,
     label: valid === true ? "Verified" : "Not verified",
   };
 }

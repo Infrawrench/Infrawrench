@@ -1,4 +1,5 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiListItem, ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
 
 export const PLUGIN_ID = "pulumi-cloud";
 
@@ -58,129 +59,33 @@ export function parts(id: string): string[] {
 // API shapes
 // ---------------------------------------------------------------------------
 
-export interface PuStackSummary {
-  id?: string;
-  orgName: string;
-  projectName: string;
-  stackName: string;
-  lastUpdate?: number;
-  resourceCount?: number;
-}
+/** A row as an API answer has it, or as the plugin writes it just after creating one. */
+type Known<T, Required extends keyof T> = Pick<T, Required> & Partial<T>;
 
-export interface PuStack {
-  id?: string;
-  orgName: string;
-  projectName: string;
-  stackName: string;
-  activeUpdate?: string;
-  currentOperation?: { kind?: string; author?: string; started?: number } | null;
-  tags?: Record<string, string>;
-  version?: number;
-  config?: { environment?: string; secretsProvider?: string };
-}
+type StackListItem = ApiListItem<operations["ListUserStacks"], "stacks">;
 
-export interface PuUpdate {
-  kind?: string;
-  startTime?: number;
-  endTime?: number;
-  message?: string;
-  result?: string;
-  version?: number;
-  resourceChanges?: Record<string, number>;
-  resourceCount?: number;
-  environment?: Record<string, string>;
-}
-
-export interface PuDeployment {
-  id: string;
-  version?: number;
-  status?: string;
-  created?: string;
-  modified?: string;
-  pulumiOperation?: string;
-  projectName?: string;
-  stackName?: string;
-  initiator?: string;
-  requestedBy?: { name?: string; githubLogin?: string };
-  jobs?: Array<{
-    status?: string;
-    started?: string;
-    lastUpdated?: string;
-    steps?: Array<{ name?: string; status?: string }>;
-  }>;
-  updates?: Array<{ kind?: string; result?: string; version?: number; message?: string }>;
-  paused?: boolean;
-}
-
-export interface PuEnvironment {
-  id?: string;
-  deletedAt?: string | null;
-  name: string;
-  project?: string;
-  organization?: string;
-  created?: string;
-  modified?: string;
-  ownedBy?: { name?: string; githubLogin?: string };
-  tags?: Record<string, string>;
-  referrerMetadata?: {
-    stackReferrers?: number;
-    environmentReferrers?: number;
-    insightsAccountReferrers?: number;
-  };
-  settings?: { deletionProtected?: boolean };
-}
-
-export interface PuToken {
-  id: string;
-  name?: string;
-  description?: string;
-  created?: string;
-  createdBy?: string;
-  expires?: number;
-  lastUsed?: number;
-  admin?: boolean;
-  type?: string;
-}
-
-export interface PuTeam {
-  name: string;
-  displayName?: string;
-  description?: string;
-  kind?: string;
-  members?: unknown[];
-  stacks?: unknown[];
-  environments?: unknown[];
-  userRole?: string;
-}
-
-export interface PuWebhook {
-  name?: string;
-  displayName: string;
-  payloadUrl: string;
-  active: boolean;
-  format?: string;
-  groups?: string[];
-  filters?: string[];
-  hasSecret?: boolean;
-  organizationName?: string;
-}
-
-export interface PuPolicyPack {
-  name: string;
-  displayName?: string;
-  versions?: number[];
-  versionTags?: string[];
-}
-
-export interface PuPolicyGroup {
-  name: string;
-  isOrgDefault?: boolean;
-  mode?: string;
-  entityType?: string;
-  numStacks?: number;
-  numAccounts?: number;
-  numEnabledPolicyPacks?: number;
-}
+export type PuStackSummary = Known<StackListItem, "orgName" | "projectName" | "stackName">;
+export type PuStack = ApiResponse<operations["GetStack"]>;
+export type PuUpdate = ApiListItem<operations["GetStackUpdates"], "updates">;
+export type PuDeployment = Known<
+  Omit<ApiListItem<operations["ListOrgDeployments"], "deployments">, "pulumiOperation">,
+  "id"
+> & { pulumiOperation?: string };
+export type PuEnvironment = Known<
+  ApiListItem<operations["ListOrgEnvironments_esc"], "environments">,
+  "name"
+>;
+export type PuToken = Known<ApiListItem<operations["ListOrgTokens"], "tokens">, "id">;
+export type PuTeam = Known<ApiResponse<operations["GetTeam"]>, "name">;
+export type PuWebhook = Known<
+  ApiResponse<operations["GetOrganizationWebhook"]>,
+  "displayName" | "payloadUrl" | "active"
+>;
+export type PuPolicyPack = ApiListItem<operations["ListPolicyPacks_orgs"], "policyPacks">;
+export type PuPolicyGroup = Known<
+  Omit<ApiListItem<operations["ListPolicyGroups"], "policyGroups">, "mode">,
+  "name"
+> & { mode?: string };
 
 // ---------------------------------------------------------------------------
 // Mappers
@@ -251,7 +156,11 @@ export function mapProject(
 
 export function mapStack(
   accountId: string,
-  s: PuStackSummary & Partial<PuStack>,
+  s: Omit<PuStackSummary, "resourceCount" | "lastUpdate"> &
+    Partial<PuStack> & {
+      resourceCount?: number | undefined;
+      lastUpdate?: number | undefined;
+    },
   url: string,
   extra: {
     driftDetected?: boolean | undefined;

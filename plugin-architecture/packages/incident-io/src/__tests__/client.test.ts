@@ -215,7 +215,8 @@ describe("paging: incidents", () => {
   });
 
   it("names the lead as the assignee", () => {
-    const incident = toPagingIncident({
+    // As it comes off the wire: only what this test is about, not all the document requires.
+    const wire = JSON.stringify({
       id: "I1",
       reference: "INC-56",
       name: "Checkout down",
@@ -227,6 +228,7 @@ describe("paging: incidents", () => {
       ],
       created_at: "2026-10-06T00:00:00Z",
     });
+    const incident = toPagingIncident(JSON.parse(wire));
     expect(incident).toMatchObject({
       reference: "INC-56",
       status: "acknowledged",

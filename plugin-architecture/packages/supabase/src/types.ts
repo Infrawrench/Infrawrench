@@ -1,376 +1,65 @@
-/** Wire shapes from the Supabase Management API OpenAPI document (2026-10). */
+import type { ApiBody, ApiListItem, ApiResponse } from "@infrawrench/plugin-base";
+import type { SupabaseResponse } from "./api.js";
+import type { operations } from "./api-types.management.gen.js";
+import type { paths as storagePaths } from "./api-types.storage.gen.js";
 
-export type ProjectStatus =
-  | "INACTIVE"
-  | "ACTIVE_HEALTHY"
-  | "ACTIVE_UNHEALTHY"
-  | "COMING_UP"
-  | "UNKNOWN"
-  | "GOING_DOWN"
-  | "INIT_FAILED"
-  | "REMOVED"
-  | "RESTORING"
-  | "UPGRADING"
-  | "PAUSING"
-  | "RESTORE_FAILED"
-  | "RESTARTING"
-  | "PAUSE_FAILED"
-  | "RESIZING";
+/** Wire shapes, from the Supabase Management API and Storage API documents. */
 
-export interface SbOrganization {
-  id: string;
-  slug: string;
-  name: string;
-}
+export type SbOrganization = ApiListItem<operations["v1-list-all-organizations"], null>;
+export type SbMember = ApiListItem<operations["v1-list-organization-members"], null>;
 
-export interface SbOrganizationDetail {
-  id: string;
-  name: string;
-  plan?: string;
-  opt_in_tags?: string[];
-  allowed_release_channels?: string[];
-}
+/** `POST /v1/projects` answers without `database`; every other read has it. */
+export type SbProject = SupabaseResponse<"v1-create-a-project"> & {
+  database?: SupabaseResponse<"v1-get-project">["database"];
+};
 
-export interface SbMember {
-  user_id: string;
-  user_name: string;
-  email?: string;
-  role_name?: string;
-  mfa_enabled: boolean;
-}
-
-export interface SbProject {
-  id?: string;
-  ref: string;
-  organization_id?: string;
-  organization_slug: string;
-  name: string;
-  region: string;
-  created_at: string;
-  status: ProjectStatus | string;
-  database?: {
-    host: string;
-    version: string;
-    postgres_engine: string;
-    release_channel: string;
-  };
-}
-
+export type SbOrgProject = ApiListItem<
+  operations["v1-get-all-projects-for-organization"],
+  "projects"
+>;
 /** One database in `GET /v1/organizations/{slug}/projects` (primary or read replica). */
-export interface SbOrgProjectDatabase {
-  infra_compute_size?: string;
-  region: string;
-  status: string;
-  cloud_provider: string;
-  identifier: string;
-  type: "PRIMARY" | "READ_REPLICA";
-  disk_volume_size_gb?: number;
-  disk_type?: string;
-  disk_throughput_mbps?: number;
-  disk_last_modified_at?: string;
-}
+export type SbOrgProjectDatabase = SbOrgProject["databases"][number];
 
-export interface SbOrgProject {
-  ref: string;
-  name: string;
-  cloud_provider: string;
-  region: string;
-  is_branch: boolean;
-  status: string;
-  inserted_at: string;
-  databases: SbOrgProjectDatabase[];
-}
+export type SbBranch = SupabaseResponse<"v1-create-a-branch">;
+export type SbFunction =
+  SupabaseResponse<"v1-get-a-function"> | SupabaseResponse<"v1-deploy-a-function">;
+export type SbApiKey = SupabaseResponse<"v1-get-project-api-key">;
+export type SbPooler = ApiListItem<operations["v1-get-pooler-config"], null>;
+export type SbSsoProvider = SupabaseResponse<"v1-create-a-sso-provider">;
+export type SbThirdPartyAuth = SupabaseResponse<"v1-create-project-tpa-integration">;
+export type SbSigningKey = SupabaseResponse<"v1-create-project-signing-key">;
+export type SbRegion = SupabaseResponse<"v1-get-available-regions">["all"]["specific"][number];
 
-export interface SbOrgProjectsPage {
-  projects: SbOrgProject[];
-  pagination: { count: number; limit: number; offset: number };
-}
+/** Attributes as `POST /config/disk` takes them; see the patch on `DiskRequestBody`. */
+export type SbDiskAttributes = ApiBody<operations["v1-modify-database-disk"]>["attributes"];
 
-export interface SbBranch {
-  id: string;
-  name: string;
-  project_ref: string;
-  parent_project_ref: string;
-  is_default: boolean;
-  git_branch?: string;
-  pr_number?: number;
-  persistent: boolean;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  review_requested_at?: string;
-  with_data: boolean;
-  notify_url?: string;
-  deletion_scheduled_at?: string;
-  preview_project_status?: string;
-}
+export type SbNetworkRestrictions = SupabaseResponse<"v1-get-network-restrictions">;
+export type SbAddons = SupabaseResponse<"v1-list-project-addons">;
+/** Only `gp3` reports a throughput, which reads as absent on `io2`. */
+export type SbDiskConfig = SupabaseResponse<"v1-get-database-disk"> & {
+  attributes: { throughput_mibps?: number };
+};
+export type SbDiskUtil = SupabaseResponse<"v1-get-disk-utilization">;
+export type SbDiskAutoscale = SupabaseResponse<"v1-get-project-disk-autoscale-config">;
+export type SbReadonly = SupabaseResponse<"v1-get-readonly-mode-status">;
+export type SbUpgradeEligibility = SupabaseResponse<"v1-get-postgres-upgrade-eligibility">;
+export type SbCustomHostname = SupabaseResponse<"v1-get-hostname-config">;
+export type SbVanity = SupabaseResponse<"v1-get-vanity-subdomain-config">;
+export type SbLint = SupabaseResponse<"v1-get-security-advisors">["lints"][number];
+/** Only some services report `info`, and only Auth's has a version. */
+export type SbHealth = ApiListItem<operations["v1-get-services-health"], null> & {
+  info?: { version?: string } | null;
+};
 
-export interface SbBranchConfig {
-  ref: string;
-  postgres_version: string;
-  postgres_engine: string;
-  release_channel: string;
-  status: string;
-  db_host: string;
-  db_port: number;
-  db_user?: string;
-  db_pass?: string;
-}
+/**
+ * A bucket as the Storage API has it, which carries limits the Management API
+ * omits; a row of the Management API's own list fits it too.
+ */
+export type SbStorageBucket = ApiResponse<storagePaths["/bucket/{bucketId}"]["get"]>;
 
-export interface SbFunction {
-  id: string;
-  slug: string;
-  name: string;
-  status: string;
-  version: number;
-  created_at: number;
-  updated_at: number;
-  verify_jwt?: boolean;
-  import_map?: boolean;
-  entrypoint_path?: string;
-  import_map_path?: string;
-  ezbr_sha256?: string;
-}
-
-export interface SbSecret {
-  name: string;
-  /** A SHA-256 digest of the value, never the value itself. */
-  value: string;
-  updated_at?: string;
-}
-
-export interface SbApiKey {
-  api_key?: string | null;
-  id?: string | null;
-  type?: "legacy" | "publishable" | "secret" | null;
-  prefix?: string | null;
-  name: string;
-  description?: string | null;
-  hash?: string | null;
-  secret_jwt_template?: Record<string, unknown> | null;
-  inserted_at?: string | null;
-  updated_at?: string | null;
-}
-
-export interface SbBucket {
-  id: string;
-  name: string;
-  owner: string;
-  created_at: string;
-  updated_at: string;
-  public: boolean;
-}
-
-/** Storage API bucket, which carries limits the Management API omits. */
-export interface SbStorageBucket extends SbBucket {
-  file_size_limit?: number | null;
-  allowed_mime_types?: string[] | null;
-  type?: string;
-}
-
-export interface SbStorageObject {
-  name: string;
-  id: string | null;
-  updated_at?: string | null;
-  created_at?: string | null;
+export type SbStorageObject = ApiListItem<
+  storagePaths["/object/list/{bucketName}"]["post"],
+  null
+> & {
   metadata?: { size?: number; mimetype?: string; lastModified?: string } | null;
-}
-
-export interface SbBackups {
-  region: string;
-  walg_enabled: boolean;
-  pitr_enabled: boolean;
-  backups: Array<{
-    id: number;
-    is_physical_backup: boolean;
-    status: string;
-    inserted_at: string;
-  }>;
-  physical_backup_data?: {
-    earliest_physical_backup_date_unix?: number;
-    latest_physical_backup_date_unix?: number;
-  };
-}
-
-export interface SbAddonPrice {
-  description: string;
-  type: "fixed" | "usage";
-  interval: "monthly" | "hourly";
-  amount: number;
-}
-
-export interface SbAddonVariant {
-  id: string;
-  name: string;
-  price: SbAddonPrice;
-  meta?: unknown;
-}
-
-export interface SbAddons {
-  selected_addons: Array<{ type: string; variant: SbAddonVariant }>;
-  available_addons: Array<{ type: string; name: string; variants: SbAddonVariant[] }>;
-}
-
-export interface SbDiskConfig {
-  attributes: {
-    iops: number;
-    size_gb: number;
-    throughput_mibps?: number;
-    type: "gp3" | "io2";
-  };
-  last_modified_at?: string;
-}
-
-export interface SbDiskUtil {
-  timestamp: string;
-  metrics: { fs_size_bytes: number; fs_avail_bytes: number; fs_used_bytes: number };
-}
-
-export interface SbDiskAutoscale {
-  growth_percent: number;
-  min_increment_gb: number;
-  max_size_gb: number;
-}
-
-export interface SbPooler {
-  identifier: string;
-  database_type: "PRIMARY" | "READ_REPLICA";
-  is_using_scram_auth: boolean;
-  db_user: string;
-  db_host: string;
-  db_port: number;
-  db_name: string;
-  connection_string: string;
-  default_pool_size: number | null;
-  max_client_conn: number | null;
-  pool_mode: "transaction" | "session";
-}
-
-export interface SbNetworkRestrictions {
-  entitlement: "disallowed" | "allowed";
-  config: { dbAllowedCidrs?: string[]; dbAllowedCidrsV6?: string[] };
-  old_config?: { dbAllowedCidrs?: string[]; dbAllowedCidrsV6?: string[] };
-  status: "stored" | "applied";
-}
-
-export interface SbSslEnforcement {
-  currentConfig: { database: boolean };
-  appliedSuccessfully: boolean;
-}
-
-export interface SbReadonly {
-  enabled: boolean;
-  override_enabled: boolean;
-  override_active_until: string;
-}
-
-export interface SbHealth {
-  name: string;
-  healthy: boolean;
-  status: "COMING_UP" | "ACTIVE_HEALTHY" | "UNHEALTHY";
-  error?: string;
-  info?: { version?: string; name?: string } | null;
-}
-
-export interface SbLint {
-  name: string;
-  title: string;
-  level: "ERROR" | "WARN" | "INFO";
-  facing: string;
-  categories: string[];
-  description: string;
-  detail: string;
-  remediation: string;
-  metadata?: { schema?: string; name?: string; entity?: string; type?: string };
-  cache_key: string;
-}
-
-export interface SbUpgradeEligibility {
-  eligible: boolean;
-  current_app_version: string;
-  latest_app_version: string;
-  target_upgrade_versions: Array<{
-    postgres_version: string;
-    release_channel: string;
-    app_version: string;
-  }>;
-  duration_estimate_hours: number;
-  validation_errors?: unknown[];
-  warnings?: unknown[];
-}
-
-export interface SbCustomHostname {
-  status: string;
-  custom_hostname?: string;
-  data?: {
-    result?: {
-      hostname?: string;
-      status?: string;
-      ssl?: { status?: string };
-      ownership_verification?: { type?: string; name?: string; value?: string };
-    };
-  };
-}
-
-export interface SbVanity {
-  status: "not-used" | "custom-domain-used" | "active";
-  custom_domain?: string;
-}
-
-export interface SbSsoProvider {
-  id: string;
-  saml?: {
-    entity_id: string;
-    metadata_url?: string;
-    metadata_xml?: string;
-    name_id_format?: string;
-    attribute_mapping?: { keys: Record<string, unknown> };
-  };
-  domains?: Array<{ domain?: string }>;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface SbThirdPartyAuth {
-  id: string;
-  type: string;
-  oidc_issuer_url?: string | null;
-  jwks_url?: string | null;
-  custom_jwks?: unknown;
-  inserted_at: string;
-  updated_at: string;
-  resolved_at?: string | null;
-}
-
-export interface SbSigningKey {
-  id: string;
-  algorithm: "EdDSA" | "ES256" | "RS256" | "HS256";
-  status: "in_use" | "previously_used" | "revoked" | "standby";
-  public_jwk?: unknown;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SbRegionsResponse {
-  recommendations?: { specific?: SbRegion[] };
-  all?: { specific?: SbRegion[] };
-}
-
-export interface SbRegion {
-  name: string;
-  code: string;
-  type: string;
-  provider?: string;
-  status?: string;
-}
-
-export interface SbApiCounts {
-  result?: Array<{
-    timestamp: string;
-    total_auth_requests: number;
-    total_realtime_requests: number;
-    total_rest_requests: number;
-    total_storage_requests: number;
-  }>;
-  error?: unknown;
-}
+};

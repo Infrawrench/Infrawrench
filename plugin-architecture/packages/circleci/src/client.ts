@@ -15,40 +15,23 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { CircleContext } from "./api.js";
-import {
-  API_V3_BASE,
-  RUNNER_API_BASE,
-  circleFetch,
-  circlePaged,
-  circleV3,
-  circleV3Paged,
-  statusOf,
-} from "./api.js";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { ApiBody } from "@infrawrench/plugin-base";
+import type { CircleApi, CircleContext } from "./api.js";
+import { circleApi, slugSegment, statusOf } from "./api.js";
+import type { operations } from "./api-types.v2.gen.js";
 import { fetchCircleCostData } from "./cost-data.js";
 import type {
   CircleCollaboration,
   CircleContextItem,
-  CircleJob,
   CirclePipeline,
-  CircleProject,
-  CircleRunner,
-  CircleSchedule,
-  CircleTrigger,
-  CircleWorkflow,
-  ContextRestriction,
   ContextVariable,
-  FlakyTest,
-  JobMetrics,
   OrgSummary,
   PipelineDefinition,
-  ProjectVariable,
   RunnerResourceClass,
   SummaryMetrics,
   Timetable,
   WorkflowMetrics,
-  WorkflowRun,
 } from "./mappers.js";
 import {
   mapContext,
@@ -76,13 +59,25 @@ import { parseRates } from "./rates.js";
 import type { PipelineWorkflowDetail } from "./render.js";
 import { DETAIL_KEYS, renderCircleDetail, renderCircleSidebar } from "./render.js";
 
-const enc = encodeURIComponent;
 const REPORTING_WINDOW = "last-30-days";
 /** Pipelines listed: the most recent across the organization. */
 const PIPELINE_LIMIT = 50;
 
-const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
+const MONTHS = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEP",
+  "OCT",
+  "NOV",
+  "DEC",
+] as const;
 
 interface ProjectRef {
   slug: string;
@@ -114,17 +109,24 @@ function ints(raw: string | undefined, label: string, min: number, max: number):
   });
 }
 
-function names(raw: string | undefined, label: string, allowed: string[]): string[] {
+function names<T extends string>(
+  raw: string | undefined,
+  label: string,
+  allowed: readonly T[],
+): T[] {
   const parts = (raw ?? "")
     .split(/[,\s]+/)
     .map((s) => s.trim().toUpperCase().slice(0, 3))
     .filter(Boolean);
+  const isAllowed = (p: string): p is T => allowed.some((a) => a === p);
+  const named: T[] = [];
   for (const p of parts) {
-    if (!allowed.includes(p)) {
+    if (!isAllowed(p)) {
       throw new Error(`CircleCI plugin: "${label}" accepts ${allowed.join(", ")}; got "${p}"`);
     }
+    named.push(p);
   }
-  return parts;
+  return named;
 }
 
 /** Build a schedule timetable from the comma-list fields. */
@@ -145,9 +147,14 @@ export function buildTimetable(fields: Record<string, string>): Timetable {
     "hours-of-day": hours.length > 0 ? hours : Array.from({ length: 24 }, (_, i) => i),
     ...(daysOfMonth.length > 0
       ? { "days-of-month": daysOfMonth }
-      : { "days-of-week": daysOfWeek.length > 0 ? daysOfWeek : DAYS }),
+      : { "days-of-week": daysOfWeek.length > 0 ? daysOfWeek : [...DAYS] }),
     ...(months.length > 0 ? { months } : {}),
   };
+}
+
+/** Any JSON object: its values go through as typed, and CircleCI checks them against the config. */
+function isParameters(value: unknown): value is Record<string, string | number | boolean> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Pipeline parameters from a JSON object field, plus the branch. */
@@ -166,12 +173,12 @@ export function buildParameters(
         'CircleCI plugin: pipeline parameters must be a JSON object, e.g. {"deploy": true}',
       );
     }
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (!isParameters(parsed)) {
       throw new Error(
         'CircleCI plugin: pipeline parameters must be a JSON object, e.g. {"deploy": true}',
       );
     }
-    params = parsed as Record<string, string | number | boolean>;
+    params = parsed;
   }
   const b = (branch ?? "").trim();
   return b ? { ...params, branch: b } : params;
@@ -179,6 +186,7 @@ export function buildParameters(
 
 export class CircleCIClient implements PluginClient {
   private readonly ctx: CircleContext;
+  private readonly api: CircleApi;
   private readonly orgValue: string;
   private readonly rates: CircleRates;
   private orgCache: Promise<CircleCollaboration> | undefined;
@@ -189,6 +197,7 @@ export class CircleCIClient implements PluginClient {
     const token = (credentials["apiToken"] ?? "").trim();
     if (!token) throw new Error("CircleCI plugin: missing apiToken credential");
     this.ctx = { token, ...(services?.http ? { http: services.http } : {}) };
+    this.api = circleApi(this.ctx);
     this.orgValue = (credentials["organization"] ?? "").trim();
     if (!this.orgValue) throw new Error("CircleCI plugin: pick an organization");
     this.rates = parseRates(credentials);
@@ -199,7 +208,8 @@ export class CircleCIClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private org(): Promise<CircleCollaboration> {
-    this.orgCache ??= circleFetch<CircleCollaboration[]>(this.ctx, "/me/collaborations")
+    this.orgCache ??= this.api.v2
+      .get("/me/collaborations")
       .then((list) => {
         const found = findCollaboration(list ?? [], this.orgValue);
         if (!found) {
@@ -218,18 +228,23 @@ export class CircleCIClient implements PluginClient {
 
   private async orgSummary(projectNames?: string[]): Promise<OrgSummary | undefined> {
     const org = await this.org();
-    return circleFetch<OrgSummary>(this.ctx, `/insights/${org.slug}/summary`, {
-      query: {
-        "reporting-window": REPORTING_WINDOW,
-        ...(projectNames ? { "project-names": projectNames } : {}),
-      },
-    }).catch(() => undefined);
+    return this.api.v2
+      .get(`/insights/${slugSegment(org.slug)}/summary`, {
+        query: {
+          "reporting-window": REPORTING_WINDOW,
+          ...(projectNames ? { "project-names": projectNames } : {}),
+        },
+      })
+      .catch(() => undefined);
   }
 
   private recentPipelines(): Promise<CirclePipeline[]> {
     this.pipelinesCache ??= this.org()
       .then((org) =>
-        circlePaged<CirclePipeline>(this.ctx, "/pipeline", { "org-slug": org.slug }, 3),
+        this.api.v2Paged.getAll("/pipeline", "items", {
+          query: { "org-slug": org.slug },
+          maxPages: 3,
+        }),
       )
       .catch((err: unknown) => {
         this.pipelinesCache = undefined;
@@ -258,12 +273,11 @@ export class CircleCIClient implements PluginClient {
     const vcsSlugs = !org.slug.startsWith("circleci/");
     const [listed, pipelines] = await Promise.all([
       org.id
-        ? circleV3Paged<{ id: string; attributes?: { name?: string } }>(this.ctx, "/projects", {
-            "filter[org_id]": org.id,
-            "page[limit]": 50,
-          }).catch(() => undefined)
+        ? this.api.v3Paged
+            .getAll("/projects", "data", { query: { "filter[org_id]": org.id, "page[limit]": 50 } })
+            .catch(() => undefined)
         : Promise.resolve(undefined),
-      this.recentPipelines().catch(() => [] as CirclePipeline[]),
+      this.recentPipelines().catch((): CirclePipeline[] => []),
     ]);
     const bySlug = new Map<string, ProjectRef>();
     // Slugs seen on pipelines; their names need a lookup for opaque slugs.
@@ -276,9 +290,7 @@ export class CircleCIClient implements PluginClient {
           name: slug.split("/").slice(2).join("/"),
         });
       } else {
-        const p = await circleFetch<CircleProject>(this.ctx, `/project/${slug}`).catch(
-          () => undefined,
-        );
+        const p = await this.api.v2.get(`/project/${slugSegment(slug)}`).catch(() => undefined);
         if (p) named.set(p.name, { slug: p.slug, name: p.name, id: p.id });
       }
     }
@@ -302,40 +314,41 @@ export class CircleCIClient implements PluginClient {
   }
 
   private async projectId(slug: string): Promise<string> {
-    const known = (await this.projects().catch(() => [] as ProjectRef[])).find(
+    const known = (await this.projects().catch((): ProjectRef[] => [])).find(
       (p) => p.slug === slug,
     );
     if (known?.id) return known.id;
-    return (await circleFetch<CircleProject>(this.ctx, `/project/${slug}`)).id;
+    return (await this.api.v2.get(`/project/${slugSegment(slug)}`)).id;
   }
 
   private async contexts(): Promise<CircleContextItem[]> {
     const org = await this.org();
-    return circlePaged<CircleContextItem>(this.ctx, "/context", {
-      ...(org.id ? { "owner-id": org.id } : { "owner-slug": org.slug }),
-      "owner-type": "organization",
+    return this.api.v2Paged.getAll("/context", "items", {
+      query: {
+        ...(org.id ? { "owner-id": org.id } : { "owner-slug": org.slug }),
+        "owner-type": "organization",
+      },
     });
   }
 
   private contextVariables(contextId: string): Promise<ContextVariable[]> {
-    return circlePaged<ContextVariable>(
-      this.ctx,
-      `/context/${enc(contextId)}/environment-variable`,
+    return this.api.v2Paged.getAll(
+      `/context/${pathEncode(contextId)}/environment-variable`,
+      "items",
     );
   }
 
   private async runnerClasses(): Promise<RunnerResourceClass[]> {
     const org = await this.org();
-    return circleV3Paged<RunnerResourceClass>(this.ctx, "/runner/resource-classes", {
-      "filter[org_id]": org.id,
+    return this.api.v3Paged.getAll("/runner/resource-classes", "data", {
+      query: { "filter[org_id]": org.id },
     });
   }
 
-  private async runnerAgents(): Promise<CircleRunner[]> {
+  private async runnerAgents() {
     const org = await this.org();
-    return circleV3Paged<CircleRunner>(this.ctx, "/runner/agents", {
-      "filter[org_id]": org.id,
-      "page[limit]": 250,
+    return this.api.v3Paged.getAll("/runner/agents", "data", {
+      query: { "filter[org_id]": org.id, "page[limit]": 250 },
     });
   }
 
@@ -343,15 +356,14 @@ export class CircleCIClient implements PluginClient {
   private async runnerTasks(
     resourceClass: string,
   ): Promise<{ unclaimed?: number; running?: number }> {
+    const { runner } = this.api;
     const [waiting, running] = await Promise.all([
-      circleFetch<{ unclaimed_task_count?: number }>(this.ctx, "/runner/tasks", {
-        baseUrl: RUNNER_API_BASE,
-        query: { "resource-class": resourceClass },
-      }).catch(() => undefined),
-      circleFetch<{ running_runner_tasks?: number }>(this.ctx, "/runner/tasks/running", {
-        baseUrl: RUNNER_API_BASE,
-        query: { "resource-class": resourceClass },
-      }).catch(() => undefined),
+      runner
+        .get("/runner/tasks", { query: { "resource-class": resourceClass } })
+        .catch(() => undefined),
+      runner
+        .get("/runner/tasks/running", { query: { "resource-class": resourceClass } })
+        .catch(() => undefined),
     ]);
     return {
       ...(waiting?.unclaimed_task_count !== undefined
@@ -364,15 +376,10 @@ export class CircleCIClient implements PluginClient {
   }
 
   private workflowMetrics(slug: string): Promise<WorkflowMetrics[]> {
-    return circlePaged<WorkflowMetrics>(
-      this.ctx,
-      `/insights/${slug}/workflows`,
-      {
-        "all-branches": true,
-        "reporting-window": REPORTING_WINDOW,
-      },
-      3,
-    );
+    return this.api.v2Paged.getAll(`/insights/${slugSegment(slug)}/workflows`, "items", {
+      query: { "all-branches": true, "reporting-window": REPORTING_WINDOW },
+      maxPages: 3,
+    });
   }
 
   /** Every project-scoped list, one project at a time, skipping projects that refuse. */
@@ -392,10 +399,7 @@ export class CircleCIClient implements PluginClient {
   }
 
   private async pipelineDefinitions(projectId: string): Promise<PipelineDefinition[]> {
-    const res = await circleFetch<{ items?: PipelineDefinition[] }>(
-      this.ctx,
-      `/projects/${enc(projectId)}/pipeline-definitions`,
-    );
+    const res = await this.api.v2.get(`/projects/${pathEncode(projectId)}/pipeline-definitions`);
     return res?.items ?? [];
   }
 
@@ -405,9 +409,8 @@ export class CircleCIClient implements PluginClient {
   ): Promise<ResourceInstance[]> {
     const out: ResourceInstance[] = [];
     for (const def of await this.pipelineDefinitions(p.id)) {
-      const res = await circleFetch<{ items?: CircleTrigger[] }>(
-        this.ctx,
-        `/projects/${enc(p.id)}/pipeline-definitions/${enc(def.id)}/triggers`,
+      const res = await this.api.v2.get(
+        `/projects/${pathEncode(p.id)}/pipeline-definitions/${pathEncode(def.id)}/triggers`,
       );
       out.push(...(res?.items ?? []).map((t) => mapTrigger(accountId, p.slug, p.id, def, t)));
     }
@@ -463,20 +466,22 @@ export class CircleCIClient implements PluginClient {
         case "context-variable": {
           const out: ResourceInstance[] = [];
           for (const c of await this.contexts()) {
-            const vars = await this.contextVariables(c.id).catch(() => [] as ContextVariable[]);
+            const vars = await this.contextVariables(c.id).catch((): ContextVariable[] => []);
             out.push(...vars.map((v) => mapContextVariable(accountId, c, v)));
           }
           return out;
         }
         case "project-variable":
           return this.perProject(async (p) =>
-            (await circlePaged<ProjectVariable>(this.ctx, `/project/${p.slug}/envvar`)).map((v) =>
-              mapProjectVariable(accountId, p.slug, v),
+            (await this.api.v2Paged.getAll(`/project/${slugSegment(p.slug)}/envvar`, "items")).map(
+              (v) => mapProjectVariable(accountId, p.slug, v),
             ),
           );
         case "schedule":
           return this.perProject(async (p) =>
-            (await circlePaged<CircleSchedule>(this.ctx, `/project/${p.slug}/schedule`)).map((s) =>
+            (
+              await this.api.v2Paged.getAll(`/project/${slugSegment(p.slug)}/schedule`, "items")
+            ).map((s) =>
               mapSchedule(accountId, { ...s, "project-slug": s["project-slug"] ?? p.slug }),
             ),
           );
@@ -542,14 +547,11 @@ export class CircleCIClient implements PluginClient {
           return summary ? stash(r, { [DETAIL_KEYS.orgSummary]: summary }) : r;
         }
         case "project": {
-          const p = await circleFetch<CircleProject>(this.ctx, `/project/${id}`);
+          const p = await this.api.v2.get(`/project/${slugSegment(id)}`);
           const [summary, workflows, flaky] = await Promise.all([
             this.orgSummary([p.name]),
             this.workflowMetrics(p.slug).catch(() => undefined),
-            circleFetch<{ "flaky-tests"?: FlakyTest[] }>(
-              this.ctx,
-              `/insights/${p.slug}/flaky-tests`,
-            ).catch(() => undefined),
+            this.api.v2.get(`/insights/${slugSegment(p.slug)}/flaky-tests`).catch(() => undefined),
           ]);
           const metrics: SummaryMetrics | undefined = summary?.org_project_data?.find(
             (x) => x.project_name === p.name,
@@ -561,24 +563,17 @@ export class CircleCIClient implements PluginClient {
         }
         case "workflow": {
           const { projectSlug, rest: name } = splitScoped(id);
+          const insights =
+            `/insights/${slugSegment(projectSlug)}/workflows/${pathEncode(name)}` as const;
           const [workflows, jobs, runs] = await Promise.all([
             this.workflowMetrics(projectSlug),
-            circlePaged<JobMetrics>(
-              this.ctx,
-              `/insights/${projectSlug}/workflows/${enc(name)}/jobs`,
-              {
-                "all-branches": true,
-                "reporting-window": REPORTING_WINDOW,
-              },
-              3,
-            ).catch(() => undefined),
-            circleFetch<{ items?: WorkflowRun[] }>(
-              this.ctx,
-              `/insights/${projectSlug}/workflows/${enc(name)}`,
-              {
-                query: { "all-branches": true },
-              },
-            ).catch(() => undefined),
+            this.api.v2Paged
+              .getAll(`${insights}/jobs`, "items", {
+                query: { "all-branches": true, "reporting-window": REPORTING_WINDOW },
+                maxPages: 3,
+              })
+              .catch(() => undefined),
+            this.api.v2.get(insights, { query: { "all-branches": true } }).catch(() => undefined),
           ]);
           const w = workflows.find((x) => x.name === name);
           if (!w)
@@ -589,27 +584,27 @@ export class CircleCIClient implements PluginClient {
           });
         }
         case "pipeline": {
-          const p = await circleFetch<CirclePipeline>(this.ctx, `/pipeline/${enc(id)}`);
-          const workflows = await circlePaged<CircleWorkflow>(
-            this.ctx,
-            `/pipeline/${enc(id)}/workflow`,
+          const p = await this.api.v2.get(`/pipeline/${pathEncode(id)}`);
+          const workflows = await this.api.v2Paged.getAll(
+            `/pipeline/${pathEncode(id)}/workflow`,
+            "items",
           );
           const detailed: PipelineWorkflowDetail[] = [];
           for (const w of workflows) {
-            const jobs = await circlePaged<CircleJob>(this.ctx, `/workflow/${enc(w.id)}/job`).catch(
-              () => undefined,
-            );
+            const jobs = await this.api.v2Paged
+              .getAll(`/workflow/${pathEncode(w.id)}/job`, "items")
+              .catch(() => undefined);
             detailed.push({ ...w, ...(jobs ? { jobs } : {}) });
           }
           return stash(mapPipeline(accountId, p), { [DETAIL_KEYS.pipelineWorkflows]: detailed });
         }
         case "context": {
-          const c = await circleFetch<CircleContextItem>(this.ctx, `/context/${enc(id)}`);
+          const c = await this.api.v2.get(`/context/${pathEncode(id)}`);
           const [vars, restrictions] = await Promise.all([
             this.contextVariables(id).catch(() => undefined),
-            circlePaged<ContextRestriction>(this.ctx, `/context/${enc(id)}/restrictions`).catch(
-              () => undefined,
-            ),
+            this.api.v2Paged
+              .getAll(`/context/${pathEncode(id)}/restrictions`, "items")
+              .catch(() => undefined),
           ]);
           const r = mapContext(accountId, c, vars, restrictions);
           return restrictions ? stash(r, { [DETAIL_KEYS.restrictions]: restrictions }) : r;
@@ -617,47 +612,37 @@ export class CircleCIClient implements PluginClient {
         case "context-variable": {
           const [contextId, ...nameParts] = id.split("/");
           const name = nameParts.join("/");
-          const c = await circleFetch<CircleContextItem>(
-            this.ctx,
-            `/context/${enc(contextId ?? "")}`,
-          );
+          const c = await this.api.v2.get(`/context/${pathEncode(contextId ?? "")}`);
           const v = (await this.contextVariables(c.id)).find((x) => x.variable === name);
           if (!v) throw new Error(`CircleCI plugin: context variable "${name}" not found`);
           return mapContextVariable(accountId, c, v);
         }
         case "project-variable": {
           const { projectSlug, rest: name } = splitScoped(id);
-          const v = await circleFetch<ProjectVariable>(
-            this.ctx,
-            `/project/${projectSlug}/envvar/${enc(name)}`,
+          const v = await this.api.v2.get(
+            `/project/${slugSegment(projectSlug)}/envvar/${pathEncode(name)}`,
           );
           return mapProjectVariable(accountId, projectSlug, v);
         }
         case "schedule":
-          return mapSchedule(
-            accountId,
-            await circleFetch<CircleSchedule>(this.ctx, `/schedule/${enc(id)}`),
-          );
+          return mapSchedule(accountId, await this.api.v2.get(`/schedule/${pathEncode(id)}`));
         case "trigger": {
           const { projectSlug, rest } = splitScoped(id);
           const [projectId, triggerId] = rest.split("/");
-          const t = await circleFetch<CircleTrigger>(
-            this.ctx,
-            `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
+          const t = await this.api.v2.get(
+            `/projects/${pathEncode(projectId ?? "")}/triggers/${pathEncode(triggerId ?? "")}`,
           );
-          return mapTrigger(accountId, projectSlug, projectId ?? "", {} as PipelineDefinition, t);
+          return mapTrigger(accountId, projectSlug, projectId ?? "", {}, t);
         }
         case "runner-resource-class": {
-          const rc = await circleV3<RunnerResourceClass>(
-            this.ctx,
-            `/runner/resource-classes/${enc(id)}`,
-          );
+          const rc = (await this.api.v3.get(`/runner/resource-classes/${pathEncode(id)}`))?.data;
           if (!rc) throw new Error(`CircleCI plugin: runner resource class "${id}" not found`);
           const name = rc.attributes?.resource_class ?? "";
-          const agents = await circleV3Paged<CircleRunner>(this.ctx, "/runner/agents", {
-            "filter[resource_class]": name,
-            "page[limit]": 250,
-          }).catch(() => undefined);
+          const agents = await this.api.v3Paged
+            .getAll("/runner/agents", "data", {
+              query: { "filter[resource_class]": name, "page[limit]": 250 },
+            })
+            .catch(() => undefined);
           return mapRunnerResourceClass(
             accountId,
             rc,
@@ -794,7 +779,7 @@ export class CircleCIClient implements PluginClient {
 
   private async projectField(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
-    const projects = await this.projects().catch(() => [] as ProjectRef[]);
+    const projects = await this.projects().catch((): ProjectRef[] => []);
     return [
       {
         key: "project",
@@ -815,7 +800,7 @@ export class CircleCIClient implements PluginClient {
           const defs = parent
             ? await this.projectId(parent)
                 .then((pid) => this.pipelineDefinitions(pid))
-                .catch(() => [] as PipelineDefinition[])
+                .catch((): PipelineDefinition[] => [])
             : [];
           return {
             fields: [
@@ -873,9 +858,7 @@ export class CircleCIClient implements PluginClient {
             ],
           };
         case "context-variable": {
-          const contexts = parent
-            ? []
-            : await this.contexts().catch(() => [] as CircleContextItem[]);
+          const contexts = parent ? [] : await this.contexts().catch((): CircleContextItem[] => []);
           return {
             fields: [
               ...(parent
@@ -996,7 +979,7 @@ export class CircleCIClient implements PluginClient {
           const defs = parent
             ? await this.projectId(parent)
                 .then((pid) => this.pipelineDefinitions(pid))
-                .catch(() => [] as PipelineDefinition[])
+                .catch((): PipelineDefinition[] => [])
             : [];
           return {
             fields: [
@@ -1058,7 +1041,7 @@ export class CircleCIClient implements PluginClient {
           };
         }
         case "runner-resource-class": {
-          const classes = await this.runnerClasses().catch(() => [] as RunnerResourceClass[]);
+          const classes = await this.runnerClasses().catch((): RunnerResourceClass[] => []);
           const namespace = classes[0]?.attributes?.resource_class?.split("/")[0];
           return {
             fields: [
@@ -1112,11 +1095,9 @@ export class CircleCIClient implements PluginClient {
           const [provider, orgName, ...rest] = project.split("/");
           let created: { id?: string; message?: string } | undefined;
           try {
-            created = await circleFetch(
-              this.ctx,
-              `/project/${provider}/${orgName}/${rest.join("/")}/pipeline/run`,
+            created = await this.api.v2.post(
+              `/project/${slugSegment(String(provider))}/${slugSegment(String(orgName))}/${slugSegment(rest.join("/"))}/pipeline/run`,
               {
-                method: "POST",
                 body: {
                   ...(fields["definition"] ? { definition_id: fields["definition"] } : {}),
                   ...(ref ? { config: ref, checkout: ref } : {}),
@@ -1129,8 +1110,7 @@ export class CircleCIClient implements PluginClient {
             // original trigger.
             const status = statusOf(err);
             if (status !== 400 && status !== 404) throw err;
-            created = await circleFetch(this.ctx, `/project/${project}/pipeline`, {
-              method: "POST",
+            created = await this.api.v2.post(`/project/${slugSegment(project)}/pipeline`, {
               body: {
                 ...(ref ?? {}),
                 ...(Object.keys(params).length > 0 ? { parameters: params } : {}),
@@ -1148,8 +1128,7 @@ export class CircleCIClient implements PluginClient {
         }
         case "context": {
           const org = await this.org();
-          const c = await circleFetch<CircleContextItem>(this.ctx, "/context", {
-            method: "POST",
+          const c = await this.api.v2.post("/context", {
             body: {
               name: need("name", "Name"),
               owner: org.id
@@ -1163,13 +1142,9 @@ export class CircleCIClient implements PluginClient {
           const contextId = (fields["context"] ?? "").trim() || parent || "";
           if (!contextId) throw new Error('CircleCI plugin: "Context" is required');
           const name = need("name", "Name");
-          await circleFetch(
-            this.ctx,
-            `/context/${enc(contextId)}/environment-variable/${enc(name)}`,
-            {
-              method: "PUT",
-              body: { value: fields["value"] ?? "" },
-            },
+          await this.api.v2.put(
+            `/context/${pathEncode(contextId)}/environment-variable/${pathEncode(name)}`,
+            { body: { value: fields["value"] ?? "" } },
           );
           return runPluginEffect(
             this.getResource(
@@ -1181,8 +1156,7 @@ export class CircleCIClient implements PluginClient {
         }
         case "project-variable": {
           if (!project) throw new Error('CircleCI plugin: "Project" is required');
-          const v = await circleFetch<ProjectVariable>(this.ctx, `/project/${project}/envvar`, {
-            method: "POST",
+          const v = await this.api.v2.post(`/project/${slugSegment(project)}/envvar`, {
             body: { name: need("name", "Name"), value: fields["value"] ?? "" },
           });
           return mapProjectVariable(accountId, project, v);
@@ -1190,8 +1164,7 @@ export class CircleCIClient implements PluginClient {
         case "schedule": {
           if (!project) throw new Error('CircleCI plugin: "Project" is required');
           const description = (fields["description"] ?? "").trim();
-          const s = await circleFetch<CircleSchedule>(this.ctx, `/project/${project}/schedule`, {
-            method: "POST",
+          const s = await this.api.v2.post(`/project/${slugSegment(project)}/schedule`, {
             body: {
               name: need("name", "Name"),
               ...(description ? { description } : {}),
@@ -1213,11 +1186,9 @@ export class CircleCIClient implements PluginClient {
             );
           }
           const checkout = need("checkoutRef", "Checkout ref");
-          const t = await circleFetch<CircleTrigger>(
-            this.ctx,
-            `/projects/${enc(projectId)}/pipeline-definitions/${enc(def.id)}/triggers`,
+          const t = await this.api.v2.post(
+            `/projects/${pathEncode(projectId)}/pipeline-definitions/${pathEncode(def.id)}/triggers`,
             {
-              method: "POST",
               body: {
                 event_name: need("name", "Name"),
                 event_source: {
@@ -1240,8 +1211,7 @@ export class CircleCIClient implements PluginClient {
           if (!/^[^/\s]+\/[^/\s]+$/.test(name)) {
             throw new Error('CircleCI plugin: the resource class must be "namespace/name"');
           }
-          const rc = await circleV3<RunnerResourceClass>(this.ctx, "/runner/resource-classes", {
-            method: "POST",
+          const created = await this.api.v3.post("/runner/resource-classes", {
             body: {
               data: {
                 attributes: {
@@ -1252,6 +1222,7 @@ export class CircleCIClient implements PluginClient {
               },
             },
           });
+          const rc = created?.data;
           if (!rc) throw new Error("CircleCI did not return the new resource class");
           return mapRunnerResourceClass(accountId, rc, 0, {});
         }
@@ -1274,13 +1245,9 @@ export class CircleCIClient implements PluginClient {
           const value = fields["value"] ?? "";
           if (value) {
             const [contextId, ...nameParts] = id.split("/");
-            await circleFetch(
-              this.ctx,
-              `/context/${enc(contextId ?? "")}/environment-variable/${enc(nameParts.join("/"))}`,
-              {
-                method: "PUT",
-                body: { value },
-              },
+            await this.api.v2.put(
+              `/context/${pathEncode(contextId ?? "")}/environment-variable/${pathEncode(nameParts.join("/"))}`,
+              { body: { value } },
             );
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -1289,8 +1256,7 @@ export class CircleCIClient implements PluginClient {
           const value = fields["value"] ?? "";
           const { projectSlug, rest: name } = splitScoped(id);
           if (value) {
-            await circleFetch(this.ctx, `/project/${projectSlug}/envvar`, {
-              method: "POST",
+            await this.api.v2.post(`/project/${slugSegment(projectSlug)}/envvar`, {
               body: { name, value },
             });
           }
@@ -1301,7 +1267,7 @@ export class CircleCIClient implements PluginClient {
           const merged: Record<string, string> = {};
           for (const [k, v] of Object.entries(current.fields)) merged[k] = String(v);
           Object.assign(merged, fields);
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["updateSchedule"]> = {};
           if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
           if ("description" in fields) body["description"] = (fields["description"] ?? "").trim();
           if (
@@ -1315,14 +1281,14 @@ export class CircleCIClient implements PluginClient {
             body["parameters"] = buildParameters(merged["parameters"], merged["branch"]);
           }
           if (Object.keys(body).length > 0) {
-            await circleFetch(this.ctx, `/schedule/${enc(id)}`, { method: "PATCH", body });
+            await this.api.v2.patch(`/schedule/${pathEncode(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "trigger": {
           const { rest } = splitScoped(id);
           const [projectId, triggerId] = rest.split("/");
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["updateTrigger"]> = {};
           if ("checkoutRef" in fields) body["checkout_ref"] = (fields["checkoutRef"] ?? "").trim();
           if ("configRef" in fields) body["config_ref"] = (fields["configRef"] ?? "").trim();
           if ("cronExpression" in fields) {
@@ -1331,22 +1297,16 @@ export class CircleCIClient implements PluginClient {
             };
           }
           if (Object.keys(body).length > 0) {
-            await circleFetch(
-              this.ctx,
-              `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
-              {
-                method: "PATCH",
-                body,
-              },
+            await this.api.v2.patch(
+              `/projects/${pathEncode(projectId ?? "")}/triggers/${pathEncode(triggerId ?? "")}`,
+              { body },
             );
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "runner-resource-class": {
           if ("description" in fields) {
-            await circleFetch(this.ctx, `/runner/resource-classes/${enc(id)}/update`, {
-              baseUrl: API_V3_BASE,
-              method: "POST",
+            await this.api.v3.post(`/runner/resource-classes/${pathEncode(id)}/update`, {
               body: { description: (fields["description"] ?? "").trim() },
             });
           }
@@ -1363,48 +1323,38 @@ export class CircleCIClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "context":
-          await circleFetch(this.ctx, `/context/${enc(id)}`, { method: "DELETE" });
+          await this.api.v2.delete(`/context/${pathEncode(id)}`);
           return;
         case "context-variable": {
           const [contextId, ...nameParts] = id.split("/");
-          await circleFetch(
-            this.ctx,
-            `/context/${enc(contextId ?? "")}/environment-variable/${enc(nameParts.join("/"))}`,
-            {
-              method: "DELETE",
-            },
+          await this.api.v2.delete(
+            `/context/${pathEncode(contextId ?? "")}/environment-variable/${pathEncode(nameParts.join("/"))}`,
           );
           return;
         }
         case "project-variable": {
           const { projectSlug, rest } = splitScoped(id);
-          await circleFetch(this.ctx, `/project/${projectSlug}/envvar/${enc(rest)}`, {
-            method: "DELETE",
-          });
+          await this.api.v2.delete(
+            `/project/${slugSegment(projectSlug)}/envvar/${pathEncode(rest)}`,
+          );
           return;
         }
         case "schedule":
-          await circleFetch(this.ctx, `/schedule/${enc(id)}`, { method: "DELETE" });
+          await this.api.v2.delete(`/schedule/${pathEncode(id)}`);
           return;
         case "trigger": {
           const { rest } = splitScoped(id);
           const [projectId, triggerId] = rest.split("/");
-          await circleFetch(
-            this.ctx,
-            `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
-            {
-              method: "DELETE",
-            },
+          await this.api.v2.delete(
+            `/projects/${pathEncode(projectId ?? "")}/triggers/${pathEncode(triggerId ?? "")}`,
           );
           return;
         }
         case "runner-resource-class":
           // `force` also revokes the class's runner tokens; without it a class
           // that still has tokens cannot be deleted at all.
-          await circleFetch(this.ctx, `/runner/resource-classes/${enc(id)}`, {
-            baseUrl: API_V3_BASE,
-            method: "DELETE",
-            query: { force: true },
+          await this.api.v3.delete(`/runner/resource-classes/${pathEncode(id)}`, {
+            query: { force: "true" },
           });
           return;
         default:
@@ -1430,30 +1380,20 @@ export class CircleCIClient implements PluginClient {
         if (workflowId) {
           switch (verb) {
             case "rerun":
-              await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/rerun`, {
-                method: "POST",
-                body: {},
-              });
+              await this.api.v2.post(`/workflow/${pathEncode(workflowId)}/rerun`, { body: {} });
               return;
             case "rerun-failed":
-              await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/rerun`, {
-                method: "POST",
+              await this.api.v2.post(`/workflow/${pathEncode(workflowId)}/rerun`, {
                 body: { from_failed: true },
               });
               return;
             case "cancel":
-              await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/cancel`, {
-                method: "POST",
-              });
+              await this.api.v2.post(`/workflow/${pathEncode(workflowId)}/cancel`);
               return;
             case "approve":
               if (approvalId) {
-                await circleFetch(
-                  this.ctx,
-                  `/workflow/${enc(workflowId)}/approve/${enc(approvalId)}`,
-                  {
-                    method: "POST",
-                  },
+                await this.api.v2.post(
+                  `/workflow/${pathEncode(workflowId)}/approve/${pathEncode(approvalId)}`,
                 );
                 return;
               }
@@ -1463,13 +1403,9 @@ export class CircleCIClient implements PluginClient {
       if (typeId === "trigger" && (actionId === "enable" || actionId === "disable")) {
         const { rest } = splitScoped(id);
         const [projectId, triggerId] = rest.split("/");
-        await circleFetch(
-          this.ctx,
-          `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
-          {
-            method: "PATCH",
-            body: { disabled: actionId === "disable" },
-          },
+        await this.api.v2.patch(
+          `/projects/${pathEncode(projectId ?? "")}/triggers/${pathEncode(triggerId ?? "")}`,
+          { body: { disabled: actionId === "disable" } },
         );
         return;
       }
@@ -1488,19 +1424,15 @@ export class CircleCIClient implements PluginClient {
         throw new Error(`CircleCI plugin: cannot export "${formatId}" for "${typeId}"`);
       }
       const id = externalIdOf(resourceId);
-      const token = await circleV3<{ attributes?: { token?: string; nickname?: string } }>(
-        this.ctx,
-        "/runner/tokens",
-        {
-          method: "POST",
-          body: {
-            data: {
-              attributes: { nickname: `infrawrench-${new Date().toISOString().slice(0, 10)}` },
-              references: { resource_class: { id } },
-            },
+      const created = await this.api.v3.post("/runner/tokens", {
+        body: {
+          data: {
+            attributes: { nickname: `infrawrench-${new Date().toISOString().slice(0, 10)}` },
+            references: { resource_class: { id } },
           },
         },
-      );
+      });
+      const token = created?.data;
       const value = token?.attributes?.token;
       if (!value) throw new Error("CircleCI did not return a runner token");
       return {

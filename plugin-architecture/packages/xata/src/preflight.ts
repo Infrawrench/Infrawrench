@@ -5,13 +5,14 @@
  * role. Nothing reports a key's scopes, so each capability is one cheap read
  * and a 401/403 reads as missing.
  */
+import { unencodedSegment } from "@infrawrench/plugin-base";
 import type {
   PreflightCapabilityCheck,
   PreflightDeclaration,
   PreflightPermission,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import { statusOf, xata } from "./api.js";
+import { statusOf, type BranchPath } from "./api.js";
 import type { XataClient } from "./client.js";
 
 const KEYS_URL = "https://console.xata.io";
@@ -53,10 +54,10 @@ export const XATA_PREFLIGHT: PreflightDeclaration = {
   ],
 };
 
-async function probe(
+async function probe<T>(
   id: string,
   perms: PreflightPermission[],
-  call: () => Promise<unknown>,
+  call: () => Promise<T>,
 ): Promise<PreflightCapabilityCheck> {
   try {
     await call();
@@ -95,31 +96,36 @@ export async function verifyXataCredentials(client: XataClient): Promise<Preflig
       }
     }
   });
-  const ctx = client.ctx;
+  const { api } = client;
   const unknown = (id: string): PreflightCapabilityCheck => ({
     capabilityId: id,
     status: "unknown",
     message: "No branch to test against.",
   });
   const t = target;
-  const path = t ? `/organizations/${t.org}/projects/${t.project}/branches/${t.branch}` : "";
+  // Ids from Xata's own listings, which this has always sent as they came.
+  const path: BranchPath | undefined = t
+    ? `/organizations/${unencodedSegment(t.org)}/projects/${unencodedSegment(t.project)}/branches/${unencodedSegment(t.branch)}`
+    : undefined;
   const now = Date.now();
   const checks = await Promise.all([
-    t
-      ? probe("connect", [P.credentials], () => xata(ctx, "GET", `${path}/credentials`))
+    path
+      ? probe("connect", [P.credentials], () => api.get(`${path}/credentials`))
       : unknown("connect"),
-    t
+    path
       ? probe("observability", [P.metrics], () =>
-          xata(ctx, "POST", `${path}/metrics`, {
-            start: new Date(now - 600_000).toISOString(),
-            end: new Date(now).toISOString(),
-            metrics: ["cpu"],
-            aggregations: ["avg"],
+          api.post(`${path}/metrics`, {
+            body: {
+              start: new Date(now - 600_000).toISOString(),
+              end: new Date(now).toISOString(),
+              metrics: ["cpu"],
+              aggregations: ["avg"],
+            },
           }),
         )
       : unknown("observability"),
     orgId
-      ? probe("keys", [P.keys], () => xata(ctx, "GET", `/organizations/${orgId}/api-keys`))
+      ? probe("keys", [P.keys], () => api.get(`/organizations/${unencodedSegment(orgId)}/api-keys`))
       : unknown("keys"),
   ]);
   return { checks: [inventory, ...checks] };

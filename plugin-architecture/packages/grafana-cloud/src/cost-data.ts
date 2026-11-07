@@ -23,10 +23,10 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
 import { listStacks, orgSlugOf } from "./account.js";
 import type { GrafanaContext } from "./api.js";
-import { cloudFetch, statusOf } from "./api.js";
+import { cloudApi, statusOf } from "./api.js";
 import type { GcBilledUsage, GcStack } from "./types.js";
 
 const CURRENCY = "USD";
@@ -69,11 +69,9 @@ export async function fetchBilledUsage(
   monthStart: string,
 ): Promise<GcBilledUsage[]> {
   try {
-    const res = await cloudFetch<{ items?: GcBilledUsage[] }>(
-      ctx,
-      `/orgs/${encodeURIComponent(orgSlug)}/billed-usage`,
-      { query: { month: Number(monthStart.slice(5, 7)), year: Number(monthStart.slice(0, 4)) } },
-    );
+    const res = await cloudApi(ctx).get(`/orgs/${pathEncode(orgSlug)}/billed-usage`, {
+      query: { month: Number(monthStart.slice(5, 7)), year: Number(monthStart.slice(0, 4)) },
+    });
     return res.items ?? [];
   } catch (err) {
     const status = statusOf(err);

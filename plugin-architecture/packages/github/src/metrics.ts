@@ -17,7 +17,7 @@
 
 import type { HttpHostServices, MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
 import type { GitHubContext } from "./api.js";
-import { ghFetch, ownerBase } from "./api.js";
+import { byOwner } from "./api.js";
 import { normalizeId, runnerOs } from "./products.js";
 import type { TaggedUsageItem } from "./usage.js";
 import { fetchMonthItems, isoDay, monthsBetween } from "./usage.js";
@@ -144,12 +144,11 @@ export async function copilotActiveUserSeries(
   ctx: GitHubContext,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const report =
-    ctx.owner.kind === "org" ? "organization-28-day/latest" : "enterprise-28-day/latest";
-  const res = await ghFetch<{ download_links?: string[] }>(
-    ctx,
-    `${ownerBase(ctx.owner)}/copilot/metrics/reports/${report}`,
-  );
+  const res = await byOwner(ctx, {
+    org: (api, org) => api.get(`/orgs/${org}/copilot/metrics/reports/organization-28-day/latest`),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/copilot/metrics/reports/enterprise-28-day/latest`),
+  });
   const bodies: string[] = [];
   for (const link of res.download_links ?? []) {
     bodies.push(await download(link, ctx.http));
@@ -181,8 +180,8 @@ export async function billingAccountSeries(
       items.push(...(await fetchMonthItems(ctx, ym)));
     }
     return usageSeries(items, range);
-  })().catch(() => [] as MetricSeries[]);
-  const copilot = copilotActiveUserSeries(ctx, range).catch(() => [] as MetricSeries[]);
+  })().catch((): MetricSeries[] => []);
+  const copilot = copilotActiveUserSeries(ctx, range).catch((): MetricSeries[] => []);
   const [u, c] = await Promise.all([usage, copilot]);
   return [...u, ...c];
 }

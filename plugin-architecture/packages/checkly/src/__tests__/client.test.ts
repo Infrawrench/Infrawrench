@@ -191,7 +191,7 @@ describe("mappers", () => {
     });
     expect(ch.fields["target"]).toBe("Hook (hooks.example.com)");
     expect(
-      mapDashboard(ACCOUNT, { dashboardId: 7, customUrl: "acme", header: "Acme" }).fields["url"],
+      mapDashboard(ACCOUNT, { dashboardId: "7", customUrl: "acme", header: "Acme" }).fields["url"],
     ).toBe("https://acme.checklyhq.com");
     const hb = mapCheck(ACCOUNT, {
       id: "h",

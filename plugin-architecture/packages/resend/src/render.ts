@@ -61,7 +61,7 @@ function parseStash<T>(resource: ResourceInstance, key: string): T | undefined {
   const raw = resource.resolvedOutputs[key];
   if (!raw) return undefined;
   try {
-    return JSON.parse(raw) as T;
+    return JSON.parse(raw);
   } catch {
     return undefined;
   }

@@ -6,7 +6,7 @@ import type {
   SelectOption,
 } from "@infrawrench/plugin-base";
 import type { PaperspaceClient } from "./client.js";
-import type { POsTemplate } from "./types.js";
+import type { PCustomTemplate, POsTemplate } from "./types.js";
 
 /**
  * Live create forms. Machine types come from what the OS and custom
@@ -26,7 +26,7 @@ export const REGIONS: RegionOption[] = [
 /** Disk sizes the API accepts, in GB. */
 export const DISK_SIZES = [50, 100, 250, 500, 1000, 2000, 4000, 8000, 12000, 16000];
 
-export function imageOption(t: POsTemplate, custom: boolean): ImageOption {
+export function imageOption(t: POsTemplate | PCustomTemplate, custom: boolean): ImageOption {
   return {
     id: t.id,
     label: t.name || t.id,
@@ -38,7 +38,12 @@ export function imageOption(t: POsTemplate, custom: boolean): ImageOption {
 }
 
 /** Machine types any template can run on, each described with the templates it supports. */
-export function machineTypeOptions(templates: POsTemplate[]): SelectOption[] {
+export function machineTypeOptions(
+  templates: Array<{
+    id: string;
+    availableMachineTypes?: Array<{ machineTypeLabel: string; isAvailable?: boolean }>;
+  }>,
+): SelectOption[] {
   const types = new Map<string, number>();
   for (const t of templates) {
     for (const m of t.availableMachineTypes ?? []) {

@@ -4,9 +4,14 @@
  * `ResourceInstance`s.
  */
 
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiListItem, ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
 import { formatBytes } from "@infrawrench/plugin-base";
+import type { operations as DotcomOps } from "./api-types.dotcom.gen.js";
+import type { operations as GhecOps } from "./api-types.ghec.gen.js";
+import type { operations as RepoOps } from "./api-types.repo.gen.js";
+import type { Sparse } from "./api.js";
 import { budgetProductLabel, hostedRunnerSku } from "./products.js";
+import type { CostCenter } from "./usage.js";
 
 export const PLUGIN_ID = "github";
 
@@ -17,120 +22,51 @@ export const CODESPACE_STALE_DAYS = 14;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export interface GhCopilotSeat {
-  assignee?: {
-    id?: number;
-    login?: string;
-    name?: string | null;
-    email?: string | null;
-    type?: string;
-  } | null;
-  organization?: { login?: string } | null;
-  assigning_team?: { slug?: string; name?: string } | null;
-  pending_cancellation_date?: string | null;
-  last_activity_at?: string | null;
-  last_activity_editor?: string | null;
-  last_authenticated_at?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  plan_type?: string;
-}
+export type GhCopilotSeat = Sparse<
+  | ApiListItem<DotcomOps["copilot/list-copilot-seats"], "seats">
+  | ApiListItem<GhecOps["copilot/list-copilot-seats-for-enterprise"], "seats">
+>;
 
-export interface GhHostedRunner {
-  id?: number;
-  name?: string;
-  runner_group_id?: number;
-  image_details?: {
-    id?: string;
-    size_gb?: number;
-    display_name?: string;
-    source?: string;
-    version?: string;
-  } | null;
-  machine_size_details?: {
-    id?: string;
-    cpu_cores?: number;
-    memory_gb?: number;
-    storage_gb?: number;
-  };
-  status?: string;
-  platform?: string;
-  maximum_runners?: number;
-  public_ip_enabled?: boolean;
-  last_active_on?: string | null;
-}
+export type GhHostedRunner = Sparse<
+  | ApiListItem<DotcomOps["actions/list-hosted-runners-for-org"], "runners">
+  | ApiListItem<GhecOps["actions/list-hosted-runners-for-enterprise"], "runners">
+>;
 
-export interface GhRunner {
-  id?: number;
-  name?: string;
-  os?: string;
-  status?: string;
-  busy?: boolean;
-  ephemeral?: boolean;
-  runner_group_id?: number;
-  version?: string | null;
-  labels?: Array<{ name?: string }>;
-}
+export type GhRunner = Sparse<
+  ApiListItem<DotcomOps["actions/list-self-hosted-runners-for-org"], "runners">
+>;
 
-export interface GhRepoCacheUsage {
-  full_name?: string;
-  active_caches_size_in_bytes?: number;
-  active_caches_count?: number;
-}
+export type GhRepoCacheUsage = Sparse<
+  ApiListItem<
+    DotcomOps["actions/get-actions-cache-usage-by-repo-for-org"],
+    "repository_cache_usages"
+  >
+>;
 
-export interface GhActionsCache {
-  id?: number;
-  ref?: string;
-  key?: string;
-  version?: string;
-  last_accessed_at?: string;
-  created_at?: string;
-  size_in_bytes?: number;
-}
+export type GhActionsCache = Sparse<
+  ApiListItem<RepoOps["actions/get-actions-cache-list"], "actions_caches">
+>;
 
-export interface GhCodespace {
-  id?: number;
-  name?: string;
-  display_name?: string | null;
-  owner?: { login?: string };
-  billable_owner?: { login?: string };
-  repository?: { full_name?: string };
-  machine?: {
-    name?: string;
-    display_name?: string;
-    operating_system?: string;
-    storage_in_bytes?: number;
-    memory_in_bytes?: number;
-    cpus?: number;
-  } | null;
-  devcontainer_path?: string | null;
-  created_at?: string;
-  last_used_at?: string;
-  state?: string;
-  location?: string;
-  idle_timeout_minutes?: number | null;
-  retention_expires_at?: string | null;
-  web_url?: string;
-}
+export type GhCodespace = Sparse<
+  ApiListItem<DotcomOps["codespaces/list-in-organization"], "codespaces">
+>;
 
-export interface GhBudget {
-  id?: string;
-  budget_type?: string;
-  budget_amount?: number;
-  prevent_further_usage?: boolean;
-  budget_scope?: string;
-  budget_entity_name?: string;
-  user?: string;
-  consumed_amount?: number;
-  budget_product_sku?: string;
-  budget_alerting?: { will_alert?: boolean; alert_recipients?: string[] };
-  expires_at?: string | null;
-}
+/**
+ * `budget_type` and `budget_scope` are read as text: the document's own create
+ * body has a `BundlePricing` its answers leave out. `expires_at` is on the list row
+ * and missing from the single read.
+ */
+export type GhBudget = Sparse<
+  Omit<
+    | ApiListItem<DotcomOps["billing/get-all-budgets-org"], "budgets">
+    | ApiListItem<GhecOps["billing/get-all-budgets"], "budgets">
+    | ApiResponse<DotcomOps["billing/get-budget-org"]>
+    | ApiResponse<GhecOps["billing/get-budget"]>,
+    "budget_type" | "budget_scope" | "expires_at"
+  >
+> & { budget_type?: string; budget_scope?: string; expires_at?: string | null };
 
-export interface GhCostCenterResource {
-  type?: string;
-  name?: string;
-}
+export type GhCostCenterResource = NonNullable<CostCenter["resources"]>[number];
 
 function instance(
   accountId: string,
@@ -427,17 +363,17 @@ export function mapBudget(
 }
 
 /** Cost centre resources are typed `User`, `Org`, `Repo` and `Team` (enterprise teams) in the listing. */
-export function costCenterMembers(resources: GhCostCenterResource[] | undefined): {
+export function costCenterMembers(resources: readonly GhCostCenterResource[] | undefined): {
   users: string[];
   organizations: string[];
   repositories: string[];
   enterpriseTeams: string[];
 } {
-  const out = {
-    users: [] as string[],
-    organizations: [] as string[],
-    repositories: [] as string[],
-    enterpriseTeams: [] as string[],
+  const out: ReturnType<typeof costCenterMembers> = {
+    users: [],
+    organizations: [],
+    repositories: [],
+    enterpriseTeams: [],
   };
   for (const r of resources ?? []) {
     const type = (r.type ?? "").toLowerCase().replace(/[^a-z]/g, "");
@@ -452,14 +388,7 @@ export function costCenterMembers(resources: GhCostCenterResource[] | undefined)
 
 export function mapCostCenter(
   accountId: string,
-  c: {
-    id?: string;
-    name?: string;
-    state?: string;
-    azure_subscription?: string | null;
-    ai_credit_pool_enabled?: boolean;
-    resources?: GhCostCenterResource[];
-  },
+  c: CostCenter,
   monthToDate: number | undefined,
 ): ResourceInstance {
   const id = c.id ?? "";

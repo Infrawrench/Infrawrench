@@ -16,7 +16,8 @@
     "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "doctor": "npx react-doctor@latest"
+    "doctor": "npx react-doctor@latest",
+    "plugingen": "node plugingen/bin/plugingen.mjs"
   },
   "devDependencies": {
     "knip": "^6.32.0",
@@ -25,10 +26,7 @@
     "turbo": "^2.10.9",
     "typescript": "catalog:",
     "unrun": "^0.3.1",
-    "effect": "catalog:",
-    "@scalar/openapi-upgrader": "0.4.6",
-    "openapi-typescript": "7.13.0",
-    "yaml": "^2.8.3"
+    "effect": "catalog:"
   },
   "engines": {
     "node": ">=20",

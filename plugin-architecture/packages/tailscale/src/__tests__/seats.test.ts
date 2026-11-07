@@ -2,11 +2,12 @@ import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { SeatRemediationFinding } from "@infrawrench/plugin-base";
 import { normalizeSeatRecords } from "@infrawrench/plugin-base";
+import type { User } from "../api.js";
 import { plugin } from "../plugin.js";
 import { tailscaleSeatRemediationCommands } from "../remediation.js";
 import { mapTailscaleSeats, tailscaleSeatPrice } from "../seats.js";
 
-const user = (id: string, extra: Record<string, unknown> = {}) => ({
+const user = (id: string, extra: Record<string, unknown> = {}): User => ({
   id,
   displayName: `User ${id}`,
   loginName: `${id}@Example.com`,

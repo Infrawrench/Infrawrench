@@ -1,6 +1,6 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { API_HOST, isStatus, type PineconeApi } from "./api.js";
-import type { PcIndexStats, PcPrometheusTarget } from "./types.js";
+import type { PcIndexStats, PcPrometheusTargets } from "./types.js";
 
 /**
  * Pinecone has no time-series query API. What it offers is point-in-time:
@@ -148,30 +148,25 @@ export function statsSeries(stats: PcIndexStats, now: number): MetricSeries[] {
 }
 
 export async function fetchIndexStats(api: PineconeApi, host: string): Promise<PcIndexStats> {
-  return api.dataPlane<PcIndexStats>(host, "/describe_index_stats", {
-    method: "POST",
-    body: {},
-  });
+  return api.describeIndexStats(host);
 }
 
 /** Scrape every target the project's discovery endpoint returns. */
 export async function scrapeProject(api: PineconeApi, projectId: string): Promise<PromSample[]> {
   const base = `${API_HOST}/prometheus/projects/${encodeURIComponent(projectId)}/metrics`;
-  let body: string;
+  let discovered: PcPrometheusTargets;
   try {
-    body = await api.prometheus(`${base}/discovery`, false);
+    discovered = await api.prometheusTargets(`${base}/discovery`);
   } catch (e) {
     if (!isStatus(e, 404)) throw e;
-    body = await api.prometheus(`${base}/discover`, false);
+    discovered = await api.prometheusTargets(`${base}/discover`);
   }
-  const targets = (JSON.parse(body || "[]") as PcPrometheusTarget[]).flatMap(
-    (t) => t.targets ?? [],
-  );
+  const targets = (discovered ?? []).flatMap((t) => t.targets ?? []);
   const texts = await Promise.all(
     targets
       .slice(0, 20)
       .map((t) =>
-        api.prometheus(/^https?:\/\//.test(t) ? t : `https://${t}`, true).catch(() => ""),
+        api.prometheusScrape(/^https?:\/\//.test(t) ? t : `https://${t}`).catch(() => ""),
       ),
   );
   return texts.flatMap(parsePrometheusText);

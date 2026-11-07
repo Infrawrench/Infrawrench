@@ -250,7 +250,10 @@ describe("mappers", () => {
     expect(
       indexShape({
         embedding: { type: "dense_vector", dimension: 3, metric: "cosine" },
-        body: { type: "string", full_text_search: { language: "en" } },
+        body: {
+          type: "string",
+          full_text_search: { language: "en", stemming: true, stop_words: false },
+        },
       }),
     ).toMatchObject({ kind: "documents", fullTextFields: ["body"] });
   });

@@ -22,10 +22,21 @@ import {
   CreditAccessError,
   decodePromptArgs,
   externalIdOf,
+  pathEncode,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
-import type { CapellaContext } from "./api.js";
-import { capellaFetch, capellaList, isUnavailable, joinId, splitId, statusOf } from "./api.js";
+import type {
+  CapellaApi,
+  CapellaBody,
+  CapellaContext,
+  CapellaResponse,
+  CapellaRow,
+  ClusterPath,
+  FreeClusterPath,
+  OrgPath,
+  ProjectPath,
+} from "./api.js";
+import { capellaList, createCapellaApi, isUnavailable, joinId, splitId, statusOf } from "./api.js";
 import {
   APP_SERVICE_COMPUTE,
   BILLING_CATEGORIES,
@@ -51,21 +62,9 @@ import {
   mapProject,
   mapUser,
 } from "./mappers.js";
+import type { components } from "./api-types.gen.js";
 import { ENRICH, renderCapellaDetail, renderCapellaSidebar } from "./render.js";
 import { RESOURCE_TYPES, T } from "./resource-types.js";
-import type {
-  CpApiKey,
-  CpAppService,
-  CpBackup,
-  CpBilling,
-  CpBucket,
-  CpCidr,
-  CpCluster,
-  CpCredential,
-  CpProject,
-  CpServiceGroup,
-  CpUser,
-} from "./types.js";
 
 const CACHE_MS = 20_000;
 export const PASSWORD_SECRET = "capellaCredentialPassword";
@@ -74,7 +73,7 @@ function csv(raw: string | undefined): string[] {
   const text = String(raw ?? "").trim();
   if (text.startsWith("[")) {
     try {
-      const parsed = JSON.parse(text) as unknown;
+      const parsed: unknown = JSON.parse(text);
       if (Array.isArray(parsed))
         return parsed
           .map(String)
@@ -120,9 +119,7 @@ export function generatePassword(): string {
 }
 
 function notFound(what: string): Error {
-  const err = new Error(`Capella plugin: ${what} not found`) as Error & { status: number };
-  err.status = 404;
-  return err;
+  return Object.assign(new Error(`Capella plugin: ${what} not found`), { status: 404 });
 }
 
 /** Month-aligned chunks: the billing API answers daily periods only within one month. */
@@ -139,6 +136,52 @@ export function monthChunks(from: string, to: string): Array<{ start: string; en
   return out;
 }
 
+/** Recent loads by key, kept for {@link CACHE_MS}. A load that fails is forgotten. */
+class RecentLoads<V> {
+  private entries = new Map<string, { at: number; value: Promise<V> }>();
+
+  get(key: string, load: () => Promise<V>): Promise<V> {
+    const hit = this.entries.get(key);
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+    const value = load();
+    this.entries.set(key, { at: Date.now(), value });
+    value.catch(() => this.entries.delete(key));
+    return value;
+  }
+
+  clear(): void {
+    this.entries.clear();
+  }
+}
+
+type BucketRow = CapellaRow<"listBuckets">;
+type AppServiceRow = CapellaRow<"listAppServices">;
+
+/** A network peer's provider settings, flattened: they sit one level down, under the cloud's name. */
+function peerDetails(config: CapellaRow<"listNetworkPeeringRecords">["providerConfig"]): string {
+  const cfg = config ?? {};
+  const inner =
+    Object.values(cfg).find(
+      (v): v is Exclude<typeof v, string | undefined> => Boolean(v) && typeof v === "object",
+    ) ?? cfg;
+  return Object.entries(inner)
+    .filter(([, v]) => typeof v === "string" || typeof v === "number")
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
+}
+
+const SEVERE_EVENTS: ("warning" | "critical")[] = ["warning", "critical"];
+
+const WEEK = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+] as const;
+
 interface ClusterRef {
   projectId: string;
   clusterId: string;
@@ -150,7 +193,11 @@ interface ClusterRef {
 export class CapellaClient implements PluginClient {
   readonly ctx: CapellaContext;
   private readonly services: HostServices | undefined;
-  private cache = new Map<string, { at: number; value: Promise<unknown> }>();
+  private readonly api: CapellaApi;
+  private readonly projectLoads = new RecentLoads<CapellaRow<"listProjects">[]>();
+  private readonly clusterLoads = new RecentLoads<CapellaRow<"listClusters">[]>();
+  private readonly bucketLoads = new RecentLoads<BucketRow[]>();
+  private readonly appServiceLoads = new RecentLoads<AppServiceRow[]>();
   private freeTier = new Map<string, boolean>();
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -160,51 +207,38 @@ export class CapellaClient implements PluginClient {
     if (!organizationId) throw new Error("Capella plugin: missing organizationId credential");
     this.services = services;
     this.ctx = { apiKey, organizationId, ...(services?.http ? { http: services.http } : {}) };
+    this.api = createCapellaApi(this.ctx);
   }
 
   // -------------------------------------------------------------------------
   // Plumbing
   // -------------------------------------------------------------------------
 
-  private cached<V>(key: string, load: () => Promise<V>): Promise<V> {
-    const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.value as Promise<V>;
-    const value = load();
-    this.cache.set(key, { at: Date.now(), value });
-    value.catch(() => this.cache.delete(key));
-    return value;
-  }
-
   private invalidate(): void {
-    this.cache.clear();
+    this.projectLoads.clear();
+    this.clusterLoads.clear();
+    this.bucketLoads.clear();
+    this.appServiceLoads.clear();
   }
 
-  private get org(): string {
-    return `/v4/organizations/${encodeURIComponent(this.ctx.organizationId)}`;
+  private get org(): OrgPath {
+    return `/v4/organizations/${pathEncode(this.ctx.organizationId)}`;
   }
 
-  private projectPath(p: string): string {
-    return `${this.org}/projects/${encodeURIComponent(p)}`;
+  private projectPath(p: string): ProjectPath {
+    return `${this.org}/projects/${pathEncode(p)}`;
   }
 
   /** `/clusters/{id}` or, for a free-tier cluster, `/clusters/freeTier/{id}`. */
-  private clusterPath(p: string, c: string, freeTierAware = true): string {
-    const free = freeTierAware && this.freeTier.get(c) === true;
-    return `${this.projectPath(p)}/clusters/${free ? "freeTier/" : ""}${encodeURIComponent(c)}`;
+  private clusterPath(p: string, c: string): ClusterPath | FreeClusterPath {
+    return this.freeTier.get(c) === true
+      ? `${this.projectPath(p)}/clusters/freeTier/${pathEncode(c)}`
+      : this.sub(p, c);
   }
 
   /** Paths below a cluster (buckets, users, …) always use the plain cluster path. */
-  private sub(p: string, c: string): string {
-    return this.clusterPath(p, c, false);
-  }
-
-  private req<V>(
-    method: string,
-    path: string,
-    body?: unknown,
-    query?: Array<[string, string | number | undefined]>,
-  ) {
-    return capellaFetch<V>(this.ctx, method, path, body, query);
+  private sub(p: string, c: string): ClusterPath {
+    return `${this.projectPath(p)}/clusters/${pathEncode(c)}`;
   }
 
   private async optional<V>(load: () => Promise<V>, fallback: V): Promise<V> {
@@ -216,18 +250,23 @@ export class CapellaClient implements PluginClient {
     }
   }
 
-  projects(): Promise<CpProject[]> {
-    return this.cached("projects", () => capellaList<CpProject>(this.ctx, `${this.org}/projects`));
+  projects(): Promise<CapellaRow<"listProjects">[]> {
+    return this.projectLoads.get("projects", () =>
+      capellaList((query) => this.api.get(`${this.org}/projects`, { query })),
+    );
   }
 
   private async projectNames(): Promise<Map<string, string>> {
     return new Map((await this.projects()).map((p) => [p.id, p.name ?? p.id]));
   }
 
-  clustersOf(projectId: string): Promise<CpCluster[]> {
-    return this.cached(`clusters-${projectId}`, async () => {
+  clustersOf(projectId: string): Promise<CapellaRow<"listClusters">[]> {
+    return this.clusterLoads.get(`clusters-${projectId}`, async () => {
       const list = await this.optional(
-        () => capellaList<CpCluster>(this.ctx, `${this.projectPath(projectId)}/clusters`),
+        () =>
+          capellaList((query) =>
+            this.api.get(`${this.projectPath(projectId)}/clusters`, { query }),
+          ),
         [],
       );
       for (const c of list) this.freeTier.set(c.id, isFreeTier(c));
@@ -251,24 +290,25 @@ export class CapellaClient implements PluginClient {
     return out;
   }
 
-  private bucketsOf(ref: ClusterRef): Promise<CpBucket[]> {
-    return this.cached(`buckets-${ref.clusterId}`, () =>
-      this.optional(
+  private bucketsOf(ref: ClusterRef): Promise<BucketRow[]> {
+    return this.bucketLoads.get(`buckets-${ref.clusterId}`, () =>
+      this.optional<BucketRow[]>(
         async () =>
-          (
-            await this.req<{ data?: CpBucket[] }>(
-              "GET",
-              `${this.sub(ref.projectId, ref.clusterId)}/buckets${ref.free ? "/freeTier" : ""}`,
-            )
+          (ref.free
+            ? await this.api.get(`${this.sub(ref.projectId, ref.clusterId)}/buckets/freeTier`)
+            : await this.api.get(`${this.sub(ref.projectId, ref.clusterId)}/buckets`)
           )?.data ?? [],
         [],
       ),
     );
   }
 
-  private appServices(): Promise<CpAppService[]> {
-    return this.cached("app-services", () =>
-      this.optional(() => capellaList<CpAppService>(this.ctx, `${this.org}/appservices`), []),
+  private appServices(): Promise<AppServiceRow[]> {
+    return this.appServiceLoads.get("app-services", () =>
+      this.optional<AppServiceRow[]>(
+        () => capellaList((query) => this.api.get(`${this.org}/appservices`, { query })),
+        [],
+      ),
     );
   }
 
@@ -284,9 +324,9 @@ export class CapellaClient implements PluginClient {
     const refs = (await this.clusterRefs()).filter((r) => includeFree || !r.free);
     const lists = await Promise.all(
       refs.map((r) =>
-        load(r).catch((err: unknown) => {
+        load(r).catch((err: unknown): V[] => {
           if (statusOf(err) === 401) throw err;
-          if (isUnavailable(err)) return [] as V[];
+          if (isUnavailable(err)) return [];
           throw err;
         }),
       ),
@@ -330,16 +370,10 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(async (r) => {
           const out: ResourceInstance[] = [];
           for (const b of await this.bucketsOf(r)) {
-            const res = await this.optional(
+            const res = await this.optional<Partial<CapellaResponse<"getScopes">>>(
               () =>
-                this.req<{
-                  scopes?: Array<{
-                    name?: string;
-                    collections?: Array<{ name?: string; maxTTL?: number }>;
-                  }>;
-                }>(
-                  "GET",
-                  `${this.sub(r.projectId, r.clusterId)}/buckets/${encodeURIComponent(b.id)}/scopes`,
+                this.api.get(
+                  `${this.sub(r.projectId, r.clusterId)}/buckets/${pathEncode(b.id)}/scopes`,
                 ),
               {},
             );
@@ -390,9 +424,8 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(
           async (r) =>
             (
-              await capellaList<CpCredential>(
-                this.ctx,
-                `${this.sub(r.projectId, r.clusterId)}/users`,
+              await capellaList((query) =>
+                this.api.get(`${this.sub(r.projectId, r.clusterId)}/users`, { query }),
               )
             ).map((c) => mapCredential(accountId, r.projectId, r.clusterId, c)),
           false,
@@ -401,9 +434,8 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(
           async (r) =>
             (
-              await capellaList<CpCidr>(
-                this.ctx,
-                `${this.sub(r.projectId, r.clusterId)}/allowedcidrs`,
+              await capellaList((query) =>
+                this.api.get(`${this.sub(r.projectId, r.clusterId)}/allowedcidrs`, { query }),
               )
             ).map((c) => mapCidr(accountId, r.projectId, r.clusterId, c)),
           false,
@@ -411,14 +443,7 @@ export class CapellaClient implements PluginClient {
       case T.backup:
         return this.perCluster(
           async (r) =>
-            (
-              (
-                await this.req<{ data?: CpBackup[] }>(
-                  "GET",
-                  `${this.sub(r.projectId, r.clusterId)}/backups`,
-                )
-              )?.data ?? []
-            )
+            ((await this.api.get(`${this.sub(r.projectId, r.clusterId)}/backups`))?.data ?? [])
               .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))
               .slice(0, 50)
               .map((b) => mapBackup(accountId, r.projectId, r.clusterId, b)),
@@ -428,14 +453,9 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(
           async (r) =>
             (
-              await capellaList<{
-                id: string;
-                sourceCluster?: string;
-                targetCluster?: string;
-                status?: string;
-                direction?: string;
-                audit?: { createdAt?: string; createdBy?: string };
-              }>(this.ctx, `${this.sub(r.projectId, r.clusterId)}/replications`)
+              await capellaList((query) =>
+                this.api.get(`${this.sub(r.projectId, r.clusterId)}/replications`, { query }),
+              )
             ).map((x) =>
               instance(
                 accountId,
@@ -460,20 +480,11 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(
           async (r) =>
             (
-              await capellaList<{
-                id: string;
-                name?: string;
-                status?: { state?: string; reasoning?: string };
-                providerConfig?: Record<string, unknown>;
-                audit?: { createdAt?: string; createdBy?: string };
-              }>(this.ctx, `${this.sub(r.projectId, r.clusterId)}/networkPeers`)
-            ).map((x) => {
-              const cfg = (x.providerConfig ?? {}) as Record<
-                string,
-                Record<string, unknown> | undefined
-              >;
-              const inner = Object.values(cfg).find((v) => v && typeof v === "object") ?? cfg;
-              return instance(
+              await capellaList((query) =>
+                this.api.get(`${this.sub(r.projectId, r.clusterId)}/networkPeers`, { query }),
+              )
+            ).map((x) =>
+              instance(
                 accountId,
                 T.networkPeer,
                 joinId(r.projectId, r.clusterId, x.id),
@@ -482,24 +493,20 @@ export class CapellaClient implements PluginClient {
                   name: x.name,
                   state: x.status?.state,
                   reasoning: x.status?.reasoning,
-                  peerDetails: Object.entries(inner as Record<string, unknown>)
-                    .filter(([, v]) => typeof v === "string" || typeof v === "number")
-                    .map(([k, v]) => `${k}=${v}`)
-                    .join(", "),
+                  peerDetails: peerDetails(x.providerConfig),
                   createdAt: x.audit?.createdAt,
                   createdBy: x.audit?.createdBy,
                 }),
                 { typeId: T.cluster, externalId: joinId(r.projectId, r.clusterId) },
-              );
-            }),
+              ),
+            ),
           false,
         );
       case T.privateEndpoint:
         return this.perCluster(async (r) => {
-          const res = await this.req<{
-            privateEndpointDNS?: string;
-            endpoints?: Array<{ id: string; serviceName?: string; status?: string }>;
-          }>("GET", `${this.sub(r.projectId, r.clusterId)}/privateEndpointService/endpoints`);
+          const res = await this.api.get(
+            `${this.sub(r.projectId, r.clusterId)}/privateEndpointService/endpoints`,
+          );
           return (res?.endpoints ?? []).map((e) =>
             instance(
               accountId,
@@ -519,13 +526,19 @@ export class CapellaClient implements PluginClient {
       case T.user: {
         const names = await this.projectNames();
         return (
-          await this.optional(() => capellaList<CpUser>(this.ctx, `${this.org}/users`), [])
+          await this.optional<CapellaRow<"listUsers">[]>(
+            () => capellaList((query) => this.api.get(`${this.org}/users`, { query })),
+            [],
+          )
         ).map((u) => mapUser(accountId, u, names));
       }
       case T.apiKey: {
         const names = await this.projectNames();
         return (
-          await this.optional(() => capellaList<CpApiKey>(this.ctx, `${this.org}/apikeys`), [])
+          await this.optional<CapellaRow<"listOrganizationAPIKeys">[]>(
+            () => capellaList((query) => this.api.get(`${this.org}/apikeys`, { query })),
+            [],
+          )
         ).map((k) => mapApiKey(accountId, k, names));
       }
       default:
@@ -541,15 +554,12 @@ export class CapellaClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       if (typeId === T.cluster) {
-        const [p, c] = splitId(ext, 2) as [string, string];
+        const [p, c] = splitId(ext, 2);
         await this.clustersOf(p);
-        const cluster = await this.req<CpCluster>("GET", this.clusterPath(p, c));
+        const cluster = await this.api.get(this.clusterPath(p, c));
         const stats = this.freeTier.get(c)
           ? undefined
-          : await this.req<{ freeMemoryInMb?: number; totalMemoryInMb?: number }>(
-              "GET",
-              `${this.sub(p, c)}/stats`,
-            ).catch(() => undefined);
+          : await this.api.get(`${this.sub(p, c)}/stats`).catch(() => undefined);
         const r = mapCluster(accountId, p, cluster, stats);
         r.fields["organizationId"] = this.ctx.organizationId;
         return r;
@@ -571,20 +581,17 @@ export class CapellaClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       if (typeId === T.cluster) {
-        const [p, c] = splitId(ext, 2) as [string, string];
+        const [p, c] = splitId(ext, 2);
         if (outputKey === "connectionString") {
           await this.clustersOf(p);
-          return (await this.req<CpCluster>("GET", this.clusterPath(p, c)))?.connectionString ?? "";
+          return (await this.api.get(this.clusterPath(p, c)))?.connectionString ?? "";
         }
         if (outputKey === "certificate") {
-          return (
-            (await this.req<{ certificate?: string }>("GET", `${this.sub(p, c)}/certificates`))
-              ?.certificate ?? ""
-          );
+          return (await this.api.get(`${this.sub(p, c)}/certificates`))?.certificate ?? "";
         }
       }
       if (typeId === T.credential) {
-        const [p, c] = splitId(ext, 3) as [string, string, string];
+        const [p, c] = splitId(ext, 3);
         const cred = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
         const username = String(cred.fields["name"] ?? "");
         if (outputKey === "username") return username;
@@ -598,7 +605,7 @@ export class CapellaClient implements PluginClient {
         if (outputKey === "connectionString") {
           await this.clustersOf(p);
           const host = (
-            (await this.req<CpCluster>("GET", this.clusterPath(p, c)))?.connectionString ?? ""
+            (await this.api.get(this.clusterPath(p, c)))?.connectionString ?? ""
           ).replace(/^couchbases?:\/\//, "");
           return `couchbases://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}`;
         }
@@ -617,7 +624,7 @@ export class CapellaClient implements PluginClient {
         ...resource,
         resolvedOutputs: { ...resource.resolvedOutputs },
       };
-      const put = (key: string, value: unknown) => {
+      const put = <V>(key: string, value: V) => {
         if (value !== undefined) out.resolvedOutputs[key] = JSON.stringify(value);
       };
       const settle = async <V>(p: Promise<V>) => p.catch(() => undefined);
@@ -625,24 +632,21 @@ export class CapellaClient implements PluginClient {
       switch (resource.resourceTypeId) {
         case T.cluster: {
           if (resource.fields["freeTier"] === true) break;
-          const [p, c] = splitId(ext, 2) as [string, string];
+          const [p, c] = splitId(ext, 2);
           const [schedule, audit] = await Promise.all([
-            settle(this.req<unknown>("GET", `${this.sub(p, c)}/onOffSchedule`)),
-            settle(this.req<unknown>("GET", `${this.sub(p, c)}/auditLog`)),
+            settle(this.api.get(`${this.sub(p, c)}/onOffSchedule`)),
+            settle(this.api.get(`${this.sub(p, c)}/auditLog`)),
           ]);
           put(ENRICH.schedule, schedule);
           put(ENRICH.auditLog, audit);
           break;
         }
         case T.bucket: {
-          const [p, c, b] = splitId(ext, 3) as [string, string, string];
+          const [p, c, b] = splitId(ext, 3);
           put(
             ENRICH.backupSchedule,
             await settle(
-              this.req<unknown>(
-                "GET",
-                `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backup/schedules`,
-              ),
+              this.api.get(`${this.sub(p, c)}/buckets/${pathEncode(b)}/backup/schedules`),
             ),
           );
           break;
@@ -1176,9 +1180,11 @@ export class CapellaClient implements PluginClient {
       this.invalidate();
       switch (typeId) {
         case T.project: {
-          const res = await this.req<{ id: string }>("POST", `${this.org}/projects`, {
-            name: (fields["name"] ?? "").trim(),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
+          const res = await this.api.post(`${this.org}/projects`, {
+            body: {
+              name: (fields["name"] ?? "").trim(),
+              description: fields["description"] || undefined,
+            },
           });
           return mapProject(accountId, {
             id: res.id,
@@ -1199,11 +1205,9 @@ export class CapellaClient implements PluginClient {
           };
           const name = (fields["name"] ?? "").trim();
           if (fields["tier"] === "free") {
-            const res = await this.req<{ id: string }>(
-              "POST",
-              `${this.projectPath(projectId)}/clusters/freeTier`,
-              { name, cloudProvider },
-            );
+            const res = await this.api.post(`${this.projectPath(projectId)}/clusters/freeTier`, {
+              body: { name, cloudProvider },
+            });
             return mapCluster(accountId, projectId, {
               id: res.id,
               name,
@@ -1216,15 +1220,13 @@ export class CapellaClient implements PluginClient {
           if (!compute) throw new Error("Pick a node size.");
           const services = csv(fields["services"]);
           if (!services.includes("data")) throw new Error("A cluster needs the data service.");
-          const group: CpServiceGroup = {
+          const group = {
             node: { compute, disk: defaultDisk(cloud, int(fields["storage"] || "50", "Disk", 50)) },
             numOfNodes: int(fields["nodes"], "Nodes", 1, 27),
             services,
           };
-          const res = await this.req<{ id: string }>(
-            "POST",
-            `${this.projectPath(projectId)}/clusters`,
-            {
+          const res = await this.api.post(`${this.projectPath(projectId)}/clusters`, {
+            body: {
               name,
               cloudProvider,
               serviceGroups: [group],
@@ -1233,11 +1235,11 @@ export class CapellaClient implements PluginClient {
                 plan: fields["supportPlan"] || "developer pro",
                 ...(fields["timezone"] ? { timezone: fields["timezone"] } : {}),
               },
-              ...(fields["version"]
-                ? { couchbaseServer: { version: fields["version"].trim() } }
-                : {}),
+              couchbaseServer: fields["version"]
+                ? { version: fields["version"].trim() }
+                : undefined,
             },
-          );
+          });
           return mapCluster(accountId, projectId, {
             id: res.id,
             name,
@@ -1249,11 +1251,13 @@ export class CapellaClient implements PluginClient {
         case T.appService: {
           const [p, c] = this.parentCluster(fields, parentResourceId);
           const compute = parseCompute(fields["compute"] ?? "2/4");
-          const res = await this.req<{ id: string }>("POST", `${this.sub(p, c)}/appservices`, {
-            name: (fields["name"] ?? "").trim(),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            nodes: int(fields["nodes"] || "2", "Nodes", 2, 12),
-            ...(compute ? { compute } : {}),
+          const res = await this.api.post(`${this.sub(p, c)}/appservices`, {
+            body: {
+              name: (fields["name"] ?? "").trim(),
+              description: fields["description"] || undefined,
+              nodes: int(fields["nodes"] || "2", "Nodes", 2, 12),
+              compute: compute ?? undefined,
+            },
           });
           return mapAppService(accountId, p, {
             id: res.id,
@@ -1266,34 +1270,37 @@ export class CapellaClient implements PluginClient {
           const [p, c] = this.parentCluster(fields, parentResourceId);
           await this.clustersOf(p);
           const free = this.freeTier.get(c) === true;
-          const body: Record<string, unknown> = {
-            name: (fields["name"] ?? "").trim(),
-            memoryAllocationInMb: int(fields["memoryAllocationInMb"] || "100", "Memory quota", 100),
-          };
-          if (!free) {
-            if (fields["type"]) body["type"] = fields["type"];
-            if (fields["storageBackend"] && fields["type"] !== "ephemeral")
-              body["storageBackend"] = fields["storageBackend"];
-            if (fields["replicas"]) body["replicas"] = Number(fields["replicas"]);
-            if (fields["durabilityLevel"]) body["durabilityLevel"] = fields["durabilityLevel"];
-            if (fields["timeToLiveInSeconds"])
-              body["timeToLiveInSeconds"] = Number(fields["timeToLiveInSeconds"]);
-            const flush = boolish(fields["flushEnabled"]);
-            if (flush !== undefined) body["flush"] = flush;
-          }
-          const res = await this.req<{ id: string }>(
-            "POST",
-            `${this.sub(p, c)}/buckets${free ? "/freeTier" : ""}`,
-            body,
+          const name = (fields["name"] ?? "").trim();
+          const memoryAllocationInMb = int(
+            fields["memoryAllocationInMb"] || "100",
+            "Memory quota",
+            100,
           );
-          return mapBucket(accountId, p, c, { id: res.id, name: String(body["name"]) });
+          if (free) {
+            const res = await this.api.post(`${this.sub(p, c)}/buckets/freeTier`, {
+              body: { name, memoryAllocationInMb },
+            });
+            return mapBucket(accountId, p, c, { id: res.id, name });
+          }
+          const body: CapellaBody<"postBucket"> = { name, memoryAllocationInMb };
+          if (fields["type"]) body["type"] = fields["type"];
+          if (fields["storageBackend"] && fields["type"] !== "ephemeral")
+            body["storageBackend"] = fields["storageBackend"];
+          if (fields["replicas"]) body["replicas"] = Number(fields["replicas"]);
+          if (fields["durabilityLevel"]) body["durabilityLevel"] = fields["durabilityLevel"];
+          if (fields["timeToLiveInSeconds"])
+            body["timeToLiveInSeconds"] = Number(fields["timeToLiveInSeconds"]);
+          const flush = boolish(fields["flushEnabled"]);
+          if (flush !== undefined) body["flush"] = flush;
+          const res = await this.api.post(`${this.sub(p, c)}/buckets`, { body });
+          return mapBucket(accountId, p, c, { id: res.id, name });
         }
         case T.scope: {
           if (!parentResourceId) throw new Error("Create scopes from a bucket's page.");
-          const [p, c, b] = splitId(externalIdOf(parentResourceId), 3) as [string, string, string];
+          const [p, c, b] = splitId(externalIdOf(parentResourceId), 3);
           const name = (fields["name"] ?? "").trim();
-          await this.req("POST", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes`, {
-            name,
+          await this.api.post(`${this.sub(p, c)}/buckets/${pathEncode(b)}/scopes`, {
+            body: { name },
           });
           return instance(
             accountId,
@@ -1309,19 +1316,11 @@ export class CapellaClient implements PluginClient {
         }
         case T.collection: {
           if (!parentResourceId) throw new Error("Create collections from a scope's page.");
-          const [p, c, b, s] = splitId(externalIdOf(parentResourceId), 4) as [
-            string,
-            string,
-            string,
-            string,
-          ];
+          const [p, c, b, s] = splitId(externalIdOf(parentResourceId), 4);
           const name = (fields["name"] ?? "").trim();
-          const body: Record<string, unknown> = { name };
-          if (fields["maxTTL"]) body["maxTTL"] = Number(fields["maxTTL"]);
-          await this.req(
-            "POST",
-            `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections`,
-            body,
+          await this.api.post(
+            `${this.sub(p, c)}/buckets/${pathEncode(b)}/scopes/${pathEncode(s)}/collections`,
+            { body: { name, maxTTL: fields["maxTTL"] ? Number(fields["maxTTL"]) : undefined } },
           );
           return instance(
             accountId,
@@ -1339,10 +1338,8 @@ export class CapellaClient implements PluginClient {
           const [p, c] = this.parentCluster(fields, parentResourceId);
           const buckets = csv(fields["buckets"]);
           const password = fields["password"]?.trim() || generatePassword();
-          const res = await this.req<{ id: string; password?: string }>(
-            "POST",
-            `${this.sub(p, c)}/users`,
-            {
+          const res = await this.api.post(`${this.sub(p, c)}/users`, {
+            body: {
               name: (fields["name"] ?? "").trim(),
               password,
               credentialType: "basic",
@@ -1356,7 +1353,7 @@ export class CapellaClient implements PluginClient {
                 },
               ],
             },
-          );
+          });
           const r = mapCredential(accountId, p, c, { id: res.id, name: fields["name"] ?? "" });
           await this.services?.secrets?.setPlaintext?.(
             r.id,
@@ -1368,10 +1365,12 @@ export class CapellaClient implements PluginClient {
         case T.cidr: {
           const [p, c] = this.parentCluster(fields, parentResourceId);
           const cidr = (fields["cidr"] ?? "").trim();
-          const res = await this.req<{ id: string }>("POST", `${this.sub(p, c)}/allowedcidrs`, {
-            cidr,
-            ...(fields["comment"] ? { comment: fields["comment"] } : {}),
-            ...(fields["expiresAt"] ? { expiresAt: fields["expiresAt"] } : {}),
+          const res = await this.api.post(`${this.sub(p, c)}/allowedcidrs`, {
+            body: {
+              cidr,
+              comment: fields["comment"] || undefined,
+              expiresAt: fields["expiresAt"] || undefined,
+            },
           });
           return mapCidr(accountId, p, c, {
             id: res.id,
@@ -1384,13 +1383,16 @@ export class CapellaClient implements PluginClient {
           const email = (fields["email"] ?? "").trim();
           const roles = csv(fields["organizationRoles"]);
           const projectRoles = csv(fields["projectRoles"]);
-          const res = await this.req<{ id?: string }>("POST", `${this.org}/users`, {
-            email,
-            ...(fields["name"] ? { name: fields["name"] } : {}),
-            organizationRoles: roles.length ? roles : ["organizationMember"],
-            ...(fields["projectId"] && projectRoles.length
-              ? { resources: [{ type: "project", id: fields["projectId"], roles: projectRoles }] }
-              : {}),
+          const res = await this.api.post(`${this.org}/users`, {
+            body: {
+              email,
+              name: fields["name"] || undefined,
+              organizationRoles: roles.length ? roles : ["organizationMember"],
+              resources:
+                fields["projectId"] && projectRoles.length
+                  ? [{ type: "project", id: fields["projectId"], roles: projectRoles }]
+                  : undefined,
+            },
           });
           return mapUser(
             accountId,
@@ -1401,17 +1403,20 @@ export class CapellaClient implements PluginClient {
         case T.apiKey: {
           const roles = csv(fields["organizationRoles"]);
           const projectRoles = csv(fields["projectRoles"]);
-          const res = await this.req<{ id: string; token: string }>("POST", `${this.org}/apikeys`, {
-            name: (fields["name"] ?? "").trim(),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            organizationRoles: roles.length ? roles : ["organizationMember"],
-            ...(fields["projectId"] && projectRoles.length
-              ? { resources: [{ type: "project", id: fields["projectId"], roles: projectRoles }] }
-              : {}),
-            allowedCIDRs: csv(fields["allowedCidrs"]).length
-              ? csv(fields["allowedCidrs"])
-              : ["0.0.0.0/0"],
-            ...(fields["expiry"] ? { expiry: Number(fields["expiry"]) } : {}),
+          const res = await this.api.post(`${this.org}/apikeys`, {
+            body: {
+              name: (fields["name"] ?? "").trim(),
+              description: fields["description"] || undefined,
+              organizationRoles: roles.length ? roles : ["organizationMember"],
+              resources:
+                fields["projectId"] && projectRoles.length
+                  ? [{ type: "project", id: fields["projectId"], roles: projectRoles }]
+                  : undefined,
+              allowedCIDRs: csv(fields["allowedCidrs"]).length
+                ? csv(fields["allowedCidrs"])
+                : ["0.0.0.0/0"],
+              expiry: fields["expiry"] ? Number(fields["expiry"]) : undefined,
+            },
           });
           const r = mapApiKey(
             accountId,
@@ -1452,19 +1457,21 @@ export class CapellaClient implements PluginClient {
       switch (typeId) {
         case T.project: {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          await this.req("PUT", this.projectPath(ext), {
-            name: fields["name"] ?? current.fields["name"],
-            description: fields["description"] ?? current.fields["description"] ?? "",
+          await this.api.put(this.projectPath(ext), {
+            body: {
+              name: fields["name"] ?? current.fields["name"],
+              description: fields["description"] ?? current.fields["description"] ?? "",
+            },
           });
           break;
         }
         case T.cluster: {
-          const [p, c] = splitId(ext, 2) as [string, string];
+          const [p, c] = splitId(ext, 2);
           await this.clustersOf(p);
-          const cluster = await this.req<CpCluster>("GET", this.clusterPath(p, c));
+          const cluster = await this.api.get(this.clusterPath(p, c));
           if (fields["deletionProtection"] !== undefined) {
-            await this.req("PUT", `${this.sub(p, c)}/deletionProtection`, {
-              deletionProtection: boolish(fields["deletionProtection"]) ?? false,
+            await this.api.put(`${this.sub(p, c)}/deletionProtection`, {
+              body: { deletionProtection: boolish(fields["deletionProtection"]) ?? false },
             });
           }
           const touched = [
@@ -1477,9 +1484,11 @@ export class CapellaClient implements PluginClient {
           ].some((k) => fields[k] !== undefined);
           if (touched) {
             if (isFreeTier(cluster)) {
-              await this.req("PUT", this.clusterPath(p, c), {
-                name: fields["name"] ?? cluster.name,
-                description: fields["description"] ?? cluster.description ?? "",
+              await this.api.put(this.clusterPath(p, c), {
+                body: {
+                  name: fields["name"] ?? cluster.name,
+                  description: fields["description"] ?? cluster.description ?? "",
+                },
               });
             } else {
               const groups = (cluster.serviceGroups ?? []).map((g) => ({ ...g }));
@@ -1496,34 +1505,38 @@ export class CapellaClient implements PluginClient {
                   g.node = { ...g.node, compute };
                 }
               }
-              await this.req("PUT", this.clusterPath(p, c), {
-                name: fields["name"] ?? cluster.name,
-                description: fields["description"] ?? cluster.description ?? "",
-                support: {
-                  plan: fields["supportPlan"] ?? cluster.support?.plan,
-                  ...((fields["supportTimezone"] ?? cluster.support?.timezone)
-                    ? { timezone: fields["supportTimezone"] ?? cluster.support?.timezone }
-                    : {}),
+              await this.api.put(this.clusterPath(p, c), {
+                body: {
+                  name: fields["name"] ?? cluster.name,
+                  description: fields["description"] ?? cluster.description ?? "",
+                  support: {
+                    plan: fields["supportPlan"] ?? cluster.support?.plan,
+                    ...((fields["supportTimezone"] ?? cluster.support?.timezone)
+                      ? { timezone: fields["supportTimezone"] ?? cluster.support?.timezone }
+                      : {}),
+                  },
+                  serviceGroups: groups,
                 },
-                serviceGroups: groups,
               });
             }
           }
           break;
         }
         case T.appService: {
-          const [p, c, a] = splitId(ext, 3) as [string, string, string];
+          const [p, c, a] = splitId(ext, 3);
           const current = (await this.appServices()).find((x) => x.id === a);
           if (!current) throw notFound(`App Service ${a}`);
           const compute = fields["compute"] ? parseCompute(fields["compute"]) : current.compute;
-          await this.req("PUT", `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}`, {
-            nodes: fields["nodes"] ? int(fields["nodes"], "Nodes", 2, 12) : current.nodes,
-            compute,
+          await this.api.put(`${this.sub(p, c)}/appservices/${pathEncode(a)}`, {
+            body: {
+              nodes: fields["nodes"] ? int(fields["nodes"], "Nodes", 2, 12) : current.nodes,
+              compute,
+            },
           });
           break;
         }
         case T.bucket: {
-          const [p, c, b] = splitId(ext, 3) as [string, string, string];
+          const [p, c, b] = splitId(ext, 3);
           await this.clustersOf(p);
           const free = this.freeTier.get(c) === true;
           const current = (await this.bucketsOf({ projectId: p, clusterId: c, free })).find(
@@ -1531,37 +1544,39 @@ export class CapellaClient implements PluginClient {
           );
           if (!current) throw notFound(`bucket ${b}`);
           if (free) {
-            await this.req("PUT", `${this.sub(p, c)}/buckets/freeTier/${encodeURIComponent(b)}`, {
-              memoryAllocationInMb: fields["memoryAllocationInMb"]
-                ? Number(fields["memoryAllocationInMb"])
-                : current.memoryAllocationInMb,
+            await this.api.put(`${this.sub(p, c)}/buckets/freeTier/${pathEncode(b)}`, {
+              body: {
+                memoryAllocationInMb: fields["memoryAllocationInMb"]
+                  ? Number(fields["memoryAllocationInMb"])
+                  : current.memoryAllocationInMb,
+              },
             });
           } else {
-            await this.req("PUT", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}`, {
-              memoryAllocationInMb: fields["memoryAllocationInMb"]
-                ? int(fields["memoryAllocationInMb"], "Memory quota", 100)
-                : current.memoryAllocationInMb,
-              durabilityLevel: fields["durabilityLevel"] ?? current.durabilityLevel,
-              replicas: fields["replicas"] ? Number(fields["replicas"]) : current.replicas,
-              timeToLiveInSeconds:
-                fields["timeToLiveInSeconds"] !== undefined && fields["timeToLiveInSeconds"] !== ""
-                  ? Number(fields["timeToLiveInSeconds"])
-                  : (current.timeToLiveInSeconds ?? 0),
-              flushEnabled:
-                boolish(fields["flushEnabled"]) ?? current.flushEnabled ?? current.flush ?? false,
+            await this.api.put(`${this.sub(p, c)}/buckets/${pathEncode(b)}`, {
+              body: {
+                memoryAllocationInMb: fields["memoryAllocationInMb"]
+                  ? int(fields["memoryAllocationInMb"], "Memory quota", 100)
+                  : current.memoryAllocationInMb,
+                durabilityLevel: fields["durabilityLevel"] ?? current.durabilityLevel,
+                replicas: fields["replicas"] ? Number(fields["replicas"]) : current.replicas,
+                timeToLiveInSeconds:
+                  fields["timeToLiveInSeconds"] !== undefined &&
+                  fields["timeToLiveInSeconds"] !== ""
+                    ? Number(fields["timeToLiveInSeconds"])
+                    : (current.timeToLiveInSeconds ?? 0),
+                flushEnabled:
+                  boolish(fields["flushEnabled"]) ?? current.flushEnabled ?? current.flush ?? false,
+              },
             });
           }
           break;
         }
         case T.collection: {
-          const [p, c, b, s, name] = splitId(ext, 5) as [string, string, string, string, string];
+          const [p, c, b, s, name] = splitId(ext, 5);
           if (fields["maxTTL"] !== undefined && fields["maxTTL"] !== "") {
-            await this.req(
-              "PUT",
-              `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections/${encodeURIComponent(name)}`,
-              {
-                maxTTL: Number(fields["maxTTL"]),
-              },
+            await this.api.put(
+              `${this.sub(p, c)}/buckets/${pathEncode(b)}/scopes/${pathEncode(s)}/collections/${pathEncode(name)}`,
+              { body: { maxTTL: Number(fields["maxTTL"]) } },
             );
           }
           break;
@@ -1578,9 +1593,9 @@ export class CapellaClient implements PluginClient {
   }
 
   private async resetPassword(resourceId: string, requested: string) {
-    const [p, c, id] = splitId(externalIdOf(resourceId), 3) as [string, string, string];
+    const [p, c, id] = splitId(externalIdOf(resourceId), 3);
     const password = requested.trim() || generatePassword();
-    await this.req("PUT", `${this.sub(p, c)}/users/${encodeURIComponent(id)}`, { password });
+    await this.api.put(`${this.sub(p, c)}/users/${pathEncode(id)}`, { body: { password } });
     await this.services?.secrets?.setPlaintext?.(resourceId, PASSWORD_SECRET, password);
     return { ok: true, message: "Password reset. The connection string output uses the new one." };
   }
@@ -1589,77 +1604,76 @@ export class CapellaClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       this.invalidate();
-      const three = () => splitId(ext, 3) as [string, string, string];
+      const three = () => splitId(ext, 3);
       switch (typeId) {
         case T.project:
-          await this.req("DELETE", this.projectPath(ext));
+          await this.api.delete(this.projectPath(ext));
           return;
         case T.cluster: {
-          const [p, c] = splitId(ext, 2) as [string, string];
+          const [p, c] = splitId(ext, 2);
           await this.clustersOf(p);
-          await this.req("DELETE", this.clusterPath(p, c));
+          await this.api.delete(this.clusterPath(p, c));
           return;
         }
         case T.appService: {
           const [p, c, a] = three();
-          await this.req("DELETE", `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}`);
+          await this.api.delete(`${this.sub(p, c)}/appservices/${pathEncode(a)}`);
           return;
         }
         case T.bucket: {
           const [p, c, b] = three();
           await this.clustersOf(p);
-          await this.req(
-            "DELETE",
-            `${this.sub(p, c)}/buckets/${this.freeTier.get(c) ? "freeTier/" : ""}${encodeURIComponent(b)}`,
+          await this.api.delete(
+            this.freeTier.get(c)
+              ? `${this.sub(p, c)}/buckets/freeTier/${pathEncode(b)}`
+              : `${this.sub(p, c)}/buckets/${pathEncode(b)}`,
           );
           return;
         }
         case T.scope: {
-          const [p, c, b, s] = splitId(ext, 4) as [string, string, string, string];
-          await this.req(
-            "DELETE",
-            `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}`,
+          const [p, c, b, s] = splitId(ext, 4);
+          await this.api.delete(
+            `${this.sub(p, c)}/buckets/${pathEncode(b)}/scopes/${pathEncode(s)}`,
           );
           return;
         }
         case T.collection: {
-          const [p, c, b, s, n] = splitId(ext, 5) as [string, string, string, string, string];
-          await this.req(
-            "DELETE",
-            `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/scopes/${encodeURIComponent(s)}/collections/${encodeURIComponent(n)}`,
+          const [p, c, b, s, n] = splitId(ext, 5);
+          await this.api.delete(
+            `${this.sub(p, c)}/buckets/${pathEncode(b)}/scopes/${pathEncode(s)}/collections/${pathEncode(n)}`,
           );
           return;
         }
         case T.credential: {
           const [p, c, id] = three();
-          await this.req("DELETE", `${this.sub(p, c)}/users/${encodeURIComponent(id)}`);
+          await this.api.delete(`${this.sub(p, c)}/users/${pathEncode(id)}`);
           return;
         }
         case T.cidr: {
           const [p, c, id] = three();
-          await this.req("DELETE", `${this.sub(p, c)}/allowedcidrs/${encodeURIComponent(id)}`);
+          await this.api.delete(`${this.sub(p, c)}/allowedcidrs/${pathEncode(id)}`);
           return;
         }
         case T.backup: {
           const [p, c, id] = three();
-          await this.req("DELETE", `${this.sub(p, c)}/backups/${encodeURIComponent(id)}`);
+          await this.api.delete(`${this.sub(p, c)}/backups/${pathEncode(id)}`);
           return;
         }
         case T.replication: {
           const [p, c, id] = three();
-          await this.req("DELETE", `${this.sub(p, c)}/replications/${encodeURIComponent(id)}`);
+          await this.api.delete(`${this.sub(p, c)}/replications/${pathEncode(id)}`);
           return;
         }
         case T.networkPeer: {
           const [p, c, id] = three();
-          await this.req("DELETE", `${this.sub(p, c)}/networkPeers/${encodeURIComponent(id)}`);
+          await this.api.delete(`${this.sub(p, c)}/networkPeers/${pathEncode(id)}`);
           return;
         }
         case T.user:
-          await this.req("DELETE", `${this.org}/users/${encodeURIComponent(ext)}`);
+          await this.api.delete(`${this.org}/users/${pathEncode(ext)}`);
           return;
         case T.apiKey:
-          await this.req("DELETE", `${this.org}/apikeys/${encodeURIComponent(ext)}`);
+          await this.api.delete(`${this.org}/apikeys/${pathEncode(ext)}`);
           return;
         default:
           throw new Error(`Capella plugin: deleting "${typeId}" is not supported`);
@@ -1681,45 +1695,40 @@ export class CapellaClient implements PluginClient {
       const ext = externalIdOf(resourceId);
       this.invalidate();
       if (typeId === T.cluster && (actionId === "turn-on" || actionId === "turn-off")) {
-        const [p, c] = splitId(ext, 2) as [string, string];
+        const [p, c] = splitId(ext, 2);
         await this.clustersOf(p);
         if (actionId === "turn-on") {
-          await this.req(
-            "POST",
+          await this.api.post(
             `${this.clusterPath(p, c)}/activationState`,
-            this.freeTier.get(c) ? undefined : { turnOnLinkedAppService: true },
+            this.freeTier.get(c) ? {} : { body: { turnOnLinkedAppService: true } },
           );
         } else {
-          await this.req("DELETE", `${this.clusterPath(p, c)}/activationState`);
+          await this.api.delete(`${this.clusterPath(p, c)}/activationState`);
         }
         return;
       }
       if (typeId === T.cluster && actionId === "remove-schedule") {
-        const [p, c] = splitId(ext, 2) as [string, string];
-        await this.req("DELETE", `${this.sub(p, c)}/onOffSchedule`);
+        const [p, c] = splitId(ext, 2);
+        await this.api.delete(`${this.sub(p, c)}/onOffSchedule`);
         return;
       }
       if (typeId === T.appService && (actionId === "turn-on" || actionId === "turn-off")) {
-        const [p, c, a] = splitId(ext, 3) as [string, string, string];
-        await this.req(
-          actionId === "turn-on" ? "POST" : "DELETE",
-          `${this.sub(p, c)}/appservices/${encodeURIComponent(a)}/activationState`,
-        );
+        const [p, c, a] = splitId(ext, 3);
+        const path = `${this.sub(p, c)}/appservices/${pathEncode(a)}/activationState` as const;
+        await (actionId === "turn-on" ? this.api.post(path) : this.api.delete(path));
         return;
       }
       if (typeId === T.bucket && (actionId === "flush" || actionId === "backup")) {
-        const [p, c, b] = splitId(ext, 3) as [string, string, string];
+        const [p, c, b] = splitId(ext, 3);
         if (actionId === "flush")
-          await this.req("PUT", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/flush`);
-        else await this.req("POST", `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backups`);
+          await this.api.put(`${this.sub(p, c)}/buckets/${pathEncode(b)}/flush`);
+        else await this.api.post(`${this.sub(p, c)}/buckets/${pathEncode(b)}/backups`);
         return;
       }
       if (typeId === T.replication && (actionId === "pause" || actionId === "resume")) {
-        const [p, c, id] = splitId(ext, 3) as [string, string, string];
-        await this.req(
-          actionId === "resume" ? "POST" : "DELETE",
-          `${this.sub(p, c)}/replications/${encodeURIComponent(id)}/activationStatus`,
-        );
+        const [p, c, id] = splitId(ext, 3);
+        const path = `${this.sub(p, c)}/replications/${pathEncode(id)}/activationStatus` as const;
+        await (actionId === "resume" ? this.api.post(path) : this.api.delete(path));
         return;
       }
       if (actionId === "revoke" && (typeId === T.user || typeId === T.apiKey)) {
@@ -1742,7 +1751,7 @@ export class CapellaClient implements PluginClient {
       const ext = externalIdOf(resourceId);
       this.invalidate();
       if (typeId === T.cluster) {
-        const [p, c] = splitId(ext, 2) as [string, string];
+        const [p, c] = splitId(ext, 2);
         switch (command) {
           case "set-schedule": {
             const onDays = new Set(csv(form["days"]));
@@ -1750,15 +1759,7 @@ export class CapellaClient implements PluginClient {
             const to = int(form["toHour"], "End hour", 1, 24);
             if (to <= from) throw new Error("The off hour must be after the on hour.");
             const allDay = from === 0 && to === 24;
-            const days = [
-              "monday",
-              "tuesday",
-              "wednesday",
-              "thursday",
-              "friday",
-              "saturday",
-              "sunday",
-            ].map((day) =>
+            const days = WEEK.map((day): components["schemas"]["Days"] =>
               !onDays.has(day)
                 ? { day, state: "off" }
                 : allDay
@@ -1771,39 +1772,38 @@ export class CapellaClient implements PluginClient {
                     },
             );
             const body = { timezone: form["timezone"] || "US/Eastern", days };
-            const path = `${this.sub(p, c)}/onOffSchedule`;
+            const path = `${this.sub(p, c)}/onOffSchedule` as const;
             try {
-              await this.req("PUT", path, body);
+              await this.api.put(path, { body });
             } catch (err) {
               if (statusOf(err) !== 404) throw err;
-              await this.req("POST", path, body);
+              await this.api.post(path, { body });
             }
             return { ok: true, message: "Schedule saved." };
           }
           case "set-audit": {
-            const current = await this.req<{
-              disabledUsers?: unknown[];
-              enabledEventIDs?: number[];
-            }>("GET", `${this.sub(p, c)}/auditLog`).catch(
-              () => ({}) as { disabledUsers?: unknown[]; enabledEventIDs?: number[] },
-            );
-            await this.req("PUT", `${this.sub(p, c)}/auditLog`, {
-              auditEnabled: form["enabled"] === "true",
-              disabledUsers: current.disabledUsers ?? [],
-              enabledEventIDs: current.enabledEventIDs ?? [],
+            const current: Partial<CapellaResponse<"getClusterAuditSettings">> = await this.api
+              .get(`${this.sub(p, c)}/auditLog`)
+              .catch(() => ({}));
+            await this.api.put(`${this.sub(p, c)}/auditLog`, {
+              body: {
+                auditEnabled: form["enabled"] === "true",
+                disabledUsers: current.disabledUsers ?? [],
+                enabledEventIDs: current.enabledEventIDs ?? [],
+              },
             });
             return { ok: true, message: "Audit logging updated." };
           }
           case "load-sample":
-            await this.req("POST", `${this.sub(p, c)}/sampleBuckets`, {
-              name: form["name"] || "travel-sample",
+            await this.api.post(`${this.sub(p, c)}/sampleBuckets`, {
+              body: { name: form["name"] || "travel-sample" },
             });
             return { ok: true, message: "Sample bucket is loading." };
         }
       }
       if (typeId === T.bucket && command === "set-backup-schedule") {
-        const [p, c, b] = splitId(ext, 3) as [string, string, string];
-        const body = {
+        const [p, c, b] = splitId(ext, 3);
+        const body: CapellaBody<"putBackupSchedule"> = {
           type: "weekly",
           weeklySchedule: {
             dayOfWeek: form["dayOfWeek"] || "sunday",
@@ -1813,25 +1813,27 @@ export class CapellaClient implements PluginClient {
             costOptimizedRetention: form["costOptimizedRetention"] === "true",
           },
         };
-        const path = `${this.sub(p, c)}/buckets/${encodeURIComponent(b)}/backup/schedules`;
+        const path = `${this.sub(p, c)}/buckets/${pathEncode(b)}/backup/schedules` as const;
         try {
-          await this.req("PUT", path, body);
+          await this.api.put(path, { body });
         } catch (err) {
           if (statusOf(err) !== 404) throw err;
-          await this.req("POST", path, body);
+          await this.api.post(path, { body });
         }
         return { ok: true, message: "Backup schedule saved." };
       }
       if (typeId === T.backup && command === "restore") {
-        const [p, c, id] = splitId(ext, 3) as [string, string, string];
-        const [, target] = splitId(form["targetClusterId"] ?? "", 2) as [string, string];
+        const [p, c, id] = splitId(ext, 3);
+        const [, target] = splitId(form["targetClusterId"] ?? "", 2);
         const services = csv(form["services"]);
-        await this.req("POST", `${this.sub(p, c)}/backups/${encodeURIComponent(id)}/restore`, {
-          targetClusterID: target,
-          sourceClusterID: c,
-          backupID: id,
-          services: services.length ? services : ["data"],
-          forceUpdates: form["forceUpdates"] === "true",
+        await this.api.post(`${this.sub(p, c)}/backups/${pathEncode(id)}/restore`, {
+          body: {
+            targetClusterID: target,
+            sourceClusterID: c,
+            backupID: id,
+            services: services.length ? services : ["data"],
+            forceUpdates: form["forceUpdates"] === "true",
+          },
         });
         return { ok: true, message: "Restore started." };
       }
@@ -1839,21 +1841,19 @@ export class CapellaClient implements PluginClient {
         return this.resetPassword(resourceId, form["password"] ?? "");
       }
       if (typeId === T.apiKey && command === "rotate") {
-        const res = await this.req<{ token?: string }>(
-          "POST",
-          `${this.org}/apikeys/${encodeURIComponent(ext)}/rotate`,
-          {},
-        );
+        const res = await this.api.post(`${this.org}/apikeys/${pathEncode(ext)}/rotate`, {
+          body: {},
+        });
         return { ok: true, message: `New token (shown once): ${res?.token ?? ""}` };
       }
       if (typeId === T.user && command === "set-roles") {
-        const user = (await capellaList<CpUser>(this.ctx, `${this.org}/users`)).find(
-          (u) => u.id === ext,
-        );
+        const user = (
+          await capellaList((query) => this.api.get(`${this.org}/users`, { query }))
+        ).find((u) => u.id === ext);
         if (!user) throw notFound(`user ${ext}`);
         const wanted = csv(form["organizationRoles"]);
         const current = user.organizationRoles ?? [];
-        const ops: Array<Record<string, unknown>> = [];
+        const ops: CapellaBody<"patchUser"> = [];
         const add = wanted.filter((r) => !current.includes(r));
         const remove = current.filter((r) => !wanted.includes(r));
         if (add.length) ops.push({ op: "add", path: "/organizationRoles", value: add });
@@ -1874,7 +1874,7 @@ export class CapellaClient implements PluginClient {
           }
         }
         if (!ops.length) return { ok: true, message: "Nothing changed." };
-        await this.req("PATCH", `${this.org}/users/${encodeURIComponent(ext)}`, ops);
+        await this.api.patch(`${this.org}/users/${pathEncode(ext)}`, { body: ops });
         return { ok: true, message: "Roles updated." };
       }
       throw new Error(`Capella plugin: command "${command}" is not supported for "${typeId}"`);
@@ -1892,7 +1892,11 @@ export class CapellaClient implements PluginClient {
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
       const now = Date.now();
-      const point = (label: string, unit: string, value: unknown): MetricSeries[] =>
+      const point = (
+        label: string,
+        unit: string,
+        value: ResourceInstance["fields"][string] | undefined,
+      ): MetricSeries[] =>
         typeof value === "number" && Number.isFinite(value)
           ? [{ label, unit, points: [{ timestamp: now, value }] }]
           : [];
@@ -1971,27 +1975,17 @@ export class CapellaClient implements PluginClient {
       const active =
         params.container && containers.includes(params.container) ? params.container : "All events";
       const ext = externalIdOf(resourceId);
-      const query: Array<[string, string | number | undefined]> = [
-        ["sortBy", "timestamp"],
-        ["sortDirection", "desc"],
-        ["perPage", Math.min(Math.max(params.tailLines ?? 100, 1), 100)],
-        ["page", 1],
-      ];
-      if (typeId === T.cluster) query.push(["clusterIds", splitId(ext, 2)[1]]);
-      else if (typeId === T.project) query.push(["projectIds", ext]);
-      if (active !== "All events") {
-        query.push(["severityLevels", "warning"], ["severityLevels", "critical"]);
-      }
-      const res = await this.req<{
-        data?: Array<{
-          timestamp?: string;
-          severity?: string;
-          key?: string;
-          summary?: string;
-          userEmail?: string;
-          clusterName?: string;
-        }>;
-      }>("GET", `${this.org}/events`, undefined, query);
+      const res = await this.api.get(`${this.org}/events`, {
+        query: {
+          sortBy: ["timestamp"],
+          sortDirection: "desc",
+          perPage: Math.min(Math.max(params.tailLines ?? 100, 1), 100),
+          page: 1,
+          ...(typeId === T.cluster ? { clusterIds: [splitId(ext, 2)[1]] } : {}),
+          ...(typeId === T.project && ext ? { projectIds: [ext] } : {}),
+          ...(active !== "All events" ? { severityLevels: SEVERE_EVENTS } : {}),
+        },
+      });
       const text = (res?.data ?? [])
         .slice()
         .reverse()
@@ -2028,14 +2022,14 @@ export class CapellaClient implements PluginClient {
         const body = { startDate: chunk.start, endDate: chunk.end };
         const clusterTotals = new Map<string, number>();
         for (const ref of refs) {
-          const res = await this.req<CpBilling>(
-            "POST",
-            `${this.sub(ref.projectId, ref.clusterId)}/billing`,
-            body,
-          ).catch((err: unknown) => {
-            if (isUnavailable(err)) return undefined;
-            throw err;
-          });
+          const res = await this.api
+            .post(`${this.sub(ref.projectId, ref.clusterId)}/billing`, {
+              body,
+            })
+            .catch((err: unknown) => {
+              if (isUnavailable(err)) return undefined;
+              throw err;
+            });
           const currency = res?.data?.billingCurrency ?? "USD";
           for (const period of res?.data?.periods ?? []) {
             const date = period.startDate;
@@ -2057,9 +2051,9 @@ export class CapellaClient implements PluginClient {
             }
           }
         }
-        let org: CpBilling | undefined;
+        let org: CapellaResponse<"categorizedBilling"> | undefined;
         try {
-          org = await this.req<CpBilling>("POST", `${this.org}/billing`, body);
+          org = await this.api.post(`${this.org}/billing`, { body });
         } catch (err) {
           const s = statusOf(err);
           if (s === 403) {
@@ -2090,19 +2084,11 @@ export class CapellaClient implements PluginClient {
 
   fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
-      let res: {
-        data?: Array<{
-          id: string;
-          creditName?: string;
-          expirationDate?: string;
-          total?: number;
-          remaining?: number;
-        }>;
-      };
+      let res: CapellaResponse<"prepaidCreditsBilling">;
       try {
-        res = await this.req("GET", `${this.org}/billing/prePaidCredits`, undefined, [
-          ["perPage", 100],
-        ]);
+        res = await this.api.get(`${this.org}/billing/prePaidCredits`, {
+          query: { perPage: 100 },
+        });
       } catch (err) {
         if (statusOf(err) === 403) {
           throw new CreditAccessError(

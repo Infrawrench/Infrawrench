@@ -2,6 +2,7 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  ApiBody,
   CostFetchRange,
   CostRow,
   CreateResourceConfig,
@@ -14,32 +15,23 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, externalIdOf } from "@infrawrench/plugin-base";
+import { CostSetupError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type { AtlasContext, AtlasOrg } from "./api.js";
+import type { components, operations } from "./api-types.gen.js";
 import {
-  atlasRequest,
+  atlasApi,
+  atlasVersion,
   contextFromCredentials,
-  enc,
   isPermissionError,
   listAll,
   listOrgs,
   statusOf,
 } from "./api.js";
-import type { Invoice } from "./cost-data.js";
 import { fetchAtlasCostData, fetchInvoices, instanceRates, summarizeInvoice } from "./cost-data.js";
 import type {
   AtlasAccessEntry,
-  AtlasAlert,
-  AtlasAlertConfig,
-  AtlasBackupSchedule,
   AtlasCluster,
-  AtlasDatabaseUser,
-  AtlasEndpointService,
-  AtlasFlexCluster,
   AtlasGroup,
-  AtlasOnlineArchive,
-  AtlasSearchIndex,
-  AtlasServerless,
   AtlasSnapshot,
   ProjectRef,
 } from "./mappers.js";
@@ -84,8 +76,12 @@ import { TIERS_BY_PROVIDER, TIER_SPECS, isDedicatedTier, tierLabel, tierSpec } f
 const CLUSTER_VERSION = "2024-08-05";
 const FLEX_VERSION = "2024-11-13";
 const SEARCH_VERSION = "2024-05-30";
+const ALERT_ACK_VERSION = "2024-05-30";
 const CONCURRENCY = 4;
 const HOURS_PER_MONTH = 730;
+
+type NewAccessEntry = components["schemas"]["NetworkPermissionEntry"];
+type DatabaseUserChanges = ApiBody<operations["updateGroupDatabaseUser"]>;
 
 /** Secret field keys for the cluster connection user Infrawrench creates. */
 const CONN_USER_KEY = "connectionUser";
@@ -123,7 +119,7 @@ function parseForm(args: (string | number)[]): Record<string, string> {
   const first = args[0];
   if (typeof first !== "string" || !first) return {};
   try {
-    const parsed = JSON.parse(first) as Record<string, unknown>;
+    const parsed: Record<string, unknown> = JSON.parse(first);
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed ?? {}))
       out[k] = v === undefined || v === null ? "" : String(v);
@@ -152,19 +148,24 @@ function isoDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/** A deep copy, by the same JSON round trip that sends it. */
+function copyOf<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
 /**
  * Strip read-only parts of a cluster's replication specs so they can be sent
  * back in a PATCH (Atlas rejects some of them, and `effective*` describes the
- * auto-scaled state rather than the configuration).
+ * auto-scaled state rather than the configuration). Anything else goes back
+ * as it came, including fields the document does not know.
  */
-function writableSpecs(specs: AtlasCluster["replicationSpecs"]): Array<Record<string, unknown>> {
+function writableSpecs(specs: AtlasCluster["replicationSpecs"]) {
   return (specs ?? []).map((spec) => ({
     ...(spec.zoneName ? { zoneName: spec.zoneName } : {}),
     regionConfigs: (spec.regionConfigs ?? []).map((rc) => {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(rc)) {
-        if (k.startsWith("effective")) continue;
-        out[k] = v && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v;
+      const out = copyOf(rc);
+      for (const key of Object.keys(out)) {
+        if (key.startsWith("effective")) Reflect.deleteProperty(out, key);
       }
       return out;
     }),
@@ -173,6 +174,7 @@ function writableSpecs(specs: AtlasCluster["replicationSpecs"]): Array<Record<st
 
 export class MongoDBAtlasClient implements PluginClient {
   private readonly ctx: AtlasContext;
+  private readonly api: ReturnType<typeof atlasApi>;
   private readonly services: HostServices | undefined;
   private readonly configuredOrgId: string;
   private orgCache: Promise<AtlasOrg> | undefined;
@@ -181,6 +183,7 @@ export class MongoDBAtlasClient implements PluginClient {
 
   constructor(credentials: Credentials, services?: HostServices) {
     this.ctx = contextFromCredentials(credentials, services?.http);
+    this.api = atlasApi(this.ctx);
     this.services = services;
     this.configuredOrgId = (credentials["orgId"] ?? "").trim();
   }
@@ -192,11 +195,9 @@ export class MongoDBAtlasClient implements PluginClient {
   private org(): Promise<AtlasOrg> {
     this.orgCache ??= (async () => {
       if (this.configuredOrgId) {
-        const o = await atlasRequest<{ id?: string; name?: string }>(
-          this.ctx,
-          "GET",
-          `/api/atlas/v2/orgs/${enc(this.configuredOrgId)}`,
-        ).catch(() => undefined);
+        const o = await this.api
+          .get(`/orgs/${pathEncode(this.configuredOrgId)}`)
+          .catch(() => undefined);
         return { id: this.configuredOrgId, name: o?.name ?? this.configuredOrgId };
       }
       const orgs = await listOrgs(this.ctx);
@@ -214,7 +215,9 @@ export class MongoDBAtlasClient implements PluginClient {
   private projects(): Promise<AtlasGroup[]> {
     this.projectsCache ??= (async () => {
       const org = await this.org();
-      return listAll<AtlasGroup>(this.ctx, `/api/atlas/v2/orgs/${enc(org.id)}/groups`);
+      return listAll((paging) =>
+        this.api.get(`/orgs/${pathEncode(org.id)}/groups`, { query: paging }),
+      );
     })().catch((err: unknown) => {
       this.projectsCache = undefined;
       throw err;
@@ -223,7 +226,7 @@ export class MongoDBAtlasClient implements PluginClient {
   }
 
   private async projectRef(groupId: string): Promise<ProjectRef> {
-    const projects = await this.projects().catch(() => [] as AtlasGroup[]);
+    const projects = await this.projects().catch((): AtlasGroup[] => []);
     const p = projects.find((x) => x.id === groupId);
     return { groupId, projectName: p?.name ?? groupId };
   }
@@ -242,10 +245,11 @@ export class MongoDBAtlasClient implements PluginClient {
 
   private clusters(): Promise<Array<{ project: ProjectRef; cluster: AtlasCluster }>> {
     this.clustersCache ??= this.perProject(async (p) => {
-      const clusters = await listAll<AtlasCluster>(
-        this.ctx,
-        `/api/atlas/v2/groups/${enc(p.groupId)}/clusters`,
-        { version: CLUSTER_VERSION },
+      const clusters = await listAll((paging) =>
+        this.api.get(`/groups/${pathEncode(p.groupId)}/clusters`, {
+          headers: atlasVersion(CLUSTER_VERSION),
+          query: paging,
+        }),
       );
       return clusters
         .filter((c) => !isListedElsewhere(c))
@@ -270,10 +274,6 @@ export class MongoDBAtlasClient implements PluginClient {
     ).flat();
   }
 
-  private groupPath(groupId: string): string {
-    return `/api/atlas/v2/groups/${enc(groupId)}`;
-  }
-
   // -------------------------------------------------------------------------
   // Listing
   // -------------------------------------------------------------------------
@@ -284,7 +284,7 @@ export class MongoDBAtlasClient implements PluginClient {
       switch (typeId) {
         case "organization": {
           const org = await this.org();
-          const projects = await this.projects().catch(() => [] as AtlasGroup[]);
+          const projects = await this.projects().catch((): AtlasGroup[] => []);
           return [mapOrganization(accountId, org, { projectCount: projects.length })];
         }
         case "project":
@@ -296,48 +296,54 @@ export class MongoDBAtlasClient implements PluginClient {
         case "flex-cluster":
           return this.perProject(async (p) =>
             (
-              await listAll<AtlasFlexCluster>(
-                this.ctx,
-                `${this.groupPath(p.groupId)}/flexClusters`,
-                {
-                  version: FLEX_VERSION,
-                },
+              await listAll((paging) =>
+                this.api.get(`/groups/${pathEncode(p.groupId)}/flexClusters`, {
+                  headers: atlasVersion(FLEX_VERSION),
+                  query: paging,
+                }),
               )
             ).map((c) => mapFlexCluster(accountId, c, p)),
           );
         case "serverless-instance":
           return this.perProject(async (p) =>
             (
-              await listAll<AtlasServerless>(this.ctx, `${this.groupPath(p.groupId)}/serverless`)
+              await listAll((paging) =>
+                this.api.get(`/groups/${pathEncode(p.groupId)}/serverless`, { query: paging }),
+              )
             ).map((s) => mapServerless(accountId, s, p)),
           );
         case "database-user":
           return this.perProject(async (p) =>
             (
-              await listAll<AtlasDatabaseUser>(
-                this.ctx,
-                `${this.groupPath(p.groupId)}/databaseUsers`,
+              await listAll((paging) =>
+                this.api.get(`/groups/${pathEncode(p.groupId)}/databaseUsers`, { query: paging }),
               )
             ).map((u) => mapDatabaseUser(accountId, u, p)),
           );
         case "ip-access-entry":
           return this.perProject(async (p) =>
             (
-              await listAll<AtlasAccessEntry>(this.ctx, `${this.groupPath(p.groupId)}/accessList`)
+              await listAll((paging) =>
+                this.api.get(`/groups/${pathEncode(p.groupId)}/accessList`, { query: paging }),
+              )
             ).map((e) => mapAccessEntry(accountId, e, p)),
           );
         case "alert":
           return this.perProject(async (p) =>
             (
-              await listAll<AtlasAlert>(this.ctx, `${this.groupPath(p.groupId)}/alerts`, {
-                query: { status: "OPEN" },
-              })
+              await listAll((paging) =>
+                this.api.get(`/groups/${pathEncode(p.groupId)}/alerts`, {
+                  query: { status: "OPEN", ...paging },
+                }),
+              )
             ).map((a) => mapAlert(accountId, a, p)),
           );
         case "alert-configuration":
           return this.perProject(async (p) =>
             (
-              await listAll<AtlasAlertConfig>(this.ctx, `${this.groupPath(p.groupId)}/alertConfigs`)
+              await listAll((paging) =>
+                this.api.get(`/groups/${pathEncode(p.groupId)}/alertConfigs`, { query: paging }),
+              )
             ).map((c) => mapAlertConfig(accountId, c, p)),
           );
         case "private-endpoint-service":
@@ -345,11 +351,11 @@ export class MongoDBAtlasClient implements PluginClient {
             const per = await Promise.all(
               ["AWS", "AZURE", "GCP"].map((provider) =>
                 tolerant(() =>
-                  atlasRequest<AtlasEndpointService[]>(
-                    this.ctx,
-                    "GET",
-                    `${this.groupPath(p.groupId)}/privateEndpoint/${provider}/endpointService`,
-                  ).then((r) => (Array.isArray(r) ? r : [])),
+                  this.api
+                    .get(
+                      `/groups/${pathEncode(p.groupId)}/privateEndpoint/${pathEncode(provider)}/endpointService`,
+                    )
+                    .then((r) => (Array.isArray(r) ? r : [])),
                 ),
               ),
             );
@@ -360,9 +366,11 @@ export class MongoDBAtlasClient implements PluginClient {
             (c) => dedicated(c) && c.backupEnabled === true,
             async (p, name) =>
               (
-                await listAll<AtlasSnapshot>(
-                  this.ctx,
-                  `${this.groupPath(p.groupId)}/clusters/${enc(name)}/backup/snapshots`,
+                await listAll((paging) =>
+                  this.api.get(
+                    `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/backup/snapshots`,
+                    { query: paging },
+                  ),
                 )
               ).map((s) => mapSnapshot(accountId, s, p, name)),
           );
@@ -370,11 +378,9 @@ export class MongoDBAtlasClient implements PluginClient {
           return this.perCluster(
             (c) => dedicated(c) && c.backupEnabled === true,
             async (p, name) => {
-              const schedule = await atlasRequest<AtlasBackupSchedule>(
-                this.ctx,
-                "GET",
-                `${this.groupPath(p.groupId)}/clusters/${enc(name)}/backup/schedule`,
-                { version: CLUSTER_VERSION },
+              const schedule = await this.api.get(
+                `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/backup/schedule`,
+                { headers: atlasVersion(CLUSTER_VERSION) },
               );
               return schedule ? [mapBackupPolicy(accountId, schedule, p, name)] : [];
             },
@@ -383,11 +389,9 @@ export class MongoDBAtlasClient implements PluginClient {
           return this.perCluster(
             (c) => !c.paused,
             async (p, name) => {
-              const res = await atlasRequest<AtlasSearchIndex[]>(
-                this.ctx,
-                "GET",
-                `${this.groupPath(p.groupId)}/clusters/${enc(name)}/search/indexes`,
-                { version: SEARCH_VERSION },
+              const res = await this.api.get(
+                `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/search/indexes`,
+                { headers: atlasVersion(SEARCH_VERSION) },
               );
               return (Array.isArray(res) ? res : []).map((s) =>
                 mapSearchIndex(accountId, s, p, name),
@@ -397,9 +401,11 @@ export class MongoDBAtlasClient implements PluginClient {
         case "online-archive":
           return this.perCluster(dedicated, async (p, name) =>
             (
-              await listAll<AtlasOnlineArchive>(
-                this.ctx,
-                `${this.groupPath(p.groupId)}/clusters/${enc(name)}/onlineArchives`,
+              await listAll((paging) =>
+                this.api.get(
+                  `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/onlineArchives`,
+                  { query: paging },
+                ),
               )
             ).map((a) => mapOnlineArchive(accountId, a, p, name)),
           );
@@ -421,12 +427,9 @@ export class MongoDBAtlasClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async getCluster(groupId: string, name: string): Promise<AtlasCluster> {
-    return atlasRequest<AtlasCluster>(
-      this.ctx,
-      "GET",
-      `${this.groupPath(groupId)}/clusters/${enc(name)}`,
-      { version: CLUSTER_VERSION },
-    );
+    return this.api.get(`/groups/${pathEncode(groupId)}/clusters/${pathEncode(name)}`, {
+      headers: atlasVersion(CLUSTER_VERSION),
+    });
   }
 
   /** Tiers offered in the cluster's cloud region, from Atlas itself. */
@@ -436,13 +439,8 @@ export class MongoDBAtlasClient implements PluginClient {
     region: string,
   ): Promise<string[]> {
     if (!provider || !region) return [];
-    const res = await atlasRequest<{
-      results?: Array<{
-        provider?: string;
-        instanceSizes?: Array<{ name?: string; availableRegions?: Array<{ name?: string }> }>;
-      }>;
-    }>(this.ctx, "GET", `${this.groupPath(groupId)}/clusters/provider/regions`, {
-      query: { providers: provider },
+    const res = await this.api.get(`/groups/${pathEncode(groupId)}/clusters/provider/regions`, {
+      query: { providers: [provider] },
     });
     const out: string[] = [];
     for (const p of res?.results ?? []) {
@@ -466,11 +464,11 @@ export class MongoDBAtlasClient implements PluginClient {
         case "organization":
           return this.getOrganization(accountId);
         case "project": {
-          const g = await atlasRequest<AtlasGroup>(this.ctx, "GET", this.groupPath(id));
+          const g = await this.api.get(`/groups/${pathEncode(id)}`);
           return mapProject(accountId, g);
         }
         case "cluster": {
-          const [groupId, name] = splitId(id, 1) as [string, string];
+          const [groupId, name] = splitId(id, 1);
           const [cluster, project] = await Promise.all([
             this.getCluster(groupId, name),
             this.projectRef(groupId),
@@ -480,109 +478,87 @@ export class MongoDBAtlasClient implements PluginClient {
             groupId,
             String(r.fields["provider"] ?? ""),
             String(r.fields["region"] ?? ""),
-          ).catch(() => [] as string[]);
+          ).catch((): string[] => []);
           if (tiers.length > 0) r.resolvedOutputs[AVAILABLE_TIERS_KEY] = JSON.stringify(tiers);
           return r;
         }
         case "flex-cluster": {
-          const [groupId, name] = splitId(id, 1) as [string, string];
-          const c = await atlasRequest<AtlasFlexCluster>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/flexClusters/${enc(name)}`,
-            { version: FLEX_VERSION },
+          const [groupId, name] = splitId(id, 1);
+          const c = await this.api.get(
+            `/groups/${pathEncode(groupId)}/flexClusters/${pathEncode(name)}`,
+            { headers: atlasVersion(FLEX_VERSION) },
           );
           return mapFlexCluster(accountId, c, await this.projectRef(groupId));
         }
         case "serverless-instance": {
-          const [groupId, name] = splitId(id, 1) as [string, string];
-          const s = await atlasRequest<AtlasServerless>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/serverless/${enc(name)}`,
+          const [groupId, name] = splitId(id, 1);
+          const s = await this.api.get(
+            `/groups/${pathEncode(groupId)}/serverless/${pathEncode(name)}`,
           );
           return mapServerless(accountId, s, await this.projectRef(groupId));
         }
         case "database-user": {
-          const [groupId, db, user] = splitId(id, 2) as [string, string, string];
-          const u = await atlasRequest<AtlasDatabaseUser>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/databaseUsers/${enc(db)}/${enc(user)}`,
+          const [groupId, db, user] = splitId(id, 2);
+          const u = await this.api.get(
+            `/groups/${pathEncode(groupId)}/databaseUsers/${pathEncode(db)}/${pathEncode(user)}`,
           );
           return mapDatabaseUser(accountId, u, await this.projectRef(groupId));
         }
         case "ip-access-entry": {
-          const [groupId, entry] = splitId(id, 1) as [string, string];
-          const e = await atlasRequest<AtlasAccessEntry>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/accessList/${enc(entry)}`,
+          const [groupId, entry] = splitId(id, 1);
+          const e = await this.api.get(
+            `/groups/${pathEncode(groupId)}/accessList/${pathEncode(entry)}`,
           );
           return mapAccessEntry(accountId, e, await this.projectRef(groupId));
         }
         case "backup-snapshot": {
-          const [groupId, cluster, snap] = splitId(id, 2) as [string, string, string];
-          const s = await atlasRequest<AtlasSnapshot>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/clusters/${enc(cluster)}/backup/snapshots/${enc(snap)}`,
+          const [groupId, cluster, snap] = splitId(id, 2);
+          const s = await this.api.get(
+            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots/${pathEncode(snap)}`,
           );
           return mapSnapshot(accountId, s, await this.projectRef(groupId), cluster);
         }
         case "backup-policy": {
-          const [groupId, cluster] = splitId(id, 1) as [string, string];
-          const s = await atlasRequest<AtlasBackupSchedule>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/clusters/${enc(cluster)}/backup/schedule`,
-            { version: CLUSTER_VERSION },
+          const [groupId, cluster] = splitId(id, 1);
+          const s = await this.api.get(
+            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/schedule`,
+            { headers: atlasVersion(CLUSTER_VERSION) },
           );
           return mapBackupPolicy(accountId, s, await this.projectRef(groupId), cluster);
         }
         case "alert": {
-          const [groupId, alertId] = splitId(id, 1) as [string, string];
-          const a = await atlasRequest<AtlasAlert>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/alerts/${enc(alertId)}`,
+          const [groupId, alertId] = splitId(id, 1);
+          const a = await this.api.get(
+            `/groups/${pathEncode(groupId)}/alerts/${pathEncode(alertId)}`,
           );
           return mapAlert(accountId, a, await this.projectRef(groupId));
         }
         case "alert-configuration": {
-          const [groupId, configId] = splitId(id, 1) as [string, string];
-          const c = await atlasRequest<AtlasAlertConfig>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/alertConfigs/${enc(configId)}`,
+          const [groupId, configId] = splitId(id, 1);
+          const c = await this.api.get(
+            `/groups/${pathEncode(groupId)}/alertConfigs/${pathEncode(configId)}`,
           );
           return mapAlertConfig(accountId, c, await this.projectRef(groupId));
         }
         case "search-index": {
-          const [groupId, cluster, indexId] = splitId(id, 2) as [string, string, string];
-          const s = await atlasRequest<AtlasSearchIndex>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/clusters/${enc(cluster)}/search/indexes/${enc(indexId)}`,
-            { version: SEARCH_VERSION },
+          const [groupId, cluster, indexId] = splitId(id, 2);
+          const s = await this.api.get(
+            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/search/indexes/${pathEncode(indexId)}`,
+            { headers: atlasVersion(SEARCH_VERSION) },
           );
           return mapSearchIndex(accountId, s, await this.projectRef(groupId), cluster);
         }
         case "online-archive": {
-          const [groupId, cluster, archiveId] = splitId(id, 2) as [string, string, string];
-          const a = await atlasRequest<AtlasOnlineArchive>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/clusters/${enc(cluster)}/onlineArchives/${enc(archiveId)}`,
+          const [groupId, cluster, archiveId] = splitId(id, 2);
+          const a = await this.api.get(
+            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/onlineArchives/${pathEncode(archiveId)}`,
           );
           return mapOnlineArchive(accountId, a, await this.projectRef(groupId), cluster);
         }
         case "private-endpoint-service": {
-          const [groupId, provider, serviceId] = splitId(id, 2) as [string, string, string];
-          const e = await atlasRequest<AtlasEndpointService>(
-            this.ctx,
-            "GET",
-            `${this.groupPath(groupId)}/privateEndpoint/${enc(provider)}/endpointService/${enc(serviceId)}`,
+          const [groupId, provider, serviceId] = splitId(id, 2);
+          const e = await this.api.get(
+            `/groups/${pathEncode(groupId)}/privateEndpoint/${pathEncode(provider)}/endpointService/${pathEncode(serviceId)}`,
           );
           return mapEndpointService(accountId, e, await this.projectRef(groupId));
         }
@@ -594,15 +570,15 @@ export class MongoDBAtlasClient implements PluginClient {
 
   private async getOrganization(accountId: string): Promise<ResourceInstance> {
     const org = await this.org();
-    const projects = await this.projects().catch(() => [] as AtlasGroup[]);
-    const base = `/api/atlas/v2/orgs/${enc(org.id)}/invoices`;
+    const projects = await this.projects().catch((): AtlasGroup[] => []);
+    const orgPath = pathEncode(org.id);
     const [pending, recent] = await Promise.all([
-      atlasRequest<{ results?: Invoice[] }>(this.ctx, "GET", `${base}/pending`).catch(
-        () => undefined,
-      ),
-      atlasRequest<{ results?: Invoice[] }>(this.ctx, "GET", base, {
-        query: { itemsPerPage: 6, pageNum: 1, sortBy: "START_DATE", orderBy: "desc" },
-      }).catch(() => undefined),
+      this.api.get(`/orgs/${orgPath}/invoices/pending`).catch(() => undefined),
+      this.api
+        .get(`/orgs/${orgPath}/invoices`, {
+          query: { itemsPerPage: 6, pageNum: 1, sortBy: "START_DATE", orderBy: "desc" },
+        })
+        .catch(() => undefined),
     ]);
     const current = pending?.results?.[0];
     const summary = current ? summarizeInvoice(current) : undefined;
@@ -733,7 +709,7 @@ export class MongoDBAtlasClient implements PluginClient {
         return spendSeries(rows, range);
       }
       if (resourceTypeId === "cluster") {
-        const [groupId, name] = splitId(externalIdOf(resourceId), 1) as [string, string];
+        const [groupId, name] = splitId(externalIdOf(resourceId), 1);
         const cluster = await this.getCluster(groupId, name);
         if (cluster.paused) return [];
         return clusterSeries(
@@ -769,7 +745,7 @@ export class MongoDBAtlasClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async projectSelect(description: string) {
-    const refs = await this.refs().catch(() => [] as ProjectRef[]);
+    const refs = await this.refs().catch((): ProjectRef[] => []);
     return {
       key: "groupId",
       label: "Project",
@@ -941,8 +917,8 @@ export class MongoDBAtlasClient implements PluginClient {
       };
       const out: Record<string, number> = {};
       for (const [key, hourly] of instanceRates(invoices, regionOf)) {
-        const [region, tier] = key.split("|") as [string, string];
-        if (region !== request.regionId) continue;
+        const [region, tier] = key.split("|");
+        if (region !== request.regionId || tier === undefined) continue;
         out[tier] = Math.round(hourly * HOURS_PER_MONTH * 100) / 100;
       }
       return out;
@@ -973,24 +949,19 @@ export class MongoDBAtlasClient implements PluginClient {
           if (!database)
             throw new Error("MongoDB Atlas plugin: name the database the role applies to");
           const cluster = (fields["cluster"] ?? "").trim();
-          const created = await atlasRequest<AtlasDatabaseUser>(
-            this.ctx,
-            "POST",
-            `${this.groupPath(groupId)}/databaseUsers`,
-            {
-              body: {
-                groupId,
-                databaseName: "admin",
-                username,
-                password,
-                roles: [{ roleName: role, databaseName: database }],
-                ...(cluster ? { scopes: [{ name: cluster, type: "CLUSTER" }] } : {}),
-                ...(fields["description"]?.trim()
-                  ? { description: fields["description"].trim() }
-                  : {}),
-              },
+          const created = await this.api.post(`/groups/${pathEncode(groupId)}/databaseUsers`, {
+            body: {
+              groupId,
+              databaseName: "admin",
+              username,
+              password,
+              roles: [{ roleName: role, databaseName: database }],
+              ...(cluster ? { scopes: [{ name: cluster, type: "CLUSTER" }] } : {}),
+              ...(fields["description"]?.trim()
+                ? { description: fields["description"].trim() }
+                : {}),
             },
-          );
+          });
           return mapDatabaseUser(accountId, created, await this.projectRef(groupId));
         }
         case "ip-access-entry": {
@@ -1005,7 +976,7 @@ export class MongoDBAtlasClient implements PluginClient {
           const target = parentResourceId
             ? externalIdOf(parentResourceId)
             : (fields["cluster"] ?? "");
-          const [groupId, cluster] = splitId(target, 1) as [string, string];
+          const [groupId, cluster] = splitId(target, 1);
           if (!groupId || !cluster) throw new Error("MongoDB Atlas plugin: pick a cluster");
           const snap = await this.takeSnapshot(groupId, cluster, fields);
           return mapSnapshot(accountId, snap, await this.projectRef(groupId), cluster);
@@ -1022,29 +993,26 @@ export class MongoDBAtlasClient implements PluginClient {
   ): Promise<AtlasAccessEntry> {
     const raw = (fields["entry"] ?? "").trim();
     if (!raw) throw new Error("MongoDB Atlas plugin: enter an IP address or CIDR block");
-    const body: Record<string, unknown> = raw.startsWith("sg-")
+    const body: NewAccessEntry = raw.startsWith("sg-")
       ? { awsSecurityGroup: raw }
       : raw.includes("/")
         ? { cidrBlock: raw }
         : { ipAddress: raw };
-    if (fields["comment"]?.trim()) body["comment"] = fields["comment"].trim();
+    if (fields["comment"]?.trim()) body.comment = fields["comment"].trim();
     const hours = Number(fields["expiresInHours"] ?? "");
     if (Number.isFinite(hours) && hours > 0) {
-      body["deleteAfterDate"] = new Date(Date.now() + hours * 3_600_000)
+      body.deleteAfterDate = new Date(Date.now() + hours * 3_600_000)
         .toISOString()
         .replace(/\.\d{3}Z$/, "Z");
     }
-    const res = await atlasRequest<{ results?: AtlasAccessEntry[] }>(
-      this.ctx,
-      "POST",
-      `${this.groupPath(groupId)}/accessList`,
-      { body: [body] },
-    );
+    const res = await this.api.post(`/groups/${pathEncode(groupId)}/accessList`, {
+      body: [body],
+    });
     const value = raw.includes("/") || raw.startsWith("sg-") ? raw : `${raw}/32`;
     const found = (res?.results ?? []).find(
       (e) => e.cidrBlock === value || e.ipAddress === raw || e.awsSecurityGroup === raw,
     );
-    return found ?? { groupId, ...(body as AtlasAccessEntry) };
+    return found ?? { groupId, ...body };
   }
 
   private async takeSnapshot(
@@ -1053,10 +1021,8 @@ export class MongoDBAtlasClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<AtlasSnapshot> {
     const retention = Math.max(1, Math.round(Number(fields["retentionInDays"] ?? "7") || 7));
-    return atlasRequest<AtlasSnapshot>(
-      this.ctx,
-      "POST",
-      `${this.groupPath(groupId)}/clusters/${enc(cluster)}/backup/snapshots`,
+    return this.api.post(
+      `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots`,
       {
         body: {
           description:
@@ -1083,25 +1049,23 @@ export class MongoDBAtlasClient implements PluginClient {
         case "project": {
           const name = (fields["name"] ?? "").trim();
           if (name) {
-            await atlasRequest(this.ctx, "PATCH", this.groupPath(id), { body: { name } });
+            await this.api.patch(`/groups/${pathEncode(id)}`, { body: { name } });
             this.projectsCache = undefined;
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "cluster": {
-          const [groupId, name] = splitId(id, 1) as [string, string];
+          const [groupId, name] = splitId(id, 1);
           await this.patchCluster(groupId, name, fields);
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "flex-cluster": {
-          const [groupId, name] = splitId(id, 1) as [string, string];
+          const [groupId, name] = splitId(id, 1);
           if ("terminationProtectionEnabled" in fields) {
-            await atlasRequest(
-              this.ctx,
-              "PATCH",
-              `${this.groupPath(groupId)}/flexClusters/${enc(name)}`,
+            await this.api.patch(
+              `/groups/${pathEncode(groupId)}/flexClusters/${pathEncode(name)}`,
               {
-                version: FLEX_VERSION,
+                headers: atlasVersion(FLEX_VERSION),
                 body: {
                   terminationProtectionEnabled: fields["terminationProtectionEnabled"] === "true",
                 },
@@ -1111,20 +1075,18 @@ export class MongoDBAtlasClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "database-user": {
-          const [groupId, db, user] = splitId(id, 2) as [string, string, string];
-          const body: Record<string, unknown> = {};
+          const [groupId, db, user] = splitId(id, 2);
+          const body: DatabaseUserChanges = {};
           if ("roles" in fields) {
             const roles = parseRoles(fields["roles"] ?? "");
             if (roles.length === 0)
               throw new Error("MongoDB Atlas plugin: a database user needs at least one role");
-            body["roles"] = roles;
+            body.roles = roles;
           }
-          if ("description" in fields) body["description"] = fields["description"] ?? "";
+          if ("description" in fields) body.description = fields["description"] ?? "";
           if (Object.keys(body).length > 0) {
-            await atlasRequest(
-              this.ctx,
-              "PATCH",
-              `${this.groupPath(groupId)}/databaseUsers/${enc(db)}/${enc(user)}`,
+            await this.api.patch(
+              `/groups/${pathEncode(groupId)}/databaseUsers/${pathEncode(db)}/${pathEncode(user)}`,
               { body },
             );
           }
@@ -1132,16 +1094,20 @@ export class MongoDBAtlasClient implements PluginClient {
         }
         case "ip-access-entry": {
           // The access list is an upsert: posting an existing entry replaces its comment.
-          const [groupId, entry] = splitId(id, 1) as [string, string];
+          const [groupId, entry] = splitId(id, 1);
           if ("comment" in fields) {
             await this.addAccessEntry(groupId, { entry, comment: fields["comment"] ?? "" });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "backup-policy": {
-          const [groupId, cluster] = splitId(id, 1) as [string, string];
-          const body: Record<string, unknown> = {};
-          const num = (key: string, min: number, max: number) => {
+          const [groupId, cluster] = splitId(id, 1);
+          const body: ApiBody<operations["updateGroupClusterBackupSchedule"]> = {};
+          const num = (
+            key: "referenceHourOfDay" | "referenceMinuteOfHour" | "restoreWindowDays",
+            min: number,
+            max: number,
+          ) => {
             if (!(key in fields) || fields[key] === "") return;
             const v = Math.round(Number(fields[key]));
             if (!Number.isFinite(v) || v < min || v > max) {
@@ -1153,11 +1119,9 @@ export class MongoDBAtlasClient implements PluginClient {
           num("referenceMinuteOfHour", 0, 59);
           num("restoreWindowDays", 1, 365);
           if (Object.keys(body).length > 0) {
-            await atlasRequest(
-              this.ctx,
-              "PATCH",
-              `${this.groupPath(groupId)}/clusters/${enc(cluster)}/backup/schedule`,
-              { version: CLUSTER_VERSION, body },
+            await this.api.patch(
+              `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/schedule`,
+              { headers: atlasVersion(CLUSTER_VERSION), body },
             );
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -1178,9 +1142,9 @@ export class MongoDBAtlasClient implements PluginClient {
     name: string,
     fields: Record<string, string>,
   ): Promise<void> {
-    const body: Record<string, unknown> = {};
+    const body: ApiBody<operations["updateGroupCluster"]> = {};
     if ("terminationProtectionEnabled" in fields) {
-      body["terminationProtectionEnabled"] = fields["terminationProtectionEnabled"] === "true";
+      body.terminationProtectionEnabled = fields["terminationProtectionEnabled"] === "true";
     }
     const tier = (fields["instanceSize"] ?? "").trim();
     const disk =
@@ -1202,54 +1166,48 @@ export class MongoDBAtlasClient implements PluginClient {
         [...(current.replicationSpecs?.[0]?.regionConfigs ?? [])][0]?.providerName ?? "";
       const specs = writableSpecs(current.replicationSpecs);
       for (const spec of specs) {
-        for (const rc of spec["regionConfigs"] as Array<Record<string, unknown>>) {
-          for (const key of ["electableSpecs", "readOnlySpecs", "analyticsSpecs"]) {
-            const hw = rc[key] as Record<string, unknown> | undefined;
+        for (const rc of spec.regionConfigs) {
+          for (const key of ["electableSpecs", "readOnlySpecs", "analyticsSpecs"] as const) {
+            const hw = rc[key];
             if (!hw) continue;
-            if (tier && key !== "analyticsSpecs") hw["instanceSize"] = tier;
-            if (disk !== undefined) hw["diskSizeGB"] = disk;
+            if (tier && key !== "analyticsSpecs") hw.instanceSize = tier;
+            if (disk !== undefined) hw.diskSizeGB = disk;
           }
           if (compute !== undefined || diskAuto !== undefined) {
-            const auto = (rc["autoScaling"] as Record<string, unknown> | undefined) ?? {};
+            const auto = rc.autoScaling ?? {};
             if (compute !== undefined) {
-              const c = (auto["compute"] as Record<string, unknown> | undefined) ?? {};
-              c["enabled"] = compute;
+              const c = auto.compute ?? {};
+              c.enabled = compute;
               if (compute) {
-                const size =
-                  tier ||
-                  String(
-                    (rc["electableSpecs"] as Record<string, unknown> | undefined)?.[
-                      "instanceSize"
-                    ] ?? "",
-                  );
+                const size = tier || String(rc.electableSpecs?.instanceSize ?? "");
                 const ladder = (TIERS_BY_PROVIDER[provider] ?? []).filter(
                   (t) => t[0] === size[0] && /_NVME/.test(t) === /_NVME/.test(size),
                 );
                 const at = ladder.indexOf(size);
-                c["scaleDownEnabled"] = c["scaleDownEnabled"] ?? true;
-                c["minInstanceSize"] = c["minInstanceSize"] ?? size;
-                c["maxInstanceSize"] =
-                  c["maxInstanceSize"] ?? ladder[Math.min(at + 2, ladder.length - 1)] ?? size;
+                c.scaleDownEnabled = c.scaleDownEnabled ?? true;
+                c.minInstanceSize = c.minInstanceSize ?? size;
+                c.maxInstanceSize =
+                  c.maxInstanceSize ?? ladder[Math.min(at + 2, ladder.length - 1)] ?? size;
               } else {
-                delete c["minInstanceSize"];
-                delete c["maxInstanceSize"];
-                c["scaleDownEnabled"] = false;
+                delete c.minInstanceSize;
+                delete c.maxInstanceSize;
+                c.scaleDownEnabled = false;
               }
-              auto["compute"] = c;
+              auto.compute = c;
             }
-            if (diskAuto !== undefined) auto["diskGB"] = { enabled: diskAuto };
-            rc["autoScaling"] = auto;
-            if (rc["analyticsAutoScaling"] === undefined && rc["analyticsSpecs"]) {
-              rc["analyticsAutoScaling"] = JSON.parse(JSON.stringify(auto));
+            if (diskAuto !== undefined) auto.diskGB = { enabled: diskAuto };
+            rc.autoScaling = auto;
+            if (rc.analyticsAutoScaling === undefined && rc.analyticsSpecs) {
+              rc.analyticsAutoScaling = copyOf(auto);
             }
           }
         }
       }
-      body["replicationSpecs"] = specs;
+      body.replicationSpecs = specs;
     }
     if (Object.keys(body).length === 0) return;
-    await atlasRequest(this.ctx, "PATCH", `${this.groupPath(groupId)}/clusters/${enc(name)}`, {
-      version: CLUSTER_VERSION,
+    await this.api.patch(`/groups/${pathEncode(groupId)}/clusters/${pathEncode(name)}`, {
+      headers: atlasVersion(CLUSTER_VERSION),
       body,
     });
     this.clustersCache = undefined;
@@ -1260,66 +1218,50 @@ export class MongoDBAtlasClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "database-user": {
-          const [groupId, db, user] = splitId(id, 2) as [string, string, string];
-          await atlasRequest(
-            this.ctx,
-            "DELETE",
-            `${this.groupPath(groupId)}/databaseUsers/${enc(db)}/${enc(user)}`,
+          const [groupId, db, user] = splitId(id, 2);
+          await this.api.delete(
+            `/groups/${pathEncode(groupId)}/databaseUsers/${pathEncode(db)}/${pathEncode(user)}`,
           );
           return;
         }
         case "ip-access-entry": {
-          const [groupId, entry] = splitId(id, 1) as [string, string];
-          await atlasRequest(
-            this.ctx,
-            "DELETE",
-            `${this.groupPath(groupId)}/accessList/${enc(entry)}`,
-          );
+          const [groupId, entry] = splitId(id, 1);
+          await this.api.delete(`/groups/${pathEncode(groupId)}/accessList/${pathEncode(entry)}`);
           return;
         }
         case "backup-snapshot": {
-          const [groupId, cluster, snap] = splitId(id, 2) as [string, string, string];
-          await atlasRequest(
-            this.ctx,
-            "DELETE",
-            `${this.groupPath(groupId)}/clusters/${enc(cluster)}/backup/snapshots/${enc(snap)}`,
+          const [groupId, cluster, snap] = splitId(id, 2);
+          await this.api.delete(
+            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots/${pathEncode(snap)}`,
           );
           return;
         }
         case "alert-configuration": {
-          const [groupId, configId] = splitId(id, 1) as [string, string];
-          await atlasRequest(
-            this.ctx,
-            "DELETE",
-            `${this.groupPath(groupId)}/alertConfigs/${enc(configId)}`,
+          const [groupId, configId] = splitId(id, 1);
+          await this.api.delete(
+            `/groups/${pathEncode(groupId)}/alertConfigs/${pathEncode(configId)}`,
           );
           return;
         }
         case "search-index": {
-          const [groupId, cluster, indexId] = splitId(id, 2) as [string, string, string];
-          await atlasRequest(
-            this.ctx,
-            "DELETE",
-            `${this.groupPath(groupId)}/clusters/${enc(cluster)}/search/indexes/${enc(indexId)}`,
-            { version: SEARCH_VERSION },
+          const [groupId, cluster, indexId] = splitId(id, 2);
+          await this.api.delete(
+            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/search/indexes/${pathEncode(indexId)}`,
+            { headers: atlasVersion(SEARCH_VERSION) },
           );
           return;
         }
         case "online-archive": {
-          const [groupId, cluster, archiveId] = splitId(id, 2) as [string, string, string];
-          await atlasRequest(
-            this.ctx,
-            "DELETE",
-            `${this.groupPath(groupId)}/clusters/${enc(cluster)}/onlineArchives/${enc(archiveId)}`,
+          const [groupId, cluster, archiveId] = splitId(id, 2);
+          await this.api.delete(
+            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/onlineArchives/${pathEncode(archiveId)}`,
           );
           return;
         }
         case "private-endpoint-service": {
-          const [groupId, provider, serviceId] = splitId(id, 2) as [string, string, string];
-          await atlasRequest(
-            this.ctx,
-            "DELETE",
-            `${this.groupPath(groupId)}/privateEndpoint/${enc(provider)}/endpointService/${enc(serviceId)}`,
+          const [groupId, provider, serviceId] = splitId(id, 2);
+          await this.api.delete(
+            `/groups/${pathEncode(groupId)}/privateEndpoint/${pathEncode(provider)}/endpointService/${pathEncode(serviceId)}`,
           );
           return;
         }
@@ -1342,40 +1284,34 @@ export class MongoDBAtlasClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       if (typeId === "cluster" && (actionId === "pause" || actionId === "resume")) {
-        const [groupId, name] = splitId(id, 1) as [string, string];
-        await atlasRequest(this.ctx, "PATCH", `${this.groupPath(groupId)}/clusters/${enc(name)}`, {
-          version: CLUSTER_VERSION,
+        const [groupId, name] = splitId(id, 1);
+        await this.api.patch(`/groups/${pathEncode(groupId)}/clusters/${pathEncode(name)}`, {
+          headers: atlasVersion(CLUSTER_VERSION),
           body: { paused: actionId === "pause" },
         });
         this.clustersCache = undefined;
         return;
       }
       if (typeId === "alert" && actionId === "unacknowledge") {
-        const [groupId, alertId] = splitId(id, 1) as [string, string];
-        await atlasRequest(this.ctx, "PATCH", `${this.groupPath(groupId)}/alerts/${enc(alertId)}`, {
+        const [groupId, alertId] = splitId(id, 1);
+        await this.api.patch(`/groups/${pathEncode(groupId)}/alerts/${pathEncode(alertId)}`, {
           body: { unacknowledgeAlert: true },
-          version: "2024-05-30",
+          headers: atlasVersion(ALERT_ACK_VERSION),
         });
         return;
       }
       if (typeId === "alert-configuration" && (actionId === "enable" || actionId === "disable")) {
-        const [groupId, configId] = splitId(id, 1) as [string, string];
-        await atlasRequest(
-          this.ctx,
-          "PATCH",
-          `${this.groupPath(groupId)}/alertConfigs/${enc(configId)}`,
-          {
-            body: { enabled: actionId === "enable" },
-          },
+        const [groupId, configId] = splitId(id, 1);
+        await this.api.patch(
+          `/groups/${pathEncode(groupId)}/alertConfigs/${pathEncode(configId)}`,
+          { body: { enabled: actionId === "enable" } },
         );
         return;
       }
       if (typeId === "online-archive" && (actionId === "pause" || actionId === "resume")) {
-        const [groupId, cluster, archiveId] = splitId(id, 2) as [string, string, string];
-        await atlasRequest(
-          this.ctx,
-          "PATCH",
-          `${this.groupPath(groupId)}/clusters/${enc(cluster)}/onlineArchives/${enc(archiveId)}`,
+        const [groupId, cluster, archiveId] = splitId(id, 2);
+        await this.api.patch(
+          `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/onlineArchives/${pathEncode(archiveId)}`,
           { body: { paused: actionId === "pause" } },
         );
         return;
@@ -1400,14 +1336,14 @@ export class MongoDBAtlasClient implements PluginClient {
           await this.addAccessEntry(id, form);
           return { ok: true };
         case "cluster:scale-tier": {
-          const [groupId, name] = splitId(id, 1) as [string, string];
+          const [groupId, name] = splitId(id, 1);
           const tier = (form["instanceSize"] ?? "").trim();
           if (!tier) throw new Error("Pick a tier.");
           await this.patchCluster(groupId, name, { instanceSize: tier });
           return { ok: true };
         }
         case "cluster:take-snapshot": {
-          const [groupId, name] = splitId(id, 1) as [string, string];
+          const [groupId, name] = splitId(id, 1);
           await this.takeSnapshot(groupId, name, form);
           return { ok: true };
         }
@@ -1416,24 +1352,19 @@ export class MongoDBAtlasClient implements PluginClient {
           await this.createConnectionUser(typeId, id, accountId, form["role"] ?? "readAnyDatabase");
           return { ok: true };
         case "alert:acknowledge": {
-          const [groupId, alertId] = splitId(id, 1) as [string, string];
+          const [groupId, alertId] = splitId(id, 1);
           const hours = Math.max(1, Number(form["hours"] ?? "24") || 24);
-          await atlasRequest(
-            this.ctx,
-            "PATCH",
-            `${this.groupPath(groupId)}/alerts/${enc(alertId)}`,
-            {
-              version: "2024-05-30",
-              body: {
-                acknowledgedUntil: new Date(Date.now() + hours * 3_600_000)
-                  .toISOString()
-                  .replace(/\.\d{3}Z$/, "Z"),
-                ...(form["comment"]?.trim()
-                  ? { acknowledgementComment: form["comment"].trim() }
-                  : {}),
-              },
+          await this.api.patch(`/groups/${pathEncode(groupId)}/alerts/${pathEncode(alertId)}`, {
+            headers: atlasVersion(ALERT_ACK_VERSION),
+            body: {
+              acknowledgedUntil: new Date(Date.now() + hours * 3_600_000)
+                .toISOString()
+                .replace(/\.\d{3}Z$/, "Z"),
+              ...(form["comment"]?.trim()
+                ? { acknowledgementComment: form["comment"].trim() }
+                : {}),
             },
-          );
+          });
           return { ok: true };
         }
         default:
@@ -1459,14 +1390,14 @@ export class MongoDBAtlasClient implements PluginClient {
         "This host cannot store credentials, so the connection user could not be kept.",
       );
     }
-    const [groupId, name] = splitId(externalId, 1) as [string, string];
+    const [groupId, name] = splitId(externalId, 1);
     const safeRole = role === "readWriteAnyDatabase" ? role : "readAnyDatabase";
     const username = `infrawrench-${name
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "-")
       .slice(0, 30)}-${randomPassword(6).toLowerCase()}`;
     const password = randomPassword(32);
-    await atlasRequest(this.ctx, "POST", `${this.groupPath(groupId)}/databaseUsers`, {
+    await this.api.post(`/groups/${pathEncode(groupId)}/databaseUsers`, {
       body: {
         groupId,
         databaseName: "admin",

@@ -1,0 +1,92 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.uploadthing.com/openapi-spec.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1v6~1pollUpload~1{fileKey}",
+      "value": {
+        "get": {
+          "parameters": [
+            { "schema": { "type": "string" }, "required": true, "name": "fileKey", "in": "path" }
+          ],
+          "responses": {
+            "200": {
+              "description": "Poll for successful upload",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "status": { "type": "string", "enum": ["still working", "done"] },
+                      "fileData": {
+                        "type": "object",
+                        "properties": {
+                          "fileKey": { "type": "string" },
+                          "fileName": { "type": "string" },
+                          "fileSize": { "type": "number" },
+                          "fileType": { "type": "string", "nullable": true },
+                          "fileUrl": { "type": "string", "nullable": true },
+                          "customId": { "type": "string", "nullable": true },
+                          "callbackUrl": { "type": "string" },
+                          "callbackSlug": { "type": "string" }
+                        },
+                        "required": [
+                          "fileKey",
+                          "fileName",
+                          "fileSize",
+                          "fileType",
+                          "fileUrl",
+                          "customId",
+                          "callbackUrl",
+                          "callbackSlug"
+                        ]
+                      }
+                    },
+                    "required": ["status"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document writes this path as `/v6/pollUpload/:fileKey`, a literal colon that takes no pathEncode, so the same operation is added in its `{fileKey}` form."
+    },
+    {
+      "pointer": "/paths/~1v7~1getAppInfo/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "type": "object", "additionalProperties": false } }
+        }
+      },
+      "why": "The document lists no body; the plugin has always sent `{}` and the requests must not change."
+    },
+    {
+      "pointer": "/paths/~1v6~1getUsageInfo/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "type": "object", "additionalProperties": false } }
+        }
+      },
+      "why": "The document lists no body; the plugin has always sent `{}` and the requests must not change."
+    },
+    {
+      "pointer": "/paths/~1v7~1prepareUpload/post/requestBody/content/application~1json/schema/properties/acl",
+      "value": { "type": "string" },
+      "why": "An enum in the document, but the create form's value goes through as typed and UploadThing's own validation error is the better message."
+    }
+  ],
+  "paths": {
+    "/v7/getAppInfo": ["post"],
+    "/v6/getUsageInfo": ["post"],
+    "/v6/listFiles": ["post"],
+    "/v6/pollUpload/{fileKey}": ["get"],
+    "/v6/requestFileAccess": ["post"],
+    "/v6/renameFiles": ["post"],
+    "/v6/deleteFiles": ["post"],
+    "/v6/updateACL": ["post"],
+    "/v7/prepareUpload": ["post"]
+  }
+}

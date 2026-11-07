@@ -23,10 +23,11 @@
  * whole month's daily series and only writes the days inside the range.
  */
 
-import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import type { ApiResponse, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
 import type { SentryContext } from "./api.js";
-import { isPermissionError, sentryFetch } from "./api.js";
+import { isPermissionError, sentryApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import type { SentryRates, UsageCategory } from "./rates.js";
 import { SERVICES, USAGE_CATEGORIES, usageCategoryOf } from "./rates.js";
 
@@ -34,32 +35,19 @@ const DAY_MS = 86_400_000;
 /** stats_v2 answers at most 90 days back. */
 export const MAX_STATS_DAYS = 90;
 
-export interface StatsGroup {
-  by: Record<string, string | number>;
-  totals: Record<string, number>;
-  series?: Record<string, number[]>;
-}
+type ListStats = operations["listOrganizationStatsV2"];
 
-export interface StatsResponse {
-  start?: string;
-  end?: string;
-  intervals?: string[];
-  groups?: StatsGroup[];
-}
+export type StatsResponse = ApiResponse<ListStats>;
 
-export interface StatsQuery {
-  groupBy: string[];
-  start: string;
-  end: string;
-  interval?: string;
-  outcome?: string[];
-  category?: string[];
-  project?: Array<string | number>;
-}
+/** What one call can ask for; the fixed `field` and the `-1` default are added below. */
+export type StatsQuery = Pick<
+  ListStats["parameters"]["query"],
+  "groupBy" | "interval" | "outcome" | "category" | "project"
+> & { start: string; end: string };
 
 /** One stats_v2 call. Dates are ISO timestamps; `end` is inclusive. */
 export function fetchStats(ctx: SentryContext, org: string, q: StatsQuery): Promise<StatsResponse> {
-  return sentryFetch<StatsResponse>(ctx, `/organizations/${encodeURIComponent(org)}/stats_v2/`, {
+  return sentryApi(ctx).get(`/organizations/${pathEncode(org)}/stats_v2/`, {
     query: {
       field: "sum(quantity)",
       groupBy: q.groupBy,
@@ -178,7 +166,9 @@ export function billableByDay(
 }
 
 /** Per-project accepted volume (priced units) per category key, from a `groupBy=[category,project]` call. */
-export function projectTotals(res: StatsResponse): Map<string, Map<string, number>> {
+export function projectTotals(
+  res: Pick<StatsResponse, "groups">,
+): Map<string, Map<string, number>> {
   const out = new Map<string, Map<string, number>>();
   for (const g of res.groups ?? []) {
     const cat = usageCategoryOf(String(g.by["category"] ?? ""));
@@ -383,7 +373,7 @@ export async function fetchUsageSummary(
       outcome: ["accepted"],
       start,
       end,
-    }).catch(() => ({ groups: [] }) as StatsResponse),
+    }).catch((): Pick<StatsResponse, "groups"> => ({ groups: [] })),
     inputs.monitors ? inputs.monitors().catch(() => undefined) : Promise.resolve(undefined),
   ]);
   const totals = new Map<string, { accepted: number; filtered: number; rateLimited: number }>();

@@ -1,0 +1,73 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://console.anyscale.com/api/v2/openapi.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1api~1v2~1instance_usage_budgets~1{instance_usage_budget_id}/put/parameters/1/schema",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes this form field through as typed, so the server's own validation answers a bad value."
+    },
+    {
+      "pointer": "/paths/~1api~1v2~1instance_usage_budgets~1{instance_usage_budget_id}/put/parameters/2/schema",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes this form field through as typed, so the server's own validation answers a bad value."
+    },
+    {
+      "pointer": "/paths/~1api~1v2~1instance_usage_budgets~1{instance_usage_budget_id}/put/parameters/3/schema",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes this form field through as typed, so the server's own validation answers a bad value."
+    },
+    {
+      "pointer": "/components/schemas/CreateInstanceUsageBudget/properties/budget_unit",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes this form field through as typed, so the server's own validation answers a bad value."
+    },
+    {
+      "pointer": "/components/schemas/CreateInstanceUsageBudget/properties/evaluation_period",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin passes this form field through as typed, so the server's own validation answers a bad value."
+    }
+  ],
+  "paths": {
+    "/api/v2/aggregated_instance_usage/": ["get"],
+    "/api/v2/aggregated_instance_usage/cluster": ["post"],
+    "/api/v2/aggregated_instance_usage/cluster_type": ["post"],
+    "/api/v2/aggregated_instance_usage/project": ["post"],
+    "/api/v2/aggregated_instance_usage/user": ["post"],
+    "/api/v2/clouds/": ["get"],
+    "/api/v2/clouds/{cloud_id}/cluster-utilization/timeseries": ["get"],
+    "/api/v2/compute_templates/search": ["post"],
+    "/api/v2/compute_templates/{template_id}": ["get"],
+    "/api/v2/compute_templates/{compute_template_id}/archive": ["post"],
+    "/api/v2/decorated_ha_jobs/": ["get"],
+    "/api/v2/decorated_ha_jobs/{production_job_id}": ["get"],
+    "/api/v2/decorated_ha_jobs/{production_job_id}/terminate": ["post"],
+    "/api/v2/decorated_sessions/": ["get"],
+    "/api/v2/decorated_sessions/{cluster_id}": ["get"],
+    "/api/v2/experimental_workspaces/": ["get"],
+    "/api/v2/experimental_workspaces/{workspace_id}": ["get"],
+    "/api/v2/instance_usage_budgets/": ["get", "post"],
+    "/api/v2/instance_usage_budgets/{instance_usage_budget_id}": ["get", "put", "delete"],
+    "/api/v2/instance_usage_budgets/{instance_usage_budget_id}/toggle_is_enabled": ["post"],
+    "/api/v2/organization_billing/credits_v2": ["get"],
+    "/api/v2/projects/": ["get", "post"],
+    "/api/v2/projects/{project_id}": ["delete"],
+    "/api/v2/services-v2/": ["get"],
+    "/api/v2/services-v2/{service_id}": ["get"],
+    "/api/v2/services-v2/{service_id}/rollback": ["post"],
+    "/api/v2/services-v2/{service_id}/terminate": ["post"],
+    "/api/v2/sessions/{session_id}/start": ["post"],
+    "/api/v2/sessions/{session_id}/stop": ["post"],
+    "/api/v2/userinfo/": ["get"]
+  }
+}

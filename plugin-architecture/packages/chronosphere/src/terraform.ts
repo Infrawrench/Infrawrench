@@ -5,6 +5,12 @@ import type {
 } from "@infrawrench/plugin-base";
 import { fieldString, tf } from "@infrawrench/plugin-base";
 
+const TERRAFORM_TYPES: Record<string, string> = {
+  team: "chronosphere_team",
+  bucket: "chronosphere_bucket",
+  collection: "chronosphere_collection",
+};
+
 /**
  * Terraform mapping for Chronosphere: provider `chronosphereio/chronosphere`
  * (v1.38.0, 2026-10). Attribute names from the provider's
@@ -36,11 +42,7 @@ export const chronosphereTerraformExport: TerraformExportCapability = {
     const attributes: Record<string, TerraformValue> = { name: tf.str(name), slug: tf.str(slug) };
     const description = fieldString(resource, "description");
     if (description) attributes["description"] = tf.str(description);
-    const type = {
-      team: "chronosphere_team",
-      bucket: "chronosphere_bucket",
-      collection: "chronosphere_collection",
-    }[resource.resourceTypeId as "team" | "bucket" | "collection"];
+    const type = TERRAFORM_TYPES[resource.resourceTypeId];
     if (!type) return null;
     if (resource.resourceTypeId === "team") {
       const emails = fieldString(resource, "userEmails").split(", ").filter(Boolean);

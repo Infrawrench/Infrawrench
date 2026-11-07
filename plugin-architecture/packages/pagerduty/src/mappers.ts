@@ -1,150 +1,49 @@
 /**
- * PagerDuty response shapes (the fields this plugin reads, verified against
- * the REST OpenAPI document, 2026-10) and their mapping to `ResourceInstance`s
- * and to the paging capability's normalized incident.
+ * PagerDuty's response shapes (generated from the REST OpenAPI document) and
+ * their mapping to `ResourceInstance`s and to the paging capability's
+ * normalized incident. Every field stays optional here: a response is not
+ * validated, so a mapper cannot rely on what the document calls required.
  */
 import type { PagingIncident, ResourceInstance } from "@infrawrench/plugin-base";
+import type { components } from "./api-types.rest.gen.js";
 
 export const PLUGIN_ID = "pagerduty";
 
-export interface PdRef {
+type Schemas = components["schemas"];
+
+/** What a list of references is shown by. */
+interface PdRef {
   id?: string;
-  type?: string;
-  summary?: string;
-  html_url?: string;
+  summary?: string | null;
 }
 
-export interface PdUser extends PdRef {
+/** A reference, or what `include[]` expanded it into, which is where the rest comes from. */
+export interface PdExpandable extends PdRef {
   name?: string;
   email?: string;
-  role?: string;
-  time_zone?: string;
-  job_title?: string;
-  description?: string;
-  teams?: PdRef[];
-  invitation_sent?: boolean;
 }
 
-export interface PdIntegration extends PdRef {
-  name?: string;
+export type PdUser = Partial<Schemas["User"]>;
+export type PdService = Partial<Schemas["Service"]>;
+export type PdEscalationPolicy = Partial<Schemas["EscalationPolicy"]>;
+export type PdSchedule = Partial<Schemas["Schedule"]>;
+export type PdTeam = Partial<Schemas["Team"]>;
+export type PdIncident = Partial<Schemas["Incident"]>;
+export type PdMaintenanceWindow = Partial<Schemas["MaintenanceWindow"]>;
+
+/** A service's integration, reference or expanded; only the expanded one has the key. */
+export interface PdIntegration extends PdExpandable {
+  type?: string;
   integration_key?: string;
-  vendor?: PdRef | null;
-  created_at?: string;
 }
 
-export interface PdService extends PdRef {
-  name?: string;
-  description?: string | null;
-  status?: string;
-  created_at?: string;
-  last_incident_timestamp?: string | null;
-  auto_resolve_timeout?: number | null;
-  acknowledgement_timeout?: number | null;
-  alert_creation?: string;
-  escalation_policy?: PdRef;
-  teams?: PdRef[];
-  integrations?: PdIntegration[];
-  incident_urgency_rule?: { type?: string; urgency?: string };
+/** The document's team reference here has no `summary`, but the plugin reads one. */
+interface PdSummarizedTeam {
+  team?: { summary?: string | null } | null;
 }
 
-export interface PdEscalationRule {
-  id?: string;
-  escalation_delay_in_minutes?: number;
-  targets?: PdRef[];
-}
-
-export interface PdEscalationPolicy extends PdRef {
-  name?: string;
-  description?: string | null;
-  num_loops?: number;
-  on_call_handoff_notifications?: string;
-  escalation_rules?: PdEscalationRule[];
-  services?: PdRef[];
-  teams?: PdRef[];
-}
-
-export interface PdScheduleEntry {
-  start?: string;
-  end?: string;
-  user?: PdRef;
-}
-
-export interface PdSchedule extends PdRef {
-  name?: string;
-  description?: string | null;
-  time_zone?: string;
-  users?: PdRef[];
-  teams?: PdRef[];
-  escalation_policies?: PdRef[];
-  final_schedule?: { rendered_schedule_entries?: PdScheduleEntry[] };
-}
-
-export interface PdOverride {
-  id?: string;
-  start?: string;
-  end?: string;
-  user?: PdRef;
-}
-
-export interface PdTeam extends PdRef {
-  name?: string;
-  description?: string | null;
-  parent?: PdRef | null;
-}
-
-export interface PdAssignment {
-  at?: string;
-  assignee?: PdUser;
-}
-
-export interface PdIncident extends PdRef {
-  incident_number?: number;
-  title?: string;
-  status?: "triggered" | "acknowledged" | "resolved";
-  urgency?: string;
-  created_at?: string;
-  updated_at?: string;
-  last_status_change_at?: string;
-  resolved_at?: string | null;
-  incident_key?: string | null;
-  service?: PdService;
-  escalation_policy?: PdRef;
-  assignments?: PdAssignment[];
-  acknowledgements?: Array<{ at?: string; acknowledger?: PdUser }>;
-  priority?: (PdRef & { name?: string }) | null;
-  teams?: PdRef[];
-}
-
-export interface PdMaintenanceWindow extends PdRef {
-  sequence_number?: number;
-  start_time?: string;
-  end_time?: string;
-  description?: string | null;
-  services?: PdRef[];
-  created_by?: PdRef;
-}
-
-export interface PdBusinessService extends PdRef {
-  name?: string;
-  description?: string | null;
-  point_of_contact?: string | null;
-  team?: PdRef | null;
-}
-
-export interface PdOrchestration extends PdRef {
-  name?: string;
-  description?: string | null;
-  team?: PdRef | null;
-  routes?: number;
-  created_at?: string;
-  updated_at?: string;
-  integrations?: Array<{ id?: string; label?: string; parameters?: { routing_key?: string } }>;
-}
-
-export interface PdPriority extends PdRef {
-  name?: string;
-  description?: string;
-}
+export type PdBusinessService = Partial<Schemas["BusinessService"]> & PdSummarizedTeam;
+export type PdOrchestration = Partial<Schemas["Orchestration"]> & PdSummarizedTeam;
 
 type Fields = ResourceInstance["fields"];
 
@@ -186,13 +85,13 @@ function instance(
   };
 }
 
-const names = (refs: PdRef[] | undefined): string =>
+const names = (refs: readonly PdRef[] | undefined): string =>
   (refs ?? [])
     .map((r) => r.summary ?? r.id ?? "")
     .filter(Boolean)
     .join(", ");
 
-const ids = (refs: PdRef[] | undefined): string =>
+const ids = (refs: readonly PdRef[] | undefined): string =>
   (refs ?? [])
     .map((r) => r.id ?? "")
     .filter(Boolean)
@@ -322,7 +221,10 @@ export function incidentReference(i: PdIncident): string | null {
 
 function assigneeNames(i: PdIncident): string {
   return (i.assignments ?? [])
-    .map((a) => a.assignee?.name ?? a.assignee?.summary ?? "")
+    .map((a) => {
+      const assignee: PdExpandable | undefined = a.assignee;
+      return assignee?.name ?? assignee?.summary ?? "";
+    })
     .filter(Boolean)
     .join(", ");
 }
@@ -330,6 +232,7 @@ function assigneeNames(i: PdIncident): string {
 export function mapIncident(accountId: string, i: PdIncident): ResourceInstance {
   const id = i.id ?? "";
   const ref = incidentReference(i);
+  const service: PdExpandable | undefined = i.service;
   return instance(
     accountId,
     "pagerduty-incident",
@@ -341,8 +244,8 @@ export function mapIncident(accountId: string, i: PdIncident): ResourceInstance 
       status: i.status,
       urgency: i.urgency,
       priority: i.priority?.name ?? i.priority?.summary,
-      serviceId: i.service?.id,
-      serviceName: i.service?.name ?? i.service?.summary,
+      serviceId: service?.id,
+      serviceName: service?.name ?? service?.summary,
       escalationPolicyName: i.escalation_policy?.summary,
       assignees: assigneeNames(i),
       incidentKey: i.incident_key ?? undefined,
@@ -351,7 +254,7 @@ export function mapIncident(accountId: string, i: PdIncident): ResourceInstance 
       resolvedAt: i.resolved_at ?? undefined,
       htmlUrl: i.html_url,
     }),
-    i.service?.id ? resourceId(accountId, "pagerduty-service", i.service.id) : undefined,
+    service?.id ? resourceId(accountId, "pagerduty-service", service.id) : undefined,
   );
 }
 
@@ -417,16 +320,17 @@ export function mapOrchestration(accountId: string, o: PdOrchestration): Resourc
 
 /** A PagerDuty incident in the paging capability's provider-neutral shape. */
 export function toPagingIncident(i: PdIncident): PagingIncident {
-  const assignees = (i.assignments ?? []).map((a) => ({
-    name: a.assignee?.name ?? a.assignee?.summary ?? null,
-    email: a.assignee?.email ?? null,
-  }));
+  const assignees = (i.assignments ?? []).map((a) => {
+    const assignee: PdExpandable | undefined = a.assignee;
+    return { name: assignee?.name ?? assignee?.summary ?? null, email: assignee?.email ?? null };
+  });
   // Once acknowledged, PagerDuty keeps the assignment but the acknowledger is
   // the person who took it; prefer them as the first name shown.
-  const acker = i.acknowledgements?.[0]?.acknowledger;
+  const acker: PdExpandable | undefined = i.acknowledgements?.[0]?.acknowledger;
   if (acker && !assignees.some((a) => a.email && a.email === acker.email)) {
     assignees.unshift({ name: acker.name ?? acker.summary ?? null, email: acker.email ?? null });
   }
+  const service: PdExpandable | undefined = i.service;
   return {
     id: i.id ?? "",
     reference: incidentReference(i),
@@ -437,7 +341,7 @@ export function toPagingIncident(i: PdIncident): PagingIncident {
     createdAt: i.created_at ?? new Date().toISOString(),
     updatedAt: i.updated_at ?? i.last_status_change_at ?? null,
     resolvedAt: i.resolved_at ?? null,
-    serviceName: i.service?.name ?? i.service?.summary ?? null,
+    serviceName: service?.name ?? service?.summary ?? null,
     assignees,
     dedupKey: i.incident_key ?? null,
   };

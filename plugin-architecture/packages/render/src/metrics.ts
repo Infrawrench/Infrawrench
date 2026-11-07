@@ -13,71 +13,78 @@ import type { RenderMetricSeries } from "./types.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 3_600_000;
 
+/** The time window every metric takes. */
+interface MetricWindow {
+  resource: string;
+  startTime: string;
+  endTime: string;
+  resolutionSeconds: number;
+}
+
 interface MetricSpec {
-  path: string;
   label: string;
-  query?: Record<string, string | number>;
   /** Overrides the unit the API reports (it says "bytes", "cpu", …). */
   unit?: string;
   scale?: number;
+  fetch: (api: RenderApi, window: MetricWindow) => Promise<RenderMetricSeries[]>;
 }
 
 const CPU: MetricSpec = {
-  path: "/metrics/cpu",
   label: "CPU",
-  query: { aggregationMethod: "AVG" },
   unit: "cores",
+  fetch: (api, query) => api.get("/metrics/cpu", { query: { ...query, aggregationMethod: "AVG" } }),
 };
 const MEMORY: MetricSpec = {
-  path: "/metrics/memory",
   label: "Memory",
-  query: { aggregationMethod: "AVG" },
   unit: "MiB",
   scale: 1 / (1024 * 1024),
+  fetch: (api, query) =>
+    api.get("/metrics/memory", { query: { ...query, aggregationMethod: "AVG" } }),
 };
 const INSTANCES: MetricSpec = {
-  path: "/metrics/instance-count",
   label: "Instances",
   unit: "instances",
+  fetch: (api, query) => api.get("/metrics/instance-count", { query }),
 };
 const REQUESTS: MetricSpec = {
-  path: "/metrics/http-requests",
   label: "HTTP Requests",
   unit: "requests",
+  fetch: (api, query) => api.get("/metrics/http-requests", { query }),
 };
 const LATENCY: MetricSpec = {
-  path: "/metrics/http-latency",
   label: "HTTP Latency p95",
-  query: { quantile: 0.95 },
   unit: "ms",
+  fetch: (api, query) => api.get("/metrics/http-latency", { query: { ...query, quantile: 0.95 } }),
 };
 const BANDWIDTH: MetricSpec = {
-  path: "/metrics/bandwidth",
   label: "Bandwidth",
   unit: "MiB",
   scale: 1 / (1024 * 1024),
+  // The one metric with no resolution.
+  fetch: (api, { resource, startTime, endTime }) =>
+    api.get("/metrics/bandwidth", { query: { resource, startTime, endTime } }),
 };
 const DISK_USAGE: MetricSpec = {
-  path: "/metrics/disk-usage",
   label: "Disk Used",
   unit: "GiB",
   scale: 1 / 1024 ** 3,
+  fetch: (api, query) => api.get("/metrics/disk-usage", { query }),
 };
 const DISK_CAPACITY: MetricSpec = {
-  path: "/metrics/disk-capacity",
   label: "Disk Capacity",
   unit: "GiB",
   scale: 1 / 1024 ** 3,
+  fetch: (api, query) => api.get("/metrics/disk-capacity", { query }),
 };
 const CONNECTIONS: MetricSpec = {
-  path: "/metrics/active-connections",
   label: "Active Connections",
   unit: "connections",
+  fetch: (api, query) => api.get("/metrics/active-connections", { query }),
 };
 const REPLICATION_LAG: MetricSpec = {
-  path: "/metrics/replication-lag",
   label: "Replication Lag",
   unit: "s",
+  fetch: (api, query) => api.get("/metrics/replication-lag", { query }),
 };
 
 export function metricSpecsFor(typeId: string, serviceType = ""): MetricSpec[] {
@@ -137,14 +144,11 @@ export async function fetchRenderMetrics(
   const results = await Promise.all(
     specs.map(async (spec) => {
       try {
-        const rows = await api.request<RenderMetricSeries[]>(spec.path, {
-          query: {
-            resource: resourceId,
-            startTime: new Date(startMs).toISOString(),
-            endTime: new Date(endMs).toISOString(),
-            ...(spec.path === "/metrics/bandwidth" ? {} : { resolutionSeconds }),
-            ...spec.query,
-          },
+        const rows = await spec.fetch(api, {
+          resource: resourceId,
+          startTime: new Date(startMs).toISOString(),
+          endTime: new Date(endMs).toISOString(),
+          resolutionSeconds,
         });
         return toMetricSeries(spec, rows);
       } catch {

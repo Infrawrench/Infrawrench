@@ -1,7 +1,7 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
-import type { AnyscaleContext } from "./api.js";
-import { anyscaleFetch, anyscalePaged } from "./api.js";
-import type { AsUsageGroup, AsUtilizationTimeseries } from "./types.js";
+import type { AnyscaleApi, AsUtilizationTimeseries } from "./api.js";
+import { listPages } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 3600_000;
 export const SPEND_METRICS_WINDOW_MS = 30 * 24 * 3600_000;
@@ -63,9 +63,12 @@ export function toUtilizationSeries(res: AsUtilizationTimeseries): MetricSeries[
   const out: MetricSeries[] = [];
   for (const s of res.result?.series ?? []) {
     const name = s.name ?? "";
-    const points = (s.points ?? [])
-      .filter((p) => typeof p.timestamp === "number" && typeof p.value === "number")
-      .map((p) => ({ timestamp: (p.timestamp as number) * 1000, value: p.value as number }));
+    const points: { timestamp: number; value: number }[] = [];
+    for (const p of s.points ?? []) {
+      if (typeof p.timestamp === "number" && typeof p.value === "number") {
+        points.push({ timestamp: p.timestamp * 1000, value: p.value });
+      }
+    }
     const known = LABELS[name];
     if (known) {
       const scale = known.percent && points.every((p) => p.value <= 1) ? 100 : 1;
@@ -82,16 +85,15 @@ export function toUtilizationSeries(res: AsUtilizationTimeseries): MetricSeries[
 }
 
 export async function utilizationSeries(
-  ctx: AnyscaleContext,
+  api: AnyscaleApi,
   cloudId: string,
   range: { startMs: number; endMs: number },
   projectId?: string,
 ): Promise<MetricSeries[]> {
   if (!cloudId) return [];
   const windowS = Math.max(60, Math.floor((range.endMs - range.startMs) / 1000));
-  const res = await anyscaleFetch<AsUtilizationTimeseries>(
-    ctx,
-    `/api/v2/clouds/${encodeURIComponent(cloudId)}/cluster-utilization/timeseries`,
+  const res = await api.get(
+    `/api/v2/clouds/${pathEncode(cloudId)}/cluster-utilization/timeseries`,
     {
       query: {
         metrics: [...UTILIZATION_METRICS],
@@ -99,7 +101,7 @@ export async function utilizationSeries(
         end: Math.floor(range.endMs / 1000),
         // About 300 points across the window; the server coarsens further.
         step_seconds: Math.max(60, Math.ceil(windowS / 300)),
-        project_id: projectId,
+        ...(projectId ? { project_id: projectId } : {}),
       },
     },
   );
@@ -125,22 +127,19 @@ const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /** Daily Anyscale spend by workload type, from the usage data. */
 export async function dailySpendSeries(
-  ctx: AnyscaleContext,
+  api: AnyscaleApi,
   range: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
-  const rows = await anyscalePaged<AsUsageGroup>(
-    ctx,
-    "/api/v2/aggregated_instance_usage/cluster_type",
-    {
+  const rows = await listPages(10, 1000, (query) =>
+    api.post("/api/v2/aggregated_instance_usage/cluster_type", {
+      query,
       body: {
         start_date: isoDay(range.startMs),
         end_date: isoDay(range.endMs),
         group_by_date: true,
         asc: true,
       },
-      count: 1000,
-      maxPages: 10,
-    },
+    }),
   );
   const byType = new Map<string, Map<number, number>>();
   for (const r of rows) {

@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiBody, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -16,13 +16,15 @@ import type {
   SidebarItemSchema,
   SizeOption,
 } from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
 import type { ConfluentContext } from "./api.js";
-import { ccFetch, ccList, statusOf } from "./api.js";
+import type { operations } from "./api-types.management.gen.js";
+import { PAGE_SIZE, ccList, createConfluentContext, statusOf } from "./api.js";
 import type { CostContext, ResourceLocation } from "./cost-data.js";
 import { ckuHourlyRates, fetchConfluentCostData } from "./cost-data.js";
 import type { ClusterUsage, ConnectionKind } from "./mappers.js";
 import {
-  CONNECTION_PATHS,
+  CONNECTION_KINDS,
   PLUGIN_ID,
   bootstrapHost,
   connectionKindForSlug,
@@ -60,17 +62,21 @@ import type {
   CcApiKey,
   CcByokKey,
   CcComputePool,
+  CcConnection,
   CcConnectorExpanded,
   CcEnvironment,
   CcFlinkRegion,
   CcKafkaCluster,
   CcKsqlCluster,
   CcNetwork,
-  CcNetworkConnection,
-  CcPrivateLinkAttachment,
   CcSchemaRegistry,
   CcServiceAccount,
 } from "./types.js";
+
+/** What a PATCH may say about a compute pool: the document wants its environment every time. */
+type PoolSpecUpdate = NonNullable<ApiBody<operations["updateFcpmV2ComputePool"]>["spec"]>;
+/** The same for a Kafka cluster. */
+type ClusterSpecUpdate = NonNullable<ApiBody<operations["updateCmkV2Cluster"]>["spec"]>;
 
 /** Secret field keys the minted cluster API key is stored under, per cluster resource. */
 export const KAFKA_KEY_FIELD = "kafkaApiKey";
@@ -82,13 +88,73 @@ const HOURS_PER_MONTH = 730;
 const MAX_CATALOG_CKU = 24;
 const RATE_CACHE_MS = 6 * 60 * 60 * 1000;
 
-const ELASTIC_TYPES = new Set(["Basic", "Standard", "Enterprise", "Freight"]);
+type ElasticType = "Basic" | "Standard" | "Enterprise" | "Freight";
+
+function isElastic(kind: string): kind is ElasticType {
+  return kind === "Basic" || kind === "Standard" || kind === "Enterprise" || kind === "Freight";
+}
+
+/** The four kinds of connection: the same two reads, on four routes. */
+const CONNECTION_READS: Record<
+  ConnectionKind,
+  {
+    list: (ctx: ConfluentContext, environment: string) => Promise<CcConnection[]>;
+    get: (ctx: ConfluentContext, environment: string, id: string) => Promise<CcConnection>;
+  }
+> = {
+  Peering: {
+    list: (ctx, environment) =>
+      ccList<CcConnection>(ctx, () =>
+        ctx.api.get("/networking/v1/peerings", {
+          query: { environment, page_size: PAGE_SIZE },
+        }),
+      ),
+    get: (ctx, environment, id) =>
+      ctx.api.get(`/networking/v1/peerings/${pathEncode(id)}`, { query: { environment } }),
+  },
+  "Transit Gateway Attachment": {
+    list: (ctx, environment) =>
+      ccList<CcConnection>(ctx, () =>
+        ctx.api.get("/networking/v1/transit-gateway-attachments", {
+          query: { environment, page_size: PAGE_SIZE },
+        }),
+      ),
+    get: (ctx, environment, id) =>
+      ctx.api.get(`/networking/v1/transit-gateway-attachments/${pathEncode(id)}`, {
+        query: { environment },
+      }),
+  },
+  "Private Link Access": {
+    list: (ctx, environment) =>
+      ccList<CcConnection>(ctx, () =>
+        ctx.api.get("/networking/v1/private-link-accesses", {
+          query: { environment, page_size: PAGE_SIZE },
+        }),
+      ),
+    get: (ctx, environment, id) =>
+      ctx.api.get(`/networking/v1/private-link-accesses/${pathEncode(id)}`, {
+        query: { environment },
+      }),
+  },
+  "Private Link Attachment": {
+    list: (ctx, environment) =>
+      ccList<CcConnection>(ctx, () =>
+        ctx.api.get("/networking/v1/private-link-attachments", {
+          query: { environment, page_size: PAGE_SIZE },
+        }),
+      ),
+    get: (ctx, environment, id) =>
+      ctx.api.get(`/networking/v1/private-link-attachments/${pathEncode(id)}`, {
+        query: { environment },
+      }),
+  },
+};
 
 function parseValues(args: (string | number)[]): Record<string, string> {
   const first = args[0];
   if (typeof first !== "string" || !first) return {};
   try {
-    const parsed = JSON.parse(first) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(first);
     if (!parsed || typeof parsed !== "object") return {};
     return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v ?? "")]));
   } catch {
@@ -124,12 +190,12 @@ export class ConfluentCloudClient implements PluginClient {
     if (!apiKey) throw new Error("Confluent Cloud plugin: missing apiKey credential");
     if (!apiSecret) throw new Error("Confluent Cloud plugin: missing apiSecret credential");
     const caCert = credentials["caCert"] ?? "";
-    this.ctx = {
+    this.ctx = createConfluentContext({
       apiKey,
       apiSecret,
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
-    };
+    });
     this.services = services;
   }
 
@@ -139,7 +205,9 @@ export class ConfluentCloudClient implements PluginClient {
 
   private environments(): Promise<CcEnvironment[]> {
     if (!this.envCache || Date.now() - this.envCache.at > CACHE_MS) {
-      const value = ccList<CcEnvironment>(this.ctx, "/org/v2/environments");
+      const value = ccList<CcEnvironment>(this.ctx, () =>
+        this.ctx.api.get("/org/v2/environments", { query: { page_size: PAGE_SIZE } }),
+      );
       value.catch(() => (this.envCache = undefined));
       this.envCache = { at: Date.now(), value };
     }
@@ -147,7 +215,7 @@ export class ConfluentCloudClient implements PluginClient {
   }
 
   private async envNames(): Promise<Map<string, string>> {
-    const envs = await this.environments().catch(() => [] as CcEnvironment[]);
+    const envs = await this.environments().catch((): CcEnvironment[] => []);
     return new Map(envs.map((e) => [e.id ?? "", e.display_name ?? e.id ?? ""]));
   }
 
@@ -160,8 +228,8 @@ export class ConfluentCloudClient implements PluginClient {
     const envs = await this.environments();
     const batches = await Promise.all(
       envs.map((e) =>
-        load(e.id ?? "").catch((err: unknown) => {
-          if (statusOf(err) === 403) return [] as T[];
+        load(e.id ?? "").catch((err: unknown): T[] => {
+          if (statusOf(err) === 403) return [];
           throw err;
         }),
       ),
@@ -172,12 +240,44 @@ export class ConfluentCloudClient implements PluginClient {
   private clusters(): Promise<CcKafkaCluster[]> {
     if (!this.clusterCache || Date.now() - this.clusterCache.at > CACHE_MS) {
       const value = this.perEnvironment((env) =>
-        ccList<CcKafkaCluster>(this.ctx, "/cmk/v2/clusters", { environment: env }),
+        ccList<CcKafkaCluster>(this.ctx, () =>
+          this.ctx.api.get("/cmk/v2/clusters", {
+            query: { environment: env, page_size: PAGE_SIZE },
+          }),
+        ),
       );
       value.catch(() => (this.clusterCache = undefined));
       this.clusterCache = { at: Date.now(), value };
     }
     return this.clusterCache.value;
+  }
+
+  private computePools(env: string): Promise<CcComputePool[]> {
+    return ccList<CcComputePool>(this.ctx, () =>
+      this.ctx.api.get("/fcpm/v2/compute-pools", {
+        query: { environment: env, page_size: PAGE_SIZE },
+      }),
+    );
+  }
+
+  private ksqlClusters(env: string): Promise<CcKsqlCluster[]> {
+    return ccList<CcKsqlCluster>(this.ctx, () =>
+      this.ctx.api.get("/ksqldbcm/v2/clusters", {
+        query: { environment: env, page_size: PAGE_SIZE },
+      }),
+    );
+  }
+
+  private schemaRegistries(env: string): Promise<CcSchemaRegistry[]> {
+    return ccList<CcSchemaRegistry>(this.ctx, () =>
+      this.ctx.api.get("/srcm/v3/clusters", { query: { environment: env, page_size: PAGE_SIZE } }),
+    );
+  }
+
+  private serviceAccounts(): Promise<CcServiceAccount[]> {
+    return ccList<CcServiceAccount>(this.ctx, () =>
+      this.ctx.api.get("/iam/v2/service-accounts", { query: { page_size: PAGE_SIZE } }),
+    );
   }
 
   /** A 403 lists the type empty (no role for it); 401 still throws. */
@@ -205,33 +305,25 @@ export class ConfluentCloudClient implements PluginClient {
           return this.scoped(() => this.listConnectors(accountId));
         case "flink-compute-pool":
           return this.scoped(async () =>
-            (
-              await this.perEnvironment((env) =>
-                ccList<CcComputePool>(this.ctx, "/fcpm/v2/compute-pools", { environment: env }),
-              )
-            ).map((p) => mapComputePool(accountId, p)),
+            (await this.perEnvironment((env) => this.computePools(env))).map((p) =>
+              mapComputePool(accountId, p),
+            ),
           );
         case "ksqldb-cluster":
           return this.scoped(async () =>
-            (
-              await this.perEnvironment((env) =>
-                ccList<CcKsqlCluster>(this.ctx, "/ksqldbcm/v2/clusters", { environment: env }),
-              )
-            ).map((k) => mapKsqlCluster(accountId, k)),
+            (await this.perEnvironment((env) => this.ksqlClusters(env))).map((k) =>
+              mapKsqlCluster(accountId, k),
+            ),
           );
         case "schema-registry":
           return this.scoped(async () =>
-            (
-              await this.perEnvironment((env) =>
-                ccList<CcSchemaRegistry>(this.ctx, "/srcm/v3/clusters", { environment: env }),
-              )
-            ).map((s) => mapSchemaRegistry(accountId, s)),
+            (await this.perEnvironment((env) => this.schemaRegistries(env))).map((s) =>
+              mapSchemaRegistry(accountId, s),
+            ),
           );
         case "service-account":
           return this.scoped(async () =>
-            (await ccList<CcServiceAccount>(this.ctx, "/iam/v2/service-accounts")).map((s) =>
-              mapServiceAccount(accountId, s),
-            ),
+            (await this.serviceAccounts()).map((s) => mapServiceAccount(accountId, s)),
           );
         case "api-key":
           return this.scoped(() => this.listApiKeys(accountId));
@@ -239,7 +331,11 @@ export class ConfluentCloudClient implements PluginClient {
           return this.scoped(async () =>
             (
               await this.perEnvironment((env) =>
-                ccList<CcNetwork>(this.ctx, "/networking/v1/networks", { environment: env }),
+                ccList<CcNetwork>(this.ctx, () =>
+                  this.ctx.api.get("/networking/v1/networks", {
+                    query: { environment: env, page_size: PAGE_SIZE },
+                  }),
+                ),
               )
             ).map((n) => mapNetwork(accountId, n)),
           );
@@ -247,9 +343,11 @@ export class ConfluentCloudClient implements PluginClient {
           return this.scoped(() => this.listNetworkConnections(accountId));
         case "encryption-key":
           return this.scoped(async () =>
-            (await ccList<CcByokKey>(this.ctx, "/byok/v1/keys")).map((k) =>
-              mapEncryptionKey(accountId, k),
-            ),
+            (
+              await ccList<CcByokKey>(this.ctx, () =>
+                this.ctx.api.get("/byok/v1/keys", { query: { page_size: PAGE_SIZE } }),
+              )
+            ).map((k) => mapEncryptionKey(accountId, k)),
           );
         default:
           throw new Error(`Confluent Cloud plugin: unknown resource type "${typeId}"`);
@@ -286,9 +384,8 @@ export class ConfluentCloudClient implements PluginClient {
     cluster: string,
   ): Promise<Record<string, CcConnectorExpanded>> {
     return (
-      (await ccFetch<Record<string, CcConnectorExpanded>>(
-        this.ctx,
-        `/connect/v1/environments/${encodeURIComponent(env)}/clusters/${encodeURIComponent(cluster)}/connectors`,
+      (await this.ctx.api.get(
+        `/connect/v1/environments/${pathEncode(env)}/clusters/${pathEncode(cluster)}/connectors`,
         { query: { expand: "info,status,id" } },
       )) ?? {}
     );
@@ -302,11 +399,13 @@ export class ConfluentCloudClient implements PluginClient {
         const env = cl.spec?.environment?.id ?? "";
         const cluster = cl.id ?? "";
         if (!env || !cluster) return;
-        const byName = await this.fetchConnectors(env, cluster).catch((err: unknown) => {
-          // Clusters still provisioning, or without managed Connect, answer 4xx.
-          if (statusOf(err) >= 400 && statusOf(err) < 500) return {};
-          throw err;
-        });
+        const byName = await this.fetchConnectors(env, cluster).catch(
+          (err: unknown): Record<string, CcConnectorExpanded> => {
+            // Clusters still provisioning, or without managed Connect, answer 4xx.
+            if (statusOf(err) >= 400 && statusOf(err) < 500) return {};
+            throw err;
+          },
+        );
         for (const [name, c] of Object.entries(byName)) found.push({ env, cluster, name, c });
       }),
     );
@@ -332,30 +431,25 @@ export class ConfluentCloudClient implements PluginClient {
 
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     const [keys, accounts] = await Promise.all([
-      ccList<CcApiKey>(this.ctx, "/iam/v2/api-keys"),
-      ccList<CcServiceAccount>(this.ctx, "/iam/v2/service-accounts").catch(
-        () => [] as CcServiceAccount[],
+      ccList<CcApiKey>(this.ctx, () =>
+        this.ctx.api.get("/iam/v2/api-keys", { query: { page_size: PAGE_SIZE } }),
       ),
+      this.serviceAccounts().catch((): CcServiceAccount[] => []),
     ]);
     const names = new Map(accounts.map((a) => [a.id ?? "", a.display_name ?? ""]));
     return keys.map((k) => mapApiKey(accountId, k, names));
   }
 
   private async listNetworkConnections(accountId: string): Promise<ResourceInstance[]> {
-    const kinds = Object.keys(CONNECTION_PATHS) as ConnectionKind[];
     const all = await Promise.all(
-      kinds.map(async (kind) =>
+      CONNECTION_KINDS.map(async (kind) =>
         (
-          await this.perEnvironment((env) =>
-            ccList<CcNetworkConnection | CcPrivateLinkAttachment>(
-              this.ctx,
-              CONNECTION_PATHS[kind].path,
-              { environment: env },
-            ),
-          ).catch((err: unknown) => {
-            if (statusOf(err) === 403) return [];
-            throw err;
-          })
+          await this.perEnvironment((env) => CONNECTION_READS[kind].list(this.ctx, env)).catch(
+            (err: unknown): CcConnection[] => {
+              if (statusOf(err) === 403) return [];
+              throw err;
+            },
+          )
         ).map((c) => mapNetworkConnection(accountId, kind, c)),
       ),
     );
@@ -375,18 +469,15 @@ export class ConfluentCloudClient implements PluginClient {
       const { env, id } = envScoped(resourceId);
       switch (typeId) {
         case "environment": {
-          const e = await ccFetch<CcEnvironment>(
-            this.ctx,
-            `/org/v2/environments/${encodeURIComponent(routeOf(resourceId)[0] ?? "")}`,
+          const e = await this.ctx.api.get(
+            `/org/v2/environments/${pathEncode(routeOf(resourceId)[0] ?? "")}`,
           );
           return mapEnvironment(accountId, e);
         }
         case "kafka-cluster": {
-          const c = await ccFetch<CcKafkaCluster>(
-            this.ctx,
-            `/cmk/v2/clusters/${encodeURIComponent(id)}`,
-            { query: { environment: env } },
-          );
+          const c = await this.ctx.api.get(`/cmk/v2/clusters/${pathEncode(id)}`, {
+            query: { environment: env },
+          });
           const names = await this.envNames();
           const usage = await fetchClusterUsage(this.ctx, [id]).catch(() => undefined);
           const u: ClusterUsage = {};
@@ -411,64 +502,43 @@ export class ConfluentCloudClient implements PluginClient {
         case "flink-compute-pool":
           return mapComputePool(
             accountId,
-            await ccFetch<CcComputePool>(
-              this.ctx,
-              `/fcpm/v2/compute-pools/${encodeURIComponent(id)}`,
-              {
-                query: { environment: env },
-              },
-            ),
+            await this.ctx.api.get(`/fcpm/v2/compute-pools/${pathEncode(id)}`, {
+              query: { environment: env },
+            }),
           );
         case "ksqldb-cluster":
           return mapKsqlCluster(
             accountId,
-            await ccFetch<CcKsqlCluster>(
-              this.ctx,
-              `/ksqldbcm/v2/clusters/${encodeURIComponent(id)}`,
-              {
-                query: { environment: env },
-              },
-            ),
+            await this.ctx.api.get(`/ksqldbcm/v2/clusters/${pathEncode(id)}`, {
+              query: { environment: env },
+            }),
           );
         case "schema-registry":
           return mapSchemaRegistry(
             accountId,
-            await ccFetch<CcSchemaRegistry>(
-              this.ctx,
-              `/srcm/v3/clusters/${encodeURIComponent(id)}`,
-              {
-                query: { environment: env },
-              },
-            ),
+            await this.ctx.api.get(`/srcm/v3/clusters/${pathEncode(id)}`, {
+              query: { environment: env },
+            }),
           );
         case "service-account":
           return mapServiceAccount(
             accountId,
-            await ccFetch<CcServiceAccount>(
-              this.ctx,
-              `/iam/v2/service-accounts/${encodeURIComponent(routeOf(resourceId)[0] ?? "")}`,
+            await this.ctx.api.get(
+              `/iam/v2/service-accounts/${pathEncode(routeOf(resourceId)[0] ?? "")}`,
             ),
           );
         case "network":
           return mapNetwork(
             accountId,
-            await ccFetch<CcNetwork>(
-              this.ctx,
-              `/networking/v1/networks/${encodeURIComponent(id)}`,
-              {
-                query: { environment: env },
-              },
-            ),
+            await this.ctx.api.get(`/networking/v1/networks/${pathEncode(id)}`, {
+              query: { environment: env },
+            }),
           );
         case "network-connection": {
           const [connEnv = "", slug = "", connId = ""] = routeOf(resourceId);
           const kind = connectionKindForSlug(slug);
           if (kind) {
-            const c = await ccFetch<CcNetworkConnection>(
-              this.ctx,
-              `${CONNECTION_PATHS[kind].path}/${encodeURIComponent(connId)}`,
-              { query: { environment: connEnv } },
-            );
+            const c = await CONNECTION_READS[kind].get(this.ctx, connEnv, connId);
             return mapNetworkConnection(accountId, kind, c);
           }
           break;
@@ -536,12 +606,12 @@ export class ConfluentCloudClient implements PluginClient {
 
   getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
-      const envField = async () => {
-        const envs = await this.environments().catch(() => [] as CcEnvironment[]);
+      const envField = async (): Promise<CreateResourceConfig["fields"][number]> => {
+        const envs = await this.environments().catch((): CcEnvironment[] => []);
         return {
           key: "environmentId",
           label: "Environment",
-          kind: "select" as const,
+          kind: "select",
           required: true,
           options: envs.map((e) => ({ id: e.id ?? "", label: e.display_name || e.id || "" })),
           ...(envs[0]?.id ? { defaultValue: envs[0].id } : {}),
@@ -574,9 +644,9 @@ export class ConfluentCloudClient implements PluginClient {
             ],
           };
         case "flink-compute-pool": {
-          const regions = await ccList<CcFlinkRegion>(this.ctx, "/fcpm/v2/regions").catch(
-            () => [] as CcFlinkRegion[],
-          );
+          const regions = await ccList<CcFlinkRegion>(this.ctx, () =>
+            this.ctx.api.get("/fcpm/v2/regions", { query: { page_size: PAGE_SIZE } }),
+          ).catch((): CcFlinkRegion[] => []);
           return {
             fields: [
               { key: "name", label: "Name", kind: "text", required: true },
@@ -695,12 +765,11 @@ export class ConfluentCloudClient implements PluginClient {
       if (!name) throw new Error("Name is required.");
       switch (typeId) {
         case "environment": {
-          const e = await ccFetch<CcEnvironment>(this.ctx, "/org/v2/environments", {
-            method: "POST",
-            body: JSON.stringify({
+          const e = await this.ctx.api.post("/org/v2/environments", {
+            body: {
               display_name: name,
               stream_governance_config: { package: fields["streamGovernance"] || "ESSENTIALS" },
-            }),
+            },
           });
           this.envCache = undefined;
           return mapEnvironment(accountId, e);
@@ -712,9 +781,8 @@ export class ConfluentCloudClient implements PluginClient {
           if (!env) throw new Error("Pick an environment.");
           const [cloud = "", region = ""] = (fields["region"] ?? "").split(":");
           if (!cloud || !region) throw new Error("Pick a region.");
-          const p = await ccFetch<CcComputePool>(this.ctx, "/fcpm/v2/compute-pools", {
-            method: "POST",
-            body: JSON.stringify({
+          const p = await this.ctx.api.post("/fcpm/v2/compute-pools", {
+            body: {
               spec: {
                 display_name: name,
                 cloud,
@@ -722,17 +790,16 @@ export class ConfluentCloudClient implements PluginClient {
                 max_cfu: positiveInt(fields["maxCfu"], "Max CFUs"),
                 environment: { id: env },
               },
-            }),
+            },
           });
           return mapComputePool(accountId, p);
         }
         case "service-account": {
-          const s = await ccFetch<CcServiceAccount>(this.ctx, "/iam/v2/service-accounts", {
-            method: "POST",
-            body: JSON.stringify({
+          const s = await this.ctx.api.post("/iam/v2/service-accounts", {
+            body: {
               display_name: name,
               ...(fields["description"] ? { description: fields["description"] } : {}),
-            }),
+            },
           });
           return mapServiceAccount(accountId, s);
         }
@@ -752,15 +819,14 @@ export class ConfluentCloudClient implements PluginClient {
       const { env, id } = envScoped(resourceId);
       switch (typeId) {
         case "environment": {
-          const body: Record<string, unknown> = {};
-          if ("name" in fields) body["display_name"] = (fields["name"] ?? "").trim();
+          const body: ApiBody<operations["updateOrgV2Environment"]> = {};
+          if ("name" in fields) body.display_name = (fields["name"] ?? "").trim();
           if (fields["streamGovernance"]) {
-            body["stream_governance_config"] = { package: fields["streamGovernance"] };
+            body.stream_governance_config = { package: fields["streamGovernance"] };
           }
-          const e = await ccFetch<CcEnvironment>(
-            this.ctx,
-            `/org/v2/environments/${encodeURIComponent(routeOf(resourceId)[0] ?? "")}`,
-            { method: "PATCH", body: JSON.stringify(body) },
+          const e = await this.ctx.api.patch(
+            `/org/v2/environments/${pathEncode(routeOf(resourceId)[0] ?? "")}`,
+            { body },
           );
           this.envCache = undefined;
           return mapEnvironment(accountId, e);
@@ -768,33 +834,28 @@ export class ConfluentCloudClient implements PluginClient {
         case "kafka-cluster":
           return this.updateCluster(resourceId, accountId, fields);
         case "flink-compute-pool": {
-          const spec: Record<string, unknown> = { environment: { id: env } };
-          if ("name" in fields) spec["display_name"] = (fields["name"] ?? "").trim();
-          if ("maxCfu" in fields) spec["max_cfu"] = positiveInt(fields["maxCfu"], "Max CFUs");
-          const p = await ccFetch<CcComputePool>(
-            this.ctx,
-            `/fcpm/v2/compute-pools/${encodeURIComponent(id)}`,
-            { method: "PATCH", body: JSON.stringify({ spec }) },
-          );
+          const spec: PoolSpecUpdate = { environment: { id: env } };
+          if ("name" in fields) spec.display_name = (fields["name"] ?? "").trim();
+          if ("maxCfu" in fields) spec.max_cfu = positiveInt(fields["maxCfu"], "Max CFUs");
+          const p = await this.ctx.api.patch(`/fcpm/v2/compute-pools/${pathEncode(id)}`, {
+            body: { spec },
+          });
           return mapComputePool(accountId, p);
         }
         case "service-account": {
-          const s = await ccFetch<CcServiceAccount>(
-            this.ctx,
-            `/iam/v2/service-accounts/${encodeURIComponent(routeOf(resourceId)[0] ?? "")}`,
-            { method: "PATCH", body: JSON.stringify({ description: fields["description"] ?? "" }) },
+          const s = await this.ctx.api.patch(
+            `/iam/v2/service-accounts/${pathEncode(routeOf(resourceId)[0] ?? "")}`,
+            { body: { description: fields["description"] ?? "" } },
           );
           return mapServiceAccount(accountId, s);
         }
         case "api-key": {
-          const spec: Record<string, unknown> = {};
-          if ("name" in fields) spec["display_name"] = fields["name"] ?? "";
-          if ("description" in fields) spec["description"] = fields["description"] ?? "";
-          await ccFetch<CcApiKey>(
-            this.ctx,
-            `/iam/v2/api-keys/${encodeURIComponent(routeOf(resourceId)[0] ?? "")}`,
-            { method: "PATCH", body: JSON.stringify({ spec }) },
-          );
+          const spec: NonNullable<CcApiKey["spec"]> = {};
+          if ("name" in fields) spec.display_name = fields["name"] ?? "";
+          if ("description" in fields) spec.description = fields["description"] ?? "";
+          await this.ctx.api.patch(`/iam/v2/api-keys/${pathEncode(routeOf(resourceId)[0] ?? "")}`, {
+            body: { spec },
+          });
           return runPluginEffect(this.getResource("api-key", resourceId, accountId));
         }
         default:
@@ -814,38 +875,29 @@ export class ConfluentCloudClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
     const { env, id } = envScoped(resourceId);
-    const current = await ccFetch<CcKafkaCluster>(
-      this.ctx,
-      `/cmk/v2/clusters/${encodeURIComponent(id)}`,
-      { query: { environment: env } },
-    );
+    const current: CcKafkaCluster = await this.ctx.api.get(`/cmk/v2/clusters/${pathEncode(id)}`, {
+      query: { environment: env },
+    });
     const kind = current.spec?.config?.kind ?? "";
-    const spec: Record<string, unknown> = { environment: { id: env } };
-    if ("name" in fields && fields["name"]?.trim()) spec["display_name"] = fields["name"].trim();
+    const spec: ClusterSpecUpdate = { environment: { id: env } };
+    if ("name" in fields && fields["name"]?.trim()) spec.display_name = fields["name"].trim();
     if ("cku" in fields && fields["cku"]) {
       if (kind !== "Dedicated") throw new Error("Only Dedicated clusters are sized in CKUs.");
       const cku = positiveInt(fields["cku"], "CKUs");
       if ((current.spec?.availability ?? "").toUpperCase().includes("MULTI") && cku < 2) {
         throw new Error("Multi-zone Dedicated clusters need at least 2 CKUs.");
       }
-      spec["config"] = { kind, cku };
+      spec.config = { kind, cku };
     }
     if ("maxEcku" in fields && fields["maxEcku"]) {
-      if (!ELASTIC_TYPES.has(kind)) {
+      if (!isElastic(kind)) {
         throw new Error(
           "Only Basic, Standard, Enterprise and Freight clusters have an eCKU ceiling.",
         );
       }
-      spec["config"] = { kind, max_ecku: positiveInt(fields["maxEcku"], "Max eCKUs") };
+      spec.config = { kind, max_ecku: positiveInt(fields["maxEcku"], "Max eCKUs") };
     }
-    const c = await ccFetch<CcKafkaCluster>(
-      this.ctx,
-      `/cmk/v2/clusters/${encodeURIComponent(id)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ spec }),
-      },
-    );
+    const c = await this.ctx.api.patch(`/cmk/v2/clusters/${pathEncode(id)}`, { body: { spec } });
     this.clusterCache = undefined;
     const names = await this.envNames();
     return mapKafkaCluster(accountId, c ?? current, names.get(env));
@@ -854,35 +906,43 @@ export class ConfluentCloudClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const { env, id } = envScoped(resourceId);
-      const del = (path: string, query?: Record<string, string>) =>
-        ccFetch<unknown>(this.ctx, path, { method: "DELETE", ...(query ? { query } : {}) });
       switch (typeId) {
         case "environment":
-          await del(`/org/v2/environments/${encodeURIComponent(routeOf(resourceId)[0] ?? "")}`);
+          await this.ctx.api.delete(
+            `/org/v2/environments/${pathEncode(routeOf(resourceId)[0] ?? "")}`,
+          );
           this.envCache = undefined;
           return;
         case "kafka-cluster":
-          await del(`/cmk/v2/clusters/${encodeURIComponent(id)}`, { environment: env });
+          await this.ctx.api.delete(`/cmk/v2/clusters/${pathEncode(id)}`, {
+            query: { environment: env },
+          });
           this.clusterCache = undefined;
           return;
         case "connector": {
           const r = connectorRoute(resourceId);
-          await del(
-            `/connect/v1/environments/${encodeURIComponent(r.env)}/clusters/${encodeURIComponent(r.cluster)}/connectors/${encodeURIComponent(r.name)}`,
+          await this.ctx.api.delete(
+            `/connect/v1/environments/${pathEncode(r.env)}/clusters/${pathEncode(r.cluster)}/connectors/${pathEncode(r.name)}`,
           );
           return;
         }
         case "flink-compute-pool":
-          await del(`/fcpm/v2/compute-pools/${encodeURIComponent(id)}`, { environment: env });
+          await this.ctx.api.delete(`/fcpm/v2/compute-pools/${pathEncode(id)}`, {
+            query: { environment: env },
+          });
           return;
         case "ksqldb-cluster":
-          await del(`/ksqldbcm/v2/clusters/${encodeURIComponent(id)}`, { environment: env });
+          await this.ctx.api.delete(`/ksqldbcm/v2/clusters/${pathEncode(id)}`, {
+            query: { environment: env },
+          });
           return;
         case "service-account":
-          await del(`/iam/v2/service-accounts/${encodeURIComponent(routeOf(resourceId)[0] ?? "")}`);
+          await this.ctx.api.delete(
+            `/iam/v2/service-accounts/${pathEncode(routeOf(resourceId)[0] ?? "")}`,
+          );
           return;
         case "api-key":
-          await del(`/iam/v2/api-keys/${encodeURIComponent(routeOf(resourceId)[0] ?? "")}`);
+          await this.ctx.api.delete(`/iam/v2/api-keys/${pathEncode(routeOf(resourceId)[0] ?? "")}`);
           return;
         default:
           throw new Error(`Confluent Cloud plugin: "${typeId}" cannot be deleted from Infrawrench`);
@@ -903,10 +963,22 @@ export class ConfluentCloudClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "connector" && ["pause", "resume", "restart"].includes(actionId)) {
         const r = connectorRoute(resourceId);
-        const base = `/connect/v1/environments/${encodeURIComponent(r.env)}/clusters/${encodeURIComponent(r.cluster)}/connectors/${encodeURIComponent(r.name)}`;
-        await ccFetch<unknown>(this.ctx, `${base}/${actionId}`, {
-          method: actionId === "restart" ? "POST" : "PUT",
-        });
+        const env = pathEncode(r.env);
+        const cluster = pathEncode(r.cluster);
+        const name = pathEncode(r.name);
+        if (actionId === "pause") {
+          await this.ctx.api.put(
+            `/connect/v1/environments/${env}/clusters/${cluster}/connectors/${name}/pause`,
+          );
+        } else if (actionId === "resume") {
+          await this.ctx.api.put(
+            `/connect/v1/environments/${env}/clusters/${cluster}/connectors/${name}/resume`,
+          );
+        } else {
+          await this.ctx.api.post(
+            `/connect/v1/environments/${env}/clusters/${cluster}/connectors/${name}/restart`,
+          );
+        }
         return;
       }
       throw new Error(`Confluent Cloud plugin: unknown action "${actionId}" for "${typeId}"`);
@@ -956,46 +1028,41 @@ export class ConfluentCloudClient implements PluginClient {
       throw new Error("This host can't store credentials, so the key could not be kept.");
     }
     const { env, id } = envScoped(resourceId);
-    const cluster = await ccFetch<CcKafkaCluster>(
-      this.ctx,
-      `/cmk/v2/clusters/${encodeURIComponent(id)}`,
-      { query: { environment: env } },
-    );
+    const cluster: CcKafkaCluster = await this.ctx.api.get(`/cmk/v2/clusters/${pathEncode(id)}`, {
+      query: { environment: env },
+    });
     let owner = pickedId(values["owner"] ?? "");
     const isServiceAccount = owner.startsWith("sa-");
     if (!owner) {
-      const own = await ccFetch<CcApiKey>(
-        this.ctx,
-        `/iam/v2/api-keys/${encodeURIComponent(this.ctx.apiKey)}`,
+      const own: CcApiKey = await this.ctx.api.get(
+        `/iam/v2/api-keys/${pathEncode(this.ctx.apiKey)}`,
       );
       owner = own?.spec?.owner?.id ?? "";
       if (!owner) throw new Error("Could not read who owns this account's Cloud API key.");
     }
     if (isServiceAccount && values["grantRole"] && cluster.metadata?.resource_name) {
       try {
-        await ccFetch<unknown>(this.ctx, "/iam/v2/role-bindings", {
-          method: "POST",
-          body: JSON.stringify({
+        await this.ctx.api.post("/iam/v2/role-bindings", {
+          body: {
             principal: `User:${owner}`,
             role_name: values["grantRole"],
             crn_pattern: cluster.metadata.resource_name,
-          }),
+          },
         });
       } catch (err) {
         // 409: the binding already exists, which is what we wanted.
         if (statusOf(err) !== 409) throw err;
       }
     }
-    const created = await ccFetch<CcApiKey>(this.ctx, "/iam/v2/api-keys", {
-      method: "POST",
-      body: JSON.stringify({
+    const created: CcApiKey = await this.ctx.api.post("/iam/v2/api-keys", {
+      body: {
         spec: {
           display_name: `infrawrench-${cluster.spec?.display_name ?? id}`.slice(0, 64),
           description: "Created by Infrawrench for the Kafka topic browser.",
           owner: { id: owner },
           resource: { id, environment: env },
         },
-      }),
+      },
     });
     const key = created?.id ?? "";
     const secret = created?.spec?.secret ?? "";
@@ -1110,7 +1177,7 @@ export class ConfluentCloudClient implements PluginClient {
   private async costContext(): Promise<CostContext> {
     const locations = new Map<string, ResourceLocation>();
     const environments = await this.envNames();
-    const clusters = await this.clusters().catch(() => [] as CcKafkaCluster[]);
+    const clusters = await this.clusters().catch((): CcKafkaCluster[] => []);
     for (const c of clusters) {
       if (c.id) {
         locations.set(c.id, {
@@ -1120,15 +1187,9 @@ export class ConfluentCloudClient implements PluginClient {
       }
     }
     const [pools, registries, ksql] = await Promise.all([
-      this.perEnvironment((env) =>
-        ccList<CcComputePool>(this.ctx, "/fcpm/v2/compute-pools", { environment: env }),
-      ).catch(() => [] as CcComputePool[]),
-      this.perEnvironment((env) =>
-        ccList<CcSchemaRegistry>(this.ctx, "/srcm/v3/clusters", { environment: env }),
-      ).catch(() => [] as CcSchemaRegistry[]),
-      this.perEnvironment((env) =>
-        ccList<CcKsqlCluster>(this.ctx, "/ksqldbcm/v2/clusters", { environment: env }),
-      ).catch(() => [] as CcKsqlCluster[]),
+      this.perEnvironment((env) => this.computePools(env)).catch((): CcComputePool[] => []),
+      this.perEnvironment((env) => this.schemaRegistries(env)).catch((): CcSchemaRegistry[] => []),
+      this.perEnvironment((env) => this.ksqlClusters(env)).catch((): CcKsqlCluster[] => []),
     ]);
     for (const p of [...pools, ...registries]) {
       if (p.id) {
@@ -1147,7 +1208,9 @@ export class ConfluentCloudClient implements PluginClient {
       clusters.map(async (cl) => {
         const env = cl.spec?.environment?.id ?? "";
         if (!env || !cl.id) return;
-        const byName = await this.fetchConnectors(env, cl.id).catch(() => ({}));
+        const byName = await this.fetchConnectors(env, cl.id).catch(
+          (): Record<string, CcConnectorExpanded> => ({}),
+        );
         for (const c of Object.values(byName)) {
           const connectorId = c.id?.id;
           const parent = locations.get(cl.id);

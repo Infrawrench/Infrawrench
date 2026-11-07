@@ -90,7 +90,7 @@ function impactOf(statuses: string[], reportType: string): StatusIncidentImpact 
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
-  const doc = JSON.parse(body) as { included?: JsonApiItem[] };
+  const doc: { included?: JsonApiItem[] } = JSON.parse(body);
   if (!doc || !Array.isArray(doc.included)) {
     throw new Error("Runpod status feed: not a status page document");
   }
@@ -113,9 +113,9 @@ export function parseStatusFeed(body: string): StatusIncident[] {
     const a = item.attributes ?? {};
     const state = String(a["aggregate_state"] ?? "");
     if (state === "resolved" || state === "operational") continue;
-    const affected = (
-      Array.isArray(a["affected_resources"]) ? a["affected_resources"] : []
-    ) as Affected[];
+    const affected: Affected[] = Array.isArray(a["affected_resources"])
+      ? a["affected_resources"]
+      : [];
     const regions = new Set<string>();
     const services = new Set<string>();
     const types = new Set<string>();

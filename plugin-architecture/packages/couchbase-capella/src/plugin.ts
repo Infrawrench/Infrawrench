@@ -7,7 +7,7 @@ import type {
   PluginManifest,
   CredentialsOf,
 } from "@infrawrench/plugin-base";
-import { capellaFetch } from "./api.js";
+import { createCapellaApi } from "./api.js";
 import { CapellaClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { capellaRemediationCommands } from "./remediation.js";
@@ -76,11 +76,10 @@ export const plugin = definePlugin({
       if (fieldKey !== "organizationId") return [];
       const apiKey = (credentials["apiKey"] ?? "").trim();
       if (!apiKey) throw new Error("Enter the API key first.");
-      const res = await capellaFetch<{ data?: Array<{ id: string; name?: string }> }>(
-        { apiKey, ...(services?.http ? { http: services.http } : {}) },
-        "GET",
-        "/v4/organizations",
-      );
+      const res = await createCapellaApi({
+        apiKey,
+        ...(services?.http ? { http: services.http } : {}),
+      }).get("/v4/organizations");
       return (res?.data ?? []).map((o) => ({ id: o.id, label: o.name ?? o.id, description: o.id }));
     });
   },

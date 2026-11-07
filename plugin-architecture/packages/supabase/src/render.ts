@@ -56,7 +56,8 @@ export function readJson<T>(resource: ResourceInstance, key: string): T | undefi
   const raw = resource.fields[key];
   if (typeof raw !== "string" || !raw) return undefined;
   try {
-    return JSON.parse(raw) as T;
+    const parsed: T = JSON.parse(raw);
+    return parsed;
   } catch {
     return undefined;
   }
@@ -710,7 +711,7 @@ function renderBucket(resource: ResourceInstance): DetailViewSchema {
           [
             "File size limit",
             typeof resource.fields["fileSizeLimit"] === "number"
-              ? formatBytes(resource.fields["fileSizeLimit"] as number)
+              ? formatBytes(resource.fields["fileSizeLimit"])
               : "Project default",
           ],
           ["Allowed MIME types", str(resource, "allowedMimeTypes") || "Any"],

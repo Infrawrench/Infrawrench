@@ -23,7 +23,15 @@ import type {
 } from "@infrawrench/plugin-base";
 import { CreditAccessError, withMetricsCapability } from "@infrawrench/plugin-base";
 import * as actions from "./actions.js";
-import { DEFAULT_ZONE, type ExoscaleApi, createExoscaleApi, statusOf } from "./api.js";
+import {
+  DEFAULT_ZONE,
+  type AnyVariant,
+  type ExoscaleApi,
+  type ZoneApi,
+  createExoscaleApi,
+  rawId,
+  statusOf,
+} from "./api.js";
 import { fetchExoscaleCostData } from "./cost-data.js";
 import { createResource, getCreateConfig } from "./create.js";
 import { enrichDetail } from "./enrich.js";
@@ -79,25 +87,42 @@ const lastMonth = () => {
   return d.toISOString().slice(0, 7);
 };
 
-const PROBES: Array<{ id: string; label: string; path: string; permission: string }> = [
+const reportMonth = rawId(lastMonth());
+
+const PROBES: Array<{
+  id: string;
+  label: string;
+  read: (z: ZoneApi) => Promise<object>;
+  permission: string;
+}> = [
   {
     id: "compute",
     label: "Instances, volumes and networking",
-    path: "/instance",
+    read: (z) => z.get("/instance"),
     permission: "compute service",
   },
   {
     id: "managed",
     label: "SKS, DBaaS and load balancers",
-    path: "/dbaas-service",
+    read: (z) => z.get("/dbaas-service"),
     permission: "dbaas service",
   },
-  { id: "dns", label: "DNS zones and records", path: "/dns-domain", permission: "dns service" },
-  { id: "storage", label: "SOS buckets", path: "/sos-buckets-usage", permission: "sos service" },
+  {
+    id: "dns",
+    label: "DNS zones and records",
+    read: (z) => z.get("/dns-domain"),
+    permission: "dns service",
+  },
+  {
+    id: "storage",
+    label: "SOS buckets",
+    read: (z) => z.get("/sos-buckets-usage"),
+    permission: "sos service",
+  },
   {
     id: "costs",
     label: "Billing reports and quotas",
-    path: `/focus-report/${lastMonth()}`,
+    read: (z) => z.get(`/focus-report/${reportMonth}`),
     permission: "billing access",
   },
 ];
@@ -127,11 +152,9 @@ function zonal(ext: string): { zone: string; id: string } {
 }
 
 function notFound(typeId: string, resourceId: string): Error {
-  const err = new Error(`Exoscale plugin: ${typeId} ${resourceId} not found`) as Error & {
-    status: number;
-  };
-  err.status = 404;
-  return err;
+  return Object.assign(new Error(`Exoscale plugin: ${typeId} ${resourceId} not found`), {
+    status: 404,
+  });
 }
 
 /** Exoscale client, one per IAM API key (key + secret, EXO2-HMAC-SHA256 signed). */
@@ -182,37 +205,27 @@ export class ExoscaleClient implements PluginClient {
         ? resourceId.slice(accountId.length + typeId.length + 2)
         : resourceId;
       const { zone, id } = zonal(ext);
+      const z = this.api.at(zone);
+      const ref = rawId(id);
       switch (typeId) {
         case "instance":
           return listers.mapInstance(
-            await this.api.get(zone, `/instance/${id}`),
+            await z.get(`/instance/${ref}`),
             zone,
             accountId,
             await this.types().catch(() => undefined),
           );
         case "block-storage":
-          return listers.mapVolume(
-            await this.api.get(zone, `/block-storage/${id}`),
-            zone,
-            accountId,
-          );
+          return listers.mapVolume(await z.get(`/block-storage/${ref}`), zone, accountId);
         case "sks-cluster":
-          return listers.mapCluster(
-            await this.api.get(zone, `/sks-cluster/${id}`),
-            zone,
-            accountId,
-          );
+          return listers.mapCluster(await z.get(`/sks-cluster/${ref}`), zone, accountId);
         case "nlb":
-          return listers.mapNlb(await this.api.get(zone, `/load-balancer/${id}`), zone, accountId);
+          return listers.mapNlb(await z.get(`/load-balancer/${ref}`), zone, accountId);
         case "private-network":
-          return listers.mapPrivateNetwork(
-            await this.api.get(zone, `/private-network/${id}`),
-            zone,
-            accountId,
-          );
+          return listers.mapPrivateNetwork(await z.get(`/private-network/${ref}`), zone, accountId);
         case "security-group":
           return listers.mapSecurityGroup(
-            await this.api.get(DEFAULT_ZONE, `/security-group/${ext}`),
+            await this.api.at(DEFAULT_ZONE).get(`/security-group/${rawId(ext)}`),
             accountId,
           );
       }
@@ -223,21 +236,17 @@ export class ExoscaleClient implements PluginClient {
     });
   }
 
-  private async dbaasService(ext: string): Promise<listers.Json> {
+  private async dbaasService(ext: string): Promise<listers.DbaasService> {
     const { zone, id: name } = zonal(ext);
-    const list = await this.api.get<{ "dbaas-services"?: listers.Json[] }>(
-      DEFAULT_ZONE,
-      "/dbaas-service",
-    );
+    const list = await this.api.at(DEFAULT_ZONE).get("/dbaas-service");
     const svc = (list["dbaas-services"] ?? []).find((s) => listers.str(s["name"]) === name);
     if (!svc) throw notFound("dbaas", ext);
     const type = listers.dbaasPath(listers.str(svc["type"]));
     return {
       ...svc,
-      ...(await this.api.get<listers.Json>(
-        listers.str(svc["zone"]) || zone,
-        `/dbaas-${type}/${name}`,
-      )),
+      ...(await this.api
+        .at(listers.str(svc["zone"]) || zone)
+        .get(`/dbaas-${rawId(type)}/${rawId(name)}`)),
     };
   }
 
@@ -253,13 +262,12 @@ export class ExoscaleClient implements PluginClient {
       if (typeId === "sks-cluster" && outputKey === "kubeconfig") return this.kubeconfig(ext);
       if (typeId === "dbaas") {
         const svc = await this.dbaasService(ext);
-        const params = (svc["uri-params"] as listers.Json | undefined) ?? {};
-        const info = (svc["connection-info"] as listers.Json | undefined) ?? {};
+        const params = svc["uri-params"] ?? {};
+        const info: AnyVariant<NonNullable<listers.DbaasService["connection-info"]>> =
+          svc["connection-info"] ?? {};
         switch (outputKey) {
           case "connectionString":
-            return (
-              listers.str(svc["uri"]) || listers.str((info["uri"] as string[] | undefined)?.[0])
-            );
+            return listers.str(svc["uri"]) || listers.str(info["uri"]?.[0]);
           case "host":
             return listers.str(params["host"]);
           case "port":
@@ -273,13 +281,8 @@ export class ExoscaleClient implements PluginClient {
       if (typeId === "dbaas-user" && outputKey === "password") {
         const parts = ext.split("/");
         const user = parts.pop() ?? "";
-        const res = (await actions.executeCommand(
-          this.api,
-          "dbaas",
-          `${accountId}:dbaas:${parts.join("/")}`,
-          "reveal-password",
-          [JSON.stringify({ username: user })],
-        )) as listers.Json;
+        const service = zonal(parts.join("/"));
+        const res = await actions.revealPassword(this.api, service.zone, service.id, user);
         return listers.str(res["password"]);
       }
       const value = resource.resolvedOutputs[outputKey];
@@ -291,16 +294,13 @@ export class ExoscaleClient implements PluginClient {
   /** `POST /sks-cluster-kubeconfig/{id}` returns the file base64-encoded. */
   private async kubeconfig(ext: string): Promise<string> {
     const { zone, id } = zonal(ext);
-    const res = await this.api.send<{ kubeconfig?: string }>(
-      zone,
-      "POST",
-      `/sks-cluster-kubeconfig/${id}`,
-      {
+    const res = await this.api.at(zone).post(`/sks-cluster-kubeconfig/${rawId(id)}`, {
+      body: {
         user: "infrawrench-admin",
         groups: ["system:masters"],
         ttl: 30 * 24 * 3600,
       },
-    );
+    });
     return res.kubeconfig ? base64ToUtf8(res.kubeconfig) : "";
   }
 
@@ -358,11 +358,11 @@ export class ExoscaleClient implements PluginClient {
         throw new Error("Exoscale plugin: logs are available for DBaaS services only");
       const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
       const { zone, id } = zonal(r.externalId ?? "");
-      const res = await this.api.send<{
-        logs?: Array<{ time?: string; node?: string; unit?: string; message?: string }>;
-      }>(zone, "POST", `/dbaas-service-logs/${id}`, {
-        limit: Math.min(params.tailLines ?? 200, 1000),
-        "sort-order": "desc",
+      const res = await this.api.at(zone).post(`/dbaas-service-logs/${rawId(id)}`, {
+        body: {
+          limit: Math.min(params.tailLines ?? 200, 1000),
+          "sort-order": "desc",
+        },
       });
       const lines = [...(res.logs ?? [])]
         .reverse()
@@ -458,9 +458,7 @@ export class ExoscaleClient implements PluginClient {
   fetchCreditBalance(): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
       try {
-        const res = await this.api.get<{
-          "live-balance"?: { balance?: number; currency?: string };
-        }>(DEFAULT_ZONE, "/live-balance");
+        const res: listers.WrappedBalance = await this.api.at(DEFAULT_ZONE).get("/live-balance");
         const lb = res["live-balance"];
         if (!lb || typeof lb.balance !== "number" || !lb.currency) return [];
         return [
@@ -492,13 +490,14 @@ export class ExoscaleClient implements PluginClient {
   verifyCredentials(): PluginEffect<PreflightResult> {
     return attempt(async () => {
       const identity = await this.api
-        .get<listers.Json>(DEFAULT_ZONE, "/organization")
+        .at(DEFAULT_ZONE)
+        .get("/organization")
         .then((o) => listers.str(o["name"]) || undefined)
         .catch(() => undefined);
       const checks = await Promise.all(
         PROBES.map(async (p) => {
           try {
-            await this.api.get(DEFAULT_ZONE, p.path);
+            await p.read(this.api.at(DEFAULT_ZONE));
             return { capabilityId: p.id, status: "ok" as const };
           } catch (err) {
             const status = statusOf(err);

@@ -17,45 +17,13 @@ import type {
   SectionNode,
 } from "@infrawrench/plugin-base";
 import { joinSubtitle } from "@infrawrench/plugin-base";
+import type {
+  FlyPostgresBackup,
+  FlyPostgresCluster,
+  FlyPostgresDatabase,
+  FlyPostgresUser,
+} from "./api.js";
 import { formatRegion } from "./regions.js";
-
-export interface FlyPostgresEndpoint {
-  host?: string;
-  port?: number;
-}
-
-export interface FlyPostgresCluster {
-  id: string;
-  name?: string;
-  status?: string;
-  plan?: string;
-  region?: string;
-  pg_major_version?: string;
-  cpu_kind?: string;
-  cpus?: number;
-  memory_mb?: number;
-  disk_size_gb?: number;
-  replicas?: number;
-  postgis_enabled?: boolean;
-  storage_used_bytes?: number | null;
-  storage_provisioned_bytes?: number | null;
-  attached_apps?: Array<{ name?: string }>;
-  organization?: { name?: string; slug?: string };
-  endpoints?: {
-    primary?: { direct?: FlyPostgresEndpoint; pooler?: FlyPostgresEndpoint };
-  };
-  created_at?: string;
-  deleted_at?: string;
-}
-
-export interface FlyPostgresBackup {
-  id?: string;
-  type?: string;
-  status?: string;
-  size_bytes?: number;
-  started_at?: string;
-  finished_at?: string;
-}
 
 /** Plans accepted by `POST /v1/postgres` (`createPostgresClusterRequest.plan`). */
 export const MPG_PLANS: Array<{ id: string; label: string }> = [
@@ -138,7 +106,10 @@ export function mapPostgresCluster(c: FlyPostgresCluster, accountId: string): Re
   };
 }
 
-function formatBytes(raw: unknown): string {
+/** A resource field, or a byte count straight from the API. */
+type FieldValue = string | number | boolean | undefined;
+
+function formatBytes(raw: FieldValue): string {
   const n = Number(raw);
   if (!Number.isFinite(n) || raw === "" || raw == null) return "—";
   if (n < 1024) return `${n} B`;
@@ -152,11 +123,11 @@ function formatBytes(raw: unknown): string {
   return `${v.toFixed(1)} ${units[i]}`;
 }
 
-function parseJsonArray<T>(raw: unknown): T[] {
+function parseJsonArray<T>(raw: FieldValue): T[] {
   if (typeof raw !== "string" || !raw) return [];
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -170,7 +141,7 @@ function parseJsonArray<T>(raw: unknown): T[] {
 export function renderPostgresClusterDetail(resource: ResourceInstance): DetailViewSchema {
   const f = resource.fields;
   const status = String(f["status"] ?? "unknown");
-  const endpoint = (host: unknown, port: unknown): string =>
+  const endpoint = (host: FieldValue, port: FieldValue): string =>
     host ? `${String(host)}${port != null && port !== "" ? `:${String(port)}` : ""}` : "—";
 
   const sections: SectionNode[] = [
@@ -240,7 +211,7 @@ export function renderPostgresClusterDetail(resource: ResourceInstance): DetailV
     },
   ];
 
-  const databases = parseJsonArray<{ name?: string }>(f["__databases__"]);
+  const databases = parseJsonArray<FlyPostgresDatabase>(f["__databases__"]);
   if (databases.length > 0) {
     sections.push({
       kind: "section",
@@ -255,7 +226,7 @@ export function renderPostgresClusterDetail(resource: ResourceInstance): DetailV
     });
   }
 
-  const users = parseJsonArray<{ username?: string; role?: string }>(f["__users__"]);
+  const users = parseJsonArray<FlyPostgresUser>(f["__users__"]);
   if (users.length > 0) {
     sections.push({
       kind: "section",

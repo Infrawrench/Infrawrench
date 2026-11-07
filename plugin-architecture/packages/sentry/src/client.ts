@@ -1,7 +1,7 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  ApiBody,
   CostFetchRange,
   CostRow,
   CreateResourceConfig,
@@ -9,25 +9,22 @@ import type {
   DetailViewSchema,
   HostServices,
   MetricSeries,
+  NoSlashString,
   PluginClient,
+  PluginEffect,
   PreflightResult,
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, externalIdOf } from "@infrawrench/plugin-base";
-import type { SentryContext } from "./api.js";
-import { sentryFetch, sentryPaged, sentryRequest, statusOf } from "./api.js";
+import { CostSetupError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { SentryApi, SentryContext } from "./api.js";
+import { sentryApi, statusOf } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import type { CostInputs, MonitorCounts, StatsResponse } from "./cost-data.js";
 import { fetchSentryCostData, fetchStats, fetchUsageSummary } from "./cost-data.js";
 import type {
   ProjectStats,
-  SentryClientKey,
-  SentryCronMonitor,
-  SentryDetector,
-  SentryIssue,
-  SentryOrganization,
   SentryProject,
-  SentryRelease,
   SentryTeam,
   SentryUptimeMonitor,
   SentryWorkflow,
@@ -114,9 +111,9 @@ export function assertUsableToken(token: string): void {
   }
 }
 
-const enc = encodeURIComponent;
+const enc = pathEncode;
 
-const ISSUE_ACTIONS: Record<string, Record<string, unknown>> = {
+const ISSUE_ACTIONS: Record<string, ApiBody<operations["updateOrganizationIssues"]>> = {
   resolve: { status: "resolved" },
   unresolve: { status: "unresolved" },
   archive: { status: "ignored", substatus: "archived_until_escalating" },
@@ -136,7 +133,11 @@ function num(raw: string | undefined, label: string): number | undefined {
 }
 
 /** Crontab (`0 * * * *`) or interval (`10 minute`) into Sentry's monitor config. */
-export function parseSchedule(raw: string): { schedule_type: string; schedule: unknown } {
+export function parseSchedule(
+  raw: string,
+):
+  | { schedule_type: "interval"; schedule: [number, string] }
+  | { schedule_type: "crontab"; schedule: string } {
   const value = raw.trim();
   const interval = /^(\d+)\s*(minute|hour|day|week|month|year)s?$/i.exec(value);
   if (interval) {
@@ -155,6 +156,7 @@ export function parseSchedule(raw: string): { schedule_type: string; schedule: u
 
 export class SentryClient implements PluginClient {
   private readonly ctx: SentryContext;
+  private readonly api: SentryApi;
   private readonly org: string;
   private readonly rates: SentryRates;
   private projectsCache: Promise<SentryProject[]> | undefined;
@@ -170,6 +172,7 @@ export class SentryClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
+    this.api = sentryApi(this.ctx);
     this.org = (credentials["organization"] ?? "").trim();
     if (!this.org) throw new Error("Sentry plugin: pick an organization");
     this.rates = parseRates(credentials);
@@ -179,23 +182,22 @@ export class SentryClient implements PluginClient {
     return this.ctx.instance;
   }
 
-  private get o(): string {
+  private get o(): NoSlashString {
     return enc(this.org);
   }
 
   private projects(): Promise<SentryProject[]> {
-    this.projectsCache ??= sentryPaged<SentryProject>(
-      this.ctx,
-      `/organizations/${this.o}/projects/`,
-    ).catch((err: unknown) => {
-      this.projectsCache = undefined;
-      throw err;
-    });
+    this.projectsCache ??= this.api
+      .getAll(`/organizations/${this.o}/projects/`, null)
+      .catch((err: unknown) => {
+        this.projectsCache = undefined;
+        throw err;
+      });
     return this.projectsCache;
   }
 
   private async projectSlugs(): Promise<Map<string, string>> {
-    const projects = await this.projects().catch(() => [] as SentryProject[]);
+    const projects = await this.projects().catch((): SentryProject[] => []);
     return new Map(projects.map((p) => [String(p.id), p.slug]));
   }
 
@@ -210,10 +212,10 @@ export class SentryClient implements PluginClient {
 
   private async monitorCounts(): Promise<MonitorCounts> {
     const [crons, uptime] = await Promise.all([
-      sentryPaged<SentryCronMonitor>(this.ctx, `/organizations/${this.o}/monitors/`),
-      sentryPaged<SentryUptimeMonitor>(this.ctx, `/organizations/${this.o}/uptime/`).catch(
-        () => [] as SentryUptimeMonitor[],
-      ),
+      this.api.getAll(`/organizations/${this.o}/monitors/`, null),
+      this.api
+        .getAll(`/organizations/${this.o}/uptime/`, null)
+        .catch((): SentryUptimeMonitor[] => []),
     ]);
     return {
       cron: crons.filter((m) => m.status !== "disabled").length,
@@ -255,7 +257,7 @@ export class SentryClient implements PluginClient {
       const inst = this.ctx.instance;
       switch (typeId) {
         case "organization": {
-          const org = await sentryFetch<SentryOrganization>(this.ctx, `/organizations/${this.o}/`);
+          const org = await this.api.get(`/organizations/${this.o}/`);
           return [mapOrganization(accountId, inst, org)];
         }
         case "project": {
@@ -269,12 +271,12 @@ export class SentryClient implements PluginClient {
           );
         }
         case "team":
-          return (await sentryPaged<SentryTeam>(this.ctx, `/organizations/${this.o}/teams/`)).map(
-            (t) => mapTeam(accountId, this.org, t),
+          return (await this.api.getAll(`/organizations/${this.o}/teams/`, null)).map((t) =>
+            mapTeam(accountId, this.org, t),
           );
         case "release":
           return (
-            await sentryFetch<SentryRelease[]>(this.ctx, `/organizations/${this.o}/releases/`, {
+            await this.api.get(`/organizations/${this.o}/releases/`, {
               query: { per_page: 100 },
             })
           ).map((r) => mapRelease(accountId, r));
@@ -283,12 +285,12 @@ export class SentryClient implements PluginClient {
         case "client-key":
           return this.listClientKeys(accountId);
         case "alert":
-          return (
-            await sentryPaged<SentryWorkflow>(this.ctx, `/organizations/${this.o}/workflows/`)
-          ).map((w) => mapWorkflow(accountId, w));
+          return (await this.api.getAll(`/organizations/${this.o}/workflows/`, null)).map((w) =>
+            mapWorkflow(accountId, w),
+          );
         case "monitor": {
           const [detectors, slugs] = await Promise.all([
-            sentryPaged<SentryDetector>(this.ctx, `/organizations/${this.o}/detectors/`),
+            this.api.getAll(`/organizations/${this.o}/detectors/`, null),
             this.projectSlugs(),
           ]);
           return detectors
@@ -296,13 +298,13 @@ export class SentryClient implements PluginClient {
             .map((d) => mapDetector(accountId, d, slugs));
         }
         case "cron-monitor":
-          return (
-            await sentryPaged<SentryCronMonitor>(this.ctx, `/organizations/${this.o}/monitors/`)
-          ).map((m) => mapCronMonitor(accountId, m));
+          return (await this.api.getAll(`/organizations/${this.o}/monitors/`, null)).map((m) =>
+            mapCronMonitor(accountId, m),
+          );
         case "uptime-monitor":
-          return (
-            await sentryPaged<SentryUptimeMonitor>(this.ctx, `/organizations/${this.o}/uptime/`)
-          ).map((m) => mapUptimeMonitor(accountId, m));
+          return (await this.api.getAll(`/organizations/${this.o}/uptime/`, null)).map((m) =>
+            mapUptimeMonitor(accountId, m),
+          );
         default:
           throw new Error(`Sentry plugin: unknown resource type "${typeId}"`);
       }
@@ -311,25 +313,24 @@ export class SentryClient implements PluginClient {
 
   /** The unresolved issues with the most events in the last 14 days. */
   private topIssues(projectId?: string, limit = 100) {
-    return sentryRequest<SentryIssue[]>(this.ctx, `/organizations/${this.o}/issues/`, {
-      query: {
-        query: "is:unresolved",
-        statsPeriod: "14d",
-        sort: "freq",
-        limit,
-        ...(projectId ? { project: projectId } : {}),
-      },
-    }).then((r) => (Array.isArray(r.body) ? r.body : []));
+    return this.api
+      .getResponse(`/organizations/${this.o}/issues/`, {
+        query: {
+          query: "is:unresolved",
+          statsPeriod: "14d",
+          sort: "freq",
+          limit,
+          ...(projectId ? { project: [projectId] } : {}),
+        },
+      })
+      .then((r) => (Array.isArray(r.body) ? r.body : []));
   }
 
   private async listClientKeys(accountId: string): Promise<ResourceInstance[]> {
     const projects = await this.projects();
     const slugs = new Map(projects.map((p) => [String(p.id), p.slug]));
     try {
-      const keys = await sentryPaged<SentryClientKey>(
-        this.ctx,
-        `/organizations/${this.o}/project-keys/`,
-      );
+      const keys = await this.api.getAll(`/organizations/${this.o}/project-keys/`, null);
       return keys
         .filter((k) => slugs.has(String(k.projectId)))
         .map((k) => mapClientKey(accountId, this.org, slugs.get(String(k.projectId))!, k));
@@ -339,10 +340,7 @@ export class SentryClient implements PluginClient {
       if (statusOf(err) !== 404) throw err;
       const out: ResourceInstance[] = [];
       for (const p of projects) {
-        const keys = await sentryPaged<SentryClientKey>(
-          this.ctx,
-          `/projects/${this.o}/${enc(p.slug)}/keys/`,
-        );
+        const keys = await this.api.getAll(`/projects/${this.o}/${enc(p.slug)}/keys/`, null);
         out.push(...keys.map((k) => mapClientKey(accountId, this.org, p.slug, k)));
       }
       return out;
@@ -363,7 +361,7 @@ export class SentryClient implements PluginClient {
       const inst = this.ctx.instance;
       switch (typeId) {
         case "organization": {
-          const org = await sentryFetch<SentryOrganization>(this.ctx, `/organizations/${this.o}/`);
+          const org = await this.api.get(`/organizations/${this.o}/`);
           const summary = await fetchUsageSummary(
             this.ctx,
             this.costInputs(await this.projectSlugs()),
@@ -385,19 +383,21 @@ export class SentryClient implements PluginClient {
             : r;
         }
         case "project": {
-          const p = await sentryFetch<SentryProject>(this.ctx, `/projects/${this.o}/${enc(id)}/`);
+          const p = await this.api.get(`/projects/${this.o}/${enc(id)}/`);
           const pid = String(p.id);
           const [stats, issues] = await Promise.all([
             this.stats24h([pid]).catch(() => new Map<string, ProjectStats>()),
-            sentryRequest<SentryIssue[]>(this.ctx, `/organizations/${this.o}/issues/`, {
-              query: {
-                query: "is:unresolved",
-                statsPeriod: "14d",
-                sort: "freq",
-                limit: 10,
-                project: pid,
-              },
-            }).catch(() => undefined),
+            this.api
+              .getResponse(`/organizations/${this.o}/issues/`, {
+                query: {
+                  query: "is:unresolved",
+                  statsPeriod: "14d",
+                  sort: "freq",
+                  limit: 10,
+                  ...(pid ? { project: [pid] } : {}),
+                },
+              })
+              .catch(() => undefined),
           ]);
           const list = issues && Array.isArray(issues.body) ? issues.body : undefined;
           const hits = Number(issues?.headers["x-hits"]);
@@ -426,28 +426,20 @@ export class SentryClient implements PluginClient {
           };
         }
         case "team":
-          return mapTeam(
-            accountId,
-            this.org,
-            await sentryFetch<SentryTeam>(this.ctx, `/teams/${this.o}/${enc(id)}/`),
-          );
+          return mapTeam(accountId, this.org, await this.api.get(`/teams/${this.o}/${enc(id)}/`));
         case "release":
           return mapRelease(
             accountId,
-            await sentryFetch<SentryRelease>(
-              this.ctx,
-              `/organizations/${this.o}/releases/${enc(id)}/`,
-            ),
+            await this.api.get(`/organizations/${this.o}/releases/${enc(id)}/`),
           );
         case "issue":
           return mapIssue(
             accountId,
-            await sentryFetch<SentryIssue>(this.ctx, `/organizations/${this.o}/issues/${enc(id)}/`),
+            await this.api.get(`/organizations/${this.o}/issues/${enc(id)}/`),
           );
         case "client-key": {
           const { projectSlug, id: keyId } = parseScopedId(id);
-          const k = await sentryFetch<SentryClientKey>(
-            this.ctx,
+          const k = await this.api.get(
             `/projects/${this.o}/${enc(projectSlug)}/keys/${enc(keyId)}/`,
           );
           return mapClientKey(accountId, this.org, projectSlug, k);
@@ -457,24 +449,17 @@ export class SentryClient implements PluginClient {
         case "monitor":
           return mapDetector(
             accountId,
-            await sentryFetch<SentryDetector>(
-              this.ctx,
-              `/organizations/${this.o}/detectors/${enc(id)}/`,
-            ),
+            await this.api.get(`/organizations/${this.o}/detectors/${enc(id)}/`),
             await this.projectSlugs(),
           );
         case "cron-monitor":
           return mapCronMonitor(
             accountId,
-            await sentryFetch<SentryCronMonitor>(
-              this.ctx,
-              `/organizations/${this.o}/monitors/${enc(id)}/`,
-            ),
+            await this.api.get(`/organizations/${this.o}/monitors/${enc(id)}/`),
           );
         case "uptime-monitor": {
           const { projectSlug, id: monitorId } = parseScopedId(id);
-          const m = await sentryFetch<SentryUptimeMonitor>(
-            this.ctx,
+          const m = await this.api.get(
             `/projects/${this.o}/${enc(projectSlug)}/uptime/${enc(monitorId)}/`,
           );
           return mapUptimeMonitor(accountId, { ...m, projectSlug: m.projectSlug ?? projectSlug });
@@ -486,7 +471,7 @@ export class SentryClient implements PluginClient {
   }
 
   private fetchWorkflow(id: string): Promise<SentryWorkflow> {
-    return sentryFetch<SentryWorkflow>(this.ctx, `/organizations/${this.o}/workflows/${enc(id)}/`);
+    return this.api.get(`/organizations/${this.o}/workflows/${enc(id)}/`);
   }
 
   resolveOutput(
@@ -517,7 +502,7 @@ export class SentryClient implements PluginClient {
     return attempt(async () => {
       const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
       const f = r.fields;
-      const show = (v: unknown, suffix = "") =>
+      const show = (v: string | number | boolean | undefined, suffix = "") =>
         v === undefined
           ? "—"
           : `${typeof v === "number" ? v.toLocaleString("en-US") : String(v)}${suffix}`;
@@ -602,9 +587,7 @@ export class SentryClient implements PluginClient {
         case "project": {
           const projects = await this.projects();
           const p = projects.find((x) => x.slug === id);
-          const pid =
-            p?.id ??
-            (await sentryFetch<SentryProject>(this.ctx, `/projects/${this.o}/${enc(id)}/`)).id;
+          const pid = p?.id ?? (await this.api.get(`/projects/${this.o}/${enc(id)}/`)).id;
           return projectSeries(this.ctx, this.org, String(pid), range);
         }
         case "issue":
@@ -644,10 +627,9 @@ export class SentryClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "project": {
-          const teams = await sentryPaged<SentryTeam>(
-            this.ctx,
-            `/organizations/${this.o}/teams/`,
-          ).catch(() => [] as SentryTeam[]);
+          const teams = await this.api
+            .getAll(`/organizations/${this.o}/teams/`, null)
+            .catch((): SentryTeam[] => []);
           return {
             fields: [
               {
@@ -760,14 +742,9 @@ export class SentryClient implements PluginClient {
         case "project": {
           const team = (fields["team"] ?? "").trim();
           if (!team) throw new Error("Sentry plugin: pick a team for the project");
-          const p = await sentryFetch<SentryProject>(
-            this.ctx,
-            `/teams/${this.o}/${enc(team)}/projects/`,
-            {
-              method: "POST",
-              body: { name, ...(fields["platform"] ? { platform: fields["platform"] } : {}) },
-            },
-          );
+          const p = await this.api.post(`/teams/${this.o}/${enc(team)}/projects/`, {
+            body: { name, ...(fields["platform"] ? { platform: fields["platform"] } : {}) },
+          });
           this.projectsCache = undefined;
           return mapProject(accountId, this.ctx.instance, this.org, p);
         }
@@ -776,10 +753,7 @@ export class SentryClient implements PluginClient {
             .toLowerCase()
             .replace(/[^a-z0-9_-]+/g, "-")
             .replace(/^-+|-+$/g, "");
-          const t = await sentryFetch<SentryTeam>(this.ctx, `/organizations/${this.o}/teams/`, {
-            method: "POST",
-            body: { slug },
-          });
+          const t = await this.api.post(`/organizations/${this.o}/teams/`, { body: { slug } });
           return mapTeam(accountId, this.org, t);
         }
         case "client-key": {
@@ -788,14 +762,9 @@ export class SentryClient implements PluginClient {
             : (fields["project"] ?? "").trim();
           if (!project) throw new Error("Sentry plugin: pick a project for the key");
           const rateLimit = this.rateLimitBody(fields);
-          const k = await sentryFetch<SentryClientKey>(
-            this.ctx,
-            `/projects/${this.o}/${enc(project)}/keys/`,
-            {
-              method: "POST",
-              body: { name, ...(rateLimit ? { rateLimit } : {}) },
-            },
-          );
+          const k = await this.api.post(`/projects/${this.o}/${enc(project)}/keys/`, {
+            body: { name, ...(rateLimit ? { rateLimit } : {}) },
+          });
           return mapClientKey(accountId, this.org, project, k);
         }
         default:
@@ -814,30 +783,30 @@ export class SentryClient implements PluginClient {
       const id = externalIdOf(resourceId);
       const has = (k: string) => k in fields;
       const text = (k: string) => (fields[k] ?? "").trim();
+      const named = () => (has("name") && text("name") ? text("name") : undefined);
       switch (typeId) {
         case "project": {
-          const body: Record<string, unknown> = {};
-          if (has("name") && text("name")) body["name"] = text("name");
-          if (has("platform")) body["platform"] = text("platform") || null;
-          await sentryFetch(this.ctx, `/projects/${this.o}/${enc(id)}/`, { method: "PUT", body });
+          // An undefined field is not sent, so these bodies hold what was edited.
+          await this.api.put(`/projects/${this.o}/${enc(id)}/`, {
+            body: {
+              name: named(),
+              platform: has("platform") ? text("platform") || null : undefined,
+            },
+          });
           this.projectsCache = undefined;
           break;
         }
         case "team":
           if (has("name") && text("name")) {
-            await sentryFetch(this.ctx, `/teams/${this.o}/${enc(id)}/`, {
-              method: "PUT",
-              body: { name: text("name") },
-            });
+            await this.api.put(`/teams/${this.o}/${enc(id)}/`, { body: { name: text("name") } });
           }
           break;
         case "client-key": {
           const { projectSlug, id: keyId } = parseScopedId(id);
-          const body: Record<string, unknown> = {};
-          if (has("name") && text("name")) body["name"] = text("name");
+          let rateLimit: { count: number; window: number } | null | undefined;
           if (has("rateLimitCount") || has("rateLimitWindow")) {
             const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-            body["rateLimit"] = this.rateLimitBody({
+            rateLimit = this.rateLimitBody({
               rateLimitCount: has("rateLimitCount")
                 ? text("rateLimitCount")
                 : String(current.fields["rateLimitCount"] ?? ""),
@@ -846,14 +815,9 @@ export class SentryClient implements PluginClient {
                 : String(current.fields["rateLimitWindow"] ?? ""),
             });
           }
-          await sentryFetch(
-            this.ctx,
-            `/projects/${this.o}/${enc(projectSlug)}/keys/${enc(keyId)}/`,
-            {
-              method: "PUT",
-              body,
-            },
-          );
+          await this.api.put(`/projects/${this.o}/${enc(projectSlug)}/keys/${enc(keyId)}/`, {
+            body: { name: named(), rateLimit },
+          });
           break;
         }
         case "alert": {
@@ -863,8 +827,7 @@ export class SentryClient implements PluginClient {
           const frequency = has("frequency")
             ? num(fields["frequency"], "Action interval")
             : undefined;
-          await sentryFetch(this.ctx, `/organizations/${this.o}/workflows/${enc(id)}/`, {
-            method: "PUT",
+          await this.api.put(`/organizations/${this.o}/workflows/${enc(id)}/`, {
             body: {
               id: current.id,
               name: has("name") && text("name") ? text("name") : current.name,
@@ -883,72 +846,68 @@ export class SentryClient implements PluginClient {
           break;
         }
         case "cron-monitor": {
-          const body: Record<string, unknown> = {};
-          if (has("name") && text("name")) body["name"] = text("name");
-          const config: Record<string, unknown> = {};
-          if (has("schedule") && text("schedule"))
-            Object.assign(config, parseSchedule(text("schedule")));
-          if (has("timezone") && text("timezone")) config["timezone"] = text("timezone");
-          if (has("checkinMargin"))
-            config["checkin_margin"] = num(fields["checkinMargin"], "Check-in margin") ?? null;
+          const schedule =
+            has("schedule") && text("schedule") ? parseSchedule(text("schedule")) : undefined;
+          const timezone = has("timezone") && text("timezone") ? text("timezone") : undefined;
+          const margin = has("checkinMargin")
+            ? (num(fields["checkinMargin"], "Check-in margin") ?? null)
+            : undefined;
+          let maxRuntime: number | null | undefined;
           if (has("maxRuntime")) {
             const v = num(fields["maxRuntime"], "Max runtime");
             if (v !== undefined && (v < 1 || v > 40320)) {
               throw new Error("Sentry plugin: max runtime must be between 1 and 40320 minutes");
             }
-            config["max_runtime"] = v ?? null;
+            maxRuntime = v ?? null;
           }
-          if (Object.keys(config).length > 0) {
-            if (!config["schedule"]) {
-              const current = await sentryFetch<SentryCronMonitor>(
-                this.ctx,
-                `/organizations/${this.o}/monitors/${enc(id)}/`,
-              );
-              config["schedule_type"] = current.config?.schedule_type;
-              config["schedule"] = current.config?.schedule;
-            }
-            body["config"] = config;
+          const tuning = {
+            ...(timezone !== undefined ? { timezone } : {}),
+            ...(margin !== undefined ? { checkin_margin: margin } : {}),
+            ...(maxRuntime !== undefined ? { max_runtime: maxRuntime } : {}),
+          };
+          let config: ApiBody<operations["updateOrganizationMonitor"]>["config"];
+          if (schedule) {
+            config = { ...schedule, ...tuning };
+          } else if (Object.keys(tuning).length > 0) {
+            const current = await this.api.get(`/organizations/${this.o}/monitors/${enc(id)}/`);
+            config = {
+              ...tuning,
+              schedule_type: current.config?.schedule_type,
+              schedule: current.config?.schedule,
+            };
           }
-          await sentryFetch(this.ctx, `/organizations/${this.o}/monitors/${enc(id)}/`, {
-            method: "PUT",
-            body,
+          await this.api.put(`/organizations/${this.o}/monitors/${enc(id)}/`, {
+            body: { name: named(), config },
           });
           break;
         }
         case "uptime-monitor": {
           const { projectSlug, id: monitorId } = parseScopedId(id);
-          const body: Record<string, unknown> = {};
-          if (has("name") && text("name")) body["name"] = text("name");
+          let url: string | undefined;
           if (has("checkUrl") && text("checkUrl")) {
-            const url = text("checkUrl");
+            url = text("checkUrl");
             if (!/^https?:\/\//i.test(url))
               throw new Error("Sentry plugin: the URL must start with http:// or https://");
-            body["url"] = url;
           }
+          let intervalSeconds: number | undefined;
           if (has("intervalSeconds") && text("intervalSeconds")) {
-            const v = Number(text("intervalSeconds"));
-            if (!UPTIME_INTERVALS.has(v)) {
+            intervalSeconds = Number(text("intervalSeconds"));
+            if (!UPTIME_INTERVALS.has(intervalSeconds)) {
               throw new Error(
                 "Sentry plugin: the interval must be 60, 300, 600, 1200, 1800 or 3600 seconds",
               );
             }
-            body["intervalSeconds"] = v;
           }
+          let timeoutMs: number | undefined;
           if (has("timeoutMs") && text("timeoutMs")) {
-            const v = num(fields["timeoutMs"], "Timeout");
-            if (v === undefined || v < 1000 || v > 60000) {
+            timeoutMs = num(fields["timeoutMs"], "Timeout");
+            if (timeoutMs === undefined || timeoutMs < 1000 || timeoutMs > 60000) {
               throw new Error("Sentry plugin: the timeout must be between 1000 and 60000 ms");
             }
-            body["timeoutMs"] = v;
           }
-          await sentryFetch(
-            this.ctx,
-            `/projects/${this.o}/${enc(projectSlug)}/uptime/${enc(monitorId)}/`,
-            {
-              method: "PUT",
-              body,
-            },
-          );
+          await this.api.put(`/projects/${this.o}/${enc(projectSlug)}/uptime/${enc(monitorId)}/`, {
+            body: { name: named(), url, intervalSeconds, timeoutMs },
+          });
           break;
         }
         default:
@@ -961,32 +920,33 @@ export class SentryClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const del = (path: string) => sentryFetch(this.ctx, path, { method: "DELETE" });
       switch (typeId) {
         case "project":
-          await del(`/projects/${this.o}/${enc(id)}/`);
+          await this.api.delete(`/projects/${this.o}/${enc(id)}/`);
           this.projectsCache = undefined;
           return;
         case "team":
-          await del(`/teams/${this.o}/${enc(id)}/`);
+          await this.api.delete(`/teams/${this.o}/${enc(id)}/`);
           return;
         case "client-key": {
           const { projectSlug, id: keyId } = parseScopedId(id);
-          await del(`/projects/${this.o}/${enc(projectSlug)}/keys/${enc(keyId)}/`);
+          await this.api.delete(`/projects/${this.o}/${enc(projectSlug)}/keys/${enc(keyId)}/`);
           return;
         }
         case "alert":
-          await del(`/organizations/${this.o}/workflows/${enc(id)}/`);
+          await this.api.delete(`/organizations/${this.o}/workflows/${enc(id)}/`);
           return;
         case "monitor":
-          await del(`/organizations/${this.o}/detectors/${enc(id)}/`);
+          await this.api.delete(`/organizations/${this.o}/detectors/${enc(id)}/`);
           return;
         case "cron-monitor":
-          await del(`/organizations/${this.o}/monitors/${enc(id)}/`);
+          await this.api.delete(`/organizations/${this.o}/monitors/${enc(id)}/`);
           return;
         case "uptime-monitor": {
           const { projectSlug, id: monitorId } = parseScopedId(id);
-          await del(`/projects/${this.o}/${enc(projectSlug)}/uptime/${enc(monitorId)}/`);
+          await this.api.delete(
+            `/projects/${this.o}/${enc(projectSlug)}/uptime/${enc(monitorId)}/`,
+          );
           return;
         }
         default:
@@ -1002,11 +962,7 @@ export class SentryClient implements PluginClient {
   private async updateIssue(issueId: string, action: string): Promise<void> {
     const body = ISSUE_ACTIONS[action];
     if (!body) throw new Error(`Sentry plugin: unknown issue action "${action}"`);
-    await sentryFetch(this.ctx, `/organizations/${this.o}/issues/`, {
-      method: "PUT",
-      query: { id: [issueId] },
-      body,
-    });
+    await this.api.put(`/organizations/${this.o}/issues/`, { query: { id: [issueId] }, body });
   }
 
   invokeAction(
@@ -1029,30 +985,32 @@ export class SentryClient implements PluginClient {
         case "client-key":
           if (toggle) {
             const { projectSlug, id: keyId } = parseScopedId(id);
-            await sentryFetch(
-              this.ctx,
-              `/projects/${this.o}/${enc(projectSlug)}/keys/${enc(keyId)}/`,
-              {
-                method: "PUT",
-                body: { isActive: actionId === "enable" },
-              },
-            );
+            await this.api.put(`/projects/${this.o}/${enc(projectSlug)}/keys/${enc(keyId)}/`, {
+              body: { isActive: actionId === "enable" },
+            });
             return;
           }
           break;
         case "alert":
+          if (toggle) {
+            await this.api.put(`/organizations/${this.o}/workflows/`, {
+              query: { id: [id] },
+              body: { enabled: actionId === "enable" },
+            });
+            return;
+          }
+          break;
         case "monitor":
           if (toggle) {
-            await sentryFetch(
-              this.ctx,
-              `/organizations/${this.o}/${typeId === "alert" ? "workflows" : "detectors"}/`,
-              { method: "PUT", query: { id: [id] }, body: { enabled: actionId === "enable" } },
-            );
+            await this.api.put(`/organizations/${this.o}/detectors/`, {
+              query: { id: [id] },
+              body: { enabled: actionId === "enable" },
+            });
             return;
           }
           break;
         case "cron-monitor": {
-          const body =
+          const body: ApiBody<operations["updateOrganizationMonitor"]> | undefined =
             actionId === "pause"
               ? { status: "disabled" }
               : actionId === "resume"
@@ -1063,10 +1021,7 @@ export class SentryClient implements PluginClient {
                     ? { isMuted: false }
                     : undefined;
           if (body) {
-            await sentryFetch(this.ctx, `/organizations/${this.o}/monitors/${enc(id)}/`, {
-              method: "PUT",
-              body,
-            });
+            await this.api.put(`/organizations/${this.o}/monitors/${enc(id)}/`, { body });
             return;
           }
           break;
@@ -1074,11 +1029,9 @@ export class SentryClient implements PluginClient {
         case "uptime-monitor":
           if (actionId === "pause" || actionId === "resume") {
             const { projectSlug, id: monitorId } = parseScopedId(id);
-            await sentryFetch(
-              this.ctx,
+            await this.api.put(
               `/projects/${this.o}/${enc(projectSlug)}/uptime/${enc(monitorId)}/`,
               {
-                method: "PUT",
                 body: { status: actionId === "pause" ? "disabled" : "active" },
               },
             );

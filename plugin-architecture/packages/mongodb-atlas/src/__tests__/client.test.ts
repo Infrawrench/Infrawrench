@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resetAuthCaches } from "../api.js";
 import { MongoDBAtlasClient, withCredentials } from "../client.js";
 import { parseRoles, rolesToString } from "../mappers.js";
-import { processesForCluster } from "../metrics.js";
+import { processesForCluster, type AtlasProcess } from "../metrics.js";
 import { plugin } from "../plugin.js";
 import type { Call } from "./helpers.js";
 import { CREDS, makeHttp, reply } from "./helpers.js";
@@ -325,7 +325,7 @@ describe("helpers", () => {
   });
 
   it("matches processes to a cluster by SRV label and project subdomain", () => {
-    const procs = [
+    const procs: AtlasProcess[] = [
       {
         id: "a:27017",
         userAlias: "main-shard-00-00.ab1cd.mongodb.net",

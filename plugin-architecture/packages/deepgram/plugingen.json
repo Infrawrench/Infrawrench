@@ -1,0 +1,223 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/deepgram/deepgram-api-specs/main/openapi.yml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/ListProjectsV1ResponseProjectsItems/required",
+      "value": ["project_id"],
+      "why": "The document marks nothing required here. A project is addressed by this id everywhere else."
+    },
+    {
+      "pointer": "/components/schemas/GetProjectV1Response/required",
+      "value": ["project_id"],
+      "why": "The document marks nothing required here. A project is addressed by this id everywhere else."
+    },
+    {
+      "pointer": "/components/schemas/ListProjectKeysV1ResponseApiKeysItems/required",
+      "value": ["api_key"],
+      "why": "The document marks nothing required here. A row of the key list is a key."
+    },
+    {
+      "pointer": "/components/schemas/ListProjectKeysV1ResponseApiKeysItemsApiKey/required",
+      "value": ["api_key_id"],
+      "why": "The document marks nothing required here. A key is addressed by this id."
+    },
+    {
+      "pointer": "/components/schemas/CreateKeyV1Response/required",
+      "value": ["api_key_id"],
+      "why": "The document marks nothing required here. A key is addressed by this id."
+    },
+    {
+      "pointer": "/components/schemas/GetProjectKeyV1ResponseItemMemberApiKey/required",
+      "value": ["api_key_id"],
+      "why": "The document marks nothing required here. A key is addressed by this id."
+    },
+    {
+      "pointer": "/components/schemas/CreateKeyV1Request",
+      "value": {
+        "type": "object",
+        "required": ["comment", "scopes"],
+        "properties": {
+          "comment": { "type": "string" },
+          "scopes": { "type": "array", "items": { "type": "string" } },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "expiration_date": { "type": "string" }
+        }
+      },
+      "why": "The document types this body as a oneOf of two branches of any type, so nothing would be checked. These are the fields the plugin sends; only `expiration_date` appears in the document, in its example."
+    },
+    {
+      "pointer": "/components/schemas/ListProjectMembersV1ResponseMembersItems/required",
+      "value": ["member_id"],
+      "why": "The document marks nothing required here. A member is addressed by this id."
+    },
+    {
+      "pointer": "/components/schemas/ListProjectInvitesV1ResponseInvitesItems/required",
+      "value": ["email"],
+      "why": "The document marks nothing required here. An invite is addressed by this email."
+    },
+    {
+      "pointer": "/components/schemas/ListProjectBalancesV1ResponseBalancesItems/required",
+      "value": ["balance_id"],
+      "why": "The document marks nothing required here. A balance is addressed by this id."
+    },
+    {
+      "pointer": "/components/schemas/GetProjectBalanceV1Response/required",
+      "value": ["balance_id"],
+      "why": "The document marks nothing required here. A balance is addressed by this id."
+    },
+    {
+      "pointer": "/components/schemas/ListModelsV1ResponseSttModels/required",
+      "value": ["canonical_name"],
+      "why": "The document marks nothing required here. A model is identified by this name, and it is what /v1/listen takes."
+    },
+    {
+      "pointer": "/components/schemas/ListModelsV1ResponseTtsModels/required",
+      "value": ["canonical_name"],
+      "why": "The document marks nothing required here. A voice is identified by this name, and it is what /v1/speak takes."
+    },
+    {
+      "pointer": "/components/schemas/ListProjectPurchasesV1ResponseOrdersItems/required",
+      "value": ["order_id"],
+      "why": "The document marks nothing required here. An order is addressed by this id."
+    },
+    {
+      "pointer": "/components/schemas/ListProjectPurchasesV1ResponseOrdersItems/properties/amount",
+      "value": { "type": "number" },
+      "why": "Written as `type: string, title: float`, which is how this document spells a float. Deepgram's reference shows a number."
+    },
+    {
+      "pointer": "/components/schemas/BillingBreakdownV1ResponseResultsItems/properties/dollars",
+      "value": { "type": "number" },
+      "why": "Written as `type: string, title: float`, which is how this document spells a float. Deepgram's reference shows `\"dollars\": 0.25`."
+    },
+    {
+      "pointer": "/components/schemas/UsageBreakdownV1ResponseResultsItems/properties/hours",
+      "value": { "type": "number" },
+      "why": "Written as `type: string, title: float`, which is how this document spells a float."
+    },
+    {
+      "pointer": "/components/schemas/UsageBreakdownV1ResponseResultsItems/properties/total_hours",
+      "value": { "type": "number" },
+      "why": "Written as `type: string, title: float`, which is how this document spells a float."
+    },
+    {
+      "pointer": "/components/schemas/UsageBreakdownV1ResponseResultsItems/properties/agent_hours",
+      "value": { "type": "number" },
+      "why": "Written as `type: string, title: float`, which is how this document spells a float."
+    },
+    {
+      "pointer": "/components/schemas/ProjectRequestResponseResponse",
+      "value": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "number" },
+          "completed": { "type": "string" },
+          "deployment": { "type": "string" },
+          "details": {
+            "type": "object",
+            "properties": {
+              "duration": { "type": "number" },
+              "method": { "type": "string" },
+              "usd": { "type": "number" },
+              "tier": { "type": "string" },
+              "total_audio": { "type": "number" }
+            }
+          }
+        }
+      },
+      "why": "An empty object in the schema. The fields are the ones the request log reads, as they appear in the document's example."
+    },
+    {
+      "pointer": "/components/schemas/AgentConfigurationV1Config",
+      "value": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "properties": {
+              "greeting": { "type": "string" },
+              "listen": {
+                "type": "object",
+                "properties": {
+                  "provider": { "$ref": "#/components/schemas/AgentBlockProvider" }
+                }
+              },
+              "think": {
+                "type": "object",
+                "properties": {
+                  "provider": { "$ref": "#/components/schemas/AgentBlockProvider" },
+                  "prompt": { "type": "string" },
+                  "functions": { "type": "array", "items": { "type": "object" } }
+                }
+              },
+              "speak": {
+                "oneOf": [
+                  { "$ref": "#/components/schemas/AgentBlockSpeak" },
+                  { "type": "array", "items": { "$ref": "#/components/schemas/AgentBlockSpeak" } }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "why": "An empty object in the schema. It is the `agent` block of a Settings message, and the plugin also accepts it as the JSON string the create body sends."
+    },
+    {
+      "pointer": "/components/schemas/CreateAgentConfigurationV1ResponseConfig",
+      "value": { "$ref": "#/components/schemas/AgentConfigurationV1Config" },
+      "why": "An empty object in the schema, and the same block as a configuration read returns."
+    },
+    {
+      "pointer": "/components/schemas/AgentBlockProvider",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" },
+          "model": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      },
+      "why": "Not in the document. One provider of an `agent` block, for the configuration schema patched above."
+    },
+    {
+      "pointer": "/components/schemas/AgentBlockSpeak",
+      "value": {
+        "type": "object",
+        "properties": {
+          "provider": { "$ref": "#/components/schemas/AgentBlockProvider" }
+        }
+      },
+      "why": "Not in the document. `speak` is one of these or a fallback list of them, for the configuration schema patched above."
+    }
+  ],
+  "paths": {
+    "/v1/agent/settings/think/models": ["get"],
+    "/v1/projects": ["get"],
+    "/v1/models": ["get"],
+    "/v1/projects/{project_id}": ["get", "patch", "delete"],
+    "/v1/projects/{project_id}/models": ["get"],
+    "/v1/projects/{project_id}/keys": ["get", "post"],
+    "/v1/projects/{project_id}/keys/{key_id}": ["get", "delete"],
+    "/v1/projects/{project_id}/members": ["get"],
+    "/v1/projects/{project_id}/members/{member_id}": ["delete"],
+    "/v1/projects/{project_id}/members/{member_id}/scopes": ["put"],
+    "/v1/projects/{project_id}/invites": ["get", "post"],
+    "/v1/projects/{project_id}/invites/{email}": ["delete"],
+    "/v1/projects/{project_id}/balances": ["get"],
+    "/v1/projects/{project_id}/balances/{balance_id}": ["get"],
+    "/v1/projects/{project_id}/usage/breakdown": ["get"],
+    "/v1/projects/{project_id}/billing/breakdown": ["get"],
+    "/v1/projects/{project_id}/purchases": ["get"],
+    "/v1/projects/{project_id}/requests": ["get"],
+    "/v1/projects/{project_id}/agents": ["get", "post"],
+    "/v1/projects/{project_id}/agents/{agent_id}": ["get", "put", "delete"],
+    "/v1/projects/{project_id}/agent-variables": ["get", "post"],
+    "/v1/projects/{project_id}/agent-variables/{variable_id}": ["get", "patch", "delete"],
+    "/v1/projects/{project_id}/self-hosted/distribution/credentials": ["get"],
+    "/v1/projects/{project_id}/self-hosted/distribution/credentials/{distribution_credentials_id}": [
+      "get",
+      "delete"
+    ]
+  }
+}

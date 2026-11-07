@@ -1,8 +1,12 @@
 /** Create handlers for DigitalOcean Spaces buckets, block volumes and NFS shares. */
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { signedS3Fetch } from "@infrawrench/plugin-base";
+import type { DoResponse } from "../api.js";
 import { SPACES_REGIONS, regionDisplay } from "../constants.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
+
+/** The document answers `{ share }`; the plugin reads `nfs` (#411). */
+type DoNfsAnswer = Partial<NonNullable<DoResponse<"nfs_create">["share"]>>;
 
 /**
  * Build the create form for the types this module owns. Returns `null` when
@@ -15,7 +19,7 @@ export async function storageGetCreateConfig(
 ): Promise<CreateResourceConfig | null> {
   if (typeId === "spaces-bucket") {
     const [regionsData, projectField] = await Promise.all([
-      ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>("/regions"),
+      ctx.api.get("/regions"),
       buildProjectField(ctx, parentResourceId),
     ]);
     const spacesRegions = regionsData.regions
@@ -54,7 +58,7 @@ export async function storageGetCreateConfig(
 
   if (typeId === "volume") {
     const [regionsData, projectField] = await Promise.all([
-      ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>("/regions"),
+      ctx.api.get("/regions"),
       buildProjectField(ctx, parentResourceId),
     ]);
     const regions = regionsData.regions
@@ -110,12 +114,8 @@ export async function storageGetCreateConfig(
     // NFS-eligible: DO returns 422 from create otherwise, surfaced as the
     // host error) and the account's VPCs so the user can pick.
     const [regionsData, vpcsData, projectField] = await Promise.all([
-      ctx.fetch<{
-        regions: Array<{ slug: string; name: string; available: boolean }>;
-      }>("/regions"),
-      ctx
-        .fetch<{ vpcs: Array<{ id: string; name: string; region: string }> }>("/vpcs?per_page=200")
-        .catch(() => ({ vpcs: [] as Array<{ id: string; name: string; region: string }> })),
+      ctx.api.get("/regions"),
+      ctx.api.get("/vpcs", { query: { per_page: 200 } }).catch(() => ({ vpcs: [] })),
       buildProjectField(ctx, parentResourceId),
     ]);
     const regions = regionsData.regions
@@ -214,8 +214,8 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
     // GET against the regional endpoint) before the bucket PUT, then
     // retry the PUT on transient 403 in case propagation finishes mid-
     // flight.
-    let accessKeyId = ctx.credentials["spacesAccessKeyId"] as string | undefined;
-    let secretAccessKey = ctx.credentials["spacesSecretAccessKey"] as string | undefined;
+    let accessKeyId = ctx.credentials["spacesAccessKeyId"];
+    let secretAccessKey = ctx.credentials["spacesSecretAccessKey"];
     let mintedCredentialUpdates: Record<string, string> | undefined;
     let keyJustMinted = false;
     if (!accessKeyId || !secretAccessKey) {
@@ -226,16 +226,12 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
       // bucket PUT. The correct shape for an account-wide full-access
       // key (the equivalent of the legacy console-generated "Spaces
       // access key") is a single grant with empty bucket + "fullaccess".
-      const mintResp = await ctx
-        .fetch<{
-          key?: { access_key?: string; secret_key?: string };
-        }>("/spaces/keys", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+      const mintResp = await ctx.api
+        .post("/spaces/keys", {
+          body: {
             name,
             grants: [{ bucket: "", permission: "fullaccess" }],
-          }),
+          },
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
@@ -331,16 +327,12 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
     // `credentialUpdates`, and retry once.
     if (!putResult.ok && putResult.status === 403 && !keyJustMinted) {
       const name = `infrawrench-spaces-${Date.now().toString(36)}`;
-      const mintResp = await ctx
-        .fetch<{
-          key?: { access_key?: string; secret_key?: string };
-        }>("/spaces/keys", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+      const mintResp = await ctx.api
+        .post("/spaces/keys", {
+          body: {
             name,
             grants: [{ bucket: "", permission: "fullaccess" }],
-          }),
+          },
         })
         .catch((err: unknown) => {
           // The put already failed with a 403; if the recovery mint fails too,
@@ -416,79 +408,73 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
   }
 
   if (typeId === "volume") {
-    const body: Record<string, unknown> = {
-      name: fields["name"],
-      region: fields["region"],
-      size_gigabytes: Number(fields["sizeGb"] ?? 100),
-      ...(fields["filesystemType"] ? { filesystem_type: fields["filesystemType"] } : {}),
-    };
-    const data = await ctx.fetch<{ volume: Record<string, unknown> }>("/volumes", {
-      method: "POST",
-      body: JSON.stringify(body),
+    const data = await ctx.api.post("/volumes", {
+      body: {
+        name: fields["name"],
+        region: fields["region"],
+        size_gigabytes: Number(fields["sizeGb"] ?? 100),
+        ...(fields["filesystemType"] ? { filesystem_type: fields["filesystemType"] } : {}),
+      },
     });
     const v = data.volume;
     const now = new Date().toISOString();
-    await assignToProjectIfNeeded(`do:volume:${String(v["id"] ?? "")}`);
+    await assignToProjectIfNeeded(`do:volume:${String(v.id ?? "")}`);
     return {
-      id: `${accountId}:volume:${String(v["id"])}`,
+      id: `${accountId}:volume:${String(v.id)}`,
       pluginId: "digitalocean",
       resourceTypeId: "volume",
       accountId,
-      displayName: String(v["name"] ?? fields["name"]),
+      displayName: String(v.name ?? fields["name"]),
       fields: {
-        name: String(v["name"] ?? fields["name"]),
-        region: String((v["region"] as Record<string, unknown>)?.["slug"] ?? fields["region"]),
-        sizeGb: Number(v["size_gigabytes"] ?? fields["sizeGb"] ?? 0),
-        filesystemType: String(v["filesystem_type"] ?? ""),
+        name: String(v.name ?? fields["name"]),
+        region: String(v.region?.slug ?? fields["region"]),
+        sizeGb: Number(v.size_gigabytes ?? fields["sizeGb"] ?? 0),
+        filesystemType: String(v.filesystem_type ?? ""),
         dropletIds: "",
       },
       resolvedOutputs: {},
       secretStates: [],
-      externalId: String(v["id"] ?? ""),
+      externalId: String(v.id ?? ""),
       ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
-      createdAt: String(v["created_at"] ?? now),
+      createdAt: String(v.created_at ?? now),
       updatedAt: now,
     };
   }
 
   if (typeId === "nfs-share") {
     const region = fields["region"] ?? "";
-    const body: Record<string, unknown> = {
-      name: fields["name"],
-      region,
-      size_gib: Number(fields["sizeGib"] ?? 50),
-      vpc_ids: fields["vpcId"] ? [fields["vpcId"]] : [],
-      performance_tier: fields["performanceTier"] ?? "standard",
-    };
-    const data = await ctx.fetch<{ nfs: Record<string, unknown> }>("/nfs", {
-      method: "POST",
-      body: JSON.stringify(body),
+    const data: DoResponse<"nfs_create"> & { nfs?: DoNfsAnswer } = await ctx.api.post("/nfs", {
+      body: {
+        name: fields["name"],
+        region,
+        size_gib: Number(fields["sizeGib"] ?? 50),
+        vpc_ids: fields["vpcId"] ? [fields["vpcId"]] : [],
+        performance_tier: fields["performanceTier"] ?? "standard",
+      },
     });
     const s = data.nfs ?? {};
     const now = new Date().toISOString();
-    const externalId = `${region}/${String(s["id"] ?? "")}`;
+    const externalId = `${region}/${String(s.id ?? "")}`;
     return {
       id: `${accountId}:nfs-share:${externalId}`,
       pluginId: "digitalocean",
       resourceTypeId: "nfs-share",
       accountId,
-      displayName: String(s["name"] ?? fields["name"]),
+      displayName: String(s.name ?? fields["name"]),
       fields: {
-        name: String(s["name"] ?? fields["name"]),
+        name: String(s.name ?? fields["name"]),
         region,
-        sizeGib: Number(s["size_gib"] ?? fields["sizeGib"] ?? 0),
-        performanceTier: String(s["performance_tier"] ?? fields["performanceTier"] ?? "standard"),
-        vpcIds: Array.isArray(s["vpc_ids"])
-          ? (s["vpc_ids"] as string[]).join(",")
-          : (fields["vpcId"] ?? ""),
+        sizeGib: Number(s.size_gib ?? fields["sizeGib"] ?? 0),
+        performanceTier: String(s.performance_tier ?? fields["performanceTier"] ?? "standard"),
+        vpcIds: Array.isArray(s.vpc_ids) ? s.vpc_ids.join(",") : (fields["vpcId"] ?? ""),
         mountTarget: "",
-        status: String(s["status"] ?? "creating"),
+        status: String(s.status ?? "creating"),
       },
       resolvedOutputs: {},
       secretStates: [],
       externalId,
       ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
-      createdAt: String(s["created_at"] ?? now),
+      createdAt: String(s.created_at ?? now),
       updatedAt: now,
     };
   }

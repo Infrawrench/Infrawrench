@@ -9,8 +9,9 @@ import type {
   PreflightPermission,
   PreflightResult,
 } from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
 import type { ConvexContext, CvDeployment } from "./api.js";
-import { deploymentApi, enc, mgmt, paged, statusOf } from "./api.js";
+import { deploymentApi, managementApi, paged, statusOf } from "./api.js";
 
 const TOKENS_URL = "https://dashboard.convex.dev/team/settings/access-tokens";
 
@@ -76,18 +77,20 @@ export async function verifyConvexCredentials(
   ctx: ConvexContext,
   teamId: () => Promise<number>,
 ): Promise<PreflightResult> {
+  const api = managementApi(ctx);
   let deployments: CvDeployment[] = [];
   const inventory = await probe("inventory", [P.team, P.projects], async () => {
-    deployments = await paged<CvDeployment>(ctx, `/teams/${enc(await teamId())}/list_deployments`);
+    const team = pathEncode(await teamId());
+    deployments = await paged((query) => api.get(`/teams/${team}/list_deployments`, { query }));
   });
-  const cloud = deployments.find((d) => d.kind !== "local" && d.deploymentUrl);
-  const deployment: PreflightCapabilityCheck = cloud
+  const cloudUrl = deployments.find((d) => d.kind !== "local" && d.deploymentUrl)?.deploymentUrl;
+  const deployment: PreflightCapabilityCheck = cloudUrl
     ? await probe("deployment", [P.env], () =>
-        deploymentApi(ctx, cloud.deploymentUrl!, "GET", "/list_environment_variables"),
+        deploymentApi(ctx, cloudUrl).get("/list_environment_variables"),
       )
     : { capabilityId: "deployment", status: "unknown", message: "No deployment to test against." };
   const team = await probe("team", [P.members], async () =>
-    mgmt(ctx, "GET", `/teams/${enc(await teamId())}/list_members`),
+    api.get(`/teams/${pathEncode(await teamId())}/list_members`),
   );
   return { checks: [inventory, deployment, team], identity: `${deployments.length} deployment(s)` };
 }

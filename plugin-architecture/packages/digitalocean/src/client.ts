@@ -29,19 +29,21 @@ import {
   deleteS3Object,
   getS3BucketPolicy,
   joinSubtitle,
-  jsonRestFetch,
   labeledFieldItems,
   listS3Objects,
+  pathEncode,
   makeS3Folder,
   putS3BucketPolicy,
   renderDnsRecordSidebar,
   resourceTypeDisplayName,
   signedS3Fetch,
+  unencodedSegment,
   uploadS3Object,
   virtualHostedUrl,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
+import { createDoApi, type DoApi } from "./api.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 import { SnapshotResourceType } from "./resources/snapshot.js";
@@ -80,6 +82,8 @@ import { fetchDoPriceCatalog } from "./price-catalog.js";
 import { fetchDoCostData } from "./cost-data.js";
 import { doStatusDot } from "./status-dots.js";
 import {
+  type DoAgentRow,
+  type DoKnowledgeBaseRow,
   type DoListerContext,
   listDoResources,
   listSpacesBuckets,
@@ -182,6 +186,7 @@ export class DigitalOceanClient implements PluginClient {
   private readonly credentials: Record<string, string>;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly baseUrl = "https://api.digitalocean.com/v2";
+  private readonly api: DoApi;
   /**
    * Cache of bucket name → region populated by `listSpacesBuckets`. Storage
    * verbs only receive the bucket name, but Spaces endpoints are region-
@@ -220,44 +225,7 @@ export class DigitalOceanClient implements PluginClient {
     this.credentials = credentials;
     this.resourceTypes = resourceTypes;
     this.services = services;
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    try {
-      return await jsonRestFetch<T>({
-        vendor: "DO",
-        url: `${this.baseUrl}${path}`,
-        errorPath: path,
-        headers: { Authorization: `Bearer ${this.token}` },
-        ...(options ? { init: options } : {}),
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // DO's generic `{"id":"forbidden","message":"failed to create agent"}`
-      // tells the user nothing actionable. Translate the common cause
-      // (missing GenAI scopes on the personal access token) into a
-      // pointer at the fix. Same root cause for the other gen-ai and
-      // dedicated-inference endpoints, so cover both.
-      if (
-        message.includes("403") &&
-        (path.startsWith("/gen-ai/") || path.startsWith("/dedicated-inferences"))
-      ) {
-        const product = path.startsWith("/dedicated-inferences")
-          ? "Dedicated Inference"
-          : "Gradient AI";
-        throw new Error(
-          `${message}\n\n` +
-            `Hint: this is almost always the API token's scope. DigitalOcean ` +
-            `${product} endpoints need the \`genai:create\` / \`genai:read\` / ` +
-            `\`genai:update\` / \`genai:delete\` scopes (and ` +
-            `\`dedicated_inference:*\` for Dedicated Inference), which older ` +
-            `personal access tokens don't include. Mint a new token at ` +
-            `https://cloud.digitalocean.com/account/api/tokens with the GenAI ` +
-            `(or "Full Access") scope and update this account's credentials.`,
-        );
-      }
-      throw err;
-    }
+    this.api = createDoApi(token);
   }
 
   /**
@@ -278,11 +246,11 @@ export class DigitalOceanClient implements PluginClient {
     }
     const map = new Map<string, string>();
     try {
-      const projects = await this.fetch<{ projects: Array<{ id: string }> }>("/projects");
+      const projects = await this.api.get("/projects");
       await Promise.all(
         (projects.projects ?? []).map(async (p) => {
           try {
-            const data = await this.fetch<{ resources: Array<{ urn: string }> }>(
+            const data = await this.api.written<"projects_list_resources">(
               `/projects/${p.id}/resources?per_page=200`,
             );
             for (const r of data.resources ?? []) {
@@ -320,7 +288,7 @@ export class DigitalOceanClient implements PluginClient {
     return {
       token: this.token,
       credentials: this.credentials,
-      fetch: this.fetch.bind(this),
+      api: this.api,
       getProjectUrnMap: this.getProjectUrnMap.bind(this),
       parentResourceIdForUrn: this.parentResourceIdForUrn.bind(this),
       spacesBucketRegions: this.spacesBucketRegions,
@@ -346,7 +314,7 @@ export class DigitalOceanClient implements PluginClient {
       if (typeId === "droplet" && externalId) {
         try {
           const [data, projectMap] = await Promise.all([
-            this.fetch<{ droplet: Record<string, unknown> }>(`/droplets/${externalId}`),
+            this.api.get(`/droplets/${unencodedSegment(externalId)}`),
             this.getProjectUrnMap(),
           ]);
           return mapDroplet(this.listerCtx, data.droplet, accountId, projectMap);
@@ -434,10 +402,8 @@ export class DigitalOceanClient implements PluginClient {
    */
   private async doksNodeHourlyRates(clusterId: string): Promise<string> {
     const [cluster, sizes] = await Promise.all([
-      this.fetch<{
-        kubernetes_cluster?: { node_pools?: Array<{ size?: string }> };
-      }>(`/kubernetes/clusters/${clusterId}`),
-      this.fetch<{ sizes: Array<{ slug: string; price_hourly: number }> }>("/sizes?per_page=200"),
+      this.api.get(`/kubernetes/clusters/${unencodedSegment(clusterId)}`),
+      this.api.get("/sizes", { query: { per_page: 200 } }),
     ]);
 
     const used = new Set(
@@ -506,13 +472,7 @@ export class DigitalOceanClient implements PluginClient {
       }
 
       if (typeId === "managed-database") {
-        const data = await this.fetch<{
-          database: {
-            engine?: string;
-            connection: Record<string, string>;
-            private_connection?: Record<string, string>;
-          };
-        }>(`/databases/${externalId}`);
+        const data = await this.api.get(`/databases/${unencodedSegment(externalId)}`);
         const conn = data.database.connection;
         const engine = String(data.database.engine ?? "");
         switch (outputKey) {
@@ -571,9 +531,9 @@ export class DigitalOceanClient implements PluginClient {
             const captureFromDefault = engine === "pg" || engine === "mysql";
             if (captureFromDefault && !uriHasPassword(uri) && conn["user"]) {
               try {
-                const usersData = await this.fetch<{
-                  users?: Array<{ name?: string; password?: string }>;
-                }>(`/databases/${externalId}/users`);
+                const usersData = await this.api.get(
+                  `/databases/${unencodedSegment(externalId)}/users`,
+                );
                 const list = usersData.users ?? [];
                 const match = list.find((u) => u.name === conn["user"]);
                 if (match?.password) {
@@ -653,9 +613,9 @@ export class DigitalOceanClient implements PluginClient {
           // { auth: base64("user:pass") } } }`, no DO envelope around it.
           // `read_write=true` asks for push+pull credentials (the default is
           // read-only).
-          const doc = await this.fetch<{ auths?: Record<string, { auth?: string }> }>(
-            "/registry/docker-credentials?read_write=true",
-          );
+          const doc = await this.api.get("/registry/docker-credentials", {
+            query: { read_write: true },
+          });
           if (outputKey === "dockerConfigJson") return JSON.stringify(doc);
           const auth = doc.auths?.["registry.digitalocean.com"]?.auth ?? "";
           if (!auth) {
@@ -732,9 +692,7 @@ export class DigitalOceanClient implements PluginClient {
     if (!secrets) return null;
     let users: Array<{ name?: string }> = [];
     try {
-      const resp = await this.fetch<{ users?: Array<{ name?: string }> }>(
-        `/databases/${clusterId}/users`,
-      );
+      const resp = await this.api.get(`/databases/${unencodedSegment(clusterId)}/users`);
       users = resp.users ?? [];
     } catch {
       return null;
@@ -766,7 +724,7 @@ export class DigitalOceanClient implements PluginClient {
    * and the Kafka mTLS connection-string builder.
    */
   private async resolveCaCertificate(clusterId: string): Promise<string> {
-    const caData = await this.fetch<{ ca: { certificate: string } }>(`/databases/${clusterId}/ca`);
+    const caData = await this.api.get(`/databases/${unencodedSegment(clusterId)}/ca`);
     const raw = caData.ca.certificate ?? "";
     // Already PEM? Pass through. Otherwise base64 → utf8. `atob` is the
     // cross-runtime decoder (Node ≥18 + browser); we can't import `Buffer`
@@ -781,7 +739,7 @@ export class DigitalOceanClient implements PluginClient {
 
   private get createCtx(): DoCreateContext {
     return {
-      fetch: this.fetch.bind(this),
+      api: this.api,
       credentials: this.credentials,
       listSpacesOrigins: async () => {
         const buckets = await listSpacesBuckets(this.listerCtx, "");
@@ -797,7 +755,7 @@ export class DigitalOceanClient implements PluginClient {
 
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
-      return fetchDoCostData({ fetch: this.fetch.bind(this) }, range);
+      return fetchDoCostData({ api: this.api }, range);
     });
   }
 
@@ -810,7 +768,7 @@ export class DigitalOceanClient implements PluginClient {
    */
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
-      return fetchDoQuotas({ fetch: this.fetch.bind(this) });
+      return fetchDoQuotas({ api: this.api });
     });
   }
 
@@ -820,7 +778,7 @@ export class DigitalOceanClient implements PluginClient {
    */
   fetchPriceCatalog(request: PriceCatalogRequest): PluginEffect<PriceCatalogResult> {
     return attempt(async () => {
-      return fetchDoPriceCatalog({ fetch: this.fetch.bind(this) }, request);
+      return fetchDoPriceCatalog({ api: this.api }, request);
     });
   }
 
@@ -894,15 +852,11 @@ export class DigitalOceanClient implements PluginClient {
           throw new Error(`DigitalOcean plugin: unknown spaces key format "${formatId}"`);
         }
         const name = `infrawrench-${bucketName}-${Date.now().toString(36)}`;
-        const resp = await this.fetch<{
-          key?: { name: string; access_key: string; secret_key?: string };
-        }>("/spaces/keys", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const resp = await this.api.post("/spaces/keys", {
+          body: {
             name,
             grants: [{ bucket: bucketName, permission }],
-          }),
+          },
         });
         const key = resp.key;
         const accessKeyId = key?.access_key ?? "";
@@ -941,7 +895,7 @@ export class DigitalOceanClient implements PluginClient {
 
   /** The slice of this client the networking/platform service ops need. */
   private get serviceCtx(): DoServiceContext {
-    return { fetch: this.fetch.bind(this) };
+    return { api: this.api };
   }
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
@@ -949,16 +903,17 @@ export class DigitalOceanClient implements PluginClient {
       if (await deleteDoServiceResource(this.serviceCtx, typeId, resourceId)) return;
       const externalId = resourceId.split(":").pop();
       if (!externalId) throw new Error("Cannot parse resource ID");
+      const id = unencodedSegment(externalId);
 
       switch (typeId) {
         case "droplet":
-          await this.fetch<unknown>(`/droplets/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/droplets/${id}`);
           break;
         case "doks-cluster":
-          await this.fetch<unknown>(`/kubernetes/clusters/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/kubernetes/clusters/${id}`);
           break;
         case "managed-database":
-          await this.fetch<unknown>(`/databases/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/databases/${id}`);
           break;
         case "db-user": {
           // Composite id: `{accountId}:db-user:{clusterId}:{username}`. The
@@ -971,11 +926,8 @@ export class DigitalOceanClient implements PluginClient {
           if (!username || !clusterId) {
             throw new Error("Cannot parse db-user resource ID");
           }
-          await this.fetch<unknown>(
-            `/databases/${clusterId}/users/${encodeURIComponent(username)}`,
-            {
-              method: "DELETE",
-            },
+          await this.api.delete(
+            `/databases/${unencodedSegment(clusterId)}/users/${pathEncode(username)}`,
           );
           break;
         }
@@ -1022,7 +974,7 @@ export class DigitalOceanClient implements PluginClient {
           // registry, whatever it's called. Guard against a stale resource id
           // pointing at a registry that has since been replaced: verify the
           // current registry is the one being asked about before firing.
-          const data = await this.fetch<{ registry?: { name?: string } }>("/registry");
+          const data = await this.api.get("/registry");
           const currentName = data.registry?.name ?? "";
           if (currentName !== externalId) {
             throw new Error(
@@ -1030,32 +982,32 @@ export class DigitalOceanClient implements PluginClient {
                 `"${externalId}"; refusing to delete it.`,
             );
           }
-          await this.fetch<unknown>("/registry", { method: "DELETE" });
+          await this.api.delete("/registry");
           break;
         }
         case "domain":
-          await this.fetch<unknown>(`/domains/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/domains/${id}`);
           break;
         case "dns-record": {
           // externalId format: "{domainName}/{recordId}"
           const parts = externalId.split("/");
           const domainName = parts[0]!;
           const recordId = parts[1]!;
-          await this.fetch<unknown>(`/domains/${domainName}/records/${recordId}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(
+            `/domains/${unencodedSegment(domainName)}/records/${unencodedSegment(recordId)}`,
+          );
           break;
         }
         case "project":
-          await this.fetch<unknown>(`/projects/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/projects/${id}`);
           break;
         case "vpc":
           // DO refuses (403) when the VPC is a region's default or still has
           // member resources; that error surfaces to the user verbatim.
-          await this.fetch<unknown>(`/vpcs/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/vpcs/${id}`);
           break;
         case "volume":
-          await this.fetch<unknown>(`/volumes/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/volumes/${id}`);
           break;
         case "reserved-ip":
           // The address itself is the id. DELETE releases it back to the pool:
@@ -1063,18 +1015,18 @@ export class DigitalOceanClient implements PluginClient {
           // while the IP is still assigned to a Droplet; that message surfaces
           // to the user verbatim, which reads better than pre-unassigning
           // behind their back.
-          await this.fetch<unknown>(`/reserved_ips/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/reserved_ips/${id}`);
           break;
         case "snapshot":
           // /v2/snapshots/{id} covers both droplet and volume snapshots: DO
           // uses the same endpoint family regardless of source type.
-          await this.fetch<unknown>(`/snapshots/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/snapshots/${id}`);
           break;
         case "image":
           // Only user-owned images (snapshots/backups/custom uploads) are
           // deletable: DO returns 403 for distribution images, surfaced as a
           // host-level error.
-          await this.fetch<unknown>(`/images/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/images/${id}`);
           break;
         case "nfs-share": {
           // externalId format: "{region}/{shareId}"; the API endpoint takes
@@ -1082,22 +1034,23 @@ export class DigitalOceanClient implements PluginClient {
           const parts = externalId.split("/");
           const region = parts[0]!;
           const shareId = parts[1]!;
-          await this.fetch<unknown>(`/nfs/${shareId}?region=${encodeURIComponent(region)}`, {
-            method: "DELETE",
-          });
+          await this.api.written<"nfs_delete">(
+            `/nfs/${shareId}?region=${encodeURIComponent(region)}`,
+            { method: "DELETE" },
+          );
           break;
         }
         case "gen-ai-agent":
-          await this.fetch<unknown>(`/gen-ai/agents/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/gen-ai/agents/${id}`);
           break;
         case "gen-ai-knowledge-base":
-          await this.fetch<unknown>(`/gen-ai/knowledge_bases/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/gen-ai/knowledge_bases/${id}`);
           break;
         case "gen-ai-model-router":
-          await this.fetch<unknown>(`/gen-ai/models/routers/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/gen-ai/models/routers/${id}`);
           break;
         case "dedicated-inference":
-          await this.fetch<unknown>(`/dedicated-inferences/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/dedicated-inferences/${id}`);
           break;
         case "inference-batch": {
           // Batch jobs are cancelled rather than deleted. The endpoint lives
@@ -1113,7 +1066,7 @@ export class DigitalOceanClient implements PluginClient {
           break;
         }
         case "model-api-key":
-          await this.fetch<unknown>(`/gen-ai/models/api_keys/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/gen-ai/models/api_keys/${id}`);
           break;
         case "agent-api-key": {
           // Composite externalId `{agentUuid}/{keyUuid}`: both halves are
@@ -1121,9 +1074,9 @@ export class DigitalOceanClient implements PluginClient {
           const parts = externalId.split("/");
           const agentUuid = parts[0]!;
           const keyUuid = parts[1]!;
-          await this.fetch<unknown>(`/gen-ai/agents/${agentUuid}/api_keys/${keyUuid}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(
+            `/gen-ai/agents/${unencodedSegment(agentUuid)}/api_keys/${unencodedSegment(keyUuid)}`,
+          );
           break;
         }
         default:
@@ -1159,88 +1112,78 @@ export class DigitalOceanClient implements PluginClient {
         // both are touched in the same edit, the explicit user intent is to
         // pick whichever side has a non-empty value (router wins ties, since
         // setting a router supersedes the model).
-        const fieldMap: Record<string, string> = {
-          name: "name",
-          description: "description",
-          instruction: "instruction",
-          temperature: "temperature",
-          maxTokens: "max_tokens",
-          k: "k",
-        };
-        const body: Record<string, unknown> = {};
-        for (const [src, dst] of Object.entries(fieldMap)) {
-          if (fields[src] !== undefined) body[dst] = fields[src];
-        }
         // temperature / max_tokens / k are typed `string` in the host diff but
         // the API wants numbers: coerce, dropping empty strings.
-        for (const key of ["temperature", "max_tokens", "k"] as const) {
-          if (body[key] !== undefined) {
-            const n = Number(body[key]);
-            if (Number.isFinite(n)) body[key] = n;
-            else delete body[key];
-          }
-        }
+        const numeric = (raw: string | undefined): number | undefined => {
+          if (raw === undefined) return undefined;
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : undefined;
+        };
         // Swap between a model and a router. `model_uuid` and
         // `model_router_uuid` are mutually exclusive in DO's API: picking a
         // router moves model_uuid to "" and vice versa. If only one side
         // changed, send only that side; if both, prefer router when set.
         const routerTouched = fields["modelRouterUuid"] !== undefined;
         const modelTouched = fields["modelUuid"] !== undefined;
-        if (routerTouched && fields["modelRouterUuid"]) {
-          body["model_router_uuid"] = fields["modelRouterUuid"];
-        } else if (modelTouched && fields["modelUuid"]) {
-          body["model_uuid"] = fields["modelUuid"];
-        } else if (routerTouched && !fields["modelRouterUuid"] && fields["modelUuid"]) {
-          // Router was cleared but a model UUID is still present: switch back
-          // to the single-model path explicitly.
-          body["model_uuid"] = fields["modelUuid"];
-        }
-        const data = await this.fetch<{ agent: Record<string, unknown> }>(
-          `/gen-ai/agents/${externalId}`,
-          {
-            method: "PUT",
-            body: JSON.stringify(body),
-            headers: { "Content-Type": "application/json" },
+        const useRouter = routerTouched && !!fields["modelRouterUuid"];
+        const useModel =
+          !useRouter &&
+          ((modelTouched && !!fields["modelUuid"]) ||
+            // Router was cleared but a model UUID is still present: switch back
+            // to the single-model path explicitly.
+            (routerTouched && !fields["modelRouterUuid"] && !!fields["modelUuid"]));
+        const data = await this.api.put(`/gen-ai/agents/${unencodedSegment(externalId)}`, {
+          body: {
+            ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+            ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+            ...(fields["instruction"] !== undefined ? { instruction: fields["instruction"] } : {}),
+            ...(numeric(fields["temperature"]) !== undefined
+              ? { temperature: numeric(fields["temperature"]) }
+              : {}),
+            ...(numeric(fields["maxTokens"]) !== undefined
+              ? { max_tokens: numeric(fields["maxTokens"]) }
+              : {}),
+            ...(numeric(fields["k"]) !== undefined ? { k: numeric(fields["k"]) } : {}),
+            ...(useRouter ? { model_router_uuid: fields["modelRouterUuid"] } : {}),
+            ...(useModel ? { model_uuid: fields["modelUuid"] } : {}),
           },
-        );
-        const a = data.agent ?? {};
-        const uuid = String(a["uuid"] ?? externalId);
-        const model = a["model"] as Record<string, unknown> | undefined;
-        const router = a["model_router"] as Record<string, unknown> | undefined;
-        const deployment = a["deployment"] as Record<string, unknown> | undefined;
-        const deploymentUrl = String(deployment?.["url"] ?? "");
-        const knowledgeBases = Array.isArray(a["knowledge_bases"])
-          ? (a["knowledge_bases"] as unknown[])
-          : [];
+        });
+        const a: DoAgentRow = data.agent ?? {};
+        const uuid = String(a.uuid ?? externalId);
+        const model = a.model;
+        const router = a.model_router;
+        const deployment = a.deployment;
+        const deploymentUrl = String(deployment?.url ?? "");
+        const knowledgeBases = Array.isArray(a.knowledge_bases) ? a.knowledge_bases : [];
         return {
           id: `${accountId}:gen-ai-agent:${uuid}`,
           pluginId: "digitalocean",
           resourceTypeId: "gen-ai-agent",
           accountId,
-          displayName: String(a["name"] ?? uuid),
+          displayName: String(a.name ?? uuid),
           fields: {
-            name: String(a["name"] ?? ""),
-            region: String(a["region"] ?? ""),
-            description: String(a["description"] ?? ""),
-            instruction: String(a["instruction"] ?? ""),
-            modelUuid: String(model?.["uuid"] ?? ""),
-            modelName: String(model?.["name"] ?? ""),
-            modelRouterUuid: String(router?.["uuid"] ?? ""),
-            modelRouterName: String(router?.["name"] ?? ""),
-            projectId: String(a["project_id"] ?? ""),
-            temperature: Number(a["temperature"] ?? 0),
-            maxTokens: Number(a["max_tokens"] ?? 0),
-            k: Number(a["k"] ?? 0),
-            status: String(deployment?.["status"] ?? a["status"] ?? ""),
-            deploymentVisibility: String(deployment?.["visibility"] ?? ""),
+            name: String(a.name ?? ""),
+            region: String(a.region ?? ""),
+            description: String(a.description ?? ""),
+            instruction: String(a.instruction ?? ""),
+            modelUuid: String(model?.uuid ?? ""),
+            modelName: String(model?.name ?? ""),
+            modelRouterUuid: String(router?.uuid ?? ""),
+            modelRouterName: String(router?.name ?? ""),
+            projectId: String(a.project_id ?? ""),
+            temperature: Number(a.temperature ?? 0),
+            maxTokens: Number(a.max_tokens ?? 0),
+            k: Number(a.k ?? 0),
+            status: String(deployment?.status ?? a.status ?? ""),
+            deploymentVisibility: String(deployment?.visibility ?? ""),
             knowledgeBaseCount: knowledgeBases.length,
             deploymentUrl,
           },
           resolvedOutputs: deploymentUrl ? { deploymentUrl, agentEndpoint: deploymentUrl } : {},
           secretStates: [],
           externalId: uuid,
-          createdAt: String(a["created_at"] ?? new Date().toISOString()),
-          updatedAt: String(a["updated_at"] ?? new Date().toISOString()),
+          createdAt: String(a.created_at ?? new Date().toISOString()),
+          updatedAt: String(a.updated_at ?? new Date().toISOString()),
         };
       }
 
@@ -1249,45 +1192,41 @@ export class DigitalOceanClient implements PluginClient {
         // project_id, and database_id: region + embedding model are immutable
         // (they're locked `editable: false` on the resource type). `tags` is a
         // comma-separated string in the host diff; split it into the API's array.
-        const body: Record<string, unknown> = { uuid: externalId };
-        if (fields["name"] !== undefined) body["name"] = fields["name"];
-        if (fields["projectId"] !== undefined) body["project_id"] = fields["projectId"];
-        if (fields["databaseId"] !== undefined) body["database_id"] = fields["databaseId"];
-        if (fields["tags"] !== undefined) {
-          body["tags"] = fields["tags"]
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean);
-        }
-        const data = await this.fetch<{ knowledge_base: Record<string, unknown> }>(
-          `/gen-ai/knowledge_bases/${externalId}`,
-          {
-            method: "PUT",
-            body: JSON.stringify(body),
-            headers: { "Content-Type": "application/json" },
+        const data = await this.api.put(`/gen-ai/knowledge_bases/${unencodedSegment(externalId)}`, {
+          body: {
+            uuid: externalId,
+            ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+            ...(fields["projectId"] !== undefined ? { project_id: fields["projectId"] } : {}),
+            ...(fields["databaseId"] !== undefined ? { database_id: fields["databaseId"] } : {}),
+            ...(fields["tags"] !== undefined
+              ? {
+                  tags: fields["tags"]
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                }
+              : {}),
           },
-        );
-        const kb = data.knowledge_base ?? {};
-        const uuid = String(kb["uuid"] ?? externalId);
-        const lastJob = kb["last_indexing_job"] as Record<string, unknown> | undefined;
-        const tags = Array.isArray(kb["tags"]) ? (kb["tags"] as string[]) : [];
-        const dataSources = Array.isArray(kb["data_sources"])
-          ? (kb["data_sources"] as unknown[]).length
-          : 0;
+        });
+        const kb: DoKnowledgeBaseRow = data.knowledge_base ?? {};
+        const uuid = String(kb.uuid ?? externalId);
+        const lastJob = kb.last_indexing_job;
+        const tags = Array.isArray(kb.tags) ? kb.tags : [];
+        const dataSources = Array.isArray(kb.data_sources) ? kb.data_sources.length : 0;
         return {
           id: `${accountId}:gen-ai-knowledge-base:${uuid}`,
           pluginId: "digitalocean",
           resourceTypeId: "gen-ai-knowledge-base",
           accountId,
-          displayName: String(kb["name"] ?? uuid),
+          displayName: String(kb.name ?? uuid),
           fields: {
-            name: String(kb["name"] ?? ""),
-            region: String(kb["region"] ?? ""),
-            embeddingModelUuid: String(kb["embedding_model_uuid"] ?? ""),
-            databaseId: String(kb["database_id"] ?? ""),
-            projectId: String(kb["project_id"] ?? ""),
-            isPublic: kb["is_public"] ? "yes" : "no",
-            lastIndexingStatus: String(lastJob?.["status"] ?? ""),
+            name: String(kb.name ?? ""),
+            region: String(kb.region ?? ""),
+            embeddingModelUuid: String(kb.embedding_model_uuid ?? ""),
+            databaseId: String(kb.database_id ?? ""),
+            projectId: String(kb.project_id ?? ""),
+            isPublic: kb.is_public ? "yes" : "no",
+            lastIndexingStatus: String(lastJob?.status ?? ""),
             dataSourceCount: dataSources,
             tags: tags.join(","),
           },
@@ -1296,8 +1235,8 @@ export class DigitalOceanClient implements PluginClient {
             : {},
           secretStates: [],
           externalId: uuid,
-          createdAt: String(kb["created_at"] ?? new Date().toISOString()),
-          updatedAt: String(kb["updated_at"] ?? new Date().toISOString()),
+          createdAt: String(kb.created_at ?? new Date().toISOString()),
+          updatedAt: String(kb.updated_at ?? new Date().toISOString()),
         };
       }
 
@@ -1306,25 +1245,25 @@ export class DigitalOceanClient implements PluginClient {
         const parts = externalId.split("/");
         const domainName = parts[0]!;
         const recordId = parts[1]!;
-        const body: Record<string, unknown> = {};
-        if (fields["type"] !== undefined) body["type"] = fields["type"];
-        if (fields["name"] !== undefined) body["name"] = fields["name"];
-        if (fields["data"] !== undefined) body["data"] = fields["data"];
-        if (fields["ttl"] !== undefined && fields["ttl"] !== "")
-          body["ttl"] = Number(fields["ttl"]);
-        if (fields["priority"] !== undefined && fields["priority"] !== "")
-          body["priority"] = Number(fields["priority"]);
-        const data = await this.fetch<{ domain_record: Record<string, unknown> }>(
-          `/domains/${domainName}/records/${recordId}`,
+        const data = await this.api.put(
+          `/domains/${unencodedSegment(domainName)}/records/${unencodedSegment(recordId)}`,
           {
-            method: "PUT",
-            body: JSON.stringify(body),
-            headers: { "Content-Type": "application/json" },
+            body: {
+              ...(fields["type"] !== undefined ? { type: fields["type"] } : {}),
+              ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+              ...(fields["data"] !== undefined ? { data: fields["data"] } : {}),
+              ...(fields["ttl"] !== undefined && fields["ttl"] !== ""
+                ? { ttl: Number(fields["ttl"]) }
+                : {}),
+              ...(fields["priority"] !== undefined && fields["priority"] !== ""
+                ? { priority: Number(fields["priority"]) }
+                : {}),
+            },
           },
         );
-        const r = data.domain_record ?? {};
-        const type = String(r["type"] ?? fields["type"] ?? "");
-        const name = String(r["name"] ?? "@");
+        const r: Partial<NonNullable<typeof data.domain_record>> = data.domain_record ?? {};
+        const type = String(r.type ?? fields["type"] ?? "");
+        const name = String(r.name ?? "@");
         const displayName = name === "@" ? domainName : `${name}.${domainName}`;
         return {
           id: resourceId,
@@ -1335,10 +1274,10 @@ export class DigitalOceanClient implements PluginClient {
           fields: {
             type,
             name: displayName,
-            data: String(r["data"] ?? fields["data"] ?? ""),
-            ttl: Number(r["ttl"] ?? 1800),
-            ...(r["priority"] !== undefined && r["priority"] !== null
-              ? { priority: Number(r["priority"]) }
+            data: String(r.data ?? fields["data"] ?? ""),
+            ttl: Number(r.ttl ?? 1800),
+            ...(r.priority !== undefined && r.priority !== null
+              ? { priority: Number(r.priority) }
               : {}),
             domainName,
           },
@@ -1364,10 +1303,8 @@ export class DigitalOceanClient implements PluginClient {
         const name = fields["name"];
         if (name !== undefined && name !== "") {
           try {
-            await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
-              method: "POST",
-              body: JSON.stringify({ type: "rename", name }),
-              headers: { "Content-Type": "application/json" },
+            await this.api.post(`/droplets/${unencodedSegment(externalId)}/actions`, {
+              body: { type: "rename", name },
             });
           } catch (e) {
             failures.push(`rename failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1376,10 +1313,8 @@ export class DigitalOceanClient implements PluginClient {
         const size = fields["size"];
         if (size !== undefined && size !== "") {
           try {
-            await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
-              method: "POST",
-              body: JSON.stringify({ type: "resize", size, disk: false }),
-              headers: { "Content-Type": "application/json" },
+            await this.api.post(`/droplets/${unencodedSegment(externalId)}/actions`, {
+              body: { type: "resize", size, disk: false },
             });
           } catch (e) {
             failures.push(`resize failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1412,36 +1347,32 @@ export class DigitalOceanClient implements PluginClient {
       // DO's PATCH /v2/projects/{id} accepts only the fields supplied: name,
       // description, purpose, environment. Send through whatever the caller
       // changed; the host has already diffed against the prior values.
-      const body: Record<string, string> = {};
-      for (const key of ["name", "description", "purpose", "environment"] as const) {
-        if (fields[key] !== undefined) body[key] = fields[key];
-      }
-      const data = await this.fetch<{ project: Record<string, unknown> }>(
-        `/projects/${externalId}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(body),
-          headers: { "Content-Type": "application/json" },
+      const data = await this.api.patch(`/projects/${unencodedSegment(externalId)}`, {
+        body: {
+          ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+          ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+          ...(fields["purpose"] !== undefined ? { purpose: fields["purpose"] } : {}),
+          ...(fields["environment"] !== undefined ? { environment: fields["environment"] } : {}),
         },
-      );
+      });
       const p = data.project;
       return {
-        id: `${accountId}:project:${String(p["id"])}`,
+        id: `${accountId}:project:${String(p.id)}`,
         pluginId: "digitalocean",
         resourceTypeId: "project",
         accountId,
-        displayName: String(p["name"]),
+        displayName: String(p.name),
         fields: {
-          name: String(p["name"]),
-          purpose: String(p["purpose"] ?? ""),
-          description: String(p["description"] ?? ""),
-          environment: String(p["environment"] ?? ""),
+          name: String(p.name),
+          purpose: String(p.purpose ?? ""),
+          description: String(p.description ?? ""),
+          environment: String(p.environment ?? ""),
         },
         resolvedOutputs: {},
         secretStates: [],
-        externalId: String(p["id"]),
-        createdAt: String(p["created_at"] ?? new Date().toISOString()),
-        updatedAt: String(p["updated_at"] ?? new Date().toISOString()),
+        externalId: String(p.id),
+        createdAt: String(p.created_at ?? new Date().toISOString()),
+        updatedAt: String(p.updated_at ?? new Date().toISOString()),
       };
     });
   }
@@ -1471,9 +1402,8 @@ export class DigitalOceanClient implements PluginClient {
         if (!volumeId || !Number.isFinite(dropletId)) {
           throw new Error("Cannot determine volume or droplet id for attachment");
         }
-        await this.fetch(`/volumes/${volumeId}/actions`, {
-          method: "POST",
-          body: JSON.stringify({ type: "attach", droplet_id: dropletId, region: volumeRegion }),
+        await this.api.post(`/volumes/${unencodedSegment(volumeId)}/actions`, {
+          body: { type: "attach", droplet_id: dropletId, region: volumeRegion },
         });
         return;
       }
@@ -1499,9 +1429,8 @@ export class DigitalOceanClient implements PluginClient {
         if (!ip || !Number.isFinite(dropletId)) {
           throw new Error("Cannot determine reserved IP or droplet id for assignment");
         }
-        await this.fetch(`/reserved_ips/${ip}/actions`, {
-          method: "POST",
-          body: JSON.stringify({ type: "assign", droplet_id: dropletId }),
+        await this.api.post(`/reserved_ips/${unencodedSegment(ip)}/actions`, {
+          body: { type: "assign", droplet_id: dropletId },
         });
         return;
       }
@@ -1539,7 +1468,8 @@ export class DigitalOceanClient implements PluginClient {
         const shareId = shareExternalId.includes("/")
           ? shareExternalId.split("/")[1]!
           : shareExternalId;
-        await this.fetch(`/nfs/${shareId}/actions`, {
+        // The document wants `params: { vpc_id }` (#411).
+        await this.api.written<"nfs_create_action">(`/nfs/${shareId}/actions`, {
           method: "POST",
           body: JSON.stringify({ type: "attach", vpc_id: dropletVpc, region: shareRegion }),
         });
@@ -1551,9 +1481,9 @@ export class DigitalOceanClient implements PluginClient {
         if (!kbUuid || !agentUuid) {
           throw new Error("Cannot determine knowledge base or agent UUID for attachment.");
         }
-        await this.fetch(`/gen-ai/agents/${agentUuid}/knowledge_bases/${kbUuid}`, {
-          method: "POST",
-        });
+        await this.api.post(
+          `/gen-ai/agents/${unencodedSegment(agentUuid)}/knowledge_bases/${unencodedSegment(kbUuid)}`,
+        );
         return;
       }
       throw new Error(
@@ -1593,24 +1523,18 @@ export class DigitalOceanClient implements PluginClient {
         const af = actionFields ?? {};
         const name = String(af["name"] ?? "").trim();
         if (!name) throw new Error("Workspace name is required.");
-        const body: Record<string, unknown> = {
-          name,
-          ...(af["description"] ? { description: af["description"] } : {}),
-        };
-        const data = await this.fetch<{ workspace: Record<string, unknown> }>(
-          "/gen-ai/workspaces",
-          {
-            method: "POST",
-            body: JSON.stringify(body),
-            headers: { "Content-Type": "application/json" },
+        const data = await this.api.post("/gen-ai/workspaces", {
+          body: {
+            name,
+            ...(af["description"] ? { description: af["description"] } : {}),
           },
-        );
+        });
         const w = data.workspace ?? {};
-        const uuid = String(w["uuid"] ?? "");
+        const uuid = String(w.uuid ?? "");
         if (!uuid) throw new Error("DigitalOcean did not return a workspace UUID.");
         return {
           value: uuid,
-          option: { id: uuid, label: String(w["name"] ?? name) },
+          option: { id: uuid, label: String(w.name ?? name) },
         };
       }
       if (typeId === "gen-ai-agent" && actionId === "create-inference-router") {
@@ -1621,25 +1545,19 @@ export class DigitalOceanClient implements PluginClient {
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean);
-        const body: Record<string, unknown> = {
-          name,
-          ...(af["description"] ? { description: af["description"] } : {}),
-          ...(fallback.length ? { fallback_models: fallback } : {}),
-        };
-        const data = await this.fetch<{ model_router: Record<string, unknown> }>(
-          "/gen-ai/models/routers",
-          {
-            method: "POST",
-            body: JSON.stringify(body),
-            headers: { "Content-Type": "application/json" },
+        const data = await this.api.post("/gen-ai/models/routers", {
+          body: {
+            name,
+            ...(af["description"] ? { description: af["description"] } : {}),
+            ...(fallback.length ? { fallback_models: fallback } : {}),
           },
-        );
+        });
         const r = data.model_router ?? {};
-        const uuid = String(r["uuid"] ?? "");
+        const uuid = String(r.uuid ?? "");
         if (!uuid) throw new Error("DigitalOcean did not return a router UUID.");
         return {
           value: uuid,
-          option: { id: uuid, label: String(r["name"] ?? name) },
+          option: { id: uuid, label: String(r.name ?? name) },
         };
       }
       throw new Error(
@@ -1650,7 +1568,7 @@ export class DigitalOceanClient implements PluginClient {
 
   private get actionCtx(): ActionContext {
     return {
-      fetch: this.fetch.bind(this),
+      api: this.api,
       getResource: (...args) => runPluginEffect(this.getResource(...args)),
     };
   }
@@ -1682,11 +1600,10 @@ export class DigitalOceanClient implements PluginClient {
         if (actionId === "make-public" || actionId === "make-private") {
           const visibility =
             actionId === "make-public" ? "VISIBILITY_PUBLIC" : "VISIBILITY_PRIVATE";
-          await this.fetch<unknown>(`/gen-ai/agents/${agentUuid}/deployment_visibility`, {
-            method: "PUT",
-            body: JSON.stringify({ visibility }),
-            headers: { "Content-Type": "application/json" },
-          });
+          await this.api.put(
+            `/gen-ai/agents/${unencodedSegment(agentUuid)}/deployment_visibility`,
+            { body: { visibility } },
+          );
           return;
         }
         if (actionId === "regenerate-key") {
@@ -1703,9 +1620,9 @@ export class DigitalOceanClient implements PluginClient {
         const parts = externalId.split("/");
         const agentUuid = parts[0]!;
         const keyUuid = parts[1]!;
-        await this.fetch<unknown>(`/gen-ai/agents/${agentUuid}/api_keys/${keyUuid}/regenerate`, {
-          method: "PUT",
-        });
+        await this.api.put(
+          `/gen-ai/agents/${unencodedSegment(agentUuid)}/api_keys/${unencodedSegment(keyUuid)}/regenerate`,
+        );
         return;
       }
       throw new Error(`DigitalOcean plugin: invokeAction not supported for type "${typeId}"`);
@@ -1721,7 +1638,7 @@ export class DigitalOceanClient implements PluginClient {
 
   private get nosqlCtx(): DoNoSqlContext {
     return {
-      fetch: this.fetch.bind(this),
+      api: this.api,
       services: this.services,
       actionCtx: this.actionCtx,
       playgroundKeyCache: this.playgroundKeyCache,
@@ -1975,14 +1892,7 @@ export class DigitalOceanClient implements PluginClient {
         return { text: "", containers: [], activeContainer: "" };
       }
       const externalId = resourceId.split(":").slice(2).join(":");
-      const resp = await this.fetch<{
-        events?: Array<{
-          id?: string;
-          event_type?: string;
-          cluster_name?: string;
-          create_time?: string;
-        }>;
-      }>(`/databases/${externalId}/events`);
+      const resp = await this.api.get(`/databases/${unencodedSegment(externalId)}/events`);
       const events = resp.events ?? [];
       const tail = params.tailLines ?? 200;
       const lines = events
@@ -2001,7 +1911,7 @@ export class DigitalOceanClient implements PluginClient {
 
   private get metricCtx(): DoMetricContext {
     return {
-      fetch: this.fetch.bind(this),
+      api: this.api,
       getResource: (...args) => runPluginEffect(this.getResource(...args)),
     };
   }
@@ -2034,7 +1944,7 @@ export class DigitalOceanClient implements PluginClient {
   }
   private get enrichCtx(): DoEnrichContext {
     return {
-      fetch: this.fetch.bind(this),
+      api: this.api,
       dropletCatalogCache: this.dropletCatalogCache,
       listSpacesBuckets: (accountId: string) => listSpacesBuckets(this.listerCtx, accountId),
     };

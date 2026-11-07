@@ -1,0 +1,225 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.tailscale.com/api/v2?outputOpenapiSchema=true",
+  "patches": [
+    {
+      "pointer": "/components/schemas/Device/required",
+      "value": ["id", "name", "hostname", "addresses"],
+      "why": "The document marks nothing required, but every device has these and the mappers read them without a guard."
+    },
+    {
+      "pointer": "/components/schemas/User/required",
+      "value": ["id"],
+      "why": "The document marks nothing required, but a user always has its id."
+    },
+    {
+      "pointer": "/components/schemas/Key/required",
+      "value": ["id"],
+      "why": "The document marks nothing required, but a key always has its id."
+    },
+    {
+      "pointer": "/components/schemas/Webhook/required",
+      "value": ["endpointId"],
+      "why": "The document marks nothing required, but a webhook always has its id."
+    },
+    {
+      "pointer": "/components/schemas/VIPServiceInfo/required",
+      "value": ["name"],
+      "why": "The document marks nothing required, but a Service is addressed by its name."
+    },
+    {
+      "pointer": "/components/schemas/ServiceHostInfo/required",
+      "value": ["stableNodeID"],
+      "why": "The document marks nothing required, but a host is identified by this."
+    },
+    {
+      "pointer": "/components/schemas/DnsConfigurationResolver/required",
+      "value": ["address"],
+      "why": "The document marks nothing required, but a resolver with no address is not one."
+    },
+    {
+      "pointer": "/components/schemas/PostureIntegration/required",
+      "value": ["id"],
+      "why": "The document marks nothing required, but an integration always has its id. The two request bodies below get schemas of their own, since a body has none."
+    },
+    {
+      "pointer": "/paths/~1tailnet~1{tailnet}~1posture~1integrations/post/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "cloudId": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The response schema without its read-only fields. `provider` is a string because the plugin checks it against its own list before sending."
+    },
+    {
+      "pointer": "/paths/~1posture~1integrations~1{id}/patch/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "cloudId": {
+            "type": ["string", "number", "boolean"]
+          },
+          "clientId": {
+            "type": ["string", "number", "boolean"]
+          },
+          "tenantId": {
+            "type": ["string", "number", "boolean"]
+          },
+          "clientSecret": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The edit form sends back stored resource fields, typed `string | number | boolean` by the host. Each is a string in practice, and the plugin sends what it read."
+    },
+    {
+      "pointer": "/paths/~1tailnet~1{tailnet}~1keys/post/responses/200/content/application~1json/schema",
+      "value": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Key"
+          },
+          {
+            "type": "object",
+            "required": ["key"],
+            "properties": {
+              "key": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "why": "The document describes `key` as the secret returned when a key is created, and enrollment hands it to the server."
+    },
+    {
+      "pointer": "/paths/~1device~1{deviceId}~1expire/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document lists no body, and the plugin has always sent `{}` here."
+    },
+    {
+      "pointer": "/paths/~1tailnet~1{tailnet}~1acl/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "tagOwners": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "why": "The document gives the policy file no properties. `tagOwners` is the part of the policy syntax (tailscale.com/docs/reference/syntax/policy-file) the tag pickers read."
+    },
+    {
+      "pointer": "/components/schemas/TailnetSettings/properties/regionalRoutingOn",
+      "value": {
+        "type": ["boolean", "null"]
+      },
+      "why": "Marked read-only, yet its own description says a PATCH may send it and should prefer `routeSelection`. The settings form sends it."
+    },
+    {
+      "pointer": "/components/schemas/TailnetSettings/properties/usersRoleAllowedToJoinExternalTailnets",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field, whose picker offers the valid values; Tailscale validates whatever else arrives."
+    },
+    {
+      "pointer": "/paths/~1tailnet~1{tailnet}~1user-invites/post/requestBody/content/application~1json/schema/items/properties/role",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field, whose picker offers the valid values; Tailscale validates whatever else arrives."
+    },
+    {
+      "pointer": "/paths/~1users~1{userId}~1role/post/requestBody/content/application~1json/schema/properties/role",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field, whose picker offers the valid values; Tailscale validates whatever else arrives."
+    },
+    {
+      "pointer": "/components/schemas/providerType",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field, whose picker offers the valid values; Tailscale validates whatever else arrives."
+    },
+    {
+      "pointer": "/components/schemas/subscriptions/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field. An edit is checked against the plugin's own list of events and a new webhook is left to Tailscale, so the document's enum would reject neither."
+    }
+  ],
+  "paths": {
+    "/tailnet/{tailnet}/devices": ["get"],
+    "/device/{deviceId}": ["get", "delete"],
+    "/device/{deviceId}/expire": ["post"],
+    "/device/{deviceId}/routes": ["post"],
+    "/device/{deviceId}/authorized": ["post"],
+    "/device/{deviceId}/name": ["post"],
+    "/device/{deviceId}/tags": ["post"],
+    "/device/{deviceId}/key": ["post"],
+    "/device/{deviceId}/ip": ["post"],
+    "/device/{deviceId}/attributes": ["get"],
+    "/tailnet/{tailnet}/user-invites": ["get", "post"],
+    "/user-invites/{userInviteId}": ["delete"],
+    "/user-invites/{userInviteId}/resend": ["post"],
+    "/tailnet/{tailnet}/logging/configuration": ["get"],
+    "/tailnet/{tailnet}/logging/network": ["get"],
+    "/tailnet/{tailnet}/logging/{logType}/stream/status": ["get"],
+    "/tailnet/{tailnet}/logging/{logType}/stream": ["get"],
+    "/tailnet/{tailnet}/dns/configuration": ["get", "post"],
+    "/tailnet/{tailnet}/keys": ["get", "post"],
+    "/tailnet/{tailnet}/keys/{keyId}": ["get", "delete"],
+    "/tailnet/{tailnet}/acl": ["get"],
+    "/tailnet/{tailnet}/posture/integrations": ["get", "post"],
+    "/posture/integrations/{id}": ["patch", "delete"],
+    "/tailnet/{tailnet}/users": ["get"],
+    "/users/{userId}/role": ["post"],
+    "/users/{userId}/approve": ["post"],
+    "/users/{userId}/suspend": ["post"],
+    "/users/{userId}/restore": ["post"],
+    "/users/{userId}/delete": ["post"],
+    "/tailnet/{tailnet}/contacts": ["get"],
+    "/tailnet/{tailnet}/webhooks": ["get", "post"],
+    "/webhooks/{endpointId}": ["patch", "delete"],
+    "/webhooks/{endpointId}/test": ["post"],
+    "/webhooks/{endpointId}/rotate": ["post"],
+    "/tailnet/{tailnet}/settings": ["get", "patch"],
+    "/tailnet/{tailnet}/services": ["get"],
+    "/tailnet/{tailnet}/services/{serviceName}": ["get", "put", "delete"],
+    "/tailnet/{tailnet}/services/{serviceName}/devices": ["get"],
+    "/tailnet/{tailnet}/services/{serviceName}/device/{deviceId}/approved": ["post"]
+  }
+}

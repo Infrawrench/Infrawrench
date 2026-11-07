@@ -15,7 +15,8 @@
 
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import type { HoneycombContext } from "./api.js";
-import { ds, v1 } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { v1 } from "./api.js";
 import type { SeriesSpec, TimeRange } from "./query.js";
 import {
   calculationKey,
@@ -102,11 +103,7 @@ export async function storedQuerySeries(
   range: TimeRange,
   threshold?: { op?: string; value?: number },
 ): Promise<MetricSeries[]> {
-  const stored = await v1<HnyQuerySpec>(
-    ctx,
-    key,
-    `/1/queries/${ds(dataset)}/${encodeURIComponent(queryId)}`,
-  );
+  const stored = await v1(ctx, key).get(`/1/queries/${pathEncode(dataset)}/${pathEncode(queryId)}`);
   const r = clampQueryRange(range);
   const spec = respec(stored, r);
   const result = await runQuery(ctx, key, dataset, spec);
@@ -131,10 +128,8 @@ export async function sloSeries(
   sloId: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const res = await v1<HnySloHistory>(
-    ctx,
-    key,
-    `/1/slos/${ds(dataset)}/${encodeURIComponent(sloId)}/counts/history`,
+  const res = await v1(ctx, key).get(
+    `/1/slos/${pathEncode(dataset)}/${pathEncode(sloId)}/counts/history`,
     {
       query: {
         start_time: Math.floor(range.startMs / 1000),

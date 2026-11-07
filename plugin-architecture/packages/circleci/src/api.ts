@@ -1,4 +1,14 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  unencodedSegment,
+  withCursorPagination,
+  type ApiClientOptions,
+  type HttpHostServices,
+  type NoSlashString,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths as V2Paths } from "./api-types.v2.gen.js";
+import type { paths as V3Paths } from "./api-types.v3.gen.js";
 
 /**
  * CircleCI REST API v2 (https://circleci.com/docs/api/v2/, spec at
@@ -8,6 +18,9 @@ import type { HttpHostServices } from "@infrawrench/plugin-base";
  * The self-hosted runner API lives on its own host
  * (`runner.circleci.com/api/v3`) and takes the same token and header; API v3
  * takes it as a Bearer token instead.
+ *
+ * Types come from each API's OpenAPI document (`../plugingen.json`). The runner
+ * host publishes none, so {@link RunnerPaths} is written by hand.
  */
 export const API_BASE = "https://circleci.com/api/v2";
 /**
@@ -49,9 +62,7 @@ export function isPermissionError(err: unknown): boolean {
   return status === 401 || status === 403;
 }
 
-export type Query = Record<string, string | number | boolean | undefined | Array<string | number>>;
-
-export function buildQuery(query: Query = {}): string {
+export function buildQuery(query: Record<string, ParamValue> = {}): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
     if (v === undefined || v === "") continue;
@@ -62,141 +73,120 @@ export function buildQuery(query: Query = {}): string {
   return qs ? `?${qs}` : "";
 }
 
+/** A field of a body nobody has validated, or `undefined` if it is not an object. */
+const fieldOf = (from: unknown, name: string): unknown =>
+  typeof from === "object" && from !== null ? Reflect.get(from, name) : undefined;
+
 function errorDetail(body: string): string {
   try {
-    const parsed = JSON.parse(body) as {
-      message?: unknown;
-      error?: { title?: unknown; detail?: unknown };
-    };
-    if (typeof parsed.message === "string") return parsed.message;
-    if (typeof parsed.error?.detail === "string") return parsed.error.detail;
-    if (typeof parsed.error?.title === "string") return parsed.error.title;
+    const parsed: unknown = JSON.parse(body);
+    const message = fieldOf(parsed, "message");
+    if (typeof message === "string") return message;
+    const error = fieldOf(parsed, "error");
+    const detail = fieldOf(error, "detail");
+    if (typeof detail === "string") return detail;
+    const title = fieldOf(error, "title");
+    if (typeof title === "string") return title;
   } catch {
     // Not JSON: fall through to the raw body.
   }
   return body.slice(0, 500);
 }
 
-export interface RequestOptions {
-  method?: string;
-  query?: Query;
-  body?: unknown;
-  /** Defaults to the v2 API; the runner API passes {@link RUNNER_API_BASE}. */
-  baseUrl?: string;
-}
+/**
+ * Marks where a query starts, for {@link circleTransport}. The private-use
+ * character cannot come out of `buildQuery`, which percent-encodes it.
+ */
+const QUERY_MARK = "\uE000";
 
 /**
- * One request with the token in `Circle-Token`. Routed through the host HTTP
- * service whenever there is one: that is the only path that honours bastion
- * egress.
+ * Routed through the host HTTP service whenever there is one: that is the only
+ * path that honours bastion egress. `fetch` otherwise, as it always was.
+ *
+ * Project slugs go into paths as written (#455), so one holding a `?`
+ * has always been followed by a second `?`. The client would write `&` there, so
+ * it marks the query and this puts the `?` back, whatever came before the mark.
  */
-export async function circleFetch<T>(
-  ctx: CircleContext,
-  path: string,
-  opts: RequestOptions = {},
-): Promise<T> {
-  const base = (opts.baseUrl ?? API_BASE).replace(/\/+$/, "");
-  const url = `${base}${path}${buildQuery(opts.query)}`;
-  const method = opts.method ?? "GET";
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (base.startsWith(API_V3_BASE)) headers["Authorization"] = `Bearer ${ctx.token}`;
-  else headers["Circle-Token"] = ctx.token;
-  const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-
-  let status: number;
-  let text: string;
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-    });
-    status = res.status;
-    text = res.body;
-  } else {
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    status = res.status;
-    text = await res.text();
-  }
-  if (status < 200 || status >= 300) {
-    throw new CircleApiError(
-      status,
-      `CircleCI API error ${status} for ${path}: ${errorDetail(text)}`,
-    );
-  }
-  return (status === 204 || !text ? undefined : JSON.parse(text)) as T;
+function circleTransport(ctx: CircleContext): HttpHostServices {
+  return {
+    request: async (req) => {
+      const url = req.url.replace(new RegExp(`[?&]${QUERY_MARK}`), "?");
+      if (ctx.http) return ctx.http.request({ ...req, url });
+      const { method, headers, body } = req;
+      // The client only ever sends text.
+      const res = await fetch(url, {
+        method,
+        headers,
+        ...(typeof body === "string" ? { body } : {}),
+      });
+      return { status: res.status, headers: {}, body: await res.text() };
+    },
+  };
 }
 
-interface Page<T> {
-  items?: T[];
-  next_page_token?: string | null;
+/** A project or organization slug, sent as written: its slashes are part of the route. */
+export const slugSegment = (slug: string): NoSlashString => unencodedSegment(slug);
+
+/** The runner host's calls, by hand: it publishes no document. */
+export interface RunnerPaths {
+  "/runner/tasks": { get: RunnerTasksGet<{ unclaimed_task_count?: number }> };
+  "/runner/tasks/running": { get: RunnerTasksGet<{ running_runner_tasks?: number }> };
 }
 
-/**
- * Every page of a `next_page_token`-paginated v2 list, up to `maxPages`, so a
- * misbehaving cursor cannot spin forever.
- */
-export async function circlePaged<T>(
-  ctx: CircleContext,
-  path: string,
-  query: Query = {},
-  maxPages = 10,
-  opts: { baseUrl?: string } = {},
-): Promise<T[]> {
-  const out: T[] = [];
-  let token: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await circleFetch<Page<T>>(ctx, path, {
-      query: { ...query, ...(token ? { "page-token": token } : {}) },
-      ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}),
-    });
-    out.push(...(Array.isArray(res?.items) ? res.items : []));
-    token = res?.next_page_token ?? undefined;
-    if (!token) break;
-  }
-  return out;
+interface RunnerTasksGet<Body> {
+  parameters: { query: { "resource-class": string } };
+  responses: { 200: { content: { "application/json": Body } } };
 }
 
-interface V3Page<T> {
-  data?: T[];
-  page?: { next?: string | null };
-}
+/** Every client a call may need. Building them only allocates closures. */
+export function circleApi(ctx: CircleContext) {
+  const shared = {
+    vendor: "CircleCI",
+    http: circleTransport(ctx),
+    contentType: "with-body",
+    serializeQuery: (query) => {
+      const written = buildQuery(query).slice(1);
+      return written && `${QUERY_MARK}${written}`;
+    },
+    httpError: ({ status, path, body }) =>
+      new CircleApiError(status, `CircleCI API error ${status} for ${path}: ${errorDetail(body)}`),
+  } satisfies Partial<ApiClientOptions>;
+  const accept = { Accept: "application/json" };
+  const circleToken = { ...accept, "Circle-Token": ctx.token };
 
-/** Every page of a v3 list (`page[cursor]`), up to `maxPages`. */
-export async function circleV3Paged<T>(
-  ctx: CircleContext,
-  path: string,
-  query: Query = {},
-  maxPages = 20,
-): Promise<T[]> {
-  const out: T[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await circleFetch<V3Page<T>>(ctx, path, {
-      baseUrl: API_V3_BASE,
-      query: { ...query, ...(cursor ? { "page[cursor]": cursor } : {}) },
-    });
-    out.push(...(Array.isArray(res?.data) ? res.data : []));
-    cursor = res?.page?.next ?? undefined;
-    if (!cursor) break;
-  }
-  return out;
-}
-
-/** One v3 call, unwrapping the `{data}` envelope. */
-export async function circleV3<T>(
-  ctx: CircleContext,
-  path: string,
-  opts: Omit<RequestOptions, "baseUrl"> = {},
-): Promise<T | undefined> {
-  const res = await circleFetch<{ data?: T } | undefined>(ctx, path, {
-    ...opts,
+  const v2 = createApiClient<V2Paths>({ ...shared, baseUrl: API_BASE, headers: circleToken });
+  const v3 = createApiClient<V3Paths>({
+    ...shared,
     baseUrl: API_V3_BASE,
+    headers: { ...accept, Authorization: `Bearer ${ctx.token}` },
   });
-  return res?.data;
+  const runner = createApiClient<RunnerPaths>({
+    ...shared,
+    baseUrl: RUNNER_API_BASE,
+    headers: circleToken,
+  });
+
+  // Both walks carry on past an empty page while a cursor is on offer, and read a
+  // 2xx with no body as the end of the list: that is what the plugin has always
+  // done. `maxPages` is each list's cap unless the call names its own.
+  const v2Paged = withCursorPagination(v2, {
+    cursorParam: "page-token",
+    next: "next_page_token",
+    maxPages: 10,
+    continueOnEmptyPage: true,
+    emptyBodyEndsList: true,
+  });
+  const v3Paged = withCursorPagination(v3, {
+    cursorParam: "page[cursor]",
+    next: "page.next",
+    maxPages: 20,
+    continueOnEmptyPage: true,
+    emptyBodyEndsList: true,
+  });
+  return { v2, v3, runner, v2Paged, v3Paged };
 }
+
+export type CircleApi = ReturnType<typeof circleApi>;
 
 /**
  * Download a usage export file (a presigned object-store URL, no token). The

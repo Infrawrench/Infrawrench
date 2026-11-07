@@ -12,6 +12,7 @@
  * The price is `current_price` (what the account pays after any discount),
  * in the response's `price_unit`.
  */
+import type { components as PricingComponents } from "./api-types.pricing.gen.js";
 
 /** ITU calling codes → ISO 3166-1 alpha-2, for the countries Twilio sells numbers in most. */
 const CALLING_CODES: Record<string, string> = {
@@ -172,16 +173,8 @@ export interface CountryNumberPrices {
   prices: Map<string, number>;
 }
 
-export interface TwilioPhoneNumberCountry {
-  country?: string | null;
-  iso_country?: string | null;
-  price_unit?: string | null;
-  phone_number_prices?: Array<{
-    number_type?: string | null;
-    base_price?: string | number | null;
-    current_price?: string | number | null;
-  }> | null;
-}
+export type TwilioPhoneNumberCountry =
+  PricingComponents["schemas"]["pricing.v1.phone_number.phone_number_country-instance"];
 
 export function parseCountryPrices(body: TwilioPhoneNumberCountry): CountryNumberPrices {
   const prices = new Map<string, number>();

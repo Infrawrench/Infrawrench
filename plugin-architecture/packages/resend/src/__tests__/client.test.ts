@@ -1,6 +1,6 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
-import { listAll, resendFetch } from "../api.js";
+import { createResendApi, listAll } from "../api.js";
 import { ResendClient, WEBHOOK_EVENTS, parseList } from "../client.js";
 import { qualify, toIso } from "../mappers.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
@@ -58,7 +58,8 @@ describe("api", () => {
         ? { data: [{ id: "c" }], has_more: false }
         : { data: [{ id: "a" }, { id: "b" }], has_more: true },
     );
-    const out = await listAll<{ id: string }>({ apiKey: "re_K", http }, "/contacts");
+    const api = createResendApi({ apiKey: "re_K", http });
+    const out = await listAll((query) => api.get("/contacts", { query }));
     expect(out.map((x) => x.id)).toEqual(["a", "b", "c"]);
     expect(calls[1]?.url.searchParams.get("after")).toBe("b");
     expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
@@ -80,7 +81,7 @@ describe("api", () => {
     const sleep = async (ms: number) => {
       waits.push(ms);
     };
-    await expect(resendFetch({ apiKey: "k", http, sleep }, "/domains")).resolves.toEqual({
+    await expect(createResendApi({ apiKey: "k", http, sleep }).get("/domains")).resolves.toEqual({
       ok: true,
     });
     expect(waits).toEqual([2000]);
@@ -90,7 +91,7 @@ describe("api", () => {
       body: { name: "monthly_quota_exceeded", message: "quota" },
     }));
     await expect(
-      resendFetch({ apiKey: "k", http: quota.http, sleep }, "/emails"),
+      createResendApi({ apiKey: "k", http: quota.http, sleep }).get("/emails"),
     ).rejects.toMatchObject({ status: 429 });
     expect(quota.calls).toHaveLength(1);
   });

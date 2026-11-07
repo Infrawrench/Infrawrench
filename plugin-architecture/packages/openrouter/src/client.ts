@@ -30,9 +30,31 @@ import {
   CreditAccessError,
   bytesToBase64,
   joinSubtitle,
-  jsonRestFetch,
+  pathEncode,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
+import {
+  BASE_URL,
+  createOpenRouterApi,
+  type OpenRouterApi,
+  type OrActivityItem,
+  type OrAnalyticsAnswer,
+  type OrAnalyticsFilter,
+  type OrByokCredential,
+  type OrCredits,
+  type OrEndpoint,
+  type OrGuardrail,
+  type OrKey,
+  type OrKeyCreate,
+  type OrKeyUpdate,
+  type OrModel,
+  type OrModelFields,
+  type OrProvider,
+  type OrSpeechRequest,
+  type OrTranscription,
+  type OrTranscriptionRequest,
+  type OrWorkspace,
+} from "./api.js";
 import {
   byokBody,
   byokCreateConfig,
@@ -48,15 +70,8 @@ import {
   workspaceBody,
   workspaceBudgetChanges,
   workspaceCreateConfig,
-  type OrByokCredential,
-  type OrGuardrail,
-  type OrGuardrailKeyAssignment,
-  type OrWorkspace,
-  type OrWorkspaceBudget,
   type PickerSources,
 } from "./management.js";
-
-const BASE_URL = "https://openrouter.ai/api/v1";
 
 /** Resource types only a management key can list. */
 const MANAGEMENT_ONLY_TYPES = new Set(["api-key", "guardrail", "workspace", "byok-credential"]);
@@ -115,27 +130,13 @@ const ANALYTICS_PERFORMANCE_METRICS: AnalyticsMetric[] = [
   { name: "p50_throughput", label: "Throughput p50", unit: "tokens/s" },
 ];
 
-interface AnalyticsFilter {
-  field: string;
-  operator: "eq" | "in";
-  value: string | string[];
-}
-
-/** `POST /analytics/query`. Count metrics can come back as strings. */
-interface AnalyticsQueryResponse {
-  data?: {
-    data?: Array<Record<string, unknown>>;
-    metadata?: { row_count?: number; truncated?: boolean };
-  };
-}
-
 /**
  * One series per metric. Each row carries its bucket under `date__<g>` or
  * `created_at__<g>` depending on the data source the query resolved to;
  * unused metrics are `null` rather than 0 and are skipped.
  */
 function analyticsSeries(
-  response: AnalyticsQueryResponse,
+  response: OrAnalyticsAnswer,
   metrics: AnalyticsMetric[],
   granularity: string,
 ): MetricSeries[] {
@@ -174,129 +175,6 @@ const DASH = "—";
 /** Guardrail, workspace and BYOK listings cap `limit` at 100. */
 const MANAGEMENT_PAGE_SIZE = 100;
 
-// ---------------------------------------------------------------- API shapes
-
-interface OrPricing {
-  prompt?: string;
-  completion?: string;
-  image?: string;
-  request?: string;
-  web_search?: string;
-  input_cache_read?: string;
-  input_cache_write?: string;
-  audio?: string;
-  audio_output?: string;
-}
-
-interface OrModel {
-  id: string;
-  canonical_slug?: string;
-  name?: string;
-  description?: string;
-  created?: number;
-  context_length?: number | null;
-  knowledge_cutoff?: string | null;
-  expiration_date?: string | null;
-  hugging_face_id?: string | null;
-  architecture?: {
-    modality?: string;
-    tokenizer?: string;
-    instruct_type?: string | null;
-    input_modalities?: string[];
-    output_modalities?: string[];
-  };
-  pricing?: OrPricing;
-  supported_parameters?: string[];
-  supported_voices?: string[] | null;
-  top_provider?: {
-    context_length?: number | null;
-    max_completion_tokens?: number | null;
-    is_moderated?: boolean;
-  };
-}
-
-interface OrEndpoint {
-  name: string;
-  model_id?: string;
-  model_name?: string;
-  provider_name?: string;
-  tag?: string;
-  context_length?: number;
-  max_prompt_tokens?: number | null;
-  max_completion_tokens?: number | null;
-  quantization?: string | null;
-  status?: number;
-  pricing?: OrPricing;
-  supported_parameters?: string[];
-  supports_implicit_caching?: boolean;
-  uptime_last_5m?: number | null;
-  uptime_last_30m?: number | null;
-  uptime_last_1d?: number | null;
-  latency_last_30m?: Record<string, number | null> | null;
-  throughput_last_30m?: Record<string, number | null> | null;
-}
-
-interface OrProvider {
-  slug: string;
-  name?: string;
-  headquarters?: string | null;
-  datacenters?: string[] | null;
-  privacy_policy_url?: string | null;
-  terms_of_service_url?: string | null;
-  status_page_url?: string | null;
-}
-
-interface OrKey {
-  hash: string;
-  name?: string;
-  label?: string;
-  disabled?: boolean;
-  limit?: number | null;
-  limit_remaining?: number | null;
-  limit_reset?: string | null;
-  usage?: number;
-  usage_daily?: number;
-  usage_weekly?: number;
-  usage_monthly?: number;
-  byok_usage?: number;
-  include_byok_in_limit?: boolean;
-  expires_at?: string | null;
-  created_at?: string;
-  updated_at?: string | null;
-  workspace_id?: string;
-  creator_user_id?: string | null;
-}
-
-interface OrActivityItem {
-  date: string;
-  model?: string;
-  model_permaslug?: string;
-  endpoint_id?: string;
-  provider_name?: string;
-  usage?: number;
-  byok_usage_inference?: number;
-  requests?: number;
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  reasoning_tokens?: number;
-}
-
-interface OrSttResponse {
-  text: string;
-  task?: string;
-  language?: string;
-  duration?: number;
-  words?: Array<{ word: string; start: number; end: number; speaker?: number }>;
-  segments?: Array<{ text: string; start: number; end: number; speaker?: number }>;
-  usage?: {
-    cost?: number;
-    seconds?: number;
-    input_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-  };
-}
-
 /**
  * OpenRouter plugin client.
  *
@@ -323,6 +201,8 @@ export class OpenRouterClient implements PluginClient {
   private readonly hasManagementKey: boolean;
   private readonly caCert: string | undefined;
   private readonly services: HostServices | undefined;
+  /** Everything the management key reads; `/audio/*` takes the inference key instead. */
+  private readonly api: OpenRouterApi;
   private speechModelsPromise: Promise<{ tts: OrModel[]; stt: OrModel[] }> | undefined;
   private canonicalSlugs: Promise<Map<string, string>> | undefined;
 
@@ -335,23 +215,13 @@ export class OpenRouterClient implements PluginClient {
     this.inferenceKey = credentials["apiKey"] || undefined;
     this.caCert = credentials["caCert"] || undefined;
     this.services = services;
+    this.api = this.apiWith(managementKey);
   }
 
   // ------------------------------------------------------------------ HTTP
 
-  private async fetch<T>(path: string, options?: RequestInit, key?: string): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "OpenRouter",
-      url: `${BASE_URL}${path}`,
-      errorPath: path,
-      headers: {
-        Authorization: `Bearer ${key ?? this.managementKey}`,
-        Accept: "application/json",
-      },
-      ...(options ? { init: options } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-    });
+  private apiWith(key: string): OpenRouterApi {
+    return createOpenRouterApi({ key, caCert: this.caCert, http: this.services?.http });
   }
 
   /** Inference endpoints reject management keys outright. */
@@ -379,15 +249,15 @@ export class OpenRouterClient implements PluginClient {
         case "api-key":
           return this.listApiKeys(accountId);
         case "guardrail":
-          return (await this.listPaged<OrGuardrail>("/guardrails")).map((g) =>
-            mapGuardrail(accountId, g),
+          return (await this.listPaged((query) => this.api.get("/guardrails", { query }))).map(
+            (g) => mapGuardrail(accountId, g),
           );
         case "workspace":
-          return (await this.listPaged<OrWorkspace>("/workspaces")).map((w) =>
-            mapWorkspace(accountId, w),
+          return (await this.listPaged((query) => this.api.get("/workspaces", { query }))).map(
+            (w) => mapWorkspace(accountId, w),
           );
         case "byok-credential":
-          return (await this.listPaged<OrByokCredential>("/byok")).map((b) =>
+          return (await this.listPaged((query) => this.api.get("/byok", { query }))).map((b) =>
             mapByok(accountId, b),
           );
         default:
@@ -410,12 +280,9 @@ export class OpenRouterClient implements PluginClient {
     const out: OrModel[] = [];
     // offset+limit, not a cursor.
     for (let offset = 0; offset < 20 * MODELS_PAGE_SIZE; offset += MODELS_PAGE_SIZE) {
-      const qs = new URLSearchParams({
-        limit: String(MODELS_PAGE_SIZE),
-        offset: String(offset),
-        output_modalities: "all",
+      const data = await this.api.get("/models", {
+        query: { limit: MODELS_PAGE_SIZE, offset, output_modalities: "all" },
       });
-      const data = await this.fetch<{ data?: OrModel[] }>(`/models?${qs.toString()}`);
       const page = data.data ?? [];
       out.push(...page);
       if (page.length < MODELS_PAGE_SIZE) break;
@@ -423,9 +290,9 @@ export class OpenRouterClient implements PluginClient {
     return out;
   }
 
-  private mapModel(accountId: string, now: string, m: OrModel): ResourceInstance {
-    const arch = m.architecture ?? {};
-    const pricing = m.pricing ?? {};
+  private mapModel(accountId: string, now: string, m: OrModelFields): ResourceInstance {
+    const arch: Partial<OrModel["architecture"]> = m.architecture ?? {};
+    const pricing: Partial<OrModel["pricing"]> = m.pricing ?? {};
     const voices = m.supported_voices ?? [];
     return {
       id: `${accountId}:model:${m.id}`,
@@ -472,12 +339,9 @@ export class OpenRouterClient implements PluginClient {
    * models only: see {@link ENDPOINT_FANOUT_MODELS}.
    */
   private async listModelEndpoints(accountId: string): Promise<ResourceInstance[]> {
-    const qs = new URLSearchParams({
-      limit: String(ENDPOINT_FANOUT_MODELS),
-      sort: "most-popular",
-      output_modalities: "all",
+    const listing = await this.api.get("/models", {
+      query: { limit: ENDPOINT_FANOUT_MODELS, sort: "most-popular", output_modalities: "all" },
     });
-    const listing = await this.fetch<{ data?: OrModel[] }>(`/models?${qs.toString()}`);
     const ids = (listing.data ?? []).map((m) => m.id);
     const now = new Date().toISOString();
     const out: ResourceInstance[] = [];
@@ -499,8 +363,8 @@ export class OpenRouterClient implements PluginClient {
     const slug = rest.join("/");
     if (!author || !slug) return [];
     try {
-      const data = await this.fetch<{ data?: { endpoints?: OrEndpoint[] } }>(
-        `/models/${encodeURIComponent(author)}/${encodeURIComponent(slug)}/endpoints`,
+      const data = await this.api.get(
+        `/models/${pathEncode(author)}/${pathEncode(slug)}/endpoints`,
       );
       return data.data?.endpoints ?? [];
     } catch {
@@ -559,18 +423,18 @@ export class OpenRouterClient implements PluginClient {
 
   /**
    * Offset + limit listing used by the management collections, which report
-   * `total_count` alongside each page.
+   * `total_count` alongside each page. A hand loop rather than `getAll`, which has
+   * no way to stop at `total_count`.
    */
-  private async listPaged<T>(path: string): Promise<T[]> {
+  private async listPaged<T>(
+    readPage: (query: {
+      offset: number;
+      limit: number;
+    }) => Promise<{ data?: T[]; total_count?: number }>,
+  ): Promise<T[]> {
     const out: T[] = [];
     for (let offset = 0; offset < 50 * MANAGEMENT_PAGE_SIZE; offset += MANAGEMENT_PAGE_SIZE) {
-      const qs = new URLSearchParams({
-        offset: String(offset),
-        limit: String(MANAGEMENT_PAGE_SIZE),
-      });
-      const data = await this.fetch<{ data?: T[]; total_count?: number }>(
-        `${path}?${qs.toString()}`,
-      );
+      const data = await readPage({ offset, limit: MANAGEMENT_PAGE_SIZE });
       const page = data.data ?? [];
       out.push(...page);
       if (page.length < MANAGEMENT_PAGE_SIZE) break;
@@ -581,7 +445,7 @@ export class OpenRouterClient implements PluginClient {
 
   /** GET /providers */
   private async listProviders(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<{ data?: OrProvider[] }>("/providers");
+    const data = await this.api.get("/providers");
     const now = new Date().toISOString();
     return (data.data ?? []).map((p) => ({
       id: `${accountId}:provider:${p.slug}`,
@@ -613,11 +477,7 @@ export class OpenRouterClient implements PluginClient {
     const pageSize = 100;
 
     for (let offset = 0; offset < 50 * pageSize; offset += pageSize) {
-      const qs = new URLSearchParams({
-        offset: String(offset),
-        include_disabled: "true",
-      });
-      const data = await this.fetch<{ data?: OrKey[] }>(`/keys?${qs.toString()}`);
+      const data = await this.api.get("/keys", { query: { offset, include_disabled: true } });
       const page = data.data ?? [];
       for (const k of page) out.push(this.mapKey(accountId, now, k));
       if (page.length === 0) break;
@@ -675,31 +535,27 @@ export class OpenRouterClient implements PluginClient {
       const now = new Date().toISOString();
 
       if (typeId === "api-key") {
-        const data = await this.fetch<{ data: OrKey }>(`/keys/${encodeURIComponent(externalId)}`);
+        const data = await this.api.get(`/keys/${pathEncode(externalId)}`);
         return this.mapKey(accountId, now, data.data);
       }
 
       if (typeId === "guardrail") {
-        const id = encodeURIComponent(externalId);
+        const id = pathEncode(externalId);
         const [data, assignments] = await Promise.all([
-          this.fetch<{ data: OrGuardrail }>(`/guardrails/${id}`),
-          this.listPaged<OrGuardrailKeyAssignment>(`/guardrails/${id}/assignments/keys`).catch(
-            () => undefined,
-          ),
+          this.api.get(`/guardrails/${id}`),
+          this.listPaged((query) =>
+            this.api.get(`/guardrails/${id}/assignments/keys`, { query }),
+          ).catch(() => undefined),
         ]);
         return mapGuardrail(accountId, data.data, assignments);
       }
 
       if (typeId === "workspace") {
-        const id = encodeURIComponent(externalId);
+        const id = pathEncode(externalId);
         const [data, budgets, members] = await Promise.all([
-          this.fetch<{ data: OrWorkspace }>(`/workspaces/${id}`),
-          this.fetch<{ data?: OrWorkspaceBudget[]; include_byok_in_budgets?: boolean }>(
-            `/workspaces/${id}/budgets`,
-          ).catch(() => undefined),
-          this.fetch<{ total_count?: number; data?: unknown[] }>(
-            `/workspaces/${id}/members?limit=1`,
-          ).catch(() => undefined),
+          this.api.get(`/workspaces/${id}`),
+          this.api.get(`/workspaces/${id}/budgets`).catch(() => undefined),
+          this.api.get(`/workspaces/${id}/members`, { query: { limit: 1 } }).catch(() => undefined),
         ]);
         return mapWorkspace(
           accountId,
@@ -710,9 +566,7 @@ export class OpenRouterClient implements PluginClient {
       }
 
       if (typeId === "byok-credential") {
-        const data = await this.fetch<{ data: OrByokCredential }>(
-          `/byok/${encodeURIComponent(externalId)}`,
-        );
+        const data = await this.api.get(`/byok/${pathEncode(externalId)}`);
         return mapByok(accountId, data.data);
       }
 
@@ -728,9 +582,9 @@ export class OpenRouterClient implements PluginClient {
         const [author, ...rest] = externalId.split("/");
         const slug = rest.join("/");
         if (author && slug) {
-          const data = await this.fetch<{
-            data?: OrModel & { endpoints?: OrEndpoint[] };
-          }>(`/models/${encodeURIComponent(author)}/${encodeURIComponent(slug)}/endpoints`);
+          const data = await this.api.get(
+            `/models/${pathEncode(author)}/${pathEncode(slug)}/endpoints`,
+          );
           if (data.data) {
             const resource = this.mapModel(accountId, now, data.data);
             // `renderDetail` is synchronous, so anything it needs from an extra
@@ -791,11 +645,9 @@ export class OpenRouterClient implements PluginClient {
    */
   fetchCreditBalance(): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
-      let body: { data?: { total_credits?: number; total_usage?: number } };
+      let body: OrCredits;
       try {
-        body = await this.fetch<{ data?: { total_credits?: number; total_usage?: number } }>(
-          "/credits",
-        );
+        body = await this.api.get("/credits");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (/40[13]/.test(message)) {
@@ -850,9 +702,7 @@ export class OpenRouterClient implements PluginClient {
           },
         ];
         try {
-          const credits = await this.fetch<{
-            data?: { total_credits?: number; total_usage?: number };
-          }>("/credits");
+          const credits = await this.api.get("/credits");
           const total = credits.data?.total_credits ?? 0;
           const used = credits.data?.total_usage ?? 0;
           stats.push({ label: "Account credits left", value: `$${(total - used).toFixed(2)}` });
@@ -939,7 +789,7 @@ export class OpenRouterClient implements PluginClient {
 
   private async fetchActivity(): Promise<OrActivityItem[]> {
     try {
-      const data = await this.fetch<{ data?: OrActivityItem[] }>("/activity");
+      const data = await this.api.get("/activity");
       return data.data ?? [];
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -975,7 +825,7 @@ export class OpenRouterClient implements PluginClient {
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
-      let filter: AnalyticsFilter;
+      let filter: OrAnalyticsFilter;
       switch (resourceTypeId) {
         case "model": {
           // Filters match the model's permaslug (`canonical_slug`), which often
@@ -1015,17 +865,15 @@ export class OpenRouterClient implements PluginClient {
    * ranges up to 31 days. The second one failing never hides the first.
    */
   private async queryAnalyticsSeries(
-    filter: AnalyticsFilter,
+    filter: OrAnalyticsFilter,
     startMs: number,
     endMs: number,
   ): Promise<MetricSeries[]> {
     const span = endMs - startMs;
     const granularity = span <= 6 * HOUR_MS ? "minute" : span <= 7 * 24 * HOUR_MS ? "hour" : "day";
     const run = (metrics: AnalyticsMetric[]) =>
-      this.fetch<AnalyticsQueryResponse>("/analytics/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      this.api.post("/analytics/query", {
+        body: {
           metrics: metrics.map((m) => m.name),
           filters: [filter],
           granularity,
@@ -1034,13 +882,13 @@ export class OpenRouterClient implements PluginClient {
             start: new Date(startMs).toISOString(),
             end: new Date(endMs).toISOString(),
           },
-        }),
+        },
       });
 
     const usage = await run(ANALYTICS_USAGE_METRICS);
     const performance =
       span <= ANALYTICS_LATENCY_MAX_DAYS * 24 * HOUR_MS
-        ? await run(ANALYTICS_PERFORMANCE_METRICS).catch((): AnalyticsQueryResponse => ({}))
+        ? await run(ANALYTICS_PERFORMANCE_METRICS).catch((): OrAnalyticsAnswer => ({}))
         : {};
 
     return [
@@ -1069,7 +917,7 @@ export class OpenRouterClient implements PluginClient {
     startMs: number,
     endMs: number,
   ): Promise<MetricSeries[]> {
-    const items = await this.fetchActivity().catch(() => [] as OrActivityItem[]);
+    const items = await this.fetchActivity().catch((): OrActivityItem[] => []);
 
     const keys = [
       ["Spend", "USD", (i: OrActivityItem) => i.usage],
@@ -1117,21 +965,25 @@ export class OpenRouterClient implements PluginClient {
   ): Promise<PickerSources> {
     const [providers, models, keys, workspaces] = await Promise.all([
       need.providers
-        ? this.fetch<{ data?: OrProvider[] }>("/providers")
+        ? this.api
+            .get("/providers")
             .then((d) => d.data ?? [])
-            .catch(() => [] as OrProvider[])
-        : Promise.resolve([] as OrProvider[]),
+            .catch((): OrProvider[] => [])
+        : Promise.resolve<OrProvider[]>([]),
       need.models
-        ? this.fetchAllModels().catch(() => [] as OrModel[])
-        : Promise.resolve([] as OrModel[]),
+        ? this.fetchAllModels().catch((): OrModel[] => [])
+        : Promise.resolve<OrModel[]>([]),
       need.keys
-        ? this.fetch<{ data?: OrKey[] }>("/keys")
+        ? this.api
+            .get("/keys")
             .then((d) => d.data ?? [])
-            .catch(() => [] as OrKey[])
-        : Promise.resolve([] as OrKey[]),
+            .catch((): OrKey[] => [])
+        : Promise.resolve<OrKey[]>([]),
       need.workspaces
-        ? this.listPaged<OrWorkspace>("/workspaces").catch(() => [] as OrWorkspace[])
-        : Promise.resolve([] as OrWorkspace[]),
+        ? this.listPaged((query) => this.api.get("/workspaces", { query })).catch(
+            (): OrWorkspace[] => [],
+          )
+        : Promise.resolve<OrWorkspace[]>([]),
     ]);
     return {
       providers: providers.map((p) => ({ slug: p.slug, ...(p.name ? { name: p.name } : {}) })),
@@ -1250,9 +1102,13 @@ export class OpenRouterClient implements PluginClient {
           if (!fields["provider"]) throw new Error("OpenRouter plugin: pick a provider");
           if (!fields["key"])
             throw new Error("OpenRouter plugin: the provider API key is required");
-          const created = await this.fetch<{ data: OrByokCredential }>("/byok", {
-            method: "POST",
-            body: JSON.stringify(byokBody(fields, true)),
+          const created = await this.api.post("/byok", {
+            body: {
+              provider: fields["provider"],
+              ...(fields["workspaceId"] ? { workspace_id: fields["workspaceId"] } : {}),
+              key: fields["key"],
+              ...byokBody(fields),
+            },
           });
           return mapByok(accountId, created.data);
         }
@@ -1262,17 +1118,14 @@ export class OpenRouterClient implements PluginClient {
       const name = fields["name"];
       if (!name) throw new Error("OpenRouter plugin: missing API key name");
 
-      const body: Record<string, unknown> = { name };
-      if (fields["workspaceId"]) body["workspace_id"] = fields["workspaceId"];
-      if (fields["limit"]) body["limit"] = Number(fields["limit"]);
-      if (fields["limitReset"]) body["limit_reset"] = fields["limitReset"];
-      if (fields["expiresAt"]) body["expires_at"] = fields["expiresAt"];
-      if (fields["includeByokInLimit"] === "true") body["include_byok_in_limit"] = true;
+      const body: OrKeyCreate = { name };
+      if (fields["workspaceId"]) body.workspace_id = fields["workspaceId"];
+      if (fields["limit"]) body.limit = Number(fields["limit"]);
+      if (fields["limitReset"]) body.limit_reset = fields["limitReset"];
+      if (fields["expiresAt"]) body.expires_at = fields["expiresAt"];
+      if (fields["includeByokInLimit"] === "true") body.include_byok_in_limit = true;
 
-      const created = await this.fetch<{ data: OrKey; key?: string }>("/keys", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      const created = await this.api.post("/keys", { body });
       const resource = this.mapKey(accountId, new Date().toISOString(), created.data);
       if (created.key) resource.resolvedOutputs = { apiKey: created.key };
       return resource;
@@ -1289,17 +1142,17 @@ export class OpenRouterClient implements PluginClient {
   ): Promise<ResourceInstance> {
     if (!fields["name"]) throw new Error("OpenRouter plugin: missing guardrail name");
     const { assignedKeys, workspaceId, ...rest } = fields;
-    const body = guardrailBody(rest);
-    if (workspaceId) body["workspace_id"] = workspaceId;
-    const created = await this.fetch<{ data: OrGuardrail }>("/guardrails", {
-      method: "POST",
-      body: JSON.stringify(body),
+    const created = await this.api.post("/guardrails", {
+      body: {
+        name: fields["name"],
+        ...guardrailBody(rest),
+        ...(workspaceId ? { workspace_id: workspaceId } : {}),
+      },
     });
     const keyHashes = parseList(assignedKeys);
     if (keyHashes.length > 0) {
-      await this.fetch(`/guardrails/${encodeURIComponent(created.data.id)}/assignments/keys`, {
-        method: "POST",
-        body: JSON.stringify({ key_hashes: keyHashes }),
+      await this.api.post(`/guardrails/${pathEncode(created.data.id)}/assignments/keys`, {
+        body: { key_hashes: keyHashes },
       });
     }
     return mapGuardrail(accountId, created.data);
@@ -1312,9 +1165,8 @@ export class OpenRouterClient implements PluginClient {
   ): Promise<ResourceInstance> {
     if (!fields["name"]) throw new Error("OpenRouter plugin: missing workspace name");
     if (!fields["slug"]) throw new Error("OpenRouter plugin: missing workspace slug");
-    const created = await this.fetch<{ data: OrWorkspace }>("/workspaces", {
-      method: "POST",
-      body: JSON.stringify(workspaceBody(fields)),
+    const created = await this.api.post("/workspaces", {
+      body: { name: fields["name"], slug: fields["slug"], ...workspaceBody(fields) },
     });
     await this.applyWorkspaceBudgets(created.data.id, fields);
     return mapWorkspace(accountId, created.data);
@@ -1329,23 +1181,22 @@ export class OpenRouterClient implements PluginClient {
     workspaceId: string,
     fields: Record<string, string>,
   ): Promise<void> {
-    const ref = encodeURIComponent(workspaceId);
+    const ref = pathEncode(workspaceId);
     const changes = workspaceBudgetChanges(fields);
     const byok =
       fields["includeByokInBudgets"] !== undefined
         ? { include_byok_in_budgets: fields["includeByokInBudgets"] === "true" }
         : {};
     for (const change of changes) {
-      const path = `/workspaces/${ref}/budgets/${change.interval}`;
+      const interval = pathEncode(change.interval);
       if (change.limitUsd === null) {
-        await this.fetch(path, { method: "DELETE" }).catch((err: unknown) => {
+        await this.api.delete(`/workspaces/${ref}/budgets/${interval}`).catch((err: unknown) => {
           // Clearing a budget that never existed is not worth failing the edit over.
-          if (!/API error 404\b/.test(String((err as Error).message))) throw err;
+          if (!(err instanceof Error && /API error 404\b/.test(err.message))) throw err;
         });
       } else {
-        await this.fetch(path, {
-          method: "PUT",
-          body: JSON.stringify({ limit_usd: change.limitUsd, ...byok }),
+        await this.api.put(`/workspaces/${ref}/budgets/${interval}`, {
+          body: { limit_usd: change.limitUsd, ...byok },
         });
       }
     }
@@ -1366,31 +1217,22 @@ export class OpenRouterClient implements PluginClient {
         case "guardrail": {
           const body = guardrailBody(fields);
           if (Object.keys(body).length > 0) {
-            await this.fetch(`/guardrails/${encodeURIComponent(externalId)}`, {
-              method: "PATCH",
-              body: JSON.stringify(body),
-            });
+            await this.api.patch(`/guardrails/${pathEncode(externalId)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "workspace": {
           const body = workspaceBody(fields);
           if (Object.keys(body).length > 0) {
-            await this.fetch(`/workspaces/${encodeURIComponent(externalId)}`, {
-              method: "PATCH",
-              body: JSON.stringify(body),
-            });
+            await this.api.patch(`/workspaces/${pathEncode(externalId)}`, { body });
           }
           await this.applyWorkspaceBudgets(externalId, fields);
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "byok-credential": {
-          const body = byokBody(fields, false);
+          const body = byokBody(fields);
           if (Object.keys(body).length > 0) {
-            await this.fetch(`/byok/${encodeURIComponent(externalId)}`, {
-              method: "PATCH",
-              body: JSON.stringify(body),
-            });
+            await this.api.patch(`/byok/${pathEncode(externalId)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -1399,25 +1241,22 @@ export class OpenRouterClient implements PluginClient {
       }
       const hash = externalId;
 
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined) body["name"] = fields["name"];
-      if (fields["disabled"] !== undefined) body["disabled"] = fields["disabled"] === "true";
+      const body: OrKeyUpdate = {};
+      if (fields["name"] !== undefined) body.name = fields["name"];
+      if (fields["disabled"] !== undefined) body.disabled = fields["disabled"] === "true";
       if (fields["limit"] !== undefined) {
-        body["limit"] = fields["limit"] === "" ? null : Number(fields["limit"]);
+        body.limit = fields["limit"] === "" ? null : Number(fields["limit"]);
       }
       if (fields["limitReset"] !== undefined) {
-        body["limit_reset"] = fields["limitReset"] === "" ? null : fields["limitReset"];
+        body.limit_reset = fields["limitReset"] === "" ? null : fields["limitReset"];
       }
       if (fields["includeByokInLimit"] !== undefined) {
-        body["include_byok_in_limit"] = fields["includeByokInLimit"] === "true";
+        body.include_byok_in_limit = fields["includeByokInLimit"] === "true";
       }
       if (Object.keys(body).length === 0)
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
 
-      const updated = await this.fetch<{ data: OrKey }>(`/keys/${encodeURIComponent(hash)}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      });
+      const updated = await this.api.patch(`/keys/${pathEncode(hash)}`, { body });
       return this.mapKey(accountId, new Date().toISOString(), updated.data);
     });
   }
@@ -1425,21 +1264,21 @@ export class OpenRouterClient implements PluginClient {
   /** DELETE /keys/{hash}, /guardrails/{id}, /workspaces/{id} or /byok/{id} */
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const externalId = encodeURIComponent(resourceId.split(":").slice(2).join(":"));
+      const externalId = pathEncode(resourceId.split(":").slice(2).join(":"));
       switch (typeId) {
         case "api-key":
-          await this.fetch(`/keys/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/keys/${externalId}`);
           return;
         case "guardrail":
-          await this.fetch(`/guardrails/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/guardrails/${externalId}`);
           return;
         // The default workspace refuses deletion without an explicit
         // confirmation flag; the plugin deliberately never sends it.
         case "workspace":
-          await this.fetch(`/workspaces/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/workspaces/${externalId}`);
           return;
         case "byok-credential":
-          await this.fetch(`/byok/${externalId}`, { method: "DELETE" });
+          await this.api.delete(`/byok/${externalId}`);
           return;
         default:
           throw new Error(`OpenRouter plugin: cannot delete type "${typeId}"`);
@@ -1457,8 +1296,8 @@ export class OpenRouterClient implements PluginClient {
   private async speechCatalogue(): Promise<{ tts: OrModel[]; stt: OrModel[] }> {
     if (!this.speechModelsPromise) {
       this.speechModelsPromise = Promise.all([
-        this.fetch<{ data?: OrModel[] }>("/models?output_modalities=speech"),
-        this.fetch<{ data?: OrModel[] }>("/models?output_modalities=transcription"),
+        this.api.get("/models", { query: { output_modalities: "speech" } }),
+        this.api.get("/models", { query: { output_modalities: "transcription" } }),
       ])
         .then(([tts, stt]) => ({ tts: tts.data ?? [], stt: stt.data ?? [] }))
         .catch((err: unknown) => {
@@ -1471,7 +1310,7 @@ export class OpenRouterClient implements PluginClient {
 
   /**
    * POST /audio/speech. Returns **raw binary**, so this deliberately bypasses
-   * `jsonRestFetch` (which JSON-parses every response) and the host HTTP
+   * the typed client (which JSON-parses every response) and the host HTTP
    * service (whose response body is a UTF-8 string and would mangle the bytes).
    * That means this one request is not routed through a bastion: the trade is
    * documented rather than silent.
@@ -1489,6 +1328,13 @@ export class OpenRouterClient implements PluginClient {
       const model = await this.resolveSpeechModel(payload.modelId, resourceId, "tts");
       const voice = await this.resolveVoice(payload.voiceId, model);
       const started = Date.now();
+      const speechRequest: OrSpeechRequest = {
+        model,
+        input: payload.text,
+        voice,
+        // The spec's enum is mp3|pcm: ask for mp3, which <audio> can play.
+        response_format: "mp3",
+      };
 
       const res = await fetch(`${BASE_URL}/audio/speech`, {
         method: "POST",
@@ -1497,13 +1343,7 @@ export class OpenRouterClient implements PluginClient {
           "Content-Type": "application/json",
           Accept: "audio/mpeg",
         },
-        body: JSON.stringify({
-          model,
-          input: payload.text,
-          voice,
-          // The spec's enum is mp3|pcm: ask for mp3, which <audio> can play.
-          response_format: "mp3",
-        }),
+        body: JSON.stringify(speechRequest),
       });
       if (!res.ok) {
         throw new Error(
@@ -1541,7 +1381,7 @@ export class OpenRouterClient implements PluginClient {
     payload: TranscribeAudioPayload,
   ): PluginEffect<TranscribeAudioResult> {
     return attempt(async () => {
-      const key = this.requireInferenceKey();
+      const api = this.apiWith(this.requireInferenceKey());
       const sizeBytes = Math.floor((payload.audioBase64.length * 3) / 4);
       if (sizeBytes > STT_MAX_AUDIO_BYTES) {
         throw new Error(
@@ -1550,7 +1390,7 @@ export class OpenRouterClient implements PluginClient {
       }
 
       const model = await this.resolveSpeechModel(payload.modelId, resourceId, "stt");
-      const base: Record<string, unknown> = {
+      const base: OrTranscriptionRequest = {
         model,
         input_audio: {
           // Straight through: the browser's MediaRecorder output is not transcoded.
@@ -1558,29 +1398,20 @@ export class OpenRouterClient implements PluginClient {
           format: audioFormatForMime(payload.mimeType),
         },
       };
-      if (payload.language && payload.language !== "auto") base["language"] = payload.language;
+      if (payload.language && payload.language !== "auto") base.language = payload.language;
 
       const started = Date.now();
-      let res: OrSttResponse;
+      let res: OrTranscription;
       try {
-        res = await this.fetch<OrSttResponse>(
-          "/audio/transcriptions",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              ...base,
-              response_format: "verbose_json",
-              timestamp_granularities: ["segment", "word"],
-            }),
+        res = await api.post("/audio/transcriptions", {
+          body: {
+            ...base,
+            response_format: "verbose_json",
+            timestamp_granularities: ["segment", "word"],
           },
-          key,
-        );
+        });
       } catch {
-        res = await this.fetch<OrSttResponse>(
-          "/audio/transcriptions",
-          { method: "POST", body: JSON.stringify(base) },
-          key,
-        );
+        res = await api.post("/audio/transcriptions", { body: base });
       }
       const elapsed = Date.now() - started;
 
@@ -2164,7 +1995,7 @@ export class OpenRouterClient implements PluginClient {
 
 // -------------------------------------------------------------- helpers
 
-function isAudioModel(m: OrModel): boolean {
+function isAudioModel(m: OrModelFields): boolean {
   const outputs = m.architecture?.output_modalities ?? [];
   return outputs.includes("speech") || outputs.includes("transcription");
 }
@@ -2192,19 +2023,22 @@ function endpointStatusLabel(status: number | undefined): string {
   return `deprioritised (${status})`;
 }
 
-function formatUptime(value: unknown): string {
+/** A resource field, or an API value on its way to being shown like one. */
+type FieldValue = ResourceInstance["fields"][string] | null | undefined;
+
+function formatUptime(value: FieldValue): string {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n) || n === 0) return DASH;
   return `${(n * 100).toFixed(2)}%`;
 }
 
-function formatMs(value: unknown): string {
+function formatMs(value: FieldValue): string {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n) || n === 0) return DASH;
   return `${Math.round(n)} ms`;
 }
 
-function formatThroughput(value: unknown): string {
+function formatThroughput(value: FieldValue): string {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n) || n === 0) return DASH;
   return `${n.toFixed(1)} tok/s`;

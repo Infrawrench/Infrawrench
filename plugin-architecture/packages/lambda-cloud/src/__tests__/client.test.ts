@@ -285,23 +285,38 @@ describe("firewall", () => {
 });
 
 describe("create helpers", () => {
+  const region = (name: string) => ({ name, description: "" });
+  const instanceType = {
+    architecture: "x86_64",
+    description: "",
+    gpu_description: "",
+    specs: { vcpus: 0, memory_gib: 0, storage_gib: 0, gpus: 0 },
+  } as const;
+  const image = {
+    architecture: "x86_64",
+    created_time: "",
+    description: "",
+    region: region("us-east-1"),
+    updated_time: "",
+  } as const;
   const types = [
     {
       instance_type: {
+        ...instanceType,
         name: "a",
         price_cents_per_hour: 100,
-        specs: { vcpus: 8, memory_gib: 32, gpus: 1 },
+        specs: { vcpus: 8, memory_gib: 32, storage_gib: 0, gpus: 1 },
       },
-      regions_with_capacity_available: [{ name: "us-east-1" }],
+      regions_with_capacity_available: [region("us-east-1")],
     },
     {
-      instance_type: { name: "b", price_cents_per_hour: 200 },
+      instance_type: { ...instanceType, name: "b", price_cents_per_hour: 200 },
       regions_with_capacity_available: [],
     },
   ];
 
   it("tags each region with the types that have capacity there", () => {
-    const regions = regionOptions([{ name: "us-east-1" }, { name: "us-west-1" }], types);
+    const regions = regionOptions([region("us-east-1"), region("us-west-1")], types);
     expect(regions.map((r) => [r.id, r.availableFor])).toEqual([
       ["us-east-1", ["a"]],
       ["us-west-1", []],
@@ -320,8 +335,8 @@ describe("create helpers", () => {
 
   it("collapses images to one per family, newest version", () => {
     const opts = imageOptions([
-      { id: "1", family: "ubuntu", name: "Ubuntu 22.04", version: "1" },
-      { id: "2", family: "ubuntu", name: "Ubuntu 22.04", version: "2" },
+      { ...image, id: "1", family: "ubuntu", name: "Ubuntu 22.04", version: "1" },
+      { ...image, id: "2", family: "ubuntu", name: "Ubuntu 22.04", version: "2" },
     ]);
     expect(opts.map((o) => o.id)).toEqual(["default", "ubuntu"]);
   });

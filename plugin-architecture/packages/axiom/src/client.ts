@@ -17,9 +17,9 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf } from "@infrawrench/plugin-base";
-import type { AxiomContext } from "./api.js";
-import { EDGE_DEPLOYMENTS, axFetch, isPersonalToken, mapPooled, statusOf } from "./api.js";
+import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { AxiomApi, AxiomContext } from "./api.js";
+import { EDGE_DEPLOYMENTS, isPersonalToken, managementApi, mapPooled, statusOf } from "./api.js";
 import { aplDataset, firstRows, runApl } from "./apl.js";
 import {
   datasetEdgeUrl,
@@ -52,19 +52,15 @@ import {
 import { verifyAxiomCredentials } from "./preflight.js";
 import { MONITOR_HISTORY_KEY, renderAxiomDetail, renderAxiomSidebar } from "./render.js";
 import type {
-  AxAnnotation,
   AxDashboard,
   AxDataset,
+  AxDatasetCapability,
   AxField,
   AxMonitor,
-  AxMonitorAlert,
-  AxNotifier,
   AxNotifierProperties,
+  AxNotifierRow,
   AxOrg,
   AxStarredQuery,
-  AxToken,
-  AxUser,
-  AxView,
   AxVirtualField,
 } from "./types.js";
 
@@ -178,8 +174,18 @@ export function notifierProperties(
   }
 }
 
+/** A monitor being edited: a field set to `undefined` is left out of the body. */
+type EditableMonitor = { [K in keyof AxMonitor]: AxMonitor[K] | undefined };
+
 /** The PUT body for a monitor: everything readable minus the read-only fields. */
-export function monitorBody(m: AxMonitor): Record<string, unknown> {
+export function monitorBody<
+  M extends {
+    id?: string | undefined;
+    createdAt?: string | undefined;
+    createdBy?: string | undefined;
+    updatedAt?: string | undefined;
+  },
+>(m: M) {
   const { id: _id, createdAt: _c, createdBy: _b, updatedAt: _u, ...rest } = m;
   return rest;
 }
@@ -201,6 +207,7 @@ export function logLine(row: Record<string, unknown>): string {
 
 export class AxiomClient implements PluginClient {
   private readonly ctx: AxiomContext;
+  private readonly api: AxiomApi;
   private readonly secrets: SecretHostServices | undefined;
   private orgCache: Promise<AxOrg> | undefined;
   private datasetCache: { at: number; value: Promise<AxDataset[]> } | undefined;
@@ -219,6 +226,7 @@ export class AxiomClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
+    this.api = managementApi(this.ctx);
     this.secrets = services?.secrets;
   }
 
@@ -232,9 +240,8 @@ export class AxiomClient implements PluginClient {
    */
   private org(): Promise<AxOrg> {
     this.orgCache ??= (async () => {
-      if (this.ctx.orgId)
-        return axFetch<AxOrg>(this.ctx, `/v2/orgs/${encodeURIComponent(this.ctx.orgId)}`);
-      const orgs = await axFetch<AxOrg[]>(this.ctx, "/v2/orgs");
+      if (this.ctx.orgId) return this.api.get(`/orgs/${pathEncode(this.ctx.orgId)}`);
+      const orgs = await this.api.get("/orgs");
       const first = (orgs ?? [])[0];
       if (!first) throw new Error("Axiom plugin: the token sees no organization");
       return first;
@@ -248,7 +255,7 @@ export class AxiomClient implements PluginClient {
   private datasets(): Promise<AxDataset[]> {
     if (this.datasetCache && Date.now() - this.datasetCache.at < 60_000)
       return this.datasetCache.value;
-    const value = axFetch<AxDataset[]>(this.ctx, "/v2/datasets").then((d) => d ?? []);
+    const value = this.api.get("/datasets").then((d) => d ?? []);
     this.datasetCache = { at: Date.now(), value };
     value.catch(() => {
       this.datasetCache = undefined;
@@ -258,7 +265,7 @@ export class AxiomClient implements PluginClient {
 
   private async edgeUrlFor(dataset: string): Promise<string | undefined> {
     const [sets, org] = await Promise.all([
-      this.datasets().catch(() => [] as AxDataset[]),
+      this.datasets().catch((): AxDataset[] => []),
       this.org().catch(() => undefined),
     ]);
     const d = sets.find((s) => s.id === dataset || s.name === dataset);
@@ -287,11 +294,11 @@ export class AxiomClient implements PluginClient {
   }
 
   private async notifierNames(): Promise<Map<string, string>> {
-    const list = await axFetch<AxNotifier[]>(this.ctx, "/v2/notifiers").catch(
-      () => [] as AxNotifier[],
-    );
+    const list = await this.api.get("/notifiers").catch((): AxNotifierRow[] => []);
     return new Map(
-      (list ?? []).filter((n) => n.id).map((n) => [n.id as string, n.name ?? (n.id as string)]),
+      (list ?? [])
+        .filter((n): n is AxNotifierRow & { id: string } => Boolean(n.id))
+        .map((n) => [n.id, n.name ?? n.id]),
     );
   }
 
@@ -322,10 +329,9 @@ export class AxiomClient implements PluginClient {
             const sets = await this.datasets();
             const out = await mapPooled(sets, POOL, async (d) => {
               const id = d.id ?? d.name ?? "";
-              const fields = await axFetch<AxField[]>(
-                this.ctx,
-                `/v2/datasets/${encodeURIComponent(id)}/fields`,
-              ).catch(() => [] as AxField[]);
+              const fields = await this.api
+                .get(`/datasets/${pathEncode(id)}/fields`)
+                .catch((): AxField[] => []);
               return (fields ?? []).map((f) => mapField(accountId, id, f));
             });
             return out.flat();
@@ -334,9 +340,9 @@ export class AxiomClient implements PluginClient {
           return this.scoped(async () => {
             const sets = await this.datasets();
             const out = await mapPooled(sets, POOL, async (d) => {
-              const list = await axFetch<AxVirtualField[]>(this.ctx, "/v2/vfields", {
-                query: { dataset: d.name ?? d.id ?? "" },
-              }).catch(() => [] as AxVirtualField[]);
+              const list = await this.api
+                .get("/vfields", { query: { dataset: d.name ?? d.id ?? "" } })
+                .catch((): AxVirtualField[] => []);
               return (list ?? []).map((v) =>
                 mapVirtualField(accountId, { ...v, dataset: v.dataset ?? d.id ?? d.name ?? "" }),
               );
@@ -346,25 +352,21 @@ export class AxiomClient implements PluginClient {
         case "monitor":
           return this.scoped(async () => {
             const [monitors, names] = await Promise.all([
-              axFetch<AxMonitor[]>(this.ctx, "/v2/monitors"),
+              this.api.get("/monitors"),
               this.notifierNames(),
             ]);
             return (monitors ?? []).map((m) => mapMonitor(accountId, m, names));
           });
         case "notifier":
           return this.scoped(async () =>
-            ((await axFetch<AxNotifier[]>(this.ctx, "/v2/notifiers")) ?? []).map((n) =>
-              mapNotifier(accountId, n),
-            ),
+            ((await this.api.get("/notifiers")) ?? []).map((n) => mapNotifier(accountId, n)),
           );
         case "dashboard":
           return this.scoped(async () => {
             const out: AxDashboard[] = [];
             for (let offset = 0; offset < 5000; offset += 100) {
               const page =
-                (await axFetch<AxDashboard[]>(this.ctx, "/v2/dashboards", {
-                  query: { limit: 100, offset },
-                })) ?? [];
+                (await this.api.get("/dashboards", { query: { limit: 100, offset } })) ?? [];
               out.push(...page);
               if (page.length < 100) break;
             }
@@ -372,16 +374,14 @@ export class AxiomClient implements PluginClient {
           });
         case "view":
           return this.scoped(async () =>
-            ((await axFetch<AxView[]>(this.ctx, "/v2/views")) ?? []).map((v) =>
-              mapView(accountId, v),
-            ),
+            ((await this.api.get("/views")) ?? []).map((v) => mapView(accountId, v)),
           );
         case "starred-query":
           return this.scoped(async () => {
             const out: AxStarredQuery[] = [];
             for (let offset = 0; offset < 5000; offset += 100) {
               const page =
-                (await axFetch<AxStarredQuery[]>(this.ctx, "/v2/apl-starred-queries", {
+                (await this.api.get("/apl-starred-queries", {
                   query: { who: "all", limit: 100, offset },
                 })) ?? [];
               out.push(...page);
@@ -392,22 +392,17 @@ export class AxiomClient implements PluginClient {
         case "annotation":
           return this.scoped(async () => {
             const start = new Date(Date.now() - MAX_ANNOTATION_DAYS * 86400_000).toISOString();
-            return (
-              (await axFetch<AxAnnotation[]>(this.ctx, "/v2/annotations", { query: { start } })) ??
-              []
-            ).map((a) => mapAnnotation(accountId, a));
+            return ((await this.api.get("/annotations", { query: { start } })) ?? []).map((a) =>
+              mapAnnotation(accountId, a),
+            );
           });
         case "api-token":
           return this.scoped(async () =>
-            ((await axFetch<AxToken[]>(this.ctx, "/v2/tokens")) ?? []).map((t) =>
-              mapToken(accountId, t),
-            ),
+            ((await this.api.get("/tokens")) ?? []).map((t) => mapToken(accountId, t)),
           );
         case "user":
           return this.scoped(async () =>
-            ((await axFetch<AxUser[]>(this.ctx, "/v2/users")) ?? []).map((u) =>
-              mapUser(accountId, u),
-            ),
+            ((await this.api.get("/users")) ?? []).map((u) => mapUser(accountId, u)),
           );
         default:
           throw new Error(`Axiom plugin: unknown resource type "${typeId}"`);
@@ -426,7 +421,7 @@ export class AxiomClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(id);
       switch (typeId) {
         case "organization":
           return mapOrganization(accountId, await this.org());
@@ -434,57 +429,41 @@ export class AxiomClient implements PluginClient {
           const org = await this.org().catch(() => undefined);
           return mapDataset(
             accountId,
-            await axFetch<AxDataset>(this.ctx, `/v2/datasets/${enc}`),
+            await this.api.get(`/datasets/${enc}`),
             org?.defaultEdgeDeployment,
           );
         }
         case "field": {
           const [dataset = "", ...rest] = id.split("/");
           const name = rest.join("/");
-          const f = await axFetch<AxField>(
-            this.ctx,
-            `/v2/datasets/${encodeURIComponent(dataset)}/fields/${encodeURIComponent(name)}`,
+          const f = await this.api.get(
+            `/datasets/${pathEncode(dataset)}/fields/${pathEncode(name)}`,
           );
           return mapField(accountId, dataset, f);
         }
         case "virtual-field":
-          return mapVirtualField(
-            accountId,
-            await axFetch<AxVirtualField>(this.ctx, `/v2/vfields/${enc}`),
-          );
+          return mapVirtualField(accountId, await this.api.get(`/vfields/${enc}`));
         case "monitor": {
           const [m, names] = await Promise.all([
-            axFetch<AxMonitor>(this.ctx, `/v2/monitors/${enc}`),
+            this.api.get(`/monitors/${enc}`),
             this.notifierNames(),
           ]);
           return mapMonitor(accountId, m, names);
         }
         case "notifier":
-          return mapNotifier(
-            accountId,
-            await axFetch<AxNotifier>(this.ctx, `/v2/notifiers/${enc}`),
-          );
+          return mapNotifier(accountId, await this.api.get(`/notifiers/${enc}`));
         case "dashboard":
-          return mapDashboard(
-            accountId,
-            await axFetch<AxDashboard>(this.ctx, `/v2/dashboards/uid/${enc}`),
-          );
+          return mapDashboard(accountId, await this.api.get(`/dashboards/uid/${enc}`));
         case "view":
-          return mapView(accountId, await axFetch<AxView>(this.ctx, `/v2/views/${enc}`));
+          return mapView(accountId, await this.api.get(`/views/${enc}`));
         case "starred-query":
-          return mapStarredQuery(
-            accountId,
-            await axFetch<AxStarredQuery>(this.ctx, `/v2/apl-starred-queries/${enc}`),
-          );
+          return mapStarredQuery(accountId, await this.api.get(`/apl-starred-queries/${enc}`));
         case "annotation":
-          return mapAnnotation(
-            accountId,
-            await axFetch<AxAnnotation>(this.ctx, `/v2/annotations/${enc}`),
-          );
+          return mapAnnotation(accountId, await this.api.get(`/annotations/${enc}`));
         case "api-token":
-          return mapToken(accountId, await axFetch<AxToken>(this.ctx, `/v2/tokens/${enc}`));
+          return mapToken(accountId, await this.api.get(`/tokens/${enc}`));
         case "user":
-          return mapUser(accountId, await axFetch<AxUser>(this.ctx, `/v2/users/${enc}`));
+          return mapUser(accountId, await this.api.get(`/users/${enc}`));
         default:
           throw new Error(`Axiom plugin: unknown resource type "${typeId}"`);
       }
@@ -518,11 +497,9 @@ export class AxiomClient implements PluginClient {
       if (resource.resourceTypeId !== "monitor" || !resource.externalId) return resource;
       const end = new Date();
       const start = new Date(end.getTime() - 7 * 86400_000);
-      const history = await axFetch<AxMonitorAlert[]>(
-        this.ctx,
-        `/v2/monitors/${encodeURIComponent(resource.externalId)}/history`,
-        { query: { startTime: start.toISOString(), endTime: end.toISOString() } },
-      );
+      const history = await this.api.get(`/monitors/${pathEncode(resource.externalId)}/history`, {
+        query: { startTime: start.toISOString(), endTime: end.toISOString() },
+      });
       const sorted = [...(history ?? [])].sort((a, b) =>
         String(b.timestamp).localeCompare(String(a.timestamp)),
       );
@@ -562,10 +539,7 @@ export class AxiomClient implements PluginClient {
   introspectResource(resourceId: string): PluginEffect<SqlTableMeta[]> {
     return attempt(async () => {
       const dataset = externalIdOf(resourceId);
-      const fields = await axFetch<AxField[]>(
-        this.ctx,
-        `/v2/datasets/${encodeURIComponent(dataset)}/fields`,
-      );
+      const fields = await this.api.get(`/datasets/${pathEncode(dataset)}/fields`);
       return [
         {
           name: aplDataset(dataset),
@@ -660,7 +634,7 @@ export class AxiomClient implements PluginClient {
             rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
           );
         case "monitor": {
-          const m = await axFetch<AxMonitor>(this.ctx, `/v2/monitors/${encodeURIComponent(id)}`);
+          const m = await this.api.get(`/monitors/${pathEncode(id)}`);
           if (!m.aplQuery) return [];
           return aplSeries(
             this.ctx,
@@ -699,10 +673,9 @@ export class AxiomClient implements PluginClient {
           throw new QuotaAccessError("The Axiom token cannot read the organization.");
         throw err;
       }
-      const l = org.license ?? {};
+      const l: Partial<AxOrg["license"]> = org.license ?? {};
       const out: QuotaUsage[] = [];
-      const count = async (path: string) =>
-        ((await axFetch<unknown[]>(this.ctx, path)) ?? []).length;
+      const count = async (rows: Promise<readonly object[]>) => ((await rows) ?? []).length;
       const push = (
         id: string,
         name: string,
@@ -715,9 +688,9 @@ export class AxiomClient implements PluginClient {
         }
       };
       const [datasets, monitors, users] = await Promise.all([
-        count("/v2/datasets").catch(() => undefined),
-        count("/v2/monitors").catch(() => undefined),
-        count("/v2/users").catch(() => undefined),
+        count(this.api.get("/datasets")).catch(() => undefined),
+        count(this.api.get("/monitors")).catch(() => undefined),
+        count(this.api.get("/users")).catch(() => undefined),
       ]);
       push("datasets", "Datasets", l.maxDatasets, datasets, "datasets");
       push("monitors", "Monitors", l.maxMonitors, monitors, "monitors");
@@ -752,7 +725,7 @@ export class AxiomClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async datasetOptions() {
-    return (await this.datasets().catch(() => [] as AxDataset[])).map((d) =>
+    return (await this.datasets().catch((): AxDataset[] => [])).map((d) =>
       opt(d.name ?? d.id ?? "", d.name ?? d.id ?? ""),
     );
   }
@@ -1130,19 +1103,19 @@ export class AxiomClient implements PluginClient {
     parentResourceId?: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const post = <T>(path: string, body: unknown) =>
-        axFetch<T>(this.ctx, path, { method: "POST", body: JSON.stringify(body) });
       switch (typeId) {
         case "dataset": {
           const retention = num(fields["retentionDays"]);
-          const d = await post<AxDataset>("/v2/datasets", {
-            name: trimmed(fields, "name"),
-            kind: trimmed(fields, "kind") || "axiom:events:v1",
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            ...(trimmed(fields, "edgeDeployment")
-              ? { edgeDeployment: trimmed(fields, "edgeDeployment") }
-              : {}),
-            ...(retention ? { retentionDays: retention, useRetentionPeriod: true } : {}),
+          const d = await this.api.post("/datasets", {
+            body: {
+              name: trimmed(fields, "name"),
+              kind: trimmed(fields, "kind") || "axiom:events:v1",
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              ...(trimmed(fields, "edgeDeployment")
+                ? { edgeDeployment: trimmed(fields, "edgeDeployment") }
+                : {}),
+              ...(retention ? { retentionDays: retention, useRetentionPeriod: true } : {}),
+            },
           });
           this.datasetCache = undefined;
           const org = await this.org().catch(() => undefined);
@@ -1151,13 +1124,15 @@ export class AxiomClient implements PluginClient {
         case "virtual-field": {
           const dataset =
             trimmed(fields, "dataset") || (parentResourceId ? externalIdOf(parentResourceId) : "");
-          const v = await post<AxVirtualField>("/v2/vfields", {
-            dataset,
-            name: trimmed(fields, "name"),
-            expression: trimmed(fields, "expression"),
-            ...(fields["type"] ? { type: trimmed(fields, "type") } : {}),
-            ...(fields["unit"] ? { unit: trimmed(fields, "unit") } : {}),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
+          const v = await this.api.post("/vfields", {
+            body: {
+              dataset,
+              name: trimmed(fields, "name"),
+              expression: trimmed(fields, "expression"),
+              ...(fields["type"] ? { type: trimmed(fields, "type") } : {}),
+              ...(fields["unit"] ? { unit: trimmed(fields, "unit") } : {}),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+            },
           });
           return mapVirtualField(accountId, { ...v, dataset: v.dataset ?? dataset });
         }
@@ -1170,52 +1145,61 @@ export class AxiomClient implements PluginClient {
           if (!apl) throw new Error("Write an APL query or pick a dataset.");
           let notifierIds: string[] = [];
           try {
-            notifierIds = JSON.parse(fields["notifierIds"] || "[]") as string[];
+            notifierIds = JSON.parse(fields["notifierIds"] || "[]");
           } catch {
             notifierIds = [];
           }
-          const m = await post<AxMonitor>("/v2/monitors", {
-            name: trimmed(fields, "name"),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            type,
-            aplQuery: apl,
-            intervalMinutes: num(fields["intervalMinutes"], 5),
-            rangeMinutes: num(fields["rangeMinutes"], 5),
-            notifierIds,
-            ...(type !== "MatchEvent" ? { operator: trimmed(fields, "operator") || "Above" } : {}),
-            ...(type === "Threshold" ? { threshold: num(fields["threshold"], 0) } : {}),
-            ...(type === "AnomalyDetection"
-              ? {
-                  compareDays: num(fields["compareDays"], 7),
-                  tolerance: num(fields["tolerance"], 25),
-                }
-              : {}),
+          const m = await this.api.post("/monitors", {
+            body: {
+              name: trimmed(fields, "name"),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              type,
+              aplQuery: apl,
+              intervalMinutes: num(fields["intervalMinutes"], 5),
+              rangeMinutes: num(fields["rangeMinutes"], 5),
+              notifierIds,
+              ...(type !== "MatchEvent"
+                ? { operator: trimmed(fields, "operator") || "Above" }
+                : {}),
+              ...(type === "Threshold" ? { threshold: num(fields["threshold"], 0) } : {}),
+              ...(type === "AnomalyDetection"
+                ? {
+                    compareDays: num(fields["compareDays"], 7),
+                    tolerance: num(fields["tolerance"], 25),
+                  }
+                : {}),
+            },
           });
           return mapMonitor(accountId, m, await this.notifierNames());
         }
         case "notifier": {
           const channel = trimmed(fields, "channel") || "email";
-          const n = await post<AxNotifier>("/v2/notifiers", {
-            name: trimmed(fields, "name"),
-            properties: notifierProperties(channel, fields),
+          const n = await this.api.post("/notifiers", {
+            body: {
+              name: trimmed(fields, "name"),
+              properties: notifierProperties(channel, fields),
+            },
           });
           return mapNotifier(accountId, n);
         }
         case "dashboard": {
-          const owner = await axFetch<AxUser>(this.ctx, "/v2/user")
+          const owner = await this.api
+            .get("/user")
             .then((u) => u.id)
             .catch(() => undefined);
-          const res = await post<{ dashboard?: AxDashboard }>("/v2/dashboards", {
-            dashboard: {
-              name: trimmed(fields, "name"),
-              ...(fields["description"] ? { description: fields["description"] } : {}),
-              owner: owner ?? "X-AXIOM-EVERYONE",
-              charts: [],
-              layout: [],
-              refreshTime: 60,
-              schemaVersion: 2,
-              timeWindowStart: "qr-now-1h",
-              timeWindowEnd: "qr-now",
+          const res = await this.api.post("/dashboards", {
+            body: {
+              dashboard: {
+                name: trimmed(fields, "name"),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+                owner: owner ?? "X-AXIOM-EVERYONE",
+                charts: [],
+                layout: [],
+                refreshTime: 60,
+                schemaVersion: 2,
+                timeWindowStart: "qr-now-1h",
+                timeWindowEnd: "qr-now",
+              },
             },
           });
           if (!res.dashboard) throw new Error("Axiom returned no dashboard");
@@ -1224,45 +1208,52 @@ export class AxiomClient implements PluginClient {
         case "view":
           return mapView(
             accountId,
-            await post<AxView>("/v2/views", {
-              name: trimmed(fields, "name"),
-              aplQuery: trimmed(fields, "aplQuery"),
-              ...(fields["description"] ? { description: fields["description"] } : {}),
+            await this.api.post("/views", {
+              body: {
+                name: trimmed(fields, "name"),
+                aplQuery: trimmed(fields, "aplQuery"),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+              },
             }),
           );
         case "starred-query": {
-          const me = await axFetch<AxUser>(this.ctx, "/v2/user")
+          const me = await this.api
+            .get("/user")
             .then((u) => u.id)
             .catch(() => undefined);
           return mapStarredQuery(
             accountId,
-            await post<AxStarredQuery>("/v2/apl-starred-queries", {
-              name: trimmed(fields, "name"),
-              kind: "apl",
-              ...(trimmed(fields, "dataset") ? { dataset: trimmed(fields, "dataset") } : {}),
-              query: { apl: trimmed(fields, "apl") },
-              metadata: {},
-              who: me ?? "",
+            await this.api.post("/apl-starred-queries", {
+              body: {
+                name: trimmed(fields, "name"),
+                kind: "apl",
+                ...(trimmed(fields, "dataset") ? { dataset: trimmed(fields, "dataset") } : {}),
+                query: { apl: trimmed(fields, "apl") },
+                metadata: {},
+                who: me ?? "",
+              },
             }),
           );
         }
         case "annotation": {
           let datasets: string[] = [];
           try {
-            datasets = JSON.parse(fields["datasets"] || "[]") as string[];
+            datasets = JSON.parse(fields["datasets"] || "[]");
           } catch {
             datasets = csv(fields["datasets"]);
           }
           return mapAnnotation(
             accountId,
-            await post<AxAnnotation>("/v2/annotations", {
-              datasets,
-              type: trimmed(fields, "type") || "deploy",
-              ...(fields["title"] ? { title: fields["title"] } : {}),
-              ...(fields["description"] ? { description: fields["description"] } : {}),
-              ...(fields["url"] ? { url: trimmed(fields, "url") } : {}),
-              ...(fields["time"] ? { time: trimmed(fields, "time") } : {}),
-              ...(fields["endTime"] ? { endTime: trimmed(fields, "endTime") } : {}),
+            await this.api.post("/annotations", {
+              body: {
+                datasets,
+                type: trimmed(fields, "type") || "deploy",
+                ...(fields["title"] ? { title: fields["title"] } : {}),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+                ...(fields["url"] ? { url: trimmed(fields, "url") } : {}),
+                ...(fields["time"] ? { time: trimmed(fields, "time") } : {}),
+                ...(fields["endTime"] ? { endTime: trimmed(fields, "endTime") } : {}),
+              },
             }),
           );
         }
@@ -1278,16 +1269,16 @@ export class AxiomClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    const parse = (raw: string | undefined) => {
+    const parse = (raw: string | undefined): string[] => {
       try {
-        return JSON.parse(raw || "[]") as string[];
+        return JSON.parse(raw || "[]");
       } catch {
         return csv(raw);
       }
     };
     const access = trimmed(fields, "datasetAccess") || "ingest";
     const datasetCapabilities = Object.fromEntries(
-      parse(fields["datasets"]).map((d) => [
+      parse(fields["datasets"]).map((d): [string, AxDatasetCapability] => [
         d,
         {
           ...(access.includes("ingest") ? { ingest: ["create"] } : {}),
@@ -1296,15 +1287,14 @@ export class AxiomClient implements PluginClient {
       ]),
     );
     const orgCapabilities = Object.fromEntries(parse(fields["orgRead"]).map((c) => [c, ["read"]]));
-    const t = await axFetch<AxToken>(this.ctx, "/v2/tokens", {
-      method: "POST",
-      body: JSON.stringify({
+    const t = await this.api.post("/tokens", {
+      body: {
         name: trimmed(fields, "name"),
         ...(fields["description"] ? { description: fields["description"] } : {}),
         ...(fields["expiresAt"] ? { expiresAt: trimmed(fields, "expiresAt") } : {}),
         datasetCapabilities,
         orgCapabilities,
-      }),
+      },
     });
     if (t.id && t.token && this.secrets?.setPlaintext) {
       await this.secrets
@@ -1326,28 +1316,30 @@ export class AxiomClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
-      const put = <T>(path: string, body: unknown) =>
-        axFetch<T>(this.ctx, path, { method: "PUT", body: JSON.stringify(body) });
+      const enc = pathEncode(id);
       switch (typeId) {
         case "organization": {
-          const org = await put<AxOrg>(`/v2/orgs/${enc}`, { name: trimmed(fields, "name") });
+          const org = await this.api.put(`/orgs/${enc}`, {
+            body: { name: trimmed(fields, "name") },
+          });
           this.orgCache = undefined;
           return mapOrganization(accountId, org);
         }
         case "dataset": {
-          const current = await axFetch<AxDataset>(this.ctx, `/v2/datasets/${enc}`);
-          const d = await put<AxDataset>(`/v2/datasets/${enc}`, {
-            description:
-              "description" in fields ? fields["description"] : (current.description ?? ""),
-            useRetentionPeriod:
-              "useRetentionPeriod" in fields
-                ? bool(fields["useRetentionPeriod"])
-                : (current.useRetentionPeriod ?? false),
-            retentionDays:
-              "retentionDays" in fields
-                ? num(fields["retentionDays"], 0)
-                : (current.retentionDays ?? 0),
+          const current = await this.api.get(`/datasets/${enc}`);
+          const d = await this.api.put(`/datasets/${enc}`, {
+            body: {
+              description:
+                "description" in fields ? fields["description"] : (current.description ?? ""),
+              useRetentionPeriod:
+                "useRetentionPeriod" in fields
+                  ? bool(fields["useRetentionPeriod"])
+                  : (current.useRetentionPeriod ?? false),
+              retentionDays:
+                "retentionDays" in fields
+                  ? num(fields["retentionDays"], 0)
+                  : (current.retentionDays ?? 0),
+            },
           });
           this.datasetCache = undefined;
           const org = await this.org().catch(() => undefined);
@@ -1356,35 +1348,39 @@ export class AxiomClient implements PluginClient {
         case "field": {
           const [dataset = "", ...rest] = id.split("/");
           const name = rest.join("/");
-          const path = `/v2/datasets/${encodeURIComponent(dataset)}/fields/${encodeURIComponent(name)}`;
-          const current = await axFetch<AxField>(this.ctx, path);
-          const f = await put<AxField>(path, {
-            name: current.name ?? name,
-            type: current.type ?? "string",
-            unit: "unit" in fields ? fields["unit"] : (current.unit ?? ""),
-            description:
-              "description" in fields ? fields["description"] : (current.description ?? ""),
-            hidden: "hidden" in fields ? bool(fields["hidden"]) : (current.hidden ?? false),
+          const path = `/datasets/${pathEncode(dataset)}/fields/${pathEncode(name)}` as const;
+          const current = await this.api.get(path);
+          const f = await this.api.put(path, {
+            body: {
+              name: current.name ?? name,
+              type: current.type ?? "string",
+              unit: "unit" in fields ? fields["unit"] : (current.unit ?? ""),
+              description:
+                "description" in fields ? fields["description"] : (current.description ?? ""),
+              hidden: "hidden" in fields ? bool(fields["hidden"]) : (current.hidden ?? false),
+            },
           });
           return mapField(accountId, dataset, f);
         }
         case "virtual-field": {
-          const current = await axFetch<AxVirtualField>(this.ctx, `/v2/vfields/${enc}`);
+          const current = await this.api.get(`/vfields/${enc}`);
           const { id: _id, ...rest } = current;
-          const v = await put<AxVirtualField>(`/v2/vfields/${enc}`, {
-            ...rest,
-            ...Object.fromEntries(
-              ["name", "expression", "type", "unit", "description"]
-                .filter((k) => k in fields)
-                .map((k) => [k, fields[k]]),
-            ),
+          const v = await this.api.put(`/vfields/${enc}`, {
+            body: {
+              ...rest,
+              ...("name" in fields ? { name: fields["name"] } : {}),
+              ...("expression" in fields ? { expression: fields["expression"] } : {}),
+              ...("type" in fields ? { type: fields["type"] } : {}),
+              ...("unit" in fields ? { unit: fields["unit"] } : {}),
+              ...("description" in fields ? { description: fields["description"] } : {}),
+            },
           });
           return mapVirtualField(accountId, { ...v, dataset: v.dataset ?? current.dataset ?? "" });
         }
         case "monitor":
           return this.updateMonitor(accountId, id, (m) => {
             for (const k of ["name", "description", "aplQuery", "operator"] as const) {
-              if (k in fields) (m as Record<string, unknown>)[k] = fields[k] || undefined;
+              if (k in fields) m[k] = fields[k] || undefined;
             }
             for (const k of ["threshold", "intervalMinutes", "rangeMinutes"] as const) {
               if (k in fields) {
@@ -1397,67 +1393,73 @@ export class AxiomClient implements PluginClient {
             }
           });
         case "notifier": {
-          const current = await axFetch<AxNotifier>(this.ctx, `/v2/notifiers/${enc}`);
+          const current = await this.api.get(`/notifiers/${enc}`);
           const { channel } = notifierChannel(current.properties);
           const changesTarget = "target" in fields || "secret" in fields;
-          const n = await put<AxNotifier>(`/v2/notifiers/${enc}`, {
-            name: "name" in fields ? fields["name"] : current.name,
-            properties: changesTarget
-              ? notifierProperties(channel, fields, current.properties)
-              : current.properties,
-            ...(current.disabledUntil ? { disabledUntil: current.disabledUntil } : {}),
+          const n = await this.api.put(`/notifiers/${enc}`, {
+            body: {
+              name: "name" in fields ? fields["name"] : current.name,
+              properties: changesTarget
+                ? notifierProperties(channel, fields, current.properties)
+                : current.properties,
+              ...(current.disabledUntil ? { disabledUntil: current.disabledUntil } : {}),
+            },
           });
           return mapNotifier(accountId, n);
         }
         case "dashboard": {
-          const current = await axFetch<AxDashboard>(this.ctx, `/v2/dashboards/uid/${enc}`);
-          const res = await put<{ dashboard?: AxDashboard }>(`/v2/dashboards/uid/${enc}`, {
-            dashboard: {
-              ...(current.dashboard ?? {}),
-              ...("name" in fields ? { name: fields["name"] } : {}),
-              ...("description" in fields ? { description: fields["description"] } : {}),
+          const current = await this.api.get(`/dashboards/uid/${enc}`);
+          const { name, description } = fields;
+          const res = await this.api.put(`/dashboards/uid/${enc}`, {
+            body: {
+              dashboard: {
+                ...(current.dashboard ?? {}),
+                ...(name !== undefined ? { name } : {}),
+                ...(description !== undefined ? { description } : {}),
+              },
+              ...(current.version !== undefined ? { version: current.version } : {}),
+              message: "Edited from Infrawrench",
             },
-            ...(current.version !== undefined ? { version: current.version } : {}),
-            message: "Edited from Infrawrench",
           });
           return mapDashboard(accountId, res.dashboard ?? current);
         }
         case "view": {
-          const current = await axFetch<AxView>(this.ctx, `/v2/views/${enc}`);
+          const current = await this.api.get(`/views/${enc}`);
           return mapView(
             accountId,
-            await put<AxView>(`/v2/views/${enc}`, {
-              name: current.name,
-              aplQuery: "aplQuery" in fields ? fields["aplQuery"] : current.aplQuery,
-              description:
-                "description" in fields ? fields["description"] : (current.description ?? ""),
-              ...(current.datasets ? { datasets: current.datasets } : {}),
+            await this.api.put(`/views/${enc}`, {
+              body: {
+                name: current.name,
+                aplQuery: "aplQuery" in fields ? fields["aplQuery"] : current.aplQuery,
+                description:
+                  "description" in fields ? fields["description"] : (current.description ?? ""),
+                ...(current.datasets ? { datasets: current.datasets } : {}),
+              },
             }),
           );
         }
         case "starred-query": {
-          const current = await axFetch<AxStarredQuery>(this.ctx, `/v2/apl-starred-queries/${enc}`);
+          const current = await this.api.get(`/apl-starred-queries/${enc}`);
           const { id: _id, ...rest } = current;
           return mapStarredQuery(
             accountId,
-            await put<AxStarredQuery>(`/v2/apl-starred-queries/${enc}`, {
-              ...rest,
-              name: fields["name"] ?? current.name,
+            await this.api.put(`/apl-starred-queries/${enc}`, {
+              body: { ...rest, name: fields["name"] ?? current.name },
             }),
           );
         }
         case "annotation": {
-          const current = await axFetch<AxAnnotation>(this.ctx, `/v2/annotations/${enc}`);
+          const current = await this.api.get(`/annotations/${enc}`);
           const { id: _id, ...rest } = current;
           return mapAnnotation(
             accountId,
-            await put<AxAnnotation>(`/v2/annotations/${enc}`, {
-              ...rest,
-              ...Object.fromEntries(
-                ["title", "description", "url"]
-                  .filter((k) => k in fields)
-                  .map((k) => [k, fields[k]]),
-              ),
+            await this.api.put(`/annotations/${enc}`, {
+              body: {
+                ...rest,
+                ...("title" in fields ? { title: fields["title"] } : {}),
+                ...("description" in fields ? { description: fields["description"] } : {}),
+                ...("url" in fields ? { url: fields["url"] } : {}),
+              },
             }),
           );
         }
@@ -1470,15 +1472,12 @@ export class AxiomClient implements PluginClient {
   private async updateMonitor(
     accountId: string,
     id: string,
-    mutate: (m: AxMonitor) => void,
+    mutate: (m: EditableMonitor) => void,
   ): Promise<ResourceInstance> {
-    const path = `/v2/monitors/${encodeURIComponent(id)}`;
-    const current = await axFetch<AxMonitor>(this.ctx, path);
+    const enc = pathEncode(id);
+    const current: EditableMonitor = await this.api.get(`/monitors/${enc}`);
     mutate(current);
-    const m = await axFetch<AxMonitor>(this.ctx, path, {
-      method: "PUT",
-      body: JSON.stringify(monitorBody(current)),
-    });
+    const m = await this.api.put(`/monitors/${enc}`, { body: monitorBody(current) });
     return mapMonitor(accountId, m, await this.notifierNames());
   }
 
@@ -1489,46 +1488,45 @@ export class AxiomClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
-      const del = (path: string) => axFetch<unknown>(this.ctx, path, { method: "DELETE" });
+      const enc = pathEncode(id);
       switch (typeId) {
         case "dataset":
-          await del(`/v2/datasets/${enc}`);
+          await this.api.delete(`/datasets/${enc}`);
           this.datasetCache = undefined;
           return;
         case "field": {
           const [dataset = "", ...rest] = id.split("/");
-          await del(
-            `/v2/datasets/${encodeURIComponent(dataset)}/fields/${encodeURIComponent(rest.join("/"))}`,
+          await this.api.delete(
+            `/datasets/${pathEncode(dataset)}/fields/${pathEncode(rest.join("/"))}`,
           );
           return;
         }
         case "virtual-field":
-          await del(`/v2/vfields/${enc}`);
+          await this.api.delete(`/vfields/${enc}`);
           return;
         case "monitor":
-          await del(`/v2/monitors/${enc}`);
+          await this.api.delete(`/monitors/${enc}`);
           return;
         case "notifier":
-          await del(`/v2/notifiers/${enc}`);
+          await this.api.delete(`/notifiers/${enc}`);
           return;
         case "dashboard":
-          await del(`/v2/dashboards/uid/${enc}`);
+          await this.api.delete(`/dashboards/uid/${enc}`);
           return;
         case "view":
-          await del(`/v2/views/${enc}`);
+          await this.api.delete(`/views/${enc}`);
           return;
         case "starred-query":
-          await del(`/v2/apl-starred-queries/${enc}`);
+          await this.api.delete(`/apl-starred-queries/${enc}`);
           return;
         case "annotation":
-          await del(`/v2/annotations/${enc}`);
+          await this.api.delete(`/annotations/${enc}`);
           return;
         case "api-token":
-          await del(`/v2/tokens/${enc}`);
+          await this.api.delete(`/tokens/${enc}`);
           return;
         case "user":
-          await del(`/v2/users/${enc}`);
+          await this.api.delete(`/users/${enc}`);
           return;
         default:
           throw new Error(`Axiom plugin: "${typeId}" cannot be deleted from Infrawrench`);
@@ -1548,23 +1546,22 @@ export class AxiomClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(id);
       const later = (hours: number) => new Date(Date.now() + hours * 3600_000).toISOString();
       if (typeId === "dataset") {
         if (actionId === "trim-30d" || actionId === "trim-7d") {
-          await axFetch(this.ctx, `/v2/datasets/${enc}/trim`, {
-            method: "POST",
-            body: JSON.stringify({ maxDuration: actionId === "trim-30d" ? "720h" : "168h" }),
+          await this.api.post(`/datasets/${enc}/trim`, {
+            body: { maxDuration: actionId === "trim-30d" ? "720h" : "168h" },
           });
           return;
         }
         if (actionId === "vacuum") {
-          await axFetch(this.ctx, `/v2/datasets/${enc}/vacuum`, { method: "POST", body: "{}" });
+          await this.api.post(`/datasets/${enc}/vacuum`, { body: {} });
           return;
         }
       }
       if (typeId === "monitor") {
-        const changes: Record<string, (m: AxMonitor) => void> = {
+        const changes: Record<string, (m: EditableMonitor) => void> = {
           enable: (m) => {
             m.disabled = false;
           },
@@ -1588,23 +1585,21 @@ export class AxiomClient implements PluginClient {
         }
       }
       if (typeId === "notifier" && ["snooze-1h", "snooze-1d", "unsnooze"].includes(actionId)) {
-        const current = await axFetch<AxNotifier>(this.ctx, `/v2/notifiers/${enc}`);
-        await axFetch(this.ctx, `/v2/notifiers/${enc}`, {
-          method: "PUT",
-          body: JSON.stringify({
+        const current = await this.api.get(`/notifiers/${enc}`);
+        await this.api.put(`/notifiers/${enc}`, {
+          body: {
             name: current.name,
             properties: current.properties,
             ...(actionId === "unsnooze"
               ? {}
               : { disabledUntil: later(actionId === "snooze-1h" ? 1 : 24) }),
-          }),
+          },
         });
         return;
       }
       if (typeId === "api-token" && actionId === "regenerate") {
-        const t = await axFetch<AxToken>(this.ctx, `/v2/tokens/${enc}/regenerate`, {
-          method: "POST",
-          body: JSON.stringify({ existingTokenExpiresAt: later(1) }),
+        const t = await this.api.post(`/tokens/${enc}/regenerate`, {
+          body: { existingTokenExpiresAt: later(1) },
         });
         const newId = t.id ?? id;
         if (t.token && this.secrets?.setPlaintext) {

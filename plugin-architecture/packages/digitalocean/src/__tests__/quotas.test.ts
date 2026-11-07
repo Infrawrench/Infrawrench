@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { QuotaAccessError } from "@infrawrench/plugin-base";
 import { countDoObjects, fetchDoQuotas } from "../quotas.js";
+import { fakeApi } from "./fake-api.js";
 
 /**
  * Recorded from DigitalOcean's published OpenAPI document: every value here
@@ -37,7 +38,7 @@ function ctxWith(handlers: Record<string, unknown>) {
     if (path in handlers) return Promise.resolve(handlers[path]);
     throw new Error(`unexpected path ${path}`);
   });
-  return { ctx: { fetch: fetch as never }, fetch };
+  return { ctx: { api: fakeApi(fetch) }, fetch };
 }
 
 describe("fetchDoQuotas", () => {

@@ -1,0 +1,1047 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.bitbucket.org/swagger.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1members/get/parameters",
+      "value": [
+        {
+          "name": "pagelen",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1projects/get/parameters",
+      "value": [
+        {
+          "name": "pagelen",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}/get/parameters/3",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines~1{pipeline_uuid}~1steps/get/parameters/3",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines_config~1variables/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1pipelines-config~1variables/get/parameters/1",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1environments/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1deployments/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1deployments_config~1environments~1{environment_uuid}~1variables/get/parameters/3",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1branch-restrictions/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1hooks/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1hooks/get/parameters/1",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1deploy-keys/get/parameters",
+      "value": [
+        {
+          "name": "pagelen",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1projects~1{project_key}~1deploy-keys/get/parameters",
+      "value": [
+        {
+          "name": "pagelen",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1pipelines-config~1runners/get/parameters/1",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines-config~1runners/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines_config~1schedules/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines_config~1schedules~1{schedule_uuid}~1executions/get/parameters/3",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines-config~1caches/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1refs~1branches/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/paths/~1user~1workspaces/get/parameters/2",
+      "value": {
+        "name": "pagelen",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every list here sends pagelen=100 and this route is documented without it; the API takes it on all paged lists. Kept so requests stay as they are."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_variable_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "secured": {
+            "type": "boolean"
+          }
+        }
+      },
+      "why": "What a variable is written with; the shared schema also describes the read-only uuid."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_webhook_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "secret": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The document gives webhook writes no request body, and its event enum would reject what the user picked; the provider's message is the better one."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_deploy_key_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The document gives deploy key writes no request body."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_runner_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "state": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "why": "The document gives runner writes no request body."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_repository_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "scm": {
+            "type": "string"
+          },
+          "is_private": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "fork_policy": {
+            "type": "string"
+          },
+          "project": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "why": "The write takes a subset of the repository; fork_policy goes through as the form sent it."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_pipeline_run_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "ref_type": {
+                "type": "string"
+              },
+              "ref_name": {
+                "type": "string"
+              },
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "secured": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "pipeline_target documents no fields on its base type; running a pipeline names the subtype's."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_environment_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "environment_type": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "why": "deployment_environment documents only uuid and name; creating one also names its type."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_restriction_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "branch_match_kind": {
+            "type": "string"
+          },
+          "branch_type": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uuid": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "slug": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The write sends only what the rule needs, and users and groups by id; the kind goes through as the form sent it."
+    },
+    {
+      "pointer": "/components/schemas/bitbucket_schedule_body",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "cron_pattern": {
+            "type": "string"
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "ref_type": {
+                "type": "string"
+              },
+              "ref_name": {
+                "type": "string"
+              },
+              "selector": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The selector type goes through as the form picked it."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines_config~1variables/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_variable_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_variable_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines_config~1variables~1{variable_uuid}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_variable_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_variable_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1pipelines-config~1variables/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_variable_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_variable_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1pipelines-config~1variables~1{variable_uuid}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_variable_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_variable_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1deployments_config~1environments~1{environment_uuid}~1variables/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_variable_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_variable_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1deployments_config~1environments~1{environment_uuid}~1variables~1{variable_uuid}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_variable_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_variable_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1hooks/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_webhook_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_webhook_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1hooks~1{uid}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_webhook_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_webhook_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1hooks/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_webhook_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_webhook_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1hooks~1{uid}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_webhook_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_webhook_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1deploy-keys/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_deploy_key_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_deploy_key_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1deploy-keys~1{key_id}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_deploy_key_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_deploy_key_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1projects~1{project_key}~1deploy-keys/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_deploy_key_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_deploy_key_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1pipelines-config~1runners/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_runner_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_runner_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1workspaces~1{workspace}~1pipelines-config~1runners~1{runner_uuid}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_runner_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_runner_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines-config~1runners/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_runner_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_runner_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines-config~1runners~1{runner_uuid}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_runner_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_runner_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_repository_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_repository_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_repository_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_repository_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_pipeline_run_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_pipeline_run_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1environments/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_environment_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_environment_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1branch-restrictions/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_restriction_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_restriction_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1branch-restrictions~1{id}/put/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_restriction_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_restriction_body; see that schema's patch."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines_config~1schedules/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/bitbucket_schedule_body"
+            }
+          }
+        }
+      },
+      "why": "Sent as bitbucket_schedule_body; see that schema's patch."
+    },
+    {
+      "pointer": "/components/schemas/object/required",
+      "value": [],
+      "why": "The base of nearly every schema requires `type`. Writes do not send it and the provider does not ask for it."
+    },
+    {
+      "pointer": "/components/schemas/workspace/allOf/1/required",
+      "value": ["slug"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/workspace_base/allOf/1/required",
+      "value": ["slug"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/project/allOf/1/required",
+      "value": ["key"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/repository/allOf/1/required",
+      "value": ["name", "full_name"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/pipeline/allOf/1/required",
+      "value": ["uuid"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/pipeline_step/allOf/1/required",
+      "value": ["uuid"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/pipeline_variable/allOf/1/required",
+      "value": ["uuid", "key"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/deployment_variable/allOf/1/required",
+      "value": ["uuid", "key"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/deployment_environment/allOf/1/required",
+      "value": ["uuid", "name"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/webhook_subscription/allOf/1/required",
+      "value": ["uuid", "url"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/pipeline_runner/allOf/1/required",
+      "value": ["uuid", "name"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/pipeline_schedule/allOf/1/required",
+      "value": ["uuid"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/pipeline_cache/allOf/1/required",
+      "value": ["uuid"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/deployment/allOf/1/required",
+      "value": ["uuid"],
+      "why": "The document marks nothing required; these identify the object in every response the plugin reads, and it keys on them."
+    },
+    {
+      "pointer": "/components/schemas/deploy_key/allOf/1/properties/id",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The API answers with a numeric id, which is the key_id of every later call; the document leaves it out."
+    },
+    {
+      "pointer": "/components/schemas/project_deploy_key/allOf/1/properties/id",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The API answers with a numeric id, which is the key_id of every later call; the document leaves it out."
+    },
+    {
+      "pointer": "/components/schemas/repository/allOf/1/properties/slug",
+      "value": {
+        "type": "string"
+      },
+      "why": "The API answers with the slug, which every repository path takes; the document leaves it out."
+    },
+    {
+      "pointer": "/components/schemas/workspace_base/allOf/1/properties/name",
+      "value": {
+        "type": "string"
+      },
+      "why": "The workspace picker labels each workspace by name, which the API returns here; the document only lists it on the full workspace."
+    },
+    {
+      "pointer": "/components/schemas/ref/required",
+      "value": ["name"],
+      "why": "The branch picker keys on the name. Refs are only read here, so the document's required `type` is not needed."
+    },
+    {
+      "pointer": "/components/schemas/account/allOf/1/required",
+      "value": ["uuid"],
+      "why": "A branch restriction's exempt users are written back by uuid."
+    },
+    {
+      "pointer": "/components/schemas/group/allOf/1/required",
+      "value": ["slug"],
+      "why": "A branch restriction's exempt groups are written back by slug."
+    },
+    {
+      "pointer": "/paths/~1repositories~1{workspace}~1{repo_slug}~1pipelines/get/parameters/12/schema",
+      "value": {
+        "type": "string"
+      },
+      "why": "Lists are read newest first with sort=-created_on; the enum only has the ascending spellings."
+    }
+  ],
+  "paths": {
+    "/workspaces/{workspace}": ["get"],
+    "/workspaces/{workspace}/members": ["get"],
+    "/workspaces/{workspace}/projects": ["get", "post"],
+    "/workspaces/{workspace}/projects/{project_key}": ["get", "put", "delete"],
+    "/repositories/{workspace}": ["get"],
+    "/repositories/{workspace}/{repo_slug}": ["get", "post", "put"],
+    "/repositories/{workspace}/{repo_slug}/pipelines": ["get", "post"],
+    "/repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}": ["get"],
+    "/repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}/steps": ["get"],
+    "/repositories/{workspace}/{repo_slug}/pipelines/{pipeline_uuid}/steps/{step_uuid}/log": [
+      "get"
+    ],
+    "/repositories/{workspace}/{repo_slug}/pipelines_config": ["get", "put"],
+    "/repositories/{workspace}/{repo_slug}/pipelines_config/variables": ["get", "post"],
+    "/repositories/{workspace}/{repo_slug}/pipelines_config/variables/{variable_uuid}": [
+      "get",
+      "put",
+      "delete"
+    ],
+    "/workspaces/{workspace}/pipelines-config/variables": ["get", "post"],
+    "/workspaces/{workspace}/pipelines-config/variables/{variable_uuid}": ["get", "put", "delete"],
+    "/repositories/{workspace}/{repo_slug}/environments": ["get", "post"],
+    "/repositories/{workspace}/{repo_slug}/environments/{environment_uuid}": ["get", "delete"],
+    "/repositories/{workspace}/{repo_slug}/deployments": ["get"],
+    "/repositories/{workspace}/{repo_slug}/deployments_config/environments/{environment_uuid}/variables": [
+      "get",
+      "post"
+    ],
+    "/repositories/{workspace}/{repo_slug}/deployments_config/environments/{environment_uuid}/variables/{variable_uuid}": [
+      "put",
+      "delete"
+    ],
+    "/repositories/{workspace}/{repo_slug}/branch-restrictions": ["get", "post"],
+    "/repositories/{workspace}/{repo_slug}/branch-restrictions/{id}": ["get", "put", "delete"],
+    "/repositories/{workspace}/{repo_slug}/hooks": ["get", "post"],
+    "/repositories/{workspace}/{repo_slug}/hooks/{uid}": ["get", "put", "delete"],
+    "/workspaces/{workspace}/hooks": ["get", "post"],
+    "/workspaces/{workspace}/hooks/{uid}": ["get", "put", "delete"],
+    "/repositories/{workspace}/{repo_slug}/deploy-keys": ["get", "post"],
+    "/repositories/{workspace}/{repo_slug}/deploy-keys/{key_id}": ["get", "put", "delete"],
+    "/workspaces/{workspace}/projects/{project_key}/deploy-keys": ["get", "post"],
+    "/workspaces/{workspace}/projects/{project_key}/deploy-keys/{key_id}": ["get", "delete"],
+    "/workspaces/{workspace}/pipelines-config/runners": ["get", "post"],
+    "/workspaces/{workspace}/pipelines-config/runners/{runner_uuid}": ["get", "put", "delete"],
+    "/repositories/{workspace}/{repo_slug}/pipelines-config/runners": ["get", "post"],
+    "/repositories/{workspace}/{repo_slug}/pipelines-config/runners/{runner_uuid}": [
+      "get",
+      "put",
+      "delete"
+    ],
+    "/repositories/{workspace}/{repo_slug}/pipelines_config/schedules": ["get", "post"],
+    "/repositories/{workspace}/{repo_slug}/pipelines_config/schedules/{schedule_uuid}": [
+      "get",
+      "put",
+      "delete"
+    ],
+    "/repositories/{workspace}/{repo_slug}/pipelines_config/schedules/{schedule_uuid}/executions": [
+      "get"
+    ],
+    "/repositories/{workspace}/{repo_slug}/pipelines-config/caches": ["get"],
+    "/repositories/{workspace}/{repo_slug}/pipelines-config/caches/{cache_uuid}": ["delete"],
+    "/repositories/{workspace}/{repo_slug}/refs/branches": ["get"],
+    "/user": ["get"],
+    "/user/workspaces": ["get"]
+  }
+}

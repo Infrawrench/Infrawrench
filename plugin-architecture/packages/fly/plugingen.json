@@ -1,0 +1,112 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.machines.dev/openapi.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/CreateAppRequest/properties/app_name",
+      "value": { "type": "string" },
+      "why": "The document names this field `name`, while Fly's own Apps API page documents `app_name`, which the plugin has always sent. Requests stay as they were."
+    },
+    {
+      "pointer": "/components/schemas/assignIPRequest/properties/type",
+      "value": { "type": "string" },
+      "why": "An enum in the document; the plugin passes the create form's text through as typed, and the provider's own error is the message."
+    },
+    {
+      "pointer": "/components/schemas/createPostgresClusterRequest/properties/plan",
+      "value": { "type": "string" },
+      "why": "An enum in the document; the plugin passes the create form's text through as typed."
+    },
+    {
+      "pointer": "/components/schemas/createPostgresClusterRequest/properties/pg_major_version",
+      "value": { "type": "string" },
+      "why": "An enum in the document; the plugin passes the create form's text through as typed."
+    },
+    {
+      "pointer": "/components/schemas/createPostgresClusterRequest/properties/pool_mode",
+      "value": { "type": "string" },
+      "why": "An enum in the document; the plugin passes the create form's text through as typed."
+    },
+    {
+      "pointer": "/components/schemas/MachineEvent/properties/request",
+      "value": {
+        "type": "object",
+        "properties": {
+          "exit_event": {
+            "type": "object",
+            "properties": { "exit_code": { "type": "integer" } }
+          }
+        }
+      },
+      "why": "A bare object in the document; an exit event carries its exit code here, which the events log shows."
+    },
+    {
+      "pointer": "/components/schemas/App/required",
+      "value": ["name"],
+      "why": "The document marks nothing required. An app's name is its identity everywhere it is used."
+    },
+    {
+      "pointer": "/components/schemas/Machine/required",
+      "value": ["id"],
+      "why": "The document marks nothing required. A Machine's id is its identity."
+    },
+    {
+      "pointer": "/components/schemas/Volume/required",
+      "value": ["id"],
+      "why": "The document marks nothing required. A volume's id is its identity."
+    },
+    {
+      "pointer": "/components/schemas/PostgresCluster/required",
+      "value": ["id"],
+      "why": "The document marks nothing required. A cluster's id is its identity."
+    },
+    {
+      "pointer": "/components/schemas/PostgresClusterSummary/required",
+      "value": ["id"],
+      "why": "The document marks nothing required. A cluster's id is its identity."
+    },
+    {
+      "pointer": "/components/schemas/main.regionRow/required",
+      "value": ["code"],
+      "why": "The document marks nothing required. A region's code is its identity."
+    },
+    {
+      "pointer": "/components/schemas/showPostgresClusterResponse/required",
+      "value": ["data"],
+      "why": "The document marks nothing required. Every answer from this route wraps the cluster in `data`."
+    }
+  ],
+  "paths": {
+    "/v1/platform/regions": ["get"],
+    "/v1/apps": ["get", "post"],
+    "/v1/apps/{app_name}": ["get", "delete"],
+    "/v1/apps/{app_name}/deploy_token": ["post"],
+    "/v1/apps/{app_name}/machines": ["get", "post"],
+    "/v1/apps/{app_name}/machines/{machine_id}": ["get", "post", "delete"],
+    "/v1/apps/{app_name}/machines/{machine_id}/start": ["post"],
+    "/v1/apps/{app_name}/machines/{machine_id}/stop": ["post"],
+    "/v1/apps/{app_name}/machines/{machine_id}/restart": ["post"],
+    "/v1/apps/{app_name}/machines/{machine_id}/suspend": ["post"],
+    "/v1/apps/{app_name}/machines/{machine_id}/cordon": ["post"],
+    "/v1/apps/{app_name}/machines/{machine_id}/uncordon": ["post"],
+    "/v1/apps/{app_name}/machines/{machine_id}/events": ["get"],
+    "/v1/apps/{app_name}/volumes": ["get", "post"],
+    "/v1/apps/{app_name}/volumes/{volume_id}": ["get", "put", "delete"],
+    "/v1/apps/{app_name}/volumes/{volume_id}/extend": ["put"],
+    "/v1/apps/{app_name}/volumes/{volume_id}/snapshots": ["get", "post"],
+    "/v1/apps/{app_name}/certificates": ["get"],
+    "/v1/apps/{app_name}/certificates/acme": ["post"],
+    "/v1/apps/{app_name}/certificates/{hostname}": ["get", "delete"],
+    "/v1/apps/{app_name}/certificates/{hostname}/check": ["post"],
+    "/v1/apps/{app_name}/ip_assignments": ["get", "post"],
+    "/v1/apps/{app_name}/ip_assignments/{ip}": ["delete"],
+    "/v1/apps/{app_name}/secrets": ["get"],
+    "/v1/apps/{app_name}/secrets/{secret_name}": ["get", "post", "delete"],
+    "/v1/postgres": ["get", "post"],
+    "/v1/postgres/{postgres_cluster_id}": ["get", "delete"],
+    "/v1/postgres/{postgres_cluster_id}/attachments": ["post"],
+    "/v1/postgres/{postgres_cluster_id}/backups": ["get", "post"],
+    "/v1/postgres/{postgres_cluster_id}/databases": ["get"],
+    "/v1/postgres/{postgres_cluster_id}/users": ["get"]
+  }
+}

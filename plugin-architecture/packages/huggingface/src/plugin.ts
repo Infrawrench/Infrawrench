@@ -8,7 +8,8 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HuggingFaceClient } from "./client.js";
-import { HUB_BASE, hfJson, statusOf } from "./http.js";
+import { createHfApis } from "./api.js";
+import { statusOf } from "./http.js";
 import { HUGGINGFACE_OAUTH, completeHuggingFaceOAuth } from "./oauth.js";
 import { huggingfaceRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -120,14 +121,11 @@ async function listCredentialOptions(
   if (!token) throw new Error("Enter an access token first.");
   let me: WhoAmI;
   try {
-    me = await hfJson<WhoAmI>(
-      {
-        token,
-        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-        ...(services?.http ? { http: services.http } : {}),
-      },
-      `${HUB_BASE}/api/whoami-v2`,
-    );
+    me = await createHfApis({
+      token,
+      ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+      ...(services?.http ? { http: services.http } : {}),
+    }).hub.get("/api/whoami-v2");
   } catch (err) {
     if (statusOf(err) === 401) throw new Error("Hugging Face rejected the access token.");
     throw err;

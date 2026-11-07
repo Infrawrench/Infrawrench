@@ -1,8 +1,8 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
-import { isStatus, type CrusoeApi } from "./api.js";
+import { isStatus, seg, type CrusoeApi } from "./api.js";
 import { normalizeHeader, parseCsv } from "./csv.js";
-import type { CrusoeEntity } from "./types.js";
+import type { CrusoeBillingCost, CrusoeEntity } from "./types.js";
 
 /**
  * Billed spend for every organization the key can see, from two endpoints
@@ -27,17 +27,20 @@ import type { CrusoeEntity } from "./types.js";
 
 export const COST_HELP_URL = "https://console.crusoecloud.com/billing";
 
-type Column =
-  | "date"
-  | "cost"
-  | "product"
-  | "region"
-  | "resource"
-  | "resourceName"
-  | "project"
-  | "quantity"
-  | "unit"
-  | "currency";
+const COLUMNS = [
+  "date",
+  "cost",
+  "product",
+  "region",
+  "resource",
+  "resourceName",
+  "project",
+  "quantity",
+  "unit",
+  "currency",
+] as const;
+
+type Column = (typeof COLUMNS)[number];
 
 /** Normalised header spellings each column is recognised by, most specific first. */
 const COLUMN_ALIASES: Record<Column, string[]> = {
@@ -70,7 +73,7 @@ export function detectColumns(headers: string[]): ColumnMap {
   const normalized = headers.map(normalizeHeader);
   const map: ColumnMap = {};
   const taken = new Set<number>();
-  for (const column of Object.keys(COLUMN_ALIASES) as Column[]) {
+  for (const column of COLUMNS) {
     for (const alias of COLUMN_ALIASES[column]) {
       const idx = normalized.findIndex((h, i) => h === alias && !taken.has(i));
       if (idx >= 0) {
@@ -137,7 +140,7 @@ export function parseBillingCsv(
 ): { rows: CostRow[]; hasDateColumn: boolean } {
   const table = parseCsv(text);
   if (table.length === 0) return { rows: [], hasDateColumn: true };
-  const [headers, ...data] = table as [string[], ...string[][]];
+  const [headers = [], ...data] = table;
   const cols = detectColumns(headers);
   if (data.length === 0) return { rows: [], hasDateColumn: cols.date !== undefined };
   if (cols.cost === undefined) throw new CsvShapeError(headers);
@@ -190,17 +193,9 @@ export function parseBillingCsv(
   return { rows, hasDateColumn: cols.date !== undefined };
 }
 
+/** What the mapper reads: the document's fields, with none of them relied on. */
 interface BillingCostsResponse {
-  data?: Array<{
-    date?: string;
-    cost?: number;
-    quantity?: number;
-    billable_metric?: string;
-    project_id?: string;
-    region?: string;
-    resource_type?: string;
-    unit_price?: number;
-  }>;
+  data?: Partial<CrusoeBillingCost>[];
 }
 
 export function mapIntelligenceCosts(
@@ -275,9 +270,12 @@ function eachDay(range: CostFetchRange): string[] {
   return out;
 }
 
+/** All this reads of an organization. */
+type BillingOrganization = Pick<CrusoeEntity, "id"> & Partial<Pick<CrusoeEntity, "name">>;
+
 export async function fetchCrusoeCostData(
   api: CrusoeApi,
-  orgs: CrusoeEntity[],
+  orgs: BillingOrganization[],
   projectNames: Map<string, string>,
   range: CostFetchRange,
 ): Promise<CostRow[]> {
@@ -296,20 +294,22 @@ export async function fetchCrusoeCostData(
       projectNames,
       multipleOrgs: orgs.length > 1,
     };
-    const exportPath = `/organizations/${org.id}/billing/export-productline`;
+    const exportCsv = async (start_date: string, end_date: string): Promise<string> => {
+      const { body } = await api.getText(
+        `/organizations/${seg(org.id)}/billing/export-productline`,
+        { query: { start_date, end_date } },
+      );
+      return body ?? "";
+    };
     try {
-      const text = await api.requestText(exportPath, {
-        query: { start_date: range.fromDate, end_date: range.toDate },
-      });
+      const text = await exportCsv(range.fromDate, range.toDate);
       const parsed = parseBillingCsv(text, ctx);
       if (parsed.hasDateColumn) {
         rows.push(...parsed.rows);
       } else {
         // No per-day column: ask for one day at a time so each row can be dated.
         for (const day of eachDay(range)) {
-          const dayText = await api.requestText(exportPath, {
-            query: { start_date: day, end_date: day },
-          });
+          const dayText = await exportCsv(day, day);
           rows.push(...parseBillingCsv(dayText, { ...ctx, fallbackDate: day }).rows);
         }
       }
@@ -327,7 +327,7 @@ export async function fetchCrusoeCostData(
       throw e;
     }
     try {
-      const res = await api.request<BillingCostsResponse>(`/organizations/${org.id}/billing/costs`);
+      const res = await api.get(`/organizations/${seg(org.id)}/billing/costs`);
       rows.push(...mapIntelligenceCosts(res, range, ctx));
     } catch (e) {
       // Organizations without Intelligence Billing may be refused here; the

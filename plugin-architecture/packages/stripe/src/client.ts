@@ -20,8 +20,8 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { FormValue, StripeContext } from "./api.js";
+import { externalIdOf, pathEncode, type ApiBody, type ApiForm } from "@infrawrench/plugin-base";
+import type { StripeApi, StripeContext } from "./api.js";
 import {
   StripeApiError,
   dashboardUrl,
@@ -31,25 +31,13 @@ import {
   listV2,
   STRIPE_API_VERSION,
   statusOf,
-  stripeFetch,
+  stripeApi,
   currencyExponent,
   toMinor,
 } from "./api.js";
+import type { components, operations } from "./api-types.gen.js";
 import { fetchFeeCostRows } from "./balance.js";
 import { SNAPSHOT_EVENT_TYPES, THIN_EVENT_TYPES } from "./event-types.js";
-import type {
-  StripeAccount,
-  StripeBalance,
-  StripeEvent,
-  StripeEventDestination,
-  StripeMeter,
-  StripePayout,
-  StripePrice,
-  StripeProduct,
-  StripeReportRun,
-  StripeSigmaRun,
-  StripeWebhookEndpoint,
-} from "./mappers.js";
 import {
   epochToIso,
   mapAccount,
@@ -176,7 +164,7 @@ export function parseEventList(raw: string | undefined): string[] {
   if (!text) return [];
   if (text.startsWith("[")) {
     try {
-      const parsed = JSON.parse(text) as unknown;
+      const parsed: unknown = JSON.parse(text);
       if (Array.isArray(parsed))
         return parsed
           .map(String)
@@ -220,22 +208,16 @@ function perMonth(interval: string | undefined, count: number | undefined): numb
   }
 }
 
-interface StripeSubscriptionItem {
-  quantity?: number;
-  price?: StripePrice;
-}
-
-interface StripeSubscription {
-  id?: string;
-  status?: string;
-  cancel_at_period_end?: boolean;
-  customer?: string | { id?: string; name?: string | null; email?: string | null };
-  items?: { data?: StripeSubscriptionItem[] };
-}
+/**
+ * A row of `GET /v2/core/events`. The document's list schema is the common base,
+ * and `related_object` only appears on the concrete event types (its own example
+ * of this list has it).
+ */
+type ThinEvent = components["schemas"]["v2.core.event"] & { related_object?: { id?: string } };
 
 /** Summarise subscriptions into counts by status and MRR per currency. */
 export function summariseSubscriptions(
-  subs: StripeSubscription[],
+  subs: components["schemas"]["subscription"][],
   truncated: boolean,
 ): SubscriptionOverview {
   const byStatus: Record<string, number> = {};
@@ -276,6 +258,7 @@ function subscribes(enabled: string[], type: string): boolean {
  */
 export class StripeClient implements PluginClient {
   private readonly ctx: StripeContext;
+  private readonly api: StripeApi;
   private readonly services: HostServices | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -292,19 +275,12 @@ export class StripeClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
       ...(caCert ? { caCert } : {}),
     };
+    this.api = stripeApi(this.ctx);
     this.services = services;
   }
 
   private dash(path = ""): string {
     return dashboardUrl(this.ctx.apiKey, path).replace(/\/$/, "");
-  }
-
-  private get<T>(path: string, query?: Record<string, string | number | boolean | undefined>) {
-    return stripeFetch<T>(this.ctx, path, query ? { query } : {});
-  }
-
-  private post<T>(path: string, form: Record<string, FormValue> = {}) {
-    return stripeFetch<T>(this.ctx, path, { method: "POST", form });
   }
 
   // -------------------------------------------------------------- preflight
@@ -319,12 +295,8 @@ export class StripeClient implements PluginClient {
       const checks: PreflightCapabilityCheck[] = [];
       for (const cap of PREFLIGHT_CAPABILITIES) {
         try {
-          const isAccount = cap.probe === "/v1/account";
-          const res = await this.get<StripeAccount>(
-            cap.probe,
-            isAccount ? undefined : { limit: 1 },
-          );
-          if (isAccount) identity = res?.id;
+          const id = await cap.probe(this.api);
+          if (cap.id === "account") identity = id;
           checks.push({ capabilityId: cap.id, status: "ok" });
         } catch (err) {
           if (statusOf(err) === 403) {
@@ -363,45 +335,69 @@ export class StripeClient implements PluginClient {
           return [await this.fetchAccount(accountId)];
         case CONNECTED_ACCOUNT:
           return this.optional(async () =>
-            (await listV1<StripeAccount>(this.ctx, "/v1/accounts")).map((a) =>
-              mapConnectedAccount(accountId, this.ctx.apiKey, a),
-            ),
+            (
+              await listV1((paging) =>
+                this.api.get("/v1/accounts", { query: { limit: 100, ...paging } }),
+              )
+            ).map((a) => mapConnectedAccount(accountId, this.ctx.apiKey, a)),
           );
         case WEBHOOK_ENDPOINT:
-          return (await listV1<StripeWebhookEndpoint>(this.ctx, "/v1/webhook_endpoints")).map((e) =>
-            mapWebhookEndpoint(accountId, e),
-          );
+          return (
+            await listV1((paging) =>
+              this.api.get("/v1/webhook_endpoints", { query: { limit: 100, ...paging } }),
+            )
+          ).map((e) => mapWebhookEndpoint(accountId, e));
         case EVENT_DESTINATION:
           return this.listEventDestinations(accountId);
         case PRODUCT:
-          return (await listV1<StripeProduct>(this.ctx, "/v1/products")).map((p) =>
-            mapProduct(accountId, this.ctx.apiKey, p),
-          );
+          return (
+            await listV1((paging) =>
+              this.api.get("/v1/products", { query: { limit: 100, ...paging } }),
+            )
+          ).map((p) => mapProduct(accountId, this.ctx.apiKey, p));
         case PRICE:
-          return (await listV1<StripePrice>(this.ctx, "/v1/prices", {}, 20)).map((p) =>
-            mapPrice(accountId, p),
-          );
+          return (
+            await listV1(
+              (paging) => this.api.get("/v1/prices", { query: { limit: 100, ...paging } }),
+              20,
+            )
+          ).map((p) => mapPrice(accountId, p));
         case METER:
           return this.optional(async () =>
-            (await listV1<StripeMeter>(this.ctx, "/v1/billing/meters")).map((m) =>
-              mapMeter(accountId, m),
-            ),
+            (
+              await listV1((paging) =>
+                this.api.get("/v1/billing/meters", { query: { limit: 100, ...paging } }),
+              )
+            ).map((m) => mapMeter(accountId, m)),
           );
         case PAYOUT:
-          return (await listV1<StripePayout>(this.ctx, "/v1/payouts", {}, 1)).map((p) =>
-            mapPayout(accountId, p),
-          );
+          return (
+            await listV1(
+              (paging) => this.api.get("/v1/payouts", { query: { limit: 100, ...paging } }),
+              1,
+            )
+          ).map((p) => mapPayout(accountId, p));
         case REPORT_RUN:
           return this.optional(async () =>
-            (await listV1<StripeReportRun>(this.ctx, "/v1/reporting/report_runs", {}, 1)).map((r) =>
-              mapReportRun(accountId, r),
-            ),
+            (
+              await listV1(
+                (paging) =>
+                  this.api.get("/v1/reporting/report_runs", { query: { limit: 100, ...paging } }),
+                1,
+              )
+            ).map((r) => mapReportRun(accountId, r)),
           );
         case SIGMA_RUN:
           return this.optional(async () =>
-            (await listV1<StripeSigmaRun>(this.ctx, "/v1/sigma/scheduled_query_runs", {}, 1)).map(
-              (r) => mapSigmaRun(accountId, r),
-            ),
+            (
+              await listV1(
+                (paging) =>
+                  this.api.get("/v1/sigma/scheduled_query_runs", {
+                    query: { limit: 100, ...paging },
+                  }),
+                1,
+              )
+            ).map((r) => mapSigmaRun(accountId, r)),
           );
         default:
           throw new Error(`Stripe plugin: unknown resource type "${typeId}"`);
@@ -426,8 +422,8 @@ export class StripeClient implements PluginClient {
 
   private async fetchAccount(accountId: string): Promise<ResourceInstance> {
     const [acct, balance] = await Promise.all([
-      this.get<StripeAccount>("/v1/account"),
-      this.get<StripeBalance>("/v1/balance").catch((err: unknown) => {
+      this.api.get("/v1/account"),
+      this.api.get("/v1/balance").catch((err: unknown) => {
         if (isPermissionError(err)) return null;
         throw err;
       }),
@@ -441,9 +437,11 @@ export class StripeClient implements PluginClient {
    * `GET /v2/core/event_destinations` with the normally redacted URL included.
    */
   private async listEventDestinations(accountId: string): Promise<ResourceInstance[]> {
-    const dests = await listV2<StripeEventDestination>(this.ctx, "/v2/core/event_destinations", {
-      include: ["webhook_endpoint.url"],
-    });
+    const dests = await listV2(this.ctx, () =>
+      this.api.get("/v2/core/event_destinations", {
+        query: { limit: 100, include: ["webhook_endpoint.url"] },
+      }),
+    );
     return dests.map((d) => mapEventDestination(accountId, d));
   }
 
@@ -453,8 +451,7 @@ export class StripeClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case ACCOUNT:
           return this.fetchAccount(accountId);
@@ -462,31 +459,32 @@ export class StripeClient implements PluginClient {
           return mapConnectedAccount(
             accountId,
             this.ctx.apiKey,
-            await this.get(`/v1/accounts/${enc}`),
+            await this.api.get(`/v1/accounts/${enc}`),
           );
         case WEBHOOK_ENDPOINT:
-          return mapWebhookEndpoint(accountId, await this.get(`/v1/webhook_endpoints/${enc}`));
+          return mapWebhookEndpoint(accountId, await this.api.get(`/v1/webhook_endpoints/${enc}`));
         case EVENT_DESTINATION:
           return mapEventDestination(
             accountId,
-            await stripeFetch<StripeEventDestination>(
-              this.ctx,
-              `/v2/core/event_destinations/${enc}`,
-              { query: { include: ["webhook_endpoint.url"] } },
-            ),
+            await this.api.get(`/v2/core/event_destinations/${enc}`, {
+              query: { include: ["webhook_endpoint.url"] },
+            }),
           );
         case PRODUCT:
-          return mapProduct(accountId, this.ctx.apiKey, await this.get(`/v1/products/${enc}`));
+          return mapProduct(accountId, this.ctx.apiKey, await this.api.get(`/v1/products/${enc}`));
         case PRICE:
-          return mapPrice(accountId, await this.get(`/v1/prices/${enc}`));
+          return mapPrice(accountId, await this.api.get(`/v1/prices/${enc}`));
         case METER:
-          return mapMeter(accountId, await this.get(`/v1/billing/meters/${enc}`));
+          return mapMeter(accountId, await this.api.get(`/v1/billing/meters/${enc}`));
         case PAYOUT:
-          return mapPayout(accountId, await this.get(`/v1/payouts/${enc}`));
+          return mapPayout(accountId, await this.api.get(`/v1/payouts/${enc}`));
         case REPORT_RUN:
-          return mapReportRun(accountId, await this.get(`/v1/reporting/report_runs/${enc}`));
+          return mapReportRun(accountId, await this.api.get(`/v1/reporting/report_runs/${enc}`));
         case SIGMA_RUN:
-          return mapSigmaRun(accountId, await this.get(`/v1/sigma/scheduled_query_runs/${enc}`));
+          return mapSigmaRun(
+            accountId,
+            await this.api.get(`/v1/sigma/scheduled_query_runs/${enc}`),
+          );
         default:
           throw new Error(`Stripe plugin: unknown resource type "${typeId}"`);
       }
@@ -538,10 +536,8 @@ export class StripeClient implements PluginClient {
   /** Events from the last 30 days that at least one endpoint failed to take. */
   private async failedEvents(): Promise<FailedEventSummary[]> {
     const since = Math.floor(Date.now() / 1000) - 30 * 86_400;
-    const res = await this.get<{ data?: StripeEvent[] }>("/v1/events", {
-      delivery_success: false,
-      "created[gte]": since,
-      limit: 50,
+    const res = await this.api.get("/v1/events", {
+      query: { delivery_success: false, created: { gte: since }, limit: 50 },
     });
     return (res?.data ?? []).map((e) => ({
       id: e.id ?? "",
@@ -562,11 +558,10 @@ export class StripeClient implements PluginClient {
       return null;
     };
     const [balance, subs, failed] = await Promise.all([
-      this.get<StripeBalance>("/v1/balance").catch(note("Balance")),
-      listV1<StripeSubscription & { id?: string }>(
-        this.ctx,
-        "/v1/subscriptions",
-        { status: "all" },
+      this.api.get("/v1/balance").catch(note("Balance")),
+      listV1(
+        (paging) =>
+          this.api.get("/v1/subscriptions", { query: { limit: 100, status: "all", ...paging } }),
         SUBSCRIPTION_PAGES,
       ).catch(note("Subscriptions")),
       this.failedEvents().catch(note("Failing webhook deliveries")),
@@ -793,10 +788,8 @@ export class StripeClient implements PluginClient {
   }
 
   private async taxCodeOptions(): Promise<SelectOption[]> {
-    const codes = await listV1<{ id?: string; name?: string; description?: string }>(
-      this.ctx,
-      "/v1/tax_codes",
-      {},
+    const codes = await listV1(
+      (paging) => this.api.get("/v1/tax_codes", { query: { limit: 100, ...paging } }),
       10,
     ).catch(() => []);
     return [
@@ -812,13 +805,13 @@ export class StripeClient implements PluginClient {
   }
 
   private async currencyOptions(): Promise<{ options: SelectOption[]; defaultCurrency: string }> {
-    const acct = await this.get<StripeAccount>("/v1/account").catch(() => null);
+    const acct = await this.api.get("/v1/account").catch(() => null);
     const defaultCurrency = (acct?.default_currency ?? "usd").toLowerCase();
     let currencies: string[] = [];
     if (acct?.country) {
-      const spec = await this.get<{ supported_payment_currencies?: string[] }>(
-        `/v1/country_specs/${encodeURIComponent(acct.country)}`,
-      ).catch(() => null);
+      const spec = await this.api
+        .get(`/v1/country_specs/${pathEncode(acct.country)}`)
+        .catch(() => null);
       currencies = spec?.supported_payment_currencies ?? [];
     }
     if (currencies.length === 0) currencies = [defaultCurrency, "usd", "eur", "gbp"];
@@ -904,12 +897,12 @@ export class StripeClient implements PluginClient {
 
   private async priceCreateFields(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     const [products, meters, currencies] = await Promise.all([
-      listV1<StripeProduct>(this.ctx, "/v1/products", { active: true }).catch(
-        () => [] as StripeProduct[],
-      ),
-      listV1<StripeMeter>(this.ctx, "/v1/billing/meters", { status: "active" }).catch(
-        () => [] as StripeMeter[],
-      ),
+      listV1((paging) =>
+        this.api.get("/v1/products", { query: { limit: 100, active: true, ...paging } }),
+      ).catch(() => []),
+      listV1((paging) =>
+        this.api.get("/v1/billing/meters", { query: { limit: 100, status: "active", ...paging } }),
+      ).catch(() => []),
       this.currencyOptions(),
     ]);
     const parentProduct = parentResourceId ? externalIdOf(parentResourceId) : "";
@@ -1112,14 +1105,7 @@ export class StripeClient implements PluginClient {
   }
 
   private async reportRunCreateFields(): Promise<CreateFieldConfig[]> {
-    const res = await this.get<{
-      data?: Array<{
-        id?: string;
-        name?: string;
-        data_available_end?: number;
-        data_available_start?: number;
-      }>;
-    }>("/v1/reporting/report_types");
+    const res = await this.api.get("/v1/reporting/report_types");
     const types = (res?.data ?? []).filter((t) => t.id);
     // Default to the previous full calendar month, clipped to what is available.
     const now = new Date();
@@ -1208,12 +1194,14 @@ export class StripeClient implements PluginClient {
     const events = parseEventList(fields["enabledEvents"]);
     if (!url) throw new Error("Stripe plugin: an endpoint URL is required");
     if (events.length === 0) throw new Error("Stripe plugin: pick at least one event");
-    const created = await this.post<StripeWebhookEndpoint>("/v1/webhook_endpoints", {
-      url,
-      enabled_events: events,
-      description: opt(fields["description"]),
-      api_version: opt(fields["apiVersion"]),
-      connect: bool(fields["connect"]) ? true : undefined,
+    const created = await this.api.post("/v1/webhook_endpoints", {
+      form: {
+        url,
+        enabled_events: events,
+        description: opt(fields["description"]),
+        api_version: opt(fields["apiVersion"]),
+        connect: bool(fields["connect"]) ? true : undefined,
+      },
     });
     const resource = mapWebhookEndpoint(accountId, created);
     await this.keepSecret(resource, created.secret);
@@ -1233,7 +1221,7 @@ export class StripeClient implements PluginClient {
       payload === "thin" ? fields["thinEvents"] : fields["snapshotEvents"],
     );
     if (events.length === 0) throw new Error("Stripe plugin: pick at least one event");
-    const body: Record<string, unknown> = {
+    const body: ApiBody<operations["PostV2CoreEventDestinations"]> = {
       name,
       type,
       event_payload: payload,
@@ -1244,19 +1232,19 @@ export class StripeClient implements PluginClient {
         .filter(Boolean),
     };
     const description = opt(fields["description"]);
-    if (description) body["description"] = description;
-    if (payload === "snapshot") body["snapshot_api_version"] = STRIPE_API_VERSION;
+    if (description) body.description = description;
+    if (payload === "snapshot") body.snapshot_api_version = STRIPE_API_VERSION;
     if (type === "webhook_endpoint") {
       const url = opt(fields["url"]);
       if (!url) throw new Error("Stripe plugin: a webhook URL is required");
-      body["webhook_endpoint"] = { url };
-      body["include"] = ["webhook_endpoint.signing_secret", "webhook_endpoint.url"];
+      body.webhook_endpoint = { url };
+      body.include = ["webhook_endpoint.signing_secret", "webhook_endpoint.url"];
     } else if (type === "amazon_eventbridge") {
       const account = opt(fields["awsAccountId"]);
       if (!account || !/^\d{12}$/.test(account)) {
         throw new Error("Stripe plugin: enter the 12-digit AWS account ID");
       }
-      body["amazon_eventbridge"] = {
+      body.amazon_eventbridge = {
         aws_account_id: account,
         aws_region: fields["awsRegion"] || "us-east-1",
       };
@@ -1265,20 +1253,13 @@ export class StripeClient implements PluginClient {
       const group = opt(fields["azureResourceGroup"]);
       if (!sub || !group)
         throw new Error("Stripe plugin: enter the Azure subscription and resource group");
-      body["azure_event_grid"] = {
+      body.azure_event_grid = {
         azure_subscription_id: sub,
         azure_resource_group_name: group,
         azure_region: fields["azureRegion"] || "eastus",
       };
     }
-    const created = await stripeFetch<StripeEventDestination>(
-      this.ctx,
-      "/v2/core/event_destinations",
-      {
-        method: "POST",
-        json: body,
-      },
-    );
+    const created = await this.api.post("/v2/core/event_destinations", { body });
     const resource = mapEventDestination(accountId, created);
     await this.keepSecret(resource, created.webhook_endpoint?.signing_secret ?? undefined);
     return resource;
@@ -1305,7 +1286,7 @@ export class StripeClient implements PluginClient {
   ): Promise<ResourceInstance> {
     const name = opt(fields["name"]);
     if (!name) throw new Error("Stripe plugin: a product name is required");
-    const form: Record<string, FormValue> = {
+    const form: ApiForm<operations["PostProducts"]> = {
       name,
       description: opt(fields["description"]),
       unit_label: opt(fields["unitLabel"]),
@@ -1320,17 +1301,13 @@ export class StripeClient implements PluginClient {
       if (!Number.isFinite(value) || value < 0)
         throw new Error("Stripe plugin: the default price must be a number");
       const interval = opt(fields["priceInterval"]);
-      form["default_price_data"] = {
+      form.default_price_data = {
         currency,
         unit_amount: toMinor(value, currency),
         ...(interval ? { recurring: { interval } } : {}),
       };
     }
-    return mapProduct(
-      accountId,
-      this.ctx.apiKey,
-      await this.post<StripeProduct>("/v1/products", form),
-    );
+    return mapProduct(accountId, this.ctx.apiKey, await this.api.post("/v1/products", { form }));
   }
 
   private async createPrice(
@@ -1345,7 +1322,7 @@ export class StripeClient implements PluginClient {
     const amount = Number(fields["amount"]);
     if (!Number.isFinite(amount) || amount < 0)
       throw new Error("Stripe plugin: the amount must be a number");
-    const form: Record<string, FormValue> = {
+    const form: ApiForm<operations["PostPrices"]> = {
       product,
       currency,
       nickname: opt(fields["nickname"]),
@@ -1355,22 +1332,22 @@ export class StripeClient implements PluginClient {
     // Sub-cent amounts (common for metered prices) need the decimal form,
     // which Stripe takes in minor units with up to 12 decimal places.
     const minor = Number((amount * Math.pow(10, currencyExponent(currency))).toFixed(10));
-    if (Number.isInteger(minor)) form["unit_amount"] = minor;
-    else form["unit_amount_decimal"] = String(minor);
+    if (Number.isInteger(minor)) form.unit_amount = minor;
+    else form.unit_amount_decimal = String(minor);
     if ((fields["type"] || "recurring") === "recurring") {
       const usage = fields["usageType"] || "licensed";
       const meter = opt(fields["meterId"]);
       if (usage === "metered" && !meter)
         throw new Error("Stripe plugin: a metered price needs a meter");
       const count = Number(fields["intervalCount"] || "1");
-      form["recurring"] = {
+      form.recurring = {
         interval: fields["interval"] || "month",
-        interval_count: Number.isFinite(count) && count > 1 ? count : undefined,
+        ...(Number.isFinite(count) && count > 1 ? { interval_count: count } : {}),
         usage_type: usage,
-        meter: usage === "metered" ? meter : undefined,
+        ...(usage === "metered" && meter !== undefined ? { meter } : {}),
       };
     }
-    const created = await this.post<StripePrice>("/v1/prices", form);
+    const created = await this.api.post("/v1/prices", { form });
     return mapPrice(accountId, created, parentResourceId);
   }
 
@@ -1383,19 +1360,21 @@ export class StripeClient implements PluginClient {
     if (!displayName || !eventName)
       throw new Error("Stripe plugin: a display name and event name are required");
     const formula = fields["aggregation"] || "sum";
-    const created = await this.post<StripeMeter>("/v1/billing/meters", {
-      display_name: displayName,
-      event_name: eventName,
-      default_aggregation: { formula },
-      customer_mapping: {
-        type: "by_id",
-        event_payload_key: opt(fields["customerPayloadKey"]) ?? "stripe_customer_id",
+    const created = await this.api.post("/v1/billing/meters", {
+      form: {
+        display_name: displayName,
+        event_name: eventName,
+        default_aggregation: { formula },
+        customer_mapping: {
+          type: "by_id",
+          event_payload_key: opt(fields["customerPayloadKey"]) ?? "stripe_customer_id",
+        },
+        value_settings:
+          formula === "count"
+            ? undefined
+            : { event_payload_key: opt(fields["valuePayloadKey"]) ?? "value" },
+        event_time_window: opt(fields["eventTimeWindow"]),
       },
-      value_settings:
-        formula === "count"
-          ? undefined
-          : { event_payload_key: opt(fields["valuePayloadKey"]) ?? "value" },
-      event_time_window: opt(fields["eventTimeWindow"]),
     });
     return mapMeter(accountId, created);
   }
@@ -1414,9 +1393,9 @@ export class StripeClient implements PluginClient {
     let start = toEpoch(fields["intervalStart"]);
     let end = toEpoch(fields["intervalEnd"]);
     // Clip to the report type's availability window; Stripe rejects anything outside it.
-    const type = await this.get<{ data_available_start?: number; data_available_end?: number }>(
-      `/v1/reporting/report_types/${encodeURIComponent(reportType)}`,
-    ).catch(() => null);
+    const type = await this.api
+      .get(`/v1/reporting/report_types/${pathEncode(reportType)}`)
+      .catch(() => null);
     if (type?.data_available_end && end && end > type.data_available_end)
       end = type.data_available_end;
     if (type?.data_available_start && start && start < type.data_available_start)
@@ -1426,12 +1405,15 @@ export class StripeClient implements PluginClient {
         "Stripe plugin: the date range is empty once clipped to the data Stripe has for this report",
       );
     }
-    const created = await this.post<StripeReportRun>("/v1/reporting/report_runs", {
-      report_type: reportType,
-      parameters: {
-        interval_start: start,
-        interval_end: end,
-        currency: opt(fields["currency"])?.toLowerCase(),
+    const currency = opt(fields["currency"])?.toLowerCase();
+    const created = await this.api.post("/v1/reporting/report_runs", {
+      form: {
+        report_type: reportType,
+        parameters: {
+          ...(start !== undefined ? { interval_start: start } : {}),
+          ...(end !== undefined ? { interval_end: end } : {}),
+          ...(currency !== undefined ? { currency } : {}),
+        },
       },
     });
     return mapReportRun(accountId, created);
@@ -1446,87 +1428,82 @@ export class StripeClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const enc = encodeURIComponent(externalIdOf(resourceId));
+      const enc = pathEncode(externalIdOf(resourceId));
       const has = (key: string) => Object.prototype.hasOwnProperty.call(fields, key);
       switch (typeId) {
         case WEBHOOK_ENDPOINT: {
-          const form: Record<string, FormValue> = {};
-          if (has("url")) form["url"] = fields["url"];
-          if (has("description")) form["description"] = fields["description"] ?? "";
+          const form: ApiForm<operations["PostWebhookEndpointsWebhookEndpoint"]> = {};
+          if (has("url")) form.url = fields["url"];
+          if (has("description")) form.description = fields["description"] ?? "";
           if (has("enabledEvents")) {
             const events = parseEventList(fields["enabledEvents"]);
             if (events.length === 0)
               throw new Error("Stripe plugin: an endpoint needs at least one event");
-            form["enabled_events"] = events;
+            form.enabled_events = events;
           }
-          if (has("status")) form["disabled"] = fields["status"] === "disabled";
+          if (has("status")) form.disabled = fields["status"] === "disabled";
           return mapWebhookEndpoint(
             accountId,
-            await this.post(`/v1/webhook_endpoints/${enc}`, form),
+            await this.api.post(`/v1/webhook_endpoints/${enc}`, { form }),
           );
         }
         case EVENT_DESTINATION: {
-          const body: Record<string, unknown> = {};
-          if (has("name")) body["name"] = fields["name"];
-          if (has("description")) body["description"] = fields["description"] ?? "";
+          const body: ApiBody<operations["PostV2CoreEventDestinationsId"]> = {};
+          if (has("name")) body.name = fields["name"];
+          if (has("description")) body.description = fields["description"] ?? "";
           if (has("enabledEvents")) {
             const events = parseEventList(fields["enabledEvents"]);
             if (events.length === 0)
               throw new Error("Stripe plugin: a destination needs at least one event");
-            body["enabled_events"] = events;
+            body.enabled_events = events;
           }
-          if (has("url") && fields["url"]) body["webhook_endpoint"] = { url: fields["url"] };
-          body["include"] = ["webhook_endpoint.url"];
-          const updated = await stripeFetch<StripeEventDestination>(
-            this.ctx,
-            `/v2/core/event_destinations/${enc}`,
-            { method: "POST", json: body },
-          );
+          if (has("url") && fields["url"]) body.webhook_endpoint = { url: fields["url"] };
+          body.include = ["webhook_endpoint.url"];
+          const updated = await this.api.post(`/v2/core/event_destinations/${enc}`, { body });
           return mapEventDestination(accountId, updated);
         }
         case PRODUCT: {
-          const form: Record<string, FormValue> = {};
-          const map: Record<string, string> = {
-            name: "name",
-            description: "description",
-            unitLabel: "unit_label",
-            statementDescriptor: "statement_descriptor",
-            taxCode: "tax_code",
-            url: "url",
-          };
-          for (const [key, param] of Object.entries(map))
-            if (has(key)) form[param] = fields[key] ?? "";
-          if (has("active")) form["active"] = fields["active"] === "true";
+          const form: ApiForm<operations["PostProductsId"]> = {};
+          if (has("name")) form.name = fields["name"] ?? "";
+          if (has("description")) form.description = fields["description"] ?? "";
+          if (has("unitLabel")) form.unit_label = fields["unitLabel"] ?? "";
+          if (has("statementDescriptor"))
+            form.statement_descriptor = fields["statementDescriptor"] ?? "";
+          if (has("taxCode")) form.tax_code = fields["taxCode"] ?? "";
+          if (has("url")) form.url = fields["url"] ?? "";
+          if (has("active")) form.active = fields["active"] === "true";
           return mapProduct(
             accountId,
             this.ctx.apiKey,
-            await this.post(`/v1/products/${enc}`, form),
+            await this.api.post(`/v1/products/${enc}`, { form }),
           );
         }
         case PRICE: {
-          const form: Record<string, FormValue> = {};
-          if (has("nickname")) form["nickname"] = fields["nickname"] ?? "";
+          const form: ApiForm<operations["PostPricesPrice"]> = {};
+          if (has("nickname")) form.nickname = fields["nickname"] ?? "";
           if (has("lookupKey")) {
-            form["lookup_key"] = fields["lookupKey"] ?? "";
+            form.lookup_key = fields["lookupKey"] ?? "";
             // Moving a lookup key from another price is what users mean by setting it.
-            if (fields["lookupKey"]) form["transfer_lookup_key"] = true;
+            if (fields["lookupKey"]) form.transfer_lookup_key = true;
           }
           if (
             has("taxBehavior") &&
             fields["taxBehavior"] &&
             fields["taxBehavior"] !== "unspecified"
           ) {
-            form["tax_behavior"] = fields["taxBehavior"];
+            form.tax_behavior = fields["taxBehavior"];
           }
-          if (has("active")) form["active"] = fields["active"] === "true";
-          return mapPrice(accountId, await this.post(`/v1/prices/${enc}`, form));
+          if (has("active")) form.active = fields["active"] === "true";
+          return mapPrice(accountId, await this.api.post(`/v1/prices/${enc}`, { form }));
         }
         case METER: {
           if (!has("displayName"))
             return runPluginEffect(this.getResource(typeId, resourceId, accountId));
           return mapMeter(
             accountId,
-            await this.post(`/v1/billing/meters/${enc}`, { display_name: fields["displayName"] }),
+            await this.api.post(`/v1/billing/meters/${enc}`, {
+              form: { display_name: fields["displayName"] },
+            }),
           );
         }
         default:
@@ -1539,21 +1516,20 @@ export class StripeClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const enc = encodeURIComponent(externalIdOf(resourceId));
-      const del = (path: string) => stripeFetch<unknown>(this.ctx, path, { method: "DELETE" });
+      const enc = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case WEBHOOK_ENDPOINT:
-          await del(`/v1/webhook_endpoints/${enc}`);
+          await this.api.delete(`/v1/webhook_endpoints/${enc}`);
           return;
         case EVENT_DESTINATION:
-          await del(`/v2/core/event_destinations/${enc}`);
+          await this.api.delete(`/v2/core/event_destinations/${enc}`);
           return;
         case CONNECTED_ACCOUNT:
-          await del(`/v1/accounts/${enc}`);
+          await this.api.delete(`/v1/accounts/${enc}`);
           return;
         case PRODUCT:
           try {
-            await del(`/v1/products/${enc}`);
+            await this.api.delete(`/v1/products/${enc}`);
           } catch (err) {
             if (err instanceof StripeApiError && err.status === 400) {
               throw new StripeApiError(
@@ -1581,41 +1557,48 @@ export class StripeClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const enc = encodeURIComponent(externalIdOf(resourceId));
+      const enc = pathEncode(externalIdOf(resourceId));
       const key = `${typeId}:${actionId}`;
       switch (key) {
         case `${WEBHOOK_ENDPOINT}:enable`:
         case `${WEBHOOK_ENDPOINT}:disable`:
-          await this.post(`/v1/webhook_endpoints/${enc}`, { disabled: actionId === "disable" });
+          await this.api.post(`/v1/webhook_endpoints/${enc}`, {
+            form: { disabled: actionId === "disable" },
+          });
           return;
         case `${EVENT_DESTINATION}:enable`:
+          await this.api.post(`/v2/core/event_destinations/${enc}/enable`, { body: {} });
+          return;
         case `${EVENT_DESTINATION}:disable`:
+          await this.api.post(`/v2/core/event_destinations/${enc}/disable`, { body: {} });
+          return;
         case `${EVENT_DESTINATION}:ping`:
-          await stripeFetch(this.ctx, `/v2/core/event_destinations/${enc}/${actionId}`, {
-            method: "POST",
-            json: {},
-          });
+          await this.api.post(`/v2/core/event_destinations/${enc}/ping`, { body: {} });
           return;
         case `${PRODUCT}:archive`:
         case `${PRODUCT}:unarchive`:
-          await this.post(`/v1/products/${enc}`, { active: actionId === "unarchive" });
+          await this.api.post(`/v1/products/${enc}`, {
+            form: { active: actionId === "unarchive" },
+          });
           return;
         case `${PRICE}:archive`:
         case `${PRICE}:unarchive`:
-          await this.post(`/v1/prices/${enc}`, { active: actionId === "unarchive" });
+          await this.api.post(`/v1/prices/${enc}`, { form: { active: actionId === "unarchive" } });
           return;
         case `${METER}:deactivate`:
+          await this.api.post(`/v1/billing/meters/${enc}/deactivate`, { form: {} });
+          return;
         case `${METER}:reactivate`:
-          await this.post(`/v1/billing/meters/${enc}/${actionId}`);
+          await this.api.post(`/v1/billing/meters/${enc}/reactivate`, { form: {} });
           return;
         case `${PAYOUT}:cancel`:
-          await this.post(`/v1/payouts/${enc}/cancel`);
+          await this.api.post(`/v1/payouts/${enc}/cancel`, { form: {} });
           return;
         case `${CONNECTED_ACCOUNT}:reject`:
-          await this.post(`/v1/accounts/${enc}/reject`, { reason: "other" });
+          await this.api.post(`/v1/accounts/${enc}/reject`, { form: { reason: "other" } });
           return;
         case `${CONNECTED_ACCOUNT}:unreject`:
-          await this.post(`/v1/accounts/${enc}/unreject`);
+          await this.api.post(`/v1/accounts/${enc}/unreject`, { form: {} });
           return;
         default:
           throw new Error(`Stripe plugin: unknown action "${actionId}" for ${typeId}`);
@@ -1627,7 +1610,7 @@ export class StripeClient implements PluginClient {
 
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
-      return fetchFeeCostRows(this.ctx, range.fromDate, range.toDate);
+      return fetchFeeCostRows(this.api, range.fromDate, range.toDate);
     });
   }
 
@@ -1640,9 +1623,9 @@ export class StripeClient implements PluginClient {
     return attempt(async () => {
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - 30 * 86_400_000;
-      if (resourceTypeId === ACCOUNT) return accountMetrics(this.ctx, startMs, endMs);
+      if (resourceTypeId === ACCOUNT) return accountMetrics(this.api, startMs, endMs);
       if (resourceTypeId === METER)
-        return meterMetrics(this.ctx, externalIdOf(resourceId), startMs, endMs);
+        return meterMetrics(this.api, externalIdOf(resourceId), startMs, endMs);
       return [];
     });
   }
@@ -1668,23 +1651,24 @@ export class StripeClient implements PluginClient {
       const pages = Math.ceil(limit / 100);
       let lines: string[];
       if (active === "Thin events (v2)") {
-        const events = await listV2<{
-          id?: string;
-          type?: string;
-          created?: string;
-          related_object?: { id?: string };
-        }>(this.ctx, "/v2/core/events", {}, pages);
+        const events = await listV2(
+          this.ctx,
+          () => this.api.get("/v2/core/events", { query: { limit: 100 } }),
+          pages,
+        );
         lines = events
           .slice(0, limit)
           .map(
-            (e) =>
+            (e: ThinEvent) =>
               `${e.created ?? ""}  ${e.type ?? ""}  ${e.related_object?.id ?? ""}  ${e.id ?? ""}`,
           );
       } else {
-        const events = await listV1<StripeEvent>(
-          this.ctx,
-          "/v1/events",
-          active === "Failed webhook deliveries" ? { delivery_success: false } : {},
+        const failed = active === "Failed webhook deliveries";
+        const events = await listV1(
+          (paging) =>
+            this.api.get("/v1/events", {
+              query: { limit: 100, ...(failed ? { delivery_success: false } : {}), ...paging },
+            }),
           pages,
         );
         lines = events.slice(0, limit).map((e) => {

@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://saas-api.tmprl.cloud/spec.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1cloud~1usage",
+      "value": {
+        "get": {
+          "operationId": "GetUsage",
+          "parameters": [
+            {
+              "name": "startTimeInclusive",
+              "in": "query",
+              "schema": { "type": "string", "format": "date-time" }
+            },
+            {
+              "name": "endTimeExclusive",
+              "in": "query",
+              "schema": { "type": "string", "format": "date-time" }
+            },
+            { "name": "pageSize", "in": "query", "schema": { "type": "integer" } },
+            { "name": "pageToken", "in": "query", "schema": { "type": "string" } }
+          ],
+          "responses": {
+            "200": {
+              "description": "A successful response.",
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/v1GetUsageResponse" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The route exists (GetUsage in temporalio/cloud-api's service.proto, marked deprecated) and the document keeps its response schema, but it publishes no path for deprecated operations."
+    }
+  ],
+  "paths": {
+    "/cloud/account": ["get"],
+    "/cloud/current-identity": ["get"],
+    "/cloud/regions": ["get"],
+    "/cloud/usage": ["get"],
+    "/cloud/operations/{asyncOperationId}": ["get"],
+    "/cloud/billing-reports": ["post"],
+    "/cloud/billing-reports/{billingReportId}": ["get"],
+    "/cloud/namespaces": ["get", "post"],
+    "/cloud/namespaces/{namespace}": ["get", "post", "delete"],
+    "/cloud/namespaces/{namespace}/add-region": ["post"],
+    "/cloud/namespaces/{namespace}/capacity-info": ["get"],
+    "/cloud/namespaces/{namespace}/export-sink-validate": ["post"],
+    "/cloud/namespaces/{namespace}/export-sinks": ["get", "post"],
+    "/cloud/namespaces/{namespace}/export-sinks/{name}": ["get", "delete"],
+    "/cloud/namespaces/{namespace}/export-sinks/{spec.name}": ["post"],
+    "/cloud/namespaces/{namespace}/failover-region": ["post"],
+    "/cloud/namespaces/{namespace}/regions/{region}": ["delete"],
+    "/cloud/namespaces/{namespace}/rename-custom-search-attribute": ["post"],
+    "/cloud/namespaces/{namespace}/update-tags": ["post"],
+    "/cloud/users": ["get", "post"],
+    "/cloud/users/{userId}": ["get", "post", "delete"],
+    "/cloud/service-accounts": ["get", "post"],
+    "/cloud/service-accounts/{serviceAccountId}": ["get", "post", "delete"],
+    "/cloud/api-keys": ["get"],
+    "/cloud/api-keys/{keyId}": ["get", "post", "delete"],
+    "/cloud/nexus/endpoints": ["get", "post"],
+    "/cloud/nexus/endpoints/{endpointId}": ["get", "post", "delete"],
+    "/cloud/connectivity-rules": ["get", "post"],
+    "/cloud/connectivity-rules/{connectivityRuleId}": ["get", "delete"]
+  }
+}

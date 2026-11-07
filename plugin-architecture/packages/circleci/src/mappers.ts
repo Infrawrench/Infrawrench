@@ -1,239 +1,35 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiListItem, ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
 import { APP_BASE } from "./api.js";
+import type { operations as V2 } from "./api-types.v2.gen.js";
+import type { operations as V3 } from "./api-types.v3.gen.js";
 
 export const PLUGIN_ID = "circleci";
 
 // ---------------------------------------------------------------------------
-// API shapes (the fields this plugin reads; see the v2 OpenAPI document)
+// API shapes, from the OpenAPI documents (`../plugingen.json`)
 // ---------------------------------------------------------------------------
 
-export interface CircleCollaboration {
-  id: string;
-  "vcs-type"?: string;
-  name: string;
-  avatar_url?: string;
-  slug: string;
-}
-
-export interface CircleProject {
-  slug: string;
-  name: string;
-  id: string;
-  organization_name?: string;
-  organization_slug?: string;
-  organization_id?: string;
-  vcs_info?: { vcs_url?: string; provider?: string; default_branch?: string };
-}
-
-export interface SummaryMetrics {
-  total_runs?: number;
-  total_duration_secs?: number;
-  total_credits_used?: number;
-  success_rate?: number;
-  throughput?: number;
-}
-
-export interface OrgSummary {
-  org_data?: { metrics?: SummaryMetrics; trends?: SummaryMetrics };
-  org_project_data?: Array<{
-    project_name: string;
-    metrics?: SummaryMetrics;
-    trends?: SummaryMetrics;
-  }>;
-  all_projects?: string[];
-}
-
-export interface DurationMetrics {
-  min?: number;
-  mean?: number;
-  median?: number;
-  p95?: number;
-  max?: number;
-  standard_deviation?: number;
-}
-
-export interface WorkflowMetrics {
-  name: string;
-  metrics?: {
-    total_runs?: number;
-    successful_runs?: number;
-    failed_runs?: number;
-    mttr?: number;
-    total_credits_used?: number;
-    success_rate?: number;
-    duration_metrics?: DurationMetrics;
-    total_recoveries?: number;
-    throughput?: number;
-  };
-  window_start?: string;
-  window_end?: string;
-}
-
-export interface JobMetrics {
-  name: string;
-  metrics?: {
-    total_runs?: number;
-    failed_runs?: number;
-    successful_runs?: number;
-    duration_metrics?: DurationMetrics;
-    success_rate?: number;
-    total_credits_used?: number;
-    throughput?: number;
-  };
-}
-
-export interface WorkflowRun {
-  id: string;
-  branch?: string;
-  duration?: number;
-  created_at: string;
-  stopped_at?: string;
-  credits_used?: number;
-  status: string;
-  is_approval?: boolean;
-}
-
-export interface FlakyTest {
-  "test-name"?: string;
-  classname?: string;
-  "job-name"?: string;
-  "workflow-name"?: string;
-  "times-flaked"?: number;
-  "time-wasted"?: number;
-  file?: string;
-}
-
-export interface CirclePipeline {
-  id: string;
-  errors?: Array<{ type: string; message: string }>;
-  project_slug: string;
-  number: number;
-  state: string;
-  created_at: string;
-  updated_at?: string;
-  trigger?: { type?: string; received_at?: string; actor?: { login?: string } };
-  vcs?: {
-    branch?: string;
-    tag?: string;
-    revision?: string;
-    commit?: { subject?: string; body?: string };
-    target_repository_url?: string;
-  };
-}
-
-export interface CircleWorkflow {
-  id: string;
-  name: string;
-  status: string;
-  pipeline_id?: string;
-  pipeline_number?: number;
-  project_slug?: string;
-  created_at?: string;
-  stopped_at?: string | null;
-}
-
-export interface CircleJob {
-  id: string;
-  name: string;
-  status: string;
-  type?: string;
-  job_number?: number;
-  started_at?: string | null;
-  stopped_at?: string | null;
-}
-
-export interface CircleContextItem {
-  id: string;
-  name: string;
-  created_at?: string;
-}
-
-export interface ContextVariable {
-  variable: string;
-  created_at?: string;
-  updated_at?: string;
-  context_id?: string;
-}
-
-export interface ContextRestriction {
-  id: string;
-  name?: string;
-  restriction_type?: string;
-  restriction_value?: string;
-}
-
-export interface ProjectVariable {
-  name: string;
-  value?: string;
-  "created-at"?: string;
-}
-
-export interface Timetable {
-  "per-hour"?: number;
-  "hours-of-day"?: number[];
-  "days-of-week"?: string[];
-  "days-of-month"?: number[];
-  months?: string[];
-}
-
-export interface CircleSchedule {
-  id: string;
-  name: string;
-  description?: string;
-  timetable?: Timetable;
-  "updated-at"?: string;
-  "created-at"?: string;
-  "project-slug"?: string;
-  parameters?: Record<string, string | number | boolean>;
-  actor?: { login?: string; name?: string };
-}
-
-export interface PipelineDefinition {
-  id: string;
-  name?: string;
-  description?: string;
-  config_source?: {
-    provider?: string;
-    repo?: { full_name?: string; external_id?: string };
-    file_path?: string;
-  };
-  checkout_source?: { provider?: string; repo?: { full_name?: string; external_id?: string } };
-}
-
-export interface CircleTrigger {
-  id: string;
-  event_name?: string;
-  event_source?: {
-    provider?: string;
-    repo?: { full_name?: string; external_id?: string };
-    webhook?: { url?: string; sender?: string };
-    schedule?: { cron_expression?: string };
-  };
-  event_preset?: string;
-  checkout_ref?: string;
-  config_ref?: string;
-  disabled?: boolean;
-  parameters?: Record<string, unknown>;
-}
-
-/** `GET /api/v3/runner/resource-classes` item (field names per circleci-cli). */
-export interface RunnerResourceClass {
-  id: string;
-  attributes?: { resource_class?: string; description?: string };
-}
-
-/** `GET /api/v3/runner/agents` item (field names per circleci-cli). */
-export interface CircleRunner {
-  id: string;
-  attributes?: {
-    name?: string;
-    is_busy?: boolean;
-    version?: string;
-    first_connected_at?: string;
-    last_connected_at?: string;
-  };
-  references?: { resource_class?: { id?: string; attributes?: { resource_class?: string } } };
-}
+export type CircleCollaboration = ApiListItem<V2["getCollaborations"], null>;
+export type CircleProject = ApiResponse<V2["getProjectBySlug"]>;
+export type OrgSummary = ApiResponse<V2["getOrgSummaryData"]>;
+export type SummaryMetrics = OrgSummary["org_project_data"][number]["metrics"];
+export type WorkflowMetrics = ApiListItem<V2["getProjectWorkflowMetrics"], "items">;
+export type JobMetrics = ApiListItem<V2["getProjectWorkflowJobMetrics"], "items">;
+export type WorkflowRun = ApiListItem<V2["getProjectWorkflowRuns"], "items">;
+export type FlakyTest = ApiListItem<V2["getFlakyTests"], "flaky-tests">;
+export type CirclePipeline = ApiListItem<V2["listPipelines"], "items">;
+export type CircleWorkflow = ApiListItem<V2["listWorkflowsByPipelineId"], "items">;
+export type CircleJob = ApiListItem<V2["listWorkflowJobs"], "items">;
+export type CircleContextItem = ApiListItem<V2["listContexts"], "items">;
+export type ContextVariable = ApiListItem<V2["listEnvironmentVariablesFromContext"], "items">;
+export type ContextRestriction = ApiListItem<V2["getContextRestrictions"], "items">;
+export type ProjectVariable = ApiListItem<V2["listEnvVars"], "items">;
+export type CircleSchedule = ApiListItem<V2["listSchedulesForProject"], "items">;
+export type Timetable = CircleSchedule["timetable"];
+export type PipelineDefinition = ApiListItem<V2["listPipelineDefinitions"], "items">;
+export type CircleTrigger = ApiListItem<V2["listPipelineDefinitionTriggers"], "items">;
+export type RunnerResourceClass = ApiListItem<V3["get-runner-resource-classes"], "data">;
+export type CircleRunner = ApiListItem<V3["get-runner-agents"], "data">;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -559,7 +355,7 @@ export function mapTrigger(
   accountId: string,
   projectSlug: string,
   projectId: string,
-  definition: PipelineDefinition,
+  definition: { name?: string | undefined },
   t: CircleTrigger,
 ): ResourceInstance {
   const cron = t.event_source?.schedule?.cron_expression;

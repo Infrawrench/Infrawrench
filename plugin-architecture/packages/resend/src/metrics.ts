@@ -1,6 +1,10 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
-import type { ResendContext } from "./api.js";
-import { resendFetch } from "./api.js";
+import type { ResendApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
+
+type MetricName = NonNullable<
+  NonNullable<operations["emails/metrics"]["parameters"]["query"]>["metrics"]
+>[number];
 
 /**
  * Deliverability metrics from `GET /emails/metrics`
@@ -10,7 +14,7 @@ import { resendFetch } from "./api.js";
  * minutes, and history is clamped to the plan's retention window. Open and
  * click counts need tracking on the sending domain.
  */
-const COUNTS: Array<[string, string]> = [
+const COUNTS: Array<[MetricName, string]> = [
   ["sent", "Sent"],
   ["delivered", "Delivered"],
   ["delivery_delayed", "Delivery delayed"],
@@ -24,7 +28,7 @@ const COUNTS: Array<[string, string]> = [
   ["unsubscribed", "Unsubscribes"],
 ];
 
-const RATES: Array<[string, string]> = [
+const RATES: Array<[MetricName, string]> = [
   ["delivery_rate", "Delivery rate"],
   ["bounce_rate", "Bounce rate"],
   ["complaint_rate", "Complaint rate"],
@@ -32,24 +36,19 @@ const RATES: Array<[string, string]> = [
   ["click_rate", "Click rate"],
 ];
 
-interface MetricsResponse {
-  data?: Array<Record<string, unknown> & { period?: string }>;
-  totals?: Record<string, number>;
-}
-
 export interface MetricsScope {
   domainId?: string;
   broadcastId?: string;
 }
 
 export async function emailMetrics(
-  ctx: ResendContext,
+  api: ResendApi,
   startMs: number,
   endMs: number,
   scope: MetricsScope = {},
 ): Promise<MetricSeries[]> {
   const hourly = endMs - startMs <= 2 * 86_400_000;
-  const res = await resendFetch<MetricsResponse>(ctx, "/emails/metrics", {
+  const res = await api.get("/emails/metrics", {
     query: {
       start_date: new Date(startMs).toISOString(),
       end_date: new Date(endMs).toISOString(),

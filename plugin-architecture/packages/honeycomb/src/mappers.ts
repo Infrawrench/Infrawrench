@@ -16,6 +16,7 @@ import type {
   HnyQueryAnnotation,
   HnyQuerySpec,
   HnyRecipient,
+  HnyRecipientDetails,
   HnySignal,
   HnySlo,
   HnyTag,
@@ -155,7 +156,7 @@ export function mapEnvironment(
     connected: boolean;
   },
 ): ResourceInstance {
-  const a = env.attrs ?? {};
+  const a: Partial<HnyEnvironmentAttrs> = env.attrs ?? {};
   const url = teamUrl({
     slug: env.slug,
     region: env.region,
@@ -568,7 +569,7 @@ export function mapSavedQuery(
 
 /** The human-facing target of a recipient, whatever its type. */
 export function recipientTarget(r: HnyRecipient): string {
-  const d = r.details ?? {};
+  const d: HnyRecipientDetails = r.details ?? {};
   return d.email_address ?? d.slack_channel ?? d.pagerduty_integration_name ?? d.webhook_name ?? "";
 }
 

@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiBody, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -15,8 +15,23 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { withMetricsCapability } from "@infrawrench/plugin-base";
-import { RenderApi } from "./api.js";
+import { pathEncode, withMetricsCapability } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
+import {
+  createRenderApi,
+  listBlueprints,
+  listCustomDomains,
+  listDisks,
+  listEnvGroups,
+  listEnvironments,
+  listEnvVars,
+  listKeyValues,
+  listOwners,
+  listPostgres,
+  listProjects,
+  listServices,
+  type RenderApi,
+} from "./api.js";
 import {
   EVICTION_POLICIES,
   KEY_VALUE_PLANS,
@@ -27,7 +42,6 @@ import {
 } from "./catalog.js";
 import {
   cached,
-  enc,
   externalOf,
   isStatus,
   mapLimit,
@@ -58,23 +72,13 @@ import {
 import { DEFAULT_METRICS_WINDOW_MS, fetchRenderMetrics, metricSpecsFor } from "./metrics.js";
 import { ENRICH, renderRenderDetail, renderRenderSidebarItem } from "./render.js";
 import type {
-  RenderBlueprint,
-  RenderBlueprintSync,
-  RenderCustomDomain,
-  RenderDeploy,
-  RenderDisk,
-  RenderEnvGroup,
   RenderEnvironment,
-  RenderEnvVar,
-  RenderJob,
   RenderKeyValue,
-  RenderKeyValueConnection,
-  RenderMaintenance,
   RenderOwner,
   RenderPostgres,
-  RenderPostgresConnection,
   RenderProject,
   RenderService,
+  RenderServicePatchDetails,
 } from "./types.js";
 
 const LIST_TTL_MS = 30_000;
@@ -106,7 +110,7 @@ export class RenderClient implements PluginClient {
     const apiKey = str(credentials["apiKey"]);
     if (!apiKey) throw new Error("Render plugin: missing apiKey credential");
     this.workspaceId = str(credentials["workspaceId"]);
-    this.api = new RenderApi(apiKey, credentials["caCert"] ?? "", services);
+    this.api = createRenderApi(apiKey, credentials["caCert"] ?? "", services);
     this.resourceTypes = resourceTypes;
   }
 
@@ -118,7 +122,7 @@ export class RenderClient implements PluginClient {
 
   owners(): Promise<RenderOwner[]> {
     this.ownersCache = cached(this.ownersCache, LIST_TTL_MS, async () => {
-      const all = await this.api.listAll<RenderOwner>("/owners", "owner");
+      const all = await listOwners(this.api);
       return this.workspaceId ? all.filter((o) => o.id === this.workspaceId) : all;
     });
     return this.ownersCache.value;
@@ -126,7 +130,7 @@ export class RenderClient implements PluginClient {
 
   services(): Promise<RenderService[]> {
     this.servicesCache = cached(this.servicesCache, LIST_TTL_MS, () =>
-      this.api.listAll<RenderService>("/services", "service", this.ownerQuery()),
+      listServices(this.api, this.ownerQuery()),
     );
     return this.servicesCache.value;
   }
@@ -137,7 +141,7 @@ export class RenderClient implements PluginClient {
 
   private async serviceById(id: string): Promise<RenderService> {
     const known = (await this.services().catch(() => [])).find((s) => s.id === id);
-    return known ?? this.api.request<RenderService>(`/services/${enc(id)}`);
+    return known ?? this.api.get(`/services/${pathEncode(id)}`);
   }
 
   private async perService(
@@ -157,15 +161,13 @@ export class RenderClient implements PluginClient {
   }
 
   private async projects(): Promise<RenderProject[]> {
-    return this.api.listAll<RenderProject>("/projects", "project", this.ownerQuery());
+    return listProjects(this.api, this.ownerQuery());
   }
 
   private async environments(): Promise<Array<{ env: RenderEnvironment; projectName: string }>> {
     const projects = await this.projects();
     const lists = await mapLimit(projects, FAN_OUT, async (p) => {
-      const envs = await this.api.listAll<RenderEnvironment>("/environments", "environment", {
-        projectId: [p.id],
-      });
+      const envs = await listEnvironments(this.api, p.id);
       return envs.map((env) => ({ env, projectName: p.name }));
     });
     return lists.flat();
@@ -184,74 +186,59 @@ export class RenderClient implements PluginClient {
           return this.perService(
             () => true,
             async (s) => {
-              const rows = await this.api.request<Array<{ deploy: RenderDeploy }>>(
-                `/services/${enc(s.id)}/deploys`,
-                { query: { limit: DEPLOYS_PER_SERVICE } },
-              );
+              const rows = await this.api.get(`/services/${pathEncode(s.id)}/deploys`, {
+                query: { limit: DEPLOYS_PER_SERVICE },
+              });
               return (rows ?? []).map((r) => mapDeploy(r.deploy, s, accountId));
             },
           );
         case "env-var":
           return this.perService(
             () => true,
-            async (s) =>
-              (
-                await this.api.listAll<RenderEnvVar>(`/services/${enc(s.id)}/env-vars`, "envVar")
-              ).map((v) => mapEnvVar(v, s, accountId)),
+            async (s) => (await listEnvVars(this.api, s.id)).map((v) => mapEnvVar(v, s, accountId)),
           );
         case "custom-domain":
           return this.perService(
             (s) => DOMAIN_TYPES.has(s.type),
             async (s) =>
-              (
-                await this.api.listAll<RenderCustomDomain>(
-                  `/services/${enc(s.id)}/custom-domains`,
-                  "customDomain",
-                )
-              ).map((c) => mapCustomDomain(c, s, accountId)),
+              (await listCustomDomains(this.api, s.id)).map((c) =>
+                mapCustomDomain(c, s, accountId),
+              ),
           );
         case "job":
           return this.perService(
             (s) => s.type !== "static_site",
             async (s) => {
-              const rows = await this.api.request<Array<{ job: RenderJob }>>(
-                `/services/${enc(s.id)}/jobs`,
-                { query: { limit: JOBS_PER_SERVICE } },
-              );
+              const rows = await this.api.get(`/services/${pathEncode(s.id)}/jobs`, {
+                query: { limit: JOBS_PER_SERVICE },
+              });
               return (rows ?? []).map((r) => mapJob(r.job, s, accountId));
             },
           );
         case "disk": {
           const [disks, services] = await Promise.all([
-            this.api.listAll<RenderDisk>("/disks", "disk", this.ownerQuery()),
-            this.services().catch(() => [] as RenderService[]),
+            listDisks(this.api, this.ownerQuery()),
+            this.services().catch((): RenderService[] => []),
           ]);
           const names = new Map(services.map((s) => [s.id, s.name]));
           return disks.map((d) => mapDisk(d, names, accountId));
         }
         case "postgres":
           return (
-            await this.api.listAll<RenderPostgres>("/postgres", "postgres", {
-              ...this.ownerQuery(),
-              includeReplicas: true,
-            })
+            await listPostgres(this.api, { ...this.ownerQuery(), includeReplicas: true })
           ).map((p) => mapPostgres(p, accountId));
         case "key-value":
-          return (
-            await this.api.listAll<RenderKeyValue>("/key-value", "keyValue", this.ownerQuery())
-          ).map((k) => mapKeyValue(k, accountId));
-        case "env-group":
-          return (
-            await this.api.listAll<RenderEnvGroup>("/env-groups", "envGroup", this.ownerQuery())
-          ).map((g) => mapEnvGroup(g, accountId));
-        case "env-group-var": {
-          const groups = await this.api.listAll<RenderEnvGroup>(
-            "/env-groups",
-            "envGroup",
-            this.ownerQuery(),
+          return (await listKeyValues(this.api, this.ownerQuery())).map((k) =>
+            mapKeyValue(k, accountId),
           );
+        case "env-group":
+          return (await listEnvGroups(this.api, this.ownerQuery())).map((g) =>
+            mapEnvGroup(g, accountId),
+          );
+        case "env-group-var": {
+          const groups = await listEnvGroups(this.api, this.ownerQuery());
           const lists = await mapLimit(groups, FAN_OUT, async (g) => {
-            const full = await this.api.request<RenderEnvGroup>(`/env-groups/${enc(g.id)}`);
+            const full = await this.api.get(`/env-groups/${pathEncode(g.id)}`);
             return (full?.envVars ?? []).map((v) => mapEnvGroupVar(v, g, accountId));
           });
           return lists.flat();
@@ -263,9 +250,9 @@ export class RenderClient implements PluginClient {
             mapEnvironment(env, projectName, accountId),
           );
         case "blueprint":
-          return (
-            await this.api.listAll<RenderBlueprint>("/blueprints", "blueprint", this.ownerQuery())
-          ).map((b) => mapBlueprint(b, accountId));
+          return (await listBlueprints(this.api, this.ownerQuery())).map((b) =>
+            mapBlueprint(b, accountId),
+          );
         case "maintenance":
           return this.listMaintenance(accountId);
         default:
@@ -276,14 +263,10 @@ export class RenderClient implements PluginClient {
 
   private async listMaintenance(accountId: string): Promise<ResourceInstance[]> {
     const [runs, services, pgs, kvs] = await Promise.all([
-      this.api.request<RenderMaintenance[]>("/maintenance", { query: this.ownerQuery() }),
-      this.services().catch(() => [] as RenderService[]),
-      this.api
-        .listAll<RenderPostgres>("/postgres", "postgres", this.ownerQuery())
-        .catch(() => [] as RenderPostgres[]),
-      this.api
-        .listAll<RenderKeyValue>("/key-value", "keyValue", this.ownerQuery())
-        .catch(() => [] as RenderKeyValue[]),
+      this.api.get("/maintenance", { query: this.ownerQuery() }),
+      this.services().catch((): RenderService[] => []),
+      listPostgres(this.api, this.ownerQuery()).catch((): RenderPostgres[] => []),
+      listKeyValues(this.api, this.ownerQuery()).catch((): RenderKeyValue[] => []),
     ]);
     const names = new Map<string, string>();
     for (const r of [...services, ...pgs, ...kvs]) names.set(r.id, r.name);
@@ -299,14 +282,11 @@ export class RenderClient implements PluginClient {
       const id = externalOf(resourceId);
       switch (typeId) {
         case "service":
-          return mapService(
-            await this.api.request<RenderService>(`/services/${enc(id)}`),
-            accountId,
-          );
+          return mapService(await this.api.get(`/services/${pathEncode(id)}`), accountId);
         case "deploy": {
           const { scope, id: deployId } = parseScopedId(id);
           const [d, s] = await Promise.all([
-            this.api.request<RenderDeploy>(`/services/${enc(scope)}/deploys/${enc(deployId)}`),
+            this.api.get(`/services/${pathEncode(scope)}/deploys/${pathEncode(deployId)}`),
             this.serviceById(scope),
           ]);
           return mapDeploy(d, s, accountId);
@@ -314,9 +294,7 @@ export class RenderClient implements PluginClient {
         case "custom-domain": {
           const { scope, id: domainId } = parseScopedId(id);
           const [c, s] = await Promise.all([
-            this.api.request<RenderCustomDomain>(
-              `/services/${enc(scope)}/custom-domains/${enc(domainId)}`,
-            ),
+            this.api.get(`/services/${pathEncode(scope)}/custom-domains/${pathEncode(domainId)}`),
             this.serviceById(scope),
           ]);
           return mapCustomDomain(c, s, accountId);
@@ -324,7 +302,7 @@ export class RenderClient implements PluginClient {
         case "job": {
           const { scope, id: jobId } = parseScopedId(id);
           const [j, s] = await Promise.all([
-            this.api.request<RenderJob>(`/services/${enc(scope)}/jobs/${enc(jobId)}`),
+            this.api.get(`/services/${pathEncode(scope)}/jobs/${pathEncode(jobId)}`),
             this.serviceById(scope),
           ]);
           return mapJob(j, s, accountId);
@@ -332,14 +310,14 @@ export class RenderClient implements PluginClient {
         case "env-var": {
           const { scope, id: key } = parseScopedId(id);
           const [v, s] = await Promise.all([
-            this.api.request<RenderEnvVar>(`/services/${enc(scope)}/env-vars/${enc(key)}`),
+            this.api.get(`/services/${pathEncode(scope)}/env-vars/${pathEncode(key)}`),
             this.serviceById(scope),
           ]);
           return mapEnvVar(v ?? { key, value: "" }, s, accountId);
         }
         case "env-group-var": {
           const { scope, id: key } = parseScopedId(id);
-          const g = await this.api.request<RenderEnvGroup>(`/env-groups/${enc(scope)}`);
+          const g = await this.api.get(`/env-groups/${pathEncode(scope)}`);
           const v = (g.envVars ?? []).find((x) => x.key === key);
           if (!v)
             throw Object.assign(new Error(`Render plugin: variable ${key} not found`), {
@@ -348,42 +326,25 @@ export class RenderClient implements PluginClient {
           return mapEnvGroupVar(v, g, accountId);
         }
         case "disk": {
-          const d = await this.api.request<RenderDisk>(`/disks/${enc(id)}`);
+          const d = await this.api.get(`/disks/${pathEncode(id)}`);
           const s = d.serviceId ? await this.serviceById(d.serviceId).catch(() => null) : null;
           return mapDisk(d, new Map(s ? [[s.id, s.name]] : []), accountId);
         }
         case "postgres":
-          return mapPostgres(
-            await this.api.request<RenderPostgres>(`/postgres/${enc(id)}`),
-            accountId,
-          );
+          return mapPostgres(await this.api.get(`/postgres/${pathEncode(id)}`), accountId);
         case "key-value":
-          return mapKeyValue(
-            await this.api.request<RenderKeyValue>(`/key-value/${enc(id)}`),
-            accountId,
-          );
+          return mapKeyValue(await this.api.get(`/key-value/${pathEncode(id)}`), accountId);
         case "env-group":
-          return mapEnvGroup(
-            await this.api.request<RenderEnvGroup>(`/env-groups/${enc(id)}`),
-            accountId,
-          );
+          return mapEnvGroup(await this.api.get(`/env-groups/${pathEncode(id)}`), accountId);
         case "project":
-          return mapProject(
-            await this.api.request<RenderProject>(`/projects/${enc(id)}`),
-            accountId,
-          );
+          return mapProject(await this.api.get(`/projects/${pathEncode(id)}`), accountId);
         case "environment": {
-          const e = await this.api.request<RenderEnvironment>(`/environments/${enc(id)}`);
-          const p = await this.api
-            .request<RenderProject>(`/projects/${enc(e.projectId)}`)
-            .catch(() => null);
+          const e = await this.api.get(`/environments/${pathEncode(id)}`);
+          const p = await this.api.get(`/projects/${pathEncode(e.projectId)}`).catch(() => null);
           return mapEnvironment(e, p?.name ?? "", accountId);
         }
         case "blueprint":
-          return mapBlueprint(
-            await this.api.request<RenderBlueprint>(`/blueprints/${enc(id)}`),
-            accountId,
-          );
+          return mapBlueprint(await this.api.get(`/blueprints/${pathEncode(id)}`), accountId);
         default: {
           const all = await runPluginEffect(this.listResources(typeId, accountId));
           const found = all.find((r) => r.id === resourceId || r.externalId === id);
@@ -407,9 +368,7 @@ export class RenderClient implements PluginClient {
     return attempt(async () => {
       const id = externalOf(resourceId);
       if (typeId === "postgres") {
-        const c = await this.api.request<RenderPostgresConnection>(
-          `/postgres/${enc(id)}/connection-info`,
-        );
+        const c = await this.api.get(`/postgres/${pathEncode(id)}/connection-info`);
         switch (outputKey) {
           case "connectionString":
             return c.externalConnectionString ?? "";
@@ -424,9 +383,7 @@ export class RenderClient implements PluginClient {
         }
       }
       if (typeId === "key-value") {
-        const c = await this.api.request<RenderKeyValueConnection>(
-          `/key-value/${enc(id)}/connection-info`,
-        );
+        const c = await this.api.get(`/key-value/${pathEncode(id)}/connection-info`);
         switch (outputKey) {
           case "connectionString":
             return c.externalConnectionString ?? "";
@@ -438,15 +395,13 @@ export class RenderClient implements PluginClient {
       }
       if (typeId === "env-var" && outputKey === "value") {
         const { scope, id: key } = parseScopedId(id);
-        const v = await this.api.request<RenderEnvVar>(
-          `/services/${enc(scope)}/env-vars/${enc(key)}`,
-        );
+        const v = await this.api.get(`/services/${pathEncode(scope)}/env-vars/${pathEncode(key)}`);
         return v?.value ?? "";
       }
       if (typeId === "env-group-var" && outputKey === "value") {
         const { scope, id: key } = parseScopedId(id);
-        const v = await this.api.request<RenderEnvVar>(
-          `/env-groups/${enc(scope)}/env-vars/${enc(key)}`,
+        const v = await this.api.get(
+          `/env-groups/${pathEncode(scope)}/env-vars/${pathEncode(key)}`,
         );
         return v?.value ?? "";
       }
@@ -461,7 +416,7 @@ export class RenderClient implements PluginClient {
     return attempt(async () => {
       const id = resource.externalId ?? externalOf(resource.id);
       const extra: Record<string, string> = {};
-      const stash = async (key: string, load: () => Promise<unknown>) => {
+      const stash = async <T>(key: string, load: () => Promise<T>) => {
         try {
           const v = await load();
           if (v !== undefined && v !== null) extra[key] = JSON.stringify(v);
@@ -474,9 +429,7 @@ export class RenderClient implements PluginClient {
           const runs = RUNTIME_TYPES.has(String(resource.fields["serviceType"] ?? ""));
           await Promise.all([
             stash(ENRICH.events, async () => {
-              const rows = await this.api.request<
-                Array<{ event: { timestamp?: string; type?: string } }>
-              >(`/services/${enc(id)}/events`, {
+              const rows = await this.api.get(`/services/${pathEncode(id)}/events`, {
                 query: {
                   limit: 20,
                   startTime: new Date(Date.now() - 7 * 86_400_000).toISOString(),
@@ -485,25 +438,29 @@ export class RenderClient implements PluginClient {
               return (rows ?? []).map((r) => r.event);
             }),
             ...(runs
-              ? [stash(ENRICH.instances, () => this.api.request(`/services/${enc(id)}/instances`))]
+              ? [
+                  stash(ENRICH.instances, () =>
+                    this.api.get(`/services/${pathEncode(id)}/instances`),
+                  ),
+                ]
               : []),
           ]);
           break;
         }
         case "postgres":
           await Promise.all([
-            stash(ENRICH.users, () => this.api.request(`/postgres/${enc(id)}/credentials`)),
-            stash(ENRICH.recovery, () => this.api.request(`/postgres/${enc(id)}/recovery`)),
-            stash(ENRICH.exports, () => this.api.request(`/postgres/${enc(id)}/export`)),
+            stash(ENRICH.users, () => this.api.get(`/postgres/${pathEncode(id)}/credentials`)),
+            stash(ENRICH.recovery, () => this.api.get(`/postgres/${pathEncode(id)}/recovery`)),
+            stash(ENRICH.exports, () => this.api.get(`/postgres/${pathEncode(id)}/export`)),
           ]);
           break;
         case "disk":
-          await stash(ENRICH.snapshots, () => this.api.request(`/disks/${enc(id)}/snapshots`));
+          await stash(ENRICH.snapshots, () => this.api.get(`/disks/${pathEncode(id)}/snapshots`));
           break;
         case "env-group":
           await Promise.all([
             stash(ENRICH.secretFiles, async () => {
-              const g = await this.api.request<RenderEnvGroup>(`/env-groups/${enc(id)}`);
+              const g = await this.api.get(`/env-groups/${pathEncode(id)}`);
               return (g.secretFiles ?? []).map((s) => s.name);
             }),
             stash(ENRICH.services, async () =>
@@ -513,15 +470,14 @@ export class RenderClient implements PluginClient {
           break;
         case "blueprint":
           await stash(ENRICH.syncs, async () => {
-            const rows = await this.api.request<Array<{ sync: RenderBlueprintSync }>>(
-              `/blueprints/${enc(id)}/syncs`,
-              { query: { limit: 10 } },
-            );
+            const rows = await this.api.get(`/blueprints/${pathEncode(id)}/syncs`, {
+              query: { limit: 10 },
+            });
             return (rows ?? []).map((r) => r.sync);
           });
           break;
         case "workspace":
-          await stash(ENRICH.members, () => this.api.request(`/owners/${enc(id)}/members`));
+          await stash(ENRICH.members, () => this.api.get(`/owners/${pathEncode(id)}/members`));
           break;
         default:
           return resource;
@@ -547,7 +503,7 @@ export class RenderClient implements PluginClient {
 
   private async workspaceField(): Promise<CreateFieldConfig[]> {
     if (this.workspaceId) return [];
-    const owners = await this.owners().catch(() => [] as RenderOwner[]);
+    const owners = await this.owners().catch((): RenderOwner[] => []);
     if (owners.length === 1) return [];
     return [
       {
@@ -597,7 +553,7 @@ export class RenderClient implements PluginClient {
     label = "Service",
   ): Promise<CreateFieldConfig[]> {
     if (parentResourceId?.includes(":service:")) return [];
-    const services = (await this.services().catch(() => [] as RenderService[])).filter(filter);
+    const services = (await this.services().catch((): RenderService[] => [])).filter(filter);
     const options: SelectOption[] = services.map((s) => ({
       id: s.id,
       label: s.name,
@@ -862,18 +818,16 @@ export class RenderClient implements PluginClient {
         case "env-group-var": {
           const groupField: CreateFieldConfig[] = parentResourceId?.includes(":env-group:")
             ? []
-            : await this.api
-                .listAll<RenderEnvGroup>("/env-groups", "envGroup", this.ownerQuery())
-                .then((groups) => [
-                  {
-                    key: "envGroupId",
-                    label: "Environment Group",
-                    kind: "select" as const,
-                    required: true,
-                    options: groups.map((g) => ({ id: g.id, label: g.name })),
-                    ...(groups[0] ? { defaultValue: groups[0].id } : {}),
-                  },
-                ]);
+            : await listEnvGroups(this.api, this.ownerQuery()).then((groups) => [
+                {
+                  key: "envGroupId",
+                  label: "Environment Group",
+                  kind: "select" as const,
+                  required: true,
+                  options: groups.map((g) => ({ id: g.id, label: g.name })),
+                  ...(groups[0] ? { defaultValue: groups[0].id } : {}),
+                },
+              ]);
           return {
             fields: [
               ...groupField,
@@ -958,8 +912,7 @@ export class RenderClient implements PluginClient {
       switch (typeId) {
         case "service": {
           const ownerId = await this.resolveOwner(fields);
-          const created = await this.api.request<{ service: RenderService }>("/services", {
-            method: "POST",
+          const created = await this.api.post("/services", {
             body: buildServiceCreateBody(fields, ownerId),
           });
           this.invalidateServices();
@@ -973,26 +926,23 @@ export class RenderClient implements PluginClient {
             fields["generate"] === "true"
               ? { generateValue: true }
               : { value: fields["value"] ?? "" };
-          await this.api.request(`/services/${enc(serviceId)}/env-vars/${enc(key)}`, {
-            method: "PUT",
+          await this.api.put(`/services/${pathEncode(serviceId)}/env-vars/${pathEncode(key)}`, {
             body,
           });
           return mapEnvVar({ key, value: "" }, await this.serviceById(serviceId), accountId);
         }
         case "custom-domain": {
           if (!serviceId) throw new Error("Render plugin: choose a service");
-          const rows = await this.api.request<RenderCustomDomain[]>(
-            `/services/${enc(serviceId)}/custom-domains`,
-            { method: "POST", body: { name: str(fields["name"]) } },
-          );
+          const rows = await this.api.post(`/services/${pathEncode(serviceId)}/custom-domains`, {
+            body: { name: str(fields["name"]) },
+          });
           const created = (rows ?? []).find((c) => c.name === str(fields["name"])) ?? rows?.[0];
           if (!created) throw new Error("Render plugin: Render did not return the new domain");
           return mapCustomDomain(created, await this.serviceById(serviceId), accountId);
         }
         case "job": {
           if (!serviceId) throw new Error("Render plugin: choose a service");
-          const job = await this.api.request<RenderJob>(`/services/${enc(serviceId)}/jobs`, {
-            method: "POST",
+          const job = await this.api.post(`/services/${pathEncode(serviceId)}/jobs`, {
             body: {
               startCommand: str(fields["startCommand"]),
               ...(str(fields["planId"]) ? { planId: str(fields["planId"]) } : {}),
@@ -1002,8 +952,7 @@ export class RenderClient implements PluginClient {
         }
         case "disk": {
           if (!serviceId) throw new Error("Render plugin: choose a service");
-          const d = await this.api.request<RenderDisk>("/disks", {
-            method: "POST",
+          const d = await this.api.post("/disks", {
             body: {
               name: str(fields["name"]),
               sizeGB: Number(fields["sizeGB"] || 10),
@@ -1016,45 +965,42 @@ export class RenderClient implements PluginClient {
         }
         case "postgres": {
           const ownerId = await this.resolveOwner(fields);
-          const body: Record<string, unknown> = {
+          const body: ApiBody<operations["create-postgres"]> = {
             name: str(fields["name"]),
             ownerId,
             plan: str(fields["plan"]) || "basic_256mb",
             region: str(fields["region"]) || "oregon",
             version: str(fields["version"]) || "17",
           };
-          if (str(fields["databaseName"])) body["databaseName"] = str(fields["databaseName"]);
-          if (str(fields["databaseUser"])) body["databaseUser"] = str(fields["databaseUser"]);
-          if (str(fields["diskSizeGB"])) body["diskSizeGB"] = Number(fields["diskSizeGB"]);
-          if (fields["enableHighAvailability"] === "true") body["enableHighAvailability"] = true;
+          if (str(fields["databaseName"])) body.databaseName = str(fields["databaseName"]);
+          if (str(fields["databaseUser"])) body.databaseUser = str(fields["databaseUser"]);
+          if (str(fields["diskSizeGB"])) body.diskSizeGB = Number(fields["diskSizeGB"]);
+          if (fields["enableHighAvailability"] === "true") body.enableHighAvailability = true;
           if (str(fields["allowedCidrs"]))
-            body["ipAllowList"] = parseIpAllowList(fields["allowedCidrs"]!);
-          if (str(fields["environmentId"])) body["environmentId"] = str(fields["environmentId"]);
-          const p = await this.api.request<RenderPostgres>("/postgres", { method: "POST", body });
+            body.ipAllowList = parseIpAllowList(fields["allowedCidrs"]!);
+          if (str(fields["environmentId"])) body.environmentId = str(fields["environmentId"]);
+          const p = await this.api.post("/postgres", { body });
           return mapPostgres(p, accountId);
         }
         case "key-value": {
           const ownerId = await this.resolveOwner(fields);
-          const body: Record<string, unknown> = {
+          const body: ApiBody<operations["create-key-value"]> = {
             name: str(fields["name"]),
             ownerId,
             plan: str(fields["plan"]) || "starter",
             region: str(fields["region"]) || "oregon",
           };
-          if (str(fields["maxmemoryPolicy"]))
-            body["maxmemoryPolicy"] = str(fields["maxmemoryPolicy"]);
-          if (str(fields["persistenceMode"]))
-            body["persistenceMode"] = str(fields["persistenceMode"]);
+          if (str(fields["maxmemoryPolicy"])) body.maxmemoryPolicy = str(fields["maxmemoryPolicy"]);
+          if (str(fields["persistenceMode"])) body.persistenceMode = str(fields["persistenceMode"]);
           if (str(fields["allowedCidrs"]))
-            body["ipAllowList"] = parseIpAllowList(fields["allowedCidrs"]!);
-          if (str(fields["environmentId"])) body["environmentId"] = str(fields["environmentId"]);
-          const k = await this.api.request<RenderKeyValue>("/key-value", { method: "POST", body });
+            body.ipAllowList = parseIpAllowList(fields["allowedCidrs"]!);
+          if (str(fields["environmentId"])) body.environmentId = str(fields["environmentId"]);
+          const k = await this.api.post("/key-value", { body });
           return mapKeyValue(k, accountId);
         }
         case "env-group": {
           const ownerId = await this.resolveOwner(fields);
-          const g = await this.api.request<RenderEnvGroup>("/env-groups", {
-            method: "POST",
+          const g = await this.api.post("/env-groups", {
             body: {
               name: str(fields["name"]),
               ownerId,
@@ -1071,9 +1017,9 @@ export class RenderClient implements PluginClient {
             str(fields["envGroupId"]) || (parentResourceId?.includes(":env-group:") ? parent : "");
           if (!groupId) throw new Error("Render plugin: choose an environment group");
           const key = str(fields["key"]);
-          const g = await this.api.request<RenderEnvGroup>(
-            `/env-groups/${enc(groupId)}/env-vars/${enc(key)}`,
-            { method: "PUT", body: { value: fields["value"] ?? "" } },
+          const g = await this.api.put(
+            `/env-groups/${pathEncode(groupId)}/env-vars/${pathEncode(key)}`,
+            { body: { value: fields["value"] ?? "" } },
           );
           return mapEnvGroupVar({ key, value: "" }, g ?? { id: groupId, name: "" }, accountId);
         }
@@ -1083,8 +1029,7 @@ export class RenderClient implements PluginClient {
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
-          const p = await this.api.request<RenderProject>("/projects", {
-            method: "POST",
+          const p = await this.api.post("/projects", {
             body: {
               name: str(fields["name"]),
               ownerId,
@@ -1097,8 +1042,7 @@ export class RenderClient implements PluginClient {
           const projectId =
             str(fields["projectId"]) || (parentResourceId?.includes(":project:") ? parent : "");
           if (!projectId) throw new Error("Render plugin: choose a project");
-          const e = await this.api.request<RenderEnvironment>("/environments", {
-            method: "POST",
+          const e = await this.api.post("/environments", {
             body: {
               name: str(fields["name"]),
               projectId,
@@ -1128,10 +1072,10 @@ export class RenderClient implements PluginClient {
       const id = externalOf(resourceId);
       switch (typeId) {
         case "service": {
-          const current = await this.api.request<RenderService>(`/services/${enc(id)}`);
+          const current = await this.api.get(`/services/${pathEncode(id)}`);
           const body = buildServicePatch(current, fields);
           if (Object.keys(body).length > 0) {
-            await this.api.request(`/services/${enc(id)}`, { method: "PATCH", body });
+            await this.api.patch(`/services/${pathEncode(id)}`, { body });
             this.invalidateServices();
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -1139,8 +1083,7 @@ export class RenderClient implements PluginClient {
         case "env-var": {
           const { scope, id: key } = parseScopedId(id);
           if (fields["value"]) {
-            await this.api.request(`/services/${enc(scope)}/env-vars/${enc(key)}`, {
-              method: "PUT",
+            await this.api.put(`/services/${pathEncode(scope)}/env-vars/${pathEncode(key)}`, {
               body: { value: fields["value"] },
             });
           }
@@ -1149,86 +1092,88 @@ export class RenderClient implements PluginClient {
         case "env-group-var": {
           const { scope, id: key } = parseScopedId(id);
           if (fields["value"]) {
-            await this.api.request(`/env-groups/${enc(scope)}/env-vars/${enc(key)}`, {
-              method: "PUT",
+            await this.api.put(`/env-groups/${pathEncode(scope)}/env-vars/${pathEncode(key)}`, {
               body: { value: fields["value"] },
             });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "disk": {
-          const body: Record<string, unknown> = {};
-          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-          if (fields["sizeGB"] !== undefined) body["sizeGB"] = Number(fields["sizeGB"]);
-          if (fields["mountPath"] !== undefined) body["mountPath"] = str(fields["mountPath"]);
+          const body: ApiBody<operations["update-disk"]> = {};
+          if (fields["name"] !== undefined) body.name = str(fields["name"]);
+          if (fields["sizeGB"] !== undefined) body.sizeGB = Number(fields["sizeGB"]);
+          if (fields["mountPath"] !== undefined) body.mountPath = str(fields["mountPath"]);
           if (Object.keys(body).length) {
-            await this.api.request(`/disks/${enc(id)}`, { method: "PATCH", body });
+            await this.api.patch(`/disks/${pathEncode(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "postgres": {
-          const body: Record<string, unknown> = {};
-          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-          if (fields["plan"]) body["plan"] = str(fields["plan"]);
-          if (fields["diskSizeGB"]) body["diskSizeGB"] = Number(fields["diskSizeGB"]);
+          const body: ApiBody<operations["update-postgres"]> = {};
+          if (fields["name"] !== undefined) body.name = str(fields["name"]);
+          if (fields["plan"]) body.plan = str(fields["plan"]);
+          if (fields["diskSizeGB"]) body.diskSizeGB = Number(fields["diskSizeGB"]);
           if (fields["diskAutoscalingEnabled"] !== undefined) {
-            body["enableDiskAutoscaling"] = fields["diskAutoscalingEnabled"] === "true";
+            body.enableDiskAutoscaling = fields["diskAutoscalingEnabled"] === "true";
           }
           if (fields["highAvailabilityEnabled"] !== undefined) {
-            body["enableHighAvailability"] = fields["highAvailabilityEnabled"] === "true";
+            body.enableHighAvailability = fields["highAvailabilityEnabled"] === "true";
           }
           if (fields["allowedCidrs"] !== undefined) {
-            body["ipAllowList"] = parseIpAllowList(fields["allowedCidrs"]);
+            body.ipAllowList = parseIpAllowList(fields["allowedCidrs"]);
           }
           if (Object.keys(body).length) {
-            await this.api.request(`/postgres/${enc(id)}`, { method: "PATCH", body });
+            await this.api.patch(`/postgres/${pathEncode(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "key-value": {
-          const body: Record<string, unknown> = {};
-          for (const k of ["name", "plan", "maxmemoryPolicy", "persistenceMode"]) {
-            if (fields[k]) body[k] = str(fields[k]);
-          }
+          const body: ApiBody<operations["update-key-value"]> = {};
+          if (fields["name"]) body.name = str(fields["name"]);
+          if (fields["plan"]) body.plan = str(fields["plan"]);
+          if (fields["maxmemoryPolicy"]) body.maxmemoryPolicy = str(fields["maxmemoryPolicy"]);
+          if (fields["persistenceMode"]) body.persistenceMode = str(fields["persistenceMode"]);
           if (fields["allowedCidrs"] !== undefined) {
-            body["ipAllowList"] = parseIpAllowList(fields["allowedCidrs"]);
+            body.ipAllowList = parseIpAllowList(fields["allowedCidrs"]);
           }
           if (Object.keys(body).length) {
-            await this.api.request(`/key-value/${enc(id)}`, { method: "PATCH", body });
+            await this.api.patch(`/key-value/${pathEncode(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "env-group":
+          if (str(fields["name"])) {
+            await this.api.patch(`/env-groups/${pathEncode(id)}`, {
+              body: { name: str(fields["name"]) },
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         case "project":
           if (str(fields["name"])) {
-            await this.api.request(
-              `/${typeId === "project" ? "projects" : "env-groups"}/${enc(id)}`,
-              {
-                method: "PATCH",
-                body: { name: str(fields["name"]) },
-              },
-            );
+            await this.api.patch(`/projects/${pathEncode(id)}`, {
+              body: { name: str(fields["name"]) },
+            });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         case "environment": {
-          const body: Record<string, unknown> = {};
-          if (str(fields["name"])) body["name"] = str(fields["name"]);
-          if (fields["protectedStatus"]) body["protectedStatus"] = str(fields["protectedStatus"]);
+          const body: ApiBody<operations["update-environment"]> = {};
+          if (str(fields["name"])) body.name = str(fields["name"]);
+          if (fields["protectedStatus"]) body.protectedStatus = str(fields["protectedStatus"]);
           if (fields["networkIsolationEnabled"] !== undefined) {
-            body["networkIsolationEnabled"] = fields["networkIsolationEnabled"] === "true";
+            body.networkIsolationEnabled = fields["networkIsolationEnabled"] === "true";
           }
           if (Object.keys(body).length) {
-            await this.api.request(`/environments/${enc(id)}`, { method: "PATCH", body });
+            await this.api.patch(`/environments/${pathEncode(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "blueprint": {
-          const body: Record<string, unknown> = {};
-          if (str(fields["name"])) body["name"] = str(fields["name"]);
-          if (fields["autoSync"] !== undefined) body["autoSync"] = fields["autoSync"] === "true";
-          if (str(fields["path"])) body["path"] = str(fields["path"]);
+          const body: ApiBody<operations["update-blueprint"]> = {};
+          if (str(fields["name"])) body.name = str(fields["name"]);
+          if (fields["autoSync"] !== undefined) body.autoSync = fields["autoSync"] === "true";
+          if (str(fields["path"])) body.path = str(fields["path"]);
           if (Object.keys(body).length) {
-            await this.api.request(`/blueprints/${enc(id)}`, { method: "PATCH", body });
+            await this.api.patch(`/blueprints/${pathEncode(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -1238,8 +1183,7 @@ export class RenderClient implements PluginClient {
             const iso = new Date(at);
             if (Number.isNaN(iso.getTime()))
               throw new Error("Enter the new time as an ISO 8601 date.");
-            await this.api.request(`/maintenance/${enc(id)}`, {
-              method: "PATCH",
+            await this.api.patch(`/maintenance/${pathEncode(id)}`, {
               body: { scheduledAt: iso.toISOString() },
             });
           }
@@ -1256,47 +1200,48 @@ export class RenderClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalOf(resourceId);
-      const del = (path: string) => this.api.request(path, { method: "DELETE" });
       switch (typeId) {
         case "service":
-          await del(`/services/${enc(id)}`);
+          await this.api.delete(`/services/${pathEncode(id)}`);
           this.invalidateServices();
           return;
         case "env-var": {
           const { scope, id: key } = parseScopedId(id);
-          await del(`/services/${enc(scope)}/env-vars/${enc(key)}`);
+          await this.api.delete(`/services/${pathEncode(scope)}/env-vars/${pathEncode(key)}`);
           return;
         }
         case "custom-domain": {
           const { scope, id: domainId } = parseScopedId(id);
-          await del(`/services/${enc(scope)}/custom-domains/${enc(domainId)}`);
+          await this.api.delete(
+            `/services/${pathEncode(scope)}/custom-domains/${pathEncode(domainId)}`,
+          );
           return;
         }
         case "env-group-var": {
           const { scope, id: key } = parseScopedId(id);
-          await del(`/env-groups/${enc(scope)}/env-vars/${enc(key)}`);
+          await this.api.delete(`/env-groups/${pathEncode(scope)}/env-vars/${pathEncode(key)}`);
           return;
         }
         case "disk":
-          await del(`/disks/${enc(id)}`);
+          await this.api.delete(`/disks/${pathEncode(id)}`);
           return;
         case "postgres":
-          await del(`/postgres/${enc(id)}`);
+          await this.api.delete(`/postgres/${pathEncode(id)}`);
           return;
         case "key-value":
-          await del(`/key-value/${enc(id)}`);
+          await this.api.delete(`/key-value/${pathEncode(id)}`);
           return;
         case "env-group":
-          await del(`/env-groups/${enc(id)}`);
+          await this.api.delete(`/env-groups/${pathEncode(id)}`);
           return;
         case "project":
-          await del(`/projects/${enc(id)}`);
+          await this.api.delete(`/projects/${pathEncode(id)}`);
           return;
         case "environment":
-          await del(`/environments/${enc(id)}`);
+          await this.api.delete(`/environments/${pathEncode(id)}`);
           return;
         case "blueprint":
-          await del(`/blueprints/${enc(id)}`);
+          await this.api.delete(`/blueprints/${pathEncode(id)}`);
           return;
         default:
           throw new Error(`Render plugin: cannot delete "${typeId}"`);
@@ -1314,74 +1259,95 @@ export class RenderClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const id = externalOf(resourceId);
-      const post = (path: string, body?: unknown) =>
-        this.api.request(path, { method: "POST", ...(body !== undefined ? { body } : {}) });
       if (typeId === "service") {
-        const base = `/services/${enc(id)}`;
+        const service = pathEncode(id);
         switch (actionId) {
           case "deploy":
-            await post(`${base}/deploys`, { clearCache: "do_not_clear" });
+            await this.api.post(`/services/${service}/deploys`, {
+              body: { clearCache: "do_not_clear" },
+            });
             return;
           case "deploy-clear-cache":
-            await post(`${base}/deploys`, { clearCache: "clear" });
+            await this.api.post(`/services/${service}/deploys`, { body: { clearCache: "clear" } });
             return;
           case "restart":
+            await this.api.post(`/services/${service}/restart`);
+            this.invalidateServices();
+            return;
           case "suspend":
+            await this.api.post(`/services/${service}/suspend`);
+            this.invalidateServices();
+            return;
           case "resume":
-            await post(`${base}/${actionId}`);
+            await this.api.post(`/services/${service}/resume`);
             this.invalidateServices();
             return;
           case "purge-cache":
-            await post(`${base}/cache/purge`);
+            await this.api.post(`/services/${service}/cache/purge`);
             return;
           case "run-cron":
-            await post(`/cron-jobs/${enc(id)}/runs`);
+            await this.api.post(`/cron-jobs/${service}/runs`);
             return;
           case "cancel-cron":
-            await this.api.request(`/cron-jobs/${enc(id)}/runs`, { method: "DELETE" });
+            await this.api.delete(`/cron-jobs/${service}/runs`);
             return;
         }
       }
       if (typeId === "deploy") {
         const { scope, id: deployId } = parseScopedId(id);
         if (actionId === "cancel") {
-          await post(`/services/${enc(scope)}/deploys/${enc(deployId)}/cancel`);
+          await this.api.post(
+            `/services/${pathEncode(scope)}/deploys/${pathEncode(deployId)}/cancel`,
+          );
           return;
         }
         if (actionId === "rollback") {
-          await post(`/services/${enc(scope)}/rollback`, { deployId });
+          await this.api.post(`/services/${pathEncode(scope)}/rollback`, { body: { deployId } });
           return;
         }
       }
       if (typeId === "custom-domain" && actionId === "verify") {
         const { scope, id: domainId } = parseScopedId(id);
-        await post(`/services/${enc(scope)}/custom-domains/${enc(domainId)}/verify`);
+        await this.api.post(
+          `/services/${pathEncode(scope)}/custom-domains/${pathEncode(domainId)}/verify`,
+        );
         return;
       }
       if (typeId === "job" && actionId === "cancel") {
         const { scope, id: jobId } = parseScopedId(id);
-        await post(`/services/${enc(scope)}/jobs/${enc(jobId)}/cancel`);
+        await this.api.post(`/services/${pathEncode(scope)}/jobs/${pathEncode(jobId)}/cancel`);
         return;
       }
       if (typeId === "postgres") {
-        const paths: Record<string, string> = {
-          suspend: "suspend",
-          resume: "resume",
-          restart: "restart",
-          failover: "failover",
-          export: "export",
-        };
-        if (paths[actionId]) {
-          await post(`/postgres/${enc(id)}/${paths[actionId]}`);
-          return;
+        const postgres = pathEncode(id);
+        switch (actionId) {
+          case "suspend":
+            await this.api.post(`/postgres/${postgres}/suspend`);
+            return;
+          case "resume":
+            await this.api.post(`/postgres/${postgres}/resume`);
+            return;
+          case "restart":
+            await this.api.post(`/postgres/${postgres}/restart`);
+            return;
+          case "failover":
+            await this.api.post(`/postgres/${postgres}/failover`);
+            return;
+          case "export":
+            await this.api.post(`/postgres/${postgres}/export`);
+            return;
         }
       }
-      if (typeId === "key-value" && (actionId === "suspend" || actionId === "resume")) {
-        await post(`/key-value/${enc(id)}/${actionId}`);
+      if (typeId === "key-value" && actionId === "suspend") {
+        await this.api.post(`/key-value/${pathEncode(id)}/suspend`);
+        return;
+      }
+      if (typeId === "key-value" && actionId === "resume") {
+        await this.api.post(`/key-value/${pathEncode(id)}/resume`);
         return;
       }
       if (typeId === "maintenance" && actionId === "trigger") {
-        await post(`/maintenance/${enc(id)}/trigger`);
+        await this.api.post(`/maintenance/${pathEncode(id)}/trigger`);
         return;
       }
       throw new Error(`Render plugin: action "${actionId}" is not supported for "${typeId}"`);
@@ -1398,31 +1364,31 @@ export class RenderClient implements PluginClient {
     return attempt(async () => {
       const id = externalOf(resourceId);
       const v = parseFormArg(args[0]);
-      const post = (path: string, body?: unknown) =>
-        this.api.request(path, { method: "POST", ...(body !== undefined ? { body } : {}) });
       switch (`${typeId}:${command}`) {
         case "service:deployVersion": {
           const commitId = str(v["commitId"]);
           const imageUrl = str(v["imageUrl"]);
           if (!commitId && !imageUrl) throw new Error("Enter a commit SHA or an image URL.");
-          await post(`/services/${enc(id)}/deploys`, {
-            ...(commitId ? { commitId } : {}),
-            ...(imageUrl ? { imageUrl } : {}),
-            clearCache: v["clearCache"] === "true" ? "clear" : "do_not_clear",
+          await this.api.post(`/services/${pathEncode(id)}/deploys`, {
+            body: {
+              ...(commitId ? { commitId } : {}),
+              ...(imageUrl ? { imageUrl } : {}),
+              clearCache: v["clearCache"] === "true" ? "clear" : "do_not_clear",
+            },
           });
           return null;
         }
         case "service:scale": {
           const n = Number(v["numInstances"]);
           if (!Number.isInteger(n) || n < 1) throw new Error("Enter a whole number of instances.");
-          await post(`/services/${enc(id)}/scale`, { numInstances: n });
+          await this.api.post(`/services/${pathEncode(id)}/scale`, { body: { numInstances: n } });
           this.invalidateServices();
           return null;
         }
         case "service:autoscaling": {
           const enabled = v["enabled"] === "true";
           if (!enabled) {
-            await this.api.request(`/services/${enc(id)}/autoscaling`, { method: "DELETE" });
+            await this.api.delete(`/services/${pathEncode(id)}/autoscaling`);
             this.invalidateServices();
             return null;
           }
@@ -1435,8 +1401,7 @@ export class RenderClient implements PluginClient {
           const cpuOn = v["cpuPercent"] !== "" && Number.isFinite(cpu) && cpu > 0;
           const memOn = v["memoryPercent"] !== "" && Number.isFinite(mem) && mem > 0;
           if (!cpuOn && !memOn) throw new Error("Set a CPU or memory target.");
-          await this.api.request(`/services/${enc(id)}/autoscaling`, {
-            method: "PUT",
+          await this.api.put(`/services/${pathEncode(id)}/autoscaling`, {
             body: {
               enabled: true,
               min,
@@ -1451,11 +1416,12 @@ export class RenderClient implements PluginClient {
           return null;
         }
         case "service:runJob":
-          await post(`/services/${enc(id)}/jobs`, { startCommand: str(v["startCommand"]) });
+          await this.api.post(`/services/${pathEncode(id)}/jobs`, {
+            body: { startCommand: str(v["startCommand"]) },
+          });
           return null;
         case "service:maintenanceMode":
-          await this.api.request(`/services/${enc(id)}`, {
-            method: "PATCH",
+          await this.api.patch(`/services/${pathEncode(id)}`, {
             body: {
               serviceDetails: {
                 maintenanceMode: { enabled: v["enabled"] === "true", uri: str(v["uri"]) },
@@ -1467,30 +1433,38 @@ export class RenderClient implements PluginClient {
         case "postgres:recover": {
           const when = new Date(str(v["restoreTime"]));
           if (Number.isNaN(when.getTime())) throw new Error("Choose a time to restore to.");
-          await post(`/postgres/${enc(id)}/recovery`, {
-            restoreTime: when.toISOString(),
-            ...(str(v["restoreName"]) ? { restoreName: str(v["restoreName"]) } : {}),
+          await this.api.post(`/postgres/${pathEncode(id)}/recovery`, {
+            body: {
+              restoreTime: when.toISOString(),
+              ...(str(v["restoreName"]) ? { restoreName: str(v["restoreName"]) } : {}),
+            },
           });
           return null;
         }
         case "postgres:createUser":
-          await post(`/postgres/${enc(id)}/credentials`, { username: str(v["username"]) });
+          await this.api.post(`/postgres/${pathEncode(id)}/credentials`, {
+            body: { username: str(v["username"]) },
+          });
           return null;
         case "postgres:deleteUser":
-          await this.api.request(`/postgres/${enc(id)}/credentials/${enc(str(v["username"]))}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(
+            `/postgres/${pathEncode(id)}/credentials/${pathEncode(str(v["username"]))}`,
+          );
           return null;
         case "disk:restoreSnapshot":
-          await post(`/disks/${enc(id)}/snapshots/restore`, { snapshotKey: str(v["snapshotKey"]) });
+          await this.api.post(`/disks/${pathEncode(id)}/snapshots/restore`, {
+            body: { snapshotKey: str(v["snapshotKey"]) },
+          });
           return null;
         case "env-group:linkService":
-          await post(`/env-groups/${enc(id)}/services/${enc(str(v["serviceId"]))}`);
+          await this.api.post(
+            `/env-groups/${pathEncode(id)}/services/${pathEncode(str(v["serviceId"]))}`,
+          );
           return null;
         case "env-group:unlinkService":
-          await this.api.request(`/env-groups/${enc(id)}/services/${enc(str(v["serviceId"]))}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(
+            `/env-groups/${pathEncode(id)}/services/${pathEncode(str(v["serviceId"]))}`,
+          );
           return null;
         default:
           throw new Error(`Render plugin: unknown command "${command}" for "${typeId}"`);
@@ -1510,9 +1484,8 @@ export class RenderClient implements PluginClient {
       if (sourceTypeId !== "env-group" || targetTypeId !== "service") {
         throw new Error(`Render plugin: cannot attach ${sourceTypeId} to ${targetTypeId}`);
       }
-      await this.api.request(
-        `/env-groups/${enc(externalOf(sourceResourceId))}/services/${enc(externalOf(targetResourceId))}`,
-        { method: "POST" },
+      await this.api.post(
+        `/env-groups/${pathEncode(externalOf(sourceResourceId))}/services/${pathEncode(externalOf(targetResourceId))}`,
       );
     });
   }
@@ -1724,37 +1697,37 @@ function serviceCreateFields(): CreateFieldConfig[] {
 export function buildServiceCreateBody(
   fields: Record<string, string>,
   ownerId: string,
-): Record<string, unknown> {
+): ApiBody<operations["create-service"]> {
   const type = str(fields["type"]) || "web_service";
   const name = str(fields["name"]);
   if (!name) throw new Error("Render plugin: enter a name");
   const runtime = type === "static_site" ? "" : str(fields["runtime"]) || "node";
-  const body: Record<string, unknown> = { type, name, ownerId };
+  const body: ApiBody<operations["create-service"]> = { type, name, ownerId };
   if (runtime === "image") {
     const imagePath = str(fields["imageUrl"]);
     if (!imagePath) throw new Error("Render plugin: enter the image to deploy");
-    body["image"] = { ownerId, imagePath };
+    body.image = { ownerId, imagePath };
   } else {
     const repo = str(fields["repo"]);
     if (!repo) throw new Error("Render plugin: enter the Git repository URL");
-    body["repo"] = repo;
-    if (str(fields["branch"])) body["branch"] = str(fields["branch"]);
-    if (str(fields["rootDir"])) body["rootDir"] = str(fields["rootDir"]);
-    if (str(fields["autoDeploy"])) body["autoDeployTrigger"] = str(fields["autoDeploy"]);
+    body.repo = repo;
+    if (str(fields["branch"])) body.branch = str(fields["branch"]);
+    if (str(fields["rootDir"])) body.rootDir = str(fields["rootDir"]);
+    if (str(fields["autoDeploy"])) body.autoDeployTrigger = str(fields["autoDeploy"]);
   }
-  if (str(fields["environmentId"])) body["environmentId"] = str(fields["environmentId"]);
+  if (str(fields["environmentId"])) body.environmentId = str(fields["environmentId"]);
   if (type === "static_site") {
-    body["serviceDetails"] = {
+    body.serviceDetails = {
       ...(str(fields["buildCommand"]) ? { buildCommand: str(fields["buildCommand"]) } : {}),
       publishPath: str(fields["publishPath"]) || "public",
     };
     return body;
   }
-  const envSpecificDetails: Record<string, unknown> =
+  const envSpecificDetails =
     runtime === "docker" || runtime === "image"
       ? str(fields["startCommand"])
         ? { dockerCommand: str(fields["startCommand"]) }
-        : {}
+        : undefined
       : {
           buildCommand: str(fields["buildCommand"]),
           startCommand: str(fields["startCommand"]),
@@ -1762,49 +1735,50 @@ export function buildServiceCreateBody(
   if (runtime !== "docker" && runtime !== "image" && !str(fields["startCommand"])) {
     throw new Error("Render plugin: enter a start command");
   }
-  const details: Record<string, unknown> = {
+  const details = {
     runtime,
     plan: str(fields["plan"]) || "0.5c-512mb",
     region: str(fields["region"]) || "oregon",
-    ...(Object.keys(envSpecificDetails).length ? { envSpecificDetails } : {}),
+    ...(envSpecificDetails ? { envSpecificDetails } : {}),
   };
   if (type === "cron_job") {
     const schedule = str(fields["schedule"]);
     if (!schedule) throw new Error("Render plugin: enter a cron schedule");
-    details["schedule"] = schedule;
+    body.serviceDetails = { ...details, schedule };
+    return body;
   }
-  if (type === "web_service" && str(fields["healthCheckPath"])) {
-    details["healthCheckPath"] = str(fields["healthCheckPath"]);
-  }
-  body["serviceDetails"] = details;
+  body.serviceDetails =
+    type === "web_service" && str(fields["healthCheckPath"])
+      ? { ...details, healthCheckPath: str(fields["healthCheckPath"]) }
+      : details;
   return body;
 }
 
 /** Only the changed keys, in the shape `PATCH /services/{id}` takes. */
 export function buildServicePatch(
-  current: RenderService,
+  current: Pick<RenderService, "type" | "serviceDetails">,
   fields: Record<string, string>,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  const details: Record<string, unknown> = {};
+): ApiBody<operations["update-service"]> {
+  const body: ApiBody<operations["update-service"]> = {};
+  const details: RenderServicePatchDetails = {};
   const has = (k: string) => fields[k] !== undefined;
-  if (has("name") && str(fields["name"])) body["name"] = str(fields["name"]);
-  if (has("branch") && str(fields["branch"])) body["branch"] = str(fields["branch"]);
-  if (has("rootDir")) body["rootDir"] = str(fields["rootDir"]);
+  if (has("name") && str(fields["name"])) body.name = str(fields["name"]);
+  if (has("branch") && str(fields["branch"])) body.branch = str(fields["branch"]);
+  if (has("rootDir")) body.rootDir = str(fields["rootDir"]);
   if (has("autoDeploy") && str(fields["autoDeploy"])) {
-    body["autoDeployTrigger"] = str(fields["autoDeploy"]);
+    body.autoDeployTrigger = str(fields["autoDeploy"]);
   }
   const isStatic = current.type === "static_site";
   const runtime = current.serviceDetails?.runtime || current.serviceDetails?.env || "";
   const isDocker = runtime === "docker" || runtime === "image";
-  if (has("plan") && str(fields["plan"]) && !isStatic) details["plan"] = str(fields["plan"]);
+  if (has("plan") && str(fields["plan"]) && !isStatic) details.plan = str(fields["plan"]);
   if (has("preDeployCommand") && !isStatic && current.type !== "cron_job")
-    details["preDeployCommand"] = str(fields["preDeployCommand"]);
+    details.preDeployCommand = str(fields["preDeployCommand"]);
   if (has("healthCheckPath") && current.type === "web_service") {
-    details["healthCheckPath"] = str(fields["healthCheckPath"]);
+    details.healthCheckPath = str(fields["healthCheckPath"]);
   }
   if (has("schedule") && current.type === "cron_job" && str(fields["schedule"])) {
-    details["schedule"] = str(fields["schedule"]);
+    details.schedule = str(fields["schedule"]);
   }
   if (
     has("maxShutdownDelaySeconds") &&
@@ -1812,17 +1786,17 @@ export function buildServicePatch(
     current.type !== "cron_job" &&
     fields["maxShutdownDelaySeconds"] !== ""
   ) {
-    details["maxShutdownDelaySeconds"] = Number(fields["maxShutdownDelaySeconds"]);
+    details.maxShutdownDelaySeconds = Number(fields["maxShutdownDelaySeconds"]);
   }
   if (has("previews") && str(fields["previews"]) && current.type !== "cron_job") {
-    details["previews"] = { generation: str(fields["previews"]) };
+    details.previews = { generation: str(fields["previews"]) };
   }
   if (isStatic) {
-    if (has("buildCommand")) details["buildCommand"] = str(fields["buildCommand"]);
-    if (has("publishPath")) details["publishPath"] = str(fields["publishPath"]);
+    if (has("buildCommand")) details.buildCommand = str(fields["buildCommand"]);
+    if (has("publishPath")) details.publishPath = str(fields["publishPath"]);
   } else if (has("buildCommand") || has("startCommand")) {
     const env = current.serviceDetails?.envSpecificDetails ?? {};
-    details["envSpecificDetails"] = isDocker
+    details.envSpecificDetails = isDocker
       ? {
           dockerCommand: has("startCommand")
             ? str(fields["startCommand"])
@@ -1837,7 +1811,7 @@ export function buildServicePatch(
             : (env.startCommand ?? ""),
         };
   }
-  if (Object.keys(details).length) body["serviceDetails"] = details;
+  if (Object.keys(details).length) body.serviceDetails = details;
   return body;
 }
 

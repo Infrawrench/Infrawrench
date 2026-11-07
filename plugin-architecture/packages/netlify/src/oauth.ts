@@ -26,6 +26,7 @@ import type {
   OAuthDeclaration,
   OAuthTokenSet,
 } from "@infrawrench/plugin-base";
+import type { NetlifyUser } from "./api.js";
 
 export const netlifyOAuth: OAuthDeclaration = {
   authorizeUrl: "https://app.netlify.com/authorize",
@@ -38,7 +39,7 @@ export const netlifyOAuth: OAuthDeclaration = {
   docsUrl: "https://docs.netlify.com/api-and-cli-guides/api-guides/get-started-with-api/",
 };
 
-const nonEmpty = (v: unknown): string | undefined =>
+const nonEmpty = (v: string | undefined): string | undefined =>
   typeof v === "string" && v.trim() ? v.trim() : undefined;
 
 /** Name the account after the Netlify user (full name, else email). */
@@ -51,7 +52,7 @@ export async function completeNetlifyOAuth(
       headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: "application/json" },
     });
     if (!res.ok) return {};
-    const user = (await res.json()) as { full_name?: string; email?: string; slug?: string };
+    const user: NetlifyUser = await res.json();
     const name = nonEmpty(user.full_name) ?? nonEmpty(user.email) ?? nonEmpty(user.slug);
     return name ? { accountName: name } : {};
   } catch {

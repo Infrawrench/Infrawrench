@@ -14,11 +14,26 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { PostHogContext } from "./api.js";
-import { pagedList, phFetch, resolveHost, statusOf } from "./api.js";
+import { externalIdOf, pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
+import type {
+  FlagFilters,
+  ObjectPatches,
+  PostHogContext,
+  ProjectObjects,
+  ProjectObjectType,
+  SoftDeletedType,
+} from "./api.js";
+import {
+  OBJECTS,
+  PATCHES,
+  createPostHogContext,
+  isProjectObjectType,
+  listRouteRequest,
+  pagedList,
+  resolveHost,
+  statusOf,
+} from "./api.js";
 import { fetchPostHogCost, spendSeries } from "./cost-data.js";
-import type { Obj } from "./mappers.js";
 import {
   LEVEL_IDS,
   instance,
@@ -30,9 +45,9 @@ import {
 import { verifyPostHogCredentials } from "./preflight.js";
 import { eventSeries, hogqlString, rangeOrDefault, runHogQL } from "./query.js";
 import { BASE_KEY, renderPostHogDetail, renderPostHogSidebar } from "./render.js";
-import { PROJECT_ROUTES } from "./resource-types.js";
 
-const str = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
+const str = (v: string | number | boolean | null | undefined): string =>
+  v === undefined || v === null ? "" : String(v);
 const csv = (v: string | undefined): string[] =>
   (v ?? "")
     .split(/[,\n]/)
@@ -40,18 +55,18 @@ const csv = (v: string | undefined): string[] =>
     .filter(Boolean);
 
 /** Set the first release condition's rollout, creating one if the flag has none. */
-export function withRollout(filters: Obj, rollout: number): Obj {
-  const groups =
+export function withRollout(filters: FlagFilters, rollout: number): FlagFilters {
+  const groups: NonNullable<FlagFilters["groups"]> =
     Array.isArray(filters.groups) && filters.groups.length
-      ? [...(filters.groups as Obj[])]
+      ? [...filters.groups]
       : [{ properties: [] }];
   groups[0] = { ...groups[0], rollout_percentage: rollout };
   return { ...filters, groups };
 }
 
 /** Organizations the key can see, for the organization picker. */
-export async function listOrganizations(ctx: PostHogContext): Promise<Obj[]> {
-  return pagedList<Obj>(ctx, "/api/organizations/");
+export async function listOrganizations(ctx: PostHogContext) {
+  return pagedList((query) => ctx.api.get("/api/organizations/", { query }));
 }
 
 export class PostHogClient implements PluginClient {
@@ -67,13 +82,13 @@ export class PostHogClient implements PluginClient {
       credentials["host"] ?? "",
     );
     const caCert = credentials["caCert"] ?? "";
-    this.ctx = {
+    this.ctx = createPostHogContext({
       baseUrl,
       region,
       apiKey,
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
-    };
+    });
     this.orgSetting = (credentials["organizationId"] ?? "").trim();
   }
 
@@ -86,7 +101,7 @@ export class PostHogClient implements PluginClient {
     if (!this.orgIdPromise) {
       this.orgIdPromise = (async () => {
         if (this.orgSetting) return this.orgSetting;
-        const org = await phFetch<Obj>(this.ctx, "/api/organizations/@current/");
+        const org = await this.ctx.api.get(`/api/organizations/${unencodedSegment("@current")}/`);
         return str(org.id);
       })();
       this.orgIdPromise.catch(() => {
@@ -96,23 +111,64 @@ export class PostHogClient implements PluginClient {
     return this.orgIdPromise;
   }
 
-  private async projects(): Promise<Obj[]> {
-    const org = await this.orgId();
-    return pagedList<Obj>(this.ctx, `/api/organizations/${encodeURIComponent(org)}/projects/`);
+  private async projects() {
+    const org = pathEncode(await this.orgId());
+    return pagedList((query) => this.ctx.api.get(`/api/organizations/${org}/projects/`, { query }));
   }
 
-  private route(typeId: string): string {
-    const r = PROJECT_ROUTES[typeId];
-    if (!r) throw new Error(`PostHog plugin: unknown resource type "${typeId}"`);
-    return r;
+  private objectType(typeId: string): ProjectObjectType {
+    if (!isProjectObjectType(typeId)) {
+      throw new Error(`PostHog plugin: unknown resource type "${typeId}"`);
+    }
+    return typeId;
   }
 
-  private objPath(typeId: string, projectId: string, id?: string): string {
-    return `/api/projects/${encodeURIComponent(projectId)}/${this.route(typeId)}/${id ? `${encodeURIComponent(id)}/` : ""}`;
+  private getObject<T extends ProjectObjectType>(
+    typeId: T,
+    projectId: string,
+    id: string,
+  ): Promise<ProjectObjects[T]> {
+    return id
+      ? OBJECTS[typeId].get(this.ctx.api, pathEncode(projectId), pathEncode(id))
+      : listRouteRequest(this.ctx, "GET", OBJECTS[typeId].route, projectId);
   }
 
-  private map(accountId: string, typeId: string, projectId: string, o: Obj): ResourceInstance {
-    return mapProjectObject(accountId, typeId, projectId, o, this.ctx);
+  private async listObjects<T extends ProjectObjectType>(
+    typeId: T,
+    accountId: string,
+  ): Promise<ResourceInstance[]> {
+    const projects = await this.projects();
+    const lists = await Promise.all(
+      projects.map(async (p) => {
+        const pid = str(p.id);
+        try {
+          const items = await pagedList((query) =>
+            OBJECTS[typeId].list(this.ctx.api, pathEncode(pid), query),
+          );
+          return items
+            .filter((o) => o.deleted !== true)
+            .map((o) => mapProjectObject(accountId, typeId, pid, o, this.ctx));
+        } catch (err) {
+          // A key scoped without this object's read scope, or to other projects.
+          if (statusOf(err) === 403 || statusOf(err) === 404) return [];
+          throw err;
+        }
+      }),
+    );
+    return lists.flat();
+  }
+
+  private async patch<T extends SoftDeletedType>(
+    typeId: T,
+    projectId: string,
+    id: string,
+    body: ObjectPatches[T],
+  ): Promise<void> {
+    if (!id) {
+      await listRouteRequest(this.ctx, "PATCH", OBJECTS[typeId].route, projectId, { body });
+      return;
+    }
+    await PATCHES[typeId](this.ctx.api, pathEncode(projectId), pathEncode(id), body);
   }
 
   // -------------------------------------------------------------------------
@@ -122,13 +178,14 @@ export class PostHogClient implements PluginClient {
   private async organization(accountId: string): Promise<ResourceInstance> {
     const id = await this.orgId();
     const [org, billing] = await Promise.all([
-      phFetch<Obj>(this.ctx, `/api/organizations/${encodeURIComponent(id)}/`),
+      this.ctx.api.get(`/api/organizations/${pathEncode(id)}/`),
       this.ctx.region === "self-hosted"
         ? Promise.resolve(undefined)
-        : phFetch<Obj>(this.ctx, "/api/billing/").catch(() => undefined),
+        : this.ctx.api.get("/api/billing/").catch(() => undefined),
     ]);
-    const num = (v: unknown) => (v === null || v === undefined || v === "" ? undefined : Number(v));
-    const period = billing?.billing_period as Obj | undefined;
+    const num = (v: string | null | undefined) =>
+      v === null || v === undefined || v === "" ? undefined : Number(v);
+    const period = billing?.billing_period;
     return instance(
       accountId,
       "organization",
@@ -162,12 +219,11 @@ export class PostHogClient implements PluginClient {
         case "project":
           return (await this.projects()).map((p) => mapProject(accountId, p, this.ctx));
         case "member": {
-          const org = await this.orgId();
+          const org = pathEncode(await this.orgId());
           try {
             return (
-              await pagedList<Obj>(
-                this.ctx,
-                `/api/organizations/${encodeURIComponent(org)}/members/`,
+              await pagedList((query) =>
+                this.ctx.api.get(`/api/organizations/${org}/members/`, { query }),
               )
             ).map((m) => mapMember(accountId, m));
           } catch (err) {
@@ -175,29 +231,8 @@ export class PostHogClient implements PluginClient {
             throw err;
           }
         }
-        default: {
-          const route = this.route(typeId);
-          const projects = await this.projects();
-          const lists = await Promise.all(
-            projects.map(async (p) => {
-              const pid = str(p.id);
-              try {
-                const items = await pagedList<Obj>(
-                  this.ctx,
-                  `/api/projects/${encodeURIComponent(pid)}/${route}/`,
-                );
-                return items
-                  .filter((o) => o.deleted !== true)
-                  .map((o) => this.map(accountId, typeId, pid, o));
-              } catch (err) {
-                // A key scoped without this object's read scope, or to other projects.
-                if (statusOf(err) === 403 || statusOf(err) === 404) return [];
-                throw err;
-              }
-            }),
-          );
-          return lists.flat();
-        }
+        default:
+          return this.listObjects(this.objectType(typeId), accountId);
       }
     });
   }
@@ -214,9 +249,8 @@ export class PostHogClient implements PluginClient {
           return this.organization(accountId);
         case "project": {
           const org = await this.orgId();
-          const p = await phFetch<Obj>(
-            this.ctx,
-            `/api/organizations/${encodeURIComponent(org)}/projects/${encodeURIComponent(ext)}/`,
+          const p = await this.ctx.api.get(
+            `/api/organizations/${pathEncode(org)}/projects/${pathEncode(ext)}/`,
           );
           return mapProject(accountId, p, this.ctx);
         }
@@ -229,11 +263,13 @@ export class PostHogClient implements PluginClient {
         }
         default: {
           const [pid, id] = splitScoped(ext);
-          return this.map(
+          const type = this.objectType(typeId);
+          return mapProjectObject(
             accountId,
-            typeId,
+            type,
             pid,
-            await phFetch<Obj>(this.ctx, this.objPath(typeId, pid, id)),
+            await this.getObject(type, pid, id),
+            this.ctx,
           );
         }
       }
@@ -290,7 +326,7 @@ export class PostHogClient implements PluginClient {
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
       const names = new Map<string, string>();
-      for (const p of await this.projects().catch(() => [] as Obj[]))
+      for (const p of await this.projects().catch(() => []))
         names.set(str(p.id), str(p.name) || str(p.id));
       return fetchPostHogCost(this.ctx, range, names);
     });
@@ -437,39 +473,45 @@ export class PostHogClient implements PluginClient {
     return attempt(async () => {
       const pid = parentResourceId ? externalIdOf(parentResourceId) : str(fields["projectId"]);
       if (!pid) throw new Error("Pick a project.");
-      let body: Obj;
+      const project = pathEncode(pid);
       switch (typeId) {
         case "feature-flag": {
           const key = (fields["key"] ?? "").trim();
           if (!/^[A-Za-z0-9_-]+$/.test(key))
             throw new Error("The key may only use letters, numbers, hyphens and underscores.");
-          body = {
-            key,
-            name: fields["name"] ?? "",
-            active: fields["active"] !== "false",
-            filters: withRollout({ groups: [] }, Number(fields["rolloutPercentage"] || 0)),
-            tags: csv(fields["tags"]),
-          };
-          break;
+          const created = await this.ctx.api.post(`/api/projects/${project}/feature_flags/`, {
+            body: {
+              key,
+              name: fields["name"] ?? "",
+              active: fields["active"] !== "false",
+              filters: withRollout({ groups: [] }, Number(fields["rolloutPercentage"] || 0)),
+              tags: csv(fields["tags"]),
+            },
+          });
+          return mapProjectObject(accountId, typeId, pid, created, this.ctx);
         }
-        case "dashboard":
-          body = { name: (fields["name"] ?? "").trim(), description: fields["description"] ?? "" };
-          break;
-        case "annotation":
-          body = {
-            content: (fields["content"] ?? "").trim(),
-            date_marker: new Date(fields["dateMarker"] ?? "").toISOString(),
-            scope: fields["scope"] || "project",
-          };
-          break;
+        case "dashboard": {
+          const created = await this.ctx.api.post(`/api/projects/${project}/dashboards/`, {
+            body: {
+              name: (fields["name"] ?? "").trim(),
+              description: fields["description"] ?? "",
+            },
+          });
+          return mapProjectObject(accountId, typeId, pid, created, this.ctx);
+        }
+        case "annotation": {
+          const created = await this.ctx.api.post(`/api/projects/${project}/annotations/`, {
+            body: {
+              content: (fields["content"] ?? "").trim(),
+              date_marker: new Date(fields["dateMarker"] ?? "").toISOString(),
+              scope: fields["scope"] || "project",
+            },
+          });
+          return mapProjectObject(accountId, typeId, pid, created, this.ctx);
+        }
         default:
           throw new Error(`PostHog plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      const created = await phFetch<Obj>(this.ctx, this.objPath(typeId, pid), {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      return this.map(accountId, typeId, pid, created);
     });
   }
 
@@ -477,11 +519,14 @@ export class PostHogClient implements PluginClient {
   // Update / delete / actions
   // -------------------------------------------------------------------------
 
-  private patch(typeId: string, pid: string, id: string, body: Obj): Promise<Obj> {
-    return phFetch<Obj>(this.ctx, this.objPath(typeId, pid, id), {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    });
+  /** Nothing to change sends nothing. */
+  private async patchIfAny<T extends SoftDeletedType>(
+    typeId: T,
+    projectId: string,
+    id: string,
+    body: ObjectPatches[T],
+  ): Promise<void> {
+    if (Object.keys(body).length > 0) await this.patch(typeId, projectId, id, body);
   }
 
   updateResource(
@@ -496,22 +541,18 @@ export class PostHogClient implements PluginClient {
         const level = LEVEL_IDS[fields["level"] ?? ""];
         if (level !== undefined) {
           const org = await this.orgId();
-          await phFetch(
-            this.ctx,
-            `/api/organizations/${encodeURIComponent(org)}/members/${encodeURIComponent(ext)}/`,
-            {
-              method: "PATCH",
-              body: JSON.stringify({ level }),
-            },
+          await this.ctx.api.patch(
+            `/api/organizations/${pathEncode(org)}/members/${pathEncode(ext)}/`,
+            { body: { level } },
           );
         }
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
       const [pid, id] = splitScoped(ext);
-      const body: Obj = {};
       const has = (k: string) => k in fields;
       switch (typeId) {
         case "feature-flag": {
+          const body: ObjectPatches["feature-flag"] = {};
           if (has("name")) body.name = fields["name"] ?? "";
           if (has("active")) body.active = fields["active"] === "true";
           if (has("tags")) body.tags = csv(fields["tags"]);
@@ -519,31 +560,43 @@ export class PostHogClient implements PluginClient {
             const rollout = Number(fields["rolloutPercentage"]);
             if (!Number.isFinite(rollout) || rollout < 0 || rollout > 100)
               throw new Error("Rollout must be between 0 and 100.");
-            const current = await phFetch<Obj>(this.ctx, this.objPath(typeId, pid, id));
-            body.filters = withRollout((current.filters as Obj) ?? {}, rollout);
+            const current = await this.getObject(typeId, pid, id);
+            body.filters = withRollout(current.filters ?? {}, rollout);
           }
+          await this.patchIfAny(typeId, pid, id, body);
           break;
         }
-        case "dashboard":
+        case "dashboard": {
+          const body: ObjectPatches["dashboard"] = {};
           if (fields["name"]?.trim()) body.name = fields["name"].trim();
           if (has("description")) body.description = fields["description"] ?? "";
           if (has("pinned")) body.pinned = fields["pinned"] === "true";
           if (has("tags")) body.tags = csv(fields["tags"]);
+          await this.patchIfAny(typeId, pid, id, body);
           break;
+        }
         case "experiment":
         case "cohort":
         case "insight":
-        case "action":
+        case "action": {
+          const body: ObjectPatches["experiment"] &
+            ObjectPatches["cohort"] &
+            ObjectPatches["insight"] &
+            ObjectPatches["action"] = {};
           if (fields["name"]?.trim()) body.name = fields["name"].trim();
           if (has("description")) body.description = fields["description"] ?? "";
+          await this.patchIfAny(typeId, pid, id, body);
           break;
-        case "annotation":
+        }
+        case "annotation": {
+          const body: ObjectPatches["annotation"] = {};
           if (fields["content"]?.trim()) body.content = fields["content"].trim();
+          await this.patchIfAny(typeId, pid, id, body);
           break;
+        }
         default:
           throw new Error(`PostHog plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-      if (Object.keys(body).length > 0) await this.patch(typeId, pid, id, body);
       return runPluginEffect(this.getResource(typeId, resourceId, accountId));
     });
   }
@@ -553,10 +606,8 @@ export class PostHogClient implements PluginClient {
       const ext = externalIdOf(resourceId) || resourceId;
       if (typeId === "member") {
         const org = await this.orgId();
-        await phFetch(
-          this.ctx,
-          `/api/organizations/${encodeURIComponent(org)}/members/${encodeURIComponent(ext)}/`,
-          { method: "DELETE" },
+        await this.ctx.api.delete(
+          `/api/organizations/${pathEncode(org)}/members/${pathEncode(ext)}/`,
         );
         return;
       }
@@ -566,46 +617,88 @@ export class PostHogClient implements PluginClient {
       const [pid, id] = splitScoped(ext);
       // Batch exports are the one type with a real DELETE; everything else is a
       // soft delete ("Hard delete of this model is not allowed").
-      if (typeId === "batch-export") {
-        await phFetch(this.ctx, this.objPath(typeId, pid, id), { method: "DELETE" });
+      const type = this.objectType(typeId);
+      if (type === "batch-export") {
+        await (id
+          ? this.ctx.api.delete(`/api/projects/${pathEncode(pid)}/batch_exports/${pathEncode(id)}/`)
+          : listRouteRequest(this.ctx, "DELETE", OBJECTS[type].route, pid));
         return;
       }
-      await this.patch(typeId, pid, id, { deleted: true });
+      await this.patch(type, pid, id, { deleted: true });
     });
   }
 
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
       const [pid, id] = splitScoped(externalIdOf(resourceId) || resourceId);
-      const post = (action: string, body: Obj = {}) =>
-        phFetch(this.ctx, `${this.objPath(typeId, pid, id)}${action}/`, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+      const project = pathEncode(pid);
+      const target = pathEncode(id);
+      const body = {};
+      // Each of these is a POST of an empty object to `<object>/<action>/`.
+      const post = async (
+        route: string,
+        action: string,
+        typed: () => Promise<object | undefined>,
+      ): Promise<void> => {
+        await (id ? typed() : listRouteRequest(this.ctx, "POST", route, pid, { action, body }));
+      };
+      const { api } = this.ctx;
       switch (`${typeId}:${actionId}`) {
         case "feature-flag:enable":
+          await post("feature_flags", "enable", () =>
+            api.post(`/api/projects/${project}/feature_flags/${target}/enable/`, { body }),
+          );
+          return;
         case "feature-flag:disable":
-          await post(actionId);
+          await post("feature_flags", "disable", () =>
+            api.post(`/api/projects/${project}/feature_flags/${target}/disable/`, { body }),
+          );
           return;
         case "feature-flag:rollout-all":
-          await post("roll_out_to_everyone");
+          await post("feature_flags", "roll_out_to_everyone", () =>
+            api.post(`/api/projects/${project}/feature_flags/${target}/roll_out_to_everyone/`, {
+              body,
+            }),
+          );
           return;
         case "experiment:launch":
+          await post("experiments", "launch", () =>
+            api.post(`/api/projects/${project}/experiments/${target}/launch/`, { body }),
+          );
+          return;
         case "experiment:pause":
+          await post("experiments", "pause", () =>
+            api.post(`/api/projects/${project}/experiments/${target}/pause/`, { body }),
+          );
+          return;
         case "experiment:resume":
+          await post("experiments", "resume", () =>
+            api.post(`/api/projects/${project}/experiments/${target}/resume/`, { body }),
+          );
+          return;
         case "experiment:archive":
-          await post(actionId);
+          await post("experiments", "archive", () =>
+            api.post(`/api/projects/${project}/experiments/${target}/archive/`, { body }),
+          );
           return;
         case "experiment:end":
-          await post("end", {});
+          await post("experiments", "end", () =>
+            api.post(`/api/projects/${project}/experiments/${target}/end/`, { body }),
+          );
           return;
         case "batch-export:pause":
+          await post("batch_exports", "pause", () =>
+            api.post(`/api/projects/${project}/batch_exports/${target}/pause/`, { body }),
+          );
+          return;
         case "batch-export:unpause":
-          await post(actionId);
+          await post("batch_exports", "unpause", () =>
+            api.post(`/api/projects/${project}/batch_exports/${target}/unpause/`, { body }),
+          );
           return;
         case "hog-function:enable":
         case "hog-function:disable":
-          await this.patch(typeId, pid, id, { enabled: actionId === "enable" });
+          await this.patch("hog-function", pid, id, { enabled: actionId === "enable" });
           return;
         default:
           throw new Error(`PostHog plugin: unknown action "${actionId}" for "${typeId}"`);

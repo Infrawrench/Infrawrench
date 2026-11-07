@@ -1,6 +1,7 @@
 import type { CostChargeType, CostRow } from "@infrawrench/plugin-base";
-import type { StripeContext } from "./api.js";
+import type { StripeApi } from "./api.js";
 import { fromMinor, listV1 } from "./api.js";
+import type { components } from "./api-types.gen.js";
 
 /**
  * Stripe's own fees, read from balance transactions
@@ -24,27 +25,7 @@ import { fromMinor, listV1 } from "./api.js";
  * currency rather than converting, because the host owns currency.
  */
 
-export interface StripeFeeDetail {
-  amount?: number;
-  currency?: string;
-  description?: string | null;
-  type?: string;
-  application?: string | null;
-}
-
-export interface StripeBalanceTransaction {
-  id?: string;
-  amount?: number;
-  currency?: string;
-  created?: number;
-  description?: string | null;
-  fee?: number;
-  fee_details?: StripeFeeDetail[];
-  net?: number;
-  reporting_category?: string;
-  type?: string;
-  status?: string;
-}
+export type StripeBalanceTransaction = components["schemas"]["balance_transaction"];
 
 /** Transaction types whose entire (negative) amount is a Stripe fee. */
 const FEE_TRANSACTION_TYPES = new Set(["stripe_fee", "stripe_fx_fee", "tax_fee"]);
@@ -203,15 +184,16 @@ export function daysBetween(fromDate: string, toDate: string): string[] {
  * day visible on its own rather than silently truncating a whole range.
  */
 export async function transactionsForDay(
-  ctx: StripeContext,
+  api: StripeApi,
   day: string,
   maxPages = MAX_PAGES_PER_DAY,
 ): Promise<StripeBalanceTransaction[]> {
   const gte = Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000);
-  return listV1<StripeBalanceTransaction>(
-    ctx,
-    "/v1/balance_transactions",
-    { "created[gte]": gte, "created[lt]": gte + 86_400 },
+  return listV1(
+    (paging) =>
+      api.get("/v1/balance_transactions", {
+        query: { limit: 100, created: { gte, lt: gte + 86_400 }, ...paging },
+      }),
     maxPages,
   );
 }
@@ -236,13 +218,13 @@ export async function mapLimit<T, R>(
 
 /** Stripe-fee cost rows for `[fromDate, toDate]`, never past today. */
 export async function fetchFeeCostRows(
-  ctx: StripeContext,
+  api: StripeApi,
   fromDate: string,
   toDate: string,
 ): Promise<CostRow[]> {
   const today = new Date().toISOString().slice(0, 10);
   const days = daysBetween(fromDate, toDate < today ? toDate : today);
-  const perDay = await mapLimit(days, 4, (day) => transactionsForDay(ctx, day));
+  const perDay = await mapLimit(days, 4, (day) => transactionsForDay(api, day));
   return feeRows(perDay.flat());
 }
 

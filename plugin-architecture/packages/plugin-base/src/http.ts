@@ -81,6 +81,8 @@ export interface RestRequestOptions extends JsonRestFetchOptions {
    * caller's headers, and not at all when the caller set one.
    */
   contentType?: "always" | "with-body";
+  /** What `contentType` declares the body to be. `application/json` by default. */
+  bodyType?: string;
   /**
    * Read a 2xx with no body as `undefined` under global `fetch` too. The host's
    * HTTP service has always done that; `fetch` throws a `SyntaxError` by default.
@@ -117,7 +119,7 @@ function mergeHeaders(opts: RestRequestOptions): Record<string, string> {
   const merged: Record<string, string> =
     opts.contentType === "with-body"
       ? { ...opts.headers }
-      : { "Content-Type": "application/json", ...opts.headers };
+      : { "Content-Type": opts.bodyType ?? "application/json", ...opts.headers };
   if (initHeaders) {
     if (initHeaders instanceof Headers) {
       initHeaders.forEach((value, key) => {
@@ -134,7 +136,7 @@ function mergeHeaders(opts: RestRequestOptions): Record<string, string> {
     opts.init?.body != null &&
     !Object.keys(merged).some((key) => key.toLowerCase() === "content-type")
   ) {
-    merged["Content-Type"] = "application/json";
+    merged["Content-Type"] = opts.bodyType ?? "application/json";
   }
   return merged;
 }

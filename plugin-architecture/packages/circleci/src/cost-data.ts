@@ -25,10 +25,11 @@
  * export to start on the 1st of the month.
  */
 
-import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import type { ApiResponse, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
 import type { CircleContext } from "./api.js";
-import { circleFetch, downloadExport, isPermissionError, statusOf } from "./api.js";
+import { circleApi, downloadExport, isPermissionError, statusOf } from "./api.js";
+import type { operations } from "./api-types.v2.gen.js";
 import { parseCsv } from "./csv.js";
 import type { CircleRates } from "./rates.js";
 
@@ -56,12 +57,7 @@ export const CREDIT_COLUMNS: Array<{ column: string; service: string }> = [
 ];
 const OTHER_SERVICE = "Other";
 
-export interface UsageExportJob {
-  usage_export_job_id: string;
-  state: "created" | "processing" | "completed" | "failed" | string;
-  download_urls?: string[];
-  error_reason?: string;
-}
+export type UsageExportJob = ApiResponse<operations["getUsageExport"]>;
 
 export interface ExportOptions {
   /** Waits between polls, in milliseconds. The last one repeats until `maxWaitMs`. */
@@ -94,12 +90,12 @@ export async function runUsageExport(
   const sleep = opts.sleep ?? defaultSleep;
   const delays = opts.pollDelaysMs ?? DEFAULT_POLL_DELAYS_MS;
   const maxWait = opts.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
-  const base = `/organizations/${encodeURIComponent(orgId)}/usage_export_job`;
+  const { v2 } = circleApi(ctx);
+  const base = `/organizations/${pathEncode(orgId)}/usage_export_job` as const;
 
   let job: UsageExportJob;
   try {
-    job = await circleFetch<UsageExportJob>(ctx, base, {
-      method: "POST",
+    job = await v2.post(base, {
       body: { start: start.toISOString(), end: end.toISOString() },
     });
   } catch (err) {
@@ -123,10 +119,7 @@ export async function runUsageExport(
     await sleep(delay);
     waited += delay;
     try {
-      job = await circleFetch<UsageExportJob>(
-        ctx,
-        `${base}/${encodeURIComponent(job.usage_export_job_id)}`,
-      );
+      job = await v2.get(`${base}/${pathEncode(job.usage_export_job_id)}`);
     } catch (err) {
       // A rate-limited poll is not a failed export: wait out the next step.
       if (statusOf(err) !== 429) throw err;

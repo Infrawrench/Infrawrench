@@ -2,6 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { FalClient, analyticsSeries, modelUsageRows, serverlessUsageRows } from "../client.js";
+import type { ModelUsagePage, ServerlessUsagePage } from "../api.js";
 import { parseStatusFeed } from "../status-feed.js";
 
 const ACCOUNT = "acct";
@@ -140,6 +141,38 @@ describe("fal client", () => {
   });
 });
 
+type ModelLine = NonNullable<ModelUsagePage["time_series"]>[number]["results"][number];
+type ServerlessLine = NonNullable<ServerlessUsagePage["time_series"]>[number]["results"][number];
+
+/** The money fields the document requires and these cases do not read. */
+const unread = {
+  unit: "",
+  quantity: 0,
+  unit_price: 0,
+  percent_discount: null,
+  cost_subtotal: 0,
+  cost_discount: 0,
+  cost_total: 0,
+  cost: 0,
+  currency: "",
+};
+
+const modelLine = (line: Partial<ModelLine>): ModelLine => ({
+  ...unread,
+  endpoint_id: "",
+  ...line,
+});
+
+const serverlessLine = (line: Partial<ServerlessLine>): ServerlessLine => ({
+  ...unread,
+  app: null,
+  environment: null,
+  machine_type: "",
+  net_unit_price: 0,
+  is_surge: false,
+  ...line,
+});
+
 describe("mappers", () => {
   const range = { fromDate: "2026-10-01", toDate: "2026-10-31" };
   it("maps model usage buckets to UTC days", () => {
@@ -150,19 +183,19 @@ describe("mappers", () => {
             {
               bucket: "2026-10-02T00:00:00+00:00",
               results: [
-                {
+                modelLine({
                   endpoint_id: "a/b",
                   unit: "images",
                   quantity: 4,
                   cost_total: 0.2,
                   currency: "USD",
                   auth_method: "Key ci",
-                },
+                }),
               ],
             },
             {
               bucket: "2026-09-30T00:00:00+00:00",
-              results: [{ endpoint_id: "a/b", cost_total: 1 }],
+              results: [modelLine({ endpoint_id: "a/b", cost_total: 1 })],
             },
           ],
         },
@@ -191,7 +224,7 @@ describe("mappers", () => {
             {
               bucket: "2026-10-05T00:00:00Z",
               results: [
-                {
+                serverlessLine({
                   app: "me/app",
                   machine_type: "GPU-H100",
                   environment: "main",
@@ -199,7 +232,7 @@ describe("mappers", () => {
                   unit: "seconds",
                   quantity: 60,
                   cost_total: 0.1,
-                },
+                }),
               ],
             },
           ],

@@ -15,9 +15,11 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
-import { billingApi, cloudApi, statusOf } from "./api.js";
+import { createEcContext, isProjectType, statusOf } from "./api.js";
+import type { operations as BillingOperations } from "./api-types.billing.gen.js";
+import type { operations as ServerlessOperations } from "./api-types.serverless.gen.js";
 import {
   fetchCostsOverview,
   fetchElasticCostData,
@@ -61,13 +63,10 @@ import type {
   EcBudget,
   EcDeployment,
   EcDeploymentListing,
-  EcExtension,
-  EcInstanceCosts,
   EcOrganization,
   EcProject,
   EcServerlessRegion,
   EcServerlessTrafficFilter,
-  EcTiers,
   EcTrafficRule,
   EcTrafficRuleset,
   ProjectType,
@@ -130,9 +129,24 @@ export function thresholdsToAlerts(value: string | undefined) {
     }));
 }
 
+/** A rule written from a source, which either API's traffic filters take. */
+interface SourceRule {
+  source?: string;
+  description?: string;
+}
+
+/** The document says an array; an answer wrapped in `items` is read as well. */
+function regionList(res: EcServerlessRegion[] | { items?: EcServerlessRegion[] }) {
+  return Array.isArray(res) ? res : (res.items ?? []);
+}
+
 /** Sources to rules, keeping each existing rule's description when its source is kept. */
-export function sourcesToRules(sources: string[], existing: EcTrafficRule[] = []): EcTrafficRule[] {
-  const known = new Map(existing.filter((r) => r.source).map((r) => [r.source as string, r]));
+export function sourcesToRules(sources: string[], existing: EcTrafficRule[] = []): SourceRule[] {
+  const known = new Map(
+    existing
+      .filter((r): r is EcTrafficRule & { source: string } => Boolean(r.source))
+      .map((r): [string, EcTrafficRule] => [r.source, r]),
+  );
   return sources.map((source) => {
     const prev = known.get(source);
     return prev?.description ? { source, description: prev.description } : { source };
@@ -148,11 +162,7 @@ export class ElasticCloudClient implements PluginClient {
     if (!apiKey) throw new Error("Elastic Cloud plugin: missing apiKey credential");
     const caCert = credentials["caCert"] ?? "";
     this.services = services;
-    this.ctx = {
-      apiKey,
-      ...(caCert ? { caCert } : {}),
-      ...(services?.http ? { http: services.http } : {}),
-    };
+    this.ctx = createEcContext({ apiKey, caCert, http: services?.http });
   }
 
   // -------------------------------------------------------------------------
@@ -198,10 +208,7 @@ export class ElasticCloudClient implements PluginClient {
           );
         case "extension":
           return this.scoped(async () => {
-            const res = await cloudApi<{ extensions?: EcExtension[] }>(
-              this.ctx,
-              "/api/v1/deployments/extensions",
-            );
+            const res = await this.ctx.cloud.get("/deployments/extensions");
             return (res.extensions ?? []).map((e) => mapExtension(accountId, e));
           });
         case "budget":
@@ -223,16 +230,13 @@ export class ElasticCloudClient implements PluginClient {
   }
 
   private async fetchDeployment(id: string): Promise<EcDeployment> {
-    return cloudApi<EcDeployment>(this.ctx, `/api/v1/deployments/${encodeURIComponent(id)}`, {
+    return this.ctx.cloud.get(`/deployments/${pathEncode(id)}`, {
       query: { show_plans: true, show_instance_metrics: true },
     });
   }
 
   private async fetchDeployments(): Promise<EcDeployment[]> {
-    const res = await cloudApi<{ deployments?: EcDeploymentListing[] }>(
-      this.ctx,
-      "/api/v1/deployments",
-    );
+    const res = await this.ctx.cloud.get("/deployments");
     const listing = (res.deployments ?? []).filter((d) => d.id);
     return mapLimited(listing, DEPLOYMENT_CONCURRENCY, async (d): Promise<EcDeployment> => {
       try {
@@ -262,10 +266,7 @@ export class ElasticCloudClient implements PluginClient {
 
   private async fetchProjectsOfType(type: ProjectType): Promise<EcProject[]> {
     try {
-      const res = await cloudApi<{ items?: EcProject[] }>(
-        this.ctx,
-        `/api/v1/serverless/projects/${type}`,
-      );
+      const res = await this.ctx.projects.get(`/api/v1/serverless/projects/${pathEncode(type)}`);
       return res.items ?? [];
     } catch (err) {
       const s = statusOf(err);
@@ -282,26 +283,20 @@ export class ElasticCloudClient implements PluginClient {
   }
 
   private async fetchRulesets(region?: string): Promise<EcTrafficRuleset[]> {
-    const res = await cloudApi<{ rulesets?: EcTrafficRuleset[] }>(
-      this.ctx,
-      "/api/v1/deployments/traffic-filter/rulesets",
-      { query: { include_associations: true, ...(region ? { region } : {}) } },
-    );
+    const res = await this.ctx.cloud.get("/deployments/traffic-filter/rulesets", {
+      query: { include_associations: true, ...(region ? { region } : {}) },
+    });
     return res.rulesets ?? [];
   }
 
   private async fetchServerlessFilters(): Promise<EcServerlessTrafficFilter[]> {
-    const res = await cloudApi<{ items?: EcServerlessTrafficFilter[] }>(
-      this.ctx,
-      "/api/v1/serverless/traffic-filters",
-    );
+    const res = await this.ctx.serverless.get("/api/v1/serverless/traffic-filters");
     return res.items ?? [];
   }
 
   private async fetchBudgets(orgId: string): Promise<EcBudget[]> {
-    const res = await billingApi<EcBudget[]>(
-      this.ctx,
-      `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets`,
+    const res = await this.ctx.billing.get(
+      `/api/v1/billing/organization/${pathEncode(orgId)}/budgets`,
     );
     return Array.isArray(res) ? res : [];
   }
@@ -310,9 +305,10 @@ export class ElasticCloudClient implements PluginClient {
   private async instanceNames(): Promise<Map<string, string>> {
     const names = new Map<string, string>();
     const [deployments, projects] = await Promise.all([
-      cloudApi<{ deployments?: EcDeploymentListing[] }>(this.ctx, "/api/v1/deployments")
+      this.ctx.cloud
+        .get("/deployments")
         .then((r) => r.deployments ?? [])
-        .catch(() => [] as EcDeploymentListing[]),
+        .catch((): EcDeploymentListing[] => []),
       Promise.all(PROJECT_TYPES.map((t) => this.fetchProjectsOfType(t).catch(() => []))),
     ]);
     for (const d of deployments) if (d.id) names.set(d.id, d.name ?? d.id);
@@ -326,8 +322,8 @@ export class ElasticCloudClient implements PluginClient {
       const names = await this.instanceNames();
       const out: ResourceInstance[] = [];
       for (const o of orgs) {
-        const budgets = await this.fetchBudgets(o.id!).catch((err) => {
-          if (statusOf(err) === 403 || statusOf(err) === 404) return [] as EcBudget[];
+        const budgets = await this.fetchBudgets(o.id!).catch((err): EcBudget[] => {
+          if (statusOf(err) === 403 || statusOf(err) === 404) return [];
           throw err;
         });
         for (const b of budgets) out.push(mapBudget(accountId, o.id!, b, names));
@@ -355,9 +351,8 @@ export class ElasticCloudClient implements PluginClient {
         case "project":
           return this.getProject(accountId, id);
         case "traffic-filter": {
-          const r = await cloudApi<EcTrafficRuleset>(
-            this.ctx,
-            `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`,
+          const r = await this.ctx.cloud.get(
+            `/deployments/traffic-filter/rulesets/${pathEncode(id)}`,
             { query: { include_associations: true } },
           );
           const mapped = mapTrafficFilter(accountId, r);
@@ -371,25 +366,21 @@ export class ElasticCloudClient implements PluginClient {
           };
         }
         case "serverless-traffic-filter": {
-          const t = await cloudApi<EcServerlessTrafficFilter>(
-            this.ctx,
-            `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`,
+          const t = await this.ctx.serverless.get(
+            `/api/v1/serverless/traffic-filters/${pathEncode(id)}`,
           );
           return mapServerlessTrafficFilter(accountId, t);
         }
         case "extension": {
-          const e = await cloudApi<EcExtension>(
-            this.ctx,
-            `/api/v1/deployments/extensions/${encodeURIComponent(id)}`,
-            { query: { include_deployments: true } },
-          );
+          const e = await this.ctx.cloud.get(`/deployments/extensions/${pathEncode(id)}`, {
+            query: { include_deployments: true },
+          });
           return mapExtension(accountId, e);
         }
         case "budget": {
           const { orgId, budgetId } = parseBudgetExternalId(id);
-          const b = await billingApi<EcBudget>(
-            this.ctx,
-            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
+          const b = await this.ctx.billing.get(
+            `/api/v1/billing/organization/${pathEncode(orgId)}/budgets/${pathEncode(budgetId)}`,
           );
           const names = await this.instanceNames().catch(() => new Map<string, string>());
           return mapBudget(accountId, orgId, b, names);
@@ -405,11 +396,11 @@ export class ElasticCloudClient implements PluginClient {
     const org: EcOrganization = orgs.find((o) => o.id === orgId) ?? { id: orgId, name: orgId };
     const [overview, costs] = await Promise.all([
       fetchCostsOverview(this.ctx, orgId).catch(() => undefined),
-      billingApi<EcInstanceCosts>(
-        this.ctx,
-        `/api/v2/billing/organizations/${encodeURIComponent(orgId)}/costs/instances`,
-        { query: { from: startOfMonthIso(), to: new Date().toISOString(), include_names: true } },
-      ).catch(() => undefined),
+      this.ctx.billing
+        .get(`/api/v2/billing/organizations/${pathEncode(orgId)}/costs/instances`, {
+          query: { from: startOfMonthIso(), to: new Date().toISOString(), include_names: true },
+        })
+        .catch(() => undefined),
     ]);
     const mapped = mapOrganization(accountId, org, overview);
     return {
@@ -429,12 +420,11 @@ export class ElasticCloudClient implements PluginClient {
     const region = String(mapped.fields["region"] ?? "");
     const [tiers, rulesets] = await Promise.all([
       esRef
-        ? cloudApi<EcTiers>(
-            this.ctx,
-            `/api/v1/deployments/${encodeURIComponent(id)}/elasticsearch/${encodeURIComponent(esRef)}/tiers`,
-          ).catch(() => undefined)
+        ? this.ctx.cloud
+            .get(`/deployments/${pathEncode(id)}/elasticsearch/${pathEncode(esRef)}/tiers`)
+            .catch(() => undefined)
         : Promise.resolve(undefined),
-      this.fetchRulesets(region || undefined).catch(() => [] as EcTrafficRuleset[]),
+      this.fetchRulesets(region || undefined).catch((): EcTrafficRuleset[] => []),
     ]);
     return {
       ...mapped,
@@ -452,10 +442,10 @@ export class ElasticCloudClient implements PluginClient {
 
   private async getProject(accountId: string, externalId: string): Promise<ResourceInstance> {
     const { type, id } = parseProjectExternalId(externalId);
-    const base = `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
+    const [t, i] = [pathEncode(type), pathEncode(id)];
     const [p, status] = await Promise.all([
-      cloudApi<EcProject>(this.ctx, base),
-      cloudApi<{ phase?: string }>(this.ctx, `${base}/status`).catch(() => undefined),
+      this.ctx.projects.get(`/api/v1/serverless/projects/${t}/${i}`),
+      this.ctx.projects.get(`/api/v1/serverless/projects/${t}/${i}/status`).catch(() => undefined),
     ]);
     return mapProject(accountId, type, p, status?.phase);
   }
@@ -598,10 +588,9 @@ export class ElasticCloudClient implements PluginClient {
           return this.instanceCharts(id, "deployments", undefined, range);
         case "project": {
           const { type, id: projectId } = parseProjectExternalId(id);
-          const p = await cloudApi<EcProject>(
-            this.ctx,
-            `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`,
-          ).catch(() => undefined);
+          const p = await this.ctx.projects
+            .get(`/api/v1/serverless/projects/${pathEncode(type)}/${pathEncode(projectId)}`)
+            .catch(() => undefined);
           return this.instanceCharts(projectId, "projects", p?.metadata?.organization_id, range);
         }
         default:
@@ -627,11 +616,10 @@ export class ElasticCloudClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async serverlessRegions(): Promise<EcServerlessRegion[]> {
-    const res = await cloudApi<EcServerlessRegion[] | { items?: EcServerlessRegion[] }>(
-      this.ctx,
-      "/api/v1/serverless/regions",
-    ).catch(() => [] as EcServerlessRegion[]);
-    const list = Array.isArray(res) ? res : (res.items ?? []);
+    const res = await this.ctx.serverless
+      .get("/api/v1/serverless/regions")
+      .catch((): EcServerlessRegion[] => []);
+    const list = regionList(res);
     return list.filter((r) => r.id);
   }
 
@@ -655,10 +643,11 @@ export class ElasticCloudClient implements PluginClient {
   /** Hosted regions in use, from deployments and existing rulesets. */
   private async hostedRegions(): Promise<string[]> {
     const [deployments, rulesets] = await Promise.all([
-      cloudApi<{ deployments?: EcDeploymentListing[] }>(this.ctx, "/api/v1/deployments")
+      this.ctx.cloud
+        .get("/deployments")
         .then((r) => r.deployments ?? [])
-        .catch(() => [] as EcDeploymentListing[]),
-      this.fetchRulesets().catch(() => [] as EcTrafficRuleset[]),
+        .catch((): EcDeploymentListing[] => []),
+      this.fetchRulesets().catch((): EcTrafficRuleset[] => []),
     ]);
     const regions = new Set<string>();
     for (const d of deployments)
@@ -731,9 +720,10 @@ export class ElasticCloudClient implements PluginClient {
         case "traffic-filter": {
           const [regions, deployments] = await Promise.all([
             this.hostedRegions(),
-            cloudApi<{ deployments?: EcDeploymentListing[] }>(this.ctx, "/api/v1/deployments")
+            this.ctx.cloud
+              .get("/deployments")
               .then((r) => r.deployments ?? [])
-              .catch(() => [] as EcDeploymentListing[]),
+              .catch((): EcDeploymentListing[] => []),
           ]);
           return {
             fields: [
@@ -965,24 +955,23 @@ export class ElasticCloudClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "project": {
-          const type = (fields["projectType"] || "elasticsearch") as ProjectType;
-          if (!PROJECT_TYPES.includes(type)) throw new Error(`Unknown project type "${type}"`);
-          const body: Record<string, unknown> = {
-            name: (fields["name"] ?? "").trim(),
-            region_id: fields["region"],
-          };
-          if (type === "elasticsearch" && fields["optimizedFor"]) {
-            body["optimized_for"] = fields["optimizedFor"];
-          }
-          if (type === "observability" && fields["productTier"]) {
-            body["product_tier"] = fields["productTier"];
-          }
-          const created = await cloudApi<
-            EcProject & { credentials?: { username?: string; password?: string } }
-          >(this.ctx, `/api/v1/serverless/projects/${type}`, {
-            method: "POST",
-            body: JSON.stringify(body),
-          });
+          const type = fields["projectType"] || "elasticsearch";
+          if (!isProjectType(type)) throw new Error(`Unknown project type "${type}"`);
+          const created = await this.ctx.projects.post(
+            `/api/v1/serverless/projects/${pathEncode(type)}`,
+            {
+              body: {
+                name: (fields["name"] ?? "").trim(),
+                region_id: fields["region"],
+                ...(type === "elasticsearch" && fields["optimizedFor"]
+                  ? { optimized_for: fields["optimizedFor"] }
+                  : {}),
+                ...(type === "observability" && fields["productTier"]
+                  ? { product_tier: fields["productTier"] }
+                  : {}),
+              },
+            },
+          );
           const resource = mapProject(accountId, type, created, "initializing");
           if (created.credentials?.password) {
             await this.services?.secrets?.setPlaintext?.(
@@ -995,21 +984,16 @@ export class ElasticCloudClient implements PluginClient {
         }
         case "traffic-filter": {
           const sources = splitList(fields["sources"]);
-          const res = await cloudApi<{ id?: string }>(
-            this.ctx,
-            "/api/v1/deployments/traffic-filter/rulesets",
-            {
-              method: "POST",
-              body: JSON.stringify({
-                name: (fields["name"] ?? "").trim(),
-                ...(fields["description"] ? { description: fields["description"] } : {}),
-                type: "ip",
-                region: fields["region"],
-                include_by_default: fields["includeByDefault"] === "true",
-                rules: sourcesToRules(sources),
-              }),
+          const res = await this.ctx.cloud.post("/deployments/traffic-filter/rulesets", {
+            body: {
+              name: (fields["name"] ?? "").trim(),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              type: "ip",
+              region: fields["region"],
+              include_by_default: fields["includeByDefault"] === "true",
+              rules: sourcesToRules(sources),
             },
-          );
+          });
           const rulesetId = res.id ?? "";
           const deploymentIds = parseJson<string[]>(fields["deploymentIds"]) ?? [];
           for (const d of deploymentIds) {
@@ -1024,33 +1008,27 @@ export class ElasticCloudClient implements PluginClient {
           );
         }
         case "serverless-traffic-filter": {
-          const created = await cloudApi<EcServerlessTrafficFilter>(
-            this.ctx,
-            "/api/v1/serverless/traffic-filters",
-            {
-              method: "POST",
-              body: JSON.stringify({
-                name: (fields["name"] ?? "").trim(),
-                ...(fields["description"] ? { description: fields["description"] } : {}),
-                type: "ip",
-                region: fields["region"],
-                include_by_default: fields["includeByDefault"] === "true",
-                rules: sourcesToRules(splitList(fields["sources"])),
-              }),
+          const created = await this.ctx.serverless.post("/api/v1/serverless/traffic-filters", {
+            body: {
+              name: (fields["name"] ?? "").trim(),
+              ...(fields["description"] ? { description: fields["description"] } : {}),
+              type: "ip",
+              region: fields["region"],
+              include_by_default: fields["includeByDefault"] === "true",
+              rules: sourcesToRules(splitList(fields["sources"])),
             },
-          );
+          });
           return mapServerlessTrafficFilter(accountId, created);
         }
         case "extension": {
-          const e = await cloudApi<EcExtension>(this.ctx, "/api/v1/deployments/extensions", {
-            method: "POST",
-            body: JSON.stringify({
+          const e = await this.ctx.cloud.post("/deployments/extensions", {
+            body: {
               name: (fields["name"] ?? "").trim(),
               extension_type: fields["extensionType"] || "bundle",
               version: (fields["version"] ?? "").trim(),
               download_url: (fields["downloadUrl"] ?? "").trim(),
               ...(fields["description"] ? { description: fields["description"] } : {}),
-            }),
+            },
           });
           return mapExtension(accountId, e);
         }
@@ -1059,9 +1037,10 @@ export class ElasticCloudClient implements PluginClient {
           if (!orgId) throw new Error("This API key cannot see an Elastic Cloud organization.");
           const scope = fields["scope"] || "organization";
           const recipients = parseJson<string[]>(fields["recipients"]) ?? [];
-          const body = {
+          const amount = Math.round(Number(fields["amount"]));
+          const body: ApiBody<BillingOperations["createBudgetV1"]> = {
             ...(fields["name"] ? { name: fields["name"].trim() } : {}),
-            amount: Math.round(Number(fields["amount"])),
+            amount,
             period: "monthly",
             active: true,
             scope_type: scope === "organization" ? "organization" : "cloud_resource",
@@ -1069,13 +1048,12 @@ export class ElasticCloudClient implements PluginClient {
             alerts: thresholdsToAlerts(fields["alertThresholds"]),
             ...(recipients.length > 0 ? { recipient_group: recipients } : {}),
           };
-          if (!Number.isFinite(body.amount) || body.amount <= 0) {
+          if (!Number.isFinite(amount) || amount <= 0) {
             throw new Error("Enter a monthly amount greater than zero.");
           }
-          const res = await billingApi<{ id?: number }>(
-            this.ctx,
-            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budget`,
-            { method: "POST", body: JSON.stringify(body) },
+          const res = await this.ctx.billing.post(
+            `/api/v1/billing/organization/${pathEncode(orgId)}/budget`,
+            { body },
           );
           return runPluginEffect(
             this.getResource(
@@ -1109,9 +1087,13 @@ export class ElasticCloudClient implements PluginClient {
           return runPluginEffect(this.getResource("deployment", resourceId, accountId));
         case "project": {
           const { type, id: projectId } = parseProjectExternalId(id);
-          const path = `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`;
-          const body: Record<string, unknown> = {};
-          if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
+          const [t, i] = [pathEncode(type), pathEncode(projectId)];
+          const body: {
+            name?: string;
+            search_lake?: { search_power: number };
+            metadata?: { tags: Record<string, string | null> };
+          } = {};
+          if ("name" in fields) body.name = (fields["name"] ?? "").trim();
           if ("searchPower" in fields && fields["searchPower"] !== "") {
             if (type !== "elasticsearch" && type !== "vectordb") {
               throw new Error(
@@ -1122,30 +1104,28 @@ export class ElasticCloudClient implements PluginClient {
             if (!Number.isFinite(power) || power < 28 || power > 3000) {
               throw new Error("Search power must be between 28 and 3000.");
             }
-            body["search_lake"] = { search_power: power };
+            body.search_lake = { search_power: power };
           }
           if ("tags" in fields) {
-            const current = await cloudApi<EcProject>(this.ctx, path);
+            const current = await this.ctx.projects.get(`/api/v1/serverless/projects/${t}/${i}`);
             const next = new Map(parseTags(fields["tags"]).map((t) => [t.key, t.value]));
             const patch: Record<string, string | null> = {};
             for (const key of Object.keys(current.metadata?.tags ?? {})) {
               if (!next.has(key)) patch[key] = null;
             }
             for (const [k, v] of next) patch[k] = v || null;
-            if (Object.keys(patch).length > 0) body["metadata"] = { tags: patch };
+            if (Object.keys(patch).length > 0) body.metadata = { tags: patch };
           }
           if (Object.keys(body).length > 0) {
-            await cloudApi<unknown>(this.ctx, path, {
-              method: "PATCH",
-              body: JSON.stringify(body),
-            });
+            await this.ctx.projects.patch(`/api/v1/serverless/projects/${t}/${i}`, { body });
           }
           return runPluginEffect(this.getResource("project", resourceId, accountId));
         }
         case "traffic-filter": {
-          const path = `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`;
-          const current = await cloudApi<EcTrafficRuleset>(this.ctx, path);
-          let rules = current.rules ?? [];
+          const current = await this.ctx.cloud.get(
+            `/deployments/traffic-filter/rulesets/${pathEncode(id)}`,
+          );
+          let rules: EcTrafficRule[] = current.rules ?? [];
           if ("sources" in fields) {
             if (!SOURCE_TYPES.has(current.type ?? "ip")) {
               throw new Error(
@@ -1156,9 +1136,8 @@ export class ElasticCloudClient implements PluginClient {
               ...r,
             }));
           }
-          await cloudApi<unknown>(this.ctx, path, {
-            method: "PUT",
-            body: JSON.stringify({
+          await this.ctx.cloud.put(`/deployments/traffic-filter/rulesets/${pathEncode(id)}`, {
+            body: {
               name: "name" in fields ? (fields["name"] ?? "").trim() : current.name,
               description: "description" in fields ? fields["description"] : current.description,
               type: current.type,
@@ -1168,40 +1147,39 @@ export class ElasticCloudClient implements PluginClient {
                   ? fields["includeByDefault"] === "true"
                   : (current.include_by_default ?? false),
               rules: rules.map(({ id: _id, ...rest }) => rest),
-            }),
+            },
           });
           return runPluginEffect(this.getResource("traffic-filter", resourceId, accountId));
         }
         case "serverless-traffic-filter": {
-          const path = `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`;
-          const body: Record<string, unknown> = {};
-          if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
-          if ("description" in fields) body["description"] = fields["description"] ?? "";
+          const body: ApiBody<ServerlessOperations["patchTrafficFilter"]> = {};
+          if ("name" in fields) body.name = (fields["name"] ?? "").trim();
+          if ("description" in fields) body.description = fields["description"] ?? "";
           if ("includeByDefault" in fields)
-            body["include_by_default"] = fields["includeByDefault"] === "true";
+            body.include_by_default = fields["includeByDefault"] === "true";
           if ("sources" in fields) {
-            const current = await cloudApi<EcServerlessTrafficFilter>(this.ctx, path);
+            const current = await this.ctx.serverless.get(
+              `/api/v1/serverless/traffic-filters/${pathEncode(id)}`,
+            );
             if (current.type === "private_endpoint") {
               throw new Error(
                 "Azure Private Link rules are not source lists; change them in the Elastic Cloud console.",
               );
             }
-            body["rules"] = sourcesToRules(splitList(fields["sources"]), current.rules ?? []);
+            body.rules = sourcesToRules(splitList(fields["sources"]), current.rules ?? []);
           }
-          const t = await cloudApi<EcServerlessTrafficFilter>(this.ctx, path, {
-            method: "PATCH",
-            body: JSON.stringify(body),
-          });
+          const t = await this.ctx.serverless.patch(
+            `/api/v1/serverless/traffic-filters/${pathEncode(id)}`,
+            { body },
+          );
           return t?.id
             ? mapServerlessTrafficFilter(accountId, t)
             : runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "extension": {
-          const path = `/api/v1/deployments/extensions/${encodeURIComponent(id)}`;
-          const current = await cloudApi<EcExtension>(this.ctx, path);
-          const e = await cloudApi<EcExtension>(this.ctx, path, {
-            method: "POST",
-            body: JSON.stringify({
+          const current = await this.ctx.cloud.get(`/deployments/extensions/${pathEncode(id)}`);
+          const e = await this.ctx.cloud.post(`/deployments/extensions/${pathEncode(id)}`, {
+            body: {
               name: "name" in fields ? (fields["name"] ?? "").trim() : current.name,
               description: "description" in fields ? fields["description"] : current.description,
               version: "version" in fields ? (fields["version"] ?? "").trim() : current.version,
@@ -1212,15 +1190,14 @@ export class ElasticCloudClient implements PluginClient {
                       "downloadUrl" in fields ? fields["downloadUrl"] : current.download_url,
                   }
                 : {}),
-            }),
+            },
           });
           return mapExtension(accountId, e);
         }
         case "budget": {
           const { orgId, budgetId } = parseBudgetExternalId(id);
-          const current = await billingApi<EcBudget>(
-            this.ctx,
-            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
+          const current = await this.ctx.billing.get(
+            `/api/v1/billing/organization/${pathEncode(orgId)}/budgets/${pathEncode(budgetId)}`,
           );
           const amount = "amount" in fields ? Math.round(Number(fields["amount"])) : current.amount;
           if (!Number.isFinite(amount) || (amount ?? 0) <= 0) {
@@ -1241,12 +1218,10 @@ export class ElasticCloudClient implements PluginClient {
                   threshold: a.threshold,
                   threshold_type: a.threshold_type,
                 }));
-          await billingApi<unknown>(
-            this.ctx,
-            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budget/${encodeURIComponent(budgetId)}`,
+          await this.ctx.billing.post(
+            `/api/v1/billing/organization/${pathEncode(orgId)}/budget/${pathEncode(budgetId)}`,
             {
-              method: "POST",
-              body: JSON.stringify({
+              body: {
                 ...("name" in fields
                   ? fields["name"]
                     ? { name: fields["name"].trim() }
@@ -1263,7 +1238,7 @@ export class ElasticCloudClient implements PluginClient {
                 ...(current.recipient_group?.length
                   ? { recipient_group: current.recipient_group }
                   : {}),
-              }),
+              },
             },
           );
           return runPluginEffect(this.getResource("budget", resourceId, accountId));
@@ -1275,27 +1250,27 @@ export class ElasticCloudClient implements PluginClient {
   }
 
   private async updateDeployment(id: string, fields: Record<string, string>): Promise<void> {
-    const base = `/api/v1/deployments/${encodeURIComponent(id)}`;
+    const deployment = pathEncode(id);
     if ("name" in fields && (fields["name"] ?? "").trim()) {
       // Resources omitted from an update stay as they are; prune_orphans must
       // be false or Elastic Cloud would shut every unmentioned resource down.
-      await cloudApi<unknown>(this.ctx, base, {
-        method: "PUT",
-        body: JSON.stringify({ name: fields["name"]!.trim(), prune_orphans: false }),
+      await this.ctx.cloud.put(`/deployments/${deployment}`, {
+        body: { name: fields["name"]!.trim(), prune_orphans: false },
       });
     }
     if ("tags" in fields) {
-      await cloudApi<unknown>(this.ctx, `${base}/tags`, {
-        method: "PUT",
-        body: JSON.stringify({ tags: parseTags(fields["tags"]) }),
+      await this.ctx.cloud.put(`/deployments/${deployment}/tags`, {
+        body: { tags: parseTags(fields["tags"]) },
       });
     }
     if (("hotSizeGb" in fields && fields["hotSizeGb"] !== "") || "hotZones" in fields) {
       const d = await this.fetchDeployment(id);
       const es = d.resources?.elasticsearch?.[0];
       if (!es?.ref_id) throw new Error("This deployment has no Elasticsearch resource to resize.");
-      const tiersPath = `${base}/elasticsearch/${encodeURIComponent(es.ref_id)}/tiers`;
-      const tiers = await cloudApi<EcTiers>(this.ctx, tiersPath);
+      const ref = pathEncode(es.ref_id);
+      const tiers = await this.ctx.cloud.get(
+        `/deployments/${deployment}/elasticsearch/${ref}/tiers`,
+      );
       const hot = tiers.hot_content;
       const current = hotTier(es.info?.plan_info?.current?.plan?.cluster_topology);
       const config: { memory_size?: number; zone_count?: number } = {};
@@ -1321,9 +1296,8 @@ export class ElasticCloudClient implements PluginClient {
       ) {
         return;
       }
-      await cloudApi<unknown>(this.ctx, tiersPath, {
-        method: "PATCH",
-        body: JSON.stringify({ hot_content: config }),
+      await this.ctx.cloud.patch(`/deployments/${deployment}/elasticsearch/${ref}/tiers`, {
+        body: { hot_content: config },
       });
     }
   }
@@ -1339,54 +1313,30 @@ export class ElasticCloudClient implements PluginClient {
         case "deployment":
           // Elastic Cloud has no hard delete for deployments: shutting one down
           // stops it and its billing, and it is removed after the retention period.
-          await cloudApi<unknown>(
-            this.ctx,
-            `/api/v1/deployments/${encodeURIComponent(id)}/_shutdown`,
-            {
-              method: "POST",
-            },
-          );
+          await this.ctx.cloud.post(`/deployments/${pathEncode(id)}/_shutdown`);
           return;
         case "project": {
           const { type, id: projectId } = parseProjectExternalId(id);
-          await cloudApi<unknown>(
-            this.ctx,
-            `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`,
-            { method: "DELETE" },
+          await this.ctx.projects.delete(
+            `/api/v1/serverless/projects/${pathEncode(type)}/${pathEncode(projectId)}`,
           );
           return;
         }
         case "traffic-filter":
-          await cloudApi<unknown>(
-            this.ctx,
-            `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(id)}`,
-            { method: "DELETE", query: { ignore_associations: true } },
-          );
+          await this.ctx.cloud.delete(`/deployments/traffic-filter/rulesets/${pathEncode(id)}`, {
+            query: { ignore_associations: true },
+          });
           return;
         case "serverless-traffic-filter":
-          await cloudApi<unknown>(
-            this.ctx,
-            `/api/v1/serverless/traffic-filters/${encodeURIComponent(id)}`,
-            {
-              method: "DELETE",
-            },
-          );
+          await this.ctx.serverless.delete(`/api/v1/serverless/traffic-filters/${pathEncode(id)}`);
           return;
         case "extension":
-          await cloudApi<unknown>(
-            this.ctx,
-            `/api/v1/deployments/extensions/${encodeURIComponent(id)}`,
-            {
-              method: "DELETE",
-            },
-          );
+          await this.ctx.cloud.delete(`/deployments/extensions/${pathEncode(id)}`);
           return;
         case "budget": {
           const { orgId, budgetId } = parseBudgetExternalId(id);
-          await billingApi<unknown>(
-            this.ctx,
-            `/api/v1/billing/organization/${encodeURIComponent(orgId)}/budgets/${encodeURIComponent(budgetId)}`,
-            { method: "DELETE" },
+          await this.ctx.billing.delete(
+            `/api/v1/billing/organization/${pathEncode(orgId)}/budgets/${pathEncode(budgetId)}`,
           );
           return;
         }
@@ -1400,19 +1350,16 @@ export class ElasticCloudClient implements PluginClient {
   // Actions
   // -------------------------------------------------------------------------
 
-  private associate(rulesetId: string, deploymentId: string): Promise<unknown> {
-    return cloudApi<unknown>(
-      this.ctx,
-      `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(rulesetId)}/associations`,
-      { method: "POST", body: JSON.stringify({ entity_type: "deployment", id: deploymentId }) },
+  private async associate(rulesetId: string, deploymentId: string): Promise<void> {
+    await this.ctx.cloud.post(
+      `/deployments/traffic-filter/rulesets/${pathEncode(rulesetId)}/associations`,
+      { body: { entity_type: "deployment", id: deploymentId } },
     );
   }
 
-  private dissociate(rulesetId: string, deploymentId: string): Promise<unknown> {
-    return cloudApi<unknown>(
-      this.ctx,
-      `/api/v1/deployments/traffic-filter/rulesets/${encodeURIComponent(rulesetId)}/associations/deployment/${encodeURIComponent(deploymentId)}`,
-      { method: "DELETE" },
+  private async dissociate(rulesetId: string, deploymentId: string): Promise<void> {
+    await this.ctx.cloud.delete(
+      `/deployments/traffic-filter/rulesets/${pathEncode(rulesetId)}/associations/${pathEncode("deployment")}/${pathEncode(deploymentId)}`,
     );
   }
 
@@ -1433,11 +1380,15 @@ export class ElasticCloudClient implements PluginClient {
             throw new Error(
               `This deployment has no ${kind === "kibana" ? "Kibana" : "Elasticsearch"} resource.`,
             );
-          await cloudApi<unknown>(
-            this.ctx,
-            `/api/v1/deployments/${encodeURIComponent(id)}/${kind}/${encodeURIComponent(ref)}/_restart`,
-            { method: "POST" },
-          );
+          if (kind === "kibana") {
+            await this.ctx.cloud.post(
+              `/deployments/${pathEncode(id)}/${pathEncode(kind)}/${pathEncode(ref)}/_restart`,
+            );
+          } else {
+            await this.ctx.cloud.post(
+              `/deployments/${pathEncode(id)}/elasticsearch/${pathEncode(ref)}/_restart`,
+            );
+          }
           return;
         }
         if (actionId.startsWith("attach-filter:")) {
@@ -1455,16 +1406,14 @@ export class ElasticCloudClient implements PluginClient {
       }
       if (typeId === "project") {
         const { type, id: projectId } = parseProjectExternalId(id);
-        const base = `/api/v1/serverless/projects/${encodeURIComponent(type)}/${encodeURIComponent(projectId)}`;
+        const [t, i] = [pathEncode(type), pathEncode(projectId)];
         if (actionId === "resume") {
-          await cloudApi<unknown>(this.ctx, `${base}/_resume`, { method: "POST" });
+          await this.ctx.projects.post(`/api/v1/serverless/projects/${t}/${i}/_resume`);
           return;
         }
         if (actionId === "reset-credentials") {
-          const creds = await cloudApi<{ username?: string; password?: string }>(
-            this.ctx,
-            `${base}/_reset-credentials`,
-            { method: "POST" },
+          const creds = await this.ctx.projects.post(
+            `/api/v1/serverless/projects/${t}/${i}/_reset-credentials`,
           );
           if (creds?.password) {
             if (!this.services?.secrets?.setPlaintext) {

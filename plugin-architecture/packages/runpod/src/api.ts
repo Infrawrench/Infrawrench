@@ -1,4 +1,11 @@
-import type { HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  type ApiClient,
+  type HostServices,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type { paths } from "./api-types.gen.js";
 
 /**
  * Transport for Runpod's three API surfaces, all authenticated with the same
@@ -6,12 +13,15 @@ import type { HostServices } from "@infrawrench/plugin-base";
  *
  * - REST (`https://rest.runpod.io/v1`, OpenAPI at `/v1/openapi.json`): pods,
  *   Serverless endpoints, templates, network volumes, container registry
- *   auths and billing history. `Authorization: Bearer <key>`.
+ *   auths and billing history. `Authorization: Bearer <key>`. Typed from that
+ *   document, through `RunpodApi.rest`.
  * - GraphQL (`https://api.runpod.io/graphql`): the only home of the account
  *   (balance, spend limit, SSH public keys, savings plans), GPU type pricing
  *   and stock, data centers, and pod runtime telemetry. Same Bearer header.
  * - Serverless (`https://api.runpod.ai/v2/{endpointId}`): queue health and
- *   purge. The docs send the bare key in `authorization`.
+ *   purge. The docs send the bare key in `authorization`. The document at
+ *   `api.runpod.ai/openapi.json` covers only the Batch API, so these two and
+ *   GraphQL stay hand-written.
  *
  * Requests go through `services.http` when the host provides it (bastion
  * routing, custom CA, no renderer CORS); plain `fetch` otherwise.
@@ -32,14 +42,16 @@ export class RunpodApiError extends Error {
   }
 }
 
+interface ProviderErrorBody {
+  error?: string | number | null;
+  message?: string | number | null;
+  errors?: Array<{ message?: string }>;
+}
+
 /** REST errors are `{error: "..."}`, GraphQL `{errors: [{message}]}`; show the message. */
 export function summarizeBody(body: string): string {
   try {
-    const parsed = JSON.parse(body) as {
-      error?: unknown;
-      message?: unknown;
-      errors?: Array<{ message?: string }>;
-    };
+    const parsed: ProviderErrorBody = JSON.parse(body);
     if (typeof parsed.error === "string" && parsed.error) return parsed.error;
     if (typeof parsed.message === "string" && parsed.message) return parsed.message;
     const first = parsed.errors?.[0]?.message;
@@ -50,79 +62,54 @@ export function summarizeBody(body: string): string {
   return body.slice(0, 500) || "(empty response)";
 }
 
-export type QueryValue = string | number | boolean | string[] | undefined;
-
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-}
-
-export function buildQuery(query: Record<string, QueryValue> | undefined): string {
-  if (!query) return "";
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query)) {
-    if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) for (const item of v) params.append(k, item);
-    else params.append(k, String(v));
-  }
-  return params.toString();
+interface GraphqlAnswer<T> {
+  data?: T;
+  errors?: Array<{ message?: string; extensions?: { code?: string } }>;
 }
 
 export class RunpodApi {
+  /** REST calls against `rest.runpod.io/v1`. An empty body answers `undefined`. */
+  readonly rest: ApiClient<paths>;
+  private readonly http: HttpHostServices | undefined;
+
   constructor(
     private readonly apiKey: string,
     private readonly caCert: string,
-    private readonly services: HostServices | undefined,
-  ) {}
+    services: HostServices | undefined,
+  ) {
+    this.http = services?.http;
+    this.rest = createApiClient<paths>({
+      vendor: "Runpod",
+      baseUrl: REST_BASE,
+      headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+      http: this.http,
+      caCert,
+      contentType: "with-body",
+      emptyBodyIsUndefined: true,
+      httpError: ({ status, path, body }) => new RunpodApiError(status, path, body ?? ""),
+    });
+  }
 
+  /** The transport of the two surfaces the document does not cover; the body comes back as text. */
   private async send(
     url: string,
     label: string,
     method: string,
-    headers: Record<string, string>,
-    body: unknown,
+    authorization: string,
+    body: object | undefined,
   ): Promise<string> {
-    const payload = body === undefined ? undefined : JSON.stringify(body);
-    const allHeaders: Record<string, string> = { Accept: "application/json", ...headers };
-    if (payload !== undefined) allHeaders["Content-Type"] = "application/json";
-    const http = this.services?.http;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers: allHeaders,
-        ...(payload !== undefined ? { body: payload } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      if (res.status < 200 || res.status >= 300) {
-        throw new RunpodApiError(res.status, label, res.body ?? "");
-      }
-      return res.body ?? "";
-    }
-    const res = await fetch(url, {
-      method,
-      headers: allHeaders,
-      ...(payload !== undefined ? { body: payload } : {}),
+    const answer = await restRequest<string>({
+      vendor: "Runpod",
+      url,
+      headers: { Accept: "application/json", Authorization: authorization },
+      init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
+      ...(this.http ? { http: this.http } : {}),
+      ...(this.caCert ? { caCert: this.caCert } : {}),
+      contentType: "with-body",
+      responseAs: "text",
+      httpError: ({ status, body: text }) => new RunpodApiError(status, label, text ?? ""),
     });
-    const text = await res.text();
-    if (!res.ok) throw new RunpodApiError(res.status, label, text);
-    return text;
-  }
-
-  /** REST call against `rest.runpod.io/v1`. Returns parsed JSON, or undefined for an empty body. */
-  async rest<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    const method = opts.method ?? "GET";
-    const qs = buildQuery(opts.query);
-    const text = await this.send(
-      `${REST_BASE}${path}${qs ? `?${qs}` : ""}`,
-      path,
-      method,
-      { Authorization: `Bearer ${this.apiKey}` },
-      opts.body,
-    );
-    if (!text) return undefined as unknown as T;
-    return JSON.parse(text) as T;
+    return answer.body ?? "";
   }
 
   /**
@@ -130,18 +117,12 @@ export class RunpodApi {
    * `errors` array; those become a `RunpodApiError` with status 400 (or 401/403
    * when the message says so) so callers can classify them like REST errors.
    */
-  async graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-    const text = await this.send(
-      GRAPHQL_URL,
-      "graphql",
-      "POST",
-      { Authorization: `Bearer ${this.apiKey}` },
-      { query, ...(variables ? { variables } : {}) },
-    );
-    const parsed = (text ? JSON.parse(text) : {}) as {
-      data?: T;
-      errors?: Array<{ message?: string; extensions?: { code?: string } }>;
-    };
+  async graphql<T>(query: string, variables?: object): Promise<T | undefined> {
+    const text = await this.send(GRAPHQL_URL, "graphql", "POST", `Bearer ${this.apiKey}`, {
+      query,
+      ...(variables ? { variables } : {}),
+    });
+    const parsed: GraphqlAnswer<T> = text ? JSON.parse(text) : {};
     if (parsed.errors?.length) {
       const first = parsed.errors[0];
       const code = first?.extensions?.code ?? "";
@@ -154,21 +135,24 @@ export class RunpodApi {
             : 400;
       throw new RunpodApiError(status, "graphql", text);
     }
-    return parsed.data as T;
+    return parsed.data;
   }
 
   /** Serverless endpoint operation (`api.runpod.ai/v2/{id}/{op}`). */
-  async serverless<T>(endpointId: string, op: string, method: "GET" | "POST" = "GET"): Promise<T> {
+  async serverless<T>(
+    endpointId: string,
+    op: string,
+    method: "GET" | "POST" = "GET",
+  ): Promise<T | undefined> {
     const path = `/${encodeURIComponent(endpointId)}/${op}`;
     const text = await this.send(
       `${SERVERLESS_BASE}${path}`,
       path,
       method,
-      { Authorization: this.apiKey },
+      this.apiKey,
       method === "POST" ? {} : undefined,
     );
-    if (!text) return undefined as unknown as T;
-    return JSON.parse(text) as T;
+    return text ? JSON.parse(text) : undefined;
   }
 }
 

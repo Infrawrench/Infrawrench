@@ -21,11 +21,10 @@
  * renderer, and `crypto.subtle` exists in both.
  */
 
+import type { ParamValue } from "@infrawrench/plugin-base";
+
 export const SIGNATURE_VERSION = "1.0";
 export const TIMESTAMP_HEADER = "X-Crusoe-Timestamp";
-
-/** One query parameter. Arrays become repeated keys (`projects=a&projects=b`). */
-export type QueryValue = string | number | boolean | readonly string[] | undefined;
 
 /** Go's `url.QueryEscape`: unreserved characters pass, space is `+`. */
 export function goQueryEscape(value: string): string {
@@ -35,16 +34,17 @@ export function goQueryEscape(value: string): string {
 }
 
 /**
- * Build the canonical (sorted) query string. Undefined and empty-array values
- * are dropped, because an absent filter and an empty one mean the same thing
- * to the API and only one of them can be signed.
+ * Build the canonical (sorted) query string. Arrays become repeated keys
+ * (`projects=a&projects=b`). Undefined and empty-array values are dropped,
+ * because an absent filter and an empty one mean the same thing to the API and
+ * only one of them can be signed.
  */
-export function canonicalQuery(query: Record<string, QueryValue> | undefined): string {
+export function canonicalQuery(query: Record<string, ParamValue> | undefined): string {
   if (!query) return "";
   const keys = Object.keys(query)
     .filter((k) => {
       const v = query[k];
-      if (v === undefined) return false;
+      if (v === undefined || v === null) return false;
       if (Array.isArray(v)) return v.length > 0;
       return true;
     })
@@ -52,8 +52,8 @@ export function canonicalQuery(query: Record<string, QueryValue> | undefined): s
   const parts: string[] = [];
   for (const key of keys) {
     const raw = query[key];
-    const values = Array.isArray(raw) ? (raw as readonly string[]) : [String(raw)];
-    for (const v of values) parts.push(`${goQueryEscape(key)}=${goQueryEscape(v)}`);
+    const values = Array.isArray(raw) ? raw : [raw];
+    for (const v of values) parts.push(`${goQueryEscape(key)}=${goQueryEscape(String(v))}`);
   }
   return parts.join("&");
 }
@@ -72,7 +72,7 @@ export function signaturePayload(
   return `${path}\n${query}\n${method.toUpperCase()}\n${timestamp}\n`;
 }
 
-export function base64UrlDecode(value: string): Uint8Array {
+export function base64UrlDecode(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.trim().replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   const binary = atob(padded);
@@ -101,7 +101,7 @@ export async function signRequest(opts: {
 }): Promise<Record<string, string>> {
   const timestamp = crusoeTimestamp(opts.now);
   const payload = signaturePayload(opts.path, opts.query, opts.method, timestamp);
-  let keyBytes: Uint8Array;
+  let keyBytes: Uint8Array<ArrayBuffer>;
   try {
     keyBytes = base64UrlDecode(opts.secretKey);
   } catch {
@@ -111,7 +111,7 @@ export async function signRequest(opts: {
   }
   const key = await crypto.subtle.importKey(
     "raw",
-    keyBytes as BufferSource,
+    keyBytes,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],

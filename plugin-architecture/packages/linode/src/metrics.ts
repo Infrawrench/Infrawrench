@@ -19,30 +19,27 @@
  */
 
 import type { MetricSeries } from "@infrawrench/plugin-base";
-import type { LinodeApi } from "./api.js";
-import type { LinodeInstance } from "./types.js";
+import { type LinodeApi, type LinodeResponse, segment } from "./api.js";
+
+const DBAAS = segment("dbaas");
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type Pair = [number, number];
-
-interface LinodeStats {
-  cpu?: Pair[];
-  io?: { io?: Pair[]; swap?: Pair[] };
-  netv4?: { in?: Pair[]; out?: Pair[]; private_in?: Pair[]; private_out?: Pair[] };
-  netv6?: { in?: Pair[]; out?: Pair[] };
-}
+type LinodeStats = LinodeResponse<"get-linode-stats">;
 
 function series(
   label: string,
   unit: string,
-  pairs: Pair[] | undefined,
+  pairs: number[][] | undefined,
   window: { startMs: number; endMs: number },
   scale = 1,
 ): MetricSeries | null {
   if (!pairs || pairs.length === 0) return null;
   const points = pairs
-    .filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(Number(p[1])))
+    .filter(
+      (p): p is Pair => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(Number(p[1])),
+    )
     .map(([t, v]) => ({ timestamp: t < 1e12 ? t * 1000 : t, value: Number(v) * scale }))
     .filter((p) => p.timestamp >= window.startMs && p.timestamp <= window.endMs)
     .sort((a, b) => a.timestamp - b.timestamp);
@@ -51,7 +48,8 @@ function series(
 }
 
 function mergeStats(all: LinodeStats[]): LinodeStats {
-  const cat = (pick: (s: LinodeStats) => Pair[] | undefined) => all.flatMap((s) => pick(s) ?? []);
+  const cat = (pick: (s: LinodeStats) => number[][] | undefined) =>
+    all.flatMap((s) => pick(s) ?? []);
   return {
     cpu: cat((s) => s.cpu),
     io: { io: cat((s) => s.io?.io), swap: cat((s) => s.io?.swap) },
@@ -94,15 +92,17 @@ export async function fetchLinodeMetrics(
   try {
     const [loaded, linode] = await Promise.all([
       recent
-        ? api.get<LinodeStats>(`/linode/instances/${linodeId}/stats`).then((s) => [s])
+        ? api.get(`/linode/instances/${segment(linodeId)}/stats`).then((s) => [s])
         : Promise.all(
             monthsInWindow(window.startMs, window.endMs).map(({ year, month }) =>
               api
-                .get<LinodeStats>(`/linode/instances/${linodeId}/stats/${year}/${month}`)
+                .get(
+                  `/linode/instances/${segment(linodeId)}/stats/${segment(year)}/${segment(month)}`,
+                )
                 .catch(() => ({})),
             ),
           ),
-      api.get<LinodeInstance>(`/linode/instances/${linodeId}`).catch(() => null),
+      api.get(`/linode/instances/${segment(linodeId)}`).catch(() => null),
     ]);
     stats = mergeStats(loaded);
     vcpus = linode?.specs?.vcpus ?? 0;
@@ -125,10 +125,6 @@ export async function fetchLinodeMetrics(
   return out;
 }
 
-interface NodeBalancerStats {
-  data?: { connections?: Pair[]; traffic?: { in?: Pair[]; out?: Pair[] } };
-}
-
 export async function fetchNodeBalancerMetrics(
   api: LinodeApi,
   nbId: string,
@@ -136,9 +132,9 @@ export async function fetchNodeBalancerMetrics(
 ): Promise<MetricSeries[]> {
   const now = Date.now();
   const window = timeRange ?? { startMs: now - DEFAULT_METRICS_WINDOW_MS, endMs: now };
-  let stats: NodeBalancerStats;
+  let stats: LinodeResponse<"get-node-balancer-stats">;
   try {
-    stats = await api.get<NodeBalancerStats>(`/nodebalancers/${nbId}/stats`);
+    stats = await api.get(`/nodebalancers/${segment(nbId)}/stats`);
   } catch {
     return [];
   }
@@ -147,10 +143,6 @@ export async function fetchNodeBalancerMetrics(
     series("Traffic In", "bits/s", stats.data?.traffic?.in, window),
     series("Traffic Out", "bits/s", stats.data?.traffic?.out, window),
   ].filter((s): s is MetricSeries => s !== null);
-}
-
-interface CloudPulseResponse {
-  data?: { result?: Array<{ metric?: Record<string, string>; values?: Array<[number, string]> }> };
 }
 
 const DB_METRICS: Array<{ name: string; label: string; unit: string }> = [
@@ -173,8 +165,8 @@ export async function fetchDatabaseMetrics(
   const id = Number(databaseId);
   let token: string;
   try {
-    const res = await api.send<{ token?: string }>("POST", "/monitor/services/dbaas/token", {
-      entity_ids: [id],
+    const res = await api.post(`/monitor/services/${DBAAS}/token`, {
+      body: { entity_ids: [id] },
     });
     if (!res.token) return [];
     token = res.token;
@@ -182,7 +174,7 @@ export async function fetchDatabaseMetrics(
     return [];
   }
   const spanMs = window.endMs - startMs;
-  const granularity =
+  const granularity: { unit: "min" | "hr"; value: number } =
     spanMs <= 6 * 3_600_000
       ? { unit: "min", value: 5 }
       : spanMs <= 2 * 86_400_000
@@ -191,10 +183,8 @@ export async function fetchDatabaseMetrics(
   const results = await Promise.all(
     DB_METRICS.map(async (m) => {
       try {
-        const res = await api.monitor<CloudPulseResponse>(
-          "/monitor/services/dbaas/metrics",
-          token,
-          {
+        const res = await api.monitor(token).post(`/monitor/services/${DBAAS}/metrics`, {
+          body: {
             entity_ids: [id],
             metrics: [{ name: m.name, aggregate_function: "avg" }],
             absolute_time_duration: {
@@ -203,9 +193,9 @@ export async function fetchDatabaseMetrics(
             },
             time_granularity: granularity,
           },
-        );
+        });
         const values = res.data?.result?.[0]?.values ?? [];
-        const pairs: Pair[] = values.map(([t, v]) => [t * 1000, Number(v)]);
+        const pairs: Pair[] = values.map(([t, v]) => [Number(t) * 1000, Number(v)]);
         return series(m.label, m.unit, pairs, { startMs, endMs: window.endMs });
       } catch {
         return null;

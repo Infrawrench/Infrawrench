@@ -1,0 +1,266 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "alerts",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_alerts_v3.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1v3~1alerts/post/requestBody/content/application~1json/schema/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "A form field's text goes through as typed and SendGrid validates it, so a value outside this enum stays SendGrid's error."
+        }
+      ],
+      "paths": {
+        "/v3/alerts": ["get", "post"],
+        "/v3/alerts/{alert_id}": ["get", "patch", "delete"]
+      }
+    },
+    {
+      "name": "api-keys",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_api_keys_v3.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1v3~1api_keys~1{api_key_id}/get/responses/200/content/application~1json/schema",
+          "value": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ApiKeyScopesResponse"
+                }
+              },
+              "api_key_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "why": "The document wraps the key in `result`, while the live API has answered a bare object, so the plugin reads both."
+        }
+      ],
+      "paths": {
+        "/v3/api_keys": ["get", "post"],
+        "/v3/api_keys/{api_key_id}": ["get", "put", "patch", "delete"]
+      }
+    },
+    {
+      "name": "domain-authentication",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_domain_authentication_v3.json",
+      "paths": {
+        "/v3/whitelabel/domains": ["get", "post"],
+        "/v3/whitelabel/domains/{domain_id}": ["get", "patch", "delete"],
+        "/v3/whitelabel/domains/{id}/validate": ["post"]
+      }
+    },
+    {
+      "name": "ip-warmup",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_ip_warmup_v3.json",
+      "paths": {
+        "/v3/ips/warmup": ["post"],
+        "/v3/ips/warmup/{ip_address}": ["delete"]
+      }
+    },
+    {
+      "name": "ips",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_ips_v3.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1v3~1ips~1pools~1{pool_name}/get/responses/200/content/application~1json/schema/properties/ips/items",
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "ip": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "why": "Documented as strings; the plugin has always read an object holding `ip` too."
+        }
+      ],
+      "paths": {
+        "/v3/ips": ["get"],
+        "/v3/ips/{ip_address}": ["get"],
+        "/v3/ips/pools": ["get", "post"],
+        "/v3/ips/pools/{pool_name}": ["get", "put", "delete"],
+        "/v3/ips/pools/{pool_name}/ips": ["post"],
+        "/v3/ips/pools/{pool_name}/ips/{ip}": ["delete"]
+      }
+    },
+    {
+      "name": "link-branding",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_link_branding_v3.json",
+      "paths": {
+        "/v3/whitelabel/links": ["get", "post"],
+        "/v3/whitelabel/links/{id}": ["get", "patch", "delete"],
+        "/v3/whitelabel/links/{id}/validate": ["post"]
+      }
+    },
+    {
+      "name": "reverse-dns",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_reverse_dns_v3.json",
+      "paths": {
+        "/v3/whitelabel/ips": ["get", "post"],
+        "/v3/whitelabel/ips/{id}": ["get", "delete"],
+        "/v3/whitelabel/ips/{id}/validate": ["post"]
+      }
+    },
+    {
+      "name": "scopes",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_scopes_v3.json",
+      "paths": {
+        "/v3/scopes": ["get"]
+      }
+    },
+    {
+      "name": "stats",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_stats_v3.json",
+      "paths": {
+        "/v3/stats": ["get"]
+      }
+    },
+    {
+      "name": "subusers",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_subusers_v3.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1v3~1subusers/post/requestBody/content/application~1json/schema/properties/region",
+          "value": {
+            "type": "string"
+          },
+          "why": "A form field's text goes through as typed and SendGrid validates it, so a value outside this enum stays SendGrid's error."
+        },
+        {
+          "pointer": "/components/schemas/SubuserCreditsRequest/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "A form field's text goes through as typed and SendGrid validates it, so a value outside this enum stays SendGrid's error."
+        },
+        {
+          "pointer": "/components/schemas/SubuserCreditsRequest/properties/reset_frequency",
+          "value": {
+            "type": "string"
+          },
+          "why": "A form field's text goes through as typed and SendGrid validates it, so a value outside this enum stays SendGrid's error."
+        }
+      ],
+      "paths": {
+        "/v3/subusers": ["get", "post"],
+        "/v3/subusers/{subuser_name}": ["patch", "delete"],
+        "/v3/subusers/{subuser_name}/credits": ["get", "put"],
+        "/v3/subusers/reputations": ["get"],
+        "/v3/subusers/stats": ["get"]
+      }
+    },
+    {
+      "name": "suppressions",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_suppressions_v3.json",
+      "paths": {
+        "/v3/asm/groups": ["get", "post"],
+        "/v3/asm/groups/{group_id}": ["get", "patch", "delete"],
+        "/v3/asm/groups/{group_id}/suppressions": ["post"],
+        "/v3/asm/groups/{group_id}/suppressions/{email}": ["delete"],
+        "/v3/asm/suppressions/global": ["post"],
+        "/v3/asm/suppressions/global/{email}": ["delete"],
+        "/v3/suppression/blocks": ["get"],
+        "/v3/suppression/blocks/{email}": ["delete"],
+        "/v3/suppression/bounces": ["get"],
+        "/v3/suppression/bounces/{email}": ["delete"],
+        "/v3/suppression/invalid_emails": ["get"],
+        "/v3/suppression/invalid_emails/{email}": ["delete"],
+        "/v3/suppression/spam_reports": ["get"],
+        "/v3/suppression/spam_reports/{email}": ["delete"],
+        "/v3/suppression/unsubscribes": ["get"]
+      }
+    },
+    {
+      "name": "templates",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_templates_v3.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1v3~1templates/post/requestBody/content/application~1json/schema/properties/generation",
+          "value": {
+            "type": "string"
+          },
+          "why": "A form field's text goes through as typed and SendGrid validates it, so a value outside this enum stays SendGrid's error."
+        }
+      ],
+      "paths": {
+        "/v3/templates": ["get", "post"],
+        "/v3/templates/{template_id}": ["get", "patch", "delete"]
+      }
+    },
+    {
+      "name": "user",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_user_v3.json",
+      "paths": {
+        "/v3/user/account": ["get"],
+        "/v3/user/credits": ["get"],
+        "/v3/user/profile": ["get"],
+        "/v3/user/username": ["get"]
+      }
+    },
+    {
+      "name": "verified-senders",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_verified_senders_v3.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1v3~1verified_senders/get/parameters/2/schema",
+          "value": {
+            "type": "string"
+          },
+          "why": "The id comes from a resource id and goes through as text, so a value that is not a number stays SendGrid's error."
+        },
+        {
+          "pointer": "/components/schemas/VerifiedSenderRequest/required",
+          "value": [],
+          "why": "POST and PATCH share this schema, and the PATCH sends only what changed, as its description says. A create leaving one out is SendGrid's error to report."
+        }
+      ],
+      "paths": {
+        "/v3/verified_senders": ["get", "post"],
+        "/v3/verified_senders/{id}": ["patch", "delete"],
+        "/v3/verified_senders/resend/{id}": ["post"]
+      }
+    },
+    {
+      "name": "webhooks",
+      "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_webhooks_v3.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/EventWebhookRequest/required",
+          "value": [],
+          "why": "POST and PATCH share this schema, and the plugin's PATCH sends only what changed. #484 asks whether SendGrid accepts that; a create always writes `url`."
+        }
+      ],
+      "paths": {
+        "/v3/user/webhooks/event/settings": ["post"],
+        "/v3/user/webhooks/event/settings/all": ["get"],
+        "/v3/user/webhooks/event/settings/signed/{id}": ["patch"],
+        "/v3/user/webhooks/event/settings/{id}": ["get", "patch", "delete"],
+        "/v3/user/webhooks/event/test": ["post"],
+        "/v3/user/webhooks/parse/settings": ["get", "post"],
+        "/v3/user/webhooks/parse/settings/{hostname}": ["get", "patch", "delete"]
+      }
+    }
+  ]
+}

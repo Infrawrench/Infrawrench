@@ -19,30 +19,11 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import type { DoApi, DoResponse } from "./api.js";
 
-/** The client's private `fetch`, bound and passed in (same shape as DoCreateContext). */
+/** The client's API, passed in (same shape as DoCreateContext). */
 export interface DoCostFetchContext {
-  fetch<T>(path: string, options?: RequestInit): Promise<T>;
-}
-
-interface DoBillingDataPoint {
-  usage_team_urn?: string;
-  /** YYYY-MM-DD day the delta applies to. */
-  start_date?: string;
-  /** USD amount as a decimal string, e.g. "12.45". */
-  total_amount?: string;
-  region?: string;
-  sku?: string;
-  /** Invoice line description, e.g. "droplet name (c-2-4GiB)". */
-  description?: string;
-  /** Invoice item group, e.g. the DOKS cluster name. Blank when ungrouped. */
-  group_description?: string;
-}
-
-interface DoBillingInsightsResponse {
-  data_points?: DoBillingDataPoint[] | null;
-  total_pages?: number;
-  current_page?: number;
+  api: DoApi;
 }
 
 export async function fetchDoCostData(
@@ -52,7 +33,7 @@ export async function fetchDoCostData(
   // Discover the account URN the token is scoped to. All current DO tokens
   // are team-scoped; a missing team block means a legacy personal context
   // the insights endpoint cannot address.
-  const account = await ctx.fetch<{ account?: { team?: { uuid?: string } } }>("/account");
+  const account = await ctx.api.get("/account");
   const teamUuid = account.account?.team?.uuid;
   if (!teamUuid) {
     throw new Error(
@@ -76,9 +57,9 @@ export async function fetchDoCostData(
   let page = 1;
   let totalPages = 1;
   do {
-    let data: DoBillingInsightsResponse;
+    let data: DoResponse<"billingInsights_list">;
     try {
-      data = await ctx.fetch<DoBillingInsightsResponse>(
+      data = await ctx.api.written<"billingInsights_list">(
         `/billing/${urn}/insights/${range.fromDate}/${range.toDate}?per_page=200&page=${page}`,
       );
     } catch (err) {

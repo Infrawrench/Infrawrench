@@ -303,7 +303,7 @@ export function mapTrafficFilter(accountId: string, r: EcTrafficRuleset): Resour
   const id = r.id ?? "";
   const deployments = (r.associations ?? [])
     .filter((a) => a.entity_type === "deployment" && a.id)
-    .map((a) => a.id as string);
+    .map((a) => a.id);
   return instance(
     accountId,
     "traffic-filter",
@@ -388,7 +388,7 @@ export function mapBudget(
   const id = String(b.id ?? "");
   const thresholds = (b.alerts ?? [])
     .filter((a) => a.threshold_type === "percentage" && typeof a.threshold === "number")
-    .map((a) => a.threshold as number)
+    .map((a) => a.threshold)
     .sort((x, y) => x - y);
   const lastExceeded = (b.alerts ?? [])
     .map((a) => a.last_exceeded_at)

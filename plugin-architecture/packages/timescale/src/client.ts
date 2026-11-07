@@ -2,6 +2,7 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  ApiBody,
   CreateFieldConfig,
   CreateResourceConfig,
   DashboardStat,
@@ -14,9 +15,16 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
-import type { TigerContext } from "./api.js";
-import { isUnavailable, statusOf, tigerFetch } from "./api.js";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  pathEncode,
+  withMetricsCapability,
+  type NoSlashString,
+} from "@infrawrench/plugin-base";
+import type { TigerApi } from "./api.js";
+import { createTigerApi, isUnavailable, statusOf } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import {
   AWS_REGIONS,
   DATADOG_SITES,
@@ -52,12 +60,11 @@ import { ENRICH, renderTimescaleDetail, renderTimescaleSidebar } from "./render.
 import { RESOURCE_TYPES, T } from "./resource-types.js";
 import type {
   TgAllowList,
-  TgBackup,
-  TgBackupRegion,
+  TgAwsCredentials,
+  TgAwsCredentialsUpdate,
   TgExporter,
-  TgLogs,
-  TgMetricSeries,
-  TgPeering,
+  TgExporterView,
+  TgIamRoleCredentials,
   TgProject,
   TgService,
   TgVpc,
@@ -75,7 +82,7 @@ function csv(raw: string | undefined): string[] {
   const text = String(raw ?? "").trim();
   if (text.startsWith("[")) {
     try {
-      const parsed = JSON.parse(text) as unknown;
+      const parsed: unknown = JSON.parse(text);
       if (Array.isArray(parsed)) values = parsed.map(String);
     } catch {
       /* fall through to splitting */
@@ -98,10 +105,40 @@ export function generatePassword(length = 24): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
+/** Answers kept for {@link CACHE_MS}, and forgotten straight away when they fail. */
+class RecentAnswers<V> {
+  private entries = new Map<string, { at: number; value: Promise<V> }>();
+
+  get(key: string, load: () => Promise<V>): Promise<V> {
+    const hit = this.entries.get(key);
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+    const value = load();
+    this.entries.set(key, { at: Date.now(), value });
+    value.catch(() => this.entries.delete(key));
+    return value;
+  }
+
+  clear(): void {
+    this.entries.clear();
+  }
+}
+
+type ServicePath = `/projects/${NoSlashString}/services/${NoSlashString}`;
+
+function svcPath(projectId: string, serviceId: string): ServicePath {
+  return `/projects/${pathEncode(projectId)}/services/${pathEncode(serviceId)}`;
+}
+
 export class TimescaleClient implements PluginClient {
-  readonly ctx: TigerContext;
+  private readonly api: TigerApi;
   private readonly services: HostServices | undefined;
-  private cache = new Map<string, { at: number; value: Promise<unknown> }>();
+  private readonly recent = {
+    projects: new RecentAnswers<TgProject[]>(),
+    services: new RecentAnswers<TgService[]>(),
+    vpcs: new RecentAnswers<TgVpc[]>(),
+    exporters: new RecentAnswers<TgExporter[]>(),
+    allowLists: new RecentAnswers<TgAllowList[]>(),
+  };
 
   constructor(credentials: Credentials, services?: HostServices) {
     const accessKey = (credentials["accessKey"] ?? "").trim();
@@ -109,37 +146,19 @@ export class TimescaleClient implements PluginClient {
     if (!accessKey) throw new Error("Tiger Cloud plugin: missing accessKey credential");
     if (!secretKey) throw new Error("Tiger Cloud plugin: missing secretKey credential");
     this.services = services;
-    this.ctx = { accessKey, secretKey, ...(services?.http ? { http: services.http } : {}) };
+    this.api = createTigerApi({
+      accessKey,
+      secretKey,
+      ...(services?.http ? { http: services.http } : {}),
+    });
   }
 
   // -------------------------------------------------------------------------
   // Plumbing
   // -------------------------------------------------------------------------
 
-  private cached<V>(key: string, load: () => Promise<V>): Promise<V> {
-    const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.value as Promise<V>;
-    const value = load();
-    this.cache.set(key, { at: Date.now(), value });
-    value.catch(() => this.cache.delete(key));
-    return value;
-  }
-
   private invalidate(): void {
-    this.cache.clear();
-  }
-
-  private req<V>(
-    method: string,
-    path: string,
-    body?: unknown,
-    query?: Array<[string, string | number | undefined]>,
-  ): Promise<V> {
-    return tigerFetch<V>(this.ctx, method, path, body, query);
-  }
-
-  private svcPath(projectId: string, serviceId: string): string {
-    return `/projects/${encodeURIComponent(projectId)}/services/${encodeURIComponent(serviceId)}`;
+    for (const answers of Object.values(this.recent)) answers.clear();
   }
 
   /** Preview endpoints: an unavailable feature reads as nothing rather than an error. */
@@ -153,18 +172,12 @@ export class TimescaleClient implements PluginClient {
   }
 
   projects(): Promise<TgProject[]> {
-    return this.cached(
-      "projects",
-      async () => (await this.req<TgProject[]>("GET", "/projects")) ?? [],
-    );
+    return this.recent.projects.get("all", async () => (await this.api.get("/projects")) ?? []);
   }
 
   servicesOf(projectId: string): Promise<TgService[]> {
-    return this.cached(`services-${projectId}`, async () => {
-      const list = await this.req<TgService[]>(
-        "GET",
-        `/projects/${encodeURIComponent(projectId)}/services`,
-      );
+    return this.recent.services.get(projectId, async () => {
+      const list = await this.api.get(`/projects/${pathEncode(projectId)}/services`);
       return (list ?? []).map((s) => ({ ...s, project_id: s.project_id || projectId }));
     });
   }
@@ -176,36 +189,27 @@ export class TimescaleClient implements PluginClient {
   }
 
   private vpcsOf(projectId: string): Promise<TgVpc[]> {
-    return this.cached(`vpcs-${projectId}`, async () =>
+    return this.recent.vpcs.get(projectId, async () =>
       this.optional(
-        async () =>
-          (await this.req<TgVpc[]>("GET", `/projects/${encodeURIComponent(projectId)}/vpcs`)) ?? [],
+        async () => (await this.api.get(`/projects/${pathEncode(projectId)}/vpcs`)) ?? [],
         [],
       ),
     );
   }
 
   private exportersOf(projectId: string): Promise<TgExporter[]> {
-    return this.cached(`exporters-${projectId}`, async () =>
+    return this.recent.exporters.get(projectId, async () =>
       this.optional(
-        async () =>
-          (await this.req<TgExporter[]>(
-            "GET",
-            `/projects/${encodeURIComponent(projectId)}/exporters`,
-          )) ?? [],
+        async () => (await this.api.get(`/projects/${pathEncode(projectId)}/exporters`)) ?? [],
         [],
       ),
     );
   }
 
   private allowListsOf(projectId: string): Promise<TgAllowList[]> {
-    return this.cached(`allow-lists-${projectId}`, async () =>
+    return this.recent.allowLists.get(projectId, async () =>
       this.optional(
-        async () =>
-          (await this.req<TgAllowList[]>(
-            "GET",
-            `/projects/${encodeURIComponent(projectId)}/allow-lists`,
-          )) ?? [],
+        async () => (await this.api.get(`/projects/${pathEncode(projectId)}/allow-lists`)) ?? [],
         [],
       ),
     );
@@ -213,10 +217,7 @@ export class TimescaleClient implements PluginClient {
 
   private async retentionOf(s: TgService): Promise<number | undefined> {
     try {
-      const r = await this.req<{ retention_days?: number }>(
-        "GET",
-        `${this.svcPath(s.project_id, s.service_id)}/backup-retention`,
-      );
+      const r = await this.api.get(`${svcPath(s.project_id, s.service_id)}/backup-retention`);
       return typeof r?.retention_days === "number" ? r.retention_days : undefined;
     } catch (err) {
       if (statusOf(err) === 401) throw err;
@@ -225,7 +226,7 @@ export class TimescaleClient implements PluginClient {
   }
 
   private async findService(projectId: string, serviceId: string): Promise<TgService> {
-    const svc = await this.req<TgService>("GET", this.svcPath(projectId, serviceId));
+    const svc = await this.api.get(svcPath(projectId, serviceId));
     return { ...svc, project_id: svc.project_id || projectId };
   }
 
@@ -270,11 +271,10 @@ export class TimescaleClient implements PluginClient {
             for (const v of await this.vpcsOf(p.id)) {
               const peerings = await this.optional(
                 async () =>
-                  (await this.req<TgPeering[]>(
-                    "GET",
-                    `/projects/${encodeURIComponent(p.id)}/vpcs/${encodeURIComponent(v.id)}/peerings`,
+                  (await this.api.get(
+                    `/projects/${pathEncode(p.id)}/vpcs/${pathEncode(v.id)}/peerings`,
                   )) ?? [],
-                [] as TgPeering[],
+                [],
               );
               for (const peering of peerings) out.push(mapPeering(accountId, p.id, v.id, peering));
             }
@@ -314,11 +314,8 @@ export class TimescaleClient implements PluginClient {
             services.map(async (s) => {
               const backups = await this.optional(
                 async () =>
-                  (await this.req<TgBackup[]>(
-                    "GET",
-                    `${this.svcPath(s.project_id, s.service_id)}/backups`,
-                  )) ?? [],
-                [] as TgBackup[],
+                  (await this.api.get(`${svcPath(s.project_id, s.service_id)}/backups`)) ?? [],
+                [],
               );
               return backups
                 .slice()
@@ -345,7 +342,7 @@ export class TimescaleClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       if (typeId === T.service) {
-        const [projectId, serviceId] = splitExternalId(ext, 2) as [string, string];
+        const [projectId, serviceId] = splitExternalId(ext, 2);
         const svc = await this.findService(projectId, serviceId);
         return mapService(accountId, svc, { backupRetentionDays: await this.retentionOf(svc) });
       }
@@ -353,11 +350,9 @@ export class TimescaleClient implements PluginClient {
         (r) => r.externalId === ext,
       );
       if (!found) {
-        const err = new Error(`Tiger Cloud plugin: ${typeId} ${ext} not found`) as Error & {
-          status: number;
-        };
-        err.status = 404;
-        throw err;
+        throw Object.assign(new Error(`Tiger Cloud plugin: ${typeId} ${ext} not found`), {
+          status: 404,
+        });
       }
       return found;
     });
@@ -409,11 +404,7 @@ export class TimescaleClient implements PluginClient {
         return String(r.fields["prometheusEndpoint"] ?? "");
       }
       if (typeId === T.replica) {
-        const [projectId, serviceId, replicaId] = splitExternalId(ext, 3) as [
-          string,
-          string,
-          string,
-        ];
+        const [projectId, serviceId, replicaId] = splitExternalId(ext, 3);
         const svc = await this.findService(projectId, serviceId);
         const replica = (svc.read_replica_sets ?? []).find((r) => r.id === replicaId);
         const host = replica?.endpoint?.host ?? "";
@@ -431,7 +422,7 @@ export class TimescaleClient implements PluginClient {
       if (typeId !== T.service) {
         throw new Error(`Tiger Cloud plugin: cannot resolve "${outputKey}" for "${typeId}"`);
       }
-      const [projectId, serviceId] = splitExternalId(ext, 2) as [string, string];
+      const [projectId, serviceId] = splitExternalId(ext, 2);
       const svc = await this.findService(projectId, serviceId);
       const host = svc.endpoint?.host ?? "";
       const port = svc.endpoint?.port ?? "";
@@ -484,10 +475,10 @@ export class TimescaleClient implements PluginClient {
   }
 
   private async setPassword(resourceId: string, accountId: string, requested: string) {
-    const [projectId, serviceId] = splitExternalId(externalIdOf(resourceId), 2) as [string, string];
+    const [projectId, serviceId] = splitExternalId(externalIdOf(resourceId), 2);
     const password = requested.trim() || generatePassword();
     if (password.length < 8) throw new Error("Use at least 8 characters.");
-    await this.req("POST", `${this.svcPath(projectId, serviceId)}/updatePassword`, { password });
+    await this.api.post(`${svcPath(projectId, serviceId)}/updatePassword`, { body: { password } });
     const stored = await this.storePassword(accountId, projectId, serviceId, password);
     return {
       ok: true,
@@ -508,7 +499,7 @@ export class TimescaleClient implements PluginClient {
         ...resource,
         resolvedOutputs: { ...resource.resolvedOutputs },
       };
-      const put = (key: string, value: unknown) => {
+      const put = (key: string, value: object | undefined) => {
         if (value !== undefined) out.resolvedOutputs[key] = JSON.stringify(value);
       };
       const settle = async <V>(p: Promise<V>): Promise<V | undefined> => {
@@ -521,18 +512,12 @@ export class TimescaleClient implements PluginClient {
       const [projectId, serviceId] = splitExternalId(
         resource.externalId ?? externalIdOf(resource.id),
         2,
-      ) as [string, string];
+      );
       const [vpcs, exporters, allowLists, backupRegions] = await Promise.all([
         settle(this.vpcsOf(projectId)),
-        settle(
-          this.req<TgExporter[]>("GET", `/projects/${encodeURIComponent(projectId)}/exporters`),
-        ),
-        settle(
-          this.req<TgAllowList[]>("GET", `/projects/${encodeURIComponent(projectId)}/allow-lists`),
-        ),
-        settle(
-          this.req<TgBackupRegion[]>("GET", `${this.svcPath(projectId, serviceId)}/backup-regions`),
-        ),
+        settle(this.api.get(`/projects/${pathEncode(projectId)}/exporters`)),
+        settle(this.api.get(`/projects/${pathEncode(projectId)}/allow-lists`)),
+        settle(this.api.get(`${svcPath(projectId, serviceId)}/backup-regions`)),
       ]);
       put(
         ENRICH.vpcs,
@@ -859,28 +844,24 @@ export class TimescaleClient implements PluginClient {
           const projectId = await this.projectOf(fields, parentResourceId);
           const name = (fields["name"] ?? "").trim();
           if (!name || name.length > 128) throw new Error("Name must be 1 to 128 characters.");
-          const body: Record<string, unknown> = {
+          const body: ApiBody<operations["createService"]> = {
             name,
             addons: fields["serviceType"] === "POSTGRES" ? [] : ["time-series"],
           };
-          if (fields["region"]) body["region_code"] = fields["region"];
+          if (fields["region"]) body.region_code = fields["region"];
           if (fields["computeSize"] === "shared") {
-            body["cpu_millis"] = "shared";
-            body["memory_gbs"] = "shared";
+            body.cpu_millis = "shared";
+            body.memory_gbs = "shared";
           } else if (fields["computeSize"]) {
             const size = parseSizeId(fields["computeSize"]);
             if (!size) throw new Error("Pick a compute size from the list.");
-            body["cpu_millis"] = String(size.cpuMillis);
-            body["memory_gbs"] = String(size.memoryGbs);
+            body.cpu_millis = String(size.cpuMillis);
+            body.memory_gbs = String(size.memoryGbs);
           }
           const ha = Number(fields["haReplicas"] || 0);
-          if (ha > 0) body["replica_count"] = ha;
-          if (fields["environment"]) body["environment_tag"] = fields["environment"];
-          const svc = await this.req<TgService>(
-            "POST",
-            `/projects/${encodeURIComponent(projectId)}/services`,
-            body,
-          );
+          if (ha > 0) body.replica_count = ha;
+          if (fields["environment"]) body.environment_tag = fields["environment"];
+          const svc = await this.api.post(`/projects/${pathEncode(projectId)}/services`, { body });
           const created = { ...svc, project_id: svc.project_id || projectId };
           if (created.initial_password) {
             await this.storePassword(
@@ -896,17 +877,19 @@ export class TimescaleClient implements PluginClient {
           const svcExt = parentResourceId
             ? externalIdOf(parentResourceId)
             : (fields["service"] ?? "");
-          const [projectId, serviceId] = splitExternalId(svcExt, 2) as [string, string];
+          const [projectId, serviceId] = splitExternalId(svcExt, 2);
           const size = parseSizeId(fields["computeSize"] ?? "");
           if (!size) throw new Error("Pick a compute size from the list.");
           const nodes = Number(fields["nodes"] || 1);
           if (!Number.isInteger(nodes) || nodes < 1)
             throw new Error("Nodes must be a whole number of at least 1.");
-          await this.req("POST", `${this.svcPath(projectId, serviceId)}/replicaSets`, {
-            name: (fields["name"] ?? "").trim(),
-            nodes,
-            cpu_millis: size.cpuMillis,
-            memory_gbs: size.memoryGbs,
+          await this.api.post(`${svcPath(projectId, serviceId)}/replicaSets`, {
+            body: {
+              name: (fields["name"] ?? "").trim(),
+              nodes,
+              cpu_millis: size.cpuMillis,
+              memory_gbs: size.memoryGbs,
+            },
           });
           const svc = await this.findService(projectId, serviceId);
           const replica = (svc.read_replica_sets ?? []).find(
@@ -920,54 +903,49 @@ export class TimescaleClient implements PluginClient {
         }
         case T.vpc: {
           const projectId = await this.projectOf(fields, parentResourceId);
-          const vpc = await this.req<TgVpc>(
-            "POST",
-            `/projects/${encodeURIComponent(projectId)}/vpcs`,
-            {
+          const vpc = await this.api.post(`/projects/${pathEncode(projectId)}/vpcs`, {
+            body: {
               name: (fields["name"] ?? "").trim(),
               cidr: (fields["cidr"] ?? "").trim(),
               region_code: fields["region"],
             },
-          );
+          });
           return mapVpc(accountId, projectId, vpc);
         }
         case T.peering: {
           const vpcExt = parentResourceId ? externalIdOf(parentResourceId) : (fields["vpc"] ?? "");
-          const [projectId, vpcId] = splitExternalId(vpcExt, 2) as [string, string];
+          const [projectId, vpcId] = splitExternalId(vpcExt, 2);
           const accountIdAws = (fields["peerAccountId"] ?? "").trim();
           if (!/^\d{12}$/.test(accountIdAws)) throw new Error("The AWS account ID is 12 digits.");
-          const peering = await this.req<TgPeering>(
-            "POST",
-            `/projects/${encodeURIComponent(projectId)}/vpcs/${encodeURIComponent(vpcId)}/peerings`,
+          const peering = await this.api.post(
+            `/projects/${pathEncode(projectId)}/vpcs/${pathEncode(vpcId)}/peerings`,
             {
-              peer_account_id: accountIdAws,
-              peer_region_code: fields["peerRegion"],
-              peer_vpc_id: (fields["peerVpcId"] ?? "").trim(),
+              body: {
+                peer_account_id: accountIdAws,
+                peer_region_code: fields["peerRegion"],
+                peer_vpc_id: (fields["peerVpcId"] ?? "").trim(),
+              },
             },
           );
           return mapPeering(accountId, projectId, vpcId, peering);
         }
         case T.exporter: {
           const projectId = await this.projectOf(fields, parentResourceId);
-          const exporter = await this.req<TgExporter>(
-            "POST",
-            `/projects/${encodeURIComponent(projectId)}/exporters`,
-            exporterCreateBody(fields),
-          );
+          const exporter = await this.api.post(`/projects/${pathEncode(projectId)}/exporters`, {
+            body: exporterCreateBody(fields),
+          });
           return mapExporter(accountId, projectId, exporter, []);
         }
         case T.allowList: {
           const projectId = await this.projectOf(fields, parentResourceId);
           const blocks = csv(fields["cidrBlocks"]);
           if (!blocks.length) throw new Error("Add at least one CIDR block.");
-          const list = await this.req<TgAllowList>(
-            "POST",
-            `/projects/${encodeURIComponent(projectId)}/allow-lists`,
-            {
+          const list = await this.api.post(`/projects/${pathEncode(projectId)}/allow-lists`, {
+            body: {
               description: (fields["description"] ?? "").trim(),
               cidr_blocks: blocks,
             },
-          );
+          });
           return mapAllowList(accountId, projectId, list);
         }
         default:
@@ -991,47 +969,51 @@ export class TimescaleClient implements PluginClient {
       this.invalidate();
       switch (typeId) {
         case T.service: {
-          const [projectId, serviceId] = splitExternalId(ext, 2) as [string, string];
-          const base = this.svcPath(projectId, serviceId);
+          const [projectId, serviceId] = splitExternalId(ext, 2);
+          const base = svcPath(projectId, serviceId);
           if (fields["name"] !== undefined && fields["name"].trim()) {
-            await this.req("POST", `${base}/rename`, { name: fields["name"].trim() });
+            await this.api.post(`${base}/rename`, { body: { name: fields["name"].trim() } });
           }
           if (fields["environment"]) {
-            await this.req("POST", `${base}/setEnvironment`, {
-              environment: fields["environment"],
+            await this.api.post(`${base}/setEnvironment`, {
+              body: { environment: fields["environment"] },
             });
           }
           if (fields["computeSize"]) {
             const size = parseSizeId(fields["computeSize"]);
             if (!size) throw new Error("Pick a compute size from the list.");
-            await this.req("POST", `${base}/resize`, {
-              cpu_millis: String(size.cpuMillis),
-              memory_gbs: String(size.memoryGbs),
+            await this.api.post(`${base}/resize`, {
+              body: {
+                cpu_millis: String(size.cpuMillis),
+                memory_gbs: String(size.memoryGbs),
+              },
             });
           }
           if (fields["haReplicas"] !== undefined || fields["syncReplicas"] !== undefined) {
-            const body: Record<string, number> = {};
+            const body: ApiBody<operations["setHAReplica"]> = {};
             if (fields["haReplicas"] !== undefined && fields["haReplicas"] !== "") {
-              body["replica_count"] = Number(fields["haReplicas"]);
+              body.replica_count = Number(fields["haReplicas"]);
             }
             if (fields["syncReplicas"] !== undefined && fields["syncReplicas"] !== "") {
-              body["sync_replica_count"] = Number(fields["syncReplicas"]);
+              body.sync_replica_count = Number(fields["syncReplicas"]);
             }
             if (
-              body["sync_replica_count"] === 1 &&
-              body["replica_count"] !== undefined &&
-              body["replica_count"] < 2
+              body.sync_replica_count === 1 &&
+              body.replica_count !== undefined &&
+              body.replica_count < 2
             ) {
               throw new Error("A synchronous replica needs HA replicas set to 2.");
             }
-            if (Object.keys(body).length) await this.req("POST", `${base}/setHA`, body);
+            if (Object.keys(body).length) await this.api.post(`${base}/setHA`, { body });
           }
           const pooler = boolish(fields["poolerEnabled"]);
           if (pooler !== undefined) {
-            await this.req("POST", `${base}/${pooler ? "enablePooler" : "disablePooler"}`);
+            await (pooler
+              ? this.api.post(`${base}/enablePooler`)
+              : this.api.post(`${base}/disablePooler`));
           }
           const tiering = boolish(fields["dataTiering"]);
-          if (tiering === true) await this.req("POST", `${base}/enableDataTiering`);
+          if (tiering === true) await this.api.post(`${base}/enableDataTiering`);
           if (tiering === false) {
             throw new Error(
               "Tiered storage cannot be turned off through the API; contact Tiger Data support.",
@@ -1041,87 +1023,90 @@ export class TimescaleClient implements PluginClient {
             const days = Number(fields["backupRetentionDays"]);
             if (!Number.isInteger(days) || days < 1)
               throw new Error("Backup retention is a whole number of days, at least 1.");
-            await this.req("PUT", `${base}/backup-retention`, {
-              type: "TIME",
-              retention_days: days,
+            await this.api.put(`${base}/backup-retention`, {
+              body: {
+                type: "TIME",
+                retention_days: days,
+              },
             });
           }
           break;
         }
         case T.replica: {
-          const [projectId, serviceId, replicaId] = splitExternalId(ext, 3) as [
-            string,
-            string,
-            string,
-          ];
-          const base = `${this.svcPath(projectId, serviceId)}/replicaSets/${encodeURIComponent(replicaId)}`;
+          const [projectId, serviceId, replicaId] = splitExternalId(ext, 3);
+          const base =
+            `${svcPath(projectId, serviceId)}/replicaSets/${pathEncode(replicaId)}` as const;
           if (fields["computeSize"]) {
             const size = parseSizeId(fields["computeSize"]);
             if (!size) throw new Error("Pick a compute size from the list.");
-            await this.req("POST", `${base}/resize`, {
-              cpu_millis: String(size.cpuMillis),
-              memory_gbs: String(size.memoryGbs),
+            await this.api.post(`${base}/resize`, {
+              body: {
+                cpu_millis: String(size.cpuMillis),
+                memory_gbs: String(size.memoryGbs),
+              },
             });
           }
           if (fields["environment"]) {
-            await this.req("POST", `${base}/setEnvironment`, {
-              environment: fields["environment"],
+            await this.api.post(`${base}/setEnvironment`, {
+              body: { environment: fields["environment"] },
             });
           }
           const pooler = boolish(fields["poolerEnabled"]);
           if (pooler !== undefined) {
-            await this.req("POST", `${base}/${pooler ? "enablePooler" : "disablePooler"}`);
+            await (pooler
+              ? this.api.post(`${base}/enablePooler`)
+              : this.api.post(`${base}/disablePooler`));
           }
           break;
         }
         case T.vpc: {
-          const [projectId, vpcId] = splitExternalId(ext, 2) as [string, string];
+          const [projectId, vpcId] = splitExternalId(ext, 2);
           if (fields["name"]?.trim()) {
-            await this.req(
-              "POST",
-              `/projects/${encodeURIComponent(projectId)}/vpcs/${encodeURIComponent(vpcId)}/rename`,
+            await this.api.post(
+              `/projects/${pathEncode(projectId)}/vpcs/${pathEncode(vpcId)}/rename`,
               {
-                name: fields["name"].trim(),
+                body: { name: fields["name"].trim() },
               },
             );
           }
           break;
         }
         case T.exporter: {
-          const [projectId, exporterId] = splitExternalId(ext, 2) as [string, string];
-          const path = `/projects/${encodeURIComponent(projectId)}/exporters/${encodeURIComponent(exporterId)}`;
-          const current = await this.req<TgExporter>("GET", path);
-          const body: Record<string, unknown> = { type: current.type };
-          if (fields["name"]?.trim()) body["name"] = fields["name"].trim();
+          const [projectId, exporterId] = splitExternalId(ext, 2);
+          const path =
+            `/projects/${pathEncode(projectId)}/exporters/${pathEncode(exporterId)}` as const;
+          const current = await this.api.get(path);
+          const renamed = {
+            type: current.type,
+            ...(fields["name"]?.trim() ? { name: fields["name"].trim() } : {}),
+          };
           const include = boolish(fields["includePgMetrics"]);
-          if (include !== undefined) {
-            if (current.type === "CLOUDWATCH_LOGS") {
-              throw new Error("Log exporters have no PostgreSQL metrics setting.");
-            }
-            const config = configUpdateFrom(current, {});
-            if (!config) throw new Error("Log exporters have no PostgreSQL metrics setting.");
-            config["include_pg_metrics"] = include;
-            body["config"] = config;
+          if (include === undefined) {
+            await this.api.patch(path, { body: renamed });
+            break;
           }
-          await this.req("PATCH", path, body);
+          if (current.type === "CLOUDWATCH_LOGS") {
+            throw new Error("Log exporters have no PostgreSQL metrics setting.");
+          }
+          const update = exporterUpdateFrom(current, {}, include);
+          if (!update) throw new Error("Log exporters have no PostgreSQL metrics setting.");
+          await this.api.patch(path, { body: { ...renamed, ...update } });
           break;
         }
         case T.allowList: {
-          const [projectId, listId] = splitExternalId(ext, 2) as [string, string];
-          const body: Record<string, unknown> = {};
-          if (fields["description"] !== undefined)
-            body["description"] = fields["description"].trim();
+          const [projectId, listId] = splitExternalId(ext, 2);
+          const body: ApiBody<operations["updateAllowList"]> = {};
+          if (fields["description"] !== undefined) body.description = fields["description"].trim();
           if (fields["cidrBlocks"] !== undefined) {
             const blocks = csv(fields["cidrBlocks"]);
             if (!blocks.length)
               throw new Error("An IP allow list needs at least one CIDR block; delete it instead.");
-            body["cidr_blocks"] = blocks;
+            body.cidr_blocks = blocks;
           }
           if (Object.keys(body).length) {
-            await this.req(
-              "PATCH",
-              `/projects/${encodeURIComponent(projectId)}/allow-lists/${encodeURIComponent(listId)}`,
-              body,
+            await this.api.patch(
+              `/projects/${pathEncode(projectId)}/allow-lists/${pathEncode(listId)}`,
+              { body },
             );
           }
           break;
@@ -1140,45 +1125,35 @@ export class TimescaleClient implements PluginClient {
       this.invalidate();
       switch (typeId) {
         case T.service: {
-          const [p, s] = splitExternalId(ext, 2) as [string, string];
-          await this.req("DELETE", this.svcPath(p, s));
+          const [p, s] = splitExternalId(ext, 2);
+          await this.api.delete(svcPath(p, s));
           return;
         }
         case T.replica: {
-          const [p, s, r] = splitExternalId(ext, 3) as [string, string, string];
-          await this.req("DELETE", `${this.svcPath(p, s)}/replicaSets/${encodeURIComponent(r)}`);
+          const [p, s, r] = splitExternalId(ext, 3);
+          await this.api.delete(`${svcPath(p, s)}/replicaSets/${pathEncode(r)}`);
           return;
         }
         case T.vpc: {
-          const [p, v] = splitExternalId(ext, 2) as [string, string];
-          await this.req(
-            "DELETE",
-            `/projects/${encodeURIComponent(p)}/vpcs/${encodeURIComponent(v)}`,
-          );
+          const [p, v] = splitExternalId(ext, 2);
+          await this.api.delete(`/projects/${pathEncode(p)}/vpcs/${pathEncode(v)}`);
           return;
         }
         case T.peering: {
-          const [p, v, id] = splitExternalId(ext, 3) as [string, string, string];
-          await this.req(
-            "DELETE",
-            `/projects/${encodeURIComponent(p)}/vpcs/${encodeURIComponent(v)}/peerings/${encodeURIComponent(id)}`,
+          const [p, v, id] = splitExternalId(ext, 3);
+          await this.api.delete(
+            `/projects/${pathEncode(p)}/vpcs/${pathEncode(v)}/peerings/${pathEncode(id)}`,
           );
           return;
         }
         case T.exporter: {
-          const [p, id] = splitExternalId(ext, 2) as [string, string];
-          await this.req(
-            "DELETE",
-            `/projects/${encodeURIComponent(p)}/exporters/${encodeURIComponent(id)}`,
-          );
+          const [p, id] = splitExternalId(ext, 2);
+          await this.api.delete(`/projects/${pathEncode(p)}/exporters/${pathEncode(id)}`);
           return;
         }
         case T.allowList: {
-          const [p, id] = splitExternalId(ext, 2) as [string, string];
-          await this.req(
-            "DELETE",
-            `/projects/${encodeURIComponent(p)}/allow-lists/${encodeURIComponent(id)}`,
-          );
+          const [p, id] = splitExternalId(ext, 2);
+          await this.api.delete(`/projects/${pathEncode(p)}/allow-lists/${pathEncode(id)}`);
           return;
         }
         default:
@@ -1199,24 +1174,24 @@ export class TimescaleClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       if (typeId !== T.service) throw new Error(`Tiger Cloud plugin: unknown action "${actionId}"`);
-      const [p, s] = splitExternalId(externalIdOf(resourceId), 2) as [string, string];
-      const base = this.svcPath(p, s);
+      const [p, s] = splitExternalId(externalIdOf(resourceId), 2);
+      const base = svcPath(p, s);
       this.invalidate();
       switch (actionId) {
         case "pause":
-          await this.req("POST", `${base}/stop`);
+          await this.api.post(`${base}/stop`);
           return;
         case "resume":
-          await this.req("POST", `${base}/start`);
+          await this.api.post(`${base}/start`);
           return;
         case "enable-tiering":
-          await this.req("POST", `${base}/enableDataTiering`);
+          await this.api.post(`${base}/enableDataTiering`);
           return;
         case "detach-vpc": {
           const svc = await this.findService(p, s);
           const vpcId = (svc.vpc_endpoint ?? svc.vpcEndpoint)?.vpc_id;
           if (!vpcId) throw new Error("This service is not attached to a VPC.");
-          await this.req("POST", `${base}/detachFromVPC`, { vpc_id: vpcId });
+          await this.api.post(`${base}/detachFromVPC`, { body: { vpc_id: vpcId } });
           return;
         }
         default:
@@ -1231,18 +1206,18 @@ export class TimescaleClient implements PluginClient {
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): PluginEffect<unknown> {
+  ): PluginEffect<{ ok: boolean; message: string }> {
     return attempt(async () => {
       const form = decodePromptArgs(args);
       const ext = externalIdOf(resourceId);
       this.invalidate();
       if (typeId === T.exporter && command === "rotate-exporter-secret") {
-        const [p, id] = splitExternalId(ext, 2) as [string, string];
-        const path = `/projects/${encodeURIComponent(p)}/exporters/${encodeURIComponent(id)}`;
-        const current = await this.req<TgExporter>("GET", path);
-        const config = configUpdateFrom(current, form);
-        if (!config) throw new Error("This exporter has no credential to rotate.");
-        await this.req("PATCH", path, { type: current.type, config });
+        const [p, id] = splitExternalId(ext, 2);
+        const path = `/projects/${pathEncode(p)}/exporters/${pathEncode(id)}` as const;
+        const current = await this.api.get(path);
+        const update = exporterUpdateFrom(current, form);
+        if (!update) throw new Error("This exporter has no credential to rotate.");
+        await this.api.patch(path, { body: update });
         return { ok: true, message: "Credentials replaced." };
       }
       if (typeId !== T.service) {
@@ -1250,27 +1225,27 @@ export class TimescaleClient implements PluginClient {
           `Tiger Cloud plugin: command "${command}" is not supported for "${typeId}"`,
         );
       }
-      const [p, s] = splitExternalId(ext, 2) as [string, string];
-      const base = this.svcPath(p, s);
+      const [p, s] = splitExternalId(ext, 2);
+      const base = svcPath(p, s);
       switch (command) {
         case "set-password":
           return this.setPassword(resourceId, accountId, form["password"] ?? "");
         case "fork": {
           const strategy = form["strategy"] || "NOW";
-          const body: Record<string, unknown> = { fork_strategy: strategy };
-          if (form["name"]?.trim()) body["name"] = form["name"].trim();
+          const body: ApiBody<operations["forkService"]> = { fork_strategy: strategy };
+          if (form["name"]?.trim()) body.name = form["name"].trim();
           if (strategy === "PITR") {
             if (!form["targetTime"]) throw new Error("Pick the point in time to recover to.");
-            body["target_time"] = form["targetTime"];
+            body.target_time = form["targetTime"];
           }
           if (form["computeSize"]) {
             const size = parseSizeId(form["computeSize"]);
             if (!size) throw new Error("Pick a compute size from the list.");
-            body["cpu_millis"] = String(size.cpuMillis);
-            body["memory_gbs"] = String(size.memoryGbs);
+            body.cpu_millis = String(size.cpuMillis);
+            body.memory_gbs = String(size.memoryGbs);
           }
-          if (form["environment"]) body["environment_tag"] = form["environment"];
-          const fork = await this.req<TgService>("POST", `${base}/forkService`, body);
+          if (form["environment"]) body.environment_tag = form["environment"];
+          const fork = await this.api.post(`${base}/forkService`, { body });
           if (fork?.service_id) {
             // A fork inherits the parent's password; keep it for the fork too when known.
             const parentPassword = await this.storedPassword(accountId, p, s);
@@ -1290,30 +1265,31 @@ export class TimescaleClient implements PluginClient {
         }
         case "attach-vpc":
           if (!form["vpcId"]) throw new Error("Pick a VPC.");
-          await this.req("POST", `${base}/attachToVPC`, { vpc_id: form["vpcId"] });
+          await this.api.post(`${base}/attachToVPC`, { body: { vpc_id: form["vpcId"] } });
           return {
             ok: true,
             message: "Attach requested; the endpoint moves within a few minutes.",
           };
         case "attach-exporter":
           if (!form["exporterId"]) throw new Error("Pick an exporter.");
-          await this.req("POST", `${base}/attachToExporter`, { exporter_id: form["exporterId"] });
+          await this.api.post(`${base}/attachToExporter`, {
+            body: { exporter_id: form["exporterId"] },
+          });
           return { ok: true, message: "Exporter attached." };
         case "detach-exporter":
           if (!form["exporterId"]) throw new Error("Pick an exporter.");
-          await this.req("POST", `${base}/detachFromExporter`, { exporter_id: form["exporterId"] });
+          await this.api.post(`${base}/detachFromExporter`, {
+            body: { exporter_id: form["exporterId"] },
+          });
           return { ok: true, message: "Exporter detached." };
         case "set-allow-list":
           return this.setAllowList(p, base, form["allowListId"] ?? "");
         case "backup-regions": {
           if (!form["add"] && !form["remove"]) return { ok: true, message: "Nothing changed." };
           if (form["add"])
-            await this.req("POST", `${base}/backup-regions`, { region_code: form["add"] });
+            await this.api.post(`${base}/backup-regions`, { body: { region_code: form["add"] } });
           if (form["remove"]) {
-            await this.req(
-              "DELETE",
-              `${base}/backup-regions/${encodeURIComponent(form["remove"])}`,
-            );
+            await this.api.delete(`${base}/backup-regions/${pathEncode(form["remove"])}`);
           }
           return { ok: true, message: "Cross-region backups updated." };
         }
@@ -1329,13 +1305,15 @@ export class TimescaleClient implements PluginClient {
    * is not attached answers 4xx, which is ignored), and attaching a new one
    * clears the old first when the API refuses a second.
    */
-  private async setAllowList(projectId: string, base: string, wanted: string) {
+  private async setAllowList(projectId: string, base: ServicePath, wanted: string) {
     const lists = await this.allowListsOf(projectId);
     const detachOthers = async () => {
       for (const l of lists) {
         if (l.allow_list_id === wanted) continue;
         try {
-          await this.req("POST", `${base}/detachFromAllowList`, { allow_list_id: l.allow_list_id });
+          await this.api.post(`${base}/detachFromAllowList`, {
+            body: { allow_list_id: l.allow_list_id },
+          });
         } catch (err) {
           const st = statusOf(err);
           if (st === 401 || st === 0 || st >= 500) throw err;
@@ -1347,12 +1325,12 @@ export class TimescaleClient implements PluginClient {
       return { ok: true, message: "IP restriction removed." };
     }
     try {
-      await this.req("POST", `${base}/attachToAllowList`, { allow_list_id: wanted });
+      await this.api.post(`${base}/attachToAllowList`, { body: { allow_list_id: wanted } });
     } catch (err) {
       const st = statusOf(err);
       if (st !== 400 && st !== 409 && st !== 422) throw err;
       await detachOthers();
-      await this.req("POST", `${base}/attachToAllowList`, { allow_list_id: wanted });
+      await this.api.post(`${base}/attachToAllowList`, { body: { allow_list_id: wanted } });
     }
     return { ok: true, message: "IP allow list attached." };
   }
@@ -1369,7 +1347,7 @@ export class TimescaleClient implements PluginClient {
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
       if (resourceTypeId !== T.service) return [];
-      const [p, s] = splitExternalId(externalIdOf(resourceId), 2) as [string, string];
+      const [p, s] = splitExternalId(externalIdOf(resourceId), 2);
       const end = timeRange?.endMs ?? Date.now();
       const start = timeRange?.startMs ?? end - METRICS_WINDOW_MS;
       const from = new Date(start).toISOString();
@@ -1377,19 +1355,18 @@ export class TimescaleClient implements PluginClient {
       const results = await Promise.all(
         SERVICE_METRICS.map(async (pick) => {
           try {
-            const raw = await this.req<TgMetricSeries[]>(
-              "POST",
-              `${this.svcPath(p, s)}/metrics/series`,
-              {
+            const raw = await this.api.post(`${svcPath(p, s)}/metrics/series`, {
+              body: {
                 metric_name: pick.name,
                 from,
                 to,
               },
-            );
+            });
             return { pick, series: toSeries(pick, raw ?? []) };
           } catch (err) {
             if (statusOf(err) === 401) throw err;
-            return { pick, series: [] as MetricSeries[] };
+            const series: MetricSeries[] = [];
+            return { pick, series };
           }
         }),
       );
@@ -1458,16 +1435,17 @@ export class TimescaleClient implements PluginClient {
       const active =
         params.container && containers.includes(params.container) ? params.container : "All";
       if (typeId !== T.service) return { text: "", containers, activeContainer: active };
-      const [p, s] = splitExternalId(externalIdOf(resourceId), 2) as [string, string];
+      const [p, s] = splitExternalId(externalIdOf(resourceId), 2);
       const tail = Math.min(Math.max(params.tailLines ?? 200, 1), 2000);
       const lines: string[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < 5 && lines.length < tail; page++) {
-        const query: Array<[string, string | number | undefined]> = [["cursor", cursor]];
-        if (active !== "All") {
-          for (const sev of ["WARNING", "ERROR", "FATAL", "PANIC"]) query.push(["severities", sev]);
-        }
-        const res = await this.req<TgLogs>("GET", `${this.svcPath(p, s)}/logs`, undefined, query);
+        const res = await this.api.get(`${svcPath(p, s)}/logs`, {
+          query: {
+            ...(cursor ? { cursor } : {}),
+            ...(active !== "All" ? { severities: ["WARNING", "ERROR", "FATAL", "PANIC"] } : {}),
+          },
+        });
         const entries = res?.entries?.length
           ? res.entries.map(
               (e) =>
@@ -1654,13 +1632,24 @@ function exporterCreateFields(): CreateFieldConfig[] {
   ];
 }
 
-function awsCredentials(form: Record<string, string>, update: boolean) {
-  if ((form["awsAuth"] || "IAM_ROLE") === "IAM_ROLE") {
-    if (!form["roleArn"]?.trim()) throw new Error("Give the IAM role ARN.");
-    return { type: "IAM_ROLE", aws_role_arn: form["roleArn"].trim() };
-  }
-  if (!update && (!form["accessKey"] || !form["secretKey"]))
-    throw new Error("Give both halves of the access key.");
+const usesIamRole = (form: Record<string, string>) =>
+  (form["awsAuth"] || "IAM_ROLE") === "IAM_ROLE";
+
+function iamRoleCredentials(form: Record<string, string>): TgIamRoleCredentials {
+  if (!form["roleArn"]?.trim()) throw new Error("Give the IAM role ARN.");
+  return { type: "IAM_ROLE", aws_role_arn: form["roleArn"].trim() };
+}
+
+function awsCredentials(form: Record<string, string>): TgAwsCredentials {
+  if (usesIamRole(form)) return iamRoleCredentials(form);
+  const { accessKey, secretKey } = form;
+  if (!accessKey || !secretKey) throw new Error("Give both halves of the access key.");
+  return { type: "ACCESS_KEY", aws_access_key: accessKey.trim(), aws_secret_key: secretKey };
+}
+
+/** An update may leave out either half of a key, which keeps the stored one. */
+function awsCredentialsUpdate(form: Record<string, string>): TgAwsCredentialsUpdate {
+  if (usesIamRole(form)) return iamRoleCredentials(form);
   return {
     type: "ACCESS_KEY",
     ...(form["accessKey"] ? { aws_access_key: form["accessKey"].trim() } : {}),
@@ -1668,101 +1657,158 @@ function awsCredentials(form: Record<string, string>, update: boolean) {
   };
 }
 
-export function exporterCreateBody(form: Record<string, string>): Record<string, unknown> {
+export function exporterCreateBody(
+  form: Record<string, string>,
+): ApiBody<operations["createExporter"]> {
   const type = form["type"] ?? "";
   const name = (form["name"] ?? "").trim();
   if (!name) throw new Error("Give the exporter a name.");
-  if (!form["region"]) throw new Error("Pick a region.");
+  const region_code = form["region"];
+  if (!region_code) throw new Error("Pick a region.");
   const include = form["includePgMetrics"] === "true";
-  let config: Record<string, unknown>;
   switch (type) {
     case "DATADOG_METRICS":
       if (!form["datadogApiKey"]) throw new Error("Give a Datadog API key.");
-      config = {
-        api_key: form["datadogApiKey"],
-        site: form["datadogSite"] || "datadoghq.com",
-        include_pg_metrics: include,
+      return {
+        name,
+        type,
+        region_code,
+        config: {
+          api_key: form["datadogApiKey"],
+          site: form["datadogSite"] || "datadoghq.com",
+          include_pg_metrics: include,
+        },
       };
-      break;
     case "PROMETHEUS_METRICS":
       if (!form["promUser"] || !form["promPassword"])
         throw new Error("Give a scrape username and password.");
-      config = {
-        username: form["promUser"],
-        password: form["promPassword"],
-        include_pg_metrics: include,
+      return {
+        name,
+        type,
+        region_code,
+        config: {
+          username: form["promUser"],
+          password: form["promPassword"],
+          include_pg_metrics: include,
+        },
       };
-      break;
     case "AZURE_MONITOR_METRICS":
       if (!form["azureConnectionString"])
         throw new Error("Give the Azure Monitor connection string.");
-      config = { connection_string: form["azureConnectionString"], include_pg_metrics: include };
-      break;
-    case "CLOUDWATCH_METRICS":
-    case "CLOUDWATCH_LOGS":
-      config = {
-        log_group_name: form["logGroup"],
-        log_stream_name: form["logStream"],
-        aws_region: form["awsRegion"],
-        credentials: awsCredentials(form, false),
-        ...(type === "CLOUDWATCH_METRICS"
-          ? { namespace: form["namespace"], include_pg_metrics: include }
-          : {}),
+      return {
+        name,
+        type,
+        region_code,
+        config: { connection_string: form["azureConnectionString"], include_pg_metrics: include },
       };
-      break;
+    case "CLOUDWATCH_METRICS":
+      return {
+        name,
+        type,
+        region_code,
+        config: {
+          ...cloudWatchTarget(form["logGroup"], form["logStream"], form["awsRegion"]),
+          credentials: awsCredentials(form),
+          ...(form["namespace"] !== undefined ? { namespace: form["namespace"] } : {}),
+          include_pg_metrics: include,
+        },
+      };
+    case "CLOUDWATCH_LOGS":
+      return {
+        name,
+        type,
+        region_code,
+        config: {
+          ...cloudWatchTarget(form["logGroup"], form["logStream"], form["awsRegion"]),
+          credentials: awsCredentials(form),
+        },
+      };
     default:
       throw new Error("Pick a destination.");
   }
-  return { name, type, region_code: form["region"], config };
+}
+
+/** Where a CloudWatch exporter writes; what is missing stays out, for the API's error to name. */
+function cloudWatchTarget(
+  logGroup: string | undefined,
+  logStream: string | undefined,
+  awsRegion: string | undefined,
+) {
+  return {
+    ...(logGroup !== undefined ? { log_group_name: logGroup } : {}),
+    ...(logStream !== undefined ? { log_stream_name: logStream } : {}),
+    ...(awsRegion !== undefined ? { aws_region: awsRegion } : {}),
+  };
 }
 
 /**
- * A full replacement `config` for PATCH, rebuilt from the exporter as read
- * plus any new secret in `form`. Secrets left out keep the stored value, which
- * is what the API documents for every update shape.
+ * A full replacement exporter for PATCH, rebuilt from the exporter as read plus
+ * any new secret in `form`. Secrets left out keep the stored value, which is
+ * what the API documents for every update shape. `includePgMetrics` replaces
+ * the setting that was read.
  */
-export function configUpdateFrom(
-  current: TgExporter,
+export function exporterUpdateFrom(
+  current: TgExporterView,
   form: Record<string, string>,
-): Record<string, unknown> | null {
+  includePgMetrics?: boolean,
+): ApiBody<operations["updateExporter"]> | null {
   const c = current.config ?? {};
-  const include = c.include_pg_metrics ?? false;
+  const include = includePgMetrics ?? c.include_pg_metrics ?? false;
   switch (current.type) {
     case "DATADOG_METRICS":
       return {
-        site: c.site ?? "datadoghq.com",
-        include_pg_metrics: include,
-        ...(form["apiKey"] ? { api_key: form["apiKey"] } : {}),
+        type: current.type,
+        config: {
+          site: c.site ?? "datadoghq.com",
+          include_pg_metrics: include,
+          ...(form["apiKey"] ? { api_key: form["apiKey"] } : {}),
+        },
       };
     case "PROMETHEUS_METRICS":
       return {
-        username: c.username ?? "",
-        include_pg_metrics: include,
-        ...(form["password"] ? { password: form["password"] } : {}),
+        type: current.type,
+        config: {
+          username: c.username ?? "",
+          include_pg_metrics: include,
+          ...(form["password"] ? { password: form["password"] } : {}),
+        },
       };
     case "AZURE_MONITOR_METRICS":
       return {
-        include_pg_metrics: include,
-        ...(form["connectionString"] ? { connection_string: form["connectionString"] } : {}),
+        type: current.type,
+        config: {
+          include_pg_metrics: include,
+          ...(form["connectionString"] ? { connection_string: form["connectionString"] } : {}),
+        },
       };
     case "CLOUDWATCH_METRICS":
     case "CLOUDWATCH_LOGS": {
-      const credentials = form["awsAuth"]
-        ? awsCredentials(form, true)
+      const credentials: TgAwsCredentialsUpdate = form["awsAuth"]
+        ? awsCredentialsUpdate(form)
         : c.credentials?.type === "IAM_ROLE"
           ? { type: "IAM_ROLE", aws_role_arn: c.credentials.aws_role_arn }
           : { type: "ACCESS_KEY" };
-      return {
-        log_group_name: c.log_group_name,
-        log_stream_name: c.log_stream_name,
-        aws_region: c.aws_region,
+      const target = {
+        ...cloudWatchTarget(c.log_group_name, c.log_stream_name, c.aws_region),
         credentials,
-        ...(current.type === "CLOUDWATCH_METRICS"
-          ? { namespace: c.namespace, include_pg_metrics: include }
-          : {}),
       };
+      return current.type === "CLOUDWATCH_METRICS"
+        ? {
+            type: current.type,
+            config: {
+              ...target,
+              ...(c.namespace !== undefined ? { namespace: c.namespace } : {}),
+              include_pg_metrics: include,
+            },
+          }
+        : { type: current.type, config: target };
     }
     default:
       return null;
   }
+}
+
+/** The `config` of {@link exporterUpdateFrom}. */
+export function configUpdateFrom(current: TgExporterView, form: Record<string, string>) {
+  return exporterUpdateFrom(current, form)?.config ?? null;
 }

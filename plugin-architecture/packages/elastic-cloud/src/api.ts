@@ -1,5 +1,18 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  type ApiClient,
+  type ApiResponse,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type {
+  operations as BillingOperations,
+  paths as BillingPaths,
+} from "./api-types.billing.gen.js";
+import type { operations as CloudOperations, paths as CloudPaths } from "./api-types.cloud.gen.js";
+import type {
+  operations as ServerlessOperations,
+  paths as ServerlessPaths,
+} from "./api-types.serverless.gen.js";
 
 /**
  * The two hosts the Elastic Cloud API is served from, both authenticated with
@@ -16,11 +29,51 @@ import { jsonRestFetch } from "@infrawrench/plugin-base";
 export const CLOUD_API = "https://api.elastic-cloud.com";
 export const BILLING_API = "https://billing.elastic-cloud.com";
 
+/** Where the Cloud API document's paths start. The other two write it into each path. */
+const CLOUD_BASE_PATH = "/api/v1";
+
+/** An operation's response, by its `operationId`, per document. */
+export type CloudResponse<Op extends keyof CloudOperations> = ApiResponse<CloudOperations[Op]>;
+export type ServerlessResponse<Op extends keyof ServerlessOperations> = ApiResponse<
+  ServerlessOperations[Op]
+>;
+export type BillingResponse<Op extends keyof BillingOperations> = ApiResponse<
+  BillingOperations[Op]
+>;
+
+/** Serverless project types: one path segment each under `/api/v1/serverless/projects/`. */
+export const PROJECT_TYPES = ["elasticsearch", "observability", "security", "vectordb"] as const;
+export type ProjectType = (typeof PROJECT_TYPES)[number];
+
+export function isProjectType(value: string): value is ProjectType {
+  return PROJECT_TYPES.some((type) => type === value);
+}
+
+/** One route of the Serverless document, across the project types it repeats for. */
+type ProjectRoute<Suffix extends string> = ServerlessPaths[Extract<
+  keyof ServerlessPaths,
+  `/api/v1/serverless/projects/${ProjectType}${Suffix}`
+>];
+
+/**
+ * The document repeats every project route per type. The plugin reads the type out
+ * of a resource's external id, so it is a path segment like any other here, and
+ * each call is typed as whichever of the four routes that segment names.
+ */
+interface ProjectPaths {
+  "/api/v1/serverless/projects/{type}": ProjectRoute<"">;
+  "/api/v1/serverless/projects/{type}/{id}": ProjectRoute<"/{id}">;
+  "/api/v1/serverless/projects/{type}/{id}/status": ProjectRoute<"/{id}/status">;
+  "/api/v1/serverless/projects/{type}/{id}/_resume": ProjectRoute<"/{id}/_resume">;
+  "/api/v1/serverless/projects/{type}/{id}/_reset-credentials": ProjectRoute<"/{id}/_reset-credentials">;
+}
+
 /** Everything a request needs; split out so collectors can run without a client. */
 export interface EcContext {
-  apiKey: string;
-  caCert?: string;
-  http?: HttpHostServices;
+  cloud: ApiClient<CloudPaths>;
+  serverless: ApiClient<ServerlessPaths>;
+  projects: ApiClient<ProjectPaths>;
+  billing: ApiClient<BillingPaths>;
 }
 
 /** Thrown for any non-2xx answer, carrying the status callers branch on. */
@@ -33,53 +86,49 @@ export class EcApiError extends Error {
   }
 }
 
-const STATUS_IN_MESSAGE = /Elastic Cloud API error (\d{3})/;
-
-export type Query = Record<string, string | number | boolean | undefined>;
-
 /**
- * JSON request against one of the two hosts. Routed through the host HTTP
- * service whenever there is one: that is the only path that honours bastion
- * egress and a custom CA.
+ * Requests go through the host HTTP service whenever there is one: that is the
+ * only path that honours bastion egress and a custom CA.
  */
-export async function ecFetch<T>(
-  ctx: EcContext,
-  base: string,
-  path: string,
-  init?: RequestInit & { query?: Query },
-): Promise<T> {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(init?.query ?? {})) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  }
-  const qs = params.toString();
-  const { query: _query, ...rest } = init ?? {};
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "Elastic Cloud",
-      url: `${base}${path}${qs ? `?${qs}` : ""}`,
-      errorPath: path,
-      headers: { Accept: "application/json", Authorization: `ApiKey ${ctx.apiKey}` },
-      ...(Object.keys(rest).length > 0 ? { init: rest } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) throw new EcApiError(status, message);
-    throw err;
-  }
+export function createEcContext(options: {
+  apiKey: string;
+  caCert?: string | undefined;
+  http?: HttpHostServices | undefined;
+}): EcContext {
+  const { apiKey, caCert, http } = options;
+  const shared = {
+    vendor: "Elastic Cloud",
+    headers: { Accept: "application/json", Authorization: `ApiKey ${apiKey}` },
+    ...(caCert ? { caCert } : {}),
+    ...(http ? { http } : {}),
+  };
+  const httpError =
+    (basePath: string) =>
+    ({ status, path, body }: { status: number; path: string; body: string }) =>
+      new EcApiError(status, `Elastic Cloud API error ${status} for ${basePath}${path}: ${body}`);
+  return {
+    cloud: createApiClient<CloudPaths>({
+      ...shared,
+      baseUrl: `${CLOUD_API}${CLOUD_BASE_PATH}`,
+      httpError: httpError(CLOUD_BASE_PATH),
+    }),
+    serverless: createApiClient<ServerlessPaths>({
+      ...shared,
+      baseUrl: CLOUD_API,
+      httpError: httpError(""),
+    }),
+    projects: createApiClient<ProjectPaths>({
+      ...shared,
+      baseUrl: CLOUD_API,
+      httpError: httpError(""),
+    }),
+    billing: createApiClient<BillingPaths>({
+      ...shared,
+      baseUrl: BILLING_API,
+      httpError: httpError(""),
+    }),
+  };
 }
-
-export const cloudApi = <T>(ctx: EcContext, path: string, init?: RequestInit & { query?: Query }) =>
-  ecFetch<T>(ctx, CLOUD_API, path, init);
-
-export const billingApi = <T>(
-  ctx: EcContext,
-  path: string,
-  init?: RequestInit & { query?: Query },
-) => ecFetch<T>(ctx, BILLING_API, path, init);
 
 /** HTTP status of a failed call, or 0 for a transport error. */
 export function statusOf(err: unknown): number {

@@ -3,6 +3,7 @@ import type {
   PreflightCapability,
   PreflightDeclaration,
 } from "@infrawrench/plugin-base";
+import type { StripeApi } from "./api.js";
 
 /**
  * Credential preflight for restricted keys (`rk_…`). A restricted key can be
@@ -16,13 +17,20 @@ import type {
  * template asks for them.
  */
 export interface StripePreflightCapability extends PreflightCapability {
-  /** GET path probed with `limit=1`. */
-  probe: string;
+  /** One cheap read. Answers the account's id if that is what it read. */
+  probe: (api: StripeApi) => Promise<string | undefined>;
   /** The account may simply not have this product; a 404/400 is not a failure. */
   optionalFeature?: boolean;
 }
 
 const perm = (id: string, label: string) => ({ id, label });
+
+/** A probe that only cares whether the read is allowed. */
+const reads =
+  (read: (api: StripeApi) => Promise<object | undefined>) =>
+  async (api: StripeApi): Promise<undefined> => {
+    await read(api);
+  };
 
 export const PREFLIGHT_CAPABILITIES: StripePreflightCapability[] = [
   {
@@ -30,7 +38,7 @@ export const PREFLIGHT_CAPABILITIES: StripePreflightCapability[] = [
     label: "Account",
     description: "Read the account's details, capabilities and verification requirements.",
     requiredPermissions: [perm("account:read", "Account: Read")],
-    probe: "/v1/account",
+    probe: async (api) => (await api.get("/v1/account"))?.id,
     essential: true,
   },
   {
@@ -38,35 +46,35 @@ export const PREFLIGHT_CAPABILITIES: StripePreflightCapability[] = [
     label: "Balance",
     description: "Show available and pending balance.",
     requiredPermissions: [perm("balance:read", "Balance: Read")],
-    probe: "/v1/balance",
+    probe: reads((api) => api.get("/v1/balance", { query: { limit: 1 } })),
   },
   {
     id: "fees",
     label: "Stripe fees (cost)",
     description: "Read balance transactions to report Stripe's fees as cost, and volume metrics.",
     requiredPermissions: [perm("balance_transactions:read", "Balance Transaction Sources: Read")],
-    probe: "/v1/balance_transactions",
+    probe: reads((api) => api.get("/v1/balance_transactions", { query: { limit: 1 } })),
   },
   {
     id: "webhooks",
     label: "Webhook endpoints",
     description: "List, create, edit, disable and delete webhook endpoints.",
     requiredPermissions: [perm("webhook_endpoints:write", "Webhook Endpoints: Write")],
-    probe: "/v1/webhook_endpoints",
+    probe: reads((api) => api.get("/v1/webhook_endpoints", { query: { limit: 1 } })),
   },
   {
     id: "event-destinations",
     label: "Event destinations",
     description: "List and manage v2 event destinations (webhooks, EventBridge, Event Grid).",
     requiredPermissions: [perm("event_destinations:write", "Event Destinations: Write")],
-    probe: "/v2/core/event_destinations",
+    probe: reads((api) => api.get("/v2/core/event_destinations", { query: { limit: 1 } })),
   },
   {
     id: "events",
     label: "Events",
     description: "Show the event stream and failing webhook deliveries.",
     requiredPermissions: [perm("events:read", "Events: Read")],
-    probe: "/v1/events",
+    probe: reads((api) => api.get("/v1/events", { query: { limit: 1 } })),
   },
   {
     id: "products",
@@ -76,35 +84,35 @@ export const PREFLIGHT_CAPABILITIES: StripePreflightCapability[] = [
       perm("products:write", "Products: Write"),
       perm("prices:write", "Prices: Write"),
     ],
-    probe: "/v1/products",
+    probe: reads((api) => api.get("/v1/products", { query: { limit: 1 } })),
   },
   {
     id: "meters",
     label: "Billing meters",
     description: "List, create and deactivate billing meters, and chart their usage.",
     requiredPermissions: [perm("billing_meters:write", "Billing Meters: Write")],
-    probe: "/v1/billing/meters",
+    probe: reads((api) => api.get("/v1/billing/meters", { query: { limit: 1 } })),
   },
   {
     id: "subscriptions",
     label: "Subscriptions overview",
     description: "Count subscriptions by status and compute monthly recurring revenue.",
     requiredPermissions: [perm("subscriptions:read", "Subscriptions: Read")],
-    probe: "/v1/subscriptions",
+    probe: reads((api) => api.get("/v1/subscriptions", { query: { limit: 1 } })),
   },
   {
     id: "payouts",
     label: "Payouts",
     description: "List payouts and cancel a pending manual one.",
     requiredPermissions: [perm("payouts:write", "Payouts: Write")],
-    probe: "/v1/payouts",
+    probe: reads((api) => api.get("/v1/payouts", { query: { limit: 1 } })),
   },
   {
     id: "connect",
     label: "Connected accounts",
     description: "List, reject and delete Connect accounts. Platforms only.",
     requiredPermissions: [perm("connect_accounts:write", "Connect Accounts: Write")],
-    probe: "/v1/accounts",
+    probe: reads((api) => api.get("/v1/accounts", { query: { limit: 1 } })),
     optionalFeature: true,
   },
   {
@@ -115,7 +123,7 @@ export const PREFLIGHT_CAPABILITIES: StripePreflightCapability[] = [
       perm("report_runs:write", "Report Runs and Report Types: Write"),
       perm("files:read", "Files: Read"),
     ],
-    probe: "/v1/reporting/report_runs",
+    probe: reads((api) => api.get("/v1/reporting/report_runs", { query: { limit: 1 } })),
     optionalFeature: true,
   },
   {
@@ -123,7 +131,7 @@ export const PREFLIGHT_CAPABILITIES: StripePreflightCapability[] = [
     label: "Sigma scheduled queries",
     description: "List scheduled Sigma query runs. Needs Stripe Sigma.",
     requiredPermissions: [perm("sigma:read", "Sigma Scheduled Query Runs: Read")],
-    probe: "/v1/sigma/scheduled_query_runs",
+    probe: reads((api) => api.get("/v1/sigma/scheduled_query_runs", { query: { limit: 1 } })),
     optionalFeature: true,
   },
 ];

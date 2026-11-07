@@ -23,10 +23,23 @@
  * Every statement runs with session `TIMEZONE = UTC` (the ACCOUNT_USAGE docs
  * ask for it when reconciling with ORGANIZATION_USAGE) and `QUERY_TAG =
  * infrawrench`, so the plugin's own queries are attributable in Snowflake.
+ *
+ * Paths, the statement body and the answers are typed from Snowflake's OpenAPI
+ * document (`plugingen.json`). Answers are read as text because a body that is
+ * not JSON is not a failure here, and a host service is always asked for bytes
+ * so that gzip partitions survive it.
  */
 
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  pathEncode,
+  restRequest,
+  type ApiBody,
+  type HttpHostServices,
+  type RestRequestOptions,
+} from "@infrawrench/plugin-base";
 import type { SnowflakeAccount } from "./account.js";
+import type { components, operations, paths } from "./api-types.gen.js";
 import type { SnowflakeAuth } from "./auth.js";
 
 export interface SnowflakeContext {
@@ -151,9 +164,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function gunzipIfNeeded(bytes: Uint8Array): Promise<string> {
   if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
-    const stream = new Blob([bytes as BlobPart])
-      .stream()
-      .pipeThrough(new DecompressionStream("gzip"));
+    const stream = new Blob([bytes.slice()]).stream().pipeThrough(new DecompressionStream("gzip"));
     return new Response(stream).text();
   }
   return new TextDecoder().decode(bytes);
@@ -164,62 +175,102 @@ interface RawResponse {
   text: string;
 }
 
-async function send(
+/**
+ * Every answer has the fields `runSql` reads in `ResultSet`, with all of them
+ * optional: the document's `QueryStatus` (202) and `QueryFailureStatus` (422) are
+ * the same fields, and an error body is whatever a gateway sent.
+ */
+type ResultSetBody = components["schemas"]["ResultSet"];
+
+/** The one route the client cannot express: see {@link submit}. */
+const STATEMENTS = "/api/v2/statements" satisfies keyof paths;
+
+/** A non-2xx answer on its way to {@link answerOf}: `runSql` retries and polls on the status. */
+class NonSuccessAnswer extends Error {
+  constructor(readonly answer: RawResponse) {
+    super(`Snowflake answered ${answer.status}`);
+  }
+}
+
+/** Partitions come back gzip-encoded; ask the host for bytes so they survive. */
+function binaryAwareHttp(http: HttpHostServices): HttpHostServices {
+  return {
+    request: async (req) => {
+      const res = await http.request({ ...req, responseEncoding: "binary" });
+      return res.rawBody ? { ...res, body: await gunzipIfNeeded(res.rawBody) } : res;
+    },
+  };
+}
+
+function transportOf(
   ctx: SnowflakeContext,
-  method: "GET" | "POST",
-  pathAndQuery: string,
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<RawResponse> {
-  if (signal?.aborted) throw new SnowflakeError("Snowflake: the request was cancelled.", 499);
-  const url = `https://${ctx.account.host}${pathAndQuery}`;
-  const headers: Record<string, string> = {
+): Pick<RestRequestOptions, "http" | "caCert" | "contentType" | "httpError"> {
+  return {
+    ...(ctx.http ? { http: binaryAwareHttp(ctx.http) } : {}),
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+    contentType: "with-body",
+    httpError: ({ status, body }) => new NonSuccessAnswer({ status, text: body }),
+  };
+}
+
+async function headersOf(ctx: SnowflakeContext): Promise<Record<string, string>> {
+  return {
     ...(await ctx.auth.headers()),
     Accept: "application/json",
     "User-Agent": "Infrawrench/1.0",
-    ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
   };
-  const payload = body !== undefined ? JSON.stringify(body) : undefined;
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(payload !== undefined ? { body: payload } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      // Partitions come back gzip-encoded; ask for bytes so they survive.
-      responseEncoding: "binary",
-    });
-    const text = res.rawBody ? await gunzipIfNeeded(res.rawBody) : res.body;
-    return { status: res.status, text };
-  }
-  const res = await fetch(url, {
-    method,
-    headers,
-    ...(payload !== undefined ? { body: payload } : {}),
-    ...(signal ? { signal } : {}),
-  });
-  return { status: res.status, text: await res.text() };
 }
 
-interface ResultSetBody {
-  code?: string;
-  sqlState?: string;
-  message?: string;
-  statementHandle?: string;
-  statementStatusUrl?: string;
-  resultSetMetaData?: {
-    numRows?: number;
-    rowType?: Array<{ name: string; type: string; scale?: number | null }>;
-    partitionInfo?: Array<{ rowCount?: number }>;
-  };
-  data?: Array<Array<string | null>>;
+function apiOf(ctx: SnowflakeContext) {
+  return createApiClient<paths>({
+    vendor: "Snowflake",
+    baseUrl: `https://${ctx.account.host}`,
+    headers: () => headersOf(ctx),
+    emptyBodyIsUndefined: true,
+    ...transportOf(ctx),
+  });
+}
+
+/**
+ * `POST /api/v2/statements`, on `restRequest` because `api.post` answers with the
+ * body alone and a 202 is not a 200. The query is written here too: `retry` is only
+ * in the prose reference, not the document.
+ */
+async function submit(
+  ctx: SnowflakeContext,
+  query: string,
+  body: ApiBody<operations["SubmitStatement"]>,
+  signal: AbortSignal | undefined,
+) {
+  return restRequest<string>({
+    vendor: "Snowflake",
+    url: `https://${ctx.account.host}${STATEMENTS}${query}`,
+    headers: { ...(await headersOf(ctx)), "Content-Type": "application/json" },
+    init: { method: "POST", body: JSON.stringify(body), ...(signal ? { signal } : {}) },
+    responseAs: "text",
+    ...transportOf(ctx),
+  });
+}
+
+/** Sends one request and answers with its status and text, whatever the status. */
+async function answerOf(
+  signal: AbortSignal | undefined,
+  call: () => Promise<{ status: number; body: string }>,
+): Promise<RawResponse> {
+  if (signal?.aborted) throw new SnowflakeError("Snowflake: the request was cancelled.", 499);
+  try {
+    const { status, body } = await call();
+    return { status, text: body };
+  } catch (err) {
+    if (err instanceof NonSuccessAnswer) return err.answer;
+    throw err;
+  }
 }
 
 function parseBody(res: RawResponse): ResultSetBody {
   if (!res.text) return {};
   try {
-    return JSON.parse(res.text) as ResultSetBody;
+    return JSON.parse(res.text);
   } catch {
     return { message: res.text.slice(0, 500) };
   }
@@ -312,7 +363,7 @@ export async function runSql(
   const warehouse = opts.warehouse ?? ctx.warehouse;
   const role = opts.role ?? ctx.role;
   const timeout = opts.timeoutSec ?? DEFAULT_TIMEOUT_SEC;
-  const body = {
+  const body: ApiBody<operations["SubmitStatement"]> = {
     statement,
     timeout,
     ...(warehouse ? { warehouse } : {}),
@@ -333,17 +384,15 @@ export async function runSql(
     throw new Error("Snowflake: bind variables are not supported in multi-statement requests.");
   }
   const signal = opts.signal;
+  const withSignal = signal ? { signal } : {};
+  const api = apiOf(ctx);
   const requestId = uuid();
 
   let res: RawResponse | undefined;
   for (let attempt = 0; attempt < 4; attempt++) {
     const retry = attempt > 0 ? "&retry=true" : "";
-    res = await send(
-      ctx,
-      "POST",
-      `/api/v2/statements?requestId=${requestId}${retry}`,
-      body,
-      signal,
+    res = await answerOf(signal, () =>
+      submit(ctx, `?requestId=${requestId}${retry}`, body, signal),
     );
     if (res.status !== 429 && res.status !== 503 && res.status !== 504) break;
     await sleep(1000 * 2 ** attempt);
@@ -364,17 +413,11 @@ export async function runSql(
     delay = Math.min(delay * 2, 5000);
     if (signal?.aborted) {
       // Best effort: stop the warehouse work the caller no longer wants.
-      await send(ctx, "POST", `/api/v2/statements/${encodeURIComponent(handle)}/cancel`).catch(
-        () => undefined,
-      );
+      await api.post(`/api/v2/statements/${pathEncode(handle)}/cancel`).catch(() => undefined);
       throw new SnowflakeError("Snowflake: the statement was cancelled.", 499);
     }
-    const poll = await send(
-      ctx,
-      "GET",
-      `/api/v2/statements/${encodeURIComponent(handle)}`,
-      undefined,
-      signal,
+    const poll = await answerOf(signal, () =>
+      api.getText(`/api/v2/statements/${pathEncode(handle)}`, withSignal),
     );
     status = poll.status;
     parsed = parseBody(poll);
@@ -399,12 +442,11 @@ export async function runSql(
     }
     const handle = parsed.statementHandle;
     if (!handle) break;
-    const part = await send(
-      ctx,
-      "GET",
-      `/api/v2/statements/${encodeURIComponent(handle)}?partition=${p}`,
-      undefined,
-      signal,
+    const part = await answerOf(signal, () =>
+      api.getText(`/api/v2/statements/${pathEncode(handle)}`, {
+        query: { partition: p },
+        ...withSignal,
+      }),
     );
     const partBody = parseBody(part);
     if (part.status !== 200) throw errorFor(part, partBody);

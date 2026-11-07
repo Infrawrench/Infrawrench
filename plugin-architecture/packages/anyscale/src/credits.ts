@@ -1,8 +1,7 @@
 import type { CreditBalance } from "@infrawrench/plugin-base";
 import { CreditAccessError } from "@infrawrench/plugin-base";
-import type { AnyscaleContext } from "./api.js";
-import { anyscaleFetch, isPermissionError } from "./api.js";
-import type { AsCreditRecord, AsCredits } from "./types.js";
+import type { AnyscaleApi, AsCreditRecord, AsCredits } from "./api.js";
+import { isPermissionError } from "./api.js";
 
 /**
  * Anyscale credit grants and prepaid commits
@@ -15,9 +14,9 @@ import type { AsCreditRecord, AsCredits } from "./types.js";
  * no pot to run out of, and reporting a zero would read as "exhausted".
  */
 
-export async function fetchCredits(ctx: AnyscaleContext): Promise<AsCredits> {
+export async function fetchCredits(api: AnyscaleApi): Promise<AsCredits> {
   try {
-    return await anyscaleFetch<AsCredits>(ctx, "/api/v2/organization_billing/credits_v2");
+    return await api.get("/api/v2/organization_billing/credits_v2");
   } catch (err) {
     if (isPermissionError(err)) {
       throw new CreditAccessError(

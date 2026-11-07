@@ -1,11 +1,17 @@
-import type { HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  type ApiClient,
+  type HostServices,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type { paths } from "./api-types.gen.js";
 
 /**
- * Transport for the Baseten management API (`https://api.baseten.co/v1`).
- * Auth is `Authorization: Bearer <api key>`; Baseten still accepts the older
- * `Api-Key <key>` scheme but documents Bearer as current. Requests go through
- * `services.http` when the host provides it, which keeps bastion routing and
- * custom CAs working.
+ * Transport for the Baseten management API (`https://api.baseten.co/v1`), typed
+ * from `https://api.baseten.co/v1/spec`. Auth is `Authorization: Bearer <api key>`;
+ * Baseten still accepts the older `Api-Key <key>` scheme but documents Bearer as
+ * current. Requests go through `services.http` when the host provides it, which
+ * keeps bastion routing and custom CAs working.
  *
  * Baseten rate-limits per key (100 req/s by default, 20 req/min on
  * activate/deactivate) and answers a 429 with `{error, retry_after}`. One
@@ -26,17 +32,21 @@ export class BasetenApiError extends Error {
   }
 }
 
+/** A field of a JSON value nothing has validated. */
+function field(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+}
+
 /** Baseten errors are `{error}` (rate limits) or FastAPI-style `{detail}`. */
 export function summarizeBody(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { error?: unknown; detail?: unknown; message?: unknown };
-    for (const candidate of [parsed.error, parsed.message, parsed.detail]) {
+    const parsed: unknown = JSON.parse(body);
+    const detail = field(parsed, "detail");
+    for (const candidate of [field(parsed, "error"), field(parsed, "message"), detail]) {
       if (typeof candidate === "string" && candidate) return candidate;
     }
-    if (Array.isArray(parsed.detail)) {
-      const msgs = parsed.detail
-        .map((d) => (d && typeof d === "object" ? (d as { msg?: unknown }).msg : undefined))
-        .filter((m): m is string => typeof m === "string");
+    if (Array.isArray(detail)) {
+      const msgs = detail.map((d) => field(d, "msg")).filter((m) => typeof m === "string");
       if (msgs.length) return msgs.join("; ");
     }
   } catch {
@@ -45,101 +55,68 @@ export function summarizeBody(body: string): string {
   return body.slice(0, 500);
 }
 
-export type QueryValue = string | number | boolean | undefined | null | string[];
-
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-}
-
-/** Repeated keys for arrays (`metrics=a&metrics=b`), which is how Baseten reads list params. */
-export function buildQuery(query: Record<string, QueryValue> | undefined): string {
-  if (!query) return "";
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === null || value === "") continue;
-    if (Array.isArray(value)) {
-      for (const v of value) params.append(key, v);
-    } else {
-      params.append(key, String(value));
-    }
-  }
-  return params.toString();
-}
-
 const MAX_RETRY_AFTER_S = 5;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function retryAfterSeconds(body: string): number | null {
   try {
-    const parsed = JSON.parse(body) as { retry_after?: unknown };
-    const n = Number(parsed.retry_after);
+    const parsed: unknown = JSON.parse(body);
+    const n = Number(field(parsed, "retry_after"));
     return Number.isFinite(n) && n >= 0 ? n : null;
   } catch {
     return null;
   }
 }
 
-export class BasetenApi {
-  constructor(
-    private readonly apiKey: string,
-    private readonly caCert: string,
-    private readonly services: HostServices | undefined,
-  ) {}
-
-  private async send(
-    url: string,
-    method: string,
-    headers: Record<string, string>,
-    body: string | undefined,
-  ): Promise<{ status: number; body: string }> {
-    const http = this.services?.http;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers,
-        ...(body !== undefined ? { body } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      return { status: res.status, body: res.body ?? "" };
+/**
+ * The whole of `HttpHostServices` as the client sees it: the host's service where
+ * there is one and `fetch` where there is not, with the one retry over either.
+ */
+function retryingTransport(services: HostServices | undefined): HttpHostServices {
+  const host = services?.http;
+  const send: HttpHostServices["request"] = async (req) => {
+    if (host) {
+      const res = await host.request(req);
+      return { ...res, body: res.body ?? "" };
     }
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    return { status: res.status, body: await res.text() };
-  }
-
-  /** Raw request: returns the response body as text. Throws on non-2xx. */
-  async requestText(path: string, opts: RequestOptions = {}): Promise<string> {
-    const method = opts.method ?? "GET";
-    const query = buildQuery(opts.query);
-    const url = `${API_HOST}${path}${query ? `?${query}` : ""}`;
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      Authorization: `Bearer ${this.apiKey}`,
-    };
-    const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-
-    let res = await this.send(url, method, headers, body);
-    if (res.status === 429) {
+    const { url, method, headers } = req;
+    // The client only ever sends JSON text.
+    const body = typeof req.body === "string" ? { body: req.body } : {};
+    const res = await fetch(url, { method, headers, ...body });
+    const answered: Record<string, string> = {};
+    res.headers.forEach((value, key) => {
+      answered[key] = value;
+    });
+    return { status: res.status, headers: answered, body: await res.text() };
+  };
+  return {
+    request: async (req) => {
+      const res = await send(req);
+      if (res.status !== 429) return res;
       const wait = retryAfterSeconds(res.body);
-      if (wait !== null && wait <= MAX_RETRY_AFTER_S) {
-        await sleep(wait * 1000);
-        res = await this.send(url, method, headers, body);
-      }
-    }
-    if (res.status < 200 || res.status >= 300) {
-      throw new BasetenApiError(res.status, path, res.body);
-    }
-    return res.body;
-  }
+      if (wait === null || wait > MAX_RETRY_AFTER_S) return res;
+      await sleep(wait * 1000);
+      return send(req);
+    },
+  };
+}
 
-  async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    const text = await this.requestText(path, opts);
-    if (!text) return undefined as unknown as T;
-    return JSON.parse(text) as T;
-  }
+export type BasetenApi = ApiClient<paths>;
+
+export function createBasetenApi(
+  apiKey: string,
+  caCert: string,
+  services: HostServices | undefined,
+): BasetenApi {
+  return createApiClient<paths>({
+    vendor: "Baseten",
+    baseUrl: API_HOST,
+    headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+    http: retryingTransport(services),
+    caCert,
+    contentType: "with-body",
+    httpError: ({ status, path, body }) => new BasetenApiError(status, path, body),
+  });
 }
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {

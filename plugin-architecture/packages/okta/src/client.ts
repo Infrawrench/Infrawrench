@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiAnswer, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -22,28 +22,10 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import { OktaApi, readCredentials } from "./api.js";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { OktaApi, readCredentials, type Schemas } from "./api.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 import { mapOktaSeat, oktaSeatPrice } from "./seats.js";
-import type {
-  OktaApiToken,
-  OktaApp,
-  OktaAuthServer,
-  OktaDomain,
-  OktaEventHook,
-  OktaGroup,
-  OktaLogEvent,
-  OktaOrg,
-  OktaPolicy,
-  OktaRule,
-  OktaScope,
-  OktaTrustedOrigin,
-  OktaUser,
-  OktaZone,
-  OktaZoneAddress,
-} from "./types.js";
-
 const PLUGIN_ID = "okta";
 
 export const METRICS_DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
@@ -52,7 +34,7 @@ const METRIC_BUCKETS = 48;
 const MAX_LOG_PAGES = 5;
 
 /** Every policy type `GET /api/v1/policies?type=` accepts (the parameter is required). */
-export const POLICY_TYPES = [
+export const POLICY_TYPES: Schemas["PolicyType"][] = [
   "OKTA_SIGN_ON",
   "ACCESS_POLICY",
   "PASSWORD",
@@ -100,8 +82,29 @@ export const EVENT_HOOK_TYPES = [
   "system.api_token.revoke",
 ];
 
-function str(value: unknown): string {
+function str(value: string | number | boolean | null | undefined): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
+}
+
+/** The status on an `apiError`, or on whatever else was thrown. */
+function statusOf(error: unknown): number | undefined {
+  return error && typeof error === "object" && "status" in error && typeof error.status === "number"
+    ? error.status
+    : undefined;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * A field a form may have left out, for spreading into a body: JSON has no `undefined`,
+ * so a missing value sends no key, and Okta's own validation error is the better message.
+ */
+function given<K extends string>(key: K, value: string | undefined): { [P in K]?: string } {
+  const out: { [P in K]?: string } = {};
+  if (value !== undefined) out[key] = value;
+  return out;
 }
 
 function bool(value: string | undefined): boolean | undefined {
@@ -123,22 +126,27 @@ function list(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function addresses(value: string | undefined): OktaZoneAddress[] {
+function addresses(value: string | undefined): Schemas["NetworkZoneAddress"][] {
   return list(value).map((entry) => ({
     type: entry.includes("-") ? "RANGE" : "CIDR",
     value: entry,
   }));
 }
 
-function zoneList(value: unknown, key: "locations" | "asns"): string {
+type ZoneItem = string | Schemas["NetworkZoneLocation"];
+
+/** An array on a DYNAMIC zone, `{ include, exclude }` on DYNAMIC_V2. */
+function zoneList(
+  value: ZoneItem[] | { include?: ZoneItem[] | null } | null | undefined,
+  key: "locations" | "asns",
+): string {
   if (!value) return "";
-  const items = Array.isArray(value) ? value : ((value as { include?: unknown[] }).include ?? []);
+  const items = Array.isArray(value) ? value : (value.include ?? []);
   return items
     .map((item) => {
       if (typeof item === "string") return item;
       if (key === "locations" && item && typeof item === "object") {
-        const loc = item as { country?: string; region?: string | null };
-        return loc.region ? `${str(loc.country)}-${str(loc.region)}` : str(loc.country);
+        return item.region ? `${str(item.country)}-${str(item.region)}` : str(item.country);
       }
       return "";
     })
@@ -148,7 +156,7 @@ function zoneList(value: unknown, key: "locations" | "asns"): string {
 
 export class OktaClient implements PluginClient {
   readonly api: OktaApi;
-  private orgCache: Promise<OktaOrg> | null = null;
+  private orgCache: Promise<Schemas["OrgSetting"]> | null = null;
   private readonly seatPriceMonthly: string | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -156,8 +164,8 @@ export class OktaClient implements PluginClient {
     this.seatPriceMonthly = credentials["seatPriceMonthly"];
   }
 
-  private org(): Promise<OktaOrg> {
-    this.orgCache ??= this.api.request<OktaOrg>("/api/v1/org");
+  private org(): Promise<Schemas["OrgSetting"]> {
+    this.orgCache ??= this.api.rest.get("/api/v1/org");
     this.orgCache.catch(() => {
       this.orgCache = null;
     });
@@ -174,32 +182,45 @@ export class OktaClient implements PluginClient {
         case "org":
           return [this.mapOrg(accountId, await this.org())];
         case "user":
-          return (await this.api.paginate<OktaUser>("/api/v1/users", { limit: 200 })).map((u) =>
-            this.mapUser(accountId, u),
-          );
+          return (
+            await this.api.paginate(
+              this.api.rest.getResponse("/api/v1/users", { query: { limit: 200 } }),
+            )
+          ).map((u) => this.mapUser(accountId, u));
         case "group":
           return (
-            await this.api.paginate<OktaGroup>("/api/v1/groups", { limit: 1000, expand: "stats" })
+            await this.api.paginate(
+              this.api.rest.getResponse("/api/v1/groups", {
+                query: { limit: 1000, expand: "stats" },
+              }),
+            )
           ).map((g) => this.mapGroup(accountId, g));
         case "app":
-          return (await this.api.paginate<OktaApp>("/api/v1/apps", { limit: 200 })).map((a) =>
-            this.mapApp(accountId, a),
-          );
+          return (
+            await this.api.paginate(
+              this.api.rest.getResponse("/api/v1/apps", { query: { limit: 200 } }),
+            )
+          ).map((a) => this.mapApp(accountId, a));
         case "authorization-server":
           return (
-            await this.api.paginate<OktaAuthServer>("/api/v1/authorizationServers", { limit: 200 })
+            await this.api.paginate(
+              this.api.rest.getResponse("/api/v1/authorizationServers", { query: { limit: 200 } }),
+            )
           ).map((s) => this.mapAuthServer(accountId, s));
         case "policy": {
           const settled = await Promise.allSettled(
             POLICY_TYPES.map((type) =>
-              this.api.paginate<OktaPolicy>("/api/v1/policies", { type }, 5),
+              this.api.paginate(
+                this.api.rest.getResponse("/api/v1/policies", { query: { type } }),
+                5,
+              ),
             ),
           );
           return settled.flatMap((result, i) => {
             if (result.status === "fulfilled")
               return result.value.map((p) => this.mapPolicy(accountId, p));
             // Feature-gated policy types answer 400/404 on orgs without the feature.
-            const status = (result.reason as { status?: number }).status;
+            const status = statusOf(result.reason);
             if (status !== 400 && status !== 404) {
               console.warn(
                 `Okta plugin: skipping ${POLICY_TYPES[i]} policies: ${String(result.reason)}`,
@@ -209,24 +230,26 @@ export class OktaClient implements PluginClient {
           });
         }
         case "network-zone":
-          return (await this.api.paginate<OktaZone>("/api/v1/zones")).map((z) =>
+          return (await this.api.paginate(this.api.rest.getResponse("/api/v1/zones"))).map((z) =>
             this.mapZone(accountId, z),
           );
         case "api-token":
-          return (await this.api.paginate<OktaApiToken>("/api/v1/api-tokens")).map((t) =>
-            this.mapApiToken(accountId, t),
+          return (await this.api.paginate(this.api.rest.getResponse("/api/v1/api-tokens"))).map(
+            (t) => this.mapApiToken(accountId, t),
           );
         case "event-hook":
-          return (await this.api.request<OktaEventHook[]>("/api/v1/eventHooks")).map((h) =>
+          return (await this.api.rest.get("/api/v1/eventHooks")).map((h) =>
             this.mapEventHook(accountId, h),
           );
         case "domain": {
-          const body = await this.api.request<{ domains?: OktaDomain[] }>("/api/v1/domains");
+          const body = await this.api.rest.get("/api/v1/domains");
           return (body.domains ?? []).map((d) => this.mapDomain(accountId, d));
         }
         case "trusted-origin":
           return (
-            await this.api.paginate<OktaTrustedOrigin>("/api/v1/trustedOrigins", { limit: 200 })
+            await this.api.paginate(
+              this.api.rest.getResponse("/api/v1/trustedOrigins", { query: { limit: 200 } }),
+            )
           ).map((t) => this.mapTrustedOrigin(accountId, t));
         default:
           throw new Error(`Okta plugin: unknown resource type "${typeId}"`);
@@ -240,53 +263,39 @@ export class OktaClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case "org":
           this.orgCache = null;
           return this.mapOrg(accountId, await this.org());
         case "user":
-          return this.mapUser(accountId, await this.api.request<OktaUser>(`/api/v1/users/${id}`));
+          return this.mapUser(accountId, await this.api.rest.get(`/api/v1/users/${id}`));
         case "group":
           return this.mapGroup(
             accountId,
-            await this.api.request<OktaGroup>(`/api/v1/groups/${id}`, {
-              query: { expand: "stats" },
-            }),
+            await this.api.rest.get(`/api/v1/groups/${id}`, { query: { expand: "stats" } }),
           );
         case "app":
-          return this.mapApp(accountId, await this.api.request<OktaApp>(`/api/v1/apps/${id}`));
+          return this.mapApp(accountId, await this.api.rest.get(`/api/v1/apps/${id}`));
         case "authorization-server":
           return this.mapAuthServer(
             accountId,
-            await this.api.request<OktaAuthServer>(`/api/v1/authorizationServers/${id}`),
+            await this.api.rest.get(`/api/v1/authorizationServers/${id}`),
           );
         case "policy":
-          return this.mapPolicy(
-            accountId,
-            await this.api.request<OktaPolicy>(`/api/v1/policies/${id}`),
-          );
+          return this.mapPolicy(accountId, await this.api.rest.get(`/api/v1/policies/${id}`));
         case "network-zone":
-          return this.mapZone(accountId, await this.api.request<OktaZone>(`/api/v1/zones/${id}`));
+          return this.mapZone(accountId, await this.api.rest.get(`/api/v1/zones/${id}`));
         case "api-token":
-          return this.mapApiToken(
-            accountId,
-            await this.api.request<OktaApiToken>(`/api/v1/api-tokens/${id}`),
-          );
+          return this.mapApiToken(accountId, await this.api.rest.get(`/api/v1/api-tokens/${id}`));
         case "event-hook":
-          return this.mapEventHook(
-            accountId,
-            await this.api.request<OktaEventHook>(`/api/v1/eventHooks/${id}`),
-          );
+          return this.mapEventHook(accountId, await this.api.rest.get(`/api/v1/eventHooks/${id}`));
         case "domain":
-          return this.mapDomain(
-            accountId,
-            await this.api.request<OktaDomain>(`/api/v1/domains/${id}`),
-          );
+          return this.mapDomain(accountId, await this.api.rest.get(`/api/v1/domains/${id}`));
         case "trusted-origin":
           return this.mapTrustedOrigin(
             accountId,
-            await this.api.request<OktaTrustedOrigin>(`/api/v1/trustedOrigins/${id}`),
+            await this.api.rest.get(`/api/v1/trustedOrigins/${id}`),
           );
         default:
           throw new Error(`Okta plugin: unknown resource type "${typeId}"`);
@@ -338,7 +347,7 @@ export class OktaClient implements PluginClient {
     };
   }
 
-  mapOrg(accountId: string, org: OktaOrg): ResourceInstance {
+  mapOrg(accountId: string, org: Schemas["OrgSetting"]): ResourceInstance {
     const id = str(org.id) || "org";
     return this.instance(
       accountId,
@@ -367,7 +376,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapUser(accountId: string, u: OktaUser): ResourceInstance {
+  mapUser(accountId: string, u: Schemas["User"]): ResourceInstance {
     const p = u.profile ?? {};
     const name = [str(p.firstName), str(p.lastName)].filter(Boolean).join(" ");
     return this.instance(
@@ -397,7 +406,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapGroup(accountId: string, g: OktaGroup): ResourceInstance {
+  mapGroup(accountId: string, g: Schemas["Group"]): ResourceInstance {
     const stats = g._embedded?.stats;
     return this.instance(
       accountId,
@@ -419,7 +428,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapApp(accountId: string, a: OktaApp): ResourceInstance {
+  mapApp(accountId: string, a: Schemas["Application"]): ResourceInstance {
     const clientId = str(a.credentials?.oauthClient?.client_id);
     const metadataUrl = a.signOnMode === "SAML_2_0" ? str(a._links?.metadata?.href) : "";
     return this.instance(
@@ -443,7 +452,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapAuthServer(accountId: string, s: OktaAuthServer): ResourceInstance {
+  mapAuthServer(accountId: string, s: Schemas["AuthorizationServer"]): ResourceInstance {
     const issuer = str(s.issuer);
     return this.instance(
       accountId,
@@ -471,7 +480,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapPolicy(accountId: string, p: OktaPolicy): ResourceInstance {
+  mapPolicy(accountId: string, p: Schemas["Policy"]): ResourceInstance {
     return this.instance(
       accountId,
       "policy",
@@ -493,7 +502,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapZone(accountId: string, z: OktaZone): ResourceInstance {
+  mapZone(accountId: string, z: Schemas["NetworkZone"]): ResourceInstance {
     return this.instance(
       accountId,
       "network-zone",
@@ -517,7 +526,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapApiToken(accountId: string, t: OktaApiToken): ResourceInstance {
+  mapApiToken(accountId: string, t: Schemas["ApiToken"]): ResourceInstance {
     const network = t.network?.connection
       ? [t.network.connection, ...(t.network.include ?? [])].filter(Boolean).join(": ")
       : "";
@@ -541,7 +550,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapEventHook(accountId: string, h: OktaEventHook): ResourceInstance {
+  mapEventHook(accountId: string, h: Schemas["EventHook"]): ResourceInstance {
     const config = h.channel?.config;
     return this.instance(
       accountId,
@@ -564,7 +573,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapDomain(accountId: string, d: OktaDomain): ResourceInstance {
+  mapDomain(accountId: string, d: Schemas["DomainResponse"]): ResourceInstance {
     const cname = (d.dnsRecords ?? []).find((r) => r.recordType === "CNAME");
     return this.instance(
       accountId,
@@ -584,7 +593,7 @@ export class OktaClient implements PluginClient {
     );
   }
 
-  mapTrustedOrigin(accountId: string, t: OktaTrustedOrigin): ResourceInstance {
+  mapTrustedOrigin(accountId: string, t: Schemas["TrustedOrigin"]): ResourceInstance {
     const scopes = new Set((t.scopes ?? []).map((s) => str(s.type)));
     return this.instance(
       accountId,
@@ -613,26 +622,21 @@ export class OktaClient implements PluginClient {
   verifyCredentials(): PluginEffect<PreflightResult> {
     return attempt(async () => {
       const checks: PreflightCapabilityCheck[] = [];
-      const probe = async (
-        capabilityId: string,
-        path: string,
-        scope: string,
-        query?: Record<string, string>,
-      ) => {
+      const probe = async <T>(capabilityId: string, scope: string, read: () => Promise<T>) => {
         try {
-          await this.api.request(path, { query: { limit: 1, ...query } });
+          await read();
           checks.push({ capabilityId, status: "ok" });
         } catch (error) {
-          const status = (error as { status?: number }).status;
+          const status = statusOf(error);
           if (status === 401 || status === 403) {
             checks.push({
               capabilityId,
               status: "missing",
               missingPermissions: [{ id: scope, label: scope }],
-              message: (error as Error).message,
+              message: messageOf(error),
             });
           } else {
-            checks.push({ capabilityId, status: "unknown", message: (error as Error).message });
+            checks.push({ capabilityId, status: "unknown", message: messageOf(error) });
           }
         }
       };
@@ -642,23 +646,25 @@ export class OktaClient implements PluginClient {
         identity = str(org.companyName) || str(org.subdomain);
         checks.push({ capabilityId: "org", status: "ok" });
       } catch (error) {
-        const status = (error as { status?: number }).status;
+        const status = statusOf(error);
         checks.push(
           status === 401 || status === 403
             ? {
                 capabilityId: "org",
                 status: "missing",
                 missingPermissions: [{ id: "okta.orgs.read", label: "okta.orgs.read" }],
-                message: (error as Error).message,
+                message: messageOf(error),
               }
-            : { capabilityId: "org", status: "unknown", message: (error as Error).message },
+            : { capabilityId: "org", status: "unknown", message: messageOf(error) },
         );
       }
-      await probe("users", "/api/v1/users", "okta.users.read");
-      await probe("groups", "/api/v1/groups", "okta.groups.read");
-      await probe("apps", "/api/v1/apps", "okta.apps.read");
-      await probe("security", "/api/v1/zones", "okta.networkZones.read");
-      await probe("logs", "/api/v1/logs", "okta.logs.read");
+      const query = { limit: 1 };
+      const { rest } = this.api;
+      await probe("users", "okta.users.read", () => rest.get("/api/v1/users", { query }));
+      await probe("groups", "okta.groups.read", () => rest.get("/api/v1/groups", { query }));
+      await probe("apps", "okta.apps.read", () => rest.get("/api/v1/apps", { query }));
+      await probe("security", "okta.networkZones.read", () => rest.get("/api/v1/zones", { query }));
+      await probe("logs", "okta.logs.read", () => rest.get("/api/v1/logs", { query }));
       return { checks, ...(identity ? { identity } : {}) };
     });
   }
@@ -666,13 +672,6 @@ export class OktaClient implements PluginClient {
   // -------------------------------------------------------------------------
   // Metrics, quotas, logs
   // -------------------------------------------------------------------------
-
-  private async systemLog(
-    query: Record<string, string | number>,
-    maxPages: number,
-  ): Promise<OktaLogEvent[]> {
-    return this.api.paginate<OktaLogEvent>("/api/v1/logs", query, maxPages);
-  }
 
   fetchMetricSeries(
     resourceTypeId: string,
@@ -692,14 +691,16 @@ export class OktaClient implements PluginClient {
         'eventType sw "system.client.rate_limit"',
         'eventType sw "system.operation.rate_limit"',
       ].join(" or ");
-      const events = await this.systemLog(
-        {
-          since: new Date(startMs).toISOString(),
-          until: new Date(endMs).toISOString(),
-          filter,
-          limit: 1000,
-          sortOrder: "DESCENDING",
-        },
+      const events = await this.api.paginate(
+        this.api.rest.getResponse("/api/v1/logs", {
+          query: {
+            since: new Date(startMs).toISOString(),
+            until: new Date(endMs).toISOString(),
+            filter,
+            limit: 1000,
+            sortOrder: "DESCENDING",
+          },
+        }),
         MAX_LOG_PAGES,
       );
       const bucketMs = Math.max(
@@ -708,7 +709,7 @@ export class OktaClient implements PluginClient {
       );
       const buckets: number[] = [];
       for (let at = startMs; at < endMs; at += bucketMs) buckets.push(at);
-      const series: Array<{ label: string; match: (e: OktaLogEvent) => boolean }> = [
+      const series: Array<{ label: string; match: (e: Schemas["LogEvent"]) => boolean }> = [
         {
           label: "Successful sign-ins",
           match: (e) => e.eventType === "user.session.start" && e.outcome?.result === "SUCCESS",
@@ -772,16 +773,22 @@ export class OktaClient implements PluginClient {
    */
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
-      const probes: Array<[string, string]> = [
-        ["/api/v1/users", "Users API"],
-        ["/api/v1/groups", "Groups API"],
-        ["/api/v1/apps", "Apps API"],
-        ["/api/v1/logs", "System Log API"],
-        ["/api/v1/authorizationServers", "Authorization servers API"],
+      const query = { limit: 1 };
+      const { rest } = this.api;
+      const probes: Array<[string, string, () => Promise<ApiAnswer<object>>]> = [
+        ["/api/v1/users", "Users API", () => rest.getResponse("/api/v1/users", { query })],
+        ["/api/v1/groups", "Groups API", () => rest.getResponse("/api/v1/groups", { query })],
+        ["/api/v1/apps", "Apps API", () => rest.getResponse("/api/v1/apps", { query })],
+        ["/api/v1/logs", "System Log API", () => rest.getResponse("/api/v1/logs", { query })],
+        [
+          "/api/v1/authorizationServers",
+          "Authorization servers API",
+          () => rest.getResponse("/api/v1/authorizationServers", { query }),
+        ],
       ];
       const out: QuotaUsage[] = [];
-      for (const [path, name] of probes) {
-        const res = await this.api.call<unknown>(path, { query: { limit: 1 } });
+      for (const [path, name, read] of probes) {
+        const res = await read();
         const limit = Number(res.headers["x-rate-limit-limit"]);
         const remaining = Number(res.headers["x-rate-limit-remaining"]);
         if (!Number.isFinite(limit) || !Number.isFinite(remaining) || limit <= 0) continue;
@@ -802,9 +809,9 @@ export class OktaClient implements PluginClient {
 
   fetchDashboardStats(resourceTypeId: string, resourceId: string): PluginEffect<DashboardStat[]> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       if (resourceTypeId === "group") {
-        const g = await this.api.request<OktaGroup>(`/api/v1/groups/${id}`, {
+        const g = await this.api.rest.get(`/api/v1/groups/${id}`, {
           query: { expand: "stats" },
         });
         return [
@@ -814,9 +821,17 @@ export class OktaClient implements PluginClient {
       }
       if (resourceTypeId === "app") {
         const [users, groups] = await Promise.all([
-          this.api.paginate<unknown>(`/api/v1/apps/${id}/users`, { limit: 500 }, 4).catch(() => []),
           this.api
-            .paginate<unknown>(`/api/v1/apps/${id}/groups`, { limit: 200 }, 4)
+            .paginate(
+              this.api.rest.getResponse(`/api/v1/apps/${id}/users`, { query: { limit: 500 } }),
+              4,
+            )
+            .catch(() => []),
+          this.api
+            .paginate(
+              this.api.rest.getResponse(`/api/v1/apps/${id}/groups`, { query: { limit: 200 } }),
+              4,
+            )
             .catch(() => []),
         ]);
         return [
@@ -851,7 +866,7 @@ export class OktaClient implements PluginClient {
           "Okta plugin: the System Log is shown on the org, users, groups, apps, policies and authorization servers",
         );
       }
-      const events = await this.api.request<OktaLogEvent[]>("/api/v1/logs", {
+      const events = await this.api.rest.get("/api/v1/logs", {
         query: {
           limit,
           sortOrder: "DESCENDING",
@@ -896,8 +911,8 @@ export class OktaClient implements PluginClient {
 
   private async groupOptions(oktaOnly = true): Promise<SelectOption[]> {
     const groups = await this.api
-      .paginate<OktaGroup>("/api/v1/groups", { limit: 1000 }, 5)
-      .catch(() => [] as OktaGroup[]);
+      .paginate(this.api.rest.getResponse("/api/v1/groups", { query: { limit: 1000 } }), 5)
+      .catch((): Schemas["Group"][] => []);
     return groups
       .filter((g) => !oktaOnly || g.type === "OKTA_GROUP")
       .map((g) => ({
@@ -909,8 +924,13 @@ export class OktaClient implements PluginClient {
 
   private async userOptions(): Promise<SelectOption[]> {
     const users = await this.api
-      .paginate<OktaUser>("/api/v1/users", { limit: 200, filter: 'status eq "ACTIVE"' }, 5)
-      .catch(() => [] as OktaUser[]);
+      .paginate(
+        this.api.rest.getResponse("/api/v1/users", {
+          query: { limit: 200, filter: 'status eq "ACTIVE"' },
+        }),
+        5,
+      )
+      .catch((): Schemas["User"][] => []);
     return users.map((u) => ({ id: str(u.id), label: str(u.profile?.login) }));
   }
 
@@ -1165,41 +1185,42 @@ export class OktaClient implements PluginClient {
         case "user": {
           const activation = fields["activation"] || "email";
           const email = (fields["email"] ?? "").trim();
-          const body: Record<string, unknown> = {
-            profile: {
-              firstName: fields["firstName"],
-              lastName: fields["lastName"],
-              email,
-              login: (fields["login"] ?? "").trim() || email,
-            },
-          };
           const groupIds = list(fields["groupIds"]);
-          if (groupIds.length > 0) body["groupIds"] = groupIds;
-          if (activation === "password" && fields["password"]) {
-            body["credentials"] = { password: { value: fields["password"] } };
-          }
-          const user = await this.api.request<OktaUser>("/api/v1/users", {
-            method: "POST",
+          const user = await this.api.rest.post("/api/v1/users", {
             query: {
               activate: activation !== "staged",
               ...(activation === "password" && fields["changePassword"] !== "false"
                 ? { nextLogin: "changePassword" }
                 : {}),
             },
-            body,
+            body: {
+              profile: {
+                ...given("firstName", fields["firstName"]),
+                ...given("lastName", fields["lastName"]),
+                email,
+                login: (fields["login"] ?? "").trim() || email,
+              },
+              ...(groupIds.length > 0 ? { groupIds } : {}),
+              ...(activation === "password" && fields["password"]
+                ? { credentials: { password: { value: fields["password"] } } }
+                : {}),
+            },
           });
           return this.mapUser(accountId, user);
         }
         case "group": {
-          const group = await this.api.request<OktaGroup>("/api/v1/groups", {
-            method: "POST",
-            body: { profile: { name: fields["name"], description: fields["description"] ?? "" } },
+          const group = await this.api.rest.post("/api/v1/groups", {
+            body: {
+              profile: {
+                ...given("name", fields["name"]),
+                description: fields["description"] ?? "",
+              },
+            },
           });
           return this.mapGroup(accountId, group);
         }
         case "authorization-server": {
-          const server = await this.api.request<OktaAuthServer>("/api/v1/authorizationServers", {
-            method: "POST",
+          const server = await this.api.rest.post("/api/v1/authorizationServers", {
             body: {
               name: fields["name"],
               description: fields["description"] ?? "",
@@ -1210,8 +1231,7 @@ export class OktaClient implements PluginClient {
         }
         case "network-zone": {
           const usage = fields["usage"] || "POLICY";
-          const zone = await this.api.request<OktaZone>("/api/v1/zones", {
-            method: "POST",
+          const zone = await this.api.rest.post("/api/v1/zones", {
             body: {
               type: "IP",
               name: fields["name"],
@@ -1227,8 +1247,7 @@ export class OktaClient implements PluginClient {
         case "event-hook": {
           const events = [...list(fields["events"]), ...list(fields["otherEvents"])];
           if (events.length === 0) throw new Error("Okta plugin: choose at least one event type");
-          const hook = await this.api.request<OktaEventHook>("/api/v1/eventHooks", {
-            method: "POST",
+          const hook = await this.api.rest.post("/api/v1/eventHooks", {
             body: {
               name: fields["name"],
               events: { type: "EVENT_TYPE", items: events },
@@ -1236,7 +1255,7 @@ export class OktaClient implements PluginClient {
                 type: "HTTP",
                 version: "1.0.0",
                 config: {
-                  uri: fields["uri"],
+                  ...given("uri", fields["uri"]),
                   ...(fields["authHeaderValue"]
                     ? {
                         authScheme: {
@@ -1253,8 +1272,7 @@ export class OktaClient implements PluginClient {
           return this.mapEventHook(accountId, hook);
         }
         case "domain": {
-          const domain = await this.api.request<OktaDomain>("/api/v1/domains", {
-            method: "POST",
+          const domain = await this.api.rest.post("/api/v1/domains", {
             body: {
               domain: fields["domain"],
               certificateSourceType: fields["certificateSourceType"] || "OKTA_MANAGED",
@@ -1264,8 +1282,7 @@ export class OktaClient implements PluginClient {
         }
         case "trusted-origin": {
           const scopes = list(fields["scopes"]);
-          const origin = await this.api.request<OktaTrustedOrigin>("/api/v1/trustedOrigins", {
-            method: "POST",
+          const origin = await this.api.rest.post("/api/v1/trustedOrigins", {
             body: {
               name: fields["name"],
               origin: fields["origin"],
@@ -1291,66 +1308,60 @@ export class OktaClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case "org": {
-          // POST /api/v1/org is a partial update; PUT would replace every field.
-          const body: Record<string, string> = {};
-          for (const key of [
-            "companyName",
-            "website",
-            "phoneNumber",
-            "supportPhoneNumber",
-            "endUserSupportHelpURL",
-            "address1",
-            "city",
-            "state",
-            "postalCode",
-            "country",
-          ]) {
-            if (fields[key] !== undefined) body[key] = fields[key]!;
-          }
           this.orgCache = null;
           return this.mapOrg(
             accountId,
-            await this.api.request<OktaOrg>("/api/v1/org", { method: "POST", body }),
+            // POST /api/v1/org is a partial update; PUT would replace every field.
+            await this.api.rest.post("/api/v1/org", {
+              body: {
+                ...given("companyName", fields["companyName"]),
+                ...given("website", fields["website"]),
+                ...given("phoneNumber", fields["phoneNumber"]),
+                ...given("supportPhoneNumber", fields["supportPhoneNumber"]),
+                ...given("endUserSupportHelpURL", fields["endUserSupportHelpURL"]),
+                ...given("address1", fields["address1"]),
+                ...given("city", fields["city"]),
+                ...given("state", fields["state"]),
+                ...given("postalCode", fields["postalCode"]),
+                ...given("country", fields["country"]),
+              },
+            }),
           );
         }
         case "user": {
-          // POST /api/v1/users/{id} is a partial profile update.
-          const profile: Record<string, string> = {};
-          for (const key of [
-            "login",
-            "email",
-            "firstName",
-            "lastName",
-            "displayName",
-            "title",
-            "department",
-            "mobilePhone",
-          ]) {
-            if (fields[key] !== undefined) profile[key] = fields[key]!;
-          }
           return this.mapUser(
             accountId,
-            await this.api.request<OktaUser>(`/api/v1/users/${id}`, {
-              method: "POST",
-              body: { profile },
+            // POST /api/v1/users/{id} is a partial profile update.
+            await this.api.rest.post(`/api/v1/users/${id}`, {
+              body: {
+                profile: {
+                  ...given("login", fields["login"]),
+                  ...given("email", fields["email"]),
+                  ...given("firstName", fields["firstName"]),
+                  ...given("lastName", fields["lastName"]),
+                  ...given("displayName", fields["displayName"]),
+                  ...given("title", fields["title"]),
+                  ...given("department", fields["department"]),
+                  ...given("mobilePhone", fields["mobilePhone"]),
+                },
+              },
             }),
           );
         }
         case "group": {
-          const current = await this.api.request<OktaGroup>(`/api/v1/groups/${id}`);
+          const current = await this.api.rest.get(`/api/v1/groups/${id}`);
           if (current.type !== "OKTA_GROUP") {
             throw Object.assign(new Error("Okta plugin: only Okta-mastered groups can be edited"), {
               status: 400,
             });
           }
-          await this.api.request(`/api/v1/groups/${id}`, {
-            method: "PUT",
+          await this.api.rest.put(`/api/v1/groups/${id}`, {
             body: {
               profile: {
-                name: fields["name"] ?? current.profile?.name,
+                ...given("name", fields["name"] ?? current.profile?.name),
                 description: fields["description"] ?? current.profile?.description ?? "",
               },
             },
@@ -1359,63 +1370,70 @@ export class OktaClient implements PluginClient {
         }
         case "app": {
           // Apps only support full replacement: read, change, write back.
-          const current = await this.api.request<OktaApp>(`/api/v1/apps/${id}`);
+          const current = await this.api.rest.get(`/api/v1/apps/${id}`);
           if (fields["label"] !== undefined) current.label = fields["label"];
           return this.mapApp(
             accountId,
-            await this.api.request<OktaApp>(`/api/v1/apps/${id}`, { method: "PUT", body: current }),
+            await this.api.rest.put(`/api/v1/apps/${id}`, { body: current }),
           );
         }
         case "authorization-server": {
-          const current = await this.api.request<OktaAuthServer>(
-            `/api/v1/authorizationServers/${id}`,
-          );
-          const body = {
-            name: fields["name"] ?? current.name,
-            description: fields["description"] ?? current.description ?? "",
-            audiences:
-              fields["audiences"] !== undefined ? list(fields["audiences"]) : current.audiences,
-            ...(fields["issuerMode"] || current.issuerMode
-              ? { issuerMode: fields["issuerMode"] || current.issuerMode }
-              : {}),
-          };
+          const current = await this.api.rest.get(`/api/v1/authorizationServers/${id}`);
           return this.mapAuthServer(
             accountId,
-            await this.api.request<OktaAuthServer>(`/api/v1/authorizationServers/${id}`, {
-              method: "PUT",
-              body,
+            await this.api.rest.put(`/api/v1/authorizationServers/${id}`, {
+              body: {
+                name: fields["name"] ?? current.name,
+                description: fields["description"] ?? current.description ?? "",
+                audiences:
+                  fields["audiences"] !== undefined ? list(fields["audiences"]) : current.audiences,
+                ...(fields["issuerMode"] || current.issuerMode
+                  ? { issuerMode: fields["issuerMode"] || current.issuerMode }
+                  : {}),
+              },
             }),
           );
         }
         case "policy": {
-          const current = await this.api.request<OktaPolicy>(`/api/v1/policies/${id}`);
-          const body: OktaPolicy = { ...current };
-          delete body["_links"];
-          if (fields["name"] !== undefined) body.name = fields["name"];
-          if (fields["description"] !== undefined) body.description = fields["description"];
-          if (fields["priority"]) body.priority = Number(fields["priority"]);
+          const current = await this.api.rest.get(`/api/v1/policies/${id}`);
+          const { _links: _notSentBack, ...kept } = { ...current };
           return this.mapPolicy(
             accountId,
-            await this.api.request<OktaPolicy>(`/api/v1/policies/${id}`, { method: "PUT", body }),
+            await this.api.rest.put(`/api/v1/policies/${id}`, {
+              body: {
+                ...kept,
+                ...given("name", fields["name"]),
+                ...given("description", fields["description"]),
+                ...(fields["priority"] ? { priority: Number(fields["priority"]) } : {}),
+              },
+            }),
           );
         }
         case "network-zone": {
-          const current = await this.api.request<OktaZone>(`/api/v1/zones/${id}`);
-          const body: OktaZone = { ...current };
-          delete body["_links"];
-          if (fields["name"] !== undefined) body.name = fields["name"];
-          if (current.type === "IP") {
-            if (fields["gateways"] !== undefined) body.gateways = addresses(fields["gateways"]);
-            if (fields["proxies"] !== undefined) body.proxies = addresses(fields["proxies"]);
-          }
+          const current = await this.api.rest.get(`/api/v1/zones/${id}`);
+          const { _links: _notSentBack, ...kept } = { ...current };
+          const isIp = current.type === "IP";
           return this.mapZone(
             accountId,
-            await this.api.request<OktaZone>(`/api/v1/zones/${id}`, { method: "PUT", body }),
+            await this.api.rest.put(`/api/v1/zones/${id}`, {
+              body: {
+                ...kept,
+                ...given("name", fields["name"]),
+                ...(isIp && fields["gateways"] !== undefined
+                  ? { gateways: addresses(fields["gateways"]) }
+                  : {}),
+                ...(isIp && fields["proxies"] !== undefined
+                  ? { proxies: addresses(fields["proxies"]) }
+                  : {}),
+              },
+            }),
           );
         }
         case "event-hook": {
-          const current = await this.api.request<OktaEventHook>(`/api/v1/eventHooks/${id}`);
-          const config = { ...(current.channel?.config ?? {}) };
+          const current = await this.api.rest.get(`/api/v1/eventHooks/${id}`);
+          const config: Partial<Schemas["EventHookChannelConfig"]> = {
+            ...(current.channel?.config ?? {}),
+          };
           // Okta never returns the auth header value (it is write-only). A new
           // value from the form replaces the scheme; otherwise the scheme goes
           // back exactly as Okta returned it.
@@ -1426,47 +1444,43 @@ export class OktaClient implements PluginClient {
               value: fields["authHeaderValue"],
             };
           }
-          const body = {
-            name: fields["name"] ?? current.name,
-            description: fields["description"] ?? current.description ?? null,
-            events: {
-              type: "EVENT_TYPE",
-              items:
-                fields["events"] !== undefined
-                  ? list(fields["events"])
-                  : (current.events?.items ?? []),
-            },
-            channel: {
-              type: "HTTP",
-              version: current.channel?.version ?? "1.0.0",
-              config: { ...config, uri: fields["uri"] ?? config.uri },
-            },
-          };
           return this.mapEventHook(
             accountId,
-            await this.api.request<OktaEventHook>(`/api/v1/eventHooks/${id}`, {
-              method: "PUT",
-              body,
+            await this.api.rest.put(`/api/v1/eventHooks/${id}`, {
+              body: {
+                name: fields["name"] ?? current.name,
+                description: fields["description"] ?? current.description ?? null,
+                events: {
+                  type: "EVENT_TYPE",
+                  items:
+                    fields["events"] !== undefined
+                      ? list(fields["events"])
+                      : (current.events?.items ?? []),
+                },
+                channel: {
+                  type: "HTTP",
+                  version: current.channel?.version ?? "1.0.0",
+                  config: { ...config, ...given("uri", fields["uri"] ?? config.uri) },
+                },
+              },
             }),
           );
         }
         case "trusted-origin": {
-          const current = await this.api.request<OktaTrustedOrigin>(`/api/v1/trustedOrigins/${id}`);
+          const current = await this.api.rest.get(`/api/v1/trustedOrigins/${id}`);
           const types = new Set((current.scopes ?? []).map((s) => str(s.type)));
           const cors = bool(fields["cors"]);
           const redirect = bool(fields["redirect"]);
           if (cors !== undefined) cors ? types.add("CORS") : types.delete("CORS");
           if (redirect !== undefined) redirect ? types.add("REDIRECT") : types.delete("REDIRECT");
-          const body = {
-            name: fields["name"] ?? current.name,
-            origin: fields["origin"] ?? current.origin,
-            scopes: [...types].map((type) => ({ type })),
-          };
           return this.mapTrustedOrigin(
             accountId,
-            await this.api.request<OktaTrustedOrigin>(`/api/v1/trustedOrigins/${id}`, {
-              method: "PUT",
-              body,
+            await this.api.rest.put(`/api/v1/trustedOrigins/${id}`, {
+              body: {
+                name: fields["name"] ?? current.name,
+                origin: fields["origin"] ?? current.origin,
+                scopes: [...types].map((type) => ({ type })),
+              },
             }),
           );
         }
@@ -1488,7 +1502,9 @@ export class OktaClient implements PluginClient {
    */
   fetchSeats(_accountId: string, _options: SeatFetchOptions): PluginEffect<SeatRecord[]> {
     return attempt(async () => {
-      const users = await this.api.paginateAll<OktaUser>("/api/v1/users", { limit: 200 });
+      const users = await this.api.paginateAll(
+        this.api.rest.getResponse("/api/v1/users", { query: { limit: 200 } }),
+      );
       const price = oktaSeatPrice(this.seatPriceMonthly);
       const orgUrl = this.api.orgUrl;
       const seats: SeatRecord[] = [];
@@ -1507,12 +1523,12 @@ export class OktaClient implements PluginClient {
    */
   removeSeat(_accountId: string, seat: SeatRef): PluginEffect<SeatRemovalResult> {
     return attempt(async () => {
-      const id = encodeURIComponent(seat.memberId);
-      const user = await this.api.request<OktaUser>(`/api/v1/users/${id}`);
+      const id = pathEncode(seat.memberId);
+      const user = await this.api.rest.get(`/api/v1/users/${id}`);
       if (user.status === "DEPROVISIONED") {
         return { effective: "immediate", message: "The user was already deactivated in Okta." };
       }
-      await this.api.request(`/api/v1/users/${id}/lifecycle/deactivate`, { method: "POST" });
+      await this.api.rest.post(`/api/v1/users/${id}/lifecycle/deactivate`);
       // The licence is free at once, but Okta contracts are annual: the bill
       // only drops at the next true-up or renewal.
       return {
@@ -1527,58 +1543,63 @@ export class OktaClient implements PluginClient {
   // Delete
   // -------------------------------------------------------------------------
 
-  /** Deactivate first where Okta refuses to delete an active object. */
-  private async deactivateThenDelete(base: string, status: string | undefined): Promise<void> {
-    if (status === "ACTIVE")
-      await this.api.request(`${base}/lifecycle/deactivate`, { method: "POST" });
-    await this.api.request(base, { method: "DELETE" });
-  }
-
+  /** Apps, authorization servers, zones and event hooks must be deactivated before deleting. */
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
+      const { rest } = this.api;
       switch (typeId) {
         case "user": {
-          const user = await this.api.request<OktaUser>(`/api/v1/users/${id}`);
+          const user = await rest.get(`/api/v1/users/${id}`);
           // The first DELETE of a non-deprovisioned user only deactivates it.
           if (user.status !== "DEPROVISIONED") {
-            await this.api.request(`/api/v1/users/${id}/lifecycle/deactivate`, { method: "POST" });
+            await rest.post(`/api/v1/users/${id}/lifecycle/deactivate`);
           }
-          await this.api.request(`/api/v1/users/${id}`, { method: "DELETE" });
+          await rest.delete(`/api/v1/users/${id}`);
           return;
         }
         case "group":
-          await this.api.request(`/api/v1/groups/${id}`, { method: "DELETE" });
+          await rest.delete(`/api/v1/groups/${id}`);
           return;
         case "app": {
-          const app = await this.api.request<OktaApp>(`/api/v1/apps/${id}`);
-          return this.deactivateThenDelete(`/api/v1/apps/${id}`, app.status);
+          const app = await rest.get(`/api/v1/apps/${id}`);
+          if (app.status === "ACTIVE") await rest.post(`/api/v1/apps/${id}/lifecycle/deactivate`);
+          await rest.delete(`/api/v1/apps/${id}`);
+          return;
         }
         case "authorization-server": {
-          const server = await this.api.request<OktaAuthServer>(
-            `/api/v1/authorizationServers/${id}`,
-          );
-          return this.deactivateThenDelete(`/api/v1/authorizationServers/${id}`, server.status);
+          const server = await rest.get(`/api/v1/authorizationServers/${id}`);
+          if (server.status === "ACTIVE") {
+            await rest.post(`/api/v1/authorizationServers/${id}/lifecycle/deactivate`);
+          }
+          await rest.delete(`/api/v1/authorizationServers/${id}`);
+          return;
         }
         case "policy":
-          await this.api.request(`/api/v1/policies/${id}`, { method: "DELETE" });
+          await rest.delete(`/api/v1/policies/${id}`);
           return;
         case "network-zone": {
-          const zone = await this.api.request<OktaZone>(`/api/v1/zones/${id}`);
-          return this.deactivateThenDelete(`/api/v1/zones/${id}`, zone.status);
+          const zone = await rest.get(`/api/v1/zones/${id}`);
+          if (zone.status === "ACTIVE") await rest.post(`/api/v1/zones/${id}/lifecycle/deactivate`);
+          await rest.delete(`/api/v1/zones/${id}`);
+          return;
         }
         case "api-token":
-          await this.api.request(`/api/v1/api-tokens/${id}`, { method: "DELETE" });
+          await rest.delete(`/api/v1/api-tokens/${id}`);
           return;
         case "event-hook": {
-          const hook = await this.api.request<OktaEventHook>(`/api/v1/eventHooks/${id}`);
-          return this.deactivateThenDelete(`/api/v1/eventHooks/${id}`, hook.status);
+          const hook = await rest.get(`/api/v1/eventHooks/${id}`);
+          if (hook.status === "ACTIVE") {
+            await rest.post(`/api/v1/eventHooks/${id}/lifecycle/deactivate`);
+          }
+          await rest.delete(`/api/v1/eventHooks/${id}`);
+          return;
         }
         case "domain":
-          await this.api.request(`/api/v1/domains/${id}`, { method: "DELETE" });
+          await rest.delete(`/api/v1/domains/${id}`);
           return;
         case "trusted-origin":
-          await this.api.request(`/api/v1/trustedOrigins/${id}`, { method: "DELETE" });
+          await rest.delete(`/api/v1/trustedOrigins/${id}`);
           return;
         default:
           throw new Error(`Okta plugin: cannot delete resource type "${typeId}"`);
@@ -1592,66 +1613,87 @@ export class OktaClient implements PluginClient {
 
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
-      const lifecycle: Record<string, string> = {
-        app: "/api/v1/apps",
-        "authorization-server": "/api/v1/authorizationServers",
-        policy: "/api/v1/policies",
-        "network-zone": "/api/v1/zones",
-        "event-hook": "/api/v1/eventHooks",
-        "trusted-origin": "/api/v1/trustedOrigins",
-      };
-      const base = lifecycle[typeId];
-      if (base && (actionId === "activate" || actionId === "deactivate")) {
-        await this.api.request(`${base}/${id}/lifecycle/${actionId}`, { method: "POST" });
-        return;
-      }
-      if (typeId === "user") {
-        const userActions: Record<
-          string,
-          { path: string; method: string; query?: Record<string, string | boolean> }
-        > = {
-          activate: { path: "lifecycle/activate", method: "POST", query: { sendEmail: true } },
-          reactivate: { path: "lifecycle/reactivate", method: "POST", query: { sendEmail: true } },
-          deactivate: { path: "lifecycle/deactivate", method: "POST" },
-          suspend: { path: "lifecycle/suspend", method: "POST" },
-          unsuspend: { path: "lifecycle/unsuspend", method: "POST" },
-          unlock: { path: "lifecycle/unlock", method: "POST" },
-          "reset-password": {
-            path: "lifecycle/reset_password",
-            method: "POST",
-            query: { sendEmail: true },
-          },
-          "expire-password": { path: "lifecycle/expire_password", method: "POST" },
-          "reset-factors": { path: "lifecycle/reset_factors", method: "POST" },
-          "clear-sessions": { path: "sessions", method: "DELETE", query: { oauthTokens: true } },
-        };
-        const action = userActions[actionId];
-        if (action) {
-          await this.api.request(`/api/v1/users/${id}/${action.path}`, {
-            method: action.method,
-            ...(action.query ? { query: action.query } : {}),
+      const id = pathEncode(externalIdOf(resourceId));
+      const { rest } = this.api;
+      const sendEmail = { query: { sendEmail: true } };
+      switch (`${typeId}:${actionId}`) {
+        case "app:activate":
+          await rest.post(`/api/v1/apps/${id}/lifecycle/activate`);
+          return;
+        case "app:deactivate":
+          await rest.post(`/api/v1/apps/${id}/lifecycle/deactivate`);
+          return;
+        case "authorization-server:activate":
+          await rest.post(`/api/v1/authorizationServers/${id}/lifecycle/activate`);
+          return;
+        case "authorization-server:deactivate":
+          await rest.post(`/api/v1/authorizationServers/${id}/lifecycle/deactivate`);
+          return;
+        case "policy:activate":
+          await rest.post(`/api/v1/policies/${id}/lifecycle/activate`);
+          return;
+        case "policy:deactivate":
+          await rest.post(`/api/v1/policies/${id}/lifecycle/deactivate`);
+          return;
+        case "network-zone:activate":
+          await rest.post(`/api/v1/zones/${id}/lifecycle/activate`);
+          return;
+        case "network-zone:deactivate":
+          await rest.post(`/api/v1/zones/${id}/lifecycle/deactivate`);
+          return;
+        case "event-hook:activate":
+          await rest.post(`/api/v1/eventHooks/${id}/lifecycle/activate`);
+          return;
+        case "event-hook:deactivate":
+          await rest.post(`/api/v1/eventHooks/${id}/lifecycle/deactivate`);
+          return;
+        case "trusted-origin:activate":
+          await rest.post(`/api/v1/trustedOrigins/${id}/lifecycle/activate`);
+          return;
+        case "trusted-origin:deactivate":
+          await rest.post(`/api/v1/trustedOrigins/${id}/lifecycle/deactivate`);
+          return;
+        case "user:activate":
+          await rest.post(`/api/v1/users/${id}/lifecycle/activate`, sendEmail);
+          return;
+        case "user:reactivate":
+          await rest.post(`/api/v1/users/${id}/lifecycle/reactivate`, sendEmail);
+          return;
+        case "user:deactivate":
+          await rest.post(`/api/v1/users/${id}/lifecycle/deactivate`);
+          return;
+        case "user:suspend":
+          await rest.post(`/api/v1/users/${id}/lifecycle/suspend`);
+          return;
+        case "user:unsuspend":
+          await rest.post(`/api/v1/users/${id}/lifecycle/unsuspend`);
+          return;
+        case "user:unlock":
+          await rest.post(`/api/v1/users/${id}/lifecycle/unlock`);
+          return;
+        case "user:reset-password":
+          await rest.post(`/api/v1/users/${id}/lifecycle/reset_password`, sendEmail);
+          return;
+        case "user:expire-password":
+          await rest.post(`/api/v1/users/${id}/lifecycle/expire_password`);
+          return;
+        case "user:reset-factors":
+          await rest.post(`/api/v1/users/${id}/lifecycle/reset_factors`);
+          return;
+        case "user:clear-sessions":
+          await rest.delete(`/api/v1/users/${id}/sessions`, { query: { oauthTokens: true } });
+          return;
+        case "authorization-server:rotate-keys":
+          await rest.post(`/api/v1/authorizationServers/${id}/credentials/lifecycle/keyRotate`, {
+            body: { use: "sig" },
           });
           return;
-        }
-      }
-      if (typeId === "authorization-server" && actionId === "rotate-keys") {
-        await this.api.request(
-          `/api/v1/authorizationServers/${id}/credentials/lifecycle/keyRotate`,
-          {
-            method: "POST",
-            body: { use: "sig" },
-          },
-        );
-        return;
-      }
-      if (typeId === "event-hook" && actionId === "verify") {
-        await this.api.request(`/api/v1/eventHooks/${id}/lifecycle/verify`, { method: "POST" });
-        return;
-      }
-      if (typeId === "domain" && actionId === "verify") {
-        await this.api.request(`/api/v1/domains/${id}/verify`, { method: "POST" });
-        return;
+        case "event-hook:verify":
+          await rest.post(`/api/v1/eventHooks/${id}/lifecycle/verify`);
+          return;
+        case "domain:verify":
+          await rest.post(`/api/v1/domains/${id}/verify`);
+          return;
       }
       throw new Error(`Okta plugin: unknown action "${actionId}" for type "${typeId}"`);
     });
@@ -1665,42 +1707,29 @@ export class OktaClient implements PluginClient {
     args: (string | number)[],
   ): PluginEffect<unknown> {
     return attempt(async () => {
-      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
-      const id = encodeURIComponent(externalIdOf(resourceId));
-      const pick = (key: string, what: string): string => {
+      const values: Record<string, string> = JSON.parse(String(args[0] ?? "{}"));
+      const id = pathEncode(externalIdOf(resourceId));
+      const pick = (key: string, what: string) => {
         const value = values[key];
         if (!value) throw new Error(`Okta plugin: choose ${what}`);
-        return encodeURIComponent(value);
+        return pathEncode(value);
       };
+      const { rest } = this.api;
       switch (`${typeId}:${command}`) {
         case "group:add-member":
-          return this.api.request(`/api/v1/groups/${id}/users/${pick("userId", "a user")}`, {
-            method: "PUT",
-          });
+          return rest.put(`/api/v1/groups/${id}/users/${pick("userId", "a user")}`);
         case "group:remove-member":
-          return this.api.request(`/api/v1/groups/${id}/users/${pick("userId", "a user")}`, {
-            method: "DELETE",
-          });
+          return rest.delete(`/api/v1/groups/${id}/users/${pick("userId", "a user")}`);
         case "user:add-to-group":
-          return this.api.request(`/api/v1/groups/${pick("groupId", "a group")}/users/${id}`, {
-            method: "PUT",
-          });
+          return rest.put(`/api/v1/groups/${pick("groupId", "a group")}/users/${id}`);
         case "user:remove-from-group":
-          return this.api.request(`/api/v1/groups/${pick("groupId", "a group")}/users/${id}`, {
-            method: "DELETE",
-          });
+          return rest.delete(`/api/v1/groups/${pick("groupId", "a group")}/users/${id}`);
         case "app:assign-group":
-          return this.api.request(`/api/v1/apps/${id}/groups/${pick("groupId", "a group")}`, {
-            method: "PUT",
-            body: {},
-          });
+          return rest.put(`/api/v1/apps/${id}/groups/${pick("groupId", "a group")}`, { body: {} });
         case "app:unassign-group":
-          return this.api.request(`/api/v1/apps/${id}/groups/${pick("groupId", "a group")}`, {
-            method: "DELETE",
-          });
+          return rest.delete(`/api/v1/apps/${id}/groups/${pick("groupId", "a group")}`);
         case "authorization-server:add-scope":
-          return this.api.request(`/api/v1/authorizationServers/${id}/scopes`, {
-            method: "POST",
+          return rest.post(`/api/v1/authorizationServers/${id}/scopes`, {
             body: {
               name: values["name"],
               description: values["description"] ?? "",
@@ -1708,22 +1737,17 @@ export class OktaClient implements PluginClient {
             },
           });
         case "authorization-server:delete-scope":
-          return this.api.request(
+          return rest.delete(
             `/api/v1/authorizationServers/${id}/scopes/${pick("scopeId", "a scope")}`,
-            {
-              method: "DELETE",
-            },
           );
         case "policy:activate-rule":
-        case "policy:deactivate-rule": {
-          const verb = command.startsWith("activate") ? "activate" : "deactivate";
-          return this.api.request(
-            `/api/v1/policies/${id}/rules/${pick("ruleId", "a rule")}/lifecycle/${verb}`,
-            {
-              method: "POST",
-            },
+          return rest.post(
+            `/api/v1/policies/${id}/rules/${pick("ruleId", "a rule")}/lifecycle/activate`,
           );
-        }
+        case "policy:deactivate-rule":
+          return rest.post(
+            `/api/v1/policies/${id}/rules/${pick("ruleId", "a rule")}/lifecycle/deactivate`,
+          );
         default:
           throw new Error(`Okta plugin: unknown command "${command}" for type "${typeId}"`);
       }
@@ -1736,14 +1760,13 @@ export class OktaClient implements PluginClient {
 
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resource.id));
+      const id = pathEncode(externalIdOf(resource.id));
       const extra: Record<string, string> = {};
+      const { rest } = this.api;
       switch (resource.resourceTypeId) {
         case "user": {
           const [groups, allGroups] = await Promise.all([
-            this.api
-              .request<OktaGroup[]>(`/api/v1/users/${id}/groups`)
-              .catch(() => [] as OktaGroup[]),
+            rest.get(`/api/v1/users/${id}/groups`).catch((): Schemas["Group"][] => []),
             this.groupOptions(),
           ]);
           extra["__groups__"] = JSON.stringify(
@@ -1755,8 +1778,11 @@ export class OktaClient implements PluginClient {
         case "group": {
           const [members, users] = await Promise.all([
             this.api
-              .paginate<OktaUser>(`/api/v1/groups/${id}/users`, { limit: 200 }, 3)
-              .catch(() => [] as OktaUser[]),
+              .paginate(
+                rest.getResponse(`/api/v1/groups/${id}/users`, { query: { limit: 200 } }),
+                3,
+              )
+              .catch((): Schemas["User"][] => []),
             this.userOptions(),
           ]);
           const memberIds = new Set(members.map((m) => str(m.id)));
@@ -1773,7 +1799,7 @@ export class OktaClient implements PluginClient {
         case "app": {
           const [groups, allGroups] = await Promise.all([
             this.api
-              .paginate<{ id?: string }>(`/api/v1/apps/${id}/groups`, { limit: 200 }, 3)
+              .paginate(rest.getResponse(`/api/v1/apps/${id}/groups`, { query: { limit: 200 } }), 3)
               .catch(() => []),
             this.groupOptions(false),
           ]);
@@ -1785,12 +1811,12 @@ export class OktaClient implements PluginClient {
           break;
         }
         case "authorization-server": {
-          const scopes = await this.api
-            .request<OktaScope[]>(`/api/v1/authorizationServers/${id}/scopes`)
-            .catch(() => [] as OktaScope[]);
-          const policies = await this.api
-            .request<OktaPolicy[]>(`/api/v1/authorizationServers/${id}/policies`)
-            .catch(() => [] as OktaPolicy[]);
+          const scopes = await rest
+            .get(`/api/v1/authorizationServers/${id}/scopes`)
+            .catch((): Schemas["OAuth2Scope"][] => []);
+          const policies = await rest
+            .get(`/api/v1/authorizationServers/${id}/policies`)
+            .catch((): Schemas["AuthorizationServerPolicy"][] => []);
           extra["__scopes__"] = JSON.stringify(scopes);
           extra["__policies__"] = JSON.stringify(
             policies.map((p) => ({
@@ -1802,9 +1828,9 @@ export class OktaClient implements PluginClient {
           break;
         }
         case "policy": {
-          const rules = await this.api
-            .request<OktaRule[]>(`/api/v1/policies/${id}/rules`)
-            .catch(() => [] as OktaRule[]);
+          const rules = await rest
+            .get(`/api/v1/policies/${id}/rules`)
+            .catch((): Schemas["PolicyRule"][] => []);
           extra["__rules__"] = JSON.stringify(rules);
           break;
         }

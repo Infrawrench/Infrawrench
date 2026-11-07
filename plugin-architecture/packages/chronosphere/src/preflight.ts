@@ -11,20 +11,25 @@ import type {
   PreflightResult,
 } from "@infrawrench/plugin-base";
 import type { ChronoContext } from "./api.js";
-import { chronoFetch, statusOf } from "./api.js";
+import { chronoFetch, configApi, guarded, statusOf } from "./api.js";
 import { PROM_PATH } from "./prom.js";
+
+type ConfigApi = ReturnType<typeof configApi>;
 
 interface Probe {
   capability: PreflightCapability;
-  path: string;
-  query?: Record<string, string | number>;
+  /** The cheapest call that needs the permission. */
+  call: (api: ConfigApi, ctx: ChronoContext) => Promise<object>;
 }
+
+const ONE = { query: { "page.max_size": 1 } };
 
 const read = (
   id: string,
   label: string,
   description: string,
   plural: string,
+  call: Probe["call"],
   essential = false,
 ): Probe => ({
   capability: {
@@ -34,32 +39,45 @@ const read = (
     requiredPermissions: [{ id: `${plural}:read`, label: `Read ${label.toLowerCase()}` }],
     ...(essential ? { essential: true } : {}),
   },
-  path: `/api/v1/config/${plural}`,
-  query: { "page.max_size": 1 },
+  call,
 });
 
 const PROBES: Probe[] = [
-  read("monitors", "Monitors", "List, create, edit and delete monitors.", "monitors", true),
+  read(
+    "monitors",
+    "Monitors",
+    "List, create, edit and delete monitors.",
+    "monitors",
+    (api) => api.get("/api/v1/config/monitors", ONE),
+    true,
+  ),
   read(
     "routing",
     "Notification policies and notifiers",
     "List, rename and delete routing objects.",
     "notification-policies",
+    (api) => api.get("/api/v1/config/notification-policies", ONE),
   ),
   read(
     "collections",
     "Collections, buckets and teams",
     "Organise monitors and dashboards.",
     "collections",
+    (api) => api.get("/api/v1/config/collections", ONE),
   ),
-  read("dashboards", "Dashboards", "List, rename and delete dashboards.", "dashboards"),
-  read("slos", "SLOs", "List and edit SLOs.", "slos"),
-  read("shaping", "Rollup and drop rules", "Change metric shaping rules.", "drop-rules"),
+  read("dashboards", "Dashboards", "List, rename and delete dashboards.", "dashboards", (api) =>
+    api.get("/api/v1/config/dashboards", ONE),
+  ),
+  read("slos", "SLOs", "List and edit SLOs.", "slos", (api) => api.get("/api/v1/config/slos", ONE)),
+  read("shaping", "Rollup and drop rules", "Change metric shaping rules.", "drop-rules", (api) =>
+    api.get("/api/v1/config/drop-rules", ONE),
+  ),
   read(
     "service-accounts",
     "Service accounts",
     "List and delete service accounts (admin).",
     "service-accounts",
+    (api) => api.get("/api/v1/config/service-accounts", ONE),
   ),
   {
     capability: {
@@ -68,8 +86,7 @@ const PROBES: Probe[] = [
       description: "Chart monitor queries and run PromQL from the Query tab.",
       requiredPermissions: [{ id: "metrics:read", label: "Query metrics" }],
     },
-    path: `${PROM_PATH}/query`,
-    query: { query: "vector(1)" },
+    call: (_api, ctx) => chronoFetch(ctx, `${PROM_PATH}/query`, { query: { query: "vector(1)" } }),
   },
 ];
 
@@ -78,10 +95,11 @@ export const CHRONO_PREFLIGHT: PreflightDeclaration = {
 };
 
 export async function verifyChronoCredentials(ctx: ChronoContext): Promise<PreflightResult> {
+  const api = configApi(ctx);
   const checks = await Promise.all(
     PROBES.map(async (p): Promise<PreflightCapabilityCheck> => {
       try {
-        await chronoFetch(ctx, p.path, { query: p.query ?? {} });
+        await guarded(p.call(api, ctx));
         return { capabilityId: p.capability.id, status: "ok" };
       } catch (err) {
         const status = statusOf(err);

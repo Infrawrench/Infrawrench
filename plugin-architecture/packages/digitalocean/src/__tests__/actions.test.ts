@@ -7,6 +7,7 @@ import {
   executeDropletCommand,
   executeVolumeCommand,
 } from "../actions.js";
+import { fakeApi } from "./fake-api.js";
 
 function makeResource(fields: Record<string, string>): ResourceInstance {
   return {
@@ -27,11 +28,13 @@ interface FakeCtx extends ActionContext {
 }
 
 function makeCtx(overrides: Partial<FakeCtx> = {}): FakeCtx {
+  const fetch = overrides.fetch ?? vi.fn().mockResolvedValue({});
   const ctx: FakeCtx = {
-    fetch: vi.fn().mockResolvedValue({}),
     getResource: vi.fn().mockResolvedValue(makeResource({ name: "web-1" })),
     ...overrides,
-  } as FakeCtx;
+    fetch,
+    api: fakeApi(fetch),
+  };
   return ctx;
 }
 

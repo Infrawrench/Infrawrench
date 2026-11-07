@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type {
   TcAccess,
+  TcAccountRole,
   TcApiKey,
   TcConnectivityRule,
   TcExportSink,
@@ -64,8 +65,8 @@ export function roleName(role: string | undefined): string {
     .toLowerCase();
 }
 
-export function roleEnum(role: string): string {
-  const map: Record<string, string> = {
+export function roleEnum(role: string): TcAccountRole {
+  const map: Record<string, TcAccountRole> = {
     owner: "ROLE_OWNER",
     admin: "ROLE_ADMIN",
     developer: "ROLE_DEVELOPER",

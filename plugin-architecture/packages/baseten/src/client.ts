@@ -16,8 +16,8 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, withMetricsCapability } from "@infrawrench/plugin-base";
-import { BasetenApi, isStatus } from "./api.js";
+import { pathEncode, QuotaAccessError, withMetricsCapability } from "@infrawrench/plugin-base";
+import { createBasetenApi, isStatus, type BasetenApi } from "./api.js";
 import { buildAutoscalingPatch } from "./autoscaling.js";
 import { fetchLogs } from "./logs.js";
 import {
@@ -60,19 +60,12 @@ import {
 } from "./render.js";
 import { IDLE_WINDOW_DAYS } from "./resource-types.js";
 import type {
-  BasetenChain,
-  BasetenDeployment,
-  BasetenEnvironment,
-  BasetenInstanceType,
-  BasetenInstanceTypePrice,
   BasetenModel,
   BasetenModelApi,
-  BasetenPagination,
-  BasetenSecret,
+  BasetenModelRef,
   BasetenTeam,
   BasetenTrainingCapacity,
-  BasetenTrainingJob,
-  BasetenTrainingProject,
+  UpdateEnvironmentBody,
 } from "./types.js";
 
 const MODELS_TTL_MS = 60_000;
@@ -80,11 +73,11 @@ const CATALOG_TTL_MS = 10 * 60_000;
 const USAGE_TTL_MS = 5 * 60_000;
 const FAN_OUT = 8;
 
-function str(v: unknown): string {
+function str(v: string | null | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
 
-const enc = encodeURIComponent;
+const enc = pathEncode;
 
 interface Cached<T> {
   at: number;
@@ -119,7 +112,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
 function parseFormArg(raw: string | number | undefined): Record<string, string> {
   if (typeof raw !== "string") return {};
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed: Record<string, unknown> = JSON.parse(raw);
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
     return out;
@@ -148,7 +141,7 @@ export class BasetenClient implements PluginClient {
   ) {
     const apiKey = str(credentials["apiKey"]);
     if (!apiKey) throw new Error("Baseten plugin: missing apiKey credential");
-    this.api = new BasetenApi(apiKey, credentials["caCert"] ?? "", services);
+    this.api = createBasetenApi(apiKey, credentials["caCert"] ?? "", services);
     this.resourceTypes = resourceTypes;
   }
 
@@ -156,7 +149,7 @@ export class BasetenClient implements PluginClient {
 
   models(): Promise<BasetenModel[]> {
     this.modelsCache = cached(this.modelsCache, MODELS_TTL_MS, () =>
-      this.api.request<{ models?: BasetenModel[] }>("/v1/models").then((r) => r?.models ?? []),
+      this.api.get("/v1/models").then((r) => r?.models ?? []),
     );
     return this.modelsCache.value;
   }
@@ -164,7 +157,7 @@ export class BasetenClient implements PluginClient {
   teams(): Promise<BasetenTeam[]> {
     this.teamsCache = cached(this.teamsCache, CATALOG_TTL_MS, () =>
       this.api
-        .request<{ teams?: BasetenTeam[] }>("/v1/teams")
+        .get("/v1/teams")
         .then((r) => r?.teams ?? [])
         .catch(() => []),
     );
@@ -176,13 +169,13 @@ export class BasetenClient implements PluginClient {
     this.catalogCache = cached(this.catalogCache, CATALOG_TTL_MS, async () => {
       const [types, prices] = await Promise.all([
         this.api
-          .request<{ instance_types?: BasetenInstanceType[] }>("/v1/instance_types")
+          .get("/v1/instance_types")
           .then((r) => r?.instance_types ?? [])
-          .catch(() => [] as BasetenInstanceType[]),
+          .catch(() => []),
         this.api
-          .request<{ instance_types?: BasetenInstanceTypePrice[] }>("/v1/instance_type_prices")
+          .get("/v1/instance_type_prices")
           .then((r) => r?.instance_types ?? [])
-          .catch(() => [] as BasetenInstanceTypePrice[]),
+          .catch(() => []),
       ]);
       return indexInstanceTypes(types, prices);
     });
@@ -201,7 +194,7 @@ export class BasetenClient implements PluginClient {
     this.modelsCache = undefined;
   }
 
-  private async modelById(modelId: string): Promise<Pick<BasetenModel, "id" | "name">> {
+  private async modelById(modelId: string): Promise<BasetenModelRef> {
     const models = await this.models().catch(() => []);
     return models.find((m) => m.id === modelId) ?? { id: modelId };
   }
@@ -221,9 +214,7 @@ export class BasetenClient implements PluginClient {
           ]);
           const lists = await mapLimit(models, FAN_OUT, async (m) => {
             try {
-              const res = await this.api.request<{ deployments?: BasetenDeployment[] }>(
-                `/v1/models/${enc(m.id)}/deployments`,
-              );
+              const res = await this.api.get(`/v1/models/${enc(m.id)}/deployments`);
               return (res?.deployments ?? []).map((d) =>
                 mapDeployment(d, m, accountId, index, usage),
               );
@@ -238,9 +229,7 @@ export class BasetenClient implements PluginClient {
           const [models, index] = await Promise.all([this.models(), this.instanceTypes()]);
           const lists = await mapLimit(models, FAN_OUT, async (m) => {
             try {
-              const res = await this.api.request<{ environments?: BasetenEnvironment[] }>(
-                `/v1/models/${enc(m.id)}/environments`,
-              );
+              const res = await this.api.get(`/v1/models/${enc(m.id)}/environments`);
               return (res?.environments ?? []).map((e) => mapEnvironment(e, m, accountId, index));
             } catch (e) {
               if (isStatus(e, 403, 404)) return [];
@@ -250,7 +239,7 @@ export class BasetenClient implements PluginClient {
           return lists.flat();
         }
         case "chain": {
-          const res = await this.api.request<{ chains?: BasetenChain[] }>("/v1/chains");
+          const res = await this.api.get("/v1/chains");
           return (res?.chains ?? []).map((c) => mapChain(c, accountId));
         }
         case "instance-type": {
@@ -265,20 +254,15 @@ export class BasetenClient implements PluginClient {
           return out;
         }
         case "secret": {
-          const res = await this.api.request<{ secrets?: BasetenSecret[] }>("/v1/secrets");
+          const res = await this.api.get("/v1/secrets");
           return (res?.secrets ?? []).map((s) => mapSecret(s, accountId));
         }
         case "training-project": {
-          const res = await this.api.request<{ training_projects?: BasetenTrainingProject[] }>(
-            "/v1/training_projects",
-          );
+          const res = await this.api.get("/v1/training_projects");
           return (res?.training_projects ?? []).map((p) => mapTrainingProject(p, accountId));
         }
         case "training-job": {
-          const res = await this.api.request<{ training_jobs?: BasetenTrainingJob[] }>(
-            "/v1/training_jobs/search",
-            { method: "POST", body: {} },
-          );
+          const res = await this.api.post("/v1/training_jobs/search", { body: {} });
           return (res?.training_jobs ?? []).map((j) => mapTrainingJob(j, accountId));
         }
         case "model-api":
@@ -293,10 +277,9 @@ export class BasetenClient implements PluginClient {
     const out: BasetenModelApi[] = [];
     let cursor: string | undefined;
     for (let page = 0; page < 20; page++) {
-      const res: { items?: BasetenModelApi[]; pagination?: BasetenPagination } | undefined =
-        await this.api.request("/v1/model_apis", {
-          query: { added_only: true, limit: 1000, ...(cursor ? { cursor } : {}) },
-        });
+      const res = await this.api.get("/v1/model_apis", {
+        query: { added_only: true, limit: 1000, ...(cursor ? { cursor } : {}) },
+      });
       out.push(...(res?.items ?? []));
       if (!res?.pagination?.has_more || !res.pagination.cursor) break;
       cursor = res.pagination.cursor;
@@ -312,13 +295,13 @@ export class BasetenClient implements PluginClient {
     return attempt(async () => {
       const external = externalOf(resourceId);
       if (typeId === "model") {
-        const m = await this.api.request<BasetenModel>(`/v1/models/${enc(external)}`);
+        const m = await this.api.get(`/v1/models/${enc(external)}`);
         return mapModel(m, accountId);
       }
       if (typeId === "deployment") {
         const { scope: modelId, id } = parseScopedId(resourceId);
         const [d, model, index, usage] = await Promise.all([
-          this.api.request<BasetenDeployment>(`/v1/models/${enc(modelId)}/deployments/${enc(id)}`),
+          this.api.get(`/v1/models/${enc(modelId)}/deployments/${enc(id)}`),
           this.modelById(modelId),
           this.instanceTypes(),
           this.deploymentUsage(),
@@ -328,9 +311,7 @@ export class BasetenClient implements PluginClient {
       if (typeId === "environment") {
         const { scope: modelId, id: name } = parseScopedId(resourceId);
         const [e, model, index] = await Promise.all([
-          this.api.request<BasetenEnvironment>(
-            `/v1/models/${enc(modelId)}/environments/${enc(name)}`,
-          ),
+          this.api.get(`/v1/models/${enc(modelId)}/environments/${enc(name)}`),
           this.modelById(modelId),
           this.instanceTypes(),
         ]);
@@ -364,12 +345,10 @@ export class BasetenClient implements PluginClient {
         const { scope: modelId, id } = parseScopedId(resource.externalId ?? resource.id);
         const [envs, daily] = await Promise.all([
           this.api
-            .request<{ environments?: BasetenEnvironment[] }>(
-              `/v1/models/${enc(modelId)}/environments`,
-            )
+            .get(`/v1/models/${enc(modelId)}/environments`)
             .then((r) => (r?.environments ?? []).map((e) => e.name))
-            .catch(() => [] as string[]),
-          this.dailyDeploymentUsage(id).catch(() => [] as DailyUsageRow[]),
+            .catch((): string[] => []),
+          this.dailyDeploymentUsage(id).catch((): DailyUsageRow[] => []),
         ]);
         fields[ENRICH_ENVIRONMENTS] = JSON.stringify(envs);
         if (daily.length) fields[ENRICH_DAILY] = JSON.stringify(daily);
@@ -378,9 +357,9 @@ export class BasetenClient implements PluginClient {
           resource.fields["modelId"] ?? parseScopedId(resource.externalId ?? resource.id).scope,
         );
         const deployments = await this.api
-          .request<{ deployments?: BasetenDeployment[] }>(`/v1/models/${enc(modelId)}/deployments`)
+          .get(`/v1/models/${enc(modelId)}/deployments`)
           .then((r) => (r?.deployments ?? []).map((d) => ({ id: d.id, name: d.name || d.id })))
-          .catch(() => [] as Array<{ id: string; name: string }>);
+          .catch((): Array<{ id: string; name: string }> => []);
         fields[ENRICH_DEPLOYMENTS] = JSON.stringify(deployments);
       }
       return { ...resource, fields };
@@ -541,17 +520,13 @@ export class BasetenClient implements PluginClient {
         if (!modelId) throw new Error("Baseten plugin: choose a model");
         const autoscaling = buildAutoscalingPatch(fields, {});
         const cleanup = str(fields["promotionCleanup"]);
-        const env = await this.api.request<BasetenEnvironment>(
-          `/v1/models/${enc(modelId)}/environments`,
-          {
-            method: "POST",
-            body: {
-              name,
-              ...(autoscaling ? { autoscaling_settings: autoscaling } : {}),
-              ...(cleanup ? { promotion_settings: { promotion_cleanup_strategy: cleanup } } : {}),
-            },
+        const env = await this.api.post(`/v1/models/${enc(modelId)}/environments`, {
+          body: {
+            name,
+            ...(autoscaling ? { autoscaling_settings: autoscaling } : {}),
+            ...(cleanup ? { promotion_settings: { promotion_cleanup_strategy: cleanup } } : {}),
           },
-        );
+        });
         const [model, index] = await Promise.all([this.modelById(modelId), this.instanceTypes()]);
         return mapEnvironment(env ?? { name, model_id: modelId }, model, accountId, index);
       }
@@ -559,10 +534,9 @@ export class BasetenClient implements PluginClient {
         const value = fields["value"] ?? "";
         if (!value) throw new Error("Baseten plugin: enter the secret value");
         const teamId = str(fields["teamId"]);
-        const secret = await this.api.request<BasetenSecret>(
-          teamId ? `/v1/teams/${enc(teamId)}/secrets` : "/v1/secrets",
-          { method: "POST", body: { name, value } },
-        );
+        const secret = await (teamId
+          ? this.api.post(`/v1/teams/${enc(teamId)}/secrets`, { body: { name, value } })
+          : this.api.post("/v1/secrets", { body: { name, value } }));
         return mapSecret(secret ?? { name }, accountId);
       }
       throw new Error(`Baseten plugin: cannot create "${typeId}"`);
@@ -580,10 +554,7 @@ export class BasetenClient implements PluginClient {
         case "model": {
           const name = str(fields["name"]);
           if (name) {
-            await this.api.request(`/v1/models/${enc(externalOf(resourceId))}`, {
-              method: "PATCH",
-              body: { name },
-            });
+            await this.api.patch(`/v1/models/${enc(externalOf(resourceId))}`, { body: { name } });
             this.invalidateModels();
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -595,9 +566,9 @@ export class BasetenClient implements PluginClient {
           });
           if (patch) {
             const { scope: modelId, id } = parseScopedId(resourceId);
-            await this.api.request(
+            await this.api.patch(
               `/v1/models/${enc(modelId)}/deployments/${enc(id)}/autoscaling_settings`,
-              { method: "PATCH", body: patch },
+              { body: patch },
             );
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -605,25 +576,22 @@ export class BasetenClient implements PluginClient {
         case "environment": {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
           const autoscaling = buildAutoscalingPatch(fields, current.fields);
-          const body: Record<string, unknown> = {};
-          if (autoscaling) body["autoscaling_settings"] = autoscaling;
-          const promotion: Record<string, unknown> = {};
+          const body: UpdateEnvironmentBody = {};
+          if (autoscaling) body.autoscaling_settings = autoscaling;
+          const promotion: NonNullable<UpdateEnvironmentBody["promotion_settings"]> = {};
           if (fields["promotionCleanup"]) {
-            promotion["promotion_cleanup_strategy"] = str(fields["promotionCleanup"]);
+            promotion.promotion_cleanup_strategy = str(fields["promotionCleanup"]);
           }
           if (fields["rollingDeploy"] !== undefined) {
-            promotion["rolling_deploy"] = fields["rollingDeploy"] === "true";
+            promotion.rolling_deploy = fields["rollingDeploy"] === "true";
           }
-          if (Object.keys(promotion).length) body["promotion_settings"] = promotion;
+          if (Object.keys(promotion).length) body.promotion_settings = promotion;
           if (fields["backpressurePolicy"]) {
-            body["request_backpressure_settings"] = { policy: str(fields["backpressurePolicy"]) };
+            body.request_backpressure_settings = { policy: str(fields["backpressurePolicy"]) };
           }
           if (Object.keys(body).length) {
             const { scope: modelId, id: name } = parseScopedId(resourceId);
-            await this.api.request(`/v1/models/${enc(modelId)}/environments/${enc(name)}`, {
-              method: "PATCH",
-              body,
-            });
+            await this.api.patch(`/v1/models/${enc(modelId)}/environments/${enc(name)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -632,10 +600,10 @@ export class BasetenClient implements PluginClient {
           const value = fields["value"] ?? "";
           if (value) {
             const teamId = await this.teamIdByName(String(current.fields["teamName"] ?? ""));
-            await this.api.request(teamId ? `/v1/teams/${enc(teamId)}/secrets` : "/v1/secrets", {
-              method: "POST",
-              body: { name: String(current.fields["name"]), value },
-            });
+            const body = { name: String(current.fields["name"]), value };
+            await (teamId
+              ? this.api.post(`/v1/teams/${enc(teamId)}/secrets`, { body })
+              : this.api.post("/v1/secrets", { body }));
           }
           return current;
         }
@@ -656,14 +624,12 @@ export class BasetenClient implements PluginClient {
       const external = externalOf(resourceId);
       switch (typeId) {
         case "model":
-          await this.api.request(`/v1/models/${enc(external)}`, { method: "DELETE" });
+          await this.api.delete(`/v1/models/${enc(external)}`);
           this.invalidateModels();
           return;
         case "deployment": {
           const { scope: modelId, id } = parseScopedId(resourceId);
-          await this.api.request(`/v1/models/${enc(modelId)}/deployments/${enc(id)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/v1/models/${enc(modelId)}/deployments/${enc(id)}`);
           return;
         }
         case "environment": {
@@ -671,32 +637,28 @@ export class BasetenClient implements PluginClient {
           if (name === "production") {
             throw new Error("Baseten does not allow deleting the production environment.");
           }
-          await this.api.request(`/v1/models/${enc(modelId)}/environments/${enc(name)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/v1/models/${enc(modelId)}/environments/${enc(name)}`);
           return;
         }
         case "chain":
-          await this.api.request(`/v1/chains/${enc(external)}`, { method: "DELETE" });
+          await this.api.delete(`/v1/chains/${enc(external)}`);
           return;
         case "secret": {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
           const name = String(current.fields["name"]);
           const teamId = await this.teamIdByName(String(current.fields["teamName"] ?? ""));
-          await this.api.request(
-            teamId ? `/v1/teams/${enc(teamId)}/secrets/${enc(name)}` : `/v1/secrets/${enc(name)}`,
-            { method: "DELETE" },
-          );
+          await (teamId
+            ? this.api.delete(`/v1/teams/${enc(teamId)}/secrets/${enc(name)}`)
+            : this.api.delete(`/v1/secrets/${enc(name)}`));
           return;
         }
         case "training-project":
-          await this.api.request(`/v1/training_projects/${enc(external)}`, { method: "DELETE" });
+          await this.api.delete(`/v1/training_projects/${enc(external)}`);
           return;
         case "training-job": {
           const job = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          await this.api.request(
+          await this.api.delete(
             `/v1/training_projects/${enc(String(job.fields["projectId"]))}/jobs/${enc(external)}`,
-            { method: "DELETE" },
           );
           return;
         }
@@ -717,54 +679,61 @@ export class BasetenClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "deployment") {
         const { scope: modelId, id } = parseScopedId(resourceId);
-        const base = `/v1/models/${enc(modelId)}/deployments/${enc(id)}`;
+        const model = enc(modelId);
+        const deployment = enc(id);
         switch (actionId) {
           case "activate":
+            await this.api.post(`/v1/models/${model}/deployments/${deployment}/activate`);
+            return;
           case "deactivate":
+            await this.api.post(`/v1/models/${model}/deployments/${deployment}/deactivate`);
+            return;
           case "retry":
-            await this.api.request(`${base}/${actionId}`, { method: "POST" });
+            await this.api.post(`/v1/models/${model}/deployments/${deployment}/retry`);
             return;
           case "promote": {
             const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-            const path =
-              current.fields["isDevelopment"] === true
-                ? `/v1/models/${enc(modelId)}/deployments/development/promote`
-                : `${base}/promote`;
-            await this.api.request(path, {
-              method: "POST",
-              body: { scale_down_previous_production: true },
-            });
+            const body = { scale_down_previous_production: true };
+            await (current.fields["isDevelopment"] === true
+              ? this.api.post(`/v1/models/${model}/deployments/development/promote`, { body })
+              : this.api.post(`/v1/models/${model}/deployments/${deployment}/promote`, { body }));
             return;
           }
           case "scale-to-zero":
-            await this.api.request(`${base}/autoscaling_settings`, {
-              method: "PATCH",
-              body: { min_replica: 0 },
-            });
+            await this.api.patch(
+              `/v1/models/${model}/deployments/${deployment}/autoscaling_settings`,
+              { body: { min_replica: 0 } },
+            );
             return;
         }
       }
       if (typeId === "environment") {
         const { scope: modelId, id: name } = parseScopedId(resourceId);
-        const base = `/v1/models/${enc(modelId)}/environments/${enc(name)}`;
-        const paths: Record<string, string> = {
-          activate: "activate",
-          deactivate: "deactivate",
-          "cancel-promotion": "cancel_promotion",
-          "pause-promotion": "pause_promotion",
-          "resume-promotion": "resume_promotion",
-        };
-        const suffix = paths[actionId];
-        if (suffix) {
-          await this.api.request(`${base}/${suffix}`, { method: "POST" });
-          return;
+        const model = enc(modelId);
+        const env = enc(name);
+        switch (actionId) {
+          case "activate":
+            await this.api.post(`/v1/models/${model}/environments/${env}/activate`);
+            return;
+          case "deactivate":
+            await this.api.post(`/v1/models/${model}/environments/${env}/deactivate`);
+            return;
+          case "cancel-promotion":
+            await this.api.post(`/v1/models/${model}/environments/${env}/cancel_promotion`);
+            return;
+          case "pause-promotion":
+            await this.api.post(`/v1/models/${model}/environments/${env}/pause_promotion`);
+            return;
+          case "resume-promotion":
+            await this.api.post(`/v1/models/${model}/environments/${env}/resume_promotion`);
+            return;
         }
       }
       if (typeId === "training-job" && actionId === "stop") {
         const job = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-        await this.api.request(
+        await this.api.post(
           `/v1/training_projects/${enc(String(job.fields["projectId"]))}/jobs/${enc(job.externalId ?? externalOf(job.id))}/stop`,
-          { method: "POST", body: {} },
+          { body: {} },
         );
         return;
       }
@@ -798,8 +767,7 @@ export class BasetenClient implements PluginClient {
         throw new Error(`Baseten plugin: cannot promote a "${typeId}"`);
       }
       if (!envName || !deploymentId) throw new Error("Baseten plugin: choose what to promote");
-      await this.api.request(`/v1/models/${enc(modelId)}/environments/${enc(envName)}/promote`, {
-        method: "POST",
+      await this.api.post(`/v1/models/${enc(modelId)}/environments/${enc(envName)}/promote`, {
         body: { deployment_id: deploymentId, scale_down_previous_deployment: scaleDown },
       });
       return null;
@@ -815,20 +783,38 @@ export class BasetenClient implements PluginClient {
     params: LogsFetchParams,
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
-      let path: string;
+      const { tailLines, container } = params;
       if (typeId === "deployment") {
         const { scope: modelId, id } = parseScopedId(resourceId);
-        path = `/v1/models/${enc(modelId)}/deployments/${enc(id)}/logs`;
-      } else if (typeId === "environment") {
-        const { scope: modelId, id: name } = parseScopedId(resourceId);
-        path = `/v1/models/${enc(modelId)}/environments/${enc(name)}/logs`;
-      } else if (typeId === "training-job") {
-        const job = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-        path = `/v1/training_projects/${enc(String(job.fields["projectId"]))}/jobs/${enc(job.externalId ?? externalOf(job.id))}/logs`;
-      } else {
-        throw new Error(`Baseten plugin: no logs for "${typeId}"`);
+        return fetchLogs(
+          (query) =>
+            this.api.get(`/v1/models/${enc(modelId)}/deployments/${enc(id)}/logs`, { query }),
+          tailLines,
+          container,
+        );
       }
-      return fetchLogs(this.api, path, params.tailLines, params.container);
+      if (typeId === "environment") {
+        const { scope: modelId, id: name } = parseScopedId(resourceId);
+        return fetchLogs(
+          (query) =>
+            this.api.get(`/v1/models/${enc(modelId)}/environments/${enc(name)}/logs`, { query }),
+          tailLines,
+          container,
+        );
+      }
+      if (typeId === "training-job") {
+        const job = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        return fetchLogs(
+          (query) =>
+            this.api.get(
+              `/v1/training_projects/${enc(String(job.fields["projectId"]))}/jobs/${enc(job.externalId ?? externalOf(job.id))}/logs`,
+              { query },
+            ),
+          tailLines,
+          container,
+        );
+      }
+      throw new Error(`Baseten plugin: no logs for "${typeId}"`);
     });
   }
 
@@ -845,16 +831,18 @@ export class BasetenClient implements PluginClient {
         case "deployment": {
           const { scope: modelId, id } = parseScopedId(resourceId);
           return fetchModelMetrics(
-            this.api,
-            `/v1/models/${enc(modelId)}/deployments/${enc(id)}/metrics`,
+            (query) =>
+              this.api.get(`/v1/models/${enc(modelId)}/deployments/${enc(id)}/metrics`, { query }),
             timeRange,
           );
         }
         case "environment": {
           const { scope: modelId, id: name } = parseScopedId(resourceId);
           return fetchModelMetrics(
-            this.api,
-            `/v1/models/${enc(modelId)}/environments/${enc(name)}/metrics`,
+            (query) =>
+              this.api.get(`/v1/models/${enc(modelId)}/environments/${enc(name)}/metrics`, {
+                query,
+              }),
             timeRange,
           );
         }
@@ -889,7 +877,7 @@ export class BasetenClient implements PluginClient {
     return attempt(async () => {
       let res: BasetenTrainingCapacity;
       try {
-        res = await this.api.request<BasetenTrainingCapacity>("/v1/training/capacity");
+        res = await this.api.get("/v1/training/capacity");
       } catch (e) {
         if (isStatus(e, 401, 403)) {
           throw new QuotaAccessError("Baseten refused the training GPU capacity for this API key.");

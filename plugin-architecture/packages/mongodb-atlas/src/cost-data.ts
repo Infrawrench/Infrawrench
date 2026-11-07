@@ -1,7 +1,13 @@
-import type { CostChargeType, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import type {
+  ApiResponse,
+  CostChargeType,
+  CostFetchRange,
+  CostRow,
+} from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
 import type { AtlasContext } from "./api.js";
-import { atlasRequest, enc, isPermissionError } from "./api.js";
+import { atlasApi, isPermissionError } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 /**
  * Cost from Atlas invoices.
@@ -28,34 +34,8 @@ import { atlasRequest, enc, isPermissionError } from "./api.js";
  * day. Credits and support are flagged with their charge type.
  */
 
-export interface InvoiceLineItem {
-  sku?: string;
-  clusterName?: string;
-  groupId?: string;
-  groupName?: string;
-  startDate?: string;
-  endDate?: string;
-  quantity?: number;
-  unit?: string;
-  unitPriceDollars?: number;
-  totalPriceCents?: number;
-  discountCents?: number;
-  cloudProvider?: string;
-  stitchAppName?: string;
-  tags?: Record<string, unknown>;
-}
-
-export interface Invoice {
-  id?: string;
-  statusName?: string;
-  startDate?: string;
-  endDate?: string;
-  amountBilledCents?: number;
-  subtotalCents?: number;
-  creditsCents?: number;
-  salesTaxCents?: number;
-  lineItems?: InvoiceLineItem[];
-}
+/** A pending or closed invoice with its line items, or a closed one's metadata without them. */
+export type Invoice = ApiResponse<operations["getOrgInvoice"]>;
 
 /**
  * The Atlas billing category a SKU belongs to. Category names are the
@@ -221,8 +201,9 @@ export async function fetchInvoices(
   orgId: string,
   range: CostFetchRange,
 ): Promise<Invoice[]> {
-  const base = `/api/atlas/v2/orgs/${enc(orgId)}/invoices`;
-  const pending = await atlasRequest<{ results?: Invoice[] }>(ctx, "GET", `${base}/pending`);
+  const api = atlasApi(ctx);
+  const org = pathEncode(orgId);
+  const pending = await api.get(`/orgs/${org}/invoices/pending`);
   const out: Invoice[] = [];
   const seen = new Set<string>();
   for (const inv of pending?.results ?? []) {
@@ -233,7 +214,7 @@ export async function fetchInvoices(
   // Newest first; stop paging once invoices end before the range starts.
   const metadata: Invoice[] = [];
   for (let page = 1; page <= 20; page++) {
-    const res = await atlasRequest<{ results?: Invoice[] }>(ctx, "GET", base, {
+    const res = await api.get(`/orgs/${org}/invoices`, {
       query: { itemsPerPage: 100, pageNum: page, sortBy: "START_DATE", orderBy: "desc" },
     });
     const results = res?.results ?? [];
@@ -245,7 +226,7 @@ export async function fetchInvoices(
   for (const meta of metadata) {
     if (!meta.id || seen.has(meta.id) || !overlaps(meta, range)) continue;
     seen.add(meta.id);
-    const full = await atlasRequest<Invoice>(ctx, "GET", `${base}/${enc(meta.id)}`);
+    const full = await api.get(`/orgs/${org}/invoices/${pathEncode(meta.id)}`);
     out.push(full ?? meta);
   }
   return out;

@@ -29,6 +29,7 @@
  */
 
 import type {
+  ApiResponse,
   OAuthCompletionContext,
   OAuthCompletionResult,
   OAuthDeclaration,
@@ -37,6 +38,7 @@ import type {
 import { OAUTH_CREDENTIAL_KEY } from "@infrawrench/plugin-base";
 import type { PagerDutyRegion } from "./api.js";
 import { restBase } from "./api.js";
+import type { operations } from "./api-types.rest.gen.js";
 
 export const PAGERDUTY_OAUTH: OAuthDeclaration = {
   authorizeUrl: "https://identity.pagerduty.com/oauth/authorize",
@@ -80,7 +82,8 @@ export function decodeIdToken(idToken: unknown): IdTokenClaims | null {
     const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
     const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
     const json = new TextDecoder().decode(Uint8Array.from(atob(padded), (c) => c.charCodeAt(0)));
-    return JSON.parse(json) as IdTokenClaims;
+    const claims: IdTokenClaims = JSON.parse(json);
+    return claims;
   } catch {
     return null;
   }
@@ -95,9 +98,7 @@ function regionFromClaims(claims: IdTokenClaims | null): PagerDutyRegion | null 
   return null;
 }
 
-interface PdMe {
-  user?: { email?: string; name?: string };
-}
+type PdMe = ApiResponse<operations["getCurrentUser"]>;
 
 async function readMe(
   context: OAuthCompletionContext,
@@ -112,7 +113,8 @@ async function readMe(
       },
     });
     if (!res.ok) return null;
-    return ((await res.json()) as PdMe).user ?? null;
+    const me: PdMe = await res.json();
+    return me.user ?? null;
   } catch {
     return null;
   }

@@ -9,7 +9,6 @@ import type {
   CredentialExport,
   DetailViewSchema,
   HostServices,
-  HttpHostServices,
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
@@ -19,18 +18,36 @@ import type {
   SchemaNode,
   SectionNode,
   SidebarItemSchema,
+  StatusDotNode,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, jsonRestFetch, withMetricsCapability } from "@infrawrench/plugin-base";
+import { joinSubtitle, pathEncode, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  afterCursor,
+  allPages,
+  call,
+  createFalApi,
+  statusOf,
+  type AnalyticsPage,
+  type AnalyticsRow,
+  type App,
+  type FalApi,
+  type Instance,
+  type ModelInfo,
+  type ModelMetadata,
+  type ModelPrice,
+  type ModelUsagePage,
+  type RequestItem,
+  type Revision,
+  type ServerlessUsagePage,
+} from "./api.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
-/** Platform API v1. Spec: https://api.fal.ai/v1/openapi.json (Oct 2026). */
-export const API_BASE = "https://api.fal.ai/v1";
 const QUEUE_BASE = "https://queue.fal.run";
 const DASHBOARD = "https://fal.ai/dashboard";
 const METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 const USAGE_LOOKBACK_DAYS = 30;
 
-const ANALYTICS_METRICS = [
+const ANALYTICS_METRICS: Array<Exclude<keyof AnalyticsRow, "endpoint_id">> = [
   "request_count",
   "success_count",
   "user_error_count",
@@ -43,104 +60,9 @@ const ANALYTICS_METRICS = [
   "cold_boot_count",
 ];
 
-interface UsageLine {
-  endpoint_id?: string;
-  app?: string | null;
-  environment?: string | null;
-  machine_type?: string;
-  unit?: string;
-  quantity?: number;
-  unit_price?: number;
-  cost_total?: number;
-  cost_discount?: number;
-  currency?: string;
-  auth_method?: string;
-  is_surge?: boolean;
-}
+type FieldValue = string | number | boolean | null | undefined;
 
-interface UsagePage {
-  next_cursor?: string | null;
-  has_more?: boolean;
-  time_series?: Array<{ bucket?: string; results?: UsageLine[] }>;
-  summary?: UsageLine[];
-}
-
-interface AnalyticsRow {
-  endpoint_id?: string;
-  [metric: string]: number | string | undefined;
-}
-
-interface AnalyticsPage {
-  next_cursor?: string | null;
-  time_series?: Array<{ bucket?: string; results?: AnalyticsRow[] }>;
-}
-
-interface ModelInfo {
-  endpoint_id?: string;
-  metadata?: {
-    display_name?: string;
-    category?: string;
-    description?: string;
-    status?: string;
-    license_type?: string;
-    model_url?: string;
-  };
-}
-
-interface App {
-  endpoint_id?: string;
-  name?: string;
-  owner?: string;
-  environment?: string;
-  machine_type?: string;
-  auth_mode?: string;
-  keep_alive?: number;
-  min_concurrency?: number;
-  max_concurrency?: number;
-  request_timeout?: number;
-  startup_timeout?: number;
-  valid_regions?: string[];
-  updated_at?: string;
-  endpoints?: string[];
-}
-
-interface Instance {
-  id?: string;
-  instance_type?: string;
-  region?: string;
-  sector?: string;
-  ip?: string;
-  status?: string;
-  creator_user_nickname?: string;
-}
-
-interface ApiKey {
-  key_id?: string;
-  alias?: string;
-  scope?: string;
-  created_at?: string;
-  creator_nickname?: string;
-}
-
-interface Workflow {
-  name?: string;
-  title?: string;
-  user_nickname?: string;
-  created_at?: string;
-  description?: string;
-  tags?: string[];
-  endpoint_ids?: string[];
-}
-
-interface RequestItem {
-  request_id?: string;
-  started_at?: string;
-  ended_at?: string | null;
-  status_code?: number | null;
-  duration?: number | null;
-}
-
-function s(value: unknown): string {
+function s(value: FieldValue): string {
   return value === undefined || value === null ? "" : String(value);
 }
 
@@ -151,39 +73,11 @@ function externalIdOf(resourceId: string, accountId: string, typeId: string): st
   return at >= 0 ? resourceId.slice(at + typeId.length + 2) : resourceId;
 }
 
-function statusOf(err: unknown): number | undefined {
-  const st = (err as { status?: unknown } | null)?.status;
-  return typeof st === "number" ? st : undefined;
-}
-
-function withStatus(err: unknown): unknown {
-  if (!(err instanceof Error)) return err;
-  const m = /API error (\d{3})\b/.exec(err.message);
-  if (!m) return err;
-  const status = Number(m[1]);
-  const hint =
-    status === 401
-      ? " Check the key in the fal dashboard under API Keys."
-      : status === 403
-        ? " This call needs an ADMIN-scope key."
-        : "";
-  return Object.assign(new Error(`${err.message}${hint}`), { status });
-}
-
-function qs(params: Record<string, string | string[] | undefined>): string {
-  const out = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === "") continue;
-    for (const item of Array.isArray(v) ? v : [v]) out.append(k, item);
-  }
-  return out.toString();
-}
-
 function section(title: string, children: SchemaNode[]): SectionNode {
   return { kind: "section", title, children };
 }
 
-function kv(items: Array<[string, unknown]>, copyable: string[] = []): SchemaNode {
+function kv(items: Array<[string, FieldValue]>, copyable: string[] = []): SchemaNode {
   return {
     kind: "key-value-list",
     items: items.map(([key, value]) => ({
@@ -192,6 +86,10 @@ function kv(items: Array<[string, unknown]>, copyable: string[] = []): SchemaNod
       ...(copyable.includes(key) && s(value) ? { copyable: true } : {}),
     })),
   };
+}
+
+function muted(content: string): SchemaNode[] {
+  return content ? [{ kind: "text", variant: "muted", content }] : [];
 }
 
 const REFRESH: ActionNode = {
@@ -209,7 +107,10 @@ function dayOf(bucket: string): string {
 }
 
 /** Usage pages → daily cost rows. Exported for tests. */
-export function modelUsageRows(pages: UsagePage[], range: CostFetchRange): CostRow[] {
+export function modelUsageRows(
+  pages: Pick<ModelUsagePage, "time_series">[],
+  range: CostFetchRange,
+): CostRow[] {
   const rows: CostRow[] = [];
   for (const page of pages) {
     for (const bucket of page.time_series ?? []) {
@@ -233,7 +134,10 @@ export function modelUsageRows(pages: UsagePage[], range: CostFetchRange): CostR
   return rows;
 }
 
-export function serverlessUsageRows(pages: UsagePage[], range: CostFetchRange): CostRow[] {
+export function serverlessUsageRows(
+  pages: Pick<ServerlessUsagePage, "time_series">[],
+  range: CostFetchRange,
+): CostRow[] {
   const rows: CostRow[] = [];
   for (const page of pages) {
     for (const bucket of page.time_series ?? []) {
@@ -262,7 +166,7 @@ export function serverlessUsageRows(pages: UsagePage[], range: CostFetchRange): 
 }
 
 /** Analytics pages → one series per metric. Durations are seconds. */
-export function analyticsSeries(pages: AnalyticsPage[]): MetricSeries[] {
+export function analyticsSeries(pages: Pick<AnalyticsPage, "time_series">[]): MetricSeries[] {
   const byMetric = new Map<string, Array<{ timestamp: number; value: number }>>();
   for (const page of pages) {
     for (const bucket of page.time_series ?? []) {
@@ -300,50 +204,12 @@ export function analyticsSeries(pages: AnalyticsPage[]): MetricSeries[] {
  * credit balance. Usage, billing, keys and compute need an ADMIN key.
  */
 export class FalClient implements PluginClient {
-  private readonly apiKey: string;
-  private readonly caCert: string;
-  private readonly http: HttpHostServices | undefined;
+  private readonly api: FalApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("fal plugin: missing apiKey credential");
-    this.apiKey = apiKey;
-    this.caCert = credentials["caCert"] ?? "";
-    this.http = services?.http;
-  }
-
-  private async fetch<T>(path: string, init?: RequestInit): Promise<T> {
-    try {
-      return await jsonRestFetch<T>({
-        vendor: "fal",
-        url: `${API_BASE}${path}`,
-        errorPath: path.split("?")[0] ?? path,
-        // fal uses `Key`, not `Bearer`.
-        headers: { Authorization: `Key ${this.apiKey}`, Accept: "application/json" },
-        ...(init ? { init } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-        ...(this.http ? { http: this.http } : {}),
-      });
-    } catch (err) {
-      throw withStatus(err);
-    }
-  }
-
-  /** Follow `next_cursor` on any paged route. */
-  private async pages<T extends { next_cursor?: string | null }>(
-    path: string,
-    params: Record<string, string | string[] | undefined>,
-    maxPages = 20,
-  ): Promise<T[]> {
-    const out: T[] = [];
-    let cursor: string | undefined;
-    for (let i = 0; i < maxPages; i++) {
-      const page = await this.fetch<T>(`${path}?${qs({ ...params, cursor })}`);
-      out.push(page);
-      if (!page.next_cursor) break;
-      cursor = page.next_cursor;
-    }
-    return out;
+    this.api = createFalApi(apiKey, credentials["caCert"] ?? "", services?.http);
   }
 
   private instance(
@@ -410,11 +276,13 @@ export class FalClient implements PluginClient {
     const start = new Date(Date.now() - USAGE_LOOKBACK_DAYS * 86_400_000)
       .toISOString()
       .slice(0, 10);
-    let pages: UsagePage[];
+    let pages: ModelUsagePage[];
     try {
-      pages = await this.pages<UsagePage>(
-        "/models/usage",
-        { expand: "summary", start, timezone: "UTC" },
+      pages = await allPages(
+        (cursor) =>
+          this.api.get("/models/usage", {
+            query: { expand: "summary", start, timezone: "UTC", ...afterCursor(cursor) },
+          }),
         10,
       );
     } catch (err) {
@@ -434,23 +302,22 @@ export class FalClient implements PluginClient {
     }
     const ids = [...totals.keys()];
     const meta = new Map<string, ModelInfo>();
-    const prices = new Map<string, { unit_price?: number; unit?: string }>();
+    const prices = new Map<string, ModelPrice>();
     for (let i = 0; i < ids.length; i += 50) {
       const chunk = ids.slice(i, i + 50);
       const [m, p] = await Promise.all([
-        this.fetch<{ models?: ModelInfo[] }>(
-          `/models?${qs({ endpoint_id: chunk, limit: "50" })}`,
-        ).catch(() => ({ models: [] as ModelInfo[] })),
-        this.fetch<{
-          prices?: Array<{ endpoint_id?: string; unit_price?: number; unit?: string }>;
-        }>(`/models/pricing?${qs({ endpoint_id: chunk })}`).catch(() => ({ prices: [] })),
+        call(() => this.api.get("/models", { query: { endpoint_id: chunk, limit: 50 } })).catch(
+          () => ({ models: [] }),
+        ),
+        call(() => this.api.get("/models/pricing", { query: { endpoint_id: chunk } })).catch(
+          () => ({ prices: [] }),
+        ),
       ]);
       for (const x of m.models ?? []) if (x.endpoint_id) meta.set(x.endpoint_id, x);
       for (const x of p.prices ?? []) if (x.endpoint_id) prices.set(x.endpoint_id, x);
     }
-    return ids.map((id) => {
-      const t = totals.get(id)!;
-      const md = meta.get(id)?.metadata ?? {};
+    return [...totals].map(([id, t]) => {
+      const md: Partial<ModelMetadata> = meta.get(id)?.metadata ?? {};
       const price = prices.get(id);
       return this.instance(
         accountId,
@@ -479,7 +346,7 @@ export class FalClient implements PluginClient {
   private async listApps(accountId: string): Promise<ResourceInstance[]> {
     let res: { apps?: App[] };
     try {
-      res = await this.fetch<{ apps?: App[] }>("/serverless/apps?expand=endpoints");
+      res = await call(() => this.api.get("/serverless/apps", { query: { expand: "endpoints" } }));
     } catch (err) {
       if (statusOf(err) === 403 || statusOf(err) === 404) return [];
       throw err;
@@ -516,9 +383,8 @@ export class FalClient implements PluginClient {
 
   /** `GET /compute/instances?limit=&cursor=` */
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
-    const pages = await this.pages<{ next_cursor?: string | null; instances?: Instance[] }>(
-      "/compute/instances",
-      { limit: "100" },
+    const pages = await allPages((cursor) =>
+      this.api.get("/compute/instances", { query: { limit: 100, ...afterCursor(cursor) } }),
     );
     return pages
       .flatMap((p) => p.instances ?? [])
@@ -548,9 +414,9 @@ export class FalClient implements PluginClient {
 
   /** `GET /keys?limit=&cursor=` */
   private async listKeys(accountId: string): Promise<ResourceInstance[]> {
-    const pages = await this.pages<{ next_cursor?: string | null; keys?: ApiKey[] }>("/keys", {
-      limit: "100",
-    });
+    const pages = await allPages((cursor) =>
+      this.api.get("/keys", { query: { limit: 100, ...afterCursor(cursor) } }),
+    );
     return pages
       .flatMap((p) => p.keys ?? [])
       .filter((k) => k.key_id)
@@ -574,11 +440,8 @@ export class FalClient implements PluginClient {
 
   /** `GET /workflows?limit=&cursor=` */
   private async listWorkflows(accountId: string): Promise<ResourceInstance[]> {
-    const pages = await this.pages<{ next_cursor?: string | null; workflows?: Workflow[] }>(
-      "/workflows",
-      {
-        limit: "100",
-      },
+    const pages = await allPages((cursor) =>
+      this.api.get("/workflows", { query: { limit: 100, ...afterCursor(cursor) } }),
     );
     return pages
       .flatMap((p) => p.workflows ?? [])
@@ -616,7 +479,7 @@ export class FalClient implements PluginClient {
       if (typeId === "fal-compute-instance") {
         return this.mapInstance(
           accountId,
-          await this.fetch<Instance>(`/compute/instances/${encodeURIComponent(id)}`),
+          await call(() => this.api.get(`/compute/instances/${pathEncode(id)}`)),
         );
       }
       const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
@@ -646,22 +509,28 @@ export class FalClient implements PluginClient {
       const id = resource.externalId ?? "";
       const out = { ...resource, resolvedOutputs: { ...resource.resolvedOutputs } };
       if (resource.resourceTypeId === "fal-model" || resource.resourceTypeId === "fal-app") {
-        const base = resource.resourceTypeId === "fal-model" ? "/models" : "/serverless";
-        const reqs = await this.fetch<{ items?: RequestItem[] }>(
-          `${base}/requests/by-endpoint?${qs({ endpoint_id: id, limit: "20", sort_by: "ended_at" })}`,
-        ).catch(() => ({ items: [] as RequestItem[] }));
+        const reqs = await call(() =>
+          resource.resourceTypeId === "fal-model"
+            ? this.api.get("/models/requests/by-endpoint", {
+                query: { endpoint_id: id, limit: 20, sort_by: "ended_at" },
+              })
+            : this.api.get("/serverless/requests/by-endpoint", {
+                query: { endpoint_id: id, limit: 20, sort_by: "ended_at" },
+              }),
+        ).catch(() => ({ items: [] }));
         out.resolvedOutputs["__requests__"] = JSON.stringify(reqs.items ?? []);
       }
       if (resource.resourceTypeId === "fal-app") {
-        const [owner, ...rest] = id.split("/");
-        const path = `/serverless/apps/${encodeURIComponent(owner ?? "")}/${encodeURIComponent(rest.join("/"))}`;
+        const [first, ...rest] = id.split("/");
+        const owner = pathEncode(first ?? "");
+        const name = pathEncode(rest.join("/"));
         const [queue, revisions] = await Promise.all([
-          this.fetch<{ queue_size?: number }>(`${path}/queue`).catch(
-            () => ({}) as { queue_size?: number },
-          ),
-          this.fetch<{ revisions?: unknown[] }>(`${path}/revisions?limit=20`).catch(() => ({
-            revisions: [],
+          call(() => this.api.get(`/serverless/apps/${owner}/${name}/queue`)).catch(() => ({
+            queue_size: undefined,
           })),
+          call(() =>
+            this.api.get(`/serverless/apps/${owner}/${name}/revisions`, { query: { limit: 20 } }),
+          ).catch(() => ({ revisions: [] })),
         ]);
         if (typeof queue.queue_size === "number")
           out.resolvedOutputs["__queue__"] = String(queue.queue_size);
@@ -677,11 +546,11 @@ export class FalClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId, accountId, typeId);
       if (typeId === "fal-compute-instance") {
-        await this.fetch(`/compute/instances/${encodeURIComponent(id)}`, { method: "DELETE" });
+        await call(() => this.api.delete(`/compute/instances/${pathEncode(id)}`));
         return;
       }
       if (typeId === "fal-api-key") {
-        await this.fetch(`/keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+        await call(() => this.api.delete(`/keys/${pathEncode(id)}`));
         return;
       }
       throw new Error(`fal plugin: ${typeId} cannot be deleted`);
@@ -697,11 +566,10 @@ export class FalClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       if (typeId === "fal-app" && actionId === "flush-queue") {
-        const [owner, ...rest] = externalIdOf(resourceId, accountId, typeId).split("/");
-        await this.fetch(
-          `/serverless/apps/${encodeURIComponent(owner ?? "")}/${encodeURIComponent(rest.join("/"))}/queue`,
-          { method: "DELETE" },
-        );
+        const [first, ...rest] = externalIdOf(resourceId, accountId, typeId).split("/");
+        const owner = pathEncode(first ?? "");
+        const name = pathEncode(rest.join("/"));
+        await call(() => this.api.delete(`/serverless/apps/${owner}/${name}/queue`));
         return;
       }
       throw new Error(`fal plugin: unknown action "${actionId}" for ${typeId}`);
@@ -722,13 +590,7 @@ export class FalClient implements PluginClient {
       const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
       const alias =
         s(current.fields["alias"]) || `infrawrench-${new Date().toISOString().slice(0, 10)}`;
-      const created = await this.fetch<{ key_id?: string; key_secret?: string; key?: string }>(
-        "/keys",
-        {
-          method: "POST",
-          body: JSON.stringify({ alias }),
-        },
-      );
+      const created = await call(() => this.api.post("/keys", { body: { alias } }));
       const key =
         s(created.key) ||
         (created.key_id && created.key_secret ? `${created.key_id}:${created.key_secret}` : "");
@@ -762,17 +624,21 @@ export class FalClient implements PluginClient {
       const id = externalIdOf(resourceId, accountId, resourceTypeId);
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
-      const path = resourceTypeId === "fal-model" ? "/models/analytics" : "/serverless/analytics";
       try {
-        const pages = await this.pages<AnalyticsPage>(
-          path,
-          {
-            endpoint_id: id,
-            start: new Date(startMs).toISOString(),
-            end: new Date(endMs).toISOString(),
-            timezone: "UTC",
-            expand: ["time_series", ...ANALYTICS_METRICS],
-          },
+        const query = {
+          endpoint_id: id,
+          start: new Date(startMs).toISOString(),
+          end: new Date(endMs).toISOString(),
+          timezone: "UTC",
+          expand: ["time_series", ...ANALYTICS_METRICS],
+        };
+        const pages = await allPages(
+          (cursor) =>
+            resourceTypeId === "fal-model"
+              ? this.api.get("/models/analytics", { query: { ...query, ...afterCursor(cursor) } })
+              : this.api.get("/serverless/analytics", {
+                  query: { ...query, ...afterCursor(cursor) },
+                }),
           10,
         );
         return analyticsSeries(pages);
@@ -793,11 +659,11 @@ export class FalClient implements PluginClient {
     return attempt(async () => {
       if (typeId !== "fal-app") return { text: "", containers: [], activeContainer: "" };
       const id = externalIdOf(resourceId, accountId, typeId);
-      const res = await this.fetch<{
-        items?: Array<{ timestamp?: string; level?: string; message?: string; revision?: string }>;
-      }>(
-        `/serverless/logs/history?${qs({ app_id: id, limit: String(Math.min(params.tailLines ?? 500, 1000)) })}`,
-        { method: "POST", body: "[]" },
+      const res = await call(() =>
+        this.api.post("/serverless/logs/history", {
+          query: { app_id: id, limit: Math.min(params.tailLines ?? 500, 1000) },
+          body: [],
+        }),
       );
       const text = (res.items ?? [])
         .slice()
@@ -819,22 +685,35 @@ export class FalClient implements PluginClient {
       const end = new Date(Date.parse(`${range.toDate}T00:00:00Z`) + 86_400_000)
         .toISOString()
         .slice(0, 10);
-      const params = {
-        start: range.fromDate,
-        end,
-        timezone: "UTC",
-        timeframe: "day",
-        expand: "time_series",
-        limit: "1000",
-      };
+      const span = { start: range.fromDate, end, timezone: "UTC" };
       const [models, serverless] = await Promise.all([
-        this.pages<UsagePage>(
-          "/models/usage",
-          { ...params, expand: ["time_series", "auth_method"] },
+        allPages(
+          (cursor) =>
+            this.api.get("/models/usage", {
+              query: {
+                ...span,
+                timeframe: "day",
+                expand: ["time_series", "auth_method"],
+                limit: 1000,
+                ...afterCursor(cursor),
+              },
+            }),
           50,
         ),
-        this.pages<UsagePage>("/serverless/usage", params, 50).catch((err) => {
-          if (statusOf(err) === 403 || statusOf(err) === 404) return [] as UsagePage[];
+        allPages(
+          (cursor) =>
+            this.api.get("/serverless/usage", {
+              query: {
+                ...span,
+                timeframe: "day",
+                expand: "time_series",
+                limit: 1000,
+                ...afterCursor(cursor),
+              },
+            }),
+          50,
+        ).catch((err): ServerlessUsagePage[] => {
+          if (statusOf(err) === 403 || statusOf(err) === 404) return [];
           throw err;
         }),
       ]);
@@ -845,8 +724,8 @@ export class FalClient implements PluginClient {
   /** `GET /account/billing?expand=credits` */
   fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
-      const res = await this.fetch<{ credits?: { current_balance?: number; currency?: string } }>(
-        "/account/billing?expand=credits",
+      const res = await call(() =>
+        this.api.get("/account/billing", { query: { expand: "credits" } }),
       );
       if (!res.credits || typeof res.credits.current_balance !== "number") return [];
       const currency = (res.credits.currency || "USD").toUpperCase();
@@ -897,7 +776,7 @@ export class FalClient implements PluginClient {
   private requestsTable(r: ResourceInstance): SectionNode[] {
     let items: RequestItem[] = [];
     try {
-      items = JSON.parse(r.resolvedOutputs["__requests__"] ?? "[]") as RequestItem[];
+      items = JSON.parse(r.resolvedOutputs["__requests__"] ?? "[]");
     } catch {
       items = [];
     }
@@ -927,7 +806,7 @@ export class FalClient implements PluginClient {
 
   private renderInner(r: ResourceInstance): DetailViewSchema {
     const f = r.fields;
-    const status = { kind: "status-dot" as const, status: this.statusFor(r) };
+    const status: StatusDotNode = { kind: "status-dot", status: this.statusFor(r) };
     switch (r.resourceTypeId) {
       case "fal-model": {
         const id = s(f["endpointId"]) || (r.externalId ?? "");
@@ -953,15 +832,7 @@ export class FalClient implements PluginClient {
                 ],
                 ["Endpoint ID"],
               ),
-              ...(s(f["description"])
-                ? [
-                    {
-                      kind: "text" as const,
-                      variant: "muted" as const,
-                      content: s(f["description"]),
-                    },
-                  ]
-                : []),
+              ...muted(s(f["description"])),
             ]),
             section("Queue", [
               { kind: "text", variant: "mono", copyable: true, content: `${QUEUE_BASE}/${id}` },
@@ -982,14 +853,7 @@ export class FalClient implements PluginClient {
       case "fal-app": {
         const id = s(f["endpointId"]) || (r.externalId ?? "");
         const queue = r.resolvedOutputs["__queue__"];
-        let revisions: Array<{
-          revision_id?: string;
-          created_at?: string;
-          is_current?: boolean;
-          status?: string | null;
-          deployed_by?: string | null;
-          message?: string | null;
-        }> = [];
+        let revisions: Partial<Revision>[] = [];
         try {
           revisions = JSON.parse(r.resolvedOutputs["__revisions__"] ?? "[]");
         } catch {

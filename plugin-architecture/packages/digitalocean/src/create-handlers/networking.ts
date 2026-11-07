@@ -1,6 +1,12 @@
 /** Create handlers for DigitalOcean domains, DNS records, VPCs and reserved IPs. */
-import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { dnsContentField } from "@infrawrench/plugin-base";
+import {
+  dnsContentField,
+  unencodedSegment,
+  type ApiBody,
+  type CreateResourceConfig,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
+import type { operations } from "../api-types.gen.js";
 import { regionDisplay } from "../constants.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
 
@@ -31,10 +37,10 @@ export async function networkingGetCreateConfig(
     const hasParent = !!parentResourceId;
     const fields: CreateResourceConfig["fields"] = [];
     if (!hasParent) {
-      const domains = await ctx.fetch<{ domains: Array<Record<string, unknown>> }>("/domains");
+      const domains = await ctx.api.get("/domains");
       const domainOptions = (domains.domains ?? []).map((d) => ({
-        id: String(d["name"]),
-        label: String(d["name"]),
+        id: String(d.name),
+        label: String(d.name),
       }));
       fields.push({
         key: "domainName",
@@ -100,9 +106,7 @@ export async function networkingGetCreateConfig(
     // POST /v2/vpcs requires `name` + `region`; `description` and `ip_range`
     // are optional (DO generates a non-conflicting /20 when ip_range is
     // omitted). Verified against DigitalOcean's published OpenAPI spec.
-    const regionsData = await ctx.fetch<{
-      regions: Array<{ slug: string; name: string; available: boolean }>;
-    }>("/regions");
+    const regionsData = await ctx.api.get("/regions");
     const regions = regionsData.regions
       .filter((r) => r.available)
       .map((r) => {
@@ -158,12 +162,8 @@ export async function networkingGetCreateConfig(
     // makes that a mode toggle so the user never has to know which key the
     // API wants, and both branches are pickers rather than free-text ids.
     const [regionsData, dropletsData, projectField] = await Promise.all([
-      ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>("/regions"),
-      ctx
-        .fetch<{
-          droplets?: Array<Record<string, unknown>> | null;
-        }>("/droplets?per_page=200")
-        .catch(() => ({ droplets: [] })),
+      ctx.api.get("/regions"),
+      ctx.api.get("/droplets", { query: { per_page: 200 } }).catch(() => ({ droplets: [] })),
       buildProjectField(ctx, parentResourceId),
     ]);
     const regions = regionsData.regions
@@ -179,9 +179,9 @@ export async function networkingGetCreateConfig(
     const firstRegion = regions[0]?.id;
     const droplets = (dropletsData.droplets ?? [])
       .map((d) => {
-        const slug = String((d["region"] as Record<string, unknown>)?.["slug"] ?? "");
-        const name = String(d["name"] ?? d["id"] ?? "");
-        return { id: String(d["id"] ?? ""), label: slug ? `${name} (${slug})` : name };
+        const slug = String(d.region?.slug ?? "");
+        const name = String(d.name ?? d.id ?? "");
+        return { id: String(d.id ?? ""), label: slug ? `${name} (${slug})` : name };
       })
       .filter((d) => !!d.id)
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -239,27 +239,24 @@ export async function networkingCreateResource(
 ): Promise<ResourceInstance | null> {
   const { ctx, typeId, accountId, fields, parentExternalId, effectiveParentId } = args;
   if (typeId === "domain") {
-    const data = await ctx.fetch<{ domain: Record<string, unknown> }>("/domains", {
-      method: "POST",
-      body: JSON.stringify({ name: fields["name"] }),
-    });
+    const data = await ctx.api.post("/domains", { body: { name: fields["name"] } });
     const d = data.domain;
     return {
-      id: `${accountId}:domain:${String(d["name"])}`,
+      id: `${accountId}:domain:${String(d.name)}`,
       pluginId: "digitalocean",
       resourceTypeId: "domain",
       accountId,
-      displayName: String(d["name"]),
+      displayName: String(d.name),
       fields: {
-        name: String(d["name"]),
-        ttl: Number(d["ttl"] ?? 1800),
-        zoneFile: String(d["zone_file"] ?? ""),
+        name: String(d.name),
+        ttl: Number(d.ttl ?? 1800),
+        zoneFile: String(d.zone_file ?? ""),
       },
       resolvedOutputs: {
         nameservers: "ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com",
       },
       secretStates: [],
-      externalId: String(d["name"]),
+      externalId: String(d.name),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -272,23 +269,21 @@ export async function networkingCreateResource(
     const domainName = fields["domainName"] || parentExternalId;
     if (!domainName)
       throw new Error("DigitalOcean plugin: domainName is required to create a DNS record");
-    const body: Record<string, unknown> = {
-      type: fields["type"],
-      name: fields["name"],
-      data: fields["data"],
-      ...(fields["ttl"] ? { ttl: Number(fields["ttl"]) } : {}),
-      ...(fields["priority"] ? { priority: Number(fields["priority"]) } : {}),
-    };
-    const data = await ctx.fetch<{ domain_record: Record<string, unknown> }>(
-      `/domains/${domainName}/records`,
-      { method: "POST", body: JSON.stringify(body) },
-    );
+    const data = await ctx.api.post(`/domains/${unencodedSegment(domainName)}/records`, {
+      body: {
+        type: fields["type"],
+        name: fields["name"],
+        data: fields["data"],
+        ...(fields["ttl"] ? { ttl: Number(fields["ttl"]) } : {}),
+        ...(fields["priority"] ? { priority: Number(fields["priority"]) } : {}),
+      },
+    });
     const r = data.domain_record;
-    const type = String(r["type"] ?? "");
-    const name = String(r["name"] ?? "@");
+    const type = String(r.type ?? "");
+    const name = String(r.name ?? "@");
     const displayName = name === "@" ? domainName : `${name}.${domainName}`;
     return {
-      id: `${accountId}:dns-record:${domainName}/${String(r["id"])}`,
+      id: `${accountId}:dns-record:${domainName}/${String(r.id)}`,
       pluginId: "digitalocean",
       resourceTypeId: "dns-record",
       accountId,
@@ -296,14 +291,14 @@ export async function networkingCreateResource(
       fields: {
         type,
         name: displayName,
-        data: String(r["data"] ?? ""),
-        ttl: Number(r["ttl"] ?? 1800),
-        ...(r["priority"] != null ? { priority: Number(r["priority"]) } : {}),
+        data: String(r.data ?? ""),
+        ttl: Number(r.ttl ?? 1800),
+        ...(r.priority != null ? { priority: Number(r.priority) } : {}),
         domainName,
       },
       resolvedOutputs: {},
       secretStates: [],
-      externalId: `${domainName}/${String(r["id"])}`,
+      externalId: `${domainName}/${String(r.id)}`,
       parentResourceId: `${accountId}:domain:${domainName}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -311,30 +306,29 @@ export async function networkingCreateResource(
   }
 
   if (typeId === "vpc") {
-    const data = await ctx.fetch<{ vpc: Record<string, unknown> }>("/vpcs", {
-      method: "POST",
-      body: JSON.stringify({
+    const data = await ctx.api.post("/vpcs", {
+      body: {
         name: fields["name"],
         region: fields["region"],
         ...(fields["ipRange"] ? { ip_range: fields["ipRange"] } : {}),
         ...(fields["description"] ? { description: fields["description"] } : {}),
-      }),
+      },
     });
     const v = data.vpc;
-    const id = String(v["id"] ?? "");
-    const createdAt = String(v["created_at"] ?? new Date().toISOString());
+    const id = String(v.id ?? "");
+    const createdAt = String(v.created_at ?? new Date().toISOString());
     return {
       id: `${accountId}:vpc:${id}`,
       pluginId: "digitalocean",
       resourceTypeId: "vpc",
       accountId,
-      displayName: String(v["name"] ?? id),
+      displayName: String(v.name ?? id),
       fields: {
-        name: String(v["name"] ?? ""),
-        region: String(v["region"] ?? ""),
-        ipRange: String(v["ip_range"] ?? ""),
-        description: String(v["description"] ?? ""),
-        isDefault: v["default"] === true,
+        name: String(v.name ?? ""),
+        region: String(v.region ?? ""),
+        ipRange: String(v.ip_range ?? ""),
+        description: String(v.description ?? ""),
+        isDefault: v.default === true,
         createdAt,
       },
       resolvedOutputs: { ...(id ? { vpcId: id } : {}) },
@@ -350,7 +344,7 @@ export async function networkingCreateResource(
     // digitalocean/openapi): `{ droplet_id }` or `{ region, project_id? }`.
     // Sending both is a 422, so branch on the form's mode toggle.
     const mode = fields["assignmentMode"] || (fields["dropletId"] ? "droplet" : "region");
-    let body: Record<string, unknown>;
+    let body: ApiBody<operations["reservedIPs_create"]>;
     if (mode === "droplet") {
       const dropletId = Number(fields["dropletId"]);
       if (!Number.isFinite(dropletId) || dropletId <= 0) {
@@ -366,14 +360,11 @@ export async function networkingCreateResource(
       // address inherits the Droplet's project.
       body = { region, ...(parentExternalId ? { project_id: parentExternalId } : {}) };
     }
-    const data = await ctx.fetch<{ reserved_ip: Record<string, unknown> }>("/reserved_ips", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+    const data = await ctx.api.post("/reserved_ips", { body });
     const r = data.reserved_ip ?? {};
-    const ip = String(r["ip"] ?? "");
-    const droplet = (r["droplet"] ?? null) as Record<string, unknown> | null;
-    const projectId = String(r["project_id"] ?? "") || parentExternalId;
+    const ip = String(r.ip ?? "");
+    const droplet = r.droplet ?? null;
+    const projectId = String(r.project_id ?? "") || parentExternalId;
     const createdAt = new Date().toISOString();
     const parentId = projectId ? `${accountId}:project:${projectId}` : effectiveParentId;
     return {
@@ -384,12 +375,10 @@ export async function networkingCreateResource(
       displayName: ip,
       fields: {
         ip,
-        region: String(
-          (r["region"] as Record<string, unknown>)?.["slug"] ?? fields["region"] ?? "",
-        ),
-        dropletId: droplet?.["id"] != null ? String(droplet["id"]) : "",
-        dropletName: droplet ? String(droplet["name"] ?? "") : "",
-        locked: r["locked"] === true,
+        region: String(r.region?.slug ?? fields["region"] ?? ""),
+        dropletId: droplet?.id != null ? String(droplet.id) : "",
+        dropletName: droplet ? String(droplet.name ?? "") : "",
+        locked: r.locked === true,
         projectId,
       },
       resolvedOutputs: { ...(ip ? { ip } : {}) },

@@ -19,6 +19,7 @@
  */
 
 import type {
+  ApiResponse,
   OAuthCompletionContext,
   OAuthCompletionResult,
   OAuthDeclaration,
@@ -26,7 +27,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { OAUTH_CREDENTIAL_KEY } from "@infrawrench/plugin-base";
 import { API_BASE } from "./api.js";
-import type { BbAccount, BbWorkspaceAccess } from "./types.js";
+import type { paths } from "./api-types.gen.js";
 
 export const BITBUCKET_OAUTH: OAuthDeclaration = {
   authorizeUrl: "https://bitbucket.org/site/oauth2/authorize",
@@ -54,12 +55,20 @@ export function emailFor(credentials: Record<string, string>): string {
   return isOAuthConnected(credentials) ? "" : (credentials["email"] ?? "").trim();
 }
 
-async function getJson<T>(doFetch: typeof fetch, token: string, path: string): Promise<T> {
+/**
+ * On the fetch the host hands this hook rather than the API client, which takes
+ * an `HttpHostServices`: an empty body has to stay a failed read here.
+ */
+async function getJson<Op>(
+  doFetch: typeof fetch,
+  token: string,
+  path: string,
+): Promise<ApiResponse<Op>> {
   const res = await doFetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`Bitbucket API error ${res.status} for ${path}`);
-  return (await res.json()) as T;
+  return res.json();
 }
 
 /**
@@ -73,8 +82,8 @@ export async function completeBitbucketOAuth(
 ): Promise<OAuthCompletionResult> {
   const credentials: Record<string, string> = { email: "" };
   const [user, workspaces] = await Promise.allSettled([
-    getJson<BbAccount>(context.fetch, tokens.accessToken, "/user"),
-    getJson<{ values?: BbWorkspaceAccess[] }>(
+    getJson<paths["/user"]["get"]>(context.fetch, tokens.accessToken, "/user"),
+    getJson<paths["/user/workspaces"]["get"]>(
       context.fetch,
       tokens.accessToken,
       "/user/workspaces?pagelen=100",

@@ -1,0 +1,811 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://gitlab.com/gitlab-org/gitlab/-/raw/master/doc/api/openapi/openapi_v3.yaml",
+  "pathPrefix": "/api/v4",
+  "patches": [
+    {
+      "pointer": "/paths/~1groups~1{id}~1billable_members/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesMember"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list of members."
+    },
+    {
+      "pointer": "/paths/~1groups~1{id}~1runners/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesCiRunnerWithUuid"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list of runners."
+    },
+    {
+      "pointer": "/paths/~1projects~1{id}~1runners/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesCiRunnerWithUuid"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list of runners."
+    },
+    {
+      "pointer": "/paths/~1runners/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesCiRunnerWithUuid"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list of runners."
+    },
+    {
+      "pointer": "/paths/~1groups~1{id}~1variables/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesCiVariable"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list of variables."
+    },
+    {
+      "pointer": "/paths/~1projects~1{id}~1variables/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesCiVariable"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list of variables."
+    },
+    {
+      "pointer": "/paths/~1runners~1{id}~1jobs/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesCiJobBasicWithProject"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list of jobs."
+    },
+    {
+      "pointer": "/paths/~1projects~1{id}~1hooks~1{hook_id}~1events/get/responses/200/content",
+      "value": {
+        "application/json": {
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id"],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "trigger": {
+                  "type": "string"
+                },
+                "response_status": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "execution_duration": {
+                  "type": "number"
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "request_data": {
+                  "type": "object",
+                  "properties": {
+                    "created_at": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented with no body; the endpoint answers with the hook's recent deliveries."
+    },
+    {
+      "pointer": "/paths/~1groups~1{id}~1hooks~1{hook_id}~1events/get/responses/200/content",
+      "value": {
+        "application/json": {
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id"],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "trigger": {
+                  "type": "string"
+                },
+                "response_status": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "execution_duration": {
+                  "type": "number"
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "request_data": {
+                  "type": "object",
+                  "properties": {
+                    "created_at": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented with no body; the endpoint answers with the hook's recent deliveries."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiPipelineScheduleDetails/properties/variables",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesCiVariable"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesRelease/properties/milestones",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesMilestoneWithStats"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerDetails/properties/groups",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesBasicGroupDetails"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerDetails/properties/projects",
+      "value": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/APIEntitiesBasicProjectDetails"
+        }
+      },
+      "why": "Documented as a single object; the endpoint answers with a list."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerDetails/properties/tag_list",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as a string; the endpoint answers with an array of tags."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerDetails/properties/locked",
+      "value": {
+        "type": "boolean"
+      },
+      "why": "Documented as a string; the endpoint answers with a boolean."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerDetails/properties/run_untagged",
+      "value": {
+        "type": "boolean"
+      },
+      "why": "Documented as a string; the endpoint answers with a boolean."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerDetails/properties/maximum_timeout",
+      "value": {
+        "type": "integer",
+        "nullable": true
+      },
+      "why": "Documented as a string; the endpoint answers with seconds, or null when unset."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerRegistrationDetails/properties/id",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Documented as a string; the endpoint answers with the runner's numeric id, which is then read back with GET /runners/:id."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesMember/properties/access_level",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Documented as a string; the endpoint answers with the numeric role, which every level table in the plugin is keyed by."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesProjectAccess/properties/access_level",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Documented as a string; the endpoint answers with the numeric role."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesGroupAccess/properties/access_level",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Documented as a string; the endpoint answers with the numeric role."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiVariable/properties/value",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "A hidden variable comes back with a null value; the plugin branches on that."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesPackage/properties/tags",
+      "value": {
+        "type": "array",
+        "items": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "why": "Documented as a string; the endpoint answers with a list of tags."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesPersonalAccessToken/properties/scopes",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an array of anything; scopes are strings."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesDeployToken/properties/scopes",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an array of anything; scopes are strings."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesDeployTokenWithToken/properties/scopes",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an array of anything; scopes are strings."
+    },
+    {
+      "pointer": "/paths/~1groups~1{id}/put/requestBody/content",
+      "value": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "visibility": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented as multipart only, for an avatar upload; the endpoint takes JSON for everything else. These are the fields the plugin sends."
+    },
+    {
+      "pointer": "/paths/~1projects~1{id}/put/requestBody/content",
+      "value": {
+        "application/json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "visibility": {
+                "type": "string"
+              },
+              "default_branch": {
+                "type": "string"
+              },
+              "ci_config_path": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented as multipart only, for an avatar upload; the endpoint takes JSON for everything else. These are the fields the plugin sends."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4ProjectsIdEnvironmentsRequest/properties/tier",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/putApiV4ProjectsIdEnvironmentsEnvironmentIdRequest/properties/tier",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4ProjectsIdVariablesRequest/properties/variable_type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4GroupsIdVariablesRequest/properties/variable_type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/putApiV4ProjectsIdVariablesKeyRequest/properties/variable_type",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/putApiV4GroupsIdVariablesKeyRequest/properties/variable_type",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4UserRunnersRequest/properties/access_level",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/putApiV4RunnersIdRequest/properties/access_level",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4UserRunnersRequest/properties/tag_list",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Typed as an array but described as comma-separated, which is what the plugin has always sent here. PUT /runners/:id sends an array; remove this if create moves to one too."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4UserRunnersRequest/required",
+      "value": ["runner_type"],
+      "why": "group_id and project_id are each required only for their own runner_type, and sending both is refused; the document cannot say that."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4ProjectsIdProtectedBranchesRequest/properties/push_access_level",
+      "value": {
+        "type": "integer",
+        "nullable": true
+      },
+      "why": "A level the user typed as a number goes through, and GitLab validates it; the plugin's own table is only for labels."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4ProjectsIdProtectedBranchesRequest/properties/merge_access_level",
+      "value": {
+        "type": "integer",
+        "nullable": true
+      },
+      "why": "A level the user typed as a number goes through, and GitLab validates it; the plugin's own table is only for labels."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesProtectedRefAccess/properties/access_level",
+      "value": {
+        "type": "integer",
+        "nullable": true
+      },
+      "why": "Null on a rule for a user, group or deploy key, which the plugin counts rather than names."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesDeployment/properties/finished_at",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Returned but not documented; the plugin prefers it to created_at for when a deployment happened."
+    },
+    {
+      "pointer": "/paths/~1projects~1{id}~1variables~1{key}/put/parameters",
+      "value": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filter[environment_scope]",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "why": "GET and DELETE document this as a query parameter and PUT does not, yet it is how a PUT picks one of several variables sharing a key, and what the plugin sends."
+    },
+    {
+      "pointer": "/paths/~1groups~1{id}~1variables~1{key}/put/parameters",
+      "value": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filter[environment_scope]",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "why": "GET and DELETE document this as a query parameter and PUT does not, yet it is how a PUT picks one of several variables sharing a key, and what the plugin sends."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesBasicProjectDetails/required",
+      "value": ["id", "name", "path_with_namespace"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesProject/required",
+      "value": ["id", "name", "path_with_namespace"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesProjectsWithAccessAndCatalogSetting/required",
+      "value": ["id", "name", "path_with_namespace"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesGroup/required",
+      "value": ["id", "name", "full_path"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesGroupDetail/required",
+      "value": ["id", "name", "full_path"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesNamespace/required",
+      "value": ["id"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiPipeline/required",
+      "value": ["id", "status"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiPipelineBasic/required",
+      "value": ["id", "status"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiPipelineWithMetadata/required",
+      "value": ["id", "status"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiJob/required",
+      "value": ["id", "name", "status"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiJobBasicWithProject/required",
+      "value": ["id", "name", "status"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerWithUuid/required",
+      "value": ["id"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerDetails/required",
+      "value": ["id"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiRunnerRegistrationDetails/required",
+      "value": ["id"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesDeployment/required",
+      "value": ["id"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesEnvironment/required",
+      "value": ["id", "name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesProtectedBranch/required",
+      "value": ["id", "name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiVariable/required",
+      "value": ["key"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiPipelineSchedule/required",
+      "value": ["id"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesCiPipelineScheduleDetails/required",
+      "value": ["id"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesContainerRegistryRepository/required",
+      "value": ["id"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesContainerRegistryTag/required",
+      "value": ["name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesContainerRegistryTagDetails/required",
+      "value": ["name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesPackage/required",
+      "value": ["id", "name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesPackageFile/required",
+      "value": ["id", "file_name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesDeployKeysProject/required",
+      "value": ["id", "title"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesDeployToken/required",
+      "value": ["id", "name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesDeployTokenWithToken/required",
+      "value": ["id", "name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesProjectHook/required",
+      "value": ["id", "url"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesGroupHook/required",
+      "value": ["id", "url"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesRelease/required",
+      "value": ["tag_name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesMember/required",
+      "value": ["id", "username", "access_level"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesUserBasic/required",
+      "value": ["id", "username"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesBranch/required",
+      "value": ["name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    },
+    {
+      "pointer": "/components/schemas/APIEntitiesTag/required",
+      "value": ["name"],
+      "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+    }
+  ],
+  "paths": {
+    "/groups": ["get"],
+    "/groups/{id}": ["get", "put"],
+    "/groups/{id}/billable_members": ["get"],
+    "/groups/{id}/billable_members/{user_id}": ["delete"],
+    "/groups/{id}/deploy_tokens": ["get", "post"],
+    "/groups/{id}/deploy_tokens/{token_id}": ["get", "delete"],
+    "/groups/{id}/descendant_groups": ["get"],
+    "/groups/{id}/hooks": ["get", "post"],
+    "/groups/{id}/hooks/{hook_id}": ["get", "put", "delete"],
+    "/groups/{id}/hooks/{hook_id}/events": ["get"],
+    "/groups/{id}/hooks/{hook_id}/test/{trigger}": ["post"],
+    "/groups/{id}/members": ["get", "post"],
+    "/groups/{id}/members/{user_id}": ["get", "put", "delete"],
+    "/groups/{id}/packages": ["get"],
+    "/groups/{id}/projects": ["get"],
+    "/groups/{id}/runners": ["get"],
+    "/groups/{id}/subgroups": ["get"],
+    "/groups/{id}/variables": ["get", "post"],
+    "/groups/{id}/variables/{key}": ["get", "put", "delete"],
+    "/namespaces/{id}": ["get"],
+    "/personal_access_tokens/self": ["get"],
+    "/projects": ["get"],
+    "/projects/{id}": ["get", "put"],
+    "/projects/{id}/archive": ["post"],
+    "/projects/{id}/deploy_keys": ["get", "post"],
+    "/projects/{id}/deploy_keys/{key_id}": ["get", "put", "delete"],
+    "/projects/{id}/deploy_tokens": ["get", "post"],
+    "/projects/{id}/deploy_tokens/{token_id}": ["get", "delete"],
+    "/projects/{id}/deployments": ["get"],
+    "/projects/{id}/deployments/{deployment_id}/approval": ["post"],
+    "/projects/{id}/environments": ["get", "post"],
+    "/projects/{id}/environments/{environment_id}": ["get", "put", "delete"],
+    "/projects/{id}/environments/{environment_id}/stop": ["post"],
+    "/projects/{id}/hooks": ["get", "post"],
+    "/projects/{id}/hooks/{hook_id}": ["get", "put", "delete"],
+    "/projects/{id}/hooks/{hook_id}/events": ["get"],
+    "/projects/{id}/hooks/{hook_id}/test/{trigger}": ["post"],
+    "/projects/{id}/jobs": ["get"],
+    "/projects/{id}/jobs/{job_id}/cancel": ["post"],
+    "/projects/{id}/jobs/{job_id}/play": ["post"],
+    "/projects/{id}/jobs/{job_id}/retry": ["post"],
+    "/projects/{id}/jobs/{job_id}/trace": ["get"],
+    "/projects/{id}/members": ["get", "post"],
+    "/projects/{id}/members/{user_id}": ["get", "put", "delete"],
+    "/projects/{id}/merge_requests": ["get"],
+    "/projects/{id}/packages": ["get"],
+    "/projects/{id}/packages/{package_id}": ["get", "delete"],
+    "/projects/{id}/packages/{package_id}/package_files": ["get"],
+    "/projects/{id}/pipeline": ["post"],
+    "/projects/{id}/pipeline_schedules": ["get", "post"],
+    "/projects/{id}/pipeline_schedules/{pipeline_schedule_id}": ["get", "put", "delete"],
+    "/projects/{id}/pipeline_schedules/{pipeline_schedule_id}/play": ["post"],
+    "/projects/{id}/pipeline_schedules/{pipeline_schedule_id}/take_ownership": ["post"],
+    "/projects/{id}/pipelines": ["get"],
+    "/projects/{id}/pipelines/{pipeline_id}": ["get", "delete"],
+    "/projects/{id}/pipelines/{pipeline_id}/cancel": ["post"],
+    "/projects/{id}/pipelines/{pipeline_id}/jobs": ["get"],
+    "/projects/{id}/pipelines/{pipeline_id}/retry": ["post"],
+    "/projects/{id}/protected_branches": ["get", "post"],
+    "/projects/{id}/protected_branches/{name}": ["get", "patch", "delete"],
+    "/projects/{id}/registry/repositories": ["get"],
+    "/projects/{id}/registry/repositories/{repository_id}": ["delete"],
+    "/projects/{id}/registry/repositories/{repository_id}/tags": ["get", "delete"],
+    "/projects/{id}/registry/repositories/{repository_id}/tags/{tag_name}": ["get"],
+    "/projects/{id}/releases": ["get", "post"],
+    "/projects/{id}/releases/{tag_name}": ["get", "put", "delete"],
+    "/projects/{id}/repository/branches": ["get"],
+    "/projects/{id}/repository/tags": ["get"],
+    "/projects/{id}/runners": ["get"],
+    "/projects/{id}/unarchive": ["post"],
+    "/projects/{id}/variables": ["get", "post"],
+    "/projects/{id}/variables/{key}": ["get", "put", "delete"],
+    "/projects/{id}/vulnerability_findings": ["get"],
+    "/registry/repositories/{id}": ["get"],
+    "/runners": ["get"],
+    "/runners/{id}": ["get", "put", "delete"],
+    "/runners/{id}/jobs": ["get"],
+    "/runners/{id}/reset_authentication_token": ["post"],
+    "/user": ["get"],
+    "/user/runners": ["post"],
+    "/users": ["get"]
+  }
+}

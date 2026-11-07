@@ -16,18 +16,27 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   base64ToBytes,
-  jsonRestFetch,
   externalIdOf,
   buildMultipartBody,
+  pathEncode,
 } from "@infrawrench/plugin-base";
+import {
+  BASE_URL,
+  createGladiaApi,
+  deleteJobRequest,
+  postAudioUpload,
+  type GladiaApi,
+  type GladiaConnection,
+  type GladiaJob,
+  type GladiaJobParams,
+  type InitTranscriptionBody,
+} from "./api.js";
 import {
   GLADIA_AUTO_LANGUAGE,
   GLADIA_DEFAULT_MODEL,
   GLADIA_LANGUAGE_OPTIONS,
   GLADIA_MODEL_OPTIONS,
 } from "./languages.js";
-
-const BASE_URL = "https://api.gladia.io";
 
 /** The single workspace pseudo-resource's external id. */
 const WORKSPACE_ID = "default";
@@ -68,10 +77,10 @@ const MAX_AUDIO_MINUTES = 135;
  * job is only ever created over the streaming handshake, never from here.
  */
 type JobTypeId = "transcription" | "live-session";
-const JOB_PATHS: Record<JobTypeId, string> = {
+const JOB_PATHS = {
   transcription: "/v2/pre-recorded",
   "live-session": "/v2/live",
-};
+} as const;
 
 function isJobType(typeId: string): typeId is JobTypeId {
   return typeId === "transcription" || typeId === "live-session";
@@ -97,93 +106,11 @@ const ACCEPTED_AUDIO_TYPES = [
   ".avi",
 ];
 
-interface GladiaUploadResponse {
-  audio_url?: string;
-  audio_metadata?: {
-    id?: string;
-    filename?: string;
-    extension?: string;
-    size?: number;
-    audio_duration?: number;
-    number_of_channels?: number;
-  };
-}
-
-interface GladiaInitResponse {
-  id?: string;
-  result_url?: string;
-}
-
-interface GladiaWord {
-  word?: string;
-  start?: number;
-  end?: number;
-  confidence?: number;
-}
-
-interface GladiaUtterance {
-  start?: number;
-  end?: number;
-  text?: string;
-  speaker?: number;
-  confidence?: number;
-  language?: string;
-  channel?: number;
-  words?: GladiaWord[];
-}
-
-interface GladiaJob {
-  id?: string;
-  request_id?: string;
-  version?: number;
-  status?: string;
-  created_at?: string;
-  completed_at?: string | null;
-  error_code?: number | null;
-  kind?: string;
-  file?: {
-    id?: string;
-    filename?: string;
-    source?: string;
-    audio_duration?: number;
-    number_of_channels?: number;
-  };
-  request_params?: {
-    model?: string;
-    language_config?: { languages?: string[]; code_switching?: boolean };
-    /** Live sessions only: the audio format the stream was opened with. */
-    encoding?: string;
-    sample_rate?: number;
-    bit_depth?: number;
-    channels?: number;
-  };
-  result?: {
-    metadata?: {
-      audio_duration?: number;
-      number_of_distinct_channels?: number;
-      billing_time?: number;
-      transcription_time?: number;
-    };
-    transcription?: {
-      full_transcript?: string;
-      languages?: string[];
-      utterances?: GladiaUtterance[];
-    };
-  } | null;
-}
-
-interface GladiaListResponse {
-  first?: string;
-  current?: string;
-  next?: string | null;
-  items?: GladiaJob[];
-}
-
-function num(value: unknown): number | undefined {
+function num(value: number | null | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function str(value: unknown): string {
+function str(value: string | null | undefined): string {
   return typeof value === "string" ? value : "";
 }
 
@@ -219,62 +146,14 @@ function statusDot(status: string): "healthy" | "degraded" | "error" | "provisio
  * per-method comments).
  */
 export class GladiaClient implements PluginClient {
-  private readonly apiKey: string;
-  private readonly caCert: string;
-  private readonly services: HostServices | undefined;
+  private readonly connection: GladiaConnection;
+  private readonly api: GladiaApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Gladia plugin: missing apiKey credential");
-    this.apiKey = apiKey;
-    this.caCert = credentials["caCert"] ?? "";
-    this.services = services;
-  }
-
-  private headers(extra: Record<string, string> = {}): Record<string, string> {
-    return {
-      "x-gladia-key": this.apiKey,
-      Accept: "application/json",
-      ...extra,
-    };
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Gladia",
-      url: `${BASE_URL}${path}`,
-      errorPath: path,
-      headers: this.headers(),
-      ...(options ? { init: options } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-    });
-  }
-
-  /**
-   * Issue a request whose response body we do not want parsed as JSON: the
-   * only such call here is `DELETE /v2/pre-recorded/{id}`, which answers 202
-   * with no body. `jsonRestFetch` would try to `JSON.parse("")` and throw.
-   */
-  private async requestVoid(path: string, method: string): Promise<void> {
-    const url = `${BASE_URL}${path}`;
-    if (this.services?.http) {
-      const result = await this.services.http.request({
-        url,
-        method,
-        headers: this.headers(),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      if (result.status < 200 || result.status >= 300) {
-        throw new Error(`Gladia API error ${result.status} for ${path}: ${result.body}`);
-      }
-      return;
-    }
-
-    const res = await fetch(url, { method, headers: this.headers() });
-    if (!res.ok) {
-      throw new Error(`Gladia API error ${res.status} for ${path}: ${await res.text()}`);
-    }
+    this.connection = { apiKey, caCert: credentials["caCert"] ?? "", http: services?.http };
+    this.api = createGladiaApi(this.connection);
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -423,9 +302,9 @@ export class GladiaClient implements PluginClient {
       // https://docs.gladia.io/api-reference/v2/pre-recorded/delete and
       // https://docs.gladia.io/api-reference/v2/live/delete. Both answer 202
       // Accepted on success and 403 when the job is not in a deletable state.
-      await this.requestVoid(
-        `${JOB_PATHS[typeId]}/${encodeURIComponent(externalIdOf(resourceId))}`,
-        "DELETE",
+      await deleteJobRequest(
+        this.connection,
+        `${JOB_PATHS[typeId]}/${pathEncode(externalIdOf(resourceId))}`,
       );
     });
   }
@@ -463,18 +342,17 @@ export class GladiaClient implements PluginClient {
 
       const model =
         payload.modelId && payload.modelId.length > 0 ? payload.modelId : GLADIA_DEFAULT_MODEL;
-      const body: Record<string, unknown> = {
+      const body: InitTranscriptionBody = {
         audio_url: audioUrl,
         diarization: true,
         model,
+        // `language_config` is an object, and the docs explicitly warn against
+        // enabling `code_switching` alongside an empty `languages` list, so for
+        // auto-detect we omit the whole key rather than sending an empty one.
+        ...(payload.language && payload.language !== GLADIA_AUTO_LANGUAGE
+          ? { language_config: { languages: [payload.language], code_switching: false } }
+          : {}),
       };
-
-      // `language_config` is an object, and the docs explicitly warn against
-      // enabling `code_switching` alongside an empty `languages` list, so for
-      // auto-detect we omit the whole key rather than sending an empty one.
-      if (payload.language && payload.language !== GLADIA_AUTO_LANGUAGE) {
-        body["language_config"] = { languages: [payload.language], code_switching: false };
-      }
 
       const init = await this.initTranscription(body);
       const jobId = str(init.id);
@@ -542,30 +420,19 @@ export class GladiaClient implements PluginClient {
    * The clip's Content-Type is whatever MediaRecorder or the file picker
    * produced: forwarded verbatim, never transcoded.
    */
-  private async uploadAudio(
-    bytes: Uint8Array,
-    filename: string,
-    mimeType: string,
-  ): Promise<GladiaUploadResponse> {
-    const { body, contentType } = buildMultipartBody([
-      {
-        kind: "file",
-        name: "audio",
-        fileName: sanitizeUploadFilename(filename),
-        contentType: mimeType || "application/octet-stream",
-        data: bytes,
-      },
-    ]);
-
-    return this.fetch<GladiaUploadResponse>("/v2/upload", {
-      method: "POST",
-      headers: { "Content-Type": contentType },
-      // `buildMultipartBody` returns an `ArrayBuffer`-backed view, which `BodyInit`
-      // admits; `bodyForHostHttp` has an explicit `instanceof Uint8Array` branch,
-      // which is exactly the path that keeps this upload on the host's
-      // bastion-routed HTTP service.
-      body,
-    });
+  private uploadAudio(bytes: Uint8Array, filename: string, mimeType: string) {
+    return postAudioUpload(
+      this.connection,
+      buildMultipartBody([
+        {
+          kind: "file",
+          name: "audio",
+          fileName: sanitizeUploadFilename(filename),
+          contentType: mimeType || "application/octet-stream",
+          data: bytes,
+        },
+      ]),
+    );
   }
 
   /**
@@ -573,11 +440,8 @@ export class GladiaClient implements PluginClient {
    * https://docs.gladia.io/api-reference/v2/pre-recorded/init
    * Returns 201 `{id, result_url}`.
    */
-  private async initTranscription(body: Record<string, unknown>): Promise<GladiaInitResponse> {
-    return this.fetch<GladiaInitResponse>("/v2/pre-recorded", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+  private initTranscription(body: InitTranscriptionBody) {
+    return this.api.post("/v2/pre-recorded", { body });
   }
 
   /**
@@ -619,7 +483,7 @@ export class GladiaClient implements PluginClient {
    * https://docs.gladia.io/api-reference/v2/pre-recorded/get
    */
   private async fetchJob(jobId: string, typeId: JobTypeId = "transcription"): Promise<GladiaJob> {
-    return this.fetch<GladiaJob>(`${JOB_PATHS[typeId]}/${encodeURIComponent(jobId)}`);
+    return this.api.get(`${JOB_PATHS[typeId]}/${pathEncode(jobId)}`);
   }
 
   /**
@@ -635,8 +499,9 @@ export class GladiaClient implements PluginClient {
     let offset = 0;
 
     for (let page = 0; page < MAX_LIST_PAGES && out.length < max; page++) {
-      const query = new URLSearchParams({ offset: String(offset), limit: String(PAGE_SIZE) });
-      const body = await this.fetch<GladiaListResponse>(`${JOB_PATHS[typeId]}?${query.toString()}`);
+      const body = await this.api.get(JOB_PATHS[typeId], {
+        query: { offset, limit: PAGE_SIZE },
+      });
       const items = body.items ?? [];
       out.push(...items);
       if (!body.next || items.length === 0) break;
@@ -658,13 +523,14 @@ export class GladiaClient implements PluginClient {
     const out: GladiaJob[] = [];
     let offset = 0;
     for (let page = 0; page < MAX_METRICS_PAGES; page++) {
-      const query = new URLSearchParams({
-        offset: String(offset),
-        limit: String(METRICS_PAGE_SIZE),
-        after_date: new Date(startMs).toISOString(),
-        before_date: new Date(endMs).toISOString(),
+      const body = await this.api.get(JOB_PATHS[typeId], {
+        query: {
+          offset,
+          limit: METRICS_PAGE_SIZE,
+          after_date: new Date(startMs).toISOString(),
+          before_date: new Date(endMs).toISOString(),
+        },
       });
-      const body = await this.fetch<GladiaListResponse>(`${JOB_PATHS[typeId]}?${query.toString()}`);
       const items = body.items ?? [];
       out.push(...items);
       if (!body.next || items.length === 0) break;
@@ -695,7 +561,7 @@ export class GladiaClient implements PluginClient {
       const [jobs, live] = await Promise.all([
         this.fetchJobsBetween("transcription", startMs, endMs),
         // Live history is a separate list; a failure there keeps the batch charts.
-        this.fetchJobsBetween("live-session", startMs, endMs).catch(() => [] as GladiaJob[]),
+        this.fetchJobsBetween("live-session", startMs, endMs).catch((): GladiaJob[] => []),
       ]);
 
       const stamps: number[] = [];
@@ -799,7 +665,7 @@ export class GladiaClient implements PluginClient {
     const metadata = job.result?.metadata;
     const languages = job.result?.transcription?.languages ?? [];
 
-    const params = job.request_params;
+    const params: GladiaJobParams | null | undefined = job.request_params;
     const streamFormat =
       typeId === "live-session"
         ? [
@@ -856,8 +722,8 @@ export class GladiaClient implements PluginClient {
     // A brand-new key with no history (or a transient list failure) should
     // still leave the workspace navigable and the Speech tab usable.
     const [jobs, liveJobs] = await Promise.all([
-      this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES).catch(() => [] as GladiaJob[]),
-      this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES, "live-session").catch(() => [] as GladiaJob[]),
+      this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES).catch((): GladiaJob[] => []),
+      this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES, "live-session").catch((): GladiaJob[] => []),
     ]);
     let liveBilling = 0;
     for (const job of liveJobs) liveBilling += num(job.result?.metadata?.billing_time) ?? 0;

@@ -6,8 +6,7 @@
  */
 
 import type { RegionOption } from "@infrawrench/plugin-base";
-import type { LinodeApi } from "./api.js";
-import type { LinodeRegion } from "./types.js";
+import { allPages, type LinodeApi } from "./api.js";
 
 const FLAGS: Record<string, string> = {
   us: "🇺🇸",
@@ -100,7 +99,7 @@ export async function regionOptions(
   capability: RegionCapability,
 ): Promise<RegionOption[]> {
   try {
-    const regions = await api.all<LinodeRegion>("/regions");
+    const regions = await allPages((query) => api.get("/regions", { query }));
     const usable = regions.filter(
       (r) => (r.capabilities ?? []).includes(capability) && (r.status ?? "ok") === "ok",
     );

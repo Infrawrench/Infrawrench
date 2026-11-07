@@ -20,7 +20,17 @@
  *   is the credential. 202 `{status, message, dedup_key}`; 400 for a bad body,
  *   429 when throttled.
  */
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  withCursorPagination,
+  type ApiBody,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type {
+  operations as eventsOperations,
+  paths as eventsPaths,
+} from "./api-types.events.gen.js";
+import type { paths } from "./api-types.rest.gen.js";
 
 export type PagerDutyRegion = "us" | "eu";
 
@@ -28,10 +38,8 @@ export function restBase(region: PagerDutyRegion): string {
   return region === "eu" ? "https://api.eu.pagerduty.com" : "https://api.pagerduty.com";
 }
 
-export function eventsUrl(region: PagerDutyRegion): string {
-  return region === "eu"
-    ? "https://events.eu.pagerduty.com/v2/enqueue"
-    : "https://events.pagerduty.com/v2/enqueue";
+export function eventsBase(region: PagerDutyRegion): string {
+  return region === "eu" ? "https://events.eu.pagerduty.com/v2" : "https://events.pagerduty.com/v2";
 }
 
 export function webBase(subdomain: string | undefined): string {
@@ -47,6 +55,9 @@ export const PAGERDUTY_HOSTNAMES = [
 
 /** Largest page the REST lists accept. */
 export const PAGE_LIMIT = 100;
+
+/** How many pages a list walks by default: 2000 rows. */
+const MAX_PAGES = 20;
 
 export interface PagerDutyTransport {
   apiKey: string;
@@ -74,25 +85,15 @@ export function statusOf(err: unknown): number | undefined {
   return err instanceof PagerDutyApiError ? err.status : undefined;
 }
 
-export type QueryValue = string | number | boolean | undefined | string[];
-
-export interface PdRequest {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-  /** The acting user's email, for the writes that need one. */
-  from?: string;
-}
-
 function describeError(status: number, text: string, path: string): PagerDutyApiError {
   let message = text;
   let code: number | undefined;
   try {
-    const parsed = JSON.parse(text) as {
+    const parsed: {
       error?: { message?: string; code?: number; errors?: string[] };
       message?: string;
       errors?: string[];
-    };
+    } = JSON.parse(text);
     const e = parsed.error;
     if (e) {
       message = [e.message, ...(e.errors ?? [])].filter(Boolean).join(": ");
@@ -118,117 +119,70 @@ function describeError(status: number, text: string, path: string): PagerDutyApi
   );
 }
 
-function queryString(query: Record<string, QueryValue> | undefined): string {
-  const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
-    if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) for (const item of v) qs.append(k, item);
-    else qs.append(k, String(v));
-  }
-  const s = qs.toString();
-  return s ? `?${s}` : "";
+/** The REST API, with `getAll` walking its offset-paged lists. */
+export function createPagerDutyApi(transport: PagerDutyTransport) {
+  const client = createApiClient<paths>({
+    vendor: "PagerDuty",
+    baseUrl: restBase(transport.region),
+    headers: {
+      Accept: "application/vnd.pagerduty+json;version=2",
+      Authorization: transport.bearer
+        ? `Bearer ${transport.apiKey}`
+        : `Token token=${transport.apiKey}`,
+    },
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    http: transport.http,
+    caCert: transport.caCert,
+    httpError: ({ status, body, path }) => describeError(status, body, path),
+  });
+  return withCursorPagination(client, {
+    cursorParam: "offset",
+    firstCursor: 0,
+    sizeParam: "limit",
+    pageSize: PAGE_LIMIT,
+    maxPages: MAX_PAGES,
+    // A body with no list ends the walk rather than failing it.
+    emptyBodyEndsList: true,
+    // Only a literal `more: true` asks for another page, and the offset moves by
+    // the page size whatever the page held.
+    next: ({ body, cursor }) =>
+      typeof body === "object" && body !== null && "more" in body && body.more === true
+        ? Number(cursor) + PAGE_LIMIT
+        : undefined,
+  });
 }
 
-async function send(
-  transport: PagerDutyTransport,
-  url: string,
-  method: string,
-  headers: Record<string, string>,
-  body: string | undefined,
-): Promise<{ status: number; text: string }> {
-  if (transport.http) {
-    const res = await transport.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      ...(transport.caCert ? { caCert: transport.caCert } : {}),
-    });
-    return { status: res.status, text: res.body };
-  }
-  const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-  return { status: res.status, text: await res.text() };
+export type PagerDutyApi = ReturnType<typeof createPagerDutyApi>;
+
+/** The Events API: no auth header, because the routing key in the body is the credential. */
+export function createPagerDutyEvents(transport: PagerDutyTransport) {
+  return createApiClient<eventsPaths>({
+    vendor: "PagerDuty",
+    baseUrl: eventsBase(transport.region),
+    headers: { Accept: "application/json" },
+    emptyBodyIsUndefined: true,
+    http: transport.http,
+    caCert: transport.caCert,
+    httpError: ({ status, body, path }) => describeError(status, body, `/v2${path}`),
+  });
 }
 
-/** One REST request. */
-export async function pdFetch<T>(
-  transport: PagerDutyTransport,
-  path: string,
-  req: PdRequest = {},
-): Promise<T> {
-  const method = req.method ?? (req.body !== undefined ? "POST" : "GET");
-  const url = `${restBase(transport.region)}${path}${queryString(req.query)}`;
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.pagerduty+json;version=2",
-    Authorization: transport.bearer
-      ? `Bearer ${transport.apiKey}`
-      : `Token token=${transport.apiKey}`,
-  };
-  if (req.from) headers["From"] = req.from;
-  const body = req.body !== undefined ? JSON.stringify(req.body) : undefined;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const { status, text } = await send(transport, url, method, headers, body);
-  if (status < 200 || status >= 300) throw describeError(status, text, path);
-  if (status === 204 || !text) return undefined as T;
-  return JSON.parse(text) as T;
-}
+export type PagerDutyEvents = ReturnType<typeof createPagerDutyEvents>;
 
-/** Walk an offset-paginated list, reading the array under `key`. */
-export async function pdList<T>(
-  transport: PagerDutyTransport,
-  path: string,
-  key: string,
-  query: Record<string, QueryValue> = {},
-  maxItems = 2000,
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let offset = 0; offset < maxItems; offset += PAGE_LIMIT) {
-    const res = await pdFetch<Record<string, unknown>>(transport, path, {
-      query: { ...query, limit: PAGE_LIMIT, offset },
-    });
-    const items = Array.isArray(res?.[key]) ? (res[key] as T[]) : [];
-    out.push(...items);
-    if (res?.["more"] !== true || items.length === 0) break;
-  }
-  return out;
-}
-
-export interface EventsApiBody {
-  routing_key: string;
-  event_action: "trigger" | "acknowledge" | "resolve";
-  dedup_key: string;
-  payload?: {
-    summary: string;
-    source: string;
-    severity: "critical" | "error" | "warning" | "info";
-    timestamp?: string;
-    component?: string;
-    group?: string;
-    class?: string;
-    custom_details?: Record<string, unknown>;
-  };
-  client?: string;
-  client_url?: string;
-  links?: Array<{ href: string; text: string }>;
-}
+export type EventsApiBody = ApiBody<eventsOperations["createV2Event"]> & { dedup_key: string };
 
 /** One Events API v2 call. Returns the dedup key PagerDuty recorded. */
 export async function sendEvent(
-  transport: PagerDutyTransport,
+  events: PagerDutyEvents,
   body: EventsApiBody,
 ): Promise<{ dedupKey: string }> {
-  const { status, text } = await send(
-    transport,
-    eventsUrl(transport.region),
-    "POST",
-    { "Content-Type": "application/json", Accept: "application/json" },
-    JSON.stringify(body),
-  );
-  if (status < 200 || status >= 300) throw describeError(status, text, "/v2/enqueue");
   try {
-    const parsed = JSON.parse(text) as { dedup_key?: string };
-    return { dedupKey: parsed.dedup_key ?? body.dedup_key };
-  } catch {
-    return { dedupKey: body.dedup_key };
+    const answer = await events.post("/enqueue", { body });
+    return { dedupKey: answer?.dedup_key ?? body.dedup_key };
+  } catch (err) {
+    // The event was accepted; a 2xx that is not JSON only costs PagerDuty's key.
+    if (err instanceof SyntaxError) return { dedupKey: body.dedup_key };
+    throw err;
   }
 }

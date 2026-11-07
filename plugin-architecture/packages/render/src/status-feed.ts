@@ -60,7 +60,8 @@ const PROVIDER_WIDE = new Set(["Render Dashboard", "Render Platform API", "Rende
 export function mapComponent(name: string): StatusComponentMapping | null {
   const regional = /^([a-z]+): (.+)$/.exec(name);
   if (regional) {
-    const [, region, component] = regional as unknown as [string, string, string];
+    const region = regional[1]!;
+    const component = regional[2]!;
     const types = REGIONAL_TYPES[component];
     return {
       regions: [region],
@@ -82,7 +83,7 @@ interface FeedComponent {
 
 /** Prefix grouped component names with their region. */
 export function regionalizeBody(body: string): string {
-  const parsed = JSON.parse(body) as { incidents?: Array<{ components?: FeedComponent[] }> };
+  const parsed: { incidents?: Array<{ components?: FeedComponent[] }> } = JSON.parse(body);
   for (const incident of parsed.incidents ?? []) {
     for (const c of incident.components ?? []) {
       const region = c.group_id ? REGION_GROUPS[c.group_id] : undefined;

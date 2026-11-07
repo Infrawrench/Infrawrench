@@ -22,8 +22,10 @@ import { type LinodeApi, statusOf } from "./api.js";
 
 interface Probe {
   capability: PreflightCapability;
-  path: string;
+  probe: (api: LinodeApi) => Promise<unknown>;
 }
+
+const PROBE_QUERY = { query: { page_size: 25 } };
 
 const scope = (id: string, label: string) => ({ id, label });
 
@@ -36,7 +38,7 @@ const PROBES: Probe[] = [
         "Invoices and their line items, the uninvoiced balance, promotions and the transfer pool.",
       requiredPermissions: [scope("account:read_only", "Account: Read Only")],
     },
-    path: "/account/invoices",
+    probe: (api) => api.get("/account/invoices", PROBE_QUERY),
   },
   {
     capability: {
@@ -45,7 +47,7 @@ const PROBES: Probe[] = [
       description: "List, create, resize, power and back up Linodes, and read their statistics.",
       requiredPermissions: [scope("linodes:read_write", "Linodes: Read/Write")],
     },
-    path: "/linode/instances",
+    probe: (api) => api.get("/linode/instances", PROBE_QUERY),
   },
   {
     capability: {
@@ -53,7 +55,7 @@ const PROBES: Probe[] = [
       label: "Block Storage",
       requiredPermissions: [scope("volumes:read_write", "Volumes: Read/Write")],
     },
-    path: "/volumes",
+    probe: (api) => api.get("/volumes", PROBE_QUERY),
   },
   {
     capability: {
@@ -61,7 +63,7 @@ const PROBES: Probe[] = [
       label: "NodeBalancers",
       requiredPermissions: [scope("nodebalancers:read_write", "NodeBalancers: Read/Write")],
     },
-    path: "/nodebalancers",
+    probe: (api) => api.get("/nodebalancers", PROBE_QUERY),
   },
   {
     capability: {
@@ -70,7 +72,7 @@ const PROBES: Probe[] = [
       description: "Clusters, node pools and kubeconfigs (reading a kubeconfig needs read/write).",
       requiredPermissions: [scope("lke:read_write", "Kubernetes: Read/Write")],
     },
-    path: "/lke/clusters",
+    probe: (api) => api.get("/lke/clusters", PROBE_QUERY),
   },
   {
     capability: {
@@ -78,7 +80,7 @@ const PROBES: Probe[] = [
       label: "Object Storage",
       requiredPermissions: [scope("object_storage:read_write", "Object Storage: Read/Write")],
     },
-    path: "/object-storage/buckets",
+    probe: (api) => api.get("/object-storage/buckets", PROBE_QUERY),
   },
   {
     capability: {
@@ -86,7 +88,7 @@ const PROBES: Probe[] = [
       label: "Managed Databases",
       requiredPermissions: [scope("databases:read_write", "Databases: Read/Write")],
     },
-    path: "/databases/instances",
+    probe: (api) => api.get("/databases/instances", PROBE_QUERY),
   },
   {
     capability: {
@@ -94,7 +96,7 @@ const PROBES: Probe[] = [
       label: "Cloud Firewalls",
       requiredPermissions: [scope("firewall:read_write", "Firewalls: Read/Write")],
     },
-    path: "/networking/firewalls",
+    probe: (api) => api.get("/networking/firewalls", PROBE_QUERY),
   },
   {
     capability: {
@@ -102,7 +104,7 @@ const PROBES: Probe[] = [
       label: "DNS Manager",
       requiredPermissions: [scope("domains:read_write", "Domains: Read/Write")],
     },
-    path: "/domains",
+    probe: (api) => api.get("/domains", PROBE_QUERY),
   },
   {
     capability: {
@@ -110,7 +112,7 @@ const PROBES: Probe[] = [
       label: "VPCs",
       requiredPermissions: [scope("vpc:read_write", "VPCs: Read/Write")],
     },
-    path: "/vpcs",
+    probe: (api) => api.get("/vpcs", PROBE_QUERY),
   },
   {
     capability: {
@@ -118,7 +120,7 @@ const PROBES: Probe[] = [
       label: "Reserved IPs",
       requiredPermissions: [scope("ips:read_write", "IPs: Read/Write")],
     },
-    path: "/networking/reserved/ips",
+    probe: (api) => api.get("/networking/reserved/ips", PROBE_QUERY),
   },
   {
     capability: {
@@ -129,7 +131,7 @@ const PROBES: Probe[] = [
         scope("stackscripts:read_write", "StackScripts: Read/Write"),
       ],
     },
-    path: "/images",
+    probe: (api) => api.get("/images", PROBE_QUERY),
   },
   {
     capability: {
@@ -138,7 +140,7 @@ const PROBES: Probe[] = [
       description: "Akamai Cloud Pulse metrics for Managed Databases.",
       requiredPermissions: [scope("monitor:read_only", "Monitor: Read Only")],
     },
-    path: "/monitor/services",
+    probe: (api) => api.get("/monitor/services", PROBE_QUERY),
   },
 ];
 
@@ -155,14 +157,14 @@ const TOKENS_HELP = {
 export async function verifyLinodeCredentials(api: LinodeApi): Promise<PreflightResult> {
   let identity: string | undefined;
   try {
-    const profile = await api.get<{ username?: string; email?: string }>("/profile");
+    const profile = await api.get("/profile");
     identity = profile.username || profile.email || undefined;
   } catch (err) {
     if (statusOf(err) === 401) {
       return {
-        checks: PROBES.map((p) => ({
+        checks: PROBES.map((p): PreflightCapabilityCheck => ({
           capabilityId: p.capability.id,
-          status: "unknown" as const,
+          status: "unknown",
           message:
             "Linode rejected the token. Check that it was copied whole and has not expired or been revoked.",
         })),
@@ -172,7 +174,7 @@ export async function verifyLinodeCredentials(api: LinodeApi): Promise<Preflight
   const checks = await Promise.all(
     PROBES.map(async (probe): Promise<PreflightCapabilityCheck> => {
       try {
-        await api.get(probe.path, { query: { page_size: 25 } });
+        await probe.probe(api);
         return { capabilityId: probe.capability.id, status: "ok" };
       } catch (err) {
         const status = statusOf(err);

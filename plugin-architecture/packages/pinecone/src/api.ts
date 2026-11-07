@@ -1,4 +1,24 @@
-import type { HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  pathEncode,
+  restRequest,
+  type ApiBody,
+  type ApiClient,
+  type ApiResponse,
+  type HostServices,
+  type RestResponse,
+} from "@infrawrench/plugin-base";
+import type { paths as AdminPaths } from "./api-types.admin.gen.js";
+import type {
+  operations as AssistantDataOperations,
+  paths as AssistantDataPaths,
+} from "./api-types.assistant-data.gen.js";
+import type { paths as AssistantPaths } from "./api-types.assistant.gen.js";
+import type { paths as ControlPaths } from "./api-types.control.gen.js";
+import type { paths as DataPaths } from "./api-types.data.gen.js";
+import type { paths as InferencePaths } from "./api-types.inference.gen.js";
+import type { operations as OAuthOperations } from "./api-types.oauth.gen.js";
+import type { PcPrometheusTargets } from "./types.js";
 
 /**
  * Transport for Pinecone's REST APIs (verified against the published
@@ -38,19 +58,22 @@ export class PineconeApiError extends Error {
   }
 }
 
+/** What a failure's body may hold. Read with `typeof` checks: it is not what a 2xx promises. */
+interface ErrorBody {
+  error?: string | { code?: string; message?: string };
+  error_description?: string;
+  message?: string;
+}
+
 /** Pinecone errors are `{status, error: {code, message}}`; OAuth uses `{error, error_description}`. */
 export function summarizeBody(body: string): string {
   try {
-    const parsed = JSON.parse(body) as {
-      error?: unknown;
-      error_description?: unknown;
-      message?: unknown;
-    };
+    const parsed: ErrorBody = JSON.parse(body);
     if (typeof parsed.error_description === "string" && parsed.error_description) {
       return parsed.error_description;
     }
     if (parsed.error && typeof parsed.error === "object") {
-      const e = parsed.error as { code?: unknown; message?: unknown };
+      const e = parsed.error;
       if (typeof e.message === "string" && e.message) {
         return typeof e.code === "string" ? `${e.code}: ${e.message}` : e.message;
       }
@@ -61,26 +84,6 @@ export function summarizeBody(body: string): string {
     /* not JSON (the control plane's 401 is text/plain) */
   }
   return body.slice(0, 500);
-}
-
-export type QueryValue = string | number | boolean | undefined | null;
-
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-  /** Response body is text (Prometheus exposition format), not JSON. */
-  text?: boolean;
-}
-
-export function buildQuery(query: Record<string, QueryValue> | undefined): string {
-  if (!query) return "";
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === null || value === "") continue;
-    params.append(key, String(value));
-  }
-  return params.toString();
 }
 
 /** `https://` prefix for a bare host Pinecone returns (`x.svc.pinecone.io`). */
@@ -102,14 +105,39 @@ export interface PineconeCredentials {
   caCert: string;
 }
 
+type HeaderMap = Record<string, string>;
+
+const JSON_HEADERS = { Accept: "application/json", "X-Pinecone-Api-Version": API_VERSION };
+
 export class PineconeApi {
   private token: TokenCache | undefined;
   private tokenInFlight: Promise<string> | undefined;
 
+  /** Control plane (`https://api.pinecone.io`), with the project API key. */
+  readonly control: ApiClient<ControlPaths>;
+  /** Inference model catalog (`https://api.pinecone.io`), with the project API key. */
+  readonly inference: ApiClient<InferencePaths>;
+  /** Assistant control plane (`https://api.pinecone.io/assistant`), with the project API key. */
+  readonly assistants: ApiClient<AssistantPaths>;
+  /** Admin API, with a service-account access token. */
+  readonly admin: ApiClient<AdminPaths>;
+
   constructor(
     private readonly creds: PineconeCredentials,
     private readonly services: HostServices | undefined,
-  ) {}
+  ) {
+    // An account with no key (the credential picker's) only fails on a call that needs one.
+    const key = creds.apiKey
+      ? { "Api-Key": creds.apiKey }
+      : () => ({ "Api-Key": this.requireKey() });
+    this.control = this.client<ControlPaths>(API_HOST, key);
+    this.inference = this.client<InferencePaths>(API_HOST, key);
+    // The document's paths start at `/assistants`; errors have always named the whole path.
+    this.assistants = this.client<AssistantPaths>(`${API_HOST}/assistant`, key, "/assistant");
+    this.admin = this.client<AdminPaths>(API_HOST, async () => ({
+      Authorization: `Bearer ${await this.accessToken()}`,
+    }));
+  }
 
   get hasApiKey(): boolean {
     return this.creds.apiKey !== "";
@@ -123,56 +151,28 @@ export class PineconeApi {
     return this.creds.apiKey;
   }
 
-  private async send(
-    url: string,
-    method: string,
-    headers: Record<string, string>,
-    body: string | undefined,
-  ): Promise<{ status: number; body: string }> {
-    const http = this.services?.http;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers,
-        ...(body !== undefined ? { body } : {}),
-        ...(this.creds.caCert ? { caCert: this.creds.caCert } : {}),
-      });
-      return { status: res.status, body: res.body ?? "" };
-    }
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    return { status: res.status, body: await res.text() };
+  private client<P>(
+    baseUrl: string,
+    auth: HeaderMap | (() => HeaderMap | Promise<HeaderMap>),
+    errorPrefix = "",
+  ): ApiClient<P> {
+    return createApiClient<P>({
+      vendor: "Pinecone",
+      baseUrl,
+      headers:
+        typeof auth === "function"
+          ? async () => ({ ...JSON_HEADERS, ...(await auth()) })
+          : { ...JSON_HEADERS, ...auth },
+      http: this.services?.http,
+      caCert: this.creds.caCert,
+      contentType: "with-body",
+      emptyBodyIsUndefined: true,
+      httpError: ({ status, path, body }) =>
+        new PineconeApiError(status, `${errorPrefix}${path}`, body ?? ""),
+    });
   }
 
-  private async raw(
-    base: string,
-    path: string,
-    auth: Record<string, string>,
-    opts: RequestOptions,
-  ): Promise<string> {
-    const method = opts.method ?? "GET";
-    const query = buildQuery(opts.query);
-    const url = `${base}${path}${query ? `?${query}` : ""}`;
-    const headers: Record<string, string> = {
-      Accept: opts.text ? "text/plain" : "application/json",
-      "X-Pinecone-Api-Version": API_VERSION,
-      ...auth,
-    };
-    const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await this.send(url, method, headers, body);
-    if (res.status < 200 || res.status >= 300) {
-      throw new PineconeApiError(res.status, path, res.body);
-    }
-    return res.body;
-  }
-
-  private parse<T>(text: string): T {
-    if (!text) return undefined as unknown as T;
-    return JSON.parse(text) as T;
-  }
-
-  private requireKey(): Record<string, string> {
+  private requireKey(): string {
     if (!this.creds.apiKey) {
       throw new PineconeApiError(
         401,
@@ -180,37 +180,81 @@ export class PineconeApi {
         "This account has no project API key, so indexes, backups and assistants cannot be read.",
       );
     }
-    return { "Api-Key": this.creds.apiKey };
+    return this.creds.apiKey;
   }
 
-  /** Control-plane request (`https://api.pinecone.io{path}`) with the project API key. */
-  async control<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    return this.parse<T>(await this.raw(API_HOST, path, this.requireKey(), opts));
-  }
-
-  /** Data-plane request against an index or assistant host, with the project API key. */
-  async dataPlane<T>(host: string, path: string, opts: RequestOptions = {}): Promise<T> {
+  /** A data-plane client for an index or assistant host, with the project API key. */
+  private onHost<P>(host: string, path: string): ApiClient<P> {
     const base = hostUrl(host);
     if (!base) throw new PineconeApiError(404, path, "This resource has no host yet.");
-    return this.parse<T>(await this.raw(base, path, this.requireKey(), opts));
+    return this.client<P>(base, { "Api-Key": this.requireKey() });
+  }
+
+  async describeIndexStats(host: string) {
+    const path = "/describe_index_stats";
+    return this.onHost<DataPaths>(host, path).post(path, { body: {} });
+  }
+
+  async listAssistantFiles(host: string, assistant: string) {
+    const path = `/files/${pathEncode(assistant)}` as const;
+    return this.onHost<AssistantDataPaths>(host, path).get(path);
+  }
+
+  async chatCompletion(
+    host: string,
+    assistant: string,
+    body: ApiBody<AssistantDataOperations["chat_completion_assistant"]>,
+  ) {
+    const path = `/chat/${pathEncode(assistant)}/chat/completions` as const;
+    return this.onHost<AssistantDataPaths>(host, path).post(path, { body });
   }
 
   /**
    * Prometheus endpoints (discovery and the scrape targets) take the project
-   * API key as a Bearer token rather than in `Api-Key`.
+   * API key as a Bearer token rather than in `Api-Key`. These stay outside the
+   * clients: a scrape target is whatever URL discovery named, and the docs'
+   * `/metrics/discovery` is not in the document, which spells it `/metrics/discover`.
    */
-  async prometheus(url: string, text: boolean): Promise<string> {
-    const auth = { Authorization: `Bearer ${this.requireKey()["Api-Key"]}` };
+  private async prometheus<T>(
+    url: string,
+    accept: string,
+    responseAs?: "text",
+  ): Promise<RestResponse<T>> {
+    const token = this.requireKey();
     const u = new URL(url);
-    return this.raw(u.origin, `${u.pathname}${u.search}`, auth, { text });
+    const path = `${u.pathname}${u.search}`;
+    return restRequest<T>({
+      vendor: "Pinecone",
+      url: `${u.origin}${path}`,
+      headers: {
+        Accept: accept,
+        "X-Pinecone-Api-Version": API_VERSION,
+        Authorization: `Bearer ${token}`,
+      },
+      init: { method: "GET" },
+      contentType: "with-body",
+      emptyBodyIsUndefined: true,
+      ...(responseAs ? { responseAs } : {}),
+      ...this.transport(),
+      httpError: ({ status, body }) => new PineconeApiError(status, path, body ?? ""),
+    });
   }
 
-  /** Admin API request with a service-account access token. */
-  async admin<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    const token = await this.accessToken();
-    return this.parse<T>(
-      await this.raw(API_HOST, `/admin${path}`, { Authorization: `Bearer ${token}` }, opts),
-    );
+  private transport() {
+    const http = this.services?.http;
+    const { caCert } = this.creds;
+    return { ...(http ? { http } : {}), ...(caCert ? { caCert } : {}) };
+  }
+
+  /** The scrape targets a project's discovery endpoint names. */
+  async prometheusTargets(url: string): Promise<PcPrometheusTargets> {
+    return (await this.prometheus<PcPrometheusTargets>(url, "application/json")).body;
+  }
+
+  /** One scrape target's Prometheus text. */
+  async prometheusScrape(url: string): Promise<string> {
+    const { body } = await this.prometheus<string>(url, "text/plain", "text");
+    return body ?? "";
   }
 
   /** OAuth2 client-credentials exchange, cached until a minute before expiry. */
@@ -226,25 +270,29 @@ export class PineconeApi {
     if (this.tokenInFlight) return this.tokenInFlight;
     this.tokenInFlight = (async () => {
       try {
-        const res = await this.send(
-          `${LOGIN_HOST}/oauth/token`,
-          "POST",
-          {
+        const grant: ApiBody<OAuthOperations["get_token"]> = {
+          grant_type: "client_credentials",
+          client_id: this.creds.clientId,
+          client_secret: this.creds.clientSecret,
+          audience: `${API_HOST}/`,
+        };
+        // Read as text: an empty 200 here is a failed exchange, not a list with nothing in it.
+        const { body } = await restRequest<string>({
+          vendor: "Pinecone",
+          url: `${LOGIN_HOST}/oauth/token`,
+          headers: {
             Accept: "application/json",
             "Content-Type": "application/json",
             "X-Pinecone-Api-Version": API_VERSION,
           },
-          JSON.stringify({
-            grant_type: "client_credentials",
-            client_id: this.creds.clientId,
-            client_secret: this.creds.clientSecret,
-            audience: `${API_HOST}/`,
-          }),
-        );
-        if (res.status < 200 || res.status >= 300) {
-          throw new PineconeApiError(res.status, "/oauth/token", res.body);
-        }
-        const parsed = JSON.parse(res.body) as { access_token?: string; expires_in?: number };
+          init: { method: "POST", body: JSON.stringify(grant) },
+          contentType: "with-body",
+          responseAs: "text",
+          ...this.transport(),
+          httpError: ({ status, body: text }) =>
+            new PineconeApiError(status, "/oauth/token", text ?? ""),
+        });
+        const parsed: ApiResponse<OAuthOperations["get_token"]> = JSON.parse(body ?? "");
         if (!parsed.access_token) {
           throw new PineconeApiError(502, "/oauth/token", "No access token in the response.");
         }

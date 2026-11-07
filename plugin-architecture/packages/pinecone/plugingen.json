@@ -1,0 +1,105 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "control",
+      "specUrl": "https://raw.githubusercontent.com/pinecone-io/pinecone-api/main/2026-07/db_control_2026-07.oas.yaml",
+      "paths": {
+        "/indexes": ["get", "post"],
+        "/indexes/create-for-model": ["post"],
+        "/indexes/{index_name}": ["get", "patch", "delete"],
+        "/indexes/{index_name}/backups": ["post"],
+        "/indexes/{index_name}/backup-schedules": ["get", "post"],
+        "/collections": ["get", "post"],
+        "/collections/{collection_name}": ["get", "delete"],
+        "/backups": ["get"],
+        "/backups/{backup_id}": ["get", "delete"],
+        "/backups/{backup_id}/create-index": ["post"],
+        "/backup-schedules/{schedule_id}": ["get", "patch", "delete"],
+        "/backup-schedules/{schedule_id}/history": ["get"],
+        "/restore-jobs": ["get"],
+        "/restore-jobs/{job_id}": ["get"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/CreateIndexForModelRequest/properties/embed/properties/field_map",
+          "value": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "why": "The document says only `type: object`, which generates an object that can hold nothing. Its own example maps `text` to a field name, which is what the plugin sends."
+        }
+      ]
+    },
+    {
+      "name": "inference",
+      "specUrl": "https://raw.githubusercontent.com/pinecone-io/pinecone-api/main/2026-07/inference_2026-07.oas.yaml",
+      "paths": {
+        "/models": ["get"]
+      }
+    },
+    {
+      "name": "assistant",
+      "specUrl": "https://raw.githubusercontent.com/pinecone-io/pinecone-api/main/2026-07/assistant_control_2026-07.oas.yaml",
+      "paths": {
+        "/assistants": ["get", "post"],
+        "/assistants/{assistant_name}": ["get", "patch", "delete"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/UpdateAssistantRequest/properties/metadata",
+          "value": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true
+          },
+          "why": "The document says only `type: object`, which generates an object that can hold nothing. Its description calls this custom organizational data, which is what the plugin sends from the metadata field."
+        }
+      ]
+    },
+    {
+      "name": "assistant-data",
+      "specUrl": "https://raw.githubusercontent.com/pinecone-io/pinecone-api/main/2026-07/assistant_data_2026-07.oas.yaml",
+      "paths": {
+        "/files/{assistant_name}": ["get"],
+        "/chat/{assistant_name}/chat/completions": ["post"]
+      }
+    },
+    {
+      "name": "data",
+      "specUrl": "https://raw.githubusercontent.com/pinecone-io/pinecone-api/main/2026-07/db_data_2026-07.oas.yaml",
+      "paths": {
+        "/describe_index_stats": ["post"]
+      }
+    },
+    {
+      "name": "admin",
+      "specUrl": "https://raw.githubusercontent.com/pinecone-io/pinecone-api/main/2026-07/admin_2026-07.oas.yaml",
+      "paths": {
+        "/admin/projects": ["get", "post"],
+        "/admin/projects/{project_id}": ["get", "patch", "delete"],
+        "/admin/projects/{project_id}/api-keys": ["get", "post"],
+        "/admin/api-keys/{api_key_id}": ["get", "patch", "delete"],
+        "/admin/service-accounts": ["get", "post"],
+        "/admin/service-accounts/{service_account_id}": ["get", "patch", "delete"],
+        "/admin/service-accounts/{service_account_id}/rotate-secret": ["post"]
+      }
+    },
+    {
+      "name": "metrics",
+      "specUrl": "https://raw.githubusercontent.com/pinecone-io/pinecone-api/main/2026-07/db_metrics_2026-07.oas.yaml",
+      "paths": {
+        "/prometheus/projects/{project_id}/metrics/discover": ["get"]
+      }
+    },
+    {
+      "name": "oauth",
+      "specUrl": "https://raw.githubusercontent.com/pinecone-io/pinecone-api/main/2026-07/oauth_2026-07.oas.yaml",
+      "paths": {
+        "/oauth/token": ["post"]
+      }
+    }
+  ]
+}

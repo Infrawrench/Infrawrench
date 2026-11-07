@@ -13,20 +13,21 @@ export interface HoneycombRegion {
   uiUrl: string;
 }
 
-export const HONEYCOMB_REGIONS: HoneycombRegion[] = [
-  {
-    id: "us1",
-    label: "US",
-    apiUrl: "https://api.honeycomb.io",
-    uiUrl: "https://ui.honeycomb.io",
-  },
-  {
-    id: "eu1",
-    label: "EU",
-    apiUrl: "https://api.eu1.honeycomb.io",
-    uiUrl: "https://ui.eu1.honeycomb.io",
-  },
-];
+const US: HoneycombRegion = {
+  id: "us1",
+  label: "US",
+  apiUrl: "https://api.honeycomb.io",
+  uiUrl: "https://ui.honeycomb.io",
+};
+
+const EU: HoneycombRegion = {
+  id: "eu1",
+  label: "EU",
+  apiUrl: "https://api.eu1.honeycomb.io",
+  uiUrl: "https://ui.eu1.honeycomb.io",
+};
+
+export const HONEYCOMB_REGIONS: HoneycombRegion[] = [US, EU];
 
 export const DEFAULT_REGION_ID = "us1";
 
@@ -38,7 +39,7 @@ export const REGION_PICKER: CredentialFieldRegion[] = [
 /** Accepts the picker id, the label, or a pasted API or UI host. */
 export function resolveRegion(raw: string | undefined): HoneycombRegion {
   const value = (raw ?? "").trim().toLowerCase();
-  if (!value) return HONEYCOMB_REGIONS[0] as HoneycombRegion;
+  if (!value) return US;
   const found = HONEYCOMB_REGIONS.find(
     (r) =>
       r.id === value ||
@@ -47,6 +48,6 @@ export function resolveRegion(raw: string | undefined): HoneycombRegion {
       value.includes(new URL(r.uiUrl).host),
   );
   if (found) return found;
-  if (value === "eu" || value.includes("eu1")) return HONEYCOMB_REGIONS[1] as HoneycombRegion;
+  if (value === "eu" || value.includes("eu1")) return EU;
   throw new Error(`Honeycomb plugin: unknown region "${raw}"`);
 }

@@ -1,36 +1,6 @@
 import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { f, o, rt } from "@infrawrench/plugin-base";
 
-/** Config API route, list key and body key behind each slug-addressed type. */
-export const CONFIG: Record<string, { plural: string; listKey: string; singular: string }> = {
-  monitor: { plural: "monitors", listKey: "monitors", singular: "monitor" },
-  "notification-policy": {
-    plural: "notification-policies",
-    listKey: "notification_policies",
-    singular: "notification_policy",
-  },
-  notifier: { plural: "notifiers", listKey: "notifiers", singular: "notifier" },
-  collection: { plural: "collections", listKey: "collections", singular: "collection" },
-  bucket: { plural: "buckets", listKey: "buckets", singular: "bucket" },
-  team: { plural: "teams", listKey: "teams", singular: "team" },
-  dashboard: { plural: "dashboards", listKey: "dashboards", singular: "dashboard" },
-  slo: { plural: "slos", listKey: "slos", singular: "slo" },
-  "rollup-rule": { plural: "rollup-rules", listKey: "rollup_rules", singular: "rollup_rule" },
-  "drop-rule": { plural: "drop-rules", listKey: "drop_rules", singular: "drop_rule" },
-  "recording-rule": {
-    plural: "recording-rules",
-    listKey: "recording_rules",
-    singular: "recording_rule",
-  },
-  "muting-rule": { plural: "muting-rules", listKey: "muting_rules", singular: "muting_rule" },
-  "service-account": {
-    plural: "service-accounts",
-    listKey: "service_accounts",
-    singular: "service_account",
-  },
-  service: { plural: "services", listKey: "services", singular: "service" },
-};
-
 const SLUG = f("slug", "Slug", { editable: false });
 const TEAM = f("teamSlug", "Team", { required: false, editable: false });
 const UPDATED = f("updatedAt", "Updated", { required: false, editable: false });

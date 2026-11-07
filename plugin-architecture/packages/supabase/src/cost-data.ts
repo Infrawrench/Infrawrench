@@ -1,7 +1,8 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import type { SupabaseContext } from "./api.js";
-import { enc, sbFetch } from "./api.js";
-import type { SbAddons, SbProject } from "./types.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { supabaseApi } from "./api.js";
+import type { SbProject } from "./types.js";
 
 /**
  * Estimated daily spend from the billing add-ons each project runs.
@@ -36,10 +37,8 @@ export async function fetchSupabaseCostData(
   for (const project of projects) {
     // Paused projects run no compute and are not billed for it.
     if (project.status === "INACTIVE") continue;
-    const addons = await sbFetch<SbAddons>(
-      ctx,
-      "GET",
-      `/v1/projects/${enc(project.ref)}/billing/addons`,
+    const addons = await supabaseApi(ctx).get(
+      `/v1/projects/${pathEncode(project.ref)}/billing/addons`,
     );
     for (const addon of addons?.selected_addons ?? []) {
       const price = addon.variant.price;

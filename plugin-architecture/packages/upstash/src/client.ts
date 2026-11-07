@@ -20,9 +20,14 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
-import type { UpstashContext } from "./api.js";
-import { devFetch, qstashBase, qstashFetch } from "./api.js";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  pathEncode,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
+import type { DeveloperClient, QStashClient, UpstashContext } from "./api.js";
+import { dev, qstash, qstashBase, qstashPost } from "./api.js";
 import { fetchUpstashCostData } from "./cost-data.js";
 import {
   iso,
@@ -43,21 +48,17 @@ import {
 import { ENRICH, renderUpstashDetail, renderUpstashSidebar } from "./render.js";
 import { REDIS_PLANS, REDIS_REGIONS, RESOURCE_TYPES, T } from "./resource-types.js";
 import type {
+  EnqueueOperation,
   Point,
-  UpAuditLog,
-  UpBackup,
-  UpDlqMessage,
-  UpIndexStats,
-  UpLog,
-  UpQStashStats,
+  PublishOperation,
+  QStashChild,
+  ScheduleCreateOperation,
   UpQStashUser,
   UpQueue,
   UpRedis,
-  UpRedisStats,
   UpSchedule,
   UpSearch,
   UpTeam,
-  UpTeamMember,
   UpUrlGroup,
   UpVector,
 } from "./types.js";
@@ -80,7 +81,8 @@ function list(raw: string | undefined): string[] {
   const s = String(raw ?? "").trim();
   if (s.startsWith("[")) {
     try {
-      return (JSON.parse(s) as unknown[]).map(String).filter(Boolean);
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
       /* fall through */
     }
@@ -97,7 +99,7 @@ function stamp(ms: number | undefined): string {
 }
 
 /** The stats `period` that covers a time range (Upstash returns 60 points per period). */
-export function statsPeriod(rangeMs: number): string {
+export function statsPeriod(rangeMs: number) {
   const h = 3_600_000;
   if (rangeMs <= h) return "1h";
   if (rangeMs <= 3 * h) return "3h";
@@ -109,14 +111,39 @@ export function statsPeriod(rangeMs: number): string {
 }
 
 function notFound(what: string): Error {
-  const err = new Error(`Upstash plugin: ${what} not found`) as Error & { status: number };
-  err.status = 404;
-  return err;
+  return Object.assign(new Error(`Upstash plugin: ${what} not found`), { status: 404 });
+}
+
+/** One listing, kept for `CACHE_MS`. A load that fails is not kept. */
+class CachedListing<V> {
+  private entry: { at: number; value: Promise<V> } | undefined;
+
+  get(load: () => Promise<V>): Promise<V> {
+    const hit = this.entry;
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+    const value = load();
+    this.entry = { at: Date.now(), value };
+    value.catch(() => this.clear());
+    return value;
+  }
+
+  clear(): void {
+    this.entry = undefined;
+  }
 }
 
 export class UpstashClient implements PluginClient {
   readonly ctx: UpstashContext;
-  private cache = new Map<string, { at: number; value: Promise<unknown> }>();
+  private readonly listings = {
+    redis: new CachedListing<UpRedis[]>(),
+    vector: new CachedListing<UpVector[]>(),
+    search: new CachedListing<UpSearch[]>(),
+    teams: new CachedListing<UpTeam[]>(),
+    qstash: new CachedListing<UpQStashUser[]>(),
+    schedules: new CachedListing<QStashChild<UpSchedule>[]>(),
+    queues: new CachedListing<QStashChild<UpQueue>[]>(),
+    groups: new CachedListing<QStashChild<UpUrlGroup>[]>(),
+  };
 
   constructor(credentials: Credentials, services?: HostServices) {
     const email = (credentials["email"] ?? "").trim();
@@ -132,29 +159,12 @@ export class UpstashClient implements PluginClient {
     };
   }
 
-  private cached<V>(key: string, load: () => Promise<V>): Promise<V> {
-    const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.value as Promise<V>;
-    const value = load();
-    this.cache.set(key, { at: Date.now(), value });
-    value.catch(() => this.cache.delete(key));
-    return value;
-  }
-
   private invalidate(): void {
-    this.cache.clear();
+    for (const listing of Object.values(this.listings)) listing.clear();
   }
 
-  private dev<V>(
-    method: string,
-    path: string,
-    body?: unknown,
-    query?: Record<string, string>,
-  ): Promise<V> {
-    return devFetch<V>(this.ctx, method, path, {
-      ...(body !== undefined ? { body } : {}),
-      ...(query ? { query } : {}),
-    });
+  private dev<V>(call: (api: DeveloperClient) => Promise<V>): Promise<V | undefined> {
+    return dev(this.ctx, call);
   }
 
   // -------------------------------------------------------------------------
@@ -162,79 +172,85 @@ export class UpstashClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private redisList() {
-    return this.cached(
-      "redis",
-      async () => (await this.dev<UpRedis[]>("GET", "/redis/databases")) ?? [],
+    return this.listings.redis.get(
+      async () => (await this.dev((api) => api.get("/redis/databases"))) ?? [],
     );
   }
   private vectorList() {
-    return this.cached(
-      "vector",
-      async () => (await this.dev<UpVector[]>("GET", "/vector/index")) ?? [],
+    return this.listings.vector.get(
+      async () => (await this.dev((api) => api.get("/vector/index"))) ?? [],
     );
   }
   private searchList() {
-    return this.cached("search", async () => (await this.dev<UpSearch[]>("GET", "/search")) ?? []);
+    return this.listings.search.get(
+      async () => (await this.dev((api) => api.get("/search"))) ?? [],
+    );
   }
   private teams() {
-    return this.cached("teams", async () => (await this.dev<UpTeam[]>("GET", "/teams")) ?? []);
+    return this.listings.teams.get(async () => (await this.dev((api) => api.get("/teams"))) ?? []);
   }
   /** Regional QStash accounts, including their tokens. */
   qstashUsers() {
-    return this.cached("qstash", async () =>
-      ((await this.dev<UpQStashUser[]>("GET", "/qstash/users")) ?? []).filter(
-        (u) => !u.deletion_time,
-      ),
+    return this.listings.qstash.get(async () =>
+      ((await this.dev((api) => api.get("/qstash/users"))) ?? []).filter((u) => !u.deletion_time),
     );
   }
 
-  private async qstashAccount(id: string): Promise<UpQStashUser & { token: string }> {
+  private async qstashAccount(id: string) {
     const user = (await this.qstashUsers()).find((u) => u.id === id);
     if (!user?.token) throw notFound(`QStash account ${id}`);
-    return user as UpQStashUser & { token: string };
+    return { ...user, token: user.token };
   }
 
   private async q<V>(
     qstashId: string,
-    method: string,
-    path: string,
-    options: Parameters<typeof qstashFetch>[4] = {},
-  ): Promise<V> {
+    call: (api: QStashClient) => Promise<V>,
+  ): Promise<V | undefined> {
     const acct = await this.qstashAccount(qstashId);
-    return qstashFetch<V>(
+    return qstash(this.ctx, { token: acct.token, region: acct.region }, call);
+  }
+
+  /** A QStash call whose body goes as it stands rather than as JSON. */
+  private async qPost<Op>(
+    qstashId: string,
+    path: string,
+    body: string,
+    headers: Record<string, string>,
+  ) {
+    const acct = await this.qstashAccount(qstashId);
+    return qstashPost<Op>(
       this.ctx,
       { token: acct.token, region: acct.region },
-      method,
       path,
-      options,
+      body,
+      headers,
     );
   }
 
   private async perQStash<V>(
-    key: string,
-    load: (id: string) => Promise<V[]>,
-  ): Promise<Array<{ qstashId: string; item: V }>> {
-    return this.cached(key, async () => {
-      const out: Array<{ qstashId: string; item: V }> = [];
-      for (const u of await this.qstashUsers()) {
-        if (!u.id) continue;
-        for (const item of (await load(u.id)) ?? []) out.push({ qstashId: u.id, item });
-      }
-      return out;
-    });
+    load: (id: string) => Promise<V[] | undefined>,
+  ): Promise<QStashChild<V>[]> {
+    const out: QStashChild<V>[] = [];
+    for (const u of await this.qstashUsers()) {
+      if (!u.id) continue;
+      for (const item of (await load(u.id)) ?? []) out.push({ qstashId: u.id, item });
+    }
+    return out;
   }
 
   private schedules() {
-    return this.perQStash<UpSchedule>("schedules", (id) =>
-      this.q<UpSchedule[]>(id, "GET", "/v2/schedules"),
+    return this.listings.schedules.get(() =>
+      this.perQStash((id) => this.q(id, (api) => api.get("/v2/schedules"))),
     );
   }
   private queues() {
-    return this.perQStash<UpQueue>("queues", (id) => this.q<UpQueue[]>(id, "GET", "/v2/queues"));
+    return this.listings.queues.get(() =>
+      this.perQStash((id) => this.q(id, (api) => api.get("/v2/queues"))),
+    );
   }
   private urlGroups() {
-    return this.perQStash<UpUrlGroup>("groups", (id) =>
-      this.q<UpUrlGroup[]>(id, "GET", "/v2/topics"),
+    return this.listings.groups.get(() =>
+      this.perQStash((id) => this.q(id, (api) => api.get("/v2/topics"))),
     );
   }
 
@@ -282,9 +298,8 @@ export class UpstashClient implements PluginClient {
           const teams = await this.teams();
           return Promise.all(
             teams.map(async (t) => {
-              const members = await this.dev<UpTeamMember[]>(
-                "GET",
-                `/teams/${encodeURIComponent(t.team_id ?? "")}`,
+              const members = await this.dev((api) =>
+                api.get(`/teams/${pathEncode(t.team_id ?? "")}`),
               ).catch(() => undefined);
               const me = members?.find(
                 (m) => m.member_email?.toLowerCase() === this.ctx.email.toLowerCase(),
@@ -308,39 +323,31 @@ export class UpstashClient implements PluginClient {
       const ext = externalIdOf(resourceId);
       switch (typeId) {
         case T.redis:
-          return mapRedis(accountId, await this.redis(ext));
+          return mapRedis(accountId, (await this.redis(ext))!);
         case T.vector:
           return mapVector(
             accountId,
-            await this.dev<UpVector>("GET", `/vector/index/${encodeURIComponent(ext)}`),
+            (await this.dev((api) => api.get(`/vector/index/${pathEncode(ext)}`)))!,
           );
         case T.search:
           return mapSearch(
             accountId,
-            await this.dev<UpSearch>("GET", `/search/${encodeURIComponent(ext)}`),
+            (await this.dev((api) => api.get(`/search/${pathEncode(ext)}`)))!,
           );
         case T.schedule: {
           const { qstashId, key } = splitChild(ext);
-          const s = await this.q<UpSchedule>(
-            qstashId,
-            "GET",
-            `/v2/schedules/${encodeURIComponent(key)}`,
-          );
-          return mapSchedule(accountId, qstashId, s);
+          const s = await this.q(qstashId, (api) => api.get(`/v2/schedules/${pathEncode(key)}`));
+          return mapSchedule(accountId, qstashId, s!);
         }
         case T.queue: {
           const { qstashId, key } = splitChild(ext);
-          const q = await this.q<UpQueue>(qstashId, "GET", `/v2/queues/${encodeURIComponent(key)}`);
-          return mapQueue(accountId, qstashId, q);
+          const q = await this.q(qstashId, (api) => api.get(`/v2/queues/${pathEncode(key)}`));
+          return mapQueue(accountId, qstashId, q!);
         }
         case T.urlGroup: {
           const { qstashId, key } = splitChild(ext);
-          const g = await this.q<UpUrlGroup>(
-            qstashId,
-            "GET",
-            `/v2/topics/${encodeURIComponent(key)}`,
-          );
-          return mapUrlGroup(accountId, qstashId, g);
+          const g = await this.q(qstashId, (api) => api.get(`/v2/topics/${pathEncode(key)}`));
+          return mapUrlGroup(accountId, qstashId, g!);
         }
         default: {
           const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
@@ -353,8 +360,8 @@ export class UpstashClient implements PluginClient {
     });
   }
 
-  private redis(id: string): Promise<UpRedis> {
-    return this.dev<UpRedis>("GET", `/redis/database/${encodeURIComponent(id)}`);
+  private redis(id: string) {
+    return this.dev((api) => api.get(`/redis/database/${pathEncode(id)}`));
   }
 
   resolveOutput(
@@ -367,7 +374,7 @@ export class UpstashClient implements PluginClient {
       const ext = externalIdOf(resourceId);
       switch (typeId) {
         case T.redis: {
-          const db = await this.redis(ext);
+          const db = (await this.redis(ext))!;
           const host = redisHost(db.endpoint);
           const values: Record<string, string> = {
             host,
@@ -383,12 +390,11 @@ export class UpstashClient implements PluginClient {
         }
         case T.vector:
         case T.search: {
-          const idx = await this.dev<UpVector | UpSearch>(
-            "GET",
+          const idx = (
             typeId === T.vector
-              ? `/vector/index/${encodeURIComponent(ext)}`
-              : `/search/${encodeURIComponent(ext)}`,
-          );
+              ? await this.dev((api) => api.get(`/vector/index/${pathEncode(ext)}`))
+              : await this.dev((api) => api.get(`/search/${pathEncode(ext)}`))
+          )!;
           const host = idx.endpoint ?? "";
           const values: Record<string, string> = {
             restUrl: host ? (host.startsWith("http") ? host : `https://${host}`) : "",
@@ -404,7 +410,7 @@ export class UpstashClient implements PluginClient {
           if (outputKey === "token") return acct.token;
           if (outputKey === "readOnlyToken") return acct.read_only_token ?? "";
           if (outputKey === "currentSigningKey" || outputKey === "nextSigningKey") {
-            const keys = await this.q<{ current?: string; next?: string }>(ext, "GET", "/v2/keys");
+            const keys = await this.q(ext, (api) => api.get("/v2/keys"));
             return (outputKey === "currentSigningKey" ? keys?.current : keys?.next) ?? "";
           }
           break;
@@ -424,7 +430,7 @@ export class UpstashClient implements PluginClient {
         ...resource,
         resolvedOutputs: { ...resource.resolvedOutputs },
       };
-      const put = (key: string, value: unknown) => {
+      const put = (key: string, value: object | undefined) => {
         if (value !== undefined) out.resolvedOutputs[key] = JSON.stringify(value);
       };
       const settle = async <V>(p: Promise<V>): Promise<V | undefined> => {
@@ -443,8 +449,8 @@ export class UpstashClient implements PluginClient {
       switch (resource.resourceTypeId) {
         case T.redis: {
           const [stats, backups, teams] = await Promise.all([
-            settle(this.dev<UpRedisStats>("GET", `/redis/stats/${encodeURIComponent(ext)}`)),
-            settle(this.dev<UpBackup[]>("GET", `/redis/list-backup/${encodeURIComponent(ext)}`)),
+            settle(this.dev((api) => api.get(`/redis/stats/${pathEncode(ext)}`))),
+            settle(this.dev((api) => api.get(`/redis/list-backup/${pathEncode(ext)}`))),
             teamOptions(),
           ]);
           if (stats) {
@@ -474,12 +480,15 @@ export class UpstashClient implements PluginClient {
         }
         case T.vector:
         case T.search: {
-          const base =
-            resource.resourceTypeId === T.vector
-              ? `/vector/index/${encodeURIComponent(ext)}`
-              : `/search/${encodeURIComponent(ext)}`;
+          const id = pathEncode(ext);
           const [stats, teams] = await Promise.all([
-            settle(this.dev<UpIndexStats>("GET", `${base}/stats`, undefined, { period: "1d" })),
+            settle(
+              resource.resourceTypeId === T.vector
+                ? this.dev((api) =>
+                    api.get(`/vector/index/${id}/stats`, { query: { period: "1d" } }),
+                  )
+                : this.dev((api) => api.get(`/search/${id}/stats`, { query: { period: "1d" } })),
+            ),
             teamOptions(),
           ]);
           if (stats) {
@@ -499,23 +508,14 @@ export class UpstashClient implements PluginClient {
         }
         case T.qstash: {
           const [dlq, schedules, queues, groups, teams, stats] = await Promise.all([
-            settle(
-              this.q<{ messages?: UpDlqMessage[] }>(ext, "GET", "/v2/dlq", {
-                query: { count: 25 },
-              }),
-            ),
-            settle(this.q<UpSchedule[]>(ext, "GET", "/v2/schedules")),
-            settle(this.q<UpQueue[]>(ext, "GET", "/v2/queues")),
-            settle(this.q<UpUrlGroup[]>(ext, "GET", "/v2/topics")),
+            settle(this.q(ext, (api) => api.get("/v2/dlq", { query: { count: 25 } }))),
+            settle(this.q(ext, (api) => api.get("/v2/schedules"))),
+            settle(this.q(ext, (api) => api.get("/v2/queues"))),
+            settle(this.q(ext, (api) => api.get("/v2/topics"))),
             teamOptions(),
             settle(
-              this.dev<UpQStashStats>(
-                "GET",
-                `/qstash/stats/${encodeURIComponent(ext)}`,
-                undefined,
-                {
-                  period: "30d",
-                },
+              this.dev((api) =>
+                api.get(`/qstash/stats/${pathEncode(ext)}`, { query: { period: "30d" } }),
               ),
             ),
           ]);
@@ -549,9 +549,7 @@ export class UpstashClient implements PluginClient {
           break;
         }
         case T.team: {
-          const members = await settle(
-            this.dev<UpTeamMember[]>("GET", `/teams/${encodeURIComponent(ext)}`),
-          );
+          const members = await settle(this.dev((api) => api.get(`/teams/${pathEncode(ext)}`)));
           put(
             ENRICH.members,
             members?.map((m) => ({ email: m.member_email ?? "", role: m.member_role ?? "" })),
@@ -947,17 +945,21 @@ export class UpstashClient implements PluginClient {
             throw new Error(
               `Read regions must be on ${platform.toUpperCase()}: ${wrong.join(", ")}.`,
             );
-          const db = await this.dev<UpRedis>("POST", "/redis/database", {
-            database_name: fields["name"],
-            platform,
-            primary_region: region,
-            ...(reads.length ? { read_regions: reads } : {}),
-            plan: fields["plan"] || "payg",
-            ...(num(fields["budget"]) !== undefined ? { budget: num(fields["budget"]) } : {}),
-            eviction: bool(fields["eviction"]) ?? false,
-            tls: true,
-          });
-          return mapRedis(accountId, db);
+          const db = await this.dev((api) =>
+            api.post("/redis/database", {
+              body: {
+                database_name: fields["name"],
+                platform,
+                primary_region: region,
+                ...(reads.length ? { read_regions: reads } : {}),
+                plan: fields["plan"] || "payg",
+                ...(num(fields["budget"]) !== undefined ? { budget: num(fields["budget"]) } : {}),
+                eviction: bool(fields["eviction"]) ?? false,
+                tls: true,
+              },
+            }),
+          );
+          return mapRedis(accountId, db!);
         }
         case T.vector: {
           const indexType = fields["indexType"] || "DENSE";
@@ -970,27 +972,35 @@ export class UpstashClient implements PluginClient {
                 : 1024
             : num(fields["dimensions"]);
           if (indexType !== "SPARSE" && !dims) throw new Error("Give the vector dimensions.");
-          const idx = await this.dev<UpVector>("POST", "/vector/index", {
-            name: fields["name"],
-            region: fields["region"],
-            similarity_function: fields["similarity"] || "COSINE",
-            dimension_count: dims ?? 0,
-            type: fields["plan"] || "payg",
-            index_type: indexType,
-            ...(model && indexType !== "SPARSE" ? { embedding_model: model } : {}),
-            ...(fields["sparseEmbeddingModel"] && indexType !== "DENSE"
-              ? { sparse_embedding_model: fields["sparseEmbeddingModel"] }
-              : {}),
-          });
-          return mapVector(accountId, idx);
+          const idx = await this.dev((api) =>
+            api.post("/vector/index", {
+              body: {
+                name: fields["name"],
+                region: fields["region"],
+                similarity_function: fields["similarity"] || "COSINE",
+                dimension_count: dims ?? 0,
+                type: fields["plan"] || "payg",
+                index_type: indexType,
+                ...(model && indexType !== "SPARSE" ? { embedding_model: model } : {}),
+                ...(fields["sparseEmbeddingModel"] && indexType !== "DENSE"
+                  ? { sparse_embedding_model: fields["sparseEmbeddingModel"] }
+                  : {}),
+              },
+            }),
+          );
+          return mapVector(accountId, idx!);
         }
         case T.search: {
-          const idx = await this.dev<UpSearch>("POST", "/search", {
-            name: fields["name"],
-            region: fields["region"],
-            type: fields["plan"] || "payg",
-          });
-          return mapSearch(accountId, idx);
+          const idx = await this.dev((api) =>
+            api.post("/search", {
+              body: {
+                name: fields["name"],
+                region: fields["region"],
+                type: fields["plan"] || "payg",
+              },
+            }),
+          );
+          return mapSearch(accountId, idx!);
         }
         case T.schedule: {
           const qstashId = this.qstashOf(fields, parentResourceId);
@@ -1006,14 +1016,11 @@ export class UpstashClient implements PluginClient {
             headers["Upstash-Retries"] = String(num(fields["retries"]));
           if (fields["delay"]) headers["Upstash-Delay"] = fields["delay"];
           if (fields["callback"]) headers["Upstash-Callback"] = fields["callback"];
-          const res = await this.q<{ scheduleId?: string }>(
+          const res = await this.qPost<ScheduleCreateOperation>(
             qstashId,
-            "POST",
             `/v2/schedules/${destinationPath(destination)}`,
-            {
-              body: fields["body"] ?? "",
-              headers,
-            },
+            fields["body"] ?? "",
+            headers,
           );
           if (!res?.scheduleId) throw new Error("QStash did not return the new schedule's id.");
           return runPluginEffect(
@@ -1028,9 +1035,11 @@ export class UpstashClient implements PluginClient {
           const qstashId = this.qstashOf(fields, parentResourceId);
           const name = (fields["name"] ?? "").trim();
           if (!name) throw new Error("Give the queue a name.");
-          await this.q(qstashId, "POST", "/v2/queues", {
-            json: { queueName: name, parallelism: num(fields["parallelism"]) ?? 1 },
-          });
+          await this.q(qstashId, (api) =>
+            api.post("/v2/queues", {
+              body: { queueName: name, parallelism: num(fields["parallelism"]) ?? 1 },
+            }),
+          );
           return runPluginEffect(
             this.getResource(T.queue, `${accountId}:${T.queue}:${qstashId}/${name}`, accountId),
           );
@@ -1040,9 +1049,11 @@ export class UpstashClient implements PluginClient {
           const name = (fields["name"] ?? "").trim();
           const urls = list(fields["endpoints"]);
           if (!name || !urls.length) throw new Error("Give a name and at least one endpoint URL.");
-          await this.q(qstashId, "POST", `/v2/topics/${encodeURIComponent(name)}/endpoints`, {
-            json: { endpoints: urls.map((url) => ({ url })) },
-          });
+          await this.q(qstashId, (api) =>
+            api.post(`/v2/topics/${pathEncode(name)}/endpoints`, {
+              body: { endpoints: urls.map((url) => ({ url })) },
+            }),
+          );
           return runPluginEffect(
             this.getResource(
               T.urlGroup,
@@ -1052,10 +1063,11 @@ export class UpstashClient implements PluginClient {
           );
         }
         case T.team: {
-          const res = await this.dev<UpTeam>("POST", "/team", {
-            team_name: fields["name"],
-            copy_cc: fields["copyCard"] !== "false",
-          });
+          const res = await this.dev((api) =>
+            api.post("/team", {
+              body: { team_name: fields["name"], copy_cc: fields["copyCard"] !== "false" },
+            }),
+          );
           return mapTeam(accountId, res ?? { team_name: fields["name"] ?? "" }, 1, "owner");
         }
         default:
@@ -1076,41 +1088,55 @@ export class UpstashClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(ext);
       this.invalidate();
       switch (typeId) {
         case T.redis: {
-          if (fields["name"])
-            await this.dev("POST", `/redis/rename/${id}`, { name: fields["name"] });
-          if (num(fields["budget"]) !== undefined)
-            await this.dev("PATCH", `/redis/update-budget/${id}`, {
-              budget: num(fields["budget"]),
-            });
+          const name = fields["name"];
+          if (name) await this.dev((api) => api.post(`/redis/rename/${id}`, { body: { name } }));
+          const budget = num(fields["budget"]);
+          if (budget !== undefined)
+            await this.dev((api) => api.patch(`/redis/update-budget/${id}`, { body: { budget } }));
           const ev = bool(fields["eviction"]);
           if (ev !== undefined)
-            await this.dev("POST", `/redis/${ev ? "enable" : "disable"}-eviction/${id}`);
+            await this.dev((api) =>
+              ev
+                ? api.post(`/redis/enable-eviction/${id}`)
+                : api.post(`/redis/disable-eviction/${id}`),
+            );
           const au = bool(fields["autoUpgrade"]);
           if (au !== undefined)
-            await this.dev("POST", `/redis/${au ? "enable" : "disable"}-autoupgrade/${id}`);
+            await this.dev((api) =>
+              au
+                ? api.post(`/redis/enable-autoupgrade/${id}`)
+                : api.post(`/redis/disable-autoupgrade/${id}`),
+            );
           const bk = bool(fields["dailyBackup"]);
           if (bk !== undefined)
-            await this.dev("PATCH", `/redis/${bk ? "enable" : "disable"}-dailybackup/${id}`);
+            await this.dev((api) =>
+              bk
+                ? api.patch(`/redis/enable-dailybackup/${id}`)
+                : api.patch(`/redis/disable-dailybackup/${id}`),
+            );
           break;
         }
-        case T.vector:
-          if (fields["name"])
-            await this.dev("POST", `/vector/index/${id}/rename`, { name: fields["name"] });
+        case T.vector: {
+          const name = fields["name"];
+          if (name)
+            await this.dev((api) => api.post(`/vector/index/${id}/rename`, { body: { name } }));
           break;
-        case T.search:
-          if (fields["name"])
-            await this.dev("POST", `/search/${id}/rename`, { name: fields["name"] });
+        }
+        case T.search: {
+          const name = fields["name"];
+          if (name) await this.dev((api) => api.post(`/search/${id}/rename`, { body: { name } }));
           break;
+        }
         case T.qstash: {
           const budget = num(fields["budget"]);
           if (budget !== undefined) {
             if (budget !== 0 && (budget < 20 || budget > 10000))
               throw new Error("Budget must be 0 (no limit) or 20 to 10000.");
-            await this.dev("PATCH", `/qstash/update-budget/${id}`, { budget });
+            await this.dev((api) => api.patch(`/qstash/update-budget/${id}`, { body: { budget } }));
           }
           break;
         }
@@ -1119,7 +1145,9 @@ export class UpstashClient implements PluginClient {
           const parallelism = num(fields["parallelism"]);
           if (parallelism !== undefined) {
             if (parallelism < 1) throw new Error("Parallelism must be at least 1.");
-            await this.q(qstashId, "POST", "/v2/queues", { json: { queueName: key, parallelism } });
+            await this.q(qstashId, (api) =>
+              api.post("/v2/queues", { body: { queueName: key, parallelism } }),
+            );
           }
           break;
         }
@@ -1129,25 +1157,25 @@ export class UpstashClient implements PluginClient {
             const want = list(fields["endpoints"]);
             if (!want.length)
               throw new Error("A URL group needs at least one endpoint; delete the group instead.");
-            const current = await this.q<UpUrlGroup>(
-              qstashId,
-              "GET",
-              `/v2/topics/${encodeURIComponent(key)}`,
-            );
+            const group = pathEncode(key);
+            const current = await this.q(qstashId, (api) => api.get(`/v2/topics/${group}`));
             const have = (current?.endpoints ?? [])
               .map((e) => e.url)
               .filter((u): u is string => !!u);
             const add = want.filter((u) => !have.includes(u));
             const remove = have.filter((u) => !want.includes(u));
-            const path = `/v2/topics/${encodeURIComponent(key)}/endpoints`;
             if (add.length)
-              await this.q(qstashId, "POST", path, {
-                json: { endpoints: add.map((url) => ({ url })) },
-              });
+              await this.q(qstashId, (api) =>
+                api.post(`/v2/topics/${group}/endpoints`, {
+                  body: { endpoints: add.map((url) => ({ url })) },
+                }),
+              );
             if (remove.length)
-              await this.q(qstashId, "DELETE", path, {
-                json: { endpoints: remove.map((url) => ({ url })) },
-              });
+              await this.q(qstashId, (api) =>
+                api.delete(`/v2/topics/${group}/endpoints`, {
+                  body: { endpoints: remove.map((url) => ({ url })) },
+                }),
+              );
           }
           break;
         }
@@ -1162,24 +1190,34 @@ export class UpstashClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(ext);
       this.invalidate();
       switch (typeId) {
         case T.redis:
-          return void (await this.dev("DELETE", `/redis/database/${id}`));
+          return void (await this.dev((api) => api.delete(`/redis/database/${id}`)));
         case T.vector:
-          return void (await this.dev("DELETE", `/vector/index/${id}`));
+          return void (await this.dev((api) => api.delete(`/vector/index/${id}`)));
         case T.search:
-          return void (await this.dev("DELETE", `/search/${id}`));
+          return void (await this.dev((api) => api.delete(`/search/${id}`)));
         case T.team:
-          return void (await this.dev("DELETE", `/team/${id}`));
-        case T.schedule:
-        case T.queue:
+          return void (await this.dev((api) => api.delete(`/team/${id}`)));
+        case T.schedule: {
+          const { qstashId, key } = splitChild(ext);
+          return void (await this.q(qstashId, (api) =>
+            api.delete(`/v2/schedules/${pathEncode(key)}`),
+          ));
+        }
+        case T.queue: {
+          const { qstashId, key } = splitChild(ext);
+          return void (await this.q(qstashId, (api) =>
+            api.delete(`/v2/queues/${pathEncode(key)}`),
+          ));
+        }
         case T.urlGroup: {
           const { qstashId, key } = splitChild(ext);
-          const seg =
-            typeId === T.schedule ? "schedules" : typeId === T.queue ? "queues" : "topics";
-          return void (await this.q(qstashId, "DELETE", `/v2/${seg}/${encodeURIComponent(key)}`));
+          return void (await this.q(qstashId, (api) =>
+            api.delete(`/v2/topics/${pathEncode(key)}`),
+          ));
         }
         default:
           throw new Error(`Upstash plugin: deleting "${typeId}" is not supported`);
@@ -1199,61 +1237,71 @@ export class UpstashClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(ext);
       this.invalidate();
       switch (typeId) {
         case T.redis:
           if (actionId === "reset-password")
-            return void (await this.dev("POST", `/redis/reset-password/${id}`));
+            return void (await this.dev((api) => api.post(`/redis/reset-password/${id}`)));
           if (actionId === "enable-tls")
-            return void (await this.dev("POST", `/redis/enable-tls/${id}`));
+            return void (await this.dev((api) => api.post(`/redis/enable-tls/${id}`)));
           break;
         case T.vector:
           if (actionId === "reset-password")
-            return void (await this.dev("POST", `/vector/index/${id}/reset-password`));
+            return void (await this.dev((api) => api.post(`/vector/index/${id}/reset-password`)));
           break;
         case T.search:
           if (actionId === "reset-password")
-            return void (await this.dev("POST", `/search/${id}/reset-password`));
+            return void (await this.dev((api) => api.post(`/search/${id}/reset-password`)));
           break;
         case T.qstash: {
           if (actionId === "reset-token")
-            return void (await this.dev("POST", `/qstash/rotate-token/${id}`));
+            return void (await this.dev((api) => api.post(`/qstash/rotate-token/${id}`)));
           if (actionId === "enable-prodpack")
-            return void (await this.dev("POST", `/qstash/enable-prodpack/${id}`));
+            return void (await this.dev((api) => api.post(`/qstash/enable-prodpack/${id}`)));
           if (actionId === "disable-prodpack")
-            return void (await this.dev("POST", `/qstash/disable-prodpack/${id}`));
+            return void (await this.dev((api) => api.post(`/qstash/disable-prodpack/${id}`)));
           if (actionId === "rotate-keys")
-            return void (await this.q(ext, "POST", "/v2/keys/rotate"));
+            return void (await this.q(ext, (api) => api.post("/v2/keys/rotate")));
           if (actionId === "dlq-retry-all")
-            return void (await this.q(ext, "POST", "/v2/dlq/retry"));
-          if (actionId === "dlq-purge") return void (await this.q(ext, "DELETE", "/v2/dlq"));
+            return void (await this.q(ext, (api) => api.post("/v2/dlq/retry")));
+          if (actionId === "dlq-purge")
+            return void (await this.q(ext, (api) => api.delete("/v2/dlq")));
           const m = /^dlq-(retry|delete):(.+)$/.exec(actionId);
           if (m) {
-            const dlqId = encodeURIComponent(m[2]!);
-            if (m[1] === "retry") return void (await this.q(ext, "POST", `/v2/dlq/retry/${dlqId}`));
-            return void (await this.q(ext, "DELETE", `/v2/dlq/${dlqId}`));
+            const dlqId = pathEncode(m[2]!);
+            if (m[1] === "retry")
+              return void (await this.q(ext, (api) => api.post(`/v2/dlq/retry/${dlqId}`)));
+            return void (await this.q(ext, (api) => api.delete(`/v2/dlq/${dlqId}`)));
           }
           break;
         }
-        case T.schedule:
+        case T.schedule: {
+          if (actionId !== "pause" && actionId !== "resume") break;
+          const { qstashId, key } = splitChild(ext);
+          const schedule = pathEncode(key);
+          return void (await this.q(qstashId, (api) =>
+            actionId === "pause"
+              ? api.post(`/v2/schedules/${schedule}/pause`)
+              : api.post(`/v2/schedules/${schedule}/resume`),
+          ));
+        }
         case T.queue: {
           if (actionId !== "pause" && actionId !== "resume") break;
           const { qstashId, key } = splitChild(ext);
-          const seg = typeId === T.schedule ? "schedules" : "queues";
-          return void (await this.q(
-            qstashId,
-            "POST",
-            `/v2/${seg}/${encodeURIComponent(key)}/${actionId}`,
+          const queue = pathEncode(key);
+          return void (await this.q(qstashId, (api) =>
+            actionId === "pause"
+              ? api.post(`/v2/queues/${queue}/pause`)
+              : api.post(`/v2/queues/${queue}/resume`),
           ));
         }
         case T.team: {
           const m = /^remove-member:(.+)$/.exec(actionId);
           if (m)
-            return void (await this.dev("DELETE", "/teams/member", {
-              team_id: ext,
-              member_email: m[1],
-            }));
+            return void (await this.dev((api) =>
+              api.delete("/teams/member", { body: { team_id: ext, member_email: m[1] } }),
+            ));
           break;
         }
       }
@@ -1271,36 +1319,39 @@ export class UpstashClient implements PluginClient {
     return attempt(async () => {
       const form = decodePromptArgs(args);
       const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(ext);
       this.invalidate();
       if (command === "move-to-team") {
-        if (!form["teamId"]) throw new Error("Pick a team.");
+        const teamId = form["teamId"];
+        if (!teamId) throw new Error("Pick a team.");
         if (typeId === T.redis)
-          await this.dev("POST", "/redis/move-to-team", {
-            team_id: form["teamId"],
-            database_id: ext,
-          });
+          await this.dev((api) =>
+            api.post("/redis/move-to-team", { body: { team_id: teamId, database_id: ext } }),
+          );
         else if (typeId === T.vector)
-          await this.dev("POST", `/vector/index/${id}/transfer`, {
-            target_account: form["teamId"],
-          });
+          await this.dev((api) =>
+            api.post(`/vector/index/${id}/transfer`, { body: { target_account: teamId } }),
+          );
         else if (typeId === T.search)
-          await this.dev("POST", `/search/${id}/transfer`, { target_account: form["teamId"] });
+          await this.dev((api) =>
+            api.post(`/search/${id}/transfer`, { body: { target_account: teamId } }),
+          );
         else if (typeId === T.qstash)
-          await this.dev("POST", "/qstash/move-to-team", {
-            qstash_id: ext,
-            target_team_id: form["teamId"],
-          });
+          await this.dev((api) =>
+            api.post("/qstash/move-to-team", { body: { qstash_id: ext, target_team_id: teamId } }),
+          );
         else throw new Error("This resource cannot be moved.");
         return { ok: true, message: "Moved to the team." };
       }
       switch (`${typeId}:${command}`) {
         case `${T.redis}:change-plan`:
           if (!form["plan"]) throw new Error("Pick a plan.");
-          await this.dev("POST", `/redis/${id}/change-plan`, { plan_name: form["plan"] });
+          await this.dev((api) =>
+            api.post(`/redis/${id}/change-plan`, { body: { plan_name: form["plan"] } }),
+          );
           return { ok: true, message: "Plan changed." };
         case `${T.redis}:update-regions`: {
-          const db = await this.redis(ext);
+          const db = (await this.redis(ext))!;
           const platform = REDIS_REGIONS.find((r) => r.id === db.primary_region)?.platform;
           const regions = list(form["readRegions"]).filter((r) => r !== db.primary_region);
           const wrong = regions.filter(
@@ -1308,40 +1359,53 @@ export class UpstashClient implements PluginClient {
           );
           if (wrong.length)
             throw new Error(`Read regions must be on the primary's cloud: ${wrong.join(", ")}.`);
-          await this.dev("POST", `/redis/update-regions/${id}`, { read_regions: regions });
+          await this.dev((api) =>
+            api.post(`/redis/update-regions/${id}`, { body: { read_regions: regions } }),
+          );
           return { ok: true, message: "Read regions updated." };
         }
         case `${T.redis}:backup`:
-          await this.dev("POST", `/redis/create-backup/${id}`, {
-            name: form["name"] || `backup-${Date.now()}`,
-          });
+          await this.dev((api) =>
+            api.post(`/redis/create-backup/${id}`, {
+              body: { name: form["name"] || `backup-${Date.now()}` },
+            }),
+          );
           return { ok: true, message: "Backup started." };
         case `${T.redis}:restore`:
           if (!form["backupId"]) throw new Error("Pick a backup.");
-          await this.dev("POST", `/redis/restore-backup/${id}`, { backup_id: form["backupId"] });
-          return { ok: true, message: "Restore started." };
-        case `${T.redis}:delete-backup`:
-          if (!form["backupId"]) throw new Error("Pick a backup.");
-          await this.dev(
-            "DELETE",
-            `/redis/delete-backup/${id}/${encodeURIComponent(form["backupId"])}`,
+          await this.dev((api) =>
+            api.post(`/redis/restore-backup/${id}`, { body: { backup_id: form["backupId"] } }),
           );
+          return { ok: true, message: "Restore started." };
+        case `${T.redis}:delete-backup`: {
+          if (!form["backupId"]) throw new Error("Pick a backup.");
+          const backup = pathEncode(form["backupId"]);
+          await this.dev((api) => api.delete(`/redis/delete-backup/${id}/${backup}`));
           return { ok: true, message: "Backup deleted." };
+        }
         case `${T.vector}:set-plan`:
           if (!form["plan"]) throw new Error("Pick a plan.");
-          await this.dev("POST", `/vector/index/${id}/setplan`, { target_plan: form["plan"] });
+          await this.dev((api) =>
+            api.post(`/vector/index/${id}/setplan`, { body: { target_plan: form["plan"] } }),
+          );
           return { ok: true, message: "Plan changed." };
         case `${T.qstash}:set-plan`:
           if (!form["plan"]) throw new Error("Pick a plan.");
-          await this.dev("POST", `/qstash/set-plan/${id}`, { plan_name: form["plan"] });
+          await this.dev((api) =>
+            api.post(`/qstash/set-plan/${id}`, { body: { plan_name: form["plan"] } }),
+          );
           return { ok: true, message: "Plan changed." };
         case `${T.team}:add-member`:
           if (!form["email"]) throw new Error("Give an email.");
-          await this.dev("POST", "/teams/member", {
-            team_id: ext,
-            member_email: form["email"],
-            member_role: form["role"] || "dev",
-          });
+          await this.dev((api) =>
+            api.post("/teams/member", {
+              body: {
+                team_id: ext,
+                member_email: form["email"],
+                member_role: form["role"] || "dev",
+              },
+            }),
+          );
           return { ok: true, message: "Member added." };
       }
       throw new Error(`Upstash plugin: command "${command}" is not supported for "${typeId}"`);
@@ -1395,12 +1459,12 @@ export class UpstashClient implements PluginClient {
           throw new Error("Upstash plugin: this resource cannot publish messages.");
         }
       }
-      const res = await this.q<
-        { messageId?: string } | Array<{ messageId?: string; url?: string }>
-      >(qstashId, "POST", path, {
-        body: payload.body,
+      const res = await this.qPost<PublishOperation | EnqueueOperation>(
+        qstashId,
+        path,
+        payload.body,
         headers,
-      });
+      );
       if (Array.isArray(res)) {
         return {
           summary: `Published to ${res.length} endpoint${res.length === 1 ? "" : "s"}.`,
@@ -1425,7 +1489,7 @@ export class UpstashClient implements PluginClient {
     timeRange?: { startMs: number; endMs: number },
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
-      const ext = encodeURIComponent(externalIdOf(resourceId));
+      const ext = pathEncode(externalIdOf(resourceId));
       const period = statsPeriod(
         timeRange ? timeRange.endMs - timeRange.startMs : METRICS_WINDOW_MS,
       );
@@ -1433,7 +1497,7 @@ export class UpstashClient implements PluginClient {
       const add = (label: string, points: Point[] | undefined, unit?: string) =>
         series.push(pointsToSeries(label, points, unit));
       if (resourceTypeId === T.redis) {
-        const s = await this.dev<UpRedisStats>("GET", `/redis/stats/${ext}`);
+        const s = await this.dev((api) => api.get(`/redis/stats/${ext}`));
         add("Throughput", s?.throughput, "ops/s");
         add("Reads", s?.read);
         add("Writes", s?.write);
@@ -1446,8 +1510,11 @@ export class UpstashClient implements PluginClient {
         add("Cache misses", s?.misses);
         add("Bandwidth", s?.bandwidths, "bytes");
       } else if (resourceTypeId === T.vector || resourceTypeId === T.search) {
-        const base = resourceTypeId === T.vector ? `/vector/index/${ext}` : `/search/${ext}`;
-        const s = await this.dev<UpIndexStats>("GET", `${base}/stats`, undefined, { period });
+        const s = await this.dev((api) =>
+          resourceTypeId === T.vector
+            ? api.get(`/vector/index/${ext}/stats`, { query: { period } })
+            : api.get(`/search/${ext}/stats`, { query: { period } }),
+        );
         add("Query throughput", s?.query_throughput);
         add("Update throughput", s?.update_throughput);
         add("Mean query latency", s?.query_latency_mean, "ms");
@@ -1456,9 +1523,7 @@ export class UpstashClient implements PluginClient {
         add(resourceTypeId === T.vector ? "Vectors" : "Documents", s?.vector_count);
         add("Data size", s?.data_size, "bytes");
       } else if (resourceTypeId === T.qstash) {
-        const s = await this.dev<UpQStashStats>("GET", `/qstash/stats/${ext}`, undefined, {
-          period,
-        });
+        const s = await this.dev((api) => api.get(`/qstash/stats/${ext}`, { query: { period } }));
         add("Messages", s?.daily_used);
       }
       return series.filter((x): x is MetricSeries => !!x);
@@ -1475,7 +1540,7 @@ export class UpstashClient implements PluginClient {
       const tail = Math.min(Math.max(params.tailLines ?? 100, 1), 1000);
       const ext = externalIdOf(resourceId);
       if (typeId === T.account) {
-        const logs = (await this.dev<UpAuditLog[]>("GET", "/auditlogs")) ?? [];
+        const logs = (await this.dev((api) => api.get("/auditlogs"))) ?? [];
         const text = logs
           .slice()
           .sort((a, b) => Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0))
@@ -1492,9 +1557,9 @@ export class UpstashClient implements PluginClient {
         };
       }
       if (typeId === T.qstash) {
-        const res = await this.q<{ logs?: UpLog[] }>(ext, "GET", "/v2/logs", {
-          query: { count: Math.min(tail, 1000) },
-        });
+        const res = await this.q(ext, (api) =>
+          api.get("/v2/logs", { query: { count: Math.min(tail, 1000) } }),
+        );
         const text = (res?.logs ?? [])
           .slice()
           .reverse()
@@ -1582,10 +1647,10 @@ export class UpstashClient implements PluginClient {
       }
       for (const db of await this.redisList()) {
         if (!db.database_id || !db.db_disk_threshold) continue;
-        const stats = await this.dev<UpRedisStats>(
-          "GET",
-          `/redis/stats/${encodeURIComponent(db.database_id)}`,
-        ).catch(() => undefined);
+        const database = pathEncode(db.database_id);
+        const stats = await this.dev((api) => api.get(`/redis/stats/${database}`)).catch(
+          () => undefined,
+        );
         if (stats?.current_storage === undefined) continue;
         out.push({
           id: `redis/${db.database_id}/storage`,

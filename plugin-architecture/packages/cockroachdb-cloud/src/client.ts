@@ -2,6 +2,7 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  ApiBody,
   CostFetchRange,
   CostRow,
   CreateResourceConfig,
@@ -14,18 +15,18 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { components, operations } from "./api-types.gen.js";
 import type {
   CAllowlistEntry,
-  CApiKey,
   CBackupConfig,
   CCluster,
   CFolder,
-  CInvoice,
-  CrdbContext,
+  CrdbApi,
+  CRestore,
   CServiceAccount,
 } from "./api.js";
-import { crdb, CrdbApiError, enc, paged, statusOf } from "./api.js";
+import { createCrdbApi, CrdbApiError, statusOf } from "./api.js";
 import { getCreateConfig } from "./create-config.js";
 import { invoicesToCostRows } from "./cost-data.js";
 import { verifyCockroachCredentials } from "./preflight.js";
@@ -86,7 +87,7 @@ export function listValue(v: string | undefined): string[] {
   const t = v.trim();
   if (t.startsWith("[")) {
     try {
-      const parsed = JSON.parse(t) as unknown;
+      const parsed: unknown = JSON.parse(t);
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
       /* comma list below */
@@ -130,18 +131,18 @@ async function settle<T>(p: Promise<T>): Promise<T | undefined> {
 }
 
 export class CockroachClient implements PluginClient {
-  readonly ctx: CrdbContext;
+  readonly api: CrdbApi;
   private readonly services: HostServices | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiKey"] ?? "").trim();
     if (!token) throw new Error("CockroachDB Cloud plugin: missing apiKey credential");
     const caCert = credentials["caCert"] ?? "";
-    this.ctx = {
+    this.api = createCrdbApi({
       token,
       ...(services?.http ? { http: services.http } : {}),
       ...(caCert ? { caCert } : {}),
-    };
+    });
     this.services = services;
   }
 
@@ -152,15 +153,15 @@ export class CockroachClient implements PluginClient {
   }
 
   clusters(): Promise<CCluster[]> {
-    return paged<CCluster>(this.ctx, "/api/v1/clusters", "clusters");
+    return this.api.getAll("/api/v1/clusters", "clusters");
   }
 
   folders(): Promise<CFolder[]> {
-    return paged<CFolder>(this.ctx, "/api/v1/folders", "folders");
+    return this.api.getAll("/api/v1/folders", "folders");
   }
 
   serviceAccounts(): Promise<CServiceAccount[]> {
-    return paged<CServiceAccount>(this.ctx, "/api/v1/service-accounts", "service_accounts");
+    return this.api.getAll("/api/v1/service-accounts", "service_accounts");
   }
 
   /**
@@ -200,15 +201,11 @@ export class CockroachClient implements PluginClient {
     accountId: string,
     only?: CCluster[],
   ): Promise<ResourceInstance[]> {
-    const base = (c: CCluster) => `/api/v1/clusters/${enc(c.id)}`;
+    const id = (c: CCluster) => pathEncode(c.id);
     const child = (c: CCluster) => ({ typeId: "crdb-cluster", externalId: c.id });
     switch (typeId) {
       case "crdb-organization": {
-        const org = await crdb<{ id: string; name: string; label: string; created_at: string }>(
-          this.ctx,
-          "GET",
-          "/api/v1/organization",
-        );
+        const org = await this.api.get("/api/v1/organization");
         return [
           instance(accountId, typeId, org.id, org.name, {
             name: org.name,
@@ -227,13 +224,7 @@ export class CockroachClient implements PluginClient {
       case "crdb-database":
         return this.perCluster(
           async (c) =>
-            (
-              await paged<{ name: string; table_count?: string }>(
-                this.ctx,
-                `${base(c)}/databases`,
-                "databases",
-              )
-            ).map((d) =>
+            (await this.api.getAll(`/api/v1/clusters/${id(c)}/databases`, "databases")).map((d) =>
               instance(
                 accountId,
                 typeId,
@@ -252,7 +243,7 @@ export class CockroachClient implements PluginClient {
       case "crdb-sql-user":
         return this.perCluster(
           async (c) =>
-            (await paged<{ name: string }>(this.ctx, `${base(c)}/sql-users`, "users")).map((u) =>
+            (await this.api.getAll(`/api/v1/clusters/${id(c)}/sql-users`, "users")).map((u) =>
               instance(
                 accountId,
                 typeId,
@@ -268,20 +259,14 @@ export class CockroachClient implements PluginClient {
         return this.perCluster(
           async (c) =>
             (
-              await paged<CAllowlistEntry>(this.ctx, `${base(c)}/networking/allowlist`, "allowlist")
+              await this.api.getAll(`/api/v1/clusters/${id(c)}/networking/allowlist`, "allowlist")
             ).map((e) => allowlistResource(c.id, e, accountId)),
           only,
         );
       case "crdb-backup":
         return this.perCluster(
           async (c) =>
-            (
-              await paged<{ id: string; as_of_time: string }>(
-                this.ctx,
-                `${base(c)}/backups`,
-                "backups",
-              )
-            ).map((b) =>
+            (await this.api.getAll(`/api/v1/clusters/${id(c)}/backups`, "backups")).map((b) =>
               instance(
                 accountId,
                 typeId,
@@ -298,8 +283,8 @@ export class CockroachClient implements PluginClient {
       case "crdb-restore":
         return this.perCluster(
           async (c) =>
-            (await paged<Record<string, unknown>>(this.ctx, `${base(c)}/restores`, "restores")).map(
-              (r) => restoreResource(c.id, r, accountId),
+            (await this.api.getAll(`/api/v1/clusters/${id(c)}/restores`, "restores")).map((r) =>
+              restoreResource(c.id, r, accountId),
             ),
           only,
           [400, 403, 404],
@@ -307,14 +292,7 @@ export class CockroachClient implements PluginClient {
       case "crdb-log-export":
         return this.perCluster(
           async (c) => {
-            const le = await crdb<{
-              status?: string;
-              delivery_status?: string;
-              user_message?: string;
-              delivery_status_message?: string;
-              created_at?: string;
-              spec?: { type?: string; log_name?: string; region?: string; redact?: boolean };
-            }>(this.ctx, "GET", `${base(c)}/logexport`);
+            const le = await this.api.get(`/api/v1/clusters/${id(c)}/logexport`);
             if (!le?.spec?.type || le.status === "DISABLED") return [];
             return [
               instance(
@@ -342,47 +320,44 @@ export class CockroachClient implements PluginClient {
         );
       case "crdb-metric-export":
         return this.perCluster(async (c) => {
-          const kinds = ["datadog", "cloudwatch", "prometheus"] as const;
-          const results = await Promise.all(
-            kinds.map(async (kind) => {
-              const res = await settle(
-                crdb<Record<string, unknown>>(this.ctx, "GET", `${base(c)}/metricexport/${kind}`),
-              );
-              const status = typeof res?.["status"] === "string" ? (res["status"] as string) : "";
-              if (!res || !status || status === "NOT_DEPLOYED") return null;
-              const target =
-                kind === "datadog"
-                  ? `Datadog ${String(res["site"] ?? "")}`
-                  : kind === "cloudwatch"
-                    ? String(res["role_arn"] ?? "")
-                    : Object.entries((res["targets"] as Record<string, string>) ?? {})
-                        .map(([region, url]) => `${region}: ${url}`)
-                        .join(", ");
-              return instance(
-                accountId,
-                typeId,
-                `${c.id}/${kind}`,
-                `${c.name} metrics → ${kind}`,
-                {
-                  kind,
-                  clusterId: c.id,
-                  status,
-                  message: String(res["user_message"] ?? ""),
-                  target,
-                },
-                child(c),
-              );
-            }),
-          );
+          const [datadog, cloudwatch, prometheus] = await Promise.all([
+            settle(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/datadog`)),
+            settle(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/cloudwatch`)),
+            settle(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/prometheus`)),
+          ]);
+          const results = [
+            metricExportResource(
+              c,
+              "datadog",
+              datadog,
+              (res) => `Datadog ${String(res.site ?? "")}`,
+              accountId,
+            ),
+            metricExportResource(
+              c,
+              "cloudwatch",
+              cloudwatch,
+              (res) => String(res.role_arn ?? ""),
+              accountId,
+            ),
+            metricExportResource(
+              c,
+              "prometheus",
+              prometheus,
+              (res) =>
+                Object.entries(res.targets ?? {})
+                  .map(([region, url]) => `${region}: ${url}`)
+                  .join(", "),
+              accountId,
+            ),
+          ];
           return results.filter((r): r is ResourceInstance => r !== null);
         }, only);
       case "crdb-blackout-window":
         return this.perCluster(
           async (c) => {
             if (c.plan && c.plan !== "ADVANCED") return [];
-            const res = await crdb<{
-              blackout_windows?: Array<{ id: string; start_time: string; end_time: string }>;
-            }>(this.ctx, "GET", `${base(c)}/blackout-windows`);
+            const res = await this.api.get(`/api/v1/clusters/${id(c)}/blackout-windows`);
             return (res?.blackout_windows ?? []).map((w) =>
               instance(
                 accountId,
@@ -400,19 +375,7 @@ export class CockroachClient implements PluginClient {
       case "crdb-egress-rule":
         return this.perCluster(
           async (c) => {
-            const res = await crdb<{
-              rules?: Array<{
-                id: string;
-                name: string;
-                type: string;
-                destination: string;
-                ports?: number[];
-                description: string;
-                state: string;
-                crl_managed: boolean;
-                created_at?: string;
-              }>;
-            }>(this.ctx, "GET", `${base(c)}/networking/egress-rules`);
+            const res = await this.api.get(`/api/v1/clusters/${id(c)}/networking/egress-rules`);
             return (res?.rules ?? []).map((r) =>
               instance(
                 accountId,
@@ -441,8 +404,8 @@ export class CockroachClient implements PluginClient {
         return (await this.serviceAccounts()).map((sa) => serviceAccountResource(sa, accountId));
       case "crdb-api-key": {
         const [keys, sas] = await Promise.all([
-          paged<CApiKey>(this.ctx, "/api/v1/api-keys", "api_keys"),
-          this.serviceAccounts().catch(() => [] as CServiceAccount[]),
+          this.api.getAll("/api/v1/api-keys", "api_keys"),
+          this.serviceAccounts().catch((): CServiceAccount[] => []),
         ]);
         const names = new Map(sas.map((s) => [s.id, s.name]));
         return keys.map((k) =>
@@ -468,24 +431,16 @@ export class CockroachClient implements PluginClient {
   }
 
   private async clusterResource(c: CCluster, accountId: string): Promise<ResourceInstance> {
-    const base = `/api/v1/clusters/${enc(c.id)}`;
+    const id = pathEncode(c.id);
     const advanced = c.plan === "ADVANCED" || !!c.config.dedicated;
     const [backups, deferral, window, cmek, allowlist] = await Promise.all([
-      settle(crdb<CBackupConfig>(this.ctx, "GET", `${base}/backups-config`)),
-      settle(crdb<{ deferral_policy?: string }>(this.ctx, "GET", `${base}/version-deferral`)),
-      advanced
-        ? settle(
-            crdb<{ offset_duration?: string; window_duration?: string }>(
-              this.ctx,
-              "GET",
-              `${base}/maintenance-window`,
-            ),
-          )
-        : undefined,
-      advanced ? settle(crdb<{ status?: string }>(this.ctx, "GET", `${base}/cmek`)) : undefined,
+      settle(this.api.get(`/api/v1/clusters/${id}/backups-config`)),
+      settle(this.api.get(`/api/v1/clusters/${id}/version-deferral`)),
+      advanced ? settle(this.api.get(`/api/v1/clusters/${id}/maintenance-window`)) : undefined,
+      advanced ? settle(this.api.get(`/api/v1/clusters/${id}/cmek`)) : undefined,
       c.config.host
         ? undefined
-        : settle(paged<CAllowlistEntry>(this.ctx, `${base}/networking/allowlist`, "allowlist")),
+        : settle(this.api.getAll(`/api/v1/clusters/${id}/networking/allowlist`, "allowlist")),
     ]);
     return clusterResource(c, accountId, { backups, deferral, window, cmek, allowlist });
   }
@@ -505,7 +460,7 @@ export class CockroachClient implements PluginClient {
       let all: ResourceInstance[];
       if (clusterScoped) {
         const [clusterId] = split(externalId);
-        const c = await crdb<CCluster>(this.ctx, "GET", `/api/v1/clusters/${enc(clusterId)}`);
+        const c = await this.api.get(`/api/v1/clusters/${pathEncode(clusterId)}`);
         all = await this.list(typeId, accountId, [c]);
       } else {
         all = await this.list(typeId, accountId);
@@ -535,7 +490,7 @@ export class CockroachClient implements PluginClient {
         case "crdb-service-account.serviceAccountId":
           return externalId;
         case "crdb-cluster.sqlHost": {
-          const c = await crdb<CCluster>(this.ctx, "GET", `/api/v1/clusters/${enc(externalId)}`);
+          const c = await this.api.get(`/api/v1/clusters/${pathEncode(externalId)}`);
           return c.sql_dns || c.regions[0]?.sql_dns || "";
         }
         case "crdb-cluster.connectionStringTemplate":
@@ -564,13 +519,9 @@ export class CockroachClient implements PluginClient {
   }
 
   private async connectionString(clusterId: string, sqlUser?: string): Promise<string> {
-    const res = await crdb<{ connection_string: string }>(
-      this.ctx,
-      "GET",
-      `/api/v1/clusters/${enc(clusterId)}/connection-string`,
-      undefined,
-      { ...(sqlUser ? { sql_user: sqlUser } : {}), os: "LINUX" },
-    );
+    const res = await this.api.get(`/api/v1/clusters/${pathEncode(clusterId)}/connection-string`, {
+      query: { ...(sqlUser ? { sql_user: sqlUser } : {}), os: "LINUX" },
+    });
     return res.connection_string;
   }
 
@@ -605,11 +556,9 @@ export class CockroachClient implements PluginClient {
   private async setPassword(resourceId: string, chosen?: string): Promise<void> {
     const [clusterId, user] = split(externalIdOf(resourceId));
     const password = chosen || randomPassword();
-    await crdb(
-      this.ctx,
-      "PUT",
-      `/api/v1/clusters/${enc(clusterId)}/sql-users/${enc(user)}/password`,
-      { password },
+    await this.api.put(
+      `/api/v1/clusters/${pathEncode(clusterId)}/sql-users/${pathEncode(user)}/password`,
+      { body: { password } },
     );
     if (!this.services?.secrets?.setPlaintext) {
       throw new Error(
@@ -629,7 +578,7 @@ export class CockroachClient implements PluginClient {
     return attempt(async () => {
       let values: Record<string, string> = {};
       try {
-        values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+        values = JSON.parse(String(args[0] ?? "{}"));
       } catch {
         values = {};
       }
@@ -638,14 +587,14 @@ export class CockroachClient implements PluginClient {
         return { ok: true };
       }
       if (typeId === "crdb-cluster" && command === "move-to-folder") {
-        await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalIdOf(resourceId))}`, {
-          parent_id: values["folderId"] || "root",
+        await this.api.patch(`/api/v1/clusters/${pathEncode(externalIdOf(resourceId))}`, {
+          body: { parent_id: values["folderId"] || "root" },
         });
         return { ok: true };
       }
       if (typeId === "crdb-cluster" && command === "upgrade") {
-        await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalIdOf(resourceId))}`, {
-          cockroach_version: required(values["version"], "a version"),
+        await this.api.patch(`/api/v1/clusters/${pathEncode(externalIdOf(resourceId))}`, {
+          body: { cockroach_version: required(values["version"], "a version") },
         });
         return { ok: true };
       }
@@ -661,21 +610,8 @@ export class CockroachClient implements PluginClient {
       if (resource.resourceTypeId === "crdb-cluster") {
         const id = String(resource.externalId ?? "");
         const [nodes, versions, folders] = await Promise.all([
-          settle(
-            paged<{ name: string; region_name: string; status: string }>(
-              this.ctx,
-              `/api/v1/clusters/${enc(id)}/nodes`,
-              "nodes",
-            ),
-          ),
-          settle(
-            paged<{
-              version: string;
-              allowed_upgrades: string[];
-              support_status: string;
-              support_end: string;
-            }>(this.ctx, "/api/v1/cluster-versions", "versions"),
-          ),
+          settle(this.api.getAll(`/api/v1/clusters/${pathEncode(id)}/nodes`, "nodes")),
+          settle(this.api.getAll("/api/v1/cluster-versions", "versions")),
           settle(this.folders()),
         ]);
         if (nodes) fields["_nodes"] = JSON.stringify(nodes);
@@ -686,7 +622,7 @@ export class CockroachClient implements PluginClient {
           );
       }
       if (resource.resourceTypeId === "crdb-organization") {
-        const invoices = await settle(paged<CInvoice>(this.ctx, "/api/v1/invoices", "invoices"));
+        const invoices = await settle(this.api.getAll("/api/v1/invoices", "invoices"));
         const latest = invoices?.sort((a, b) => b.period_start.localeCompare(a.period_start))[0];
         if (latest)
           fields["_latestInvoice"] = JSON.stringify({
@@ -741,27 +677,24 @@ export class CockroachClient implements PluginClient {
     return attempt(async () => {
       const parent = parentResourceId ? externalIdOf(parentResourceId) : "";
       const clusterId = () => required(parent || fields["clusterId"], "a cluster");
-      const base = () => `/api/v1/clusters/${enc(clusterId())}`;
+      const cluster = () => pathEncode(clusterId());
       switch (typeId) {
         case "crdb-folder": {
-          const fo = await crdb<CFolder>(this.ctx, "POST", "/api/v1/folders", {
-            name: required(fields["name"], "a name"),
-            parent_id: fields["parentId"] || "root",
+          const fo = await this.api.post("/api/v1/folders", {
+            body: {
+              name: required(fields["name"], "a name"),
+              parent_id: fields["parentId"] || "root",
+            },
           });
           return folderResource(fo, accountId);
         }
         case "crdb-cluster": {
-          const c = await crdb<CCluster>(
-            this.ctx,
-            "POST",
-            "/api/v1/clusters",
-            clusterCreateBody(fields),
-          );
+          const c = await this.api.post("/api/v1/clusters", { body: clusterCreateBody(fields) });
           return clusterResource(c, accountId, {});
         }
         case "crdb-database": {
           const name = required(fields["name"], "a name");
-          await crdb(this.ctx, "POST", `${base()}/databases`, { name });
+          await this.api.post(`/api/v1/clusters/${cluster()}/databases`, { body: { name } });
           return instance(
             accountId,
             typeId,
@@ -777,7 +710,9 @@ export class CockroachClient implements PluginClient {
         case "crdb-sql-user": {
           const name = required(fields["name"], "a name");
           const password = fields["password"] || randomPassword();
-          await crdb(this.ctx, "POST", `${base()}/sql-users`, { name, password });
+          await this.api.post(`/api/v1/clusters/${cluster()}/sql-users`, {
+            body: { name, password },
+          });
           const r = instance(
             accountId,
             typeId,
@@ -802,32 +737,31 @@ export class CockroachClient implements PluginClient {
         }
         case "crdb-allowlist-entry": {
           const [ip, mask] = parseCidr(required(fields["cidr"], "a CIDR"));
-          const e = await crdb<CAllowlistEntry>(
-            this.ctx,
-            "POST",
-            `${base()}/networking/allowlist`,
-            {
+          const e = await this.api.post(`/api/v1/clusters/${cluster()}/networking/allowlist`, {
+            body: {
               cidr_ip: ip,
               cidr_mask: mask,
               ...(fields["name"] ? { name: fields["name"] } : {}),
               sql: fields["sql"] !== "false",
               ui: fields["ui"] === "true",
             },
-          );
+          });
           return allowlistResource(clusterId(), e, accountId);
         }
         case "crdb-log-export": {
           const type = required(fields["type"], "a destination");
-          await crdb(this.ctx, "POST", `${base()}/logexport`, {
-            type,
-            log_name: required(fields["logName"], "a log name"),
-            ...(fields["authPrincipal"] ? { auth_principal: fields["authPrincipal"] } : {}),
-            ...(fields["otlpEndpoint"] ? { otlp_endpoint: fields["otlpEndpoint"] } : {}),
-            ...(fields["otlpAuthorization"]
-              ? { otlp_headers: { authorization: fields["otlpAuthorization"] } }
-              : {}),
-            ...(fields["region"] ? { region: fields["region"] } : {}),
-            ...(bool(fields["redact"]) !== undefined ? { redact: bool(fields["redact"]) } : {}),
+          await this.api.post(`/api/v1/clusters/${cluster()}/logexport`, {
+            body: {
+              type,
+              log_name: required(fields["logName"], "a log name"),
+              ...(fields["authPrincipal"] ? { auth_principal: fields["authPrincipal"] } : {}),
+              ...(fields["otlpEndpoint"] ? { otlp_endpoint: fields["otlpEndpoint"] } : {}),
+              ...(fields["otlpAuthorization"]
+                ? { otlp_headers: { authorization: fields["otlpAuthorization"] } }
+                : {}),
+              ...(fields["region"] ? { region: fields["region"] } : {}),
+              ...(bool(fields["redact"]) !== undefined ? { redact: bool(fields["redact"]) } : {}),
+            },
           });
           return runPluginEffect(
             this.getResource(typeId, `${accountId}:${typeId}:${clusterId()}`, accountId),
@@ -854,7 +788,9 @@ export class CockroachClient implements PluginClient {
                     ...(fields["logGroupName"] ? { log_group_name: fields["logGroupName"] } : {}),
                   }
                 : {};
-          await crdb(this.ctx, "POST", `${base()}/metricexport/${enc(kind)}`, body);
+          await this.api.post(`/api/v1/clusters/${cluster()}/metricexport/${pathEncode(kind)}`, {
+            body,
+          });
           return instance(
             accountId,
             typeId,
@@ -869,15 +805,12 @@ export class CockroachClient implements PluginClient {
           );
         }
         case "crdb-blackout-window": {
-          const w = await crdb<{ id: string; start_time: string; end_time: string }>(
-            this.ctx,
-            "POST",
-            `${base()}/blackout-windows`,
-            {
+          const w = await this.api.post(`/api/v1/clusters/${cluster()}/blackout-windows`, {
+            body: {
               start_time: required(fields["startTime"], "a start time"),
               end_time: required(fields["endTime"], "an end time"),
             },
-          );
+          });
           return instance(
             accountId,
             typeId,
@@ -893,18 +826,15 @@ export class CockroachClient implements PluginClient {
         }
         case "crdb-egress-rule": {
           const ports = listValue(fields["ports"]).map(Number).filter(Number.isFinite);
-          const res = await crdb<{ Rule?: { id: string } }>(
-            this.ctx,
-            "POST",
-            `${base()}/networking/egress-rules`,
-            {
+          const res = await this.api.post(`/api/v1/clusters/${cluster()}/networking/egress-rules`, {
+            body: {
               name: required(fields["name"], "a name"),
               type: fields["type"] === "CIDR" ? "CIDR" : "FQDN",
               destination: required(fields["destination"], "a destination"),
               description: fields["description"] ?? "",
               ...(ports.length ? { ports } : {}),
             },
-          );
+          });
           const id = res?.Rule?.id ?? "";
           return runPluginEffect(
             this.getResource(typeId, `${accountId}:${typeId}:${clusterId()}/${id}`, accountId),
@@ -912,24 +842,23 @@ export class CockroachClient implements PluginClient {
         }
         case "crdb-service-account": {
           const roles = listValue(fields["roles"]);
-          const sa = await crdb<CServiceAccount>(this.ctx, "POST", "/api/v1/service-accounts", {
-            name: required(fields["name"], "a name"),
-            description: fields["description"] ?? "",
-            roles: roles.map((name) => ({ name, resource: { type: "ORGANIZATION" } })),
+          const sa = await this.api.post("/api/v1/service-accounts", {
+            body: {
+              name: required(fields["name"], "a name"),
+              description: fields["description"] ?? "",
+              roles: roles.map((name) => ({ name, resource: { type: "ORGANIZATION" } })),
+            },
           });
           return serviceAccountResource(sa, accountId);
         }
         case "crdb-api-key": {
           const sa = parent || required(fields["serviceAccountId"], "a service account");
-          const res = await crdb<{ api_key: CApiKey; secret: string }>(
-            this.ctx,
-            "POST",
-            "/api/v1/api-keys",
-            {
+          const res = await this.api.post("/api/v1/api-keys", {
+            body: {
               name: required(fields["name"], "a name"),
               service_account_id: sa,
             },
-          );
+          });
           const r = instance(
             accountId,
             typeId,
@@ -960,8 +889,8 @@ export class CockroachClient implements PluginClient {
       switch (typeId) {
         case "crdb-folder":
           if (fields["name"])
-            await crdb(this.ctx, "PATCH", `/api/v1/folders/${enc(externalId)}`, {
-              name: fields["name"],
+            await this.api.patch(`/api/v1/folders/${pathEncode(externalId)}`, {
+              body: { name: fields["name"] },
             });
           break;
         case "crdb-cluster":
@@ -969,10 +898,10 @@ export class CockroachClient implements PluginClient {
           break;
         case "crdb-database":
           if (fields["name"] && fields["name"] !== rest) {
-            await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(first)}/databases/${enc(rest)}`, {
-              name: rest,
-              new_name: fields["name"],
-            });
+            await this.api.patch(
+              `/api/v1/clusters/${pathEncode(first)}/databases/${pathEncode(rest)}`,
+              { body: { name: rest, new_name: fields["name"] } },
+            );
             return runPluginEffect(
               this.getResource(
                 typeId,
@@ -988,63 +917,66 @@ export class CockroachClient implements PluginClient {
         case "crdb-allowlist-entry": {
           const [ip, mask] = parseCidr(rest);
           const current = (
-            await paged<CAllowlistEntry>(
-              this.ctx,
-              `/api/v1/clusters/${enc(first)}/networking/allowlist`,
+            await this.api.getAll(
+              `/api/v1/clusters/${pathEncode(first)}/networking/allowlist`,
               "allowlist",
             )
           ).find((e) => e.cidr_ip === ip && e.cidr_mask === mask);
-          await crdb(
-            this.ctx,
-            "PATCH",
-            `/api/v1/clusters/${enc(first)}/networking/allowlist/${enc(ip)}/${mask}`,
+          await this.api.patch(
+            `/api/v1/clusters/${pathEncode(first)}/networking/allowlist/${pathEncode(ip)}/${pathEncode(mask)}`,
             {
-              name: fields["name"] ?? current?.name ?? "",
-              sql: bool(fields["sql"]) ?? current?.sql ?? true,
-              ui: bool(fields["ui"]) ?? current?.ui ?? false,
+              body: {
+                name: fields["name"] ?? current?.name ?? "",
+                sql: bool(fields["sql"]) ?? current?.sql ?? true,
+                ui: bool(fields["ui"]) ?? current?.ui ?? false,
+              },
             },
           );
           break;
         }
         case "crdb-blackout-window":
-          await crdb(
-            this.ctx,
-            "PATCH",
-            `/api/v1/clusters/${enc(first)}/blackout-windows/${enc(rest)}`,
+          await this.api.patch(
+            `/api/v1/clusters/${pathEncode(first)}/blackout-windows/${pathEncode(rest)}`,
             {
-              ...(fields["startTime"] ? { start_time: fields["startTime"] } : {}),
-              ...(fields["endTime"] ? { end_time: fields["endTime"] } : {}),
+              body: {
+                ...(fields["startTime"] ? { start_time: fields["startTime"] } : {}),
+                ...(fields["endTime"] ? { end_time: fields["endTime"] } : {}),
+              },
             },
           );
           break;
         case "crdb-egress-rule": {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          await crdb(
-            this.ctx,
-            "PATCH",
-            `/api/v1/clusters/${enc(first)}/networking/egress-rules/${enc(rest)}`,
+          await this.api.patch(
+            `/api/v1/clusters/${pathEncode(first)}/networking/egress-rules/${pathEncode(rest)}`,
             {
-              type: String(current.fields["type"] ?? "FQDN"),
-              ...(fields["description"] !== undefined
-                ? { description: fields["description"] }
-                : {}),
-              ...(fields["ports"] !== undefined
-                ? { ports: listValue(fields["ports"]).map(Number).filter(Number.isFinite) }
-                : {}),
+              body: {
+                type: String(current.fields["type"] ?? "FQDN"),
+                ...(fields["description"] !== undefined
+                  ? { description: fields["description"] }
+                  : {}),
+                ...(fields["ports"] !== undefined
+                  ? { ports: listValue(fields["ports"]).map(Number).filter(Number.isFinite) }
+                  : {}),
+              },
             },
           );
           break;
         }
         case "crdb-service-account":
-          await crdb(this.ctx, "PATCH", `/api/v1/service-accounts/${enc(externalId)}`, {
-            ...(fields["name"] ? { name: fields["name"] } : {}),
-            ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
+          await this.api.patch(`/api/v1/service-accounts/${pathEncode(externalId)}`, {
+            body: {
+              ...(fields["name"] ? { name: fields["name"] } : {}),
+              ...(fields["description"] !== undefined
+                ? { description: fields["description"] }
+                : {}),
+            },
           });
           break;
         case "crdb-api-key":
           if (fields["name"])
-            await crdb(this.ctx, "PATCH", `/api/v1/api-keys/${enc(externalId)}`, {
-              name: fields["name"],
+            await this.api.patch(`/api/v1/api-keys/${pathEncode(externalId)}`, {
+              body: { name: fields["name"] },
             });
           break;
         default:
@@ -1054,71 +986,43 @@ export class CockroachClient implements PluginClient {
     });
   }
 
-  private async updateCluster(id: string, fields: Record<string, string>): Promise<void> {
-    const base = `/api/v1/clusters/${enc(id)}`;
-    const current = await crdb<CCluster>(this.ctx, "GET", base);
-    const body: Record<string, unknown> = {};
+  private async updateCluster(clusterId: string, fields: Record<string, string>): Promise<void> {
+    const id = pathEncode(clusterId);
+    const current = await this.api.get(`/api/v1/clusters/${id}`);
     const dp = bool(fields["deleteProtection"]);
-    if (dp !== undefined) body["delete_protection"] = dp ? "ENABLED" : "DISABLED";
+    const body: ApiBody<operations["CockroachCloud_UpdateCluster"]> = {
+      ...(dp !== undefined ? { delete_protection: protection(dp) } : {}),
+      ...planUpdate(current, fields),
+    };
+    if (Object.keys(body).length) await this.api.patch(`/api/v1/clusters/${id}`, { body });
 
-    if (current.config.dedicated) {
-      const hardware: Record<string, unknown> = {};
-      if (num(fields["vcpus"]) !== undefined)
-        hardware["machine_spec"] = { num_virtual_cpus: num(fields["vcpus"]) };
-      if (num(fields["storageGib"]) !== undefined)
-        hardware["storage_gib"] = num(fields["storageGib"]);
-      if (num(fields["diskIops"]) !== undefined) hardware["disk_iops"] = num(fields["diskIops"]);
-      const dedicated: Record<string, unknown> = {};
-      if (Object.keys(hardware).length) dedicated["hardware"] = hardware;
-      if (num(fields["nodeCount"]) !== undefined) {
-        dedicated["region_nodes"] = Object.fromEntries(
-          current.regions.map((r) => [r.name, num(fields["nodeCount"])]),
-        );
-      }
-      if (Object.keys(dedicated).length) body["dedicated"] = dedicated;
-    } else if (current.config.serverless) {
-      const limits: Record<string, string> = {};
-      if (num(fields["provisionedVcpus"]) !== undefined)
-        limits["provisioned_virtual_cpus"] = String(num(fields["provisionedVcpus"]));
-      if (num(fields["requestUnitLimit"]) !== undefined)
-        limits["request_unit_limit"] = String(num(fields["requestUnitLimit"]));
-      if (num(fields["storageMibLimit"]) !== undefined)
-        limits["storage_mib_limit"] = String(num(fields["storageMibLimit"]));
-      const serverless: Record<string, unknown> = {};
-      if (Object.keys(limits).length) serverless["usage_limits"] = limits;
-      if (fields["upgradeType"]) serverless["upgrade_type"] = fields["upgradeType"];
-      if (Object.keys(serverless).length) body["serverless"] = serverless;
+    const enabled = bool(fields["backupsEnabled"]);
+    const frequency = num(fields["backupFrequencyMinutes"]);
+    const retention = num(fields["backupRetentionDays"]);
+    const backup: ApiBody<operations["CockroachCloud_UpdateBackupConfiguration"]> = {
+      ...(enabled !== undefined ? { enabled } : {}),
+      ...(frequency !== undefined ? { frequency_minutes: frequency } : {}),
+      ...(retention !== undefined ? { retention_days: retention } : {}),
+    };
+    if (Object.keys(backup).length) {
+      await this.api.patch(`/api/v1/clusters/${id}/backups-config`, { body: backup });
     }
-    if (Object.keys(body).length) await crdb(this.ctx, "PATCH", base, body);
-
-    const backup: Record<string, unknown> = {};
-    if (bool(fields["backupsEnabled"]) !== undefined)
-      backup["enabled"] = bool(fields["backupsEnabled"]);
-    if (num(fields["backupFrequencyMinutes"]) !== undefined)
-      backup["frequency_minutes"] = num(fields["backupFrequencyMinutes"]);
-    if (num(fields["backupRetentionDays"]) !== undefined)
-      backup["retention_days"] = num(fields["backupRetentionDays"]);
-    if (Object.keys(backup).length) await crdb(this.ctx, "PATCH", `${base}/backups-config`, backup);
 
     if (fields["deferralPolicy"]) {
-      await crdb(this.ctx, "PUT", `${base}/version-deferral`, {
-        deferral_policy: fields["deferralPolicy"],
+      await this.api.put(`/api/v1/clusters/${id}/version-deferral`, {
+        body: { deferral_policy: fields["deferralPolicy"] },
       });
     }
 
     const offset = num(fields["maintenanceOffsetHours"]);
     const length = num(fields["maintenanceDurationHours"]);
     if (offset !== undefined || length !== undefined) {
-      const cur = await settle(
-        crdb<{ offset_duration?: string; window_duration?: string }>(
-          this.ctx,
-          "GET",
-          `${base}/maintenance-window`,
-        ),
-      );
-      await crdb(this.ctx, "PUT", `${base}/maintenance-window`, {
-        offset_duration: hoursDuration(offset ?? durationHours(cur?.offset_duration) ?? 0),
-        window_duration: hoursDuration(length ?? durationHours(cur?.window_duration) ?? 6),
+      const cur = await settle(this.api.get(`/api/v1/clusters/${id}/maintenance-window`));
+      await this.api.put(`/api/v1/clusters/${id}/maintenance-window`, {
+        body: {
+          offset_duration: hoursDuration(offset ?? durationHours(cur?.offset_duration) ?? 0),
+          window_duration: hoursDuration(length ?? durationHours(cur?.window_duration) ?? 6),
+        },
       });
     }
   }
@@ -1127,42 +1031,45 @@ export class CockroachClient implements PluginClient {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
       const [first, rest] = split(externalId);
-      const base = `/api/v1/clusters/${enc(first)}`;
+      const id = pathEncode(first);
+      const item = pathEncode(rest);
       switch (typeId) {
         case "crdb-folder":
-          await crdb(this.ctx, "DELETE", `/api/v1/folders/${enc(externalId)}`);
+          await this.api.delete(`/api/v1/folders/${pathEncode(externalId)}`);
           return;
         case "crdb-cluster":
-          await crdb(this.ctx, "DELETE", `/api/v1/clusters/${enc(externalId)}`);
+          await this.api.delete(`/api/v1/clusters/${pathEncode(externalId)}`);
           return;
         case "crdb-database":
-          await crdb(this.ctx, "DELETE", `${base}/databases/${enc(rest)}`);
+          await this.api.delete(`/api/v1/clusters/${id}/databases/${item}`);
           return;
         case "crdb-sql-user":
-          await crdb(this.ctx, "DELETE", `${base}/sql-users/${enc(rest)}`);
+          await this.api.delete(`/api/v1/clusters/${id}/sql-users/${item}`);
           return;
         case "crdb-allowlist-entry": {
           const [ip, mask] = parseCidr(rest);
-          await crdb(this.ctx, "DELETE", `${base}/networking/allowlist/${enc(ip)}/${mask}`);
+          await this.api.delete(
+            `/api/v1/clusters/${id}/networking/allowlist/${pathEncode(ip)}/${pathEncode(mask)}`,
+          );
           return;
         }
         case "crdb-log-export":
-          await crdb(this.ctx, "DELETE", `/api/v1/clusters/${enc(externalId)}/logexport`);
+          await this.api.delete(`/api/v1/clusters/${pathEncode(externalId)}/logexport`);
           return;
         case "crdb-metric-export":
-          await crdb(this.ctx, "DELETE", `${base}/metricexport/${enc(rest)}`);
+          await this.api.delete(`/api/v1/clusters/${id}/metricexport/${item}`);
           return;
         case "crdb-blackout-window":
-          await crdb(this.ctx, "DELETE", `${base}/blackout-windows/${enc(rest)}`);
+          await this.api.delete(`/api/v1/clusters/${id}/blackout-windows/${item}`);
           return;
         case "crdb-egress-rule":
-          await crdb(this.ctx, "DELETE", `${base}/networking/egress-rules/${enc(rest)}`);
+          await this.api.delete(`/api/v1/clusters/${id}/networking/egress-rules/${item}`);
           return;
         case "crdb-service-account":
-          await crdb(this.ctx, "DELETE", `/api/v1/service-accounts/${enc(externalId)}`);
+          await this.api.delete(`/api/v1/service-accounts/${pathEncode(externalId)}`);
           return;
         case "crdb-api-key":
-          await crdb(this.ctx, "DELETE", `/api/v1/api-keys/${enc(externalId)}`);
+          await this.api.delete(`/api/v1/api-keys/${pathEncode(externalId)}`);
           return;
         default:
           throw new Error(`CockroachDB Cloud plugin: "${typeId}" cannot be deleted.`);
@@ -1180,31 +1087,26 @@ export class CockroachClient implements PluginClient {
       const externalId = externalIdOf(resourceId);
       if (typeId === "crdb-backup" && actionId === "restore-cluster") {
         const [clusterId, backupId] = split(externalId);
-        await crdb(this.ctx, "POST", `/api/v1/clusters/${enc(clusterId)}/restores`, {
-          type: "CLUSTER",
-          backup_id: backupId,
+        await this.api.post(`/api/v1/clusters/${pathEncode(clusterId)}/restores`, {
+          body: { type: "CLUSTER", backup_id: backupId },
         });
         return;
       }
       if (typeId === "crdb-cluster") {
         if (actionId === "finalize-upgrade") {
-          await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalId)}`, {
-            upgrade_status: "FINALIZED",
+          await this.api.patch(`/api/v1/clusters/${pathEncode(externalId)}`, {
+            body: { upgrade_status: "FINALIZED" },
           });
           return;
         }
         if (actionId === "rollback-upgrade") {
-          await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalId)}`, {
-            upgrade_status: "ROLLBACK_RUNNING",
+          await this.api.patch(`/api/v1/clusters/${pathEncode(externalId)}`, {
+            body: { upgrade_status: "ROLLBACK_RUNNING" },
           });
           return;
         }
         if (actionId === "enable-prometheus") {
-          await crdb(
-            this.ctx,
-            "POST",
-            `/api/v1/clusters/${enc(externalId)}/metricexport/prometheus`,
-          );
+          await this.api.post(`/api/v1/clusters/${pathEncode(externalId)}/metricexport/prometheus`);
           return;
         }
       }
@@ -1220,8 +1122,8 @@ export class CockroachClient implements PluginClient {
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
       // The list endpoint already embeds invoice items and line items.
-      const invoices = await paged<CInvoice>(this.ctx, "/api/v1/invoices", "invoices", {
-        start_time: `${range.fromDate.slice(0, 7)}-01T00:00:00Z`,
+      const invoices = await this.api.getAll("/api/v1/invoices", "invoices", {
+        query: { start_time: `${range.fromDate.slice(0, 7)}-01T00:00:00Z` },
       });
       return invoicesToCostRows(invoices, range);
     });
@@ -1316,48 +1218,67 @@ export function serviceAccountResource(sa: CServiceAccount, accountId: string): 
   );
 }
 
-function restoreResource(
-  clusterId: string,
-  r: Record<string, unknown>,
+function metricExportResource<Res extends { status?: string; user_message?: string }>(
+  c: CCluster,
+  kind: string,
+  res: Res | undefined,
+  target: (res: Res) => string,
   accountId: string,
-): ResourceInstance {
-  const s = (k: string) => (typeof r[k] === "string" ? (r[k] as string) : "");
-  const objects = Array.isArray(r["objects"])
-    ? (r["objects"] as Array<{ database?: string; schema?: string; table?: string }>)
-        .map((o) => [o.database, o.schema, o.table].filter(Boolean).join("."))
-        .join(", ")
+): ResourceInstance | null {
+  const status = typeof res?.status === "string" ? res.status : "";
+  if (!res || !status || status === "NOT_DEPLOYED") return null;
+  return instance(
+    accountId,
+    "crdb-metric-export",
+    `${c.id}/${kind}`,
+    `${c.name} metrics → ${kind}`,
+    {
+      kind,
+      clusterId: c.id,
+      status,
+      message: String(res.user_message ?? ""),
+      target: target(res),
+    },
+    { typeId: "crdb-cluster", externalId: c.id },
+  );
+}
+
+function restoreResource(clusterId: string, r: CRestore, accountId: string): ResourceInstance {
+  const s = (v: string | undefined) => (typeof v === "string" ? v : "");
+  const objects = Array.isArray(r.objects)
+    ? r.objects.map((o) => [o.database, o.schema, o.table].filter(Boolean).join(".")).join(", ")
     : "";
   return instance(
     accountId,
     "crdb-restore",
-    `${clusterId}/${s("id")}`,
-    `${s("type")} restore ${s("created_at").slice(0, 10)}`,
+    `${clusterId}/${s(r.id)}`,
+    `${s(r.type)} restore ${s(r.created_at).slice(0, 10)}`,
     {
       clusterId,
-      type: s("type"),
-      status: s("status"),
+      type: s(r.type),
+      status: s(r.status),
       progressPercent:
-        typeof r["completion_percent"] === "number"
-          ? Math.round((r["completion_percent"] as number) * 100)
+        typeof r.completion_percent === "number"
+          ? Math.round(r.completion_percent * 100)
           : undefined,
-      backupId: s("backup_id"),
-      backupEndTime: s("backup_end_time"),
-      sourceCluster: s("source_cluster_name"),
+      backupId: s(r.backup_id),
+      backupEndTime: s(r.backup_end_time),
+      sourceCluster: s(r.source_cluster_name),
       objects,
-      error: s("client_error_message"),
-      createdAt: s("created_at"),
-      completedAt: s("completed_at"),
+      error: s(r.client_error_message),
+      createdAt: s(r.created_at),
+      completedAt: s(r.completed_at),
     },
     { typeId: "crdb-cluster", externalId: clusterId },
-    s("created_at"),
+    s(r.created_at),
   );
 }
 
 export interface ClusterExtras {
   backups?: CBackupConfig | undefined;
-  deferral?: { deferral_policy?: string } | undefined;
-  window?: { offset_duration?: string; window_duration?: string } | undefined;
-  cmek?: { status?: string } | undefined;
+  deferral?: components["schemas"]["ClusterVersionDeferral"] | undefined;
+  window?: components["schemas"]["MaintenanceWindow"] | undefined;
+  cmek?: components["schemas"]["CMEKClusterInfo"] | undefined;
   allowlist?: CAllowlistEntry[] | undefined;
 }
 
@@ -1414,42 +1335,107 @@ export function clusterResource(
   );
 }
 
+function protection(on: boolean): "ENABLED" | "DISABLED" {
+  return on ? "ENABLED" : "DISABLED";
+}
+
+/** Edit-form fields → the part of `PATCH /api/v1/clusters/{id}` specific to the cluster's plan. */
+function planUpdate(
+  current: CCluster,
+  fields: Record<string, string>,
+): ApiBody<operations["CockroachCloud_UpdateCluster"]> {
+  if (current.config.dedicated) {
+    const vcpus = num(fields["vcpus"]);
+    const storage = num(fields["storageGib"]);
+    const iops = num(fields["diskIops"]);
+    const nodes = num(fields["nodeCount"]);
+    const hardware = {
+      ...(vcpus !== undefined ? { machine_spec: { num_virtual_cpus: vcpus } } : {}),
+      ...(storage !== undefined ? { storage_gib: storage } : {}),
+      ...(iops !== undefined ? { disk_iops: iops } : {}),
+    };
+    const dedicated = {
+      ...(Object.keys(hardware).length ? { hardware } : {}),
+      ...(nodes !== undefined
+        ? {
+            region_nodes: Object.fromEntries(
+              current.regions.map((r): [string, number] => [r.name, nodes]),
+            ),
+          }
+        : {}),
+    };
+    return Object.keys(dedicated).length ? { dedicated } : {};
+  }
+  if (current.config.serverless) {
+    const provisioned = num(fields["provisionedVcpus"]);
+    const requestUnits = num(fields["requestUnitLimit"]);
+    const storage = num(fields["storageMibLimit"]);
+    const limits = {
+      ...(provisioned !== undefined ? { provisioned_virtual_cpus: String(provisioned) } : {}),
+      ...(requestUnits !== undefined ? { request_unit_limit: String(requestUnits) } : {}),
+      ...(storage !== undefined ? { storage_mib_limit: String(storage) } : {}),
+    };
+    const serverless = {
+      ...(Object.keys(limits).length ? { usage_limits: limits } : {}),
+      ...(fields["upgradeType"] ? { upgrade_type: fields["upgradeType"] } : {}),
+    };
+    return Object.keys(serverless).length ? { serverless } : {};
+  }
+  return {};
+}
+
 /** Create-form fields → `POST /api/v1/clusters` body for Basic, Standard or Advanced. */
-export function clusterCreateBody(fields: Record<string, string>): Record<string, unknown> {
+export function clusterCreateBody(
+  fields: Record<string, string>,
+): ApiBody<operations["CockroachCloud_CreateCluster"]> {
   const plan = fields["plan"] || "BASIC";
   const regions = listValue(fields["regions"]);
   if (regions.length === 0) throw new Error("CockroachDB Cloud plugin: pick at least one region.");
-  const spec: Record<string, unknown> = {
+  const deleteProtection = bool(fields["deleteProtection"]);
+  const common = {
     plan,
     ...(fields["folderId"] ? { parent_id: fields["folderId"] } : {}),
-    ...(bool(fields["deleteProtection"]) !== undefined
-      ? { delete_protection: bool(fields["deleteProtection"]) ? "ENABLED" : "DISABLED" }
-      : {}),
+    ...(deleteProtection !== undefined ? { delete_protection: protection(deleteProtection) } : {}),
   };
-  if (plan === "ADVANCED") {
-    spec["dedicated"] = {
-      region_nodes: Object.fromEntries(regions.map((r) => [r, num(fields["nodeCount"]) ?? 3])),
-      hardware: {
-        machine_spec: { num_virtual_cpus: num(fields["vcpus"]) ?? 4 },
-        storage_gib: num(fields["storageGib"]) ?? 0,
-      },
-      ...(fields["version"] ? { cockroach_version: fields["version"] } : {}),
-    };
-  } else {
-    const limits: Record<string, string> = {};
-    if (plan === "STANDARD" && num(fields["provisionedVcpus"]) !== undefined) {
-      limits["provisioned_virtual_cpus"] = String(num(fields["provisionedVcpus"]));
-    }
-    spec["serverless"] = {
-      regions,
-      ...(regions.length > 1 ? { primary_region: regions[0] } : {}),
-      ...(Object.keys(limits).length ? { usage_limits: limits } : {}),
-      ...(fields["closedAllowlist"] === "true" ? { with_empty_ip_allowlist: true } : {}),
-    };
-  }
+  const spec: components["schemas"]["CreateClusterSpecification"] =
+    plan === "ADVANCED"
+      ? { ...common, dedicated: dedicatedSpec(fields, regions) }
+      : { ...common, serverless: serverlessSpec(fields, regions, plan) };
   return {
     name: required(fields["name"], "a cluster name"),
     provider: fields["provider"] || "AWS",
     spec,
+  };
+}
+
+function dedicatedSpec(
+  fields: Record<string, string>,
+  regions: string[],
+): components["schemas"]["DedicatedClusterCreateSpecification"] {
+  const nodes = num(fields["nodeCount"]) ?? 3;
+  return {
+    region_nodes: Object.fromEntries(regions.map((r): [string, number] => [r, nodes])),
+    hardware: {
+      machine_spec: { num_virtual_cpus: num(fields["vcpus"]) ?? 4 },
+      storage_gib: num(fields["storageGib"]) ?? 0,
+    },
+    ...(fields["version"] ? { cockroach_version: fields["version"] } : {}),
+  };
+}
+
+function serverlessSpec(
+  fields: Record<string, string>,
+  regions: string[],
+  plan: string,
+): components["schemas"]["ServerlessClusterCreateSpecification"] {
+  const provisioned = plan === "STANDARD" ? num(fields["provisionedVcpus"]) : undefined;
+  const [primary] = regions;
+  return {
+    regions,
+    ...(regions.length > 1 && primary !== undefined ? { primary_region: primary } : {}),
+    ...(provisioned !== undefined
+      ? { usage_limits: { provisioned_virtual_cpus: String(provisioned) } }
+      : {}),
+    ...(fields["closedAllowlist"] === "true" ? { with_empty_ip_allowlist: true } : {}),
   };
 }

@@ -2,7 +2,7 @@ import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import { attempt, attemptFn } from "@infrawrench/plugin-base/effect";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { resolveHost } from "./api.js";
+import { createPostHogContext, resolveHost } from "./api.js";
 import { PostHogClient, listOrganizations } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { POSTHOG_OAUTH, completePostHogOAuth, validateOAuthHost } from "./oauth.js";
@@ -100,13 +100,15 @@ export const plugin = definePlugin({
         credentials["region"] ?? "us",
         credentials["host"] ?? "",
       );
-      const orgs = await listOrganizations({
-        baseUrl,
-        region,
-        apiKey,
-        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-        ...(services?.http ? { http: services.http } : {}),
-      });
+      const orgs = await listOrganizations(
+        createPostHogContext({
+          baseUrl,
+          region,
+          apiKey,
+          ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+          ...(services?.http ? { http: services.http } : {}),
+        }),
+      );
       return orgs.map((o) => ({
         id: String(o["id"]),
         label: String(o["name"] ?? o["id"]),

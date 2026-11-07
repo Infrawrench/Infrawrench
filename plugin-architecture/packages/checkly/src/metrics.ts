@@ -6,9 +6,17 @@
  * (availability, p95) come from the Analytics API, whose per-type endpoint
  * and metric names differ (`ANALYTICS` below, from the OpenAPI document).
  */
-import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
-import type { ChecklyContext } from "./api.js";
-import { ckFetch } from "./api.js";
+import type {
+  ApiListItem,
+  ApiResponse,
+  MetricSeries,
+  MetricSeriesPoint,
+  NoSlashString,
+} from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { ChecklyApi } from "./api.js";
+import { ckEntries } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_PAGES = 10;
@@ -25,14 +33,7 @@ export function rangeOrDefault(range: TimeRange | undefined, windowMs: number): 
   return { startMs: endMs - windowMs, endMs };
 }
 
-interface CheckResult {
-  startedAt?: string;
-  created_at?: string;
-  responseTime?: number;
-  runLocation?: string;
-  hasFailures?: boolean;
-  hasErrors?: boolean;
-}
+type CheckResult = Partial<ApiListItem<operations["getV2CheckresultsCheckid"], "entries">>;
 
 /** Bucket size giving about 100 points, at least a minute. */
 export function bucketMs(range: TimeRange): number {
@@ -78,68 +79,102 @@ export function resultsToSeries(results: CheckResult[], range: TimeRange): Metri
 }
 
 export async function checkResultSeries(
-  ctx: ChecklyContext,
+  api: ChecklyApi,
   checkId: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   const from = Math.max(range.startMs, Date.now() - RESULTS_RETENTION_MS);
-  const results: CheckResult[] = [];
-  let nextId: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await ckFetch<{ entries?: CheckResult[]; nextId?: string | null }>(
-      ctx,
-      `/v2/check-results/${encodeURIComponent(checkId)}`,
-      {
+  const results = await ckEntries(
+    (cursor) =>
+      api.get(`/v2/check-results/${pathEncode(checkId)}`, {
         query: {
           from: Math.floor(from / 1000),
           to: Math.floor(range.endMs / 1000),
           limit: 100,
           resultType: "FINAL",
-          ...(nextId ? { nextId } : {}),
+          ...cursor,
         },
-      },
-    );
-    results.push(...(res.entries ?? []));
-    nextId = res.nextId ?? undefined;
-    if (!nextId) break;
-  }
+      }),
+    MAX_PAGES,
+  );
   return resultsToSeries(results, { startMs: from, endMs: range.endMs });
 }
 
+type AnalyticsAnswer =
+  | ApiResponse<operations["getV1AnalyticsApichecksId"]>
+  | ApiResponse<operations["getV1AnalyticsUrlmonitorsId"]>
+  | ApiResponse<operations["getV1AnalyticsBrowserchecksId"]>
+  | ApiResponse<operations["getV1AnalyticsMultistepchecksId"]>
+  | ApiResponse<operations["getV1AnalyticsPlaywrightchecksId"]>
+  | ApiResponse<operations["getV1AnalyticsTcpchecksId"]>
+  | ApiResponse<operations["getV1AnalyticsDnsId"]>
+  | ApiResponse<operations["getV1AnalyticsIcmpId"]>
+  | ApiResponse<operations["getV1AnalyticsSslId"]>
+  | ApiResponse<operations["getV1AnalyticsHeartbeatchecksId"]>;
+
+interface AnalyticsSpec {
+  metrics: readonly string[];
+  load: (api: ChecklyApi, id: NoSlashString) => Promise<AnalyticsAnswer>;
+}
+
+/** One type's window aggregates worth showing, with the query its route takes. */
+const analytics = <const Metric extends string>(
+  metrics: readonly Metric[],
+  load: (
+    api: ChecklyApi,
+    id: NoSlashString,
+    query: { quickRange: "last7Days"; metrics: Metric[] },
+  ) => Promise<AnalyticsAnswer>,
+): AnalyticsSpec => ({
+  metrics,
+  load: (api, id) => load(api, id, { quickRange: "last7Days", metrics: [...metrics] }),
+});
+
 /** Analytics endpoint and the window aggregates worth showing, per check type. */
-export const ANALYTICS: Record<string, { path: string; metrics: string[] }> = {
-  API: { path: "api-checks", metrics: ["availability", "responseTime_avg", "responseTime_p95"] },
-  URL: { path: "url-monitors", metrics: ["availability", "responseTime_avg", "responseTime_p95"] },
-  BROWSER: { path: "browser-checks", metrics: ["availability", "responseTime_avg", "LCP_p95"] },
-  MULTI_STEP: {
-    path: "multistep-checks",
-    metrics: ["availability", "responseTime_avg", "responseTime_p95"],
-  },
-  PLAYWRIGHT: {
-    path: "playwright-checks",
-    metrics: ["availability", "responseTime_avg", "responseTime_p95"],
-  },
-  TCP: { path: "tcp-checks", metrics: ["availability", "total_avg", "total_p95"] },
-  DNS: { path: "dns", metrics: ["availability", "total_avg", "total_p95"] },
-  ICMP: { path: "icmp", metrics: ["availability", "latencyAvg_avg", "packetLoss_avg"] },
-  SSL: { path: "ssl", metrics: ["availability", "daysUntilExpiry_avg"] },
-  HEARTBEAT: { path: "heartbeat-checks", metrics: ["availability"] },
+export const ANALYTICS: Record<string, AnalyticsSpec> = {
+  API: analytics(["availability", "responseTime_avg", "responseTime_p95"], (api, id, query) =>
+    api.get(`/v1/analytics/api-checks/${id}`, { query }),
+  ),
+  URL: analytics(["availability", "responseTime_avg", "responseTime_p95"], (api, id, query) =>
+    api.get(`/v1/analytics/url-monitors/${id}`, { query }),
+  ),
+  BROWSER: analytics(["availability", "responseTime_avg", "LCP_p95"], (api, id, query) =>
+    api.get(`/v1/analytics/browser-checks/${id}`, { query }),
+  ),
+  MULTI_STEP: analytics(
+    ["availability", "responseTime_avg", "responseTime_p95"],
+    (api, id, query) => api.get(`/v1/analytics/multistep-checks/${id}`, { query }),
+  ),
+  PLAYWRIGHT: analytics(
+    ["availability", "responseTime_avg", "responseTime_p95"],
+    (api, id, query) => api.get(`/v1/analytics/playwright-checks/${id}`, { query }),
+  ),
+  TCP: analytics(["availability", "total_avg", "total_p95"], (api, id, query) =>
+    api.get(`/v1/analytics/tcp-checks/${id}`, { query }),
+  ),
+  DNS: analytics(["availability", "total_avg", "total_p95"], (api, id, query) =>
+    api.get(`/v1/analytics/dns/${id}`, { query }),
+  ),
+  ICMP: analytics(["availability", "latencyAvg_avg", "packetLoss_avg"], (api, id, query) =>
+    api.get(`/v1/analytics/icmp/${id}`, { query }),
+  ),
+  SSL: analytics(["availability", "daysUntilExpiry_avg"], (api, id, query) =>
+    api.get(`/v1/analytics/ssl/${id}`, { query }),
+  ),
+  HEARTBEAT: analytics(["availability"], (api, id, query) =>
+    api.get(`/v1/analytics/heartbeat-checks/${id}`, { query }),
+  ),
 };
 
 /** Window aggregates (one row, no interval) for the detail page. */
 export async function checkAnalytics(
-  ctx: ChecklyContext,
+  api: ChecklyApi,
   checkId: string,
   checkType: string,
-  quickRange = "last7Days",
 ): Promise<Record<string, number>> {
   const spec = ANALYTICS[checkType];
   if (!spec) return {};
-  const res = await ckFetch<{
-    series?: Array<{ data?: Array<Record<string, unknown>> | Record<string, unknown> }>;
-  }>(ctx, `/v1/analytics/${spec.path}/${encodeURIComponent(checkId)}`, {
-    query: { quickRange, metrics: spec.metrics },
-  });
+  const res = await spec.load(api, pathEncode(checkId));
   const out: Record<string, number> = {};
   for (const s of res.series ?? []) {
     const rows = Array.isArray(s.data) ? s.data : s.data ? [s.data] : [];
@@ -154,17 +189,13 @@ export async function checkAnalytics(
 }
 
 export async function privateLocationSeries(
-  ctx: ChecklyContext,
+  api: ChecklyApi,
   id: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   // The API only answers for the last 15 days.
   const from = Math.max(range.startMs, Date.now() - 15 * 86400_000 + 60_000);
-  const res = await ckFetch<{
-    timestamps?: string[];
-    queueSize?: number[];
-    oldestScheduledCheckRun?: number[];
-  }>(ctx, `/v1/private-locations/${encodeURIComponent(id)}/metrics`, {
+  const res = await api.get(`/v1/private-locations/${pathEncode(id)}/metrics`, {
     query: { from: String(Math.floor(from / 1000)), to: String(Math.floor(range.endMs / 1000)) },
   });
   const ts = (res.timestamps ?? []).map((t) =>

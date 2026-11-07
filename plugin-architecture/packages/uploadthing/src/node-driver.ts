@@ -26,8 +26,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { HttpHostServices, StorageNodeDriver } from "@infrawrench/plugin-base";
-
-const API_BASE = "https://api.uploadthing.com";
+import { createUploadThingApi } from "./api.js";
 
 /** Bound outbound UploadThing fetches so a hung host cannot wedge the process. */
 const FETCH_TIMEOUT_MS = 60_000;
@@ -38,40 +37,13 @@ async function requestFileUrl(
   apiKey: string,
   http?: HttpHostServices,
 ): Promise<string> {
-  const headers = {
-    "Content-Type": "application/json",
-    "x-uploadthing-api-key": apiKey,
-  };
-  const body = JSON.stringify({ fileKey: key });
-
-  let parsed: { ufsUrl?: string; url?: string };
-  if (http) {
-    const result = await http.request({
-      url: `${API_BASE}/v6/requestFileAccess`,
-      method: "POST",
-      headers,
-      body,
-    });
-    if (result.status < 200 || result.status >= 300) {
-      throw new Error(
-        `UploadThing API error ${result.status} for /v6/requestFileAccess: ${result.body}`,
-      );
-    }
-    parsed = JSON.parse(result.body) as { ufsUrl?: string; url?: string };
-  } else {
-    const res = await fetch(`${API_BASE}/v6/requestFileAccess`, {
-      method: "POST",
-      headers,
-      body,
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      throw new Error(
-        `UploadThing API error ${res.status} for /v6/requestFileAccess: ${await res.text()}`,
-      );
-    }
-    parsed = (await res.json()) as { ufsUrl?: string; url?: string };
-  }
+  const parsed = await createUploadThingApi({ apiKey, http }).post("/v6/requestFileAccess", {
+    body: { fileKey: key },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  // A 204, or an empty answer over the host service, reads as `undefined`; it has
+  // always failed here as the JSON it is not.
+  if (parsed === undefined) throw new SyntaxError("Unexpected end of JSON input");
 
   // `ufsUrl` is the current app-subdomain form; `url` is the deprecated
   // utfs.io one, kept only as a fallback for apps still served from it.

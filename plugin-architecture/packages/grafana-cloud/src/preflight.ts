@@ -22,9 +22,10 @@ import type {
   PreflightDeclaration,
   PreflightResult,
 } from "@infrawrench/plugin-base";
+import { pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
 import { listStacks, orgKeyFor, orgSlugOf, policyRegions, resolveOrg } from "./account.js";
 import type { GrafanaContext } from "./api.js";
-import { cloudFetch, statusOf } from "./api.js";
+import { cloudApi, statusOf } from "./api.js";
 
 const perm = (id: string) => ({ id, label: id });
 
@@ -53,7 +54,7 @@ const PROBES: Probe[] = [
       essential: true,
     },
     // Straight to the route: `resolveOrg` tolerates a 403 when a slug was typed.
-    run: (ctx, orgSlug) => cloudFetch(ctx, `/orgs/${encodeURIComponent(orgKeyFor(ctx, orgSlug))}`),
+    run: (ctx, orgSlug) => cloudApi(ctx).get(`/orgs/${pathEncode(orgKeyFor(ctx, orgSlug))}`),
   },
   {
     capability: {
@@ -64,7 +65,7 @@ const PROBES: Probe[] = [
     },
     run: async (ctx, orgSlug) => {
       const slug = await orgSlugOf(ctx, orgSlug);
-      return cloudFetch(ctx, `/orgs/${encodeURIComponent(slug)}/billed-usage`, {
+      return cloudApi(ctx).get(`/orgs/${pathEncode(slug)}/billed-usage`, {
         query: currentMonthQuery(),
       });
     },
@@ -92,7 +93,7 @@ const PROBES: Probe[] = [
     run: async (ctx, orgSlug) => {
       const id = await firstStackId(ctx, orgSlug);
       if (id === undefined) return undefined;
-      return cloudFetch(ctx, `/instances/${id}/plugins`);
+      return cloudApi(ctx).get(`/instances/${unencodedSegment(String(id))}/plugins`);
     },
   },
   {
@@ -109,7 +110,7 @@ const PROBES: Probe[] = [
     run: async (ctx, orgSlug) => {
       const region = (await policyRegions(ctx, orgSlug))[0];
       if (!region) return undefined;
-      return cloudFetch(ctx, "/v1/accesspolicies", { query: { region, pageSize: 1 } });
+      return cloudApi(ctx).get("/v1/accesspolicies", { query: { region, pageSize: 1 } });
     },
   },
   {
@@ -125,7 +126,7 @@ const PROBES: Probe[] = [
     },
     run: async (ctx, orgSlug) => {
       const slug = await orgSlugOf(ctx, orgSlug);
-      return cloudFetch(ctx, `/orgs/${encodeURIComponent(slug)}/members`);
+      return cloudApi(ctx).get(`/orgs/${pathEncode(slug)}/members`);
     },
   },
   {

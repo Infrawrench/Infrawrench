@@ -23,29 +23,24 @@ import type {
   SidebarItemSchema,
   VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
+import type { ApiBody } from "@infrawrench/plugin-base";
+import type { operations as GhecOps } from "./api-types.ghec.gen.js";
 import type { GitHubContext } from "./api.js";
 import {
-  billingBase,
-  ghFetch,
+  byOwner,
+  dotcomApi,
   ghPaged,
-  ownerBase,
+  ghUnlisted,
   ownerSegment,
   parseOwner,
+  repoApi,
   resolveHost,
   statusOf,
 } from "./api.js";
 import { fetchGitHubCostData } from "./cost-data.js";
 import { fetchCopilotSeatObjects, mapCopilotSeatRecords } from "./seats.js";
-import type {
-  GhActionsCache,
-  GhBudget,
-  GhCodespace,
-  GhCopilotSeat,
-  GhHostedRunner,
-  GhRepoCacheUsage,
-  GhRunner,
-} from "./mappers.js";
+import type { GhBudget, GhCopilotSeat } from "./mappers.js";
 import {
   costCenterMembers,
   mapActionsCache,
@@ -77,14 +72,20 @@ import {
   renderGitHubDetail,
   renderGitHubSidebar,
 } from "./render.js";
-import type { CostCenter, SummaryItem, TaggedUsageItem } from "./usage.js";
+import type { CostCenter, CostCenterMembers, SummaryItem, TaggedUsageItem } from "./usage.js";
 import {
+  addCostCenterMembers,
+  createCostCenter,
   currentYearMonth,
+  deleteCostCenter,
   fetchCostCenters,
   fetchModelUsage,
   fetchMonthItems,
   fetchUsageSummary,
+  getCostCenter,
+  removeCostCenterMembers,
   sumItems,
+  updateCostCenter,
 } from "./usage.js";
 
 /** How long one listing pass reuses this month's usage and summary. */
@@ -106,9 +107,16 @@ const list = (raw: string | undefined): string[] =>
 
 const yes = (raw: string | undefined): boolean => /^(true|yes|1|on)$/i.test((raw ?? "").trim());
 
+/** What one listing pass reuses. */
+interface Memoized {
+  summary: SummaryItem[];
+  costCenters: CostCenter[];
+  items: TaggedUsageItem[];
+}
+
 export class GitHubClient implements PluginClient {
   readonly ctx: GitHubContext;
-  private memo = new Map<string, { at: number; value: Promise<unknown> }>();
+  private memo: { [K in keyof Memoized]?: { at: number; value: Promise<Memoized[K]> } } = {};
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["token"] ?? "").trim();
@@ -141,12 +149,18 @@ export class GitHubClient implements PluginClient {
     return this.ctx.owner.kind === "org";
   }
 
-  private cached<T>(key: string, load: () => Promise<T>): Promise<T> {
-    const hit = this.memo.get(key);
-    if (hit && Date.now() - hit.at < MEMO_TTL_MS) return hit.value as Promise<T>;
+  private cached<K extends keyof Memoized>(
+    key: K,
+    load: () => Promise<Memoized[K]>,
+  ): Promise<Memoized[K]> {
+    const memo: { [P in K]?: { at: number; value: Promise<Memoized[P]> } } = this.memo;
+    const hit = memo[key];
+    if (hit && Date.now() - hit.at < MEMO_TTL_MS) return hit.value;
     const value = load();
-    this.memo.set(key, { at: Date.now(), value });
-    value.catch(() => this.memo.delete(key));
+    memo[key] = { at: Date.now(), value };
+    value.catch(() => {
+      delete memo[key];
+    });
     return value;
   }
 
@@ -165,7 +179,7 @@ export class GitHubClient implements PluginClient {
   }
 
   private invalidate(): void {
-    this.memo.clear();
+    this.memo = {};
   }
 
   // -------------------------------------------------------------------------
@@ -202,9 +216,11 @@ export class GitHubClient implements PluginClient {
         case "runner":
           return this.scoped(async () =>
             (
-              await ghPaged<GhRunner, { runners?: GhRunner[] }>(
-                this.ctx,
-                `${ownerBase(this.ctx.owner)}/actions/runners`,
+              await ghPaged(
+                (query) =>
+                  dotcomApi(this.ctx).get(`/orgs/${ownerSegment(this.ctx.owner)}/actions/runners`, {
+                    query,
+                  }),
                 (r) => r.runners,
               )
             ).map((r) => mapRunner(accountId, r)),
@@ -212,9 +228,12 @@ export class GitHubClient implements PluginClient {
         case "actions-cache":
           return this.scoped(async () =>
             (
-              await ghPaged<GhRepoCacheUsage, { repository_cache_usages?: GhRepoCacheUsage[] }>(
-                this.ctx,
-                `${ownerBase(this.ctx.owner)}/actions/cache/usage-by-repository`,
+              await ghPaged(
+                (query) =>
+                  dotcomApi(this.ctx).get(
+                    `/orgs/${ownerSegment(this.ctx.owner)}/actions/cache/usage-by-repository`,
+                    { query },
+                  ),
                 (r) => r.repository_cache_usages,
               )
             )
@@ -224,9 +243,11 @@ export class GitHubClient implements PluginClient {
         case "codespace":
           return this.scoped(async () =>
             (
-              await ghPaged<GhCodespace, { codespaces?: GhCodespace[] }>(
-                this.ctx,
-                `${ownerBase(this.ctx.owner)}/codespaces`,
+              await ghPaged(
+                (query) =>
+                  dotcomApi(this.ctx).get(`/orgs/${ownerSegment(this.ctx.owner)}/codespaces`, {
+                    query,
+                  }),
                 (r) => r.codespaces,
               )
             ).map((c) => mapCodespace(accountId, c)),
@@ -251,18 +272,20 @@ export class GitHubClient implements PluginClient {
     const [summary, org, seats, cache] = await Promise.all([
       this.monthSummary().catch(() => undefined),
       this.isOrg
-        ? ghFetch<{ name?: string | null; login?: string; plan?: { name?: string } }>(
-            this.ctx,
-            `/orgs/${ownerSegment(owner)}`,
-          ).catch(() => undefined)
+        ? dotcomApi(this.ctx)
+            .get(`/orgs/${ownerSegment(owner)}`)
+            .catch(() => undefined)
         : Promise.resolve(undefined),
-      ghFetch<{ total_seats?: number }>(this.ctx, `${ownerBase(owner)}/copilot/billing/seats`, {
-        query: { per_page: 1 },
+      byOwner(this.ctx, {
+        org: (api, slug) =>
+          api.get(`/orgs/${slug}/copilot/billing/seats`, { query: { per_page: 1 } }),
+        enterprise: (api, slug) =>
+          api.get(`/enterprises/${slug}/copilot/billing/seats`, { query: { per_page: 1 } }),
       }).catch(() => undefined),
-      ghFetch<{ total_active_caches_size_in_bytes?: number }>(
-        this.ctx,
-        `${ownerBase(owner)}/actions/cache/usage`,
-      ).catch(() => undefined),
+      byOwner(this.ctx, {
+        org: (api, slug) => api.get(`/orgs/${slug}/actions/cache/usage`),
+        enterprise: (api, slug) => api.get(`/enterprises/${slug}/actions/cache/usage`),
+      }).catch(() => undefined),
     ]);
     const totals = summary ? sumItems(summary) : undefined;
     return mapBillingAccount(accountId, {
@@ -281,22 +304,27 @@ export class GitHubClient implements PluginClient {
   }
 
   private async listSeats(accountId: string): Promise<ResourceInstance[]> {
-    const [seats, price] = await Promise.all([
-      ghPaged<GhCopilotSeat, { seats?: GhCopilotSeat[] }>(
-        this.ctx,
-        `${ownerBase(this.ctx.owner)}/copilot/billing/seats`,
-        (r) => r.seats,
-      ),
-      this.seatPrices(),
-    ]);
+    const [seats, price] = await Promise.all([this.pagedSeats(), this.seatPrices()]);
     return seats
       .filter((s) => s.assignee?.login)
       .map((s) => mapCopilotSeat(accountId, s, price(s.plan_type)));
   }
 
+  private pagedSeats(): Promise<GhCopilotSeat[]> {
+    return ghPaged<GhCopilotSeat, { seats?: readonly GhCopilotSeat[] }>(
+      (query) =>
+        byOwner(this.ctx, {
+          org: (api, org) => api.get(`/orgs/${org}/copilot/billing/seats`, { query }),
+          enterprise: (api, enterprise) =>
+            api.get(`/enterprises/${enterprise}/copilot/billing/seats`, { query }),
+        }),
+      (r) => r.seats,
+    );
+  }
+
   /** This month's unit price per Copilot plan, from the bill; undefined when it has none. */
   private async seatPrices(): Promise<(plan: string | undefined) => number | undefined> {
-    const summary = await this.monthSummary().catch(() => [] as SummaryItem[]);
+    const summary = await this.monthSummary().catch((): SummaryItem[] => []);
     return (plan) => {
       const sku = SEAT_SKU[(plan ?? "").toLowerCase()];
       if (!sku) return undefined;
@@ -349,7 +377,7 @@ export class GitHubClient implements PluginClient {
   }
 
   private async skuSpend(): Promise<Map<string, { net: number; pricePerUnit?: number }>> {
-    const summary = await this.monthSummary().catch(() => [] as SummaryItem[]);
+    const summary = await this.monthSummary().catch((): SummaryItem[] => []);
     const out = new Map<string, { net: number; pricePerUnit?: number }>();
     for (const i of summary) {
       const sku = normalizeId(i.sku);
@@ -364,9 +392,13 @@ export class GitHubClient implements PluginClient {
 
   private async listHostedRunners(accountId: string): Promise<ResourceInstance[]> {
     const [runners, spend] = await Promise.all([
-      ghPaged<GhHostedRunner, { runners?: GhHostedRunner[] }>(
-        this.ctx,
-        `${ownerBase(this.ctx.owner)}/actions/hosted-runners`,
+      ghPaged(
+        (query) =>
+          byOwner(this.ctx, {
+            org: (api, org) => api.get(`/orgs/${org}/actions/hosted-runners`, { query }),
+            enterprise: (api, enterprise) =>
+              api.get(`/enterprises/${enterprise}/actions/hosted-runners`, { query }),
+          }),
         (r) => r.runners,
       ),
       this.skuSpend(),
@@ -377,11 +409,12 @@ export class GitHubClient implements PluginClient {
   private async fetchBudgets(): Promise<GhBudget[]> {
     const out: GhBudget[] = [];
     for (let page = 1; page <= 20; page++) {
-      const res = await ghFetch<{ budgets?: GhBudget[]; has_next_page?: boolean }>(
-        this.ctx,
-        `${billingBase(this.ctx.owner)}/budgets`,
-        { query: { per_page: 100, page } },
-      );
+      const query = { per_page: 100, page };
+      const res = await byOwner(this.ctx, {
+        org: (api, org) => api.get(`/organizations/${org}/settings/billing/budgets`, { query }),
+        enterprise: (api, enterprise) =>
+          api.get(`/enterprises/${enterprise}/settings/billing/budgets`, { query }),
+      });
       out.push(...(res.budgets ?? []));
       if (!res.has_next_page || (res.budgets ?? []).length === 0) break;
     }
@@ -437,7 +470,7 @@ export class GitHubClient implements PluginClient {
     const [budgets, items, centers] = await Promise.all([
       this.fetchBudgets(),
       this.monthItems().catch(() => undefined),
-      this.costCenters().catch(() => [] as CostCenter[]),
+      this.costCenters().catch((): CostCenter[] => []),
     ]);
     return budgets
       .filter((b) => b.id)
@@ -478,10 +511,9 @@ export class GitHubClient implements PluginClient {
           fetchModelUsage(this.ctx, "premium_request", ym).catch(() => undefined),
           fetchModelUsage(this.ctx, "ai_credit", ym).catch(() => undefined),
           this.isOrg
-            ? ghFetch<{ seat_breakdown?: unknown }>(
-                this.ctx,
-                `${ownerBase(this.ctx.owner)}/copilot/billing`,
-              ).catch(() => undefined)
+            ? dotcomApi(this.ctx)
+                .get(`/orgs/${ownerSegment(this.ctx.owner)}/copilot/billing`)
+                .catch(() => undefined)
             : Promise.resolve(undefined),
         ]);
         return {
@@ -498,12 +530,14 @@ export class GitHubClient implements PluginClient {
         };
       }
       if (typeId === "actions-cache") {
-        const repoPath = `/repos/${id.split("/").map(encodeURIComponent).join("/")}`;
+        const repo = repoApi(this.ctx, id);
         const [usage, caches] = await Promise.all([
-          ghFetch<GhRepoCacheUsage>(this.ctx, `${repoPath}/actions/cache/usage`),
-          ghFetch<{ actions_caches?: GhActionsCache[] }>(this.ctx, `${repoPath}/actions/caches`, {
-            query: { per_page: 50, sort: "size_in_bytes", direction: "desc" },
-          }).catch(() => undefined),
+          repo.get("/actions/cache/usage"),
+          repo
+            .get("/actions/caches", {
+              query: { per_page: 50, sort: "size_in_bytes", direction: "desc" },
+            })
+            .catch(() => undefined),
         ]);
         const r = mapActionsCache(accountId, { ...usage, full_name: usage.full_name ?? id });
         return caches?.actions_caches
@@ -658,16 +692,12 @@ export class GitHubClient implements PluginClient {
       };
     }
     const [members, seats] = await Promise.all([
-      ghPaged<{ login?: string }>(
-        this.ctx,
-        `${ownerBase(this.ctx.owner)}/members`,
-        (r) => r as { login?: string }[],
-      ).catch(() => [] as Array<{ login?: string }>),
-      ghPaged<GhCopilotSeat, { seats?: GhCopilotSeat[] }>(
-        this.ctx,
-        `${ownerBase(this.ctx.owner)}/copilot/billing/seats`,
-        (r) => r.seats,
-      ).catch(() => [] as GhCopilotSeat[]),
+      ghPaged(
+        (query) =>
+          dotcomApi(this.ctx).get(`/orgs/${ownerSegment(this.ctx.owner)}/members`, { query }),
+        (r) => r,
+      ).catch(() => []),
+      this.pagedSeats().catch((): GhCopilotSeat[] => []),
     ]);
     const seated = new Set(seats.map((s) => s.assignee?.login?.toLowerCase()).filter(Boolean));
     const options = members
@@ -687,31 +717,28 @@ export class GitHubClient implements PluginClient {
   }
 
   private async hostedRunnerFields(): Promise<CreateFieldConfig[]> {
-    const base = ownerBase(this.ctx.owner);
     const [github, partner, sizes, groups] = await Promise.all([
-      ghFetch<{
-        images?: Array<{ id?: string; platform?: string; display_name?: string; size_gb?: number }>;
-      }>(this.ctx, `${base}/actions/hosted-runners/images/github-owned`).catch(() => ({
-        images: [],
-      })),
-      ghFetch<{
-        images?: Array<{ id?: string; platform?: string; display_name?: string; size_gb?: number }>;
-      }>(this.ctx, `${base}/actions/hosted-runners/images/partner`).catch(() => ({ images: [] })),
-      ghFetch<{
-        machine_specs?: Array<{
-          id?: string;
-          cpu_cores?: number;
-          memory_gb?: number;
-          storage_gb?: number;
-        }>;
-      }>(this.ctx, `${base}/actions/hosted-runners/machine-sizes`).catch(() => ({
-        machine_specs: [],
-      })),
-      ghFetch<{ runner_groups?: Array<{ id?: number; name?: string; default?: boolean }> }>(
-        this.ctx,
-        `${base}/actions/runner-groups`,
-        { query: { per_page: 100 } },
-      ).catch(() => ({ runner_groups: [] })),
+      byOwner(this.ctx, {
+        org: (api, org) => api.get(`/orgs/${org}/actions/hosted-runners/images/github-owned`),
+        enterprise: (api, enterprise) =>
+          api.get(`/enterprises/${enterprise}/actions/hosted-runners/images/github-owned`),
+      }).catch(() => ({ images: [] })),
+      byOwner(this.ctx, {
+        org: (api, org) => api.get(`/orgs/${org}/actions/hosted-runners/images/partner`),
+        enterprise: (api, enterprise) =>
+          api.get(`/enterprises/${enterprise}/actions/hosted-runners/images/partner`),
+      }).catch(() => ({ images: [] })),
+      byOwner(this.ctx, {
+        org: (api, org) => api.get(`/orgs/${org}/actions/hosted-runners/machine-sizes`),
+        enterprise: (api, enterprise) =>
+          api.get(`/enterprises/${enterprise}/actions/hosted-runners/machine-sizes`),
+      }).catch(() => ({ machine_specs: [] })),
+      byOwner(this.ctx, {
+        org: (api, org) =>
+          api.get(`/orgs/${org}/actions/runner-groups`, { query: { per_page: 100 } }),
+        enterprise: (api, enterprise) =>
+          api.get(`/enterprises/${enterprise}/actions/runner-groups`, { query: { per_page: 100 } }),
+      }).catch(() => ({ runner_groups: [] })),
     ]);
     const images = [
       ...(github.images ?? []).map((i) => ({ ...i, source: "github" })),
@@ -792,15 +819,16 @@ export class GitHubClient implements PluginClient {
   }
 
   private async budgetFields(): Promise<CreateFieldConfig[]> {
-    const centers = this.isOrg ? [] : await this.costCenters().catch(() => [] as CostCenter[]);
+    const centers = this.isOrg ? [] : await this.costCenters().catch((): CostCenter[] => []);
     const repos = this.isOrg
-      ? await ghPaged<{ full_name?: string; name?: string }>(
-          this.ctx,
-          `${ownerBase(this.ctx.owner)}/repos`,
-          (r) => r as Array<{ full_name?: string; name?: string }>,
-          { sort: "full_name" },
+      ? await ghPaged(
+          (query) =>
+            dotcomApi(this.ctx).get(`/orgs/${ownerSegment(this.ctx.owner)}/repos`, {
+              query: { sort: "full_name", ...query },
+            }),
+          (r) => r,
           10,
-        ).catch(() => [] as Array<{ full_name?: string; name?: string }>)
+        ).catch(() => [])
       : [];
     const scopes = this.isOrg
       ? [
@@ -959,15 +987,15 @@ export class GitHubClient implements PluginClient {
         case "copilot-seat": {
           const login = (fields["login"] ?? "").trim();
           if (!login) throw new Error("Choose a member to give a Copilot seat.");
-          await ghFetch<unknown>(
-            this.ctx,
-            `${ownerBase(this.ctx.owner)}/copilot/billing/selected_users`,
-            {
-              method: "POST",
-              body: { selected_usernames: [login] },
-            },
-          );
-          const seats = await this.listSeats(accountId).catch(() => [] as ResourceInstance[]);
+          const body: ApiBody<GhecOps["copilot/add-copilot-seats-for-enterprise-users"]> = {
+            selected_usernames: [login],
+          };
+          await byOwner(this.ctx, {
+            org: (api, org) => api.post(`/orgs/${org}/copilot/billing/selected_users`, { body }),
+            enterprise: (api, enterprise) =>
+              api.post(`/enterprises/${enterprise}/copilot/billing/selected_users`, { body }),
+          });
+          const seats = await this.listSeats(accountId).catch((): ResourceInstance[] => []);
           return (
             seats.find((s) => (s.externalId ?? "").toLowerCase() === login.toLowerCase()) ??
             mapCopilotSeat(
@@ -979,56 +1007,43 @@ export class GitHubClient implements PluginClient {
         }
         case "hosted-runner": {
           const [source, ...rest] = (fields["image"] ?? "").split(":");
-          const created = await ghFetch<GhHostedRunner>(
-            this.ctx,
-            `${ownerBase(this.ctx.owner)}/actions/hosted-runners`,
-            {
-              method: "POST",
-              body: {
-                name: (fields["name"] ?? "").trim(),
-                image: { id: rest.join(":"), source: source || "github" },
-                size: fields["size"],
-                runner_group_id: Number(fields["runnerGroupId"]),
-                ...(fields["maximumRunners"]
-                  ? { maximum_runners: Number(fields["maximumRunners"]) }
-                  : {}),
-                enable_static_ip: yes(fields["enableStaticIp"]),
-              },
-            },
-          );
+          const body: ApiBody<GhecOps["actions/create-hosted-runner-for-enterprise"]> = {
+            name: (fields["name"] ?? "").trim(),
+            image: { id: rest.join(":"), source: source || "github" },
+            size: fields["size"],
+            runner_group_id: Number(fields["runnerGroupId"]),
+            ...(fields["maximumRunners"]
+              ? { maximum_runners: Number(fields["maximumRunners"]) }
+              : {}),
+            enable_static_ip: yes(fields["enableStaticIp"]),
+          };
+          const created = await byOwner(this.ctx, {
+            org: (api, org) => api.post(`/orgs/${org}/actions/hosted-runners`, { body }),
+            enterprise: (api, enterprise) =>
+              api.post(`/enterprises/${enterprise}/actions/hosted-runners`, { body }),
+          });
           return mapHostedRunner(accountId, created, await this.skuSpend());
         }
         case "budget": {
-          const created = await ghFetch<{ budget?: GhBudget } & GhBudget>(
-            this.ctx,
-            `${billingBase(this.ctx.owner)}/budgets`,
-            { method: "POST", body: buildBudgetBody(fields) },
-          );
+          const body = buildBudgetBody(fields);
+          // The document says `{ budget, message }`; a bare budget has been handled too.
+          const created: { budget?: GhBudget } & GhBudget = await byOwner(this.ctx, {
+            org: (api, org) => api.post(`/organizations/${org}/settings/billing/budgets`, { body }),
+            enterprise: (api, enterprise) =>
+              api.post(`/enterprises/${enterprise}/settings/billing/budgets`, { body }),
+          });
           const budget = created.budget ?? created;
           return mapBudget(accountId, budget, undefined);
         }
         case "cost-center": {
-          const created = await ghFetch<CostCenter>(
-            this.ctx,
-            `${billingBase(this.ctx.owner)}/cost-centers`,
-            {
-              method: "POST",
-              body: {
-                name: (fields["name"] ?? "").trim(),
-                ...(fields["aiCreditPoolEnabled"]
-                  ? { ai_credit_pool_enabled: yes(fields["aiCreditPoolEnabled"]) }
-                  : {}),
-              },
-            },
-          );
+          const created = await createCostCenter(this.ctx, {
+            name: (fields["name"] ?? "").trim(),
+            ...(fields["aiCreditPoolEnabled"]
+              ? { ai_credit_pool_enabled: yes(fields["aiCreditPoolEnabled"]) }
+              : {}),
+          });
           const add = memberBody(fields);
-          if (created.id && add) {
-            await ghFetch<unknown>(
-              this.ctx,
-              `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(created.id)}/resource`,
-              { method: "POST", body: add },
-            );
-          }
+          if (created.id && add) await addCostCenterMembers(this.ctx, created.id, add);
           return mapCostCenter(
             accountId,
             { ...created, resources: membersToResources(fields) },
@@ -1051,74 +1066,83 @@ export class GitHubClient implements PluginClient {
       const id = externalIdOf(resourceId);
       this.invalidate();
       if (typeId === "hosted-runner") {
-        const body: Record<string, unknown> = {};
-        if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
-        if ("maximumRunners" in fields && fields["maximumRunners"]) {
-          body["maximum_runners"] = Number(fields["maximumRunners"]);
-        }
-        if ("enableStaticIp" in fields) body["enable_static_ip"] = yes(fields["enableStaticIp"]);
-        const updated = await ghFetch<GhHostedRunner>(
-          this.ctx,
-          `${ownerBase(this.ctx.owner)}/actions/hosted-runners/${encodeURIComponent(id)}`,
-          { method: "PATCH", body },
-        );
+        const body: ApiBody<GhecOps["actions/update-hosted-runner-for-enterprise"]> = {
+          ...("name" in fields ? { name: (fields["name"] ?? "").trim() } : {}),
+          ...("maximumRunners" in fields && fields["maximumRunners"]
+            ? { maximum_runners: Number(fields["maximumRunners"]) }
+            : {}),
+          ...("enableStaticIp" in fields
+            ? { enable_static_ip: yes(fields["enableStaticIp"]) }
+            : {}),
+        };
+        const runner = pathEncode(id);
+        const updated = await byOwner(this.ctx, {
+          org: (api, org) => api.patch(`/orgs/${org}/actions/hosted-runners/${runner}`, { body }),
+          enterprise: (api, enterprise) =>
+            api.patch(`/enterprises/${enterprise}/actions/hosted-runners/${runner}`, { body }),
+        });
         return mapHostedRunner(accountId, updated, await this.skuSpend());
       }
       if (typeId === "budget") {
-        const current = await ghFetch<GhBudget>(
-          this.ctx,
-          `${billingBase(this.ctx.owner)}/budgets/${encodeURIComponent(id)}`,
-        ).catch(() => undefined);
-        const body: Record<string, unknown> = {};
-        if ("budgetAmount" in fields)
-          body["budget_amount"] = Math.round(Number(fields["budgetAmount"]));
-        if ("preventFurtherUsage" in fields)
-          body["prevent_further_usage"] = yes(fields["preventFurtherUsage"]);
-        if ("willAlert" in fields || "alertRecipients" in fields) {
-          body["budget_alerting"] = {
-            will_alert:
-              "willAlert" in fields
-                ? yes(fields["willAlert"])
-                : (current?.budget_alerting?.will_alert ?? false),
-            alert_recipients:
-              "alertRecipients" in fields
-                ? list(fields["alertRecipients"])
-                : (current?.budget_alerting?.alert_recipients ?? []),
-          };
-        }
-        if ("expiresAt" in fields && fields["expiresAt"])
-          body["expires_at"] = fields["expiresAt"]!.slice(0, 10);
-        await ghFetch<unknown>(
-          this.ctx,
-          `${billingBase(this.ctx.owner)}/budgets/${encodeURIComponent(id)}`,
-          {
-            method: "PATCH",
-            body,
-          },
-        );
+        const budgetId = pathEncode(id);
+        const current = await byOwner(this.ctx, {
+          org: (api, org) => api.get(`/organizations/${org}/settings/billing/budgets/${budgetId}`),
+          enterprise: (api, enterprise) =>
+            api.get(`/enterprises/${enterprise}/settings/billing/budgets/${budgetId}`),
+        }).catch(() => undefined);
+        const body: ApiBody<GhecOps["billing/update-budget"]> = {
+          ...("budgetAmount" in fields
+            ? { budget_amount: Math.round(Number(fields["budgetAmount"])) }
+            : {}),
+          ...("preventFurtherUsage" in fields
+            ? { prevent_further_usage: yes(fields["preventFurtherUsage"]) }
+            : {}),
+          ...("willAlert" in fields || "alertRecipients" in fields
+            ? {
+                budget_alerting: {
+                  will_alert:
+                    "willAlert" in fields
+                      ? yes(fields["willAlert"])
+                      : (current?.budget_alerting?.will_alert ?? false),
+                  alert_recipients:
+                    "alertRecipients" in fields
+                      ? list(fields["alertRecipients"])
+                      : (current?.budget_alerting?.alert_recipients ?? []),
+                },
+              }
+            : {}),
+          ...("expiresAt" in fields && fields["expiresAt"]
+            ? { expires_at: fields["expiresAt"].slice(0, 10) }
+            : {}),
+        };
+        await byOwner(this.ctx, {
+          org: (api, org) =>
+            api.patch(`/organizations/${org}/settings/billing/budgets/${budgetId}`, { body }),
+          enterprise: (api, enterprise) =>
+            api.patch(`/enterprises/${enterprise}/settings/billing/budgets/${budgetId}`, { body }),
+        });
         return runPluginEffect(this.getResource("budget", resourceId, accountId));
       }
       if (typeId === "cost-center") {
-        const path = `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(id)}`;
-        const patch: Record<string, unknown> = {};
-        if ("name" in fields) patch["name"] = (fields["name"] ?? "").trim();
-        if ("aiCreditPoolEnabled" in fields)
-          patch["ai_credit_pool_enabled"] = yes(fields["aiCreditPoolEnabled"]);
-        if (Object.keys(patch).length > 0) {
-          await ghFetch<unknown>(this.ctx, path, { method: "PATCH", body: patch });
-        }
+        const patch: ApiBody<GhecOps["billing/update-cost-center"]> = {
+          ...("name" in fields ? { name: (fields["name"] ?? "").trim() } : {}),
+          ...("aiCreditPoolEnabled" in fields
+            ? { ai_credit_pool_enabled: yes(fields["aiCreditPoolEnabled"]) }
+            : {}),
+        };
+        if (Object.keys(patch).length > 0) await updateCostCenter(this.ctx, id, patch);
         const memberKeys = ["users", "organizations", "repositories", "enterpriseTeams"] as const;
         if (memberKeys.some((k) => k in fields)) {
-          const current = await ghFetch<CostCenter>(this.ctx, path);
+          const current = await getCostCenter(this.ctx, id);
           const now = costCenterMembers(current.resources);
-          const add: Record<string, string[]> = {};
-          const remove: Record<string, string[]> = {};
-          const wire: Record<(typeof memberKeys)[number], string> = {
+          const add: CostCenterMembers = {};
+          const remove: CostCenterMembers = {};
+          const wire = {
             users: "users",
             organizations: "organizations",
             repositories: "repositories",
             enterpriseTeams: "enterprise_teams",
-          };
+          } as const;
           for (const k of memberKeys) {
             if (!(k in fields)) continue;
             const want = new Set(list(fields[k]).map((s) => s.toLowerCase()));
@@ -1129,14 +1153,9 @@ export class GitHubClient implements PluginClient {
             if (toRemove.length) remove[wire[k]] = toRemove;
           }
           if (Object.keys(remove).length > 0) {
-            await ghFetch<unknown>(this.ctx, `${path}/resource`, {
-              method: "DELETE",
-              body: remove,
-            });
+            await removeCostCenterMembers(this.ctx, id, remove);
           }
-          if (Object.keys(add).length > 0) {
-            await ghFetch<unknown>(this.ctx, `${path}/resource`, { method: "POST", body: add });
-          }
+          if (Object.keys(add).length > 0) await addCostCenterMembers(this.ctx, id, add);
         }
         return runPluginEffect(this.getResource("cost-center", resourceId, accountId));
       }
@@ -1147,49 +1166,52 @@ export class GitHubClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const base = ownerBase(this.ctx.owner);
+      const segment = pathEncode(id);
       this.invalidate();
       switch (typeId) {
         case "copilot-seat":
           return this.cancelCopilotSeat(id);
         case "hosted-runner":
-          await ghFetch<unknown>(
-            this.ctx,
-            `${base}/actions/hosted-runners/${encodeURIComponent(id)}`,
-            {
-              method: "DELETE",
-            },
-          );
+          await byOwner(this.ctx, {
+            org: (api, org) => api.delete(`/orgs/${org}/actions/hosted-runners/${segment}`),
+            enterprise: (api, enterprise) =>
+              api.delete(`/enterprises/${enterprise}/actions/hosted-runners/${segment}`),
+          });
           return;
         case "runner":
-          await ghFetch<unknown>(this.ctx, `${base}/actions/runners/${encodeURIComponent(id)}`, {
-            method: "DELETE",
+          await byOwner(this.ctx, {
+            org: (api, org) => api.delete(`/orgs/${org}/actions/runners/${segment}`),
+            enterprise: (api, enterprise) =>
+              api.delete(`/enterprises/${enterprise}/actions/runners/${segment}`),
           });
           return;
         case "codespace": {
           const { user, name } = splitCodespaceId(id);
-          await ghFetch<unknown>(
-            this.ctx,
-            `${base}/members/${encodeURIComponent(user)}/codespaces/${encodeURIComponent(name)}`,
-            { method: "DELETE" },
-          );
+          const member = pathEncode(user);
+          const codespace = pathEncode(name);
+          // Codespaces are only listed for organizations, and no document has this route
+          // for an enterprise, but the call has never checked the owner.
+          await byOwner(this.ctx, {
+            org: (api, org) => api.delete(`/orgs/${org}/members/${member}/codespaces/${codespace}`),
+            enterprise: (_api, enterprise) =>
+              ghUnlisted<object>(
+                this.ctx,
+                "DELETE",
+                `/enterprises/${enterprise}/members/${member}/codespaces/${codespace}`,
+              ),
+          });
           return;
         }
         case "budget":
-          await ghFetch<unknown>(
-            this.ctx,
-            `${billingBase(this.ctx.owner)}/budgets/${encodeURIComponent(id)}`,
-            {
-              method: "DELETE",
-            },
-          );
+          await byOwner(this.ctx, {
+            org: (api, org) =>
+              api.delete(`/organizations/${org}/settings/billing/budgets/${segment}`),
+            enterprise: (api, enterprise) =>
+              api.delete(`/enterprises/${enterprise}/settings/billing/budgets/${segment}`),
+          });
           return;
         case "cost-center":
-          await ghFetch<unknown>(
-            this.ctx,
-            `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(id)}`,
-            { method: "DELETE" },
-          );
+          await deleteCostCenter(this.ctx, id);
           return;
         default:
           throw new Error(`GitHub plugin: "${typeId}" cannot be deleted from Infrawrench`);
@@ -1208,11 +1230,14 @@ export class GitHubClient implements PluginClient {
   private async cancelCopilotSeat(login: string): Promise<void> {
     let res: { seats_cancelled?: number } | undefined;
     try {
-      res = await ghFetch<{ seats_cancelled?: number }>(
-        this.ctx,
-        `${ownerBase(this.ctx.owner)}/copilot/billing/selected_users`,
-        { method: "DELETE", body: { selected_usernames: [login] } },
-      );
+      const body: ApiBody<GhecOps["copilot/cancel-copilot-seats-for-enterprise-users"]> = {
+        selected_usernames: [login],
+      };
+      res = await byOwner(this.ctx, {
+        org: (api, org) => api.delete(`/orgs/${org}/copilot/billing/selected_users`, { body }),
+        enterprise: (api, enterprise) =>
+          api.delete(`/enterprises/${enterprise}/copilot/billing/selected_users`, { body }),
+      });
     } catch (err) {
       // 422: the seat comes from a team, or Copilot is assigned to everyone
       // (seat management "assign_all"), so individual seats cannot be cancelled.
@@ -1246,32 +1271,20 @@ export class GitHubClient implements PluginClient {
       if (typeId === "copilot-seat" && actionId === "remove-seat")
         return this.cancelCopilotSeat(id);
       if (typeId === "actions-cache") {
-        const repoPath = `/repos/${id.split("/").map(encodeURIComponent).join("/")}`;
+        const repo = repoApi(this.ctx, id);
         if (actionId.startsWith("delete-cache:")) {
           const cacheId = actionId.slice("delete-cache:".length);
-          await ghFetch<unknown>(
-            this.ctx,
-            `${repoPath}/actions/caches/${encodeURIComponent(cacheId)}`,
-            {
-              method: "DELETE",
-            },
-          );
+          await repo.delete(`/actions/caches/${pathEncode(cacheId)}`);
           return;
         }
         if (actionId === "delete-all-caches") {
           // There is no "delete everything" call; page through and delete by id.
           for (let round = 0; round < 50; round++) {
-            const res = await ghFetch<{ actions_caches?: GhActionsCache[] }>(
-              this.ctx,
-              `${repoPath}/actions/caches`,
-              { query: { per_page: 100 } },
-            );
+            const res = await repo.get("/actions/caches", { query: { per_page: 100 } });
             const batch = (res.actions_caches ?? []).filter((c) => c.id !== undefined);
             if (batch.length === 0) return;
             for (const c of batch) {
-              await ghFetch<unknown>(this.ctx, `${repoPath}/actions/caches/${c.id}`, {
-                method: "DELETE",
-              });
+              await repo.delete(`/actions/caches/${unencodedSegment(String(c.id))}`);
             }
           }
           return;
@@ -1279,11 +1292,19 @@ export class GitHubClient implements PluginClient {
       }
       if (typeId === "codespace" && actionId === "stop") {
         const { user, name } = splitCodespaceId(id);
-        await ghFetch<unknown>(
-          this.ctx,
-          `${ownerBase(this.ctx.owner)}/members/${encodeURIComponent(user)}/codespaces/${encodeURIComponent(name)}/stop`,
-          { method: "POST" },
-        );
+        const member = pathEncode(user);
+        const codespace = pathEncode(name);
+        // As for deleting one: no document has this route for an enterprise.
+        await byOwner(this.ctx, {
+          org: (api, org) =>
+            api.post(`/orgs/${org}/members/${member}/codespaces/${codespace}/stop`),
+          enterprise: (_api, enterprise) =>
+            ghUnlisted<object>(
+              this.ctx,
+              "POST",
+              `/enterprises/${enterprise}/members/${member}/codespaces/${codespace}/stop`,
+            ),
+        });
         return;
       }
       throw new Error(`GitHub plugin: unknown action "${actionId}" for "${typeId}"`);
@@ -1359,13 +1380,13 @@ function costCenterFields(): CreateFieldConfig[] {
   ];
 }
 
-function memberBody(fields: Record<string, string>): Record<string, string[]> | undefined {
-  const body: Record<string, string[]> = {};
-  if (list(fields["users"]).length) body["users"] = list(fields["users"]);
-  if (list(fields["organizations"]).length) body["organizations"] = list(fields["organizations"]);
-  if (list(fields["repositories"]).length) body["repositories"] = list(fields["repositories"]);
+function memberBody(fields: Record<string, string>): CostCenterMembers | undefined {
+  const body: CostCenterMembers = {};
+  if (list(fields["users"]).length) body.users = list(fields["users"]);
+  if (list(fields["organizations"]).length) body.organizations = list(fields["organizations"]);
+  if (list(fields["repositories"]).length) body.repositories = list(fields["repositories"]);
   if (list(fields["enterpriseTeams"]).length)
-    body["enterprise_teams"] = list(fields["enterpriseTeams"]);
+    body.enterprise_teams = list(fields["enterpriseTeams"]);
   return Object.keys(body).length > 0 ? body : undefined;
 }
 
@@ -1379,7 +1400,9 @@ function membersToResources(fields: Record<string, string>): Array<{ type: strin
 }
 
 /** The create body for `POST {billing}/budgets` from the form's picks. */
-export function buildBudgetBody(fields: Record<string, string>): Record<string, unknown> {
+export function buildBudgetBody(
+  fields: Record<string, string>,
+): ApiBody<GhecOps["billing/create-budget"]> {
   const { type, sku } = parseBudgetProduct(fields["product"] ?? "");
   const scope = (fields["scope"] ?? "organization").trim();
   const entity =
@@ -1395,7 +1418,7 @@ export function buildBudgetBody(fields: Record<string, string>): Record<string, 
   if (perUser && !(sku === "ai_credits" || sku === "premium_requests")) {
     throw new Error("Per-user budgets can only cover AI credits or premium requests.");
   }
-  const body: Record<string, unknown> = {
+  return {
     budget_type: type,
     budget_product_sku: sku,
     budget_scope: scope,
@@ -1404,14 +1427,16 @@ export function buildBudgetBody(fields: Record<string, string>): Record<string, 
     prevent_further_usage: perUser ? true : yes(fields["preventFurtherUsage"]),
     ...(entity ? { budget_entity_name: entity.trim() } : {}),
     ...(user ? { user } : {}),
+    // Required by the document for every scope, and only ever sent for these.
+    budget_alerting:
+      scope !== "user"
+        ? {
+            will_alert: fields["willAlert"] === undefined ? true : yes(fields["willAlert"]),
+            alert_recipients: list(fields["alertRecipients"]),
+          }
+        : undefined,
+    ...(scope === "user" && fields["expiresAt"]
+      ? { expires_at: fields["expiresAt"].slice(0, 10) }
+      : {}),
   };
-  if (scope !== "user") {
-    body["budget_alerting"] = {
-      will_alert: fields["willAlert"] === undefined ? true : yes(fields["willAlert"]),
-      alert_recipients: list(fields["alertRecipients"]),
-    };
-  } else if (fields["expiresAt"]) {
-    body["expires_at"] = fields["expiresAt"].slice(0, 10);
-  }
-  return body;
 }

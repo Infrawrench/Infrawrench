@@ -64,7 +64,8 @@ function section(title: string, children: SchemaNode[]): SectionNode {
 function parseJson<T>(raw: string | undefined): T | undefined {
   if (!raw) return undefined;
   try {
-    return JSON.parse(raw) as T;
+    const parsed: T = JSON.parse(raw);
+    return parsed;
   } catch {
     return undefined;
   }

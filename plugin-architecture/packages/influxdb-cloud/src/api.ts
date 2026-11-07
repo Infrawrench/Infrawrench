@@ -1,5 +1,19 @@
-import type { CredentialFieldRegion, HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  type ApiListItem,
+  type ApiResponse,
+  type CredentialFieldRegion,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type {
+  components as CloudComponents,
+  operations as CloudOperations,
+  paths as CloudPaths,
+} from "./api-types.cloud.gen.js";
+import type {
+  operations as DedicatedOperations,
+  paths as DedicatedPaths,
+} from "./api-types.dedicated.gen.js";
 
 /**
  * InfluxDB Cloud (TSM) and InfluxDB Cloud Serverless share the v2 HTTP API on
@@ -11,6 +25,9 @@ import { jsonRestFetch } from "@infrawrench/plugin-base";
  *
  * The v2 API takes `Authorization: Token <API token>`; the Dedicated
  * Management API takes `Authorization: Bearer <management token>`.
+ *
+ * Typed from `contracts/ref/cloud.yml` in github.com/influxdata/openapi and the
+ * Dedicated document above (`plugingen.json`).
  */
 export const REGIONS: CredentialFieldRegion[] = [
   {
@@ -92,7 +109,7 @@ function friendly(status: number, raw: string): string {
   const start = raw.indexOf("{");
   if (start >= 0) {
     try {
-      const parsed = JSON.parse(raw.slice(start)) as { message?: string; error?: string };
+      const parsed: { message?: string; error?: string } = JSON.parse(raw.slice(start));
       const detail = parsed.message ?? parsed.error;
       if (detail) return `InfluxDB API error ${status}: ${detail}`;
     } catch {
@@ -106,22 +123,82 @@ export interface Transport {
   http?: HttpHostServices;
 }
 
-export async function influxJson<T>(
-  t: Transport,
-  method: string,
-  url: string,
-  authorization: string,
-  body?: unknown,
-): Promise<T> {
+export type Bucket = ApiListItem<CloudOperations["GetBuckets"], "buckets">;
+export type Authorization = ApiListItem<CloudOperations["GetAuthorizations"], "authorizations">;
+export type Task = ApiListItem<CloudOperations["GetTasks"], "tasks">;
+export type Limits = ApiResponse<CloudOperations["GetOrgLimitsID"]>;
+export type Permission = CloudComponents["schemas"]["Permission"];
+export type RetentionRule = CloudComponents["schemas"]["RetentionRule"];
+export type DedicatedDatabase = ApiListItem<DedicatedOperations["GetClusterDatabases"], null>;
+export type DedicatedToken = ApiListItem<DedicatedOperations["GetDatabaseTokens"], null>;
+export type DedicatedPermission = NonNullable<DedicatedToken["permissions"]>[number];
+
+/**
+ * Checks, notification rules and notification endpoints go through one mapper.
+ * Each is a union on `type` and these fields are on only some of its members.
+ */
+export type AlertRow = (
+  | ApiListItem<CloudOperations["GetChecks"], "checks">
+  | ApiListItem<CloudOperations["GetNotificationRules"], "notificationRules">
+  | ApiListItem<CloudOperations["GetNotificationEndpoints"], "notificationEndpoints">
+) & {
+  every?: string;
+  endpointID?: string;
+  url?: string;
+  lastRunStatus?: string;
+  lastRunError?: string;
+};
+
+function jsonApi<P>(t: Transport, baseUrl: string, authorization: string) {
+  return createApiClient<P>({
+    vendor: "InfluxDB",
+    baseUrl,
+    headers: { Accept: "application/json", Authorization: authorization },
+    encodeQuery: encodeURIComponent,
+    http: t.http,
+    httpError: ({ status, url, body }) =>
+      new Error(`InfluxDB API error ${status} for ${new URL(url).pathname}: ${body}`),
+  });
+}
+
+/** The v2 API on one region's host. Calls go through {@link influxCall}. */
+export function cloudApi(t: Transport, host: string, token: string) {
+  return jsonApi<CloudPaths>(t, host, `Token ${token}`);
+}
+
+/** The Management API of one Dedicated cluster. Calls go through {@link influxCall}. */
+export function dedicatedApi(t: Transport, accountId: string, clusterId: string, token: string) {
+  return jsonApi<DedicatedPaths>(
+    t,
+    `${DEDICATED_API}/accounts/${encodeURIComponent(accountId)}/clusters/${encodeURIComponent(clusterId)}`,
+    `Bearer ${token}`,
+  );
+}
+
+export type CloudApi = ReturnType<typeof cloudApi>;
+export type DedicatedApi = ReturnType<typeof dedicatedApi>;
+
+/** The v2 API for the usage CSV: no `Content-Type`, and an answer left as text. */
+export function usageApi(t: Transport, host: string, token: string) {
+  return createApiClient<CloudPaths>({
+    vendor: "InfluxDB",
+    baseUrl: host,
+    headers: { Authorization: `Token ${token}`, Accept: "text/csv" },
+    contentType: "with-body",
+    encodeQuery: encodeURIComponent,
+    http: t.http,
+    httpError: ({ status, url, body }) =>
+      new InfluxApiError(
+        status,
+        friendly(status, `InfluxDB API error ${status} for ${new URL(url).pathname}: ${body}`),
+      ),
+  });
+}
+
+/** Make one JSON call, turning whatever failure names a status into an {@link InfluxApiError}. */
+export async function influxCall<V>(call: () => Promise<V>): Promise<V> {
   try {
-    return await jsonRestFetch<T>({
-      vendor: "InfluxDB",
-      url,
-      errorPath: new URL(url).pathname,
-      headers: { Accept: "application/json", Authorization: authorization },
-      init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
-      ...(t.http ? { http: t.http } : {}),
-    });
+    return await call();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
@@ -130,7 +207,10 @@ export async function influxJson<T>(
   }
 }
 
-/** A request whose answer is text (annotated CSV, usage CSV). */
+/**
+ * A request whose answer is text and whose verb is not GET: the Flux query, which
+ * the typed client cannot read as anything but JSON.
+ */
 export async function influxText(
   t: Transport,
   method: string,

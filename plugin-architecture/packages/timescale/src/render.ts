@@ -31,7 +31,8 @@ function enriched<V>(resource: ResourceInstance, key: string): V | undefined {
   const raw = resource.resolvedOutputs[key];
   if (!raw) return undefined;
   try {
-    return JSON.parse(raw) as V;
+    const parsed: V = JSON.parse(raw);
+    return parsed;
   } catch {
     return undefined;
   }

@@ -1,6 +1,7 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
-import { BitbucketApiError, authHeader, bbPaged, statusOf } from "../api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { BitbucketApiError, authHeader, bitbucketClients, capped, statusOf } from "../api.js";
 import {
   BitbucketClient,
   cleanLog,
@@ -53,20 +54,26 @@ describe("auth", () => {
 describe("transport", () => {
   it("follows next links on the API host only", async () => {
     const { http, calls } = makeHttp((call) => {
-      if (call.url.searchParams.get("page") === "2") return { values: [{ n: 2 }] };
+      if (call.url.searchParams.get("page") === "2") return { values: [{ key: "2" }] };
       expect(call.url.searchParams.get("pagelen")).toBe("100");
-      return { values: [{ n: 1 }], next: `${API}/repositories/acme?page=2` };
+      return { values: [{ key: "1" }], next: `${API}/workspaces/acme/projects?page=2` };
     });
-    const ctx = { token: "t", workspace: "acme", http };
-    expect((await bbPaged<{ n: number }>(ctx, "/repositories/acme")).map((x) => x.n)).toEqual([
-      1, 2,
+    const projects = `/workspaces/${pathEncode("acme")}/projects` as const;
+    const { lists } = bitbucketClients({ token: "t", http });
+    expect((await lists.getAll(projects, "values", capped(10))).map((x) => x.key)).toEqual([
+      "1",
+      "2",
     ]);
     expect(calls).toHaveLength(2);
 
     const evil = makeHttp(() => ({ values: [], next: "https://evil.example/steal" }));
-    await expect(bbPaged({ token: "t", workspace: "acme", http: evil.http }, "/x")).rejects.toThrow(
-      /refusing/,
-    );
+    await expect(
+      bitbucketClients({ token: "t", http: evil.http }).lists.getAll(
+        projects,
+        "values",
+        capped(10),
+      ),
+    ).rejects.toThrow(/refusing/);
   });
 
   it("maps errors with a numeric status and Bitbucket's message", async () => {

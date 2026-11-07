@@ -14,9 +14,9 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
-import type { AsyncOperation, TemporalContext } from "./api.js";
-import { statusOf, tcFetch, tcPaged, waitForOperation } from "./api.js";
+import { decodePromptArgs, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { TemporalContext } from "./api.js";
+import { createTemporalContext, statusOf, tcPaged, waitForOperation } from "./api.js";
 import type { NamespaceIndex } from "./cost-data.js";
 import { TemporalCostCollector } from "./cost-data.js";
 import {
@@ -42,21 +42,25 @@ import { ratesFromCredentials } from "./pricing.js";
 import { renderTemporalDetail, renderTemporalSidebar } from "./render.js";
 import type {
   TcAccess,
-  TcAccount,
   TcApiKey,
-  TcCapacityInfo,
   TcConnectivityRule,
+  TcConnectivityRuleSpec,
   TcExportSink,
+  TcExportSinkSpec,
   TcNamespace,
   TcNamespaceSpec,
   TcNexusEndpoint,
+  TcNexusEndpointSpec,
+  TcPermission,
   TcRegion,
   TcServiceAccount,
+  TcServiceAccountSpec,
   TcUser,
 } from "./types.js";
 import {
   SEARCH_ATTRIBUTE_LIMITS,
   encodeCaCertificate,
+  isSearchAttributeType,
   parseTagList,
   validateDescription,
   validateHttpsUrl,
@@ -92,7 +96,7 @@ const SEARCH_ATTRIBUTE_TYPES = [
 
 export { SEARCH_ATTRIBUTE_TYPES };
 
-const q = encodeURIComponent;
+const q = pathEncode;
 
 function bool(raw: string | undefined): boolean {
   return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
@@ -103,7 +107,7 @@ function splitList(raw: string | undefined): string[] {
   if (!text) return [];
   if (text.startsWith("[")) {
     try {
-      const parsed = JSON.parse(text) as unknown;
+      const parsed: unknown = JSON.parse(text);
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
       // fall through to comma splitting
@@ -115,12 +119,16 @@ function splitList(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function permissionEnum(raw: string): string {
-  const p = raw.trim().toLowerCase();
-  if (!["read", "write", "admin"].includes(p)) {
-    throw new Error(`Unknown namespace permission "${raw}"`);
-  }
-  return `PERMISSION_${p.toUpperCase()}`;
+const PERMISSIONS = new Map<string, TcPermission>([
+  ["read", "PERMISSION_READ"],
+  ["write", "PERMISSION_WRITE"],
+  ["admin", "PERMISSION_ADMIN"],
+]);
+
+function permissionEnum(raw: string): TcPermission {
+  const permission = PERMISSIONS.get(raw.trim().toLowerCase());
+  if (!permission) throw new Error(`Unknown namespace permission "${raw}"`);
+  return permission;
 }
 
 export function regionOption(r: TcRegion): { id: string; label: string; location?: string } {
@@ -142,12 +150,12 @@ export class TemporalCloudClient implements PluginClient {
     if (!apiKey) throw new Error("Temporal Cloud plugin: missing apiKey credential");
     const metricsApiKey = (credentials["metricsApiKey"] ?? "").trim() || apiKey;
     const caCert = credentials["caCert"] ?? "";
-    this.ctx = {
+    this.ctx = createTemporalContext({
       apiKey,
       metricsApiKey,
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
-    };
+    });
     this.rates = ratesFromCredentials(credentials);
   }
 
@@ -156,63 +164,91 @@ export class TemporalCloudClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private fetchNamespaces(): Promise<TcNamespace[]> {
-    return tcPaged<TcNamespace>(this.ctx, "/cloud/namespaces", "namespaces");
+    return tcPaged(
+      (query) => this.ctx.api.get("/cloud/namespaces", { query }),
+      (page) => page?.namespaces,
+    );
   }
 
   private async fetchNamespace(id: string): Promise<TcNamespace> {
-    const res = await tcFetch<{ namespace?: TcNamespace }>(this.ctx, `/cloud/namespaces/${q(id)}`);
+    const res = await this.ctx.api.get(`/cloud/namespaces/${q(id)}`);
     if (!res.namespace) throw new Error(`Temporal Cloud plugin: namespace ${id} not found`);
     return res.namespace;
   }
 
   private fetchRegions(): Promise<TcRegion[]> {
-    return tcFetch<{ regions?: TcRegion[] }>(this.ctx, "/cloud/regions").then(
-      (r) => r.regions ?? [],
-    );
+    return this.ctx.api.get("/cloud/regions").then((r) => r.regions ?? []);
   }
 
   private fetchUsers(): Promise<TcUser[]> {
-    return tcPaged<TcUser>(this.ctx, "/cloud/users", "users");
+    return tcPaged(
+      (query) => this.ctx.api.get("/cloud/users", { query }),
+      (page) => page?.users,
+    );
   }
 
   private fetchServiceAccounts(): Promise<TcServiceAccount[]> {
-    return tcPaged<TcServiceAccount>(this.ctx, "/cloud/service-accounts", "serviceAccount");
+    return tcPaged(
+      (query) => this.ctx.api.get("/cloud/service-accounts", { query }),
+      (page) => page?.serviceAccount,
+    );
+  }
+
+  private fetchApiKeys(): Promise<TcApiKey[]> {
+    return tcPaged(
+      (query) => this.ctx.api.get("/cloud/api-keys", { query }),
+      (page) => page?.apiKeys,
+    );
+  }
+
+  private fetchNexusEndpoints(): Promise<TcNexusEndpoint[]> {
+    return tcPaged(
+      (query) => this.ctx.api.get("/cloud/nexus/endpoints", { query }),
+      (page) => page?.endpoints,
+    );
+  }
+
+  private fetchConnectivityRules(): Promise<TcConnectivityRule[]> {
+    return tcPaged(
+      (query) => this.ctx.api.get("/cloud/connectivity-rules", { query }),
+      (page) => page?.connectivityRules,
+    );
+  }
+
+  private fetchExportSinks(namespaceId: string): Promise<TcExportSink[]> {
+    return tcPaged(
+      (query) => this.ctx.api.get(`/cloud/namespaces/${q(namespaceId)}/export-sinks`, { query }),
+      (page) => page?.sinks,
+    );
   }
 
   private async fetchUser(id: string): Promise<TcUser> {
-    const res = await tcFetch<{ user?: TcUser }>(this.ctx, `/cloud/users/${q(id)}`);
+    const res = await this.ctx.api.get(`/cloud/users/${q(id)}`);
     if (!res.user) throw new Error(`Temporal Cloud plugin: user ${id} not found`);
     return res.user;
   }
 
   private async fetchServiceAccount(id: string): Promise<TcServiceAccount> {
-    const res = await tcFetch<{ serviceAccount?: TcServiceAccount }>(
-      this.ctx,
-      `/cloud/service-accounts/${q(id)}`,
-    );
+    const res = await this.ctx.api.get(`/cloud/service-accounts/${q(id)}`);
     if (!res.serviceAccount)
       throw new Error(`Temporal Cloud plugin: service account ${id} not found`);
     return res.serviceAccount;
   }
 
   private async fetchApiKey(id: string): Promise<TcApiKey> {
-    const res = await tcFetch<{ apiKey?: TcApiKey }>(this.ctx, `/cloud/api-keys/${q(id)}`);
+    const res = await this.ctx.api.get(`/cloud/api-keys/${q(id)}`);
     if (!res.apiKey) throw new Error(`Temporal Cloud plugin: API key ${id} not found`);
     return res.apiKey;
   }
 
   private async fetchNexusEndpoint(id: string): Promise<TcNexusEndpoint> {
-    const res = await tcFetch<{ endpoint?: TcNexusEndpoint }>(
-      this.ctx,
-      `/cloud/nexus/endpoints/${q(id)}`,
-    );
+    const res = await this.ctx.api.get(`/cloud/nexus/endpoints/${q(id)}`);
     if (!res.endpoint) throw new Error(`Temporal Cloud plugin: Nexus endpoint ${id} not found`);
     return res.endpoint;
   }
 
   private async fetchExportSink(namespaceId: string, name: string): Promise<TcExportSink> {
-    const res = await tcFetch<{ sink?: TcExportSink }>(
-      this.ctx,
+    const res = await this.ctx.api.get(
       `/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`,
     );
     if (!res.sink) throw new Error(`Temporal Cloud plugin: export sink ${name} not found`);
@@ -220,10 +256,7 @@ export class TemporalCloudClient implements PluginClient {
   }
 
   private async fetchConnectivityRule(id: string): Promise<TcConnectivityRule> {
-    const res = await tcFetch<{ connectivityRule?: TcConnectivityRule }>(
-      this.ctx,
-      `/cloud/connectivity-rules/${q(id)}`,
-    );
+    const res = await this.ctx.api.get(`/cloud/connectivity-rules/${q(id)}`);
     if (!res.connectivityRule) {
       throw new Error(`Temporal Cloud plugin: connectivity rule ${id} not found`);
     }
@@ -232,7 +265,7 @@ export class TemporalCloudClient implements PluginClient {
 
   private async namespaceIndex(): Promise<NamespaceIndex> {
     const index: NamespaceIndex = new Map();
-    for (const ns of await this.fetchNamespaces().catch(() => [] as TcNamespace[])) {
+    for (const ns of await this.fetchNamespaces().catch((): TcNamespace[] => [])) {
       const id = ns.namespace ?? "";
       if (!id) continue;
       const region = ns.activeRegion ?? ns.spec?.regions?.[0];
@@ -277,14 +310,12 @@ export class TemporalCloudClient implements PluginClient {
             for (const ns of await this.fetchNamespaces()) {
               const id = ns.namespace ?? "";
               if (!id) continue;
-              const sinks = await tcPaged<TcExportSink>(
-                this.ctx,
-                `/cloud/namespaces/${q(id)}/export-sinks`,
-                "sinks",
-              ).catch((err: unknown) => {
-                if (statusOf(err) === 403 || statusOf(err) === 404) return [] as TcExportSink[];
-                throw err;
-              });
+              const sinks = await this.fetchExportSinks(id).catch(
+                (err: unknown): TcExportSink[] => {
+                  if (statusOf(err) === 403 || statusOf(err) === 404) return [];
+                  throw err;
+                },
+              );
               out.push(...sinks.map((s) => mapExportSink(accountId, id, s)));
             }
             return out;
@@ -299,27 +330,18 @@ export class TemporalCloudClient implements PluginClient {
           );
         case "api-key":
           return this.scoped(async () => {
-            const [keys, owners] = await Promise.all([
-              tcPaged<TcApiKey>(this.ctx, "/cloud/api-keys", "apiKeys"),
-              this.ownerNames(),
-            ]);
+            const [keys, owners] = await Promise.all([this.fetchApiKeys(), this.ownerNames()]);
             return keys.map((k) => mapApiKey(accountId, k, owners));
           });
         case "nexus-endpoint":
           return this.scoped(async () =>
-            (await tcPaged<TcNexusEndpoint>(this.ctx, "/cloud/nexus/endpoints", "endpoints")).map(
-              (e) => mapNexusEndpoint(accountId, e),
-            ),
+            (await this.fetchNexusEndpoints()).map((e) => mapNexusEndpoint(accountId, e)),
           );
         case "connectivity-rule":
           return this.scoped(async () => {
             const [rules, namespaces] = await Promise.all([
-              tcPaged<TcConnectivityRule>(
-                this.ctx,
-                "/cloud/connectivity-rules",
-                "connectivityRules",
-              ),
-              this.fetchNamespaces().catch(() => [] as TcNamespace[]),
+              this.fetchConnectivityRules(),
+              this.fetchNamespaces().catch((): TcNamespace[] => []),
             ]);
             return rules.map((r) => mapConnectivityRule(accountId, r, attachedRules(namespaces)));
           });
@@ -332,8 +354,8 @@ export class TemporalCloudClient implements PluginClient {
   private async ownerNames(): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     const [users, sas] = await Promise.all([
-      this.fetchUsers().catch(() => [] as TcUser[]),
-      this.fetchServiceAccounts().catch(() => [] as TcServiceAccount[]),
+      this.fetchUsers().catch((): TcUser[] => []),
+      this.fetchServiceAccounts().catch((): TcServiceAccount[] => []),
     ]);
     for (const u of users) if (u.id && u.spec?.email) out.set(u.id, u.spec.email);
     for (const s of sas) if (s.id && s.spec?.name) out.set(s.id, s.spec.name);
@@ -342,15 +364,13 @@ export class TemporalCloudClient implements PluginClient {
 
   private async loadAccount(accountId: string, detailed: boolean): Promise<ResourceInstance> {
     const [account, identity, namespaces, regions] = await Promise.all([
-      tcFetch<{ account?: TcAccount }>(this.ctx, "/cloud/account")
+      this.ctx.api
+        .get("/cloud/account")
         .then((r) => r.account)
         .catch(() => undefined),
-      tcFetch<{ user?: TcUser; serviceAccount?: TcServiceAccount; principalApiKey?: TcApiKey }>(
-        this.ctx,
-        "/cloud/current-identity",
-      ).catch(() => undefined),
-      this.fetchNamespaces().catch(() => [] as TcNamespace[]),
-      detailed ? this.fetchRegions().catch(() => [] as TcRegion[]) : Promise.resolve([]),
+      this.ctx.api.get("/cloud/current-identity").catch(() => undefined),
+      this.fetchNamespaces().catch((): TcNamespace[] => []),
+      detailed ? this.fetchRegions().catch((): TcRegion[] => []) : Promise.resolve([]),
     ]);
     const accountIdFromNs = namespaces[0]?.namespace?.split(".").slice(1).join(".") ?? "";
     const id = account?.id || accountIdFromNs || "account";
@@ -402,16 +422,14 @@ export class TemporalCloudClient implements PluginClient {
         case "namespace": {
           const [ns, capacity, regions, rules] = await Promise.all([
             this.fetchNamespace(id),
-            tcFetch<{ capacityInfo?: TcCapacityInfo }>(
-              this.ctx,
-              `/cloud/namespaces/${q(id)}/capacity-info`,
-            )
+            this.ctx.api
+              .get(`/cloud/namespaces/${q(id)}/capacity-info`)
               .then((r) => r.capacityInfo)
               .catch(() => undefined),
-            this.fetchRegions().catch(() => [] as TcRegion[]),
-            tcPaged<TcConnectivityRule>(this.ctx, "/cloud/connectivity-rules", "connectivityRules")
+            this.fetchRegions().catch((): TcRegion[] => []),
+            this.fetchConnectivityRules()
               .then((list) => list.map((r) => mapConnectivityRule(accountId, r, new Map())))
-              .catch(() => [] as ResourceInstance[]),
+              .catch((): ResourceInstance[] => []),
           ]);
           const r = mapNamespace(accountId, ns);
           if (capacity) r.resolvedOutputs[CAPACITY_KEY] = JSON.stringify(capacity);
@@ -435,7 +453,7 @@ export class TemporalCloudClient implements PluginClient {
             typeId === "user"
               ? this.fetchUser(id).then((u) => mapUser(accountId, u))
               : this.fetchServiceAccount(id).then((s) => mapServiceAccount(accountId, s)),
-            this.fetchNamespaces().catch(() => [] as TcNamespace[]),
+            this.fetchNamespaces().catch((): TcNamespace[] => []),
           ]);
           mapped.resolvedOutputs[NAMESPACE_IDS_KEY] = JSON.stringify(
             namespaces.map((n) => n.namespace ?? "").filter(Boolean),
@@ -449,7 +467,7 @@ export class TemporalCloudClient implements PluginClient {
         case "connectivity-rule": {
           const [rule, namespaces] = await Promise.all([
             this.fetchConnectivityRule(id),
-            this.fetchNamespaces().catch(() => [] as TcNamespace[]),
+            this.fetchNamespaces().catch((): TcNamespace[] => []),
           ]);
           return mapConnectivityRule(accountId, rule, attachedRules(namespaces));
         }
@@ -568,7 +586,7 @@ export class TemporalCloudClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async namespaceOptions(): Promise<Array<{ id: string; label: string }>> {
-    return (await this.fetchNamespaces().catch(() => [] as TcNamespace[]))
+    return (await this.fetchNamespaces().catch((): TcNamespace[] => []))
       .map((n) => ({ id: n.namespace ?? "", label: n.namespace ?? "" }))
       .filter((o) => o.id)
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -578,7 +596,7 @@ export class TemporalCloudClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "namespace": {
-          const regions = await this.fetchRegions().catch(() => [] as TcRegion[]);
+          const regions = await this.fetchRegions().catch((): TcRegion[] => []);
           return {
             fields: [
               {
@@ -828,7 +846,7 @@ export class TemporalCloudClient implements PluginClient {
           };
         }
         case "connectivity-rule": {
-          const regions = await this.fetchRegions().catch(() => [] as TcRegion[]);
+          const regions = await this.fetchRegions().catch((): TcRegion[] => []);
           return {
             fields: [
               {
@@ -904,11 +922,9 @@ export class TemporalCloudClient implements PluginClient {
             (parentResourceId ? externalIdOf(parentResourceId) : "");
           if (!namespaceId) throw new Error("Pick the namespace to export from");
           const spec = exportSinkSpec(fields, true);
-          const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-            this.ctx,
-            `/cloud/namespaces/${q(namespaceId)}/export-sinks`,
-            { method: "POST", body: { spec } },
-          );
+          const res = await this.ctx.api.post(`/cloud/namespaces/${q(namespaceId)}/export-sinks`, {
+            body: { spec },
+          });
           await waitForOperation(this.ctx, res.asyncOperation, 10_000);
           return this.fetchExportSink(namespaceId, spec.name)
             .then((s) => mapExportSink(accountId, namespaceId, s))
@@ -917,19 +933,14 @@ export class TemporalCloudClient implements PluginClient {
         case "user": {
           const email = (fields["email"] ?? "").trim();
           if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email");
-          const res = await tcFetch<{ userId?: string; asyncOperation?: AsyncOperation }>(
-            this.ctx,
-            "/cloud/users",
-            {
-              method: "POST",
-              body: {
-                spec: {
-                  email,
-                  access: { accountAccess: { role: roleEnum(fields["accountRole"] || "read") } },
-                },
+          const res = await this.ctx.api.post("/cloud/users", {
+            body: {
+              spec: {
+                email,
+                access: { accountAccess: { role: roleEnum(fields["accountRole"] || "read") } },
               },
             },
-          );
+          });
           await waitForOperation(this.ctx, res.asyncOperation, 10_000);
           if (!res.userId) throw new Error("Temporal Cloud returned no user id");
           return mapUser(accountId, await this.fetchUser(res.userId));
@@ -940,7 +951,7 @@ export class TemporalCloudClient implements PluginClient {
           const scoped = fields["scope"] === "namespace";
           const namespace = (fields["namespace"] ?? "").trim();
           if (scoped && !namespace) throw new Error("Pick the namespace to scope it to");
-          const spec: Record<string, unknown> = {
+          const spec: TcServiceAccountSpec = {
             name,
             ...(fields["description"] ? { description: fields["description"] } : {}),
             ...(scoped
@@ -954,11 +965,7 @@ export class TemporalCloudClient implements PluginClient {
                   access: { accountAccess: { role: roleEnum(fields["accountRole"] || "read") } },
                 }),
           };
-          const res = await tcFetch<{ serviceAccountId?: string; asyncOperation?: AsyncOperation }>(
-            this.ctx,
-            "/cloud/service-accounts",
-            { method: "POST", body: { spec } },
-          );
+          const res = await this.ctx.api.post("/cloud/service-accounts", { body: { spec } });
           await waitForOperation(this.ctx, res.asyncOperation, 10_000);
           if (!res.serviceAccountId)
             throw new Error("Temporal Cloud returned no service account id");
@@ -966,17 +973,13 @@ export class TemporalCloudClient implements PluginClient {
         }
         case "nexus-endpoint": {
           const spec = nexusSpec(fields);
-          const res = await tcFetch<{ endpointId?: string; asyncOperation?: AsyncOperation }>(
-            this.ctx,
-            "/cloud/nexus/endpoints",
-            { method: "POST", body: { spec } },
-          );
+          const res = await this.ctx.api.post("/cloud/nexus/endpoints", { body: { spec } });
           await waitForOperation(this.ctx, res.asyncOperation, 10_000);
           if (!res.endpointId) throw new Error("Temporal Cloud returned no endpoint id");
           return mapNexusEndpoint(accountId, await this.fetchNexusEndpoint(res.endpointId));
         }
         case "connectivity-rule": {
-          let spec: Record<string, unknown>;
+          let spec: TcConnectivityRuleSpec;
           if (fields["type"] === "public") {
             spec = { publicRule: { enableStableIps: bool(fields["stableIps"]) } };
           } else {
@@ -994,14 +997,11 @@ export class TemporalCloudClient implements PluginClient {
               privateRule: {
                 region,
                 ...(connectionId ? { connectionId } : {}),
-                ...(isGcp ? { gcpProjectId: fields["gcpProjectId"]?.trim() } : {}),
+                ...(isGcp ? { gcpProjectId: (fields["gcpProjectId"] ?? "").trim() } : {}),
               },
             };
           }
-          const res = await tcFetch<{
-            connectivityRuleId?: string;
-            asyncOperation?: AsyncOperation;
-          }>(this.ctx, "/cloud/connectivity-rules", { method: "POST", body: { spec } });
+          const res = await this.ctx.api.post("/cloud/connectivity-rules", { body: { spec } });
           await waitForOperation(this.ctx, res.asyncOperation, 10_000);
           if (!res.connectivityRuleId) throw new Error("Temporal Cloud returned no rule id");
           return mapConnectivityRule(
@@ -1041,11 +1041,7 @@ export class TemporalCloudClient implements PluginClient {
       ...(description ? { description } : {}),
       lifecycle: { enableDeleteProtection: fields["deleteProtection"] !== "false" },
     };
-    const res = await tcFetch<{ namespace?: string; asyncOperation?: AsyncOperation }>(
-      this.ctx,
-      "/cloud/namespaces",
-      { method: "POST", body: { spec } },
-    );
+    const res = await this.ctx.api.post("/cloud/namespaces", { body: { spec } });
     await waitForOperation(this.ctx, res.asyncOperation, 15_000);
     const id = res.namespace ?? name;
     return this.fetchNamespace(id)
@@ -1076,10 +1072,9 @@ export class TemporalCloudClient implements PluginClient {
           const current = await this.fetchExportSink(namespaceId, name);
           const merged = { ...exportSinkFields(current), ...fields };
           const spec = exportSinkSpec(merged, false);
-          const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-            this.ctx,
+          const res = await this.ctx.api.post(
             `/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`,
-            { method: "POST", body: { spec, resourceVersion: current.resourceVersion } },
+            { body: { spec, resourceVersion: current.resourceVersion } },
           );
           await waitForOperation(this.ctx, res.asyncOperation, 10_000);
           return mapExportSink(
@@ -1147,14 +1142,9 @@ export class TemporalCloudClient implements PluginClient {
               throw new Error(`"${ns}" is not a namespace in this account`);
             }
           }
-          const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-            this.ctx,
-            `/cloud/nexus/endpoints/${q(id)}`,
-            {
-              method: "POST",
-              body: { spec: nexusSpec(merged), resourceVersion: current.resourceVersion },
-            },
-          );
+          const res = await this.ctx.api.post(`/cloud/nexus/endpoints/${q(id)}`, {
+            body: { spec: nexusSpec(merged), resourceVersion: current.resourceVersion },
+          });
           await waitForOperation(this.ctx, res.asyncOperation, 10_000);
           return mapNexusEndpoint(accountId, await this.fetchNexusEndpoint(id));
         }
@@ -1204,11 +1194,9 @@ export class TemporalCloudClient implements PluginClient {
       specChanged = true;
     }
     if (specChanged) {
-      const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-        this.ctx,
-        `/cloud/namespaces/${q(id)}`,
-        { method: "POST", body: { spec, resourceVersion: ns.resourceVersion } },
-      );
+      const res = await this.ctx.api.post(`/cloud/namespaces/${q(id)}`, {
+        body: { spec, resourceVersion: ns.resourceVersion },
+      });
       await waitForOperation(this.ctx, res.asyncOperation);
     }
     if ("tags" in fields) {
@@ -1219,34 +1207,25 @@ export class TemporalCloudClient implements PluginClient {
       );
       const tagsToRemove = Object.keys(current).filter((k) => !(k in next));
       if (Object.keys(tagsToUpsert).length > 0 || tagsToRemove.length > 0) {
-        const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          `/cloud/namespaces/${q(id)}/update-tags`,
-          { method: "POST", body: { tagsToUpsert, tagsToRemove } },
-        );
+        const res = await this.ctx.api.post(`/cloud/namespaces/${q(id)}/update-tags`, {
+          body: { tagsToUpsert, tagsToRemove },
+        });
         await waitForOperation(this.ctx, res.asyncOperation);
       }
     }
   }
 
   private async saveNamespaceSpec(ns: TcNamespace, spec: TcNamespaceSpec): Promise<void> {
-    const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-      this.ctx,
-      `/cloud/namespaces/${q(ns.namespace ?? "")}`,
-      { method: "POST", body: { spec, resourceVersion: ns.resourceVersion } },
-    );
+    const res = await this.ctx.api.post(`/cloud/namespaces/${q(ns.namespace ?? "")}`, {
+      body: { spec, resourceVersion: ns.resourceVersion },
+    });
     await waitForOperation(this.ctx, res.asyncOperation);
   }
 
   private async saveUser(user: TcUser, access: TcAccess): Promise<void> {
-    const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-      this.ctx,
-      `/cloud/users/${q(user.id ?? "")}`,
-      {
-        method: "POST",
-        body: { spec: { ...user.spec, access }, resourceVersion: user.resourceVersion },
-      },
-    );
+    const res = await this.ctx.api.post(`/cloud/users/${q(user.id ?? "")}`, {
+      body: { spec: { ...user.spec, access }, resourceVersion: user.resourceVersion },
+    });
     await waitForOperation(this.ctx, res.asyncOperation, 10_000);
   }
 
@@ -1254,20 +1233,16 @@ export class TemporalCloudClient implements PluginClient {
     sa: TcServiceAccount,
     spec: NonNullable<TcServiceAccount["spec"]>,
   ): Promise<void> {
-    const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-      this.ctx,
-      `/cloud/service-accounts/${q(sa.id ?? "")}`,
-      { method: "POST", body: { spec, resourceVersion: sa.resourceVersion } },
-    );
+    const res = await this.ctx.api.post(`/cloud/service-accounts/${q(sa.id ?? "")}`, {
+      body: { spec, resourceVersion: sa.resourceVersion },
+    });
     await waitForOperation(this.ctx, res.asyncOperation, 10_000);
   }
 
   private async saveApiKey(key: TcApiKey, spec: NonNullable<TcApiKey["spec"]>): Promise<void> {
-    const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-      this.ctx,
-      `/cloud/api-keys/${q(key.id ?? "")}`,
-      { method: "POST", body: { spec, resourceVersion: key.resourceVersion } },
-    );
+    const res = await this.ctx.api.post(`/cloud/api-keys/${q(key.id ?? "")}`, {
+      body: { spec, resourceVersion: key.resourceVersion },
+    });
     await waitForOperation(this.ctx, res.asyncOperation, 10_000);
   }
 
@@ -1278,55 +1253,65 @@ export class TemporalCloudClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      let path: string;
-      let version: string | undefined;
-      switch (typeId) {
-        case "namespace": {
-          const ns = await this.fetchNamespace(id);
-          if (ns.spec?.lifecycle?.enableDeleteProtection) {
-            throw new Error(
-              "Delete protection is on for this namespace. Turn it off with Edit first; deleting a namespace removes all of its workflow data for good.",
-            );
-          }
-          path = `/cloud/namespaces/${q(id)}`;
-          version = ns.resourceVersion;
-          break;
-        }
-        case "export-sink": {
-          const { namespaceId, name } = parseExportSinkId(id);
-          path = `/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`;
-          version = (await this.fetchExportSink(namespaceId, name)).resourceVersion;
-          break;
-        }
-        case "user":
-          path = `/cloud/users/${q(id)}`;
-          version = (await this.fetchUser(id)).resourceVersion;
-          break;
-        case "service-account":
-          path = `/cloud/service-accounts/${q(id)}`;
-          version = (await this.fetchServiceAccount(id)).resourceVersion;
-          break;
-        case "api-key":
-          path = `/cloud/api-keys/${q(id)}`;
-          version = (await this.fetchApiKey(id)).resourceVersion;
-          break;
-        case "nexus-endpoint":
-          path = `/cloud/nexus/endpoints/${q(id)}`;
-          version = (await this.fetchNexusEndpoint(id)).resourceVersion;
-          break;
-        case "connectivity-rule":
-          path = `/cloud/connectivity-rules/${q(id)}`;
-          version = (await this.fetchConnectivityRule(id)).resourceVersion;
-          break;
-        default:
-          throw new Error(`Temporal Cloud plugin: "${typeId}" cannot be deleted from Infrawrench`);
-      }
-      const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(this.ctx, path, {
-        method: "DELETE",
-        query: { resourceVersion: version },
-      });
+      const res = await this.sendDelete(typeId, id);
       await waitForOperation(this.ctx, res?.asyncOperation, 10_000);
     });
+  }
+
+  /** Each object is deleted at the version just read, so a concurrent edit is refused. */
+  private async sendDelete(typeId: string, id: string) {
+    switch (typeId) {
+      case "namespace": {
+        const ns = await this.fetchNamespace(id);
+        if (ns.spec?.lifecycle?.enableDeleteProtection) {
+          throw new Error(
+            "Delete protection is on for this namespace. Turn it off with Edit first; deleting a namespace removes all of its workflow data for good.",
+          );
+        }
+        return this.ctx.api.delete(`/cloud/namespaces/${q(id)}`, {
+          query: versioned(ns.resourceVersion),
+        });
+      }
+      case "export-sink": {
+        const { namespaceId, name } = parseExportSinkId(id);
+        const sink = await this.fetchExportSink(namespaceId, name);
+        return this.ctx.api.delete(`/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`, {
+          query: versioned(sink.resourceVersion),
+        });
+      }
+      case "user": {
+        const user = await this.fetchUser(id);
+        return this.ctx.api.delete(`/cloud/users/${q(id)}`, {
+          query: versioned(user.resourceVersion),
+        });
+      }
+      case "service-account": {
+        const sa = await this.fetchServiceAccount(id);
+        return this.ctx.api.delete(`/cloud/service-accounts/${q(id)}`, {
+          query: versioned(sa.resourceVersion),
+        });
+      }
+      case "api-key": {
+        const key = await this.fetchApiKey(id);
+        return this.ctx.api.delete(`/cloud/api-keys/${q(id)}`, {
+          query: versioned(key.resourceVersion),
+        });
+      }
+      case "nexus-endpoint": {
+        const endpoint = await this.fetchNexusEndpoint(id);
+        return this.ctx.api.delete(`/cloud/nexus/endpoints/${q(id)}`, {
+          query: versioned(endpoint.resourceVersion),
+        });
+      }
+      case "connectivity-rule": {
+        const rule = await this.fetchConnectivityRule(id);
+        return this.ctx.api.delete(`/cloud/connectivity-rules/${q(id)}`, {
+          query: versioned(rule.resourceVersion),
+        });
+      }
+      default:
+        throw new Error(`Temporal Cloud plugin: "${typeId}" cannot be deleted from Infrawrench`);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1357,14 +1342,9 @@ export class TemporalCloudClient implements PluginClient {
       if (typeId === "export-sink" && actionId === "validate") {
         const { namespaceId, name } = parseExportSinkId(id);
         const sink = await this.fetchExportSink(namespaceId, name);
-        await tcFetch<unknown>(
-          this.ctx,
-          `/cloud/namespaces/${q(namespaceId)}/export-sink-validate`,
-          {
-            method: "POST",
-            body: { spec: sink.spec },
-          },
-        );
+        await this.ctx.api.post(`/cloud/namespaces/${q(namespaceId)}/export-sink-validate`, {
+          body: { spec: sink.spec },
+        });
         return;
       }
       throw new Error(`Temporal Cloud plugin: unknown action "${actionId}" for "${typeId}"`);
@@ -1397,14 +1377,14 @@ export class TemporalCloudClient implements PluginClient {
     id: string,
     command: string,
     form: Record<string, string>,
-  ): Promise<unknown> {
+  ): Promise<{ ok: boolean }> {
     const ns = await this.fetchNamespace(id);
     const spec: TcNamespaceSpec = { ...(ns.spec ?? {}) };
     switch (command) {
       case "add-search-attribute": {
         const name = validateSearchAttributeName(form["name"] ?? "");
         const type = form["type"] ?? "";
-        if (!(type in SEARCH_ATTRIBUTE_LIMITS)) throw new Error("Pick a search attribute type");
+        if (!isSearchAttributeType(type)) throw new Error("Pick a search attribute type");
         const existing = spec.searchAttributes ?? {};
         if (name in existing) throw new Error(`"${name}" already exists on this namespace`);
         const sameType = Object.values(existing).filter((t) => t === type).length;
@@ -1424,11 +1404,9 @@ export class TemporalCloudClient implements PluginClient {
         const existing = spec.searchAttributes ?? {};
         if (!(from in existing)) throw new Error(`"${from}" is not a custom search attribute here`);
         if (to in existing) throw new Error(`"${to}" already exists on this namespace`);
-        const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-          this.ctx,
+        const res = await this.ctx.api.post(
           `/cloud/namespaces/${q(id)}/rename-custom-search-attribute`,
           {
-            method: "POST",
             body: {
               existingCustomSearchAttributeName: from,
               newCustomSearchAttributeName: to,
@@ -1451,11 +1429,9 @@ export class TemporalCloudClient implements PluginClient {
         if ((form["confirm"] ?? "").trim() !== (spec.name ?? id.split(".")[0])) {
           throw new Error("Type the namespace name to confirm the failover");
         }
-        const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          `/cloud/namespaces/${q(id)}/failover-region`,
-          { method: "POST", body: { region } },
-        );
+        const res = await this.ctx.api.post(`/cloud/namespaces/${q(id)}/failover-region`, {
+          body: { region },
+        });
         await waitForOperation(this.ctx, res.asyncOperation, 30_000);
         return { ok: true };
       }
@@ -1465,11 +1441,9 @@ export class TemporalCloudClient implements PluginClient {
         if ((spec.regions ?? []).includes(region)) {
           throw new Error("The namespace is already in that region");
         }
-        const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          `/cloud/namespaces/${q(id)}/add-region`,
-          { method: "POST", body: { region, resourceVersion: ns.resourceVersion } },
-        );
+        const res = await this.ctx.api.post(`/cloud/namespaces/${q(id)}/add-region`, {
+          body: { region, resourceVersion: ns.resourceVersion },
+        });
         await waitForOperation(this.ctx, res.asyncOperation);
         return { ok: true };
       }
@@ -1479,11 +1453,9 @@ export class TemporalCloudClient implements PluginClient {
           throw new Error("Fail over away from the active region before removing it");
         }
         if (!(spec.regions ?? []).includes(region)) throw new Error("Pick one of the replicas");
-        const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          `/cloud/namespaces/${q(id)}/regions/${q(region)}`,
-          { method: "DELETE", query: { resourceVersion: ns.resourceVersion } },
-        );
+        const res = await this.ctx.api.delete(`/cloud/namespaces/${q(id)}/regions/${q(region)}`, {
+          query: versioned(ns.resourceVersion),
+        });
         await waitForOperation(this.ctx, res?.asyncOperation);
         return { ok: true };
       }
@@ -1501,7 +1473,7 @@ export class TemporalCloudClient implements PluginClient {
     typeId: "user" | "service-account",
     id: string,
     form: Record<string, string>,
-  ): Promise<unknown> {
+  ): Promise<{ ok: boolean }> {
     const namespace = (form["namespace"] ?? "").trim();
     if (!namespace) throw new Error("Pick a namespace");
     const permission = (form["permission"] ?? "").trim();
@@ -1558,6 +1530,11 @@ export class TemporalCloudClient implements PluginClient {
   }
 }
 
+/** A delete's query: a version read as nothing is not sent. */
+function versioned(resourceVersion: string | undefined): { resourceVersion?: string } {
+  return resourceVersion === undefined ? {} : { resourceVersion };
+}
+
 /** Connectivity rule id → the namespaces it is attached to. */
 function attachedRules(namespaces: TcNamespace[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -1593,7 +1570,7 @@ function exportSinkFields(sink: TcExportSink): Record<string, string> {
 function exportSinkSpec(
   fields: Record<string, string>,
   creating: boolean,
-): { name: string; enabled: boolean; s3?: Record<string, string>; gcs?: Record<string, string> } {
+): TcExportSinkSpec & { name: string } {
   const name = (fields["name"] ?? "").trim();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-_]*$/.test(name)) {
     throw new Error("A sink name uses letters, digits, hyphens and underscores");
@@ -1622,7 +1599,7 @@ function exportSinkSpec(
   };
 }
 
-function nexusSpec(fields: Record<string, string>): Record<string, unknown> {
+function nexusSpec(fields: Record<string, string>): TcNexusEndpointSpec {
   const name = validateNexusEndpointName(fields["name"] ?? "");
   const namespaceId = (fields["targetNamespace"] ?? "").trim();
   const taskQueue = (fields["taskQueue"] ?? "").trim();

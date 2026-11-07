@@ -1,0 +1,106 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2026-05-12.yml",
+  "patches": [
+    {
+      "pointer": "/paths/~1domains/get/parameters",
+      "value": [
+        {
+          "$ref": "#/components/parameters/LimitParameter"
+        },
+        {
+          "$ref": "#/components/parameters/OffsetParameter"
+        }
+      ],
+      "why": "The document lists no query here; every list in the plugin walks by limit and offset, this one included, and the request stays as it is."
+    },
+    {
+      "pointer": "/components/schemas/JWTTemplate/properties/claims",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "A bare `type: object` generates `Record<string, never>`, which no claim fits. Claims are free-form JSON."
+    },
+    {
+      "pointer": "/paths/~1jwt_templates/post/requestBody/content/application~1json/schema/properties/claims",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "As for JWTTemplate: free-form JSON."
+    },
+    {
+      "pointer": "/paths/~1jwt_templates~1{template_id}/patch/requestBody/content/application~1json/schema/properties/claims",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "As for JWTTemplate: free-form JSON."
+    },
+    {
+      "pointer": "/paths/~1users/post/requestBody/content/application~1json/schema/properties/email_address/items",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "The create form requires an email, and a missing one has always gone as `[null]` for Clerk's own validation error to answer."
+    },
+    {
+      "pointer": "/paths/~1enterprise_connections/post/requestBody/content/application~1json/schema/properties/provider",
+      "value": {
+        "type": "string"
+      },
+      "why": "The text from the form goes through as chosen, and Clerk answers for anything it does not know."
+    }
+  ],
+  "paths": {
+    "/users": ["get", "post"],
+    "/users/count": ["get"],
+    "/users/{user_id}": ["get", "patch", "delete"],
+    "/users/{user_id}/ban": ["post"],
+    "/users/{user_id}/unban": ["post"],
+    "/users/{user_id}/lock": ["post"],
+    "/users/{user_id}/unlock": ["post"],
+    "/users/{user_id}/mfa": ["delete"],
+    "/users/{user_id}/organization_memberships": ["get"],
+    "/sessions": ["get"],
+    "/sessions/{session_id}/revoke": ["post"],
+    "/organizations": ["get", "post"],
+    "/organizations/{organization_id}": ["get", "patch", "delete"],
+    "/organizations/{organization_id}/memberships": ["get", "post"],
+    "/organizations/{organization_id}/memberships/{user_id}": ["patch", "delete"],
+    "/organizations/{organization_id}/invitations": ["get", "post"],
+    "/organizations/{organization_id}/invitations/{invitation_id}/revoke": ["post"],
+    "/organization_roles": ["get"],
+    "/domains": ["get", "post"],
+    "/domains/{domain_id}": ["patch", "delete"],
+    "/jwt_templates": ["get", "post"],
+    "/jwt_templates/{template_id}": ["get", "patch", "delete"],
+    "/oauth_applications": ["get", "post"],
+    "/oauth_applications/{oauth_application_id}": ["get", "patch", "delete"],
+    "/oauth_applications/{oauth_application_id}/rotate_secret": ["post"],
+    "/enterprise_connections": ["get", "post"],
+    "/enterprise_connections/{enterprise_connection_id}": ["get", "patch", "delete"],
+    "/machines": ["get", "post"],
+    "/machines/{machine_id}": ["get", "patch", "delete"],
+    "/machines/{machine_id}/secret_key": ["get"],
+    "/machines/{machine_id}/secret_key/rotate": ["post"],
+    "/machines/{machine_id}/scopes": ["post"],
+    "/machines/{machine_id}/scopes/{other_machine_id}": ["delete"],
+    "/allowlist_identifiers": ["get", "post"],
+    "/allowlist_identifiers/{identifier_id}": ["delete"],
+    "/blocklist_identifiers": ["get", "post"],
+    "/blocklist_identifiers/{identifier_id}": ["delete"],
+    "/invitations": ["get", "post"],
+    "/invitations/{invitation_id}/revoke": ["post"],
+    "/redirect_urls": ["get", "post"],
+    "/redirect_urls/{id}": ["delete"],
+    "/instance": ["get", "patch"],
+    "/instance/restrictions": ["patch"],
+    "/instance/organization_settings": ["get", "patch"],
+    "/instance/protect": ["get", "patch"],
+    "/webhooks/svix": ["post"],
+    "/webhooks/svix_url": ["post"]
+  }
+}

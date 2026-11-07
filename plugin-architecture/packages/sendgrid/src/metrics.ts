@@ -4,9 +4,9 @@
  * `aggregated_by=day`. Each day is `{ date, stats: [{ metrics }] }`; the
  * subuser form carries one entry per subuser, so entries are summed.
  */
-import type { MetricSeries } from "@infrawrench/plugin-base";
-import type { SendGridContext } from "./api.js";
-import { sendgridFetch } from "./api.js";
+import type { ApiListItem, MetricSeries } from "@infrawrench/plugin-base";
+import type { SendGridApis } from "./api.js";
+import type { components, operations } from "./api-types.stats.gen.js";
 
 export const METRICS_WINDOW_MS = 30 * 24 * 3600_000;
 
@@ -21,32 +21,9 @@ export function rangeOrDefault(timeRange: { startMs: number; endMs: number } | u
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-export type SgMetrics = Partial<
-  Record<
-    | "requests"
-    | "processed"
-    | "delivered"
-    | "deferred"
-    | "bounces"
-    | "bounce_drops"
-    | "blocks"
-    | "invalid_emails"
-    | "spam_reports"
-    | "spam_report_drops"
-    | "unsubscribes"
-    | "unsubscribe_drops"
-    | "opens"
-    | "unique_opens"
-    | "clicks"
-    | "unique_clicks",
-    number
-  >
->;
+export type SgMetrics = components["schemas"]["StatsAdvancedGlobalStats"];
 
-export interface SgStatDay {
-  date?: string;
-  stats?: Array<{ metrics?: SgMetrics; name?: string }>;
-}
+export type SgStatDay = Partial<ApiListItem<operations["ListStat"], null>>;
 
 const SERIES: Array<{ label: string; keys: Array<keyof SgMetrics>; unit: string }> = [
   { label: "Requests", keys: ["requests"], unit: "emails" },
@@ -67,11 +44,11 @@ const SERIES: Array<{ label: string; keys: Array<keyof SgMetrics>; unit: string 
 
 /** Sum the per-entry metrics of one day. */
 export function dayTotals(d: SgStatDay): SgMetrics {
-  const out: SgMetrics = {};
+  // By whatever name a day reports, so a metric the document has not caught up with is kept.
+  const out: Record<string, number> = {};
   for (const s of d.stats ?? []) {
     for (const [k, v] of Object.entries(s.metrics ?? {})) {
-      const key = k as keyof SgMetrics;
-      if (typeof v === "number") out[key] = (out[key] ?? 0) + v;
+      if (typeof v === "number") out[k] = (out[k] ?? 0) + v;
     }
   }
   return out;
@@ -95,7 +72,7 @@ export function seriesFromDays(days: SgStatDay[]): MetricSeries[] {
 }
 
 export async function statDays(
-  ctx: SendGridContext,
+  { api, parent }: SendGridApis,
   range: { startMs: number; endMs: number },
   subuser?: string,
 ): Promise<SgStatDay[]> {
@@ -103,23 +80,19 @@ export async function statDays(
     start_date: day(range.startMs),
     end_date: day(range.endMs),
     aggregated_by: "day",
-  };
+  } satisfies operations["ListStat"]["parameters"]["query"];
   const res = subuser
-    ? await sendgridFetch<SgStatDay[]>(ctx, "/v3/subusers/stats", {
-        query: { ...query, subusers: subuser },
-        asParent: true,
-      })
-    : await sendgridFetch<SgStatDay[]>(ctx, "/v3/stats", { query });
+    ? await parent.get("/v3/subusers/stats", { query: { ...query, subusers: subuser } })
+    : await api.get("/v3/stats", { query });
   return Array.isArray(res) ? res : [];
 }
 
 /** Totals over a set of days, for the detail pages and dashboard stats. */
 export function sumDays(days: SgStatDay[]): SgMetrics {
-  const out: SgMetrics = {};
+  const out: Record<string, number> = {};
   for (const d of days) {
     for (const [k, v] of Object.entries(dayTotals(d))) {
-      const key = k as keyof SgMetrics;
-      out[key] = (out[key] ?? 0) + (v ?? 0);
+      out[k] = (out[k] ?? 0) + (v ?? 0);
     }
   }
   return out;

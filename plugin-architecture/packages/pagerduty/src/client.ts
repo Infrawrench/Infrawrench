@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiBody, NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -21,21 +21,16 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { PagerDutyRegion, PagerDutyTransport, QueryValue } from "./api.js";
-import { PagerDutyApiError, pdFetch, pdList, statusOf } from "./api.js";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { PagerDutyApi, PagerDutyRegion, PagerDutyTransport } from "./api.js";
+import { PagerDutyApiError, createPagerDutyApi, createPagerDutyEvents, statusOf } from "./api.js";
+import type { operations } from "./api-types.rest.gen.js";
 import { isPagerDutyOAuth } from "./oauth.js";
 import type {
-  PdBusinessService,
   PdEscalationPolicy,
+  PdExpandable,
   PdIncident,
   PdIntegration,
-  PdMaintenanceWindow,
-  PdOrchestration,
-  PdOverride,
-  PdPriority,
-  PdSchedule,
-  PdService,
   PdTeam,
   PdUser,
 } from "./mappers.js";
@@ -122,7 +117,7 @@ export function parsePromptValues(args: (string | number)[]): Record<string, str
   const first = args[0];
   if (typeof first !== "string" || !first) return {};
   try {
-    const parsed = JSON.parse(first) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(first);
     if (!parsed || typeof parsed !== "object") return {};
     return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v ?? "")]));
   } catch {
@@ -134,7 +129,7 @@ export function parsePromptValues(args: (string | number)[]): Record<string, str
 function parseIdList(raw: string): string[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
   } catch {
     // fall through
@@ -145,10 +140,13 @@ function parseIdList(raw: string): string[] {
     .filter(Boolean);
 }
 
-const ref = (id: string, type: string) => ({ id, type });
+const ref = <const Type extends string>(id: string, type: Type) => ({ id, type });
+
+/** What an incident update can set; the type is added when it is sent. */
+type IncidentChange = Omit<ApiBody<operations["updateIncident"]>["incident"], "type">;
 
 export class PagerDutyClient implements PluginClient {
-  private readonly transport: PagerDutyTransport;
+  private readonly api: PagerDutyApi;
   private readonly fromEmail: string;
   private readonly paging: PagingContext;
   private userCache: Cached<PdUser[]> | undefined;
@@ -164,22 +162,20 @@ export class PagerDutyClient implements PluginClient {
     const region: PagerDutyRegion = (credentials["region"] ?? "").trim() === "eu" ? "eu" : "us";
     const caCert = credentials["caCert"] ?? "";
     this.fromEmail = (credentials["fromEmail"] ?? "").trim();
-    this.transport = {
+    const transport: PagerDutyTransport = {
       apiKey,
       ...(isPagerDutyOAuth(credentials) ? { bearer: true } : {}),
       region,
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
-    this.paging = { transport: this.transport, fromEmail: this.fromEmail, routingKeys: new Map() };
-  }
-
-  private get<T>(path: string, query?: Record<string, QueryValue>): Promise<T> {
-    return pdFetch<T>(this.transport, path, query ? { query } : {});
-  }
-
-  private list<T>(path: string, key: string, query: Record<string, QueryValue> = {}): Promise<T[]> {
-    return pdList<T>(this.transport, path, key, query);
+    this.api = createPagerDutyApi(transport);
+    this.paging = {
+      api: this.api,
+      events: createPagerDutyEvents(transport),
+      fromEmail: this.fromEmail,
+      routingKeys: new Map(),
+    };
   }
 
   private invalidate(): void {
@@ -189,7 +185,7 @@ export class PagerDutyClient implements PluginClient {
 
   private users(): Promise<PdUser[]> {
     if (this.userCache && Date.now() - this.userCache.at < CACHE_MS) return this.userCache.value;
-    const value = this.list<PdUser>("/users", "users", { "include[]": ["teams"] });
+    const value = this.api.getAll("/users", "users", { query: { "include[]": ["teams"] } });
     this.userCache = { at: Date.now(), value };
     return value;
   }
@@ -198,9 +194,8 @@ export class PagerDutyClient implements PluginClient {
     if (this.policyCache && Date.now() - this.policyCache.at < CACHE_MS) {
       return this.policyCache.value;
     }
-    const value = this.list<PdEscalationPolicy>("/escalation_policies", "escalation_policies", {
-      "include[]": ["services", "teams"],
-      sort_by: "name",
+    const value = this.api.getAll("/escalation_policies", "escalation_policies", {
+      query: { "include[]": ["services", "teams"], sort_by: "name" },
     });
     this.policyCache = { at: Date.now(), value };
     return value;
@@ -220,7 +215,7 @@ export class PagerDutyClient implements PluginClient {
 
   private async priorityOptions(): Promise<Option[]> {
     try {
-      const priorities = await this.list<PdPriority>("/priorities", "priorities");
+      const priorities = await this.api.getAll("/priorities", "priorities");
       return priorities.map((p) => ({
         id: p.id ?? "",
         name: p.name ?? p.id ?? "",
@@ -241,52 +236,55 @@ export class PagerDutyClient implements PluginClient {
       switch (typeId) {
         case "pagerduty-service":
           return (
-            await this.list<PdService>("/services", "services", {
-              "include[]": ["integrations", "teams"],
-              sort_by: "name",
+            await this.api.getAll("/services", "services", {
+              query: { "include[]": ["integrations", "teams"], sort_by: "name" },
             })
           ).map((s) => mapService(accountId, s));
         case "pagerduty-escalation-policy":
           return (await this.policies()).map((p) => mapEscalationPolicy(accountId, p));
         case "pagerduty-schedule":
-          return (await this.list<PdSchedule>("/schedules", "schedules")).map((s) =>
+          return (await this.api.getAll("/schedules", "schedules")).map((s) =>
             mapSchedule(accountId, s),
           );
         case "pagerduty-team":
-          return (await this.list<PdTeam>("/teams", "teams")).map((t) => mapTeam(accountId, t));
+          return (await this.api.getAll("/teams", "teams")).map((t) => mapTeam(accountId, t));
         case "pagerduty-user":
           return (await this.users()).map((u) => mapUser(accountId, u));
         case "pagerduty-incident": {
           const [open, resolved] = await Promise.all([
-            this.list<PdIncident>("/incidents", "incidents", {
-              "statuses[]": ["triggered", "acknowledged"],
-              date_range: "all",
-              "include[]": ["assignees"],
+            this.api.getAll("/incidents", "incidents", {
+              query: {
+                "statuses[]": ["triggered", "acknowledged"],
+                date_range: "all",
+                "include[]": ["assignees"],
+              },
             }),
-            this.list<PdIncident>("/incidents", "incidents", {
-              "statuses[]": ["resolved"],
-              since: new Date(Date.now() - RESOLVED_WINDOW_MS).toISOString(),
-              until: new Date().toISOString(),
-              "include[]": ["assignees"],
+            this.api.getAll("/incidents", "incidents", {
+              query: {
+                "statuses[]": ["resolved"],
+                since: new Date(Date.now() - RESOLVED_WINDOW_MS).toISOString(),
+                until: new Date().toISOString(),
+                "include[]": ["assignees"],
+              },
             }),
           ]);
           return [...open, ...resolved].map((i) => mapIncident(accountId, i));
         }
         case "pagerduty-maintenance-window":
           return (
-            await this.list<PdMaintenanceWindow>("/maintenance_windows", "maintenance_windows", {
-              filter: "open",
+            await this.api.getAll("/maintenance_windows", "maintenance_windows", {
+              query: { filter: "open" },
             })
           ).map((w) => mapMaintenanceWindow(accountId, w));
         case "pagerduty-business-service":
-          return (
-            await this.list<PdBusinessService>("/business_services", "business_services")
-          ).map((b) => mapBusinessService(accountId, b));
+          return (await this.api.getAll("/business_services", "business_services")).map((b) =>
+            mapBusinessService(accountId, b),
+          );
         case "pagerduty-event-orchestration":
           try {
-            return (
-              await this.list<PdOrchestration>("/event_orchestrations", "orchestrations")
-            ).map((o) => mapOrchestration(accountId, o));
+            return (await this.api.getAll("/event_orchestrations", "orchestrations")).map((o) =>
+              mapOrchestration(accountId, o),
+            );
           } catch (err) {
             // Event orchestration is not on every plan; a 403 means none to list.
             if (statusOf(err) === 403) return [];
@@ -302,21 +300,25 @@ export class PagerDutyClient implements PluginClient {
   // Single reads (with what the detail page shows)
   // -------------------------------------------------------------------------
 
-  private async onCallRows(query: Record<string, QueryValue>): Promise<OnCallRow[]> {
-    const oncalls = await this.list<{
-      user?: PdUser;
-      escalation_level?: number;
-      schedule?: { summary?: string } | null;
-      end?: string | null;
-    }>("/oncalls", "oncalls", { ...query, "include[]": ["users"], earliest: true });
+  private async onCallRows(escalationPolicyId: string): Promise<OnCallRow[]> {
+    const oncalls = await this.api.getAll("/oncalls", "oncalls", {
+      query: {
+        "escalation_policy_ids[]": [escalationPolicyId],
+        "include[]": ["users"],
+        earliest: true,
+      },
+    });
     return oncalls
-      .map((o) => ({
-        level: o.escalation_level ?? 1,
-        name: o.user?.name ?? o.user?.summary ?? "",
-        email: o.user?.email ?? "",
-        schedule: o.schedule?.summary ?? "",
-        until: o.end ?? "",
-      }))
+      .map((o) => {
+        const user: PdExpandable | undefined = o.user;
+        return {
+          level: o.escalation_level ?? 1,
+          name: user?.name ?? user?.summary ?? "",
+          email: user?.email ?? "",
+          schedule: o.schedule?.summary ?? "",
+          until: o.end ?? "",
+        };
+      })
       .sort((a, b) => a.level - b.level);
   }
 
@@ -327,30 +329,32 @@ export class PagerDutyClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(ext);
       switch (typeId) {
         case "pagerduty-service": {
-          const res = await this.get<{ service?: PdService }>(`/services/${id}`, {
-            "include[]": ["integrations", "teams"],
+          const res = await this.api.get(`/services/${id}`, {
+            query: { "include[]": ["integrations", "teams"] },
           });
           if (!res?.service) throw new PagerDutyApiError(404, "PagerDuty service not found");
           const r = mapService(accountId, res.service);
           const s = res.service;
           const [oncall, summary, open, policies, priorities] = await Promise.all([
             s.escalation_policy?.id
-              ? this.onCallRows({ "escalation_policy_ids[]": [s.escalation_policy.id] }).catch(
-                  () => [],
-                )
-              : Promise.resolve([]),
-            serviceAnalytics(this.transport, ext, rangeOrDefault(undefined))
+              ? this.onCallRows(s.escalation_policy.id).catch((): OnCallRow[] => [])
+              : Promise.resolve<OnCallRow[]>([]),
+            serviceAnalytics(this.api, ext, rangeOrDefault(undefined))
               .then((rows) => rows[0])
               .catch(() => undefined),
-            this.list<PdIncident>("/incidents", "incidents", {
-              "service_ids[]": [ext],
-              "statuses[]": ["triggered", "acknowledged"],
-              date_range: "all",
-            }).catch(() => [] as PdIncident[]),
-            this.policyOptions().catch(() => [] as Option[]),
+            this.api
+              .getAll("/incidents", "incidents", {
+                query: {
+                  "service_ids[]": [ext],
+                  "statuses[]": ["triggered", "acknowledged"],
+                  date_range: "all",
+                },
+              })
+              .catch((): PdIncident[] => []),
+            this.policyOptions().catch((): Option[] => []),
             this.priorityOptions(),
           ]);
           const integrations: IntegrationRow[] = (s.integrations ?? []).map((i: PdIntegration) => ({
@@ -375,26 +379,22 @@ export class PagerDutyClient implements PluginClient {
           return r;
         }
         case "pagerduty-escalation-policy": {
-          const res = await this.get<{ escalation_policy?: PdEscalationPolicy }>(
-            `/escalation_policies/${id}`,
-            { "include[]": ["services", "teams", "targets"] },
-          );
+          const res = await this.api.get(`/escalation_policies/${id}`, {
+            query: { "include[]": ["services", "teams", "targets"] },
+          });
           if (!res?.escalation_policy) {
             throw new PagerDutyApiError(404, "PagerDuty escalation policy not found");
           }
           const r = mapEscalationPolicy(accountId, res.escalation_policy);
-          const oncall = await this.onCallRows({ "escalation_policy_ids[]": [ext] }).catch(
-            () => [],
-          );
+          const oncall = await this.onCallRows(ext).catch((): OnCallRow[] => []);
           r.fields[ONCALL_KEY] = JSON.stringify(oncall);
           return r;
         }
         case "pagerduty-schedule": {
           const now = Date.now();
           const since = new Date(now).toISOString();
-          const res = await this.get<{ schedule?: PdSchedule }>(`/schedules/${id}`, {
-            since,
-            until: new Date(now + 7 * 24 * 3600_000).toISOString(),
+          const res = await this.api.get(`/schedules/${id}`, {
+            query: { since, until: new Date(now + 7 * 24 * 3600_000).toISOString() },
           });
           if (!res?.schedule) throw new PagerDutyApiError(404, "PagerDuty schedule not found");
           const r = mapSchedule(accountId, res.schedule);
@@ -402,12 +402,16 @@ export class PagerDutyClient implements PluginClient {
             res.schedule.final_schedule?.rendered_schedule_entries ?? []
           ).map((e) => ({ name: e.user?.summary ?? "", start: e.start ?? "", end: e.end ?? "" }));
           const [overrides, users] = await Promise.all([
-            this.get<{ overrides?: PdOverride[] }>(`/schedules/${id}/overrides`, {
-              since,
-              until: new Date(now + 30 * 24 * 3600_000).toISOString(),
-              editable: true,
-            }).catch(() => ({ overrides: [] as PdOverride[] })),
-            this.userOptions().catch(() => [] as Option[]),
+            this.api
+              .get(`/schedules/${id}/overrides`, {
+                query: {
+                  since,
+                  until: new Date(now + 30 * 24 * 3600_000).toISOString(),
+                  editable: true,
+                },
+              })
+              .catch(() => ({ overrides: [] })),
+            this.userOptions().catch((): Option[] => []),
           ]);
           const overrideRows: OverrideRow[] = (overrides?.overrides ?? []).map((o) => ({
             id: o.id ?? "",
@@ -421,35 +425,26 @@ export class PagerDutyClient implements PluginClient {
           return r;
         }
         case "pagerduty-team": {
-          const res = await this.get<{ team?: PdTeam }>(`/teams/${id}`);
+          const res = await this.api.get(`/teams/${id}`);
           if (!res?.team) throw new PagerDutyApiError(404, "PagerDuty team not found");
           return mapTeam(accountId, res.team);
         }
         case "pagerduty-user": {
-          const res = await this.get<{ user?: PdUser }>(`/users/${id}`, { "include[]": ["teams"] });
+          const res = await this.api.get(`/users/${id}`, { query: { "include[]": ["teams"] } });
           if (!res?.user) throw new PagerDutyApiError(404, "PagerDuty user not found");
           return mapUser(accountId, res.user);
         }
         case "pagerduty-incident": {
-          const res = await this.get<{ incident?: PdIncident }>(`/incidents/${id}`, {
-            "include[]": ["assignees", "services", "priorities"],
+          const res = await this.api.get(`/incidents/${id}`, {
+            query: { "include[]": ["assignees", "services", "priorities"] },
           });
           if (!res?.incident) throw new PagerDutyApiError(404, "PagerDuty incident not found");
           const r = mapIncident(accountId, res.incident);
           const [notes, alerts, users, policies, priorities] = await Promise.all([
-            this.get<{
-              notes?: Array<{ created_at?: string; user?: { summary?: string }; content?: string }>;
-            }>(`/incidents/${id}/notes`).catch(() => ({ notes: [] })),
-            this.get<{
-              alerts?: Array<{
-                alert_key?: string;
-                status?: string;
-                summary?: string;
-                created_at?: string;
-              }>;
-            }>(`/incidents/${id}/alerts`).catch(() => ({ alerts: [] })),
-            this.userOptions().catch(() => [] as Option[]),
-            this.policyOptions().catch(() => [] as Option[]),
+            this.api.get(`/incidents/${id}/notes`).catch(() => ({ notes: [] })),
+            this.api.get(`/incidents/${id}/alerts`).catch(() => ({ alerts: [] })),
+            this.userOptions().catch((): Option[] => []),
+            this.policyOptions().catch((): Option[] => []),
             this.priorityOptions(),
           ]);
           const noteRows: NoteRow[] = (notes?.notes ?? []).map((n) => ({
@@ -471,28 +466,23 @@ export class PagerDutyClient implements PluginClient {
           return r;
         }
         case "pagerduty-maintenance-window": {
-          const res = await this.get<{ maintenance_window?: PdMaintenanceWindow }>(
-            `/maintenance_windows/${id}`,
-            { "include[]": ["services"] },
-          );
+          const res = await this.api.get(`/maintenance_windows/${id}`, {
+            query: { "include[]": ["services"] },
+          });
           if (!res?.maintenance_window) {
             throw new PagerDutyApiError(404, "PagerDuty maintenance window not found");
           }
           return mapMaintenanceWindow(accountId, res.maintenance_window);
         }
         case "pagerduty-business-service": {
-          const res = await this.get<{ business_service?: PdBusinessService }>(
-            `/business_services/${id}`,
-          );
+          const res = await this.api.get(`/business_services/${id}`);
           if (!res?.business_service) {
             throw new PagerDutyApiError(404, "PagerDuty business service not found");
           }
           return mapBusinessService(accountId, res.business_service);
         }
         case "pagerduty-event-orchestration": {
-          const res = await this.get<{ orchestration?: PdOrchestration }>(
-            `/event_orchestrations/${id}`,
-          );
+          const res = await this.api.get(`/event_orchestrations/${id}`);
           if (!res?.orchestration) {
             throw new PagerDutyApiError(404, "PagerDuty event orchestration not found");
           }
@@ -522,9 +512,9 @@ export class PagerDutyClient implements PluginClient {
           return ext;
         case "pagerduty-service/eventsRoutingKey":
           // Read only: an output read must not create an integration.
-          return serviceRoutingKey(this.transport, ext, { create: false });
+          return serviceRoutingKey(this.api, ext, { create: false });
         case "pagerduty-event-orchestration/routingKey":
-          return orchestrationRoutingKey(this.transport, ext);
+          return orchestrationRoutingKey(this.api, ext);
         default:
           throw new Error(
             `PagerDuty plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
@@ -542,7 +532,7 @@ export class PagerDutyClient implements PluginClient {
     return attempt(async () => {
       if (resourceTypeId !== "pagerduty-service") return [];
       const rows = await serviceAnalytics(
-        this.transport,
+        this.api,
         externalIdOf(resourceId),
         rangeOrDefault(timeRange),
         "day",
@@ -611,7 +601,7 @@ export class PagerDutyClient implements PluginClient {
         case "pagerduty-escalation-policy": {
           const [users, schedules] = await Promise.all([
             this.userOptions(),
-            this.list<PdSchedule>("/schedules", "schedules"),
+            this.api.getAll("/schedules", "schedules"),
           ]);
           const targets: SelectOption[] = [
             ...schedules.map((s) => ({
@@ -664,7 +654,9 @@ export class PagerDutyClient implements PluginClient {
             ],
           };
         case "pagerduty-maintenance-window": {
-          const services = await this.list<PdService>("/services", "services", { sort_by: "name" });
+          const services = await this.api.getAll("/services", "services", {
+            query: { sort_by: "name" },
+          });
           return {
             fields: [
               {
@@ -687,7 +679,7 @@ export class PagerDutyClient implements PluginClient {
           };
         }
         case "pagerduty-business-service": {
-          const teams = await this.list<PdTeam>("/teams", "teams").catch(() => [] as PdTeam[]);
+          const teams = await this.api.getAll("/teams", "teams").catch((): PdTeam[] => []);
           const fields: CreateFieldConfig[] = [
             { key: "name", label: "Name", kind: "text", required: true, placeholder: "Checkout" },
             { key: "description", label: "Description", kind: "text", required: false },
@@ -730,12 +722,13 @@ export class PagerDutyClient implements PluginClient {
             throw new Error("A service needs a name and an escalation policy.");
           }
           const urgency = trimmed(fields, "urgency") || "high";
-          const res = await pdFetch<{ service?: PdService }>(this.transport, "/services", {
+          const description = trimmed(fields, "description");
+          const res = await this.api.post("/services", {
             body: {
               service: {
                 type: "service",
                 name: trimmed(fields, "name"),
-                description: trimmed(fields, "description") || undefined,
+                ...(description ? { description } : {}),
                 escalation_policy: ref(policy, "escalation_policy_reference"),
                 auto_resolve_timeout: seconds(fields, "autoResolveMinutes") ?? null,
                 acknowledgement_timeout: seconds(fields, "acknowledgementTimeoutMinutes") ?? null,
@@ -755,36 +748,34 @@ export class PagerDutyClient implements PluginClient {
           if (!trimmed(fields, "name") || targets.length === 0) {
             throw new Error("An escalation policy needs a name and someone to notify.");
           }
-          const res = await pdFetch<{ escalation_policy?: PdEscalationPolicy }>(
-            this.transport,
-            "/escalation_policies",
-            {
-              body: {
-                escalation_policy: {
-                  type: "escalation_policy",
-                  name: trimmed(fields, "name"),
-                  description: trimmed(fields, "description") || undefined,
-                  num_loops: Number(trimmed(fields, "numLoops") || 0),
-                  escalation_rules: [
-                    {
-                      escalation_delay_in_minutes: Number(trimmed(fields, "delayMinutes") || 30),
-                      targets,
-                    },
-                  ],
-                },
+          const description = trimmed(fields, "description");
+          const res = await this.api.post("/escalation_policies", {
+            body: {
+              escalation_policy: {
+                type: "escalation_policy",
+                name: trimmed(fields, "name"),
+                ...(description ? { description } : {}),
+                num_loops: Number(trimmed(fields, "numLoops") || 0),
+                escalation_rules: [
+                  {
+                    escalation_delay_in_minutes: Number(trimmed(fields, "delayMinutes") || 30),
+                    targets,
+                  },
+                ],
               },
             },
-          );
+          });
           if (!res?.escalation_policy) throw new Error("PagerDuty did not return the new policy.");
           return mapEscalationPolicy(accountId, res.escalation_policy);
         }
         case "pagerduty-team": {
-          const res = await pdFetch<{ team?: PdTeam }>(this.transport, "/teams", {
+          const description = trimmed(fields, "description");
+          const res = await this.api.post("/teams", {
             body: {
               team: {
                 type: "team",
                 name: trimmed(fields, "name"),
-                description: trimmed(fields, "description") || undefined,
+                ...(description ? { description } : {}),
               },
             },
           });
@@ -794,43 +785,38 @@ export class PagerDutyClient implements PluginClient {
         case "pagerduty-maintenance-window": {
           const services = parseIdList(trimmed(fields, "services"));
           if (services.length === 0) throw new Error("Pick at least one service.");
+          const description = trimmed(fields, "description");
           const res = await withFrom(this.paging, null, (from) =>
-            pdFetch<{ maintenance_window?: PdMaintenanceWindow }>(
-              this.transport,
-              "/maintenance_windows",
-              {
-                body: {
-                  maintenance_window: {
-                    type: "maintenance_window",
-                    start_time: trimmed(fields, "startTime"),
-                    end_time: trimmed(fields, "endTime"),
-                    description: trimmed(fields, "description") || undefined,
-                    services: services.map((s) => ref(s, "service_reference")),
-                  },
+            this.api.post("/maintenance_windows", {
+              body: {
+                maintenance_window: {
+                  type: "maintenance_window",
+                  start_time: trimmed(fields, "startTime"),
+                  end_time: trimmed(fields, "endTime"),
+                  ...(description ? { description } : {}),
+                  services: services.map((s) => ref(s, "service_reference")),
                 },
-                from,
               },
-            ),
+              headers: { From: from },
+            }),
           );
           if (!res?.maintenance_window) throw new Error("PagerDuty did not return the window.");
           return mapMaintenanceWindow(accountId, res.maintenance_window);
         }
         case "pagerduty-business-service": {
           const team = trimmed(fields, "teamId");
-          const res = await pdFetch<{ business_service?: PdBusinessService }>(
-            this.transport,
-            "/business_services",
-            {
-              body: {
-                business_service: {
-                  name: trimmed(fields, "name"),
-                  description: trimmed(fields, "description") || undefined,
-                  point_of_contact: trimmed(fields, "pointOfContact") || undefined,
-                  ...(team ? { team: ref(team, "team_reference") } : {}),
-                },
+          const description = trimmed(fields, "description");
+          const contact = trimmed(fields, "pointOfContact");
+          const res = await this.api.post("/business_services", {
+            body: {
+              business_service: {
+                name: trimmed(fields, "name"),
+                ...(description ? { description } : {}),
+                ...(contact ? { point_of_contact: contact } : {}),
+                ...(team ? { team: ref(team, "team_reference") } : {}),
               },
             },
-          );
+          });
           if (!res?.business_service) throw new Error("PagerDuty did not return the service.");
           return mapBusinessService(accountId, res.business_service);
         }
@@ -847,41 +833,41 @@ export class PagerDutyClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(externalIdOf(resourceId));
       this.invalidate();
       switch (typeId) {
         case "pagerduty-service": {
-          const body: Record<string, unknown> = { type: "service" };
-          if ("name" in fields) body["name"] = trimmed(fields, "name");
-          if ("description" in fields) body["description"] = trimmed(fields, "description");
           const resolve = seconds(fields, "autoResolveMinutes");
-          if (resolve !== undefined) body["auto_resolve_timeout"] = resolve;
           const ack = seconds(fields, "acknowledgementTimeoutMinutes");
-          if (ack !== undefined) body["acknowledgement_timeout"] = ack;
-          await pdFetch(this.transport, `/services/${id}`, {
-            method: "PUT",
-            body: { service: body },
+          await this.api.put(`/services/${id}`, {
+            body: {
+              service: {
+                type: "service",
+                ...("name" in fields ? { name: trimmed(fields, "name") } : {}),
+                ...("description" in fields ? { description: trimmed(fields, "description") } : {}),
+                ...(resolve !== undefined ? { auto_resolve_timeout: resolve } : {}),
+                ...(ack !== undefined ? { acknowledgement_timeout: ack } : {}),
+              },
+            },
           });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "pagerduty-escalation-policy": {
           // PUT needs the rules back, so merge onto the current policy.
-          const current = await this.get<{ escalation_policy?: PdEscalationPolicy }>(
-            `/escalation_policies/${id}`,
-          );
+          const current = await this.api.get(`/escalation_policies/${id}`);
           const p = current?.escalation_policy;
           if (!p) throw new PagerDutyApiError(404, "PagerDuty escalation policy not found");
-          await pdFetch(this.transport, `/escalation_policies/${id}`, {
-            method: "PUT",
+          const description =
+            "description" in fields ? trimmed(fields, "description") : p.description;
+          const numLoops =
+            "numLoops" in fields ? Number(trimmed(fields, "numLoops") || 0) : p.num_loops;
+          await this.api.put(`/escalation_policies/${id}`, {
             body: {
               escalation_policy: {
                 type: "escalation_policy",
                 name: "name" in fields ? trimmed(fields, "name") : p.name,
-                description:
-                  "description" in fields ? trimmed(fields, "description") : p.description,
-                num_loops:
-                  "numLoops" in fields ? Number(trimmed(fields, "numLoops") || 0) : p.num_loops,
+                ...(description !== undefined ? { description } : {}),
+                ...(numLoops !== undefined ? { num_loops: numLoops } : {}),
                 escalation_rules: (p.escalation_rules ?? []).map((r) => ({
                   ...(r.id ? { id: r.id } : {}),
                   escalation_delay_in_minutes: r.escalation_delay_in_minutes,
@@ -895,42 +881,52 @@ export class PagerDutyClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "pagerduty-team": {
-          const body: Record<string, unknown> = { type: "team" };
-          if ("name" in fields) body["name"] = trimmed(fields, "name");
-          if ("description" in fields) body["description"] = trimmed(fields, "description");
-          await pdFetch(this.transport, `/teams/${id}`, { method: "PUT", body: { team: body } });
+          await this.api.put(`/teams/${id}`, {
+            body: {
+              team: {
+                type: "team",
+                ...("name" in fields ? { name: trimmed(fields, "name") } : {}),
+                ...("description" in fields ? { description: trimmed(fields, "description") } : {}),
+              },
+            },
+          });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "pagerduty-maintenance-window": {
-          const body: Record<string, unknown> = { type: "maintenance_window" };
-          if ("description" in fields) body["description"] = trimmed(fields, "description");
-          if ("startTime" in fields) body["start_time"] = trimmed(fields, "startTime");
-          if ("endTime" in fields) body["end_time"] = trimmed(fields, "endTime");
-          await pdFetch(this.transport, `/maintenance_windows/${id}`, {
-            method: "PUT",
-            body: { maintenance_window: body },
+          await this.api.put(`/maintenance_windows/${id}`, {
+            body: {
+              maintenance_window: {
+                type: "maintenance_window",
+                ...("description" in fields ? { description: trimmed(fields, "description") } : {}),
+                ...("startTime" in fields ? { start_time: trimmed(fields, "startTime") } : {}),
+                ...("endTime" in fields ? { end_time: trimmed(fields, "endTime") } : {}),
+              },
+            },
           });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "pagerduty-business-service": {
-          const body: Record<string, unknown> = {};
-          if ("name" in fields) body["name"] = trimmed(fields, "name");
-          if ("description" in fields) body["description"] = trimmed(fields, "description");
-          if ("pointOfContact" in fields)
-            body["point_of_contact"] = trimmed(fields, "pointOfContact");
-          await pdFetch(this.transport, `/business_services/${id}`, {
-            method: "PUT",
-            body: { business_service: body },
+          await this.api.put(`/business_services/${id}`, {
+            body: {
+              business_service: {
+                ...("name" in fields ? { name: trimmed(fields, "name") } : {}),
+                ...("description" in fields ? { description: trimmed(fields, "description") } : {}),
+                ...("pointOfContact" in fields
+                  ? { point_of_contact: trimmed(fields, "pointOfContact") }
+                  : {}),
+              },
+            },
           });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "pagerduty-event-orchestration": {
-          const body: Record<string, unknown> = {};
-          if ("name" in fields) body["name"] = trimmed(fields, "name");
-          if ("description" in fields) body["description"] = trimmed(fields, "description");
-          await pdFetch(this.transport, `/event_orchestrations/${id}`, {
-            method: "PUT",
-            body: { orchestration: body },
+          await this.api.put(`/event_orchestrations/${id}`, {
+            body: {
+              orchestration: {
+                ...("name" in fields ? { name: trimmed(fields, "name") } : {}),
+                ...("description" in fields ? { description: trimmed(fields, "description") } : {}),
+              },
+            },
           });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -942,33 +938,43 @@ export class PagerDutyClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
-      const paths: Record<string, string> = {
-        "pagerduty-service": `/services/${id}`,
-        "pagerduty-escalation-policy": `/escalation_policies/${id}`,
-        "pagerduty-schedule": `/schedules/${id}`,
-        "pagerduty-team": `/teams/${id}`,
-        "pagerduty-maintenance-window": `/maintenance_windows/${id}`,
-        "pagerduty-business-service": `/business_services/${id}`,
-        "pagerduty-event-orchestration": `/event_orchestrations/${id}`,
-      };
-      const path = paths[typeId];
-      if (!path) throw new Error(`PagerDuty plugin: deleting "${typeId}" is not supported`);
+      const remove = this.deletion(typeId, pathEncode(externalIdOf(resourceId)));
+      if (!remove) throw new Error(`PagerDuty plugin: deleting "${typeId}" is not supported`);
       this.invalidate();
-      await pdFetch(this.transport, path, { method: "DELETE" });
+      await remove();
     });
+  }
+
+  private deletion(typeId: string, id: NoSlashString): (() => Promise<void>) | undefined {
+    switch (typeId) {
+      case "pagerduty-service":
+        return () => this.api.delete(`/services/${id}`);
+      case "pagerduty-escalation-policy":
+        return () => this.api.delete(`/escalation_policies/${id}`);
+      case "pagerduty-schedule":
+        return () => this.api.delete(`/schedules/${id}`);
+      case "pagerduty-team":
+        return () => this.api.delete(`/teams/${id}`);
+      case "pagerduty-maintenance-window":
+        return () => this.api.delete(`/maintenance_windows/${id}`);
+      case "pagerduty-business-service":
+        return () => this.api.delete(`/business_services/${id}`);
+      case "pagerduty-event-orchestration":
+        return () => this.api.delete(`/event_orchestrations/${id}`);
+      default:
+        return undefined;
+    }
   }
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
 
-  private async putIncident(incidentId: string, incident: Record<string, unknown>): Promise<void> {
+  private async putIncident(incidentId: string, incident: IncidentChange): Promise<void> {
     await withFrom(this.paging, null, (from) =>
-      pdFetch(this.transport, `/incidents/${encodeURIComponent(incidentId)}`, {
-        method: "PUT",
+      this.api.put(`/incidents/${pathEncode(incidentId)}`, {
         body: { incident: { type: "incident_reference", ...incident } },
-        from,
+        headers: { From: from },
       }),
     );
   }
@@ -981,7 +987,7 @@ export class PagerDutyClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(ext);
       if (typeId === "pagerduty-incident") {
         if (actionId === ACTIONS.acknowledge)
           return this.putIncident(ext, { status: "acknowledged" });
@@ -991,8 +997,7 @@ export class PagerDutyClient implements PluginClient {
         typeId === "pagerduty-service" &&
         (actionId === ACTIONS.disable || actionId === ACTIONS.enable)
       ) {
-        await pdFetch(this.transport, `/services/${id}`, {
-          method: "PUT",
+        await this.api.put(`/services/${id}`, {
           body: {
             service: {
               type: "service",
@@ -1004,18 +1009,11 @@ export class PagerDutyClient implements PluginClient {
       }
       if (typeId === "pagerduty-schedule" && actionId.startsWith(ACTIONS.deleteOverridePrefix)) {
         const overrideId = actionId.slice(ACTIONS.deleteOverridePrefix.length);
-        await pdFetch(
-          this.transport,
-          `/schedules/${id}/overrides/${encodeURIComponent(overrideId)}`,
-          {
-            method: "DELETE",
-          },
-        );
+        await this.api.delete(`/schedules/${id}/overrides/${pathEncode(overrideId)}`);
         return;
       }
       if (typeId === "pagerduty-maintenance-window" && actionId === COMMANDS.endMaintenance) {
-        await pdFetch(this.transport, `/maintenance_windows/${id}`, {
-          method: "PUT",
+        await this.api.put(`/maintenance_windows/${id}`, {
           body: {
             maintenance_window: { type: "maintenance_window", end_time: new Date().toISOString() },
           },
@@ -1036,14 +1034,14 @@ export class PagerDutyClient implements PluginClient {
     return attempt(async () => {
       const values = parsePromptValues(args);
       const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(ext);
       if (typeId === "pagerduty-service" && command === COMMANDS.createIncident) {
         const title = (values["title"] ?? "").trim();
         if (!title) throw new Error("Give the incident a title.");
         const priority = (values["priorityId"] ?? "").trim();
         const details = (values["details"] ?? "").trim();
         return withFrom(this.paging, null, (from) =>
-          pdFetch(this.transport, "/incidents", {
+          this.api.post("/incidents", {
             body: {
               incident: {
                 type: "incident",
@@ -1054,15 +1052,14 @@ export class PagerDutyClient implements PluginClient {
                 ...(details ? { body: { type: "incident_body", details } } : {}),
               },
             },
-            from,
+            headers: { From: from },
           }),
         );
       }
       if (typeId === "pagerduty-service" && command === COMMANDS.changeEscalationPolicy) {
         const policy = (values["escalationPolicyId"] ?? "").trim();
         if (!policy) throw new Error("Pick an escalation policy.");
-        return pdFetch(this.transport, `/services/${id}`, {
-          method: "PUT",
+        return this.api.put(`/services/${id}`, {
           body: {
             service: {
               type: "service",
@@ -1078,11 +1075,9 @@ export class PagerDutyClient implements PluginClient {
         if (!user || !start || !end) throw new Error("Pick who, from and to.");
         if (Date.parse(end) <= Date.parse(start))
           throw new Error("The override must end after it starts.");
-        const res = await pdFetch<Array<{ status?: number; errors?: string[] }>>(
-          this.transport,
-          `/schedules/${id}/overrides`,
-          { body: { overrides: [{ start, end, user: ref(user, "user_reference") }] } },
-        );
+        const res = await this.api.post(`/schedules/${id}/overrides`, {
+          body: { overrides: [{ start, end, user: ref(user, "user_reference") }] },
+        });
         const failed = (Array.isArray(res) ? res : []).find((r) => r.status && r.status >= 400);
         if (failed)
           throw new Error(`PagerDuty refused the override: ${(failed.errors ?? []).join("; ")}`);
@@ -1105,18 +1100,18 @@ export class PagerDutyClient implements PluginClient {
             const content = (values["content"] ?? "").trim();
             if (!content) throw new Error("Write the note.");
             return withFrom(this.paging, null, (from) =>
-              pdFetch(this.transport, `/incidents/${id}/notes`, {
+              this.api.post(`/incidents/${id}/notes`, {
                 body: { note: { content } },
-                from,
+                headers: { From: from },
               }),
             );
           }
           case COMMANDS.snooze: {
             const minutes = Number(values["minutes"] ?? 60);
             return withFrom(this.paging, null, (from) =>
-              pdFetch(this.transport, `/incidents/${id}/snooze`, {
+              this.api.post(`/incidents/${id}/snooze`, {
                 body: { duration: Math.round(minutes * 60) },
-                from,
+                headers: { From: from },
               }),
             );
           }

@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { formatRules, openToInternet, sshOpenToInternet } from "./firewall.js";
-import type { LFilesystem, LFirewallRuleset, LInstance, LSshKey } from "./types.js";
+import type { LAnyFirewallRuleset, LFilesystem, LInstance, LSshKey } from "./types.js";
 
 /** Pure mapping from Lambda Cloud payloads to host resource instances. */
 
@@ -125,7 +125,7 @@ export function mapFilesystem(fs: LFilesystem, accountId: string): ResourceInsta
 }
 
 export function mapRuleset(
-  r: LFirewallRuleset,
+  r: LAnyFirewallRuleset,
   accountId: string,
   global = false,
 ): ResourceInstance {

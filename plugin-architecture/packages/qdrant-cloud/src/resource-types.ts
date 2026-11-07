@@ -31,8 +31,13 @@ export const CLUSTER_PHASES = [
 ];
 
 export const STORAGE_TIERS = ["COST_OPTIMISED", "BALANCED", "PERFORMANCE"];
-export const RESTART_POLICIES = ["AUTOMATIC", "ROLLING", "PARALLEL"];
-export const REBALANCE_STRATEGIES = ["BY_COUNT_AND_SIZE", "BY_COUNT", "BY_SIZE", "DISABLED"];
+export const RESTART_POLICIES = ["AUTOMATIC", "ROLLING", "PARALLEL"] as const;
+export const REBALANCE_STRATEGIES = [
+  "BY_COUNT_AND_SIZE",
+  "BY_COUNT",
+  "BY_SIZE",
+  "DISABLED",
+] as const;
 
 export const ClusterResourceType = rt({
   name: "Cluster",
@@ -104,12 +109,12 @@ export const ClusterResourceType = rt({
     f("auditLogging", "Audit Logging", { kind: "boolean", required: false }),
     f("restartPolicy", "Restart Policy", {
       kind: "enum",
-      enumValues: RESTART_POLICIES,
+      enumValues: [...RESTART_POLICIES],
       required: false,
     }),
     f("rebalanceStrategy", "Shard Rebalancing", {
       kind: "enum",
-      enumValues: REBALANCE_STRATEGIES,
+      enumValues: [...REBALANCE_STRATEGIES],
       required: false,
     }),
     f("jwtRbac", "JWT RBAC", { kind: "boolean", required: false, editable: false }),

@@ -17,14 +17,14 @@ import type {
 } from "@infrawrench/plugin-base";
 import type { HoneycombContext } from "./api.js";
 import { statusOf, v1, v2 } from "./api.js";
-import type { HnyAuth, HnyAuthV2 } from "./types.js";
+import type { HnyAuth } from "./types.js";
 
 const perm = (id: string, label: string) => ({ id, label });
 
 interface ConfigCapability {
   capability: PreflightCapability;
   /** `api_key_access` flags that must all be true (alternate spellings allowed). */
-  flags: string[][];
+  flags: Array<Array<keyof HnyAuth["api_key_access"]>>;
 }
 
 const CONFIG_CAPABILITIES: ConfigCapability[] = [
@@ -142,7 +142,7 @@ export async function verifyHoneycombCredentials(
 
   if (configurationKey) {
     try {
-      const auth = await v1<HnyAuth>(ctx, configurationKey, "/1/auth");
+      const auth = await v1(ctx, configurationKey).get("/1/auth");
       if (auth.type === "ingest") {
         for (const { capability } of CONFIG_CAPABILITIES) {
           checks.push({
@@ -198,7 +198,7 @@ export async function verifyHoneycombCredentials(
 
   if (ctx.managementToken) {
     try {
-      const auth = await v2<HnyAuthV2>(ctx, "/2/auth");
+      const auth = await v2(ctx).get("/2/auth");
       const scopes = new Set(auth.data?.attributes?.scopes ?? []);
       for (const { capability, scopes: needed } of MANAGEMENT_CAPABILITIES) {
         const missing = capability.requiredPermissions.filter(

@@ -7,7 +7,7 @@ import type {
   PluginManifest,
   CredentialsOf,
 } from "@infrawrench/plugin-base";
-import { REGIONS, hostFor, influxJson } from "./api.js";
+import { REGIONS, cloudApi, hostFor, influxCall } from "./api.js";
 import { InfluxClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { influxRemediationCommands } from "./remediation.js";
@@ -104,12 +104,8 @@ export const plugin = definePlugin({
       const region = (credentials["region"] ?? "").trim();
       const token = (credentials["token"] ?? "").trim();
       if (!region || !token) throw new Error("Pick the region and enter the token first.");
-      const res = await influxJson<{ orgs?: Array<{ id: string; name?: string }> }>(
-        services?.http ? { http: services.http } : {},
-        "GET",
-        `${hostFor(region)}/api/v2/orgs`,
-        `Token ${token}`,
-      );
+      const api = cloudApi(services?.http ? { http: services.http } : {}, hostFor(region), token);
+      const res = await influxCall(() => api.get("/api/v2/orgs"));
       return (res?.orgs ?? []).map((o) => ({ id: o.id, label: o.name ?? o.id, description: o.id }));
     });
   },

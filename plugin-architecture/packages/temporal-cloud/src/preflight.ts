@@ -4,8 +4,7 @@ import type {
   PreflightResult,
 } from "@infrawrench/plugin-base";
 import type { TemporalContext } from "./api.js";
-import { METRICS_API_BASE, fetchText, isPermissionError, statusOf, tcFetch } from "./api.js";
-import type { TcApiKey, TcServiceAccount, TcUser } from "./types.js";
+import { METRICS_API_BASE, fetchText, isPermissionError, statusOf } from "./api.js";
 
 /**
  * Temporal Cloud has no permission strings, only roles
@@ -51,11 +50,7 @@ export async function verifyTemporalCredentials(ctx: TemporalContext): Promise<P
   let identity: string | undefined;
   let role = "";
   try {
-    const me = await tcFetch<{
-      user?: TcUser;
-      serviceAccount?: TcServiceAccount;
-      principalApiKey?: TcApiKey;
-    }>(ctx, "/cloud/current-identity");
+    const me = await ctx.api.get("/cloud/current-identity");
     identity = me.user?.spec?.email ?? me.serviceAccount?.spec?.name ?? me.principalApiKey?.id;
     role =
       me.user?.spec?.access?.accountAccess?.role ??
@@ -76,7 +71,7 @@ export async function verifyTemporalCredentials(ctx: TemporalContext): Promise<P
   }
 
   try {
-    await tcFetch<unknown>(ctx, "/cloud/namespaces", { query: { pageSize: 1 } });
+    await ctx.api.get("/cloud/namespaces", { query: { pageSize: 1 } });
     checks.push(
       role === "ROLE_ADMIN" || role === "ROLE_OWNER"
         ? { capabilityId: "resources", status: "ok" }

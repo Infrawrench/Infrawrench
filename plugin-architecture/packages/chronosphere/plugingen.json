@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs-xcor.paloaltonetworks.com/openapi/api_v1_config_swagger.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/ConditionOp",
+      "value": {
+        "type": "string"
+      },
+      "why": "The create form's operator goes through as typed, and a monitor read back can hold one newer than this list."
+    }
+  ],
+  "paths": {
+    "/api/v1/config/monitors": ["get", "post"],
+    "/api/v1/config/monitors/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/notification-policies": ["get", "post"],
+    "/api/v1/config/notification-policies/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/notifiers": ["get", "post"],
+    "/api/v1/config/notifiers/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/collections": ["get", "post"],
+    "/api/v1/config/collections/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/buckets": ["get", "post"],
+    "/api/v1/config/buckets/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/teams": ["get", "post"],
+    "/api/v1/config/teams/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/dashboards": ["get", "post"],
+    "/api/v1/config/dashboards/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/slos": ["get", "post"],
+    "/api/v1/config/slos/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/rollup-rules": ["get", "post"],
+    "/api/v1/config/rollup-rules/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/drop-rules": ["get", "post"],
+    "/api/v1/config/drop-rules/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/recording-rules": ["get", "post"],
+    "/api/v1/config/recording-rules/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/muting-rules": ["get", "post"],
+    "/api/v1/config/muting-rules/{slug}": ["get", "put", "delete"],
+    "/api/v1/config/service-accounts": ["get", "post"],
+    "/api/v1/config/service-accounts/{slug}": ["get", "delete"],
+    "/api/v1/config/services": ["get"],
+    "/api/v1/config/services/{slug}": ["get"]
+  }
+}

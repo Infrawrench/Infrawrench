@@ -16,8 +16,10 @@ import type {
   SettingDescriptor,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import { ClerkApi } from "./api.js";
+import { externalIdOf, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
+import { createClerkApi, type ClerkApi, type ListBody } from "./api.js";
+import type { operations } from "./api-types.gen.js";
+import type { ClerkFailure } from "./http.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 import type {
   CkDomain,
@@ -29,12 +31,11 @@ import type {
   CkMachine,
   CkMembership,
   CkOAuthApp,
+  CkOrgInvitation,
   CkOrgRole,
   CkOrganization,
   CkOrgSettings,
-  CkProtect,
   CkRedirectUrl,
-  CkRestrictions,
   CkSession,
   CkUser,
 } from "./types.js";
@@ -43,12 +44,15 @@ const PLUGIN_ID = "clerk";
 export const METRICS_DEFAULT_RANGE_MS = 14 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function str(value: unknown): string {
+/** The query of `GET /users/count`. */
+type CountQuery = NonNullable<operations["GetUsersCount"]["parameters"]["query"]>;
+
+function str(value: string | number | boolean | null | undefined): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
 /** Clerk timestamps are Unix milliseconds. */
-function iso(ms: unknown): string {
+function iso(ms: number | null | undefined): string {
   return typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : "";
 }
 
@@ -71,6 +75,17 @@ function list(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/** JWT template claims from the editor: whatever JSON was typed, for Clerk to judge. */
+function parseClaims(text: string | undefined): CkJwtTemplate["claims"] {
+  try {
+    return JSON.parse(text || "{}");
+  } catch {
+    throw Object.assign(new Error("Clerk plugin: claims must be valid JSON"), {
+      status: 400,
+    });
+  }
+}
+
 function primaryEmail(u: CkUser): string {
   const emails = u.email_addresses ?? [];
   return str((emails.find((e) => e.id === u.primary_email_address_id) ?? emails[0])?.email_address);
@@ -87,7 +102,7 @@ export class ClerkClient implements PluginClient {
         "Clerk plugin: the secret key should start with sk_live_ or sk_test_ (the publishable pk_ key will not work)",
       );
     }
-    this.api = new ClerkApi(secretKey, credentials["caCert"] ?? "", services);
+    this.api = createClerkApi(secretKey, credentials["caCert"] ?? "", services);
   }
 
   // -------------------------------------------------------------------------
@@ -100,56 +115,80 @@ export class ClerkClient implements PluginClient {
         case "instance":
           return [await this.instanceResource(accountId)];
         case "user":
-          return (await this.api.list<CkUser>("/users", { order_by: "-created_at" })).map((u) =>
-            this.mapUser(accountId, u),
-          );
+          return (await this.listUsers()).map((u) => this.mapUser(accountId, u));
         case "organization":
           return (
-            await this.api.list<CkOrganization>("/organizations", { include_members_count: true })
+            await this.api.list((paging) =>
+              this.api.get("/organizations", {
+                query: { include_members_count: true, ...paging },
+              }),
+            )
           ).map((o) => this.mapOrganization(accountId, o));
         case "domain":
-          return (await this.api.list<CkDomain>("/domains")).map((d) =>
-            this.mapDomain(accountId, d),
-          );
+          return (await this.listDomains()).map((d) => this.mapDomain(accountId, d));
         case "jwt-template":
-          return (await this.api.list<CkJwtTemplate>("/jwt_templates")).map((t) =>
-            this.mapJwtTemplate(accountId, t),
+          return (await this.api.list((query) => this.api.get("/jwt_templates", { query }))).map(
+            (t) => this.mapJwtTemplate(accountId, t),
           );
         case "oauth-application":
-          return (await this.api.list<CkOAuthApp>("/oauth_applications")).map((a) =>
-            this.mapOAuthApp(accountId, a),
-          );
+          return (
+            await this.api.list((query) => this.api.get("/oauth_applications", { query }))
+          ).map((a) => this.mapOAuthApp(accountId, a));
         case "enterprise-connection":
-          return (await this.api.list<CkEnterpriseConnection>("/enterprise_connections")).map((c) =>
-            this.mapEnterpriseConnection(accountId, c),
-          );
+          return (
+            await this.api.list((query) => this.api.get("/enterprise_connections", { query }))
+          ).map((c) => this.mapEnterpriseConnection(accountId, c));
         case "machine":
-          return (await this.api.list<CkMachine>("/machines")).map((m) =>
+          return (await this.api.list((query) => this.api.get("/machines", { query }))).map((m) =>
             this.mapMachine(accountId, m),
           );
         case "allowlist-identifier":
-          return (await this.api.list<CkIdentifier>("/allowlist_identifiers")).map((i) =>
-            this.mapIdentifier(accountId, "allowlist-identifier", i),
-          );
+          return (
+            await this.api.list((query) => this.api.get("/allowlist_identifiers", { query }))
+          ).map((i) => this.mapIdentifier(accountId, "allowlist-identifier", i));
         case "blocklist-identifier": {
-          const body = await this.api.request<CkIdentifier[] | { data?: CkIdentifier[] }>(
-            "/blocklist_identifiers",
-          );
+          const body: ListBody<CkIdentifier> = await this.api.get("/blocklist_identifiers");
           const items = Array.isArray(body) ? body : (body.data ?? []);
           return items.map((i) => this.mapIdentifier(accountId, "blocklist-identifier", i));
         }
         case "invitation":
-          return (await this.api.list<CkInvitation>("/invitations", { status: "pending" })).map(
-            (i) => this.mapInvitation(accountId, i),
-          );
+          return (
+            await this.api.list((paging) =>
+              this.api.get("/invitations", { query: { status: "pending", ...paging } }),
+            )
+          ).map((i) => this.mapInvitation(accountId, i));
         case "redirect-url":
-          return (await this.api.list<CkRedirectUrl>("/redirect_urls")).map((r) =>
-            this.mapRedirectUrl(accountId, r),
+          return (await this.api.list((query) => this.api.get("/redirect_urls", { query }))).map(
+            (r) => this.mapRedirectUrl(accountId, r),
           );
         default:
           throw new Error(`Clerk plugin: unknown resource type "${typeId}"`);
       }
     });
+  }
+
+  private listUsers(maxItems?: number): Promise<CkUser[]> {
+    return this.api.list(
+      (paging) => this.api.get("/users", { query: { order_by: "-created_at", ...paging } }),
+      maxItems,
+    );
+  }
+
+  private listDomains(): Promise<CkDomain[]> {
+    return this.api.list((query) => this.api.get("/domains", { query }));
+  }
+
+  /** How many users match. `query` is empty for all of them. */
+  private countUsers(query: CountQuery) {
+    return this.api.get("/users/count", { query });
+  }
+
+  private listActiveSessions(userId: string, maxItems?: number): Promise<CkSession[]> {
+    return this.api.list(
+      (paging) =>
+        this.api.get("/sessions", { query: { user_id: userId, status: "active", ...paging } }),
+      maxItems,
+    );
   }
 
   getResource(
@@ -159,36 +198,30 @@ export class ClerkClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const raw = externalIdOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       switch (typeId) {
         case "instance":
           return this.instanceResource(accountId);
         case "user":
-          return this.mapUser(accountId, await this.api.request<CkUser>(`/users/${id}`));
+          return this.mapUser(accountId, await this.api.get(`/users/${id}`));
         case "organization":
           return this.mapOrganization(
             accountId,
-            await this.api.request<CkOrganization>(`/organizations/${id}`, {
+            await this.api.get(`/organizations/${id}`, {
               query: { include_members_count: true },
             }),
           );
         case "jwt-template":
-          return this.mapJwtTemplate(
-            accountId,
-            await this.api.request<CkJwtTemplate>(`/jwt_templates/${id}`),
-          );
+          return this.mapJwtTemplate(accountId, await this.api.get(`/jwt_templates/${id}`));
         case "oauth-application":
-          return this.mapOAuthApp(
-            accountId,
-            await this.api.request<CkOAuthApp>(`/oauth_applications/${id}`),
-          );
+          return this.mapOAuthApp(accountId, await this.api.get(`/oauth_applications/${id}`));
         case "enterprise-connection":
           return this.mapEnterpriseConnection(
             accountId,
-            await this.api.request<CkEnterpriseConnection>(`/enterprise_connections/${id}`),
+            await this.api.get(`/enterprise_connections/${id}`),
           );
         case "machine":
-          return this.mapMachine(accountId, await this.api.request<CkMachine>(`/machines/${id}`));
+          return this.mapMachine(accountId, await this.api.get(`/machines/${id}`));
         default: {
           // Domains, list entries, invitations and redirect URLs have no single GET worth using.
           const match = (await runPluginEffect(this.listResources(typeId, accountId))).find(
@@ -212,8 +245,8 @@ export class ClerkClient implements PluginClient {
   ): PluginEffect<string> {
     return attempt(async () => {
       if (typeId === "machine" && outputKey === "secretKey") {
-        const body = await this.api.request<{ secret?: string }>(
-          `/machines/${encodeURIComponent(externalIdOf(resourceId))}/secret_key`,
+        const body = await this.api.get(
+          `/machines/${pathEncode(externalIdOf(resourceId))}/secret_key`,
         );
         if (!body.secret) throw new Error("Clerk plugin: Clerk returned no machine secret");
         return body.secret;
@@ -236,8 +269,8 @@ export class ClerkClient implements PluginClient {
     displayName: string,
     fields: ResourceInstance["fields"],
     outputs: Record<string, string>,
-    createdAt?: unknown,
-    updatedAt?: unknown,
+    createdAt?: number,
+    updatedAt?: number,
   ): ResourceInstance {
     const created = iso(createdAt) || new Date(0).toISOString();
     return {
@@ -257,17 +290,13 @@ export class ClerkClient implements PluginClient {
 
   private async instanceResource(accountId: string): Promise<ResourceInstance> {
     const [instance, domains, users, active, orgSettings] = await Promise.all([
-      this.api.request<CkInstance>("/instance"),
-      this.api.list<CkDomain>("/domains").catch(() => [] as CkDomain[]),
-      this.api
-        .request<{ total_count?: number }>("/users/count")
-        .catch(() => ({ total_count: undefined })),
-      this.api
-        .request<{ total_count?: number }>("/users/count", {
-          query: { last_active_at_since: Date.now() - 30 * DAY_MS },
-        })
-        .catch(() => ({ total_count: undefined })),
-      this.api.request<CkOrgSettings>("/instance/organization_settings").catch(() => undefined),
+      this.api.get("/instance"),
+      this.listDomains().catch((): CkDomain[] => []),
+      this.countUsers({}).catch(() => ({ total_count: undefined })),
+      this.countUsers({ last_active_at_since: Date.now() - 30 * DAY_MS }).catch(() => ({
+        total_count: undefined,
+      })),
+      this.api.get("/instance/organization_settings").catch(() => undefined),
     ]);
     return this.mapInstance(
       accountId,
@@ -566,25 +595,26 @@ export class ClerkClient implements PluginClient {
     return attempt(async () => {
       const checks: PreflightCapabilityCheck[] = [];
       let identity = "";
-      try {
-        const instance = await this.api.request<CkInstance>("/instance");
-        identity = `${str(instance.environment_type)} instance ${str(instance.id)}`;
-        checks.push({ capabilityId: "instance", status: "ok" });
-      } catch (error) {
-        const status = (error as { status?: number }).status;
-        checks.push(
-          status === 401 || status === 403
-            ? {
-                capabilityId: "instance",
-                status: "missing",
-                missingPermissions: [
-                  { id: "secret-key", label: "A valid secret key for this instance" },
-                ],
-                message: (error as Error).message,
-              }
-            : { capabilityId: "instance", status: "unknown", message: (error as Error).message },
-        );
-      }
+      await this.api
+        .get("/instance")
+        .then((instance) => {
+          identity = `${str(instance.environment_type)} instance ${str(instance.id)}`;
+          checks.push({ capabilityId: "instance", status: "ok" });
+        })
+        .catch((error: ClerkFailure) => {
+          checks.push(
+            error.status === 401 || error.status === 403
+              ? {
+                  capabilityId: "instance",
+                  status: "missing",
+                  missingPermissions: [
+                    { id: "secret-key", label: "A valid secret key for this instance" },
+                  ],
+                  message: error.message,
+                }
+              : { capabilityId: "instance", status: "unknown", message: error.message },
+          );
+        });
       return { checks, ...(identity ? { identity } : {}) };
     });
   }
@@ -610,19 +640,15 @@ export class ClerkClient implements PluginClient {
       for (let at = startMs; at < endMs; at += bucketMs) buckets.push(at);
       const counts = await Promise.all(
         buckets.map((at) =>
-          this.api
-            .request<{ total_count?: number }>("/users/count", {
-              query: { created_at_after: at, created_at_before: Math.min(at + bucketMs, endMs) },
-            })
-            .then((b) => b.total_count ?? 0),
+          this.countUsers({
+            created_at_after: at,
+            created_at_before: Math.min(at + bucketMs, endMs),
+          }).then((b) => b.total_count ?? 0),
         ),
       );
       const [day, week, month] = await Promise.all(
         [DAY_MS, 7 * DAY_MS, 30 * DAY_MS].map((window) =>
-          this.api
-            .request<{ total_count?: number }>("/users/count", {
-              query: { last_active_at_since: endMs - window },
-            })
+          this.countUsers({ last_active_at_since: endMs - window })
             .then((b) => b.total_count ?? 0)
             .catch(() => 0),
         ),
@@ -656,11 +682,11 @@ export class ClerkClient implements PluginClient {
     return attempt(async () => {
       if (resourceTypeId === "instance") {
         const [total, active, banned] = await Promise.all(
-          [{}, { last_active_at_since: Date.now() - 30 * DAY_MS }, { banned: true }].map((query) =>
-            this.api
-              .request<{ total_count?: number }>("/users/count", { query })
-              .then((b) => b.total_count)
-              .catch(() => undefined),
+          [{}, { last_active_at_since: Date.now() - 30 * DAY_MS }, { banned: true }].map(
+            (query: CountQuery) =>
+              this.countUsers(query)
+                .then((b) => b.total_count)
+                .catch(() => undefined),
           ),
         );
         const show = (n: number | undefined) => (n === undefined ? "—" : String(n));
@@ -671,12 +697,9 @@ export class ClerkClient implements PluginClient {
         ];
       }
       if (resourceTypeId === "organization") {
-        const org = await this.api.request<CkOrganization>(
-          `/organizations/${encodeURIComponent(externalIdOf(resourceId))}`,
-          {
-            query: { include_members_count: true },
-          },
-        );
+        const org = await this.api.get(`/organizations/${pathEncode(externalIdOf(resourceId))}`, {
+          query: { include_members_count: true },
+        });
         return [
           { label: "Members", value: str(org.members_count ?? "—") },
           { label: "Pending invitations", value: str(org.pending_invitations_count ?? 0) },
@@ -694,9 +717,9 @@ export class ClerkClient implements PluginClient {
     return attempt(async () => {
       // There is no GET for restrictions; an empty PATCH changes nothing and returns the current values.
       const [restrictions, org, protect] = await Promise.all([
-        this.api.request<CkRestrictions>("/instance/restrictions", { method: "PATCH", body: {} }),
-        this.api.request<CkOrgSettings>("/instance/organization_settings"),
-        this.api.request<CkProtect>("/instance/protect").catch(() => undefined),
+        this.api.patch("/instance/restrictions", { body: {} }),
+        this.api.get("/instance/organization_settings"),
+        this.api.get("/instance/protect").catch(() => undefined),
       ]);
       const toggle = (
         id: string,
@@ -785,8 +808,8 @@ export class ClerkClient implements PluginClient {
 
   applyManifest(_resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
     return attempt(async () => {
-      const changes = JSON.parse(manifest) as Array<{ id: string; value: string }>;
-      const groups: Record<string, Record<string, unknown>> = {
+      const changes: Array<{ id: string; value: string }> = JSON.parse(manifest);
+      const groups: Record<string, Record<string, boolean | number>> = {
         restrictions: {},
         org: {},
         protect: {},
@@ -798,19 +821,13 @@ export class ClerkClient implements PluginClient {
         target[key] = key === "max_allowed_memberships" ? Number(value) : bool(value) === true;
       }
       if (Object.keys(groups["restrictions"]!).length > 0) {
-        await this.api.request("/instance/restrictions", {
-          method: "PATCH",
-          body: groups["restrictions"],
-        });
+        await this.api.patch("/instance/restrictions", { body: groups["restrictions"]! });
       }
       if (Object.keys(groups["org"]!).length > 0) {
-        await this.api.request("/instance/organization_settings", {
-          method: "PATCH",
-          body: groups["org"],
-        });
+        await this.api.patch("/instance/organization_settings", { body: groups["org"]! });
       }
       if (Object.keys(groups["protect"]!).length > 0) {
-        await this.api.request("/instance/protect", { method: "PATCH", body: groups["protect"] });
+        await this.api.patch("/instance/protect", { body: groups["protect"]! });
       }
     });
   }
@@ -820,9 +837,7 @@ export class ClerkClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async userOptions(): Promise<SelectOption[]> {
-    const users = await this.api
-      .list<CkUser>("/users", { order_by: "-created_at" }, 500)
-      .catch(() => [] as CkUser[]);
+    const users = await this.listUsers(500).catch((): CkUser[] => []);
     return users.map((u) => ({
       id: str(u.id),
       label: primaryEmail(u) || str(u.username) || str(u.id),
@@ -831,8 +846,8 @@ export class ClerkClient implements PluginClient {
 
   async roleOptions(): Promise<SelectOption[]> {
     const roles = await this.api
-      .list<CkOrgRole>("/organization_roles", {}, 500)
-      .catch(() => [] as CkOrgRole[]);
+      .list((query) => this.api.get("/organization_roles", { query }), 500)
+      .catch((): CkOrgRole[] => []);
     if (roles.length === 0) {
       return [
         { id: "org:admin", label: "Admin" },
@@ -1101,10 +1116,9 @@ export class ClerkClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "user": {
-          const user = await this.api.request<CkUser>("/users", {
-            method: "POST",
+          const user = await this.api.post("/users", {
             body: {
-              email_address: [fields["email"]],
+              email_address: [fields["email"] ?? null],
               ...(fields["firstName"] ? { first_name: fields["firstName"] } : {}),
               ...(fields["lastName"] ? { last_name: fields["lastName"] } : {}),
               ...(fields["username"] ? { username: fields["username"] } : {}),
@@ -1116,8 +1130,7 @@ export class ClerkClient implements PluginClient {
           return this.mapUser(accountId, user);
         }
         case "organization": {
-          const org = await this.api.request<CkOrganization>("/organizations", {
-            method: "POST",
+          const org = await this.api.post("/organizations", {
             body: {
               name: fields["name"],
               ...(fields["slug"] ? { slug: fields["slug"] } : {}),
@@ -1130,8 +1143,7 @@ export class ClerkClient implements PluginClient {
           return this.mapOrganization(accountId, org);
         }
         case "domain": {
-          const domain = await this.api.request<CkDomain>("/domains", {
-            method: "POST",
+          const domain = await this.api.post("/domains", {
             body: {
               name: fields["name"],
               is_satellite: true,
@@ -1141,16 +1153,8 @@ export class ClerkClient implements PluginClient {
           return this.mapDomain(accountId, domain);
         }
         case "jwt-template": {
-          let claims: unknown;
-          try {
-            claims = JSON.parse(fields["claims"] || "{}");
-          } catch {
-            throw Object.assign(new Error("Clerk plugin: claims must be valid JSON"), {
-              status: 400,
-            });
-          }
-          const template = await this.api.request<CkJwtTemplate>("/jwt_templates", {
-            method: "POST",
+          const claims = parseClaims(fields["claims"]);
+          const template = await this.api.post("/jwt_templates", {
             body: {
               name: fields["name"],
               claims,
@@ -1163,40 +1167,31 @@ export class ClerkClient implements PluginClient {
           return this.mapJwtTemplate(accountId, template);
         }
         case "oauth-application": {
-          const app = await this.api.request<CkOAuthApp & { client_secret?: string }>(
-            "/oauth_applications",
-            {
-              method: "POST",
-              body: {
-                name: fields["name"],
-                redirect_uris: list(fields["redirectUris"]),
-                scopes: fields["scopes"] || "profile email",
-                public: fields["public"] === "true",
-              },
+          const app = await this.api.post("/oauth_applications", {
+            body: {
+              name: fields["name"],
+              redirect_uris: list(fields["redirectUris"]),
+              scopes: fields["scopes"] || "profile email",
+              public: fields["public"] === "true",
             },
-          );
+          });
           return this.mapOAuthApp(accountId, app);
         }
         case "enterprise-connection": {
-          const connection = await this.api.request<CkEnterpriseConnection>(
-            "/enterprise_connections",
-            {
-              method: "POST",
-              body: {
-                name: fields["name"],
-                provider: fields["provider"] || "saml_custom",
-                domains: list(fields["domains"]),
-                ...(fields["idpMetadataUrl"]
-                  ? { saml: { idp_metadata_url: fields["idpMetadataUrl"] } }
-                  : {}),
-              },
+          const connection = await this.api.post("/enterprise_connections", {
+            body: {
+              name: fields["name"],
+              provider: fields["provider"] || "saml_custom",
+              domains: list(fields["domains"]),
+              ...(fields["idpMetadataUrl"]
+                ? { saml: { idp_metadata_url: fields["idpMetadataUrl"] } }
+                : {}),
             },
-          );
+          });
           return this.mapEnterpriseConnection(accountId, connection);
         }
         case "machine": {
-          const machine = await this.api.request<CkMachine>("/machines", {
-            method: "POST",
+          const machine = await this.api.post("/machines", {
             body: {
               name: fields["name"],
               ...(fields["defaultTokenTtl"]
@@ -1206,22 +1201,20 @@ export class ClerkClient implements PluginClient {
           });
           return this.mapMachine(accountId, machine);
         }
-        case "allowlist-identifier":
+        case "allowlist-identifier": {
+          const item = await this.api.post("/allowlist_identifiers", {
+            body: { identifier: fields["identifier"], notify: false },
+          });
+          return this.mapIdentifier(accountId, typeId, item);
+        }
         case "blocklist-identifier": {
-          const path =
-            typeId === "allowlist-identifier" ? "/allowlist_identifiers" : "/blocklist_identifiers";
-          const item = await this.api.request<CkIdentifier>(path, {
-            method: "POST",
-            body: {
-              identifier: fields["identifier"],
-              ...(typeId === "allowlist-identifier" ? { notify: false } : {}),
-            },
+          const item = await this.api.post("/blocklist_identifiers", {
+            body: { identifier: fields["identifier"] },
           });
           return this.mapIdentifier(accountId, typeId, item);
         }
         case "invitation": {
-          const invitation = await this.api.request<CkInvitation>("/invitations", {
-            method: "POST",
+          const invitation = await this.api.post("/invitations", {
             body: {
               email_address: fields["email"],
               ...(fields["redirectUrl"] ? { redirect_url: fields["redirectUrl"] } : {}),
@@ -1234,8 +1227,7 @@ export class ClerkClient implements PluginClient {
           return this.mapInvitation(accountId, invitation);
         }
         case "redirect-url": {
-          const url = await this.api.request<CkRedirectUrl>("/redirect_urls", {
-            method: "POST",
+          const url = await this.api.post("/redirect_urls", {
             body: { url: fields["url"] },
           });
           return this.mapRedirectUrl(accountId, url);
@@ -1257,73 +1249,60 @@ export class ClerkClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       const has = (key: string) => fields[key] !== undefined;
       switch (typeId) {
         case "instance": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["UpdateInstance"]> = {};
           if (has("allowedOrigins")) body["allowed_origins"] = list(fields["allowedOrigins"]);
           if (fields["supportEmail"]) body["support_email"] = fields["supportEmail"];
-          if (Object.keys(body).length > 0)
-            await this.api.request("/instance", { method: "PATCH", body });
+          if (Object.keys(body).length > 0) await this.api.patch("/instance", { body });
           return this.instanceResource(accountId);
         }
         case "user": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["UpdateUser"]> = {};
           if (has("firstName")) body["first_name"] = fields["firstName"];
           if (has("lastName")) body["last_name"] = fields["lastName"];
           if (has("username")) body["username"] = fields["username"];
           if (has("externalId")) body["external_id"] = fields["externalId"];
           if (fields["password"]) body["password"] = fields["password"];
-          return this.mapUser(
-            accountId,
-            await this.api.request<CkUser>(`/users/${id}`, { method: "PATCH", body }),
-          );
+          return this.mapUser(accountId, await this.api.patch(`/users/${id}`, { body }));
         }
         case "organization": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["UpdateOrganization"]> = {};
           if (has("name")) body["name"] = fields["name"];
           if (has("slug")) body["slug"] = fields["slug"];
           if (fields["maxAllowedMemberships"])
             body["max_allowed_memberships"] = Number(fields["maxAllowedMemberships"]);
           const del = bool(fields["adminDeleteEnabled"]);
           if (del !== undefined) body["admin_delete_enabled"] = del;
-          await this.api.request(`/organizations/${id}`, { method: "PATCH", body });
+          await this.api.patch(`/organizations/${id}`, { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "domain":
-          await this.api.request(`/domains/${id}`, {
-            method: "PATCH",
+          await this.api.patch(`/domains/${id}`, {
             body: { proxy_url: fields["proxyUrl"] ?? "" },
           });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         case "jwt-template": {
-          const current = await this.api.request<CkJwtTemplate>(`/jwt_templates/${id}`);
-          let claims: unknown = current.claims ?? {};
-          if (has("claims")) {
-            try {
-              claims = JSON.parse(fields["claims"] || "{}");
-            } catch {
-              throw Object.assign(new Error("Clerk plugin: claims must be valid JSON"), {
-                status: 400,
-              });
-            }
-          }
+          const current = await this.api.get(`/jwt_templates/${id}`);
+          let claims = current.claims ?? {};
+          if (has("claims")) claims = parseClaims(fields["claims"]);
           // PATCH requires name and claims every time.
-          const body: Record<string, unknown> = { name: fields["name"] ?? current.name, claims };
+          const body: ApiBody<operations["UpdateJWTTemplate"]> = {
+            name: fields["name"] ?? current.name,
+            claims,
+          };
           if (fields["lifetime"]) body["lifetime"] = Number(fields["lifetime"]);
           if (fields["allowedClockSkew"])
             body["allowed_clock_skew"] = Number(fields["allowedClockSkew"]);
           return this.mapJwtTemplate(
             accountId,
-            await this.api.request<CkJwtTemplate>(`/jwt_templates/${id}`, {
-              method: "PATCH",
-              body,
-            }),
+            await this.api.patch(`/jwt_templates/${id}`, { body }),
           );
         }
         case "oauth-application": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["UpdateOAuthApplication"]> = {};
           if (has("name")) body["name"] = fields["name"];
           if (has("redirectUris")) body["redirect_uris"] = list(fields["redirectUris"]);
           if (has("scopes")) body["scopes"] = fields["scopes"];
@@ -1333,14 +1312,11 @@ export class ClerkClient implements PluginClient {
           if (pkce !== undefined) body["pkce_required"] = pkce;
           return this.mapOAuthApp(
             accountId,
-            await this.api.request<CkOAuthApp>(`/oauth_applications/${id}`, {
-              method: "PATCH",
-              body,
-            }),
+            await this.api.patch(`/oauth_applications/${id}`, { body }),
           );
         }
         case "enterprise-connection": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["UpdateEnterpriseConnection"]> = {};
           if (has("name")) body["name"] = fields["name"];
           if (has("domains")) body["domains"] = list(fields["domains"]);
           const active = bool(fields["active"]);
@@ -1349,21 +1325,15 @@ export class ClerkClient implements PluginClient {
           if (sync !== undefined) body["sync_user_attributes"] = sync;
           return this.mapEnterpriseConnection(
             accountId,
-            await this.api.request<CkEnterpriseConnection>(`/enterprise_connections/${id}`, {
-              method: "PATCH",
-              body,
-            }),
+            await this.api.patch(`/enterprise_connections/${id}`, { body }),
           );
         }
         case "machine": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["UpdateMachine"]> = {};
           if (has("name")) body["name"] = fields["name"];
           if (fields["defaultTokenTtl"])
             body["default_token_ttl"] = Number(fields["defaultTokenTtl"]);
-          return this.mapMachine(
-            accountId,
-            await this.api.request<CkMachine>(`/machines/${id}`, { method: "PATCH", body }),
-          );
+          return this.mapMachine(accountId, await this.api.patch(`/machines/${id}`, { body }));
         }
         default:
           throw new Error(`Clerk plugin: cannot update resource type "${typeId}"`);
@@ -1373,26 +1343,44 @@ export class ClerkClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
-      if (typeId === "invitation") {
-        await this.api.request(`/invitations/${id}/revoke`, { method: "POST" });
-        return;
+      const id = pathEncode(externalIdOf(resourceId));
+      switch (typeId) {
+        case "invitation":
+          await this.api.post(`/invitations/${id}/revoke`);
+          return;
+        case "user":
+          await this.api.delete(`/users/${id}`);
+          return;
+        case "organization":
+          await this.api.delete(`/organizations/${id}`);
+          return;
+        case "domain":
+          await this.api.delete(`/domains/${id}`);
+          return;
+        case "jwt-template":
+          await this.api.delete(`/jwt_templates/${id}`);
+          return;
+        case "oauth-application":
+          await this.api.delete(`/oauth_applications/${id}`);
+          return;
+        case "enterprise-connection":
+          await this.api.delete(`/enterprise_connections/${id}`);
+          return;
+        case "machine":
+          await this.api.delete(`/machines/${id}`);
+          return;
+        case "allowlist-identifier":
+          await this.api.delete(`/allowlist_identifiers/${id}`);
+          return;
+        case "blocklist-identifier":
+          await this.api.delete(`/blocklist_identifiers/${id}`);
+          return;
+        case "redirect-url":
+          await this.api.delete(`/redirect_urls/${id}`);
+          return;
+        default:
+          throw new Error(`Clerk plugin: cannot delete resource type "${typeId}"`);
       }
-      const paths: Record<string, string> = {
-        user: `/users/${id}`,
-        organization: `/organizations/${id}`,
-        domain: `/domains/${id}`,
-        "jwt-template": `/jwt_templates/${id}`,
-        "oauth-application": `/oauth_applications/${id}`,
-        "enterprise-connection": `/enterprise_connections/${id}`,
-        machine: `/machines/${id}`,
-        "allowlist-identifier": `/allowlist_identifiers/${id}`,
-        "blocklist-identifier": `/blocklist_identifiers/${id}`,
-        "redirect-url": `/redirect_urls/${id}`,
-      };
-      const path = paths[typeId];
-      if (!path) throw new Error(`Clerk plugin: cannot delete resource type "${typeId}"`);
-      await this.api.request(path, { method: "DELETE" });
     });
   }
 
@@ -1402,35 +1390,35 @@ export class ClerkClient implements PluginClient {
 
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       if (typeId === "user") {
-        const simple: Record<string, [string, string]> = {
-          ban: ["POST", "ban"],
-          unban: ["POST", "unban"],
-          lock: ["POST", "lock"],
-          unlock: ["POST", "unlock"],
-          "disable-mfa": ["DELETE", "mfa"],
-        };
-        const step = simple[actionId];
-        if (step) {
-          await this.api.request(`/users/${id}/${step[1]}`, { method: step[0] });
-          return;
-        }
-        if (actionId === "revoke-sessions") {
-          const sessions = await this.api.list<CkSession>("/sessions", {
-            user_id: externalIdOf(resourceId),
-            status: "active",
-          });
-          for (const session of sessions) {
-            await this.api.request(`/sessions/${encodeURIComponent(str(session.id))}/revoke`, {
-              method: "POST",
-            });
+        switch (actionId) {
+          case "ban":
+            await this.api.post(`/users/${id}/ban`);
+            return;
+          case "unban":
+            await this.api.post(`/users/${id}/unban`);
+            return;
+          case "lock":
+            await this.api.post(`/users/${id}/lock`);
+            return;
+          case "unlock":
+            await this.api.post(`/users/${id}/unlock`);
+            return;
+          case "disable-mfa":
+            await this.api.delete(`/users/${id}/mfa`);
+            return;
+          case "revoke-sessions": {
+            const sessions = await this.listActiveSessions(externalIdOf(resourceId));
+            for (const session of sessions) {
+              await this.api.post(`/sessions/${pathEncode(str(session.id))}/revoke`);
+            }
+            return;
           }
-          return;
         }
       }
       if (typeId === "instance" && actionId === "enable-webhooks") {
-        await this.api.request("/webhooks/svix", { method: "POST" });
+        await this.api.post("/webhooks/svix");
         return;
       }
       throw new Error(`Clerk plugin: unknown action "${actionId}" for type "${typeId}"`);
@@ -1445,9 +1433,9 @@ export class ClerkClient implements PluginClient {
     args: (string | number)[],
   ): PluginEffect<unknown> {
     return attempt(async () => {
-      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      const values: Record<string, string> = JSON.parse(String(args[0] ?? "{}"));
       const raw = externalIdOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       const need = (key: string, what: string): string => {
         const value = values[key];
         if (!value) throw new Error(`Clerk plugin: choose ${what}`);
@@ -1455,68 +1443,48 @@ export class ClerkClient implements PluginClient {
       };
       switch (`${typeId}:${command}`) {
         case "user:revoke-session":
-          return this.api.request(
-            `/sessions/${encodeURIComponent(need("sessionId", "a session"))}/revoke`,
-            { method: "POST" },
-          );
+          return this.api.post(`/sessions/${pathEncode(need("sessionId", "a session"))}/revoke`);
         case "user:add-to-organization":
-          return this.api.request(
-            `/organizations/${encodeURIComponent(need("organizationId", "an organization"))}/memberships`,
-            {
-              method: "POST",
-              body: { user_id: raw, role: need("role", "a role") },
-            },
+          return this.api.post(
+            `/organizations/${pathEncode(need("organizationId", "an organization"))}/memberships`,
+            { body: { user_id: raw, role: need("role", "a role") } },
           );
         case "user:remove-from-organization":
-          return this.api.request(
-            `/organizations/${encodeURIComponent(need("organizationId", "an organization"))}/memberships/${id}`,
-            {
-              method: "DELETE",
-            },
+          return this.api.delete(
+            `/organizations/${pathEncode(need("organizationId", "an organization"))}/memberships/${id}`,
           );
         case "organization:add-member":
-          return this.api.request(`/organizations/${id}/memberships`, {
-            method: "POST",
+          return this.api.post(`/organizations/${id}/memberships`, {
             body: { user_id: need("userId", "a user"), role: need("role", "a role") },
           });
         case "organization:change-role":
-          return this.api.request(
-            `/organizations/${id}/memberships/${encodeURIComponent(need("userId", "a member"))}`,
-            {
-              method: "PATCH",
-              body: { role: need("role", "a role") },
-            },
+          return this.api.patch(
+            `/organizations/${id}/memberships/${pathEncode(need("userId", "a member"))}`,
+            { body: { role: need("role", "a role") } },
           );
         case "organization:remove-member":
-          return this.api.request(
-            `/organizations/${id}/memberships/${encodeURIComponent(need("userId", "a member"))}`,
-            { method: "DELETE" },
+          return this.api.delete(
+            `/organizations/${id}/memberships/${pathEncode(need("userId", "a member"))}`,
           );
         case "organization:invite":
-          return this.api.request(`/organizations/${id}/invitations`, {
-            method: "POST",
+          return this.api.post(`/organizations/${id}/invitations`, {
             body: {
               email_address: need("email", "an email address"),
               role: need("role", "a role"),
             },
           });
         case "organization:revoke-invitation":
-          return this.api.request(
-            `/organizations/${id}/invitations/${encodeURIComponent(need("invitationId", "an invitation"))}/revoke`,
-            {
-              method: "POST",
-              body: {},
-            },
+          return this.api.post(
+            `/organizations/${id}/invitations/${pathEncode(need("invitationId", "an invitation"))}/revoke`,
+            { body: {} },
           );
         case "machine:allow-machine":
-          return this.api.request(`/machines/${id}/scopes`, {
-            method: "POST",
+          return this.api.post(`/machines/${id}/scopes`, {
             body: { to_machine_id: need("machineId", "a machine") },
           });
         case "machine:disallow-machine":
-          return this.api.request(
-            `/machines/${id}/scopes/${encodeURIComponent(need("machineId", "a machine"))}`,
-            { method: "DELETE" },
+          return this.api.delete(
+            `/machines/${id}/scopes/${pathEncode(need("machineId", "a machine"))}`,
           );
         default:
           throw new Error(`Clerk plugin: unknown command "${command}" for type "${typeId}"`);
@@ -1531,23 +1499,21 @@ export class ClerkClient implements PluginClient {
     formatId: string,
   ): PluginEffect<CredentialExport> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       if (typeId === "instance" && formatId === "webhooks-dashboard") {
-        const body = await this.api
-          .request<{ svix_url?: string }>("/webhooks/svix_url", { method: "POST" })
-          .catch((error: { status?: number }) => {
-            if (error.status === 404 || error.status === 400) {
-              throw Object.assign(
-                new Error(
-                  "Clerk plugin: webhooks are not enabled for this instance yet. Use Enable webhooks first.",
-                ),
-                {
-                  status: error.status,
-                },
-              );
-            }
-            throw error;
-          });
+        const body = await this.api.post("/webhooks/svix_url").catch((error: ClerkFailure) => {
+          if (error.status === 404 || error.status === 400) {
+            throw Object.assign(
+              new Error(
+                "Clerk plugin: webhooks are not enabled for this instance yet. Use Enable webhooks first.",
+              ),
+              {
+                status: error.status,
+              },
+            );
+          }
+          throw error;
+        });
         const url = str(body.svix_url);
         return {
           content: url,
@@ -1566,12 +1532,7 @@ export class ClerkClient implements PluginClient {
         };
       }
       if (typeId === "oauth-application" && formatId === "rotate-secret") {
-        const body = await this.api.request<{ client_id?: string; client_secret?: string }>(
-          `/oauth_applications/${id}/rotate_secret`,
-          {
-            method: "POST",
-          },
-        );
+        const body = await this.api.post(`/oauth_applications/${id}/rotate_secret`);
         const secret = str(body.client_secret);
         if (!secret) throw new Error("Clerk plugin: Clerk returned no client secret");
         return {
@@ -1589,13 +1550,9 @@ export class ClerkClient implements PluginClient {
         typeId === "machine" &&
         (formatId === "rotate-secret-grace" || formatId === "rotate-secret-now")
       ) {
-        const body = await this.api.request<{ secret?: string }>(
-          `/machines/${id}/secret_key/rotate`,
-          {
-            method: "POST",
-            body: { previous_token_ttl: formatId === "rotate-secret-grace" ? 3600 : 0 },
-          },
-        );
+        const body = await this.api.post(`/machines/${id}/secret_key/rotate`, {
+          body: { previous_token_ttl: formatId === "rotate-secret-grace" ? 3600 : 0 },
+        });
         const secret = str(body.secret);
         return {
           content: secret,
@@ -1619,20 +1576,21 @@ export class ClerkClient implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const raw = externalIdOf(resource.id);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       const extra: Record<string, string> = {};
       switch (resource.resourceTypeId) {
         case "user": {
           const [sessions, memberships, orgs, roles] = await Promise.all([
+            this.listActiveSessions(raw, 500).catch((): CkSession[] => []),
             this.api
-              .list<CkSession>("/sessions", { user_id: raw, status: "active" }, 500)
-              .catch(() => [] as CkSession[]),
+              .list(
+                (query) => this.api.get(`/users/${id}/organization_memberships`, { query }),
+                500,
+              )
+              .catch((): CkMembership[] => []),
             this.api
-              .list<CkMembership>(`/users/${id}/organization_memberships`, {}, 500)
-              .catch(() => [] as CkMembership[]),
-            this.api
-              .list<CkOrganization>("/organizations", {}, 500)
-              .catch(() => [] as CkOrganization[]),
+              .list((query) => this.api.get("/organizations", { query }), 500)
+              .catch((): CkOrganization[] => []),
             this.roleOptions(),
           ]);
           extra["__sessions__"] = JSON.stringify(
@@ -1659,13 +1617,19 @@ export class ClerkClient implements PluginClient {
         case "organization": {
           const [members, users, roles, invitations] = await Promise.all([
             this.api
-              .list<CkMembership>(`/organizations/${id}/memberships`, {}, 1000)
-              .catch(() => [] as CkMembership[]),
+              .list((query) => this.api.get(`/organizations/${id}/memberships`, { query }), 1000)
+              .catch((): CkMembership[] => []),
             this.userOptions(),
             this.roleOptions(),
             this.api
-              .list<CkInvitation>(`/organizations/${id}/invitations`, { status: "pending" }, 500)
-              .catch(() => [] as CkInvitation[]),
+              .list(
+                (paging) =>
+                  this.api.get(`/organizations/${id}/invitations`, {
+                    query: { status: "pending", ...paging },
+                  }),
+                500,
+              )
+              .catch((): CkOrgInvitation[] => []),
           ]);
           extra["__members__"] = JSON.stringify(
             members.map((m) => ({
@@ -1687,8 +1651,8 @@ export class ClerkClient implements PluginClient {
         }
         case "machine": {
           const machines = await this.api
-            .list<CkMachine>("/machines", {}, 500)
-            .catch(() => [] as CkMachine[]);
+            .list((query) => this.api.get("/machines", { query }), 500)
+            .catch((): CkMachine[] => []);
           extra["__machineOptions__"] = JSON.stringify(
             machines
               .filter((m) => m.id !== raw)

@@ -1,4 +1,4 @@
-import type { EcContext } from "../api.js";
+import { createEcContext, type EcContext } from "../api.js";
 
 export interface Reply {
   status?: number;
@@ -38,5 +38,5 @@ export function makeHttp(route: (url: URL, method: string, body: unknown) => Rep
 }
 
 export function ctxWith(http: ReturnType<typeof makeHttp>["http"]): EcContext {
-  return { apiKey: "test-key", http };
+  return createEcContext({ apiKey: "test-key", http });
 }

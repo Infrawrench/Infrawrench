@@ -15,10 +15,13 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
+import type { ApiBody } from "@infrawrench/plugin-base";
 import { invalidateStacks, listStacks, orgSlugOf, policyRegions, resolveOrg } from "./account.js";
 import type { GrafanaContext } from "./api.js";
-import { cloudFetch, requestId, smFetch, stackFetch, statusOf } from "./api.js";
+import { cloudApi, requestId, smApi, stackApi, statusOf } from "./api.js";
+import type { operations as CloudOperations } from "./api-types.cloud.gen.js";
+import type { operations as SmOperations } from "./api-types.sm.gen.js";
 import { fetchBillSummary, fetchGrafanaCostData } from "./cost-data.js";
 import {
   mapAccessPolicy,
@@ -48,15 +51,9 @@ import { BILL_SUMMARY_KEY, renderGrafanaDetail, renderGrafanaSidebar } from "./r
 import type {
   GcAccessPolicy,
   GcCursorPage,
-  GcMember,
   GcRegion,
   GcStack,
-  GcStackPlugin,
   GcToken,
-  GfAlertRule,
-  GfContactPoint,
-  GfDashboardHit,
-  GfDatasource,
   GfFolder,
   SmCheck,
   SmProbe,
@@ -94,6 +91,7 @@ interface StackAccess {
 
 export class GrafanaCloudClient implements PluginClient {
   private readonly ctx: GrafanaContext;
+  private readonly cloud: ReturnType<typeof cloudApi>;
   private readonly orgSlug: string;
   private readonly secrets: SecretHostServices | undefined;
 
@@ -106,6 +104,7 @@ export class GrafanaCloudClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
+    this.cloud = cloudApi(this.ctx);
     this.orgSlug = (credentials["orgSlug"] ?? "").trim();
     this.secrets = services?.secrets;
   }
@@ -217,13 +216,17 @@ export class GrafanaCloudClient implements PluginClient {
     return results.flat();
   }
 
-  private async cursorList<T>(path: string, region: string): Promise<T[]> {
+  /**
+   * A hand loop rather than `getAll`: it runs on past an empty page, and a
+   * `nextPage` it cannot read fails the list rather than ending it.
+   */
+  private async cursorList<T>(
+    load: (cursor: string | undefined) => Promise<GcCursorPage<T>>,
+  ): Promise<T[]> {
     const out: T[] = [];
     let cursor: string | undefined;
     for (let page = 0; page < MAX_CURSOR_PAGES; page++) {
-      const res = await cloudFetch<GcCursorPage<T>>(this.ctx, path, {
-        query: { region, pageSize: 500, ...(cursor ? { pageCursor: cursor } : {}) },
-      });
+      const res = await load(cursor);
       out.push(...(res.items ?? []));
       cursor = nextCursor(res.metadata?.pagination?.nextPage);
       if (!cursor) break;
@@ -235,13 +238,15 @@ export class GrafanaCloudClient implements PluginClient {
     const seen = new Set<string>();
     const out: Array<{ region: string; policy: GcAccessPolicy }> = [];
     for (const region of await policyRegions(this.ctx, this.orgSlug)) {
-      const items = await this.cursorList<GcAccessPolicy>("/v1/accesspolicies", region).catch(
-        (err) => {
-          // A region the org has nothing in can answer 404.
-          if (statusOf(err) === 404 || statusOf(err) === 400) return [] as GcAccessPolicy[];
-          throw err;
-        },
-      );
+      const items = await this.cursorList((cursor) =>
+        this.cloud.get("/v1/accesspolicies", {
+          query: { region, pageSize: 500, ...(cursor ? { pageCursor: cursor } : {}) },
+        }),
+      ).catch((err): GcAccessPolicy[] => {
+        // A region the org has nothing in can answer 404.
+        if (statusOf(err) === 404 || statusOf(err) === 400) return [];
+        throw err;
+      });
       for (const p of items) {
         if (!p.id || seen.has(p.id)) continue;
         seen.add(p.id);
@@ -255,8 +260,12 @@ export class GrafanaCloudClient implements PluginClient {
     const seen = new Set<string>();
     const out: Array<{ region: string; token: GcToken }> = [];
     for (const region of await policyRegions(this.ctx, this.orgSlug)) {
-      const items = await this.cursorList<GcToken>("/v1/tokens", region).catch((err) => {
-        if (statusOf(err) === 404 || statusOf(err) === 400) return [] as GcToken[];
+      const items = await this.cursorList((cursor) =>
+        this.cloud.get("/v1/tokens", {
+          query: { region, pageSize: 500, ...(cursor ? { pageCursor: cursor } : {}) },
+        }),
+      ).catch((err): GcToken[] => {
+        if (statusOf(err) === 404 || statusOf(err) === 400) return [];
         throw err;
       });
       for (const t of items) {
@@ -286,9 +295,8 @@ export class GrafanaCloudClient implements PluginClient {
             const stacks = (await this.stacks()).filter((s) => s.id !== undefined && s.slug);
             const lists = await Promise.all(
               stacks.map(async (s) => {
-                const res = await cloudFetch<{ items?: GcStackPlugin[] }>(
-                  this.ctx,
-                  `/instances/${s.id}/plugins`,
+                const res = await this.cloud.get(
+                  `/instances/${unencodedSegment(String(s.id))}/plugins`,
                 );
                 return (res.items ?? []).map((p) => mapStackPlugin(accountId, s.slug ?? "", p));
               }),
@@ -298,7 +306,7 @@ export class GrafanaCloudClient implements PluginClient {
         case "access-policy":
           return this.scoped(async () => {
             const names = new Map<string, string>();
-            for (const s of await this.stacks().catch(() => [] as GcStack[])) {
+            for (const s of await this.stacks().catch((): GcStack[] => [])) {
               if (s.id !== undefined) names.set(String(s.id), s.slug ?? String(s.id));
             }
             return (await this.policiesByRegion()).map(({ region, policy }) =>
@@ -319,31 +327,22 @@ export class GrafanaCloudClient implements PluginClient {
         case "member":
           return this.scoped(async () => {
             const slug = await this.slug();
-            const res = await cloudFetch<{ items?: GcMember[] }>(
-              this.ctx,
-              `/orgs/${encodeURIComponent(slug)}/members`,
-            );
+            const res = await this.cloud.get(`/orgs/${pathEncode(slug)}/members`);
             return (res.items ?? []).map((m) => mapMember(accountId, m));
           });
         case "dashboard":
           return this.perStack(accountId, "sa", async (a) => {
-            const hits = await stackFetch<GfDashboardHit[]>(
-              this.ctx,
-              a.url,
-              this.requireSa(a),
-              "/api/search",
-              { query: { type: "dash-db", limit: DASHBOARD_PAGE } },
-            );
+            const hits = await stackApi(this.ctx, a.url, this.requireSa(a)).get("/search", {
+              query: { type: "dash-db", limit: DASHBOARD_PAGE },
+            });
             return (hits ?? []).map((d) => mapDashboard(accountId, a, d));
           });
         case "alert-rule":
           return this.perStack(accountId, "sa", async (a) => {
-            const token = this.requireSa(a);
+            const stack = stackApi(this.ctx, a.url, this.requireSa(a));
             const [rules, folders] = await Promise.all([
-              stackFetch<GfAlertRule[]>(this.ctx, a.url, token, "/api/v1/provisioning/alert-rules"),
-              stackFetch<GfFolder[]>(this.ctx, a.url, token, "/api/folders", {
-                query: { limit: 1000 },
-              }).catch(() => [] as GfFolder[]),
+              stack.get("/v1/provisioning/alert-rules"),
+              stack.get("/folders", { query: { limit: 1000 } }).catch((): GfFolder[] => []),
             ]);
             const names = new Map<string, string>();
             for (const folder of folders ?? []) {
@@ -353,22 +352,14 @@ export class GrafanaCloudClient implements PluginClient {
           });
         case "contact-point":
           return this.perStack(accountId, "sa", async (a) => {
-            const points = await stackFetch<GfContactPoint[]>(
-              this.ctx,
-              a.url,
-              this.requireSa(a),
-              "/api/v1/provisioning/contact-points",
+            const points = await stackApi(this.ctx, a.url, this.requireSa(a)).get(
+              "/v1/provisioning/contact-points",
             );
             return (points ?? []).filter((c) => c.uid).map((c) => mapContactPoint(accountId, a, c));
           });
         case "datasource":
           return this.perStack(accountId, "sa", async (a) => {
-            const sources = await stackFetch<GfDatasource[]>(
-              this.ctx,
-              a.url,
-              this.requireSa(a),
-              "/api/datasources",
-            );
+            const sources = await stackApi(this.ctx, a.url, this.requireSa(a)).get("/datasources");
             return (sources ?? []).map((d) => mapDatasource(accountId, a, d));
           });
         case "synthetic-check":
@@ -376,7 +367,7 @@ export class GrafanaCloudClient implements PluginClient {
             const { apiUrl, token } = this.requireSm(a);
             const [checks, probes] = await Promise.all([
               this.smChecks(apiUrl, token),
-              this.smProbes(apiUrl, token).catch(() => [] as SmProbe[]),
+              this.smProbes(apiUrl, token).catch((): SmProbe[] => []),
             ]);
             const names = new Map<number, string>();
             for (const p of probes) if (p.id !== undefined) names.set(p.id, p.name ?? String(p.id));
@@ -390,20 +381,22 @@ export class GrafanaCloudClient implements PluginClient {
 
   /** `/api/v1/check` in the current spec; older deployments only answer `/check/list`. */
   private async smChecks(apiUrl: string, token: string): Promise<SmCheck[]> {
+    const sm = smApi(this.ctx, apiUrl, token);
     try {
-      return (await smFetch<SmCheck[]>(this.ctx, apiUrl, token, "/api/v1/check")) ?? [];
+      return (await sm.get("/api/v1/check")) ?? [];
     } catch (err) {
       if (statusOf(err) !== 404 && statusOf(err) !== 405) throw err;
-      return (await smFetch<SmCheck[]>(this.ctx, apiUrl, token, "/api/v1/check/list")) ?? [];
+      return (await sm.get("/api/v1/check/list")) ?? [];
     }
   }
 
   private async smProbes(apiUrl: string, token: string): Promise<SmProbe[]> {
+    const sm = smApi(this.ctx, apiUrl, token);
     try {
-      return (await smFetch<SmProbe[]>(this.ctx, apiUrl, token, "/api/v1/probe")) ?? [];
+      return (await sm.get("/api/v1/probe")) ?? [];
     } catch (err) {
       if (statusOf(err) !== 404 && statusOf(err) !== 405) throw err;
-      return (await smFetch<SmProbe[]>(this.ctx, apiUrl, token, "/api/v1/probe/list")) ?? [];
+      return (await sm.get("/api/v1/probe/list")) ?? [];
     }
   }
 
@@ -434,7 +427,7 @@ export class GrafanaCloudClient implements PluginClient {
       const id = externalIdOf(resourceId);
       if (typeId === "organization") return this.organization(accountId, true);
       if (typeId === "stack") {
-        const s = await cloudFetch<GcStack>(this.ctx, `/instances/${encodeURIComponent(id)}`);
+        const s = await this.cloud.get(`/instances/${pathEncode(id)}`);
         const connected = Boolean(await this.secret(accountId, s.slug ?? id, SA_TOKEN_KEY));
         return mapStack(accountId, s, { connected });
       }
@@ -578,11 +571,9 @@ export class GrafanaCloudClient implements PluginClient {
       if (typeId !== "stack") {
         throw new Error(`Grafana Cloud plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      const res = await cloudFetch<{ items?: GcRegion[] }>(this.ctx, "/stack-regions").catch(
-        () => ({
-          items: [] as GcRegion[],
-        }),
-      );
+      const res = await this.cloud
+        .get("/stack-regions")
+        .catch((): { items?: GcRegion[] } => ({ items: [] }));
       const regions = (res.items ?? [])
         .filter((r) => r.slug && (!r.status || r.status === "active"))
         .filter((r) => !r.visibility || r.visibility === "public")
@@ -656,16 +647,15 @@ export class GrafanaCloudClient implements PluginClient {
         );
       }
       const labels = parseLabels(fields["labels"] ?? "");
-      const s = await cloudFetch<GcStack>(this.ctx, "/instances", {
-        method: "POST",
+      const s = await this.cloud.post("/instances", {
         headers: requestId(),
-        body: JSON.stringify({
+        body: {
           name: (fields["name"] ?? "").trim() || slug,
           slug,
           ...(fields["region"] ? { region: fields["region"] } : {}),
           ...(fields["description"]?.trim() ? { description: fields["description"].trim() } : {}),
           ...(Object.keys(labels).length > 0 ? { labels } : {}),
-        }),
+        },
       });
       invalidateStacks(this.ctx);
       return mapStack(accountId, s);
@@ -688,17 +678,16 @@ export class GrafanaCloudClient implements PluginClient {
           if (fields[SM_TOKEN_KEY]?.trim()) {
             await this.storeSecret(accountId, id, SM_TOKEN_KEY, fields[SM_TOKEN_KEY].trim());
           }
-          const body: Record<string, unknown> = {};
-          if ("name" in fields && fields["name"]?.trim()) body["name"] = fields["name"].trim();
-          if ("description" in fields) body["description"] = fields["description"] ?? "";
-          if ("labels" in fields) body["labels"] = parseLabels(fields["labels"] ?? "");
+          const body: ApiBody<CloudOperations["postInstance"]> = {};
+          if ("name" in fields && fields["name"]?.trim()) body.name = fields["name"].trim();
+          if ("description" in fields) body.description = fields["description"] ?? "";
+          if ("labels" in fields) body.labels = parseLabels(fields["labels"] ?? "");
           if ("deleteProtection" in fields)
-            body["deleteProtection"] = fields["deleteProtection"] === "true";
+            body.deleteProtection = fields["deleteProtection"] === "true";
           if (Object.keys(body).length > 0) {
-            await cloudFetch<GcStack>(this.ctx, `/instances/${encodeURIComponent(id)}`, {
-              method: "POST",
+            await this.cloud.post(`/instances/${pathEncode(id)}`, {
               headers: requestId(),
-              body: JSON.stringify(body),
+              body,
             });
             invalidateStacks(this.ctx);
           }
@@ -717,11 +706,10 @@ export class GrafanaCloudClient implements PluginClient {
         case "access-policy-token": {
           const [region, tokenId] = splitScoped(id);
           if (fields["displayName"]?.trim()) {
-            await cloudFetch(this.ctx, `/v1/tokens/${encodeURIComponent(tokenId)}`, {
-              method: "POST",
+            await this.cloud.post(`/v1/tokens/${pathEncode(tokenId)}`, {
               headers: requestId(),
               query: { region },
-              body: JSON.stringify({ displayName: fields["displayName"].trim() }),
+              body: { displayName: fields["displayName"].trim() },
             });
           }
           return runPluginEffect(this.getResource("access-policy-token", resourceId, accountId));
@@ -730,11 +718,10 @@ export class GrafanaCloudClient implements PluginClient {
           const role = fields["role"] ?? "";
           if (role) {
             const slug = await this.slug();
-            await cloudFetch(
-              this.ctx,
-              `/orgs/${encodeURIComponent(slug)}/members/${encodeURIComponent(id)}`,
-              { method: "POST", headers: requestId(), body: JSON.stringify({ role }) },
-            );
+            await this.cloud.post(`/orgs/${pathEncode(slug)}/members/${pathEncode(id)}`, {
+              headers: requestId(),
+              body: { role },
+            });
           }
           return runPluginEffect(this.getResource("member", resourceId, accountId));
         }
@@ -749,20 +736,19 @@ export class GrafanaCloudClient implements PluginClient {
    * back first so changing the name or the status never drops them.
    */
   private async updatePolicy(region: string, policyId: string, patch: Record<string, string>) {
-    const path = `/v1/accesspolicies/${encodeURIComponent(policyId)}`;
-    const current = await cloudFetch<GcAccessPolicy>(this.ctx, path, { query: { region } });
-    await cloudFetch(this.ctx, path, {
-      method: "POST",
+    const id = pathEncode(policyId);
+    const current = await this.cloud.get(`/v1/accesspolicies/${id}`, { query: { region } });
+    await this.cloud.post(`/v1/accesspolicies/${id}`, {
       headers: requestId(),
       query: { region },
-      body: JSON.stringify({
+      body: {
         displayName: current.displayName ?? current.name,
         scopes: current.scopes ?? [],
         realms: current.realms ?? [],
         ...(current.conditions ? { conditions: current.conditions } : {}),
         ...(current.status ? { status: current.status } : {}),
         ...patch,
-      }),
+      },
     });
   }
 
@@ -772,40 +758,31 @@ export class GrafanaCloudClient implements PluginClient {
       const [scope, rest] = splitScoped(id);
       switch (typeId) {
         case "stack":
-          await cloudFetch(this.ctx, `/instances/${encodeURIComponent(id)}`, {
-            method: "DELETE",
-            headers: requestId(),
-          });
+          await this.cloud.delete(`/instances/${pathEncode(id)}`, { headers: requestId() });
           invalidateStacks(this.ctx);
           return;
         case "stack-plugin":
-          await cloudFetch(
-            this.ctx,
-            `/instances/${encodeURIComponent(scope)}/plugins/${encodeURIComponent(rest)}`,
-            { method: "DELETE", headers: requestId() },
-          );
+          await this.cloud.delete(`/instances/${pathEncode(scope)}/plugins/${pathEncode(rest)}`, {
+            headers: requestId(),
+          });
           return;
         case "access-policy":
-          await cloudFetch(this.ctx, `/v1/accesspolicies/${encodeURIComponent(rest)}`, {
-            method: "DELETE",
+          await this.cloud.delete(`/v1/accesspolicies/${pathEncode(rest)}`, {
             headers: requestId(),
             query: { region: scope },
           });
           return;
         case "access-policy-token":
-          await cloudFetch(this.ctx, `/v1/tokens/${encodeURIComponent(rest)}`, {
-            method: "DELETE",
+          await this.cloud.delete(`/v1/tokens/${pathEncode(rest)}`, {
             headers: requestId(),
             query: { region: scope },
           });
           return;
         case "member": {
           const slug = await this.slug();
-          await cloudFetch(
-            this.ctx,
-            `/orgs/${encodeURIComponent(slug)}/members/${encodeURIComponent(id)}`,
-            { method: "DELETE", headers: requestId() },
-          );
+          await this.cloud.delete(`/orgs/${pathEncode(slug)}/members/${pathEncode(id)}`, {
+            headers: requestId(),
+          });
           return;
         }
         case "dashboard":
@@ -813,35 +790,25 @@ export class GrafanaCloudClient implements PluginClient {
         case "contact-point":
         case "datasource": {
           const access = await this.oneStack(accountId, scope);
-          const path = {
-            dashboard: `/api/dashboards/uid/${encodeURIComponent(rest)}`,
-            "alert-rule": `/api/v1/provisioning/alert-rules/${encodeURIComponent(rest)}`,
-            "contact-point": `/api/v1/provisioning/contact-points/${encodeURIComponent(rest)}`,
-            datasource: `/api/datasources/uid/${encodeURIComponent(rest)}`,
-          }[typeId];
-          await stackFetch(this.ctx, access.url, this.requireSa(access), path, {
-            method: "DELETE",
-          });
+          const stack = stackApi(this.ctx, access.url, this.requireSa(access));
+          const uid = pathEncode(rest);
+          await {
+            dashboard: () => stack.delete(`/dashboards/uid/${uid}`),
+            "alert-rule": () => stack.delete(`/v1/provisioning/alert-rules/${uid}`),
+            "contact-point": () => stack.delete(`/v1/provisioning/contact-points/${uid}`),
+            datasource: () => stack.delete(`/datasources/uid/${uid}`),
+          }[typeId]();
           return;
         }
         case "synthetic-check": {
           const access = await this.oneStack(accountId, scope);
           const { apiUrl, token } = this.requireSm(access);
+          const sm = smApi(this.ctx, apiUrl, token);
           try {
-            await smFetch(this.ctx, apiUrl, token, `/api/v1/check/${encodeURIComponent(rest)}`, {
-              method: "DELETE",
-            });
+            await sm.delete(`/api/v1/check/${pathEncode(rest)}`);
           } catch (err) {
             if (statusOf(err) !== 404 && statusOf(err) !== 405) throw err;
-            await smFetch(
-              this.ctx,
-              apiUrl,
-              token,
-              `/api/v1/check/delete/${encodeURIComponent(rest)}`,
-              {
-                method: "DELETE",
-              },
-            );
+            await sm.delete(`/api/v1/check/delete/${pathEncode(rest)}`);
           }
           return;
         }
@@ -865,10 +832,7 @@ export class GrafanaCloudClient implements PluginClient {
       const id = externalIdOf(resourceId);
       const [scope, rest] = splitScoped(id);
       if (typeId === "stack" && actionId === "restart") {
-        await cloudFetch(this.ctx, `/instances/${encodeURIComponent(id)}/restart`, {
-          method: "POST",
-          headers: requestId(),
-        });
+        await this.cloud.post(`/instances/${pathEncode(id)}/restart`, { headers: requestId() });
         return;
       }
       if (typeId === "stack" && actionId === "connect") return this.connectStack(accountId, id);
@@ -877,15 +841,10 @@ export class GrafanaCloudClient implements PluginClient {
           (r) => r.externalId === id,
         );
         const latest = String(plugin?.fields["latestVersion"] ?? "");
-        await cloudFetch(
-          this.ctx,
-          `/instances/${encodeURIComponent(scope)}/plugins/${encodeURIComponent(rest)}`,
-          {
-            method: "POST",
-            headers: requestId(),
-            body: JSON.stringify(latest ? { version: latest } : {}),
-          },
-        );
+        await this.cloud.post(`/instances/${pathEncode(scope)}/plugins/${pathEncode(rest)}`, {
+          headers: requestId(),
+          body: latest ? { version: latest } : {},
+        });
         return;
       }
       if (typeId === "access-policy" && (actionId === "enable" || actionId === "disable")) {
@@ -896,24 +855,20 @@ export class GrafanaCloudClient implements PluginClient {
       }
       if (typeId === "alert-rule" && (actionId === "pause" || actionId === "resume")) {
         const access = await this.oneStack(accountId, scope);
-        const token = this.requireSa(access);
-        const path = `/api/v1/provisioning/alert-rules/${encodeURIComponent(rest)}`;
-        const rule = await stackFetch<Record<string, unknown>>(this.ctx, access.url, token, path);
-        await stackFetch(this.ctx, access.url, token, path, {
-          method: "PUT",
+        const stack = stackApi(this.ctx, access.url, this.requireSa(access));
+        const uid = pathEncode(rest);
+        const rule = await stack.get(`/v1/provisioning/alert-rules/${uid}`);
+        await stack.put(`/v1/provisioning/alert-rules/${uid}`, {
           // Keeps the rule editable in Grafana's UI afterwards.
           headers: { "X-Disable-Provenance": "true" },
-          body: JSON.stringify({ ...rule, isPaused: actionId === "pause" }),
+          body: { ...rule, isPaused: actionId === "pause" },
         });
         return;
       }
       if (typeId === "datasource" && actionId === "test") {
         const access = await this.oneStack(accountId, scope);
-        const res = await stackFetch<{ status?: string; message?: string }>(
-          this.ctx,
-          access.url,
-          this.requireSa(access),
-          `/api/datasources/uid/${encodeURIComponent(rest)}/health`,
+        const res = await stackApi(this.ctx, access.url, this.requireSa(access)).get(
+          `/datasources/uid/${pathEncode(rest)}/health`,
         );
         if (res?.status && res.status.toUpperCase() !== "OK") {
           throw new Error(res.message || `Data source check failed (${res.status}).`);
@@ -923,14 +878,18 @@ export class GrafanaCloudClient implements PluginClient {
       if (typeId === "synthetic-check" && (actionId === "enable" || actionId === "disable")) {
         const access = await this.oneStack(accountId, scope);
         const { apiUrl, token } = this.requireSm(access);
-        const path = `/api/v1/check/${encodeURIComponent(rest)}`;
-        const check = await smFetch<SmCheck>(this.ctx, apiUrl, token, path);
-        const body = JSON.stringify({ ...check, enabled: actionId === "enable" });
+        const sm = smApi(this.ctx, apiUrl, token);
+        const checkId = pathEncode(rest);
+        const check = await sm.get(`/api/v1/check/${checkId}`);
+        const body: ApiBody<SmOperations["POST_/api/v1/check/:id"]> = {
+          ...check,
+          enabled: actionId === "enable",
+        };
         try {
-          await smFetch(this.ctx, apiUrl, token, path, { method: "POST", body });
+          await sm.post(`/api/v1/check/${checkId}`, { body });
         } catch (err) {
           if (statusOf(err) !== 404 && statusOf(err) !== 405) throw err;
-          await smFetch(this.ctx, apiUrl, token, "/api/v1/check/update", { method: "POST", body });
+          await sm.post("/api/v1/check/update", { body });
         }
         return;
       }
@@ -946,42 +905,35 @@ export class GrafanaCloudClient implements PluginClient {
    */
   private async connectStack(accountId: string, stackSlug: string): Promise<void> {
     const stack = (await this.stacks()).find((s) => s.slug === stackSlug);
-    const instance = encodeURIComponent(String(stack?.id ?? stackSlug));
-    const search = await cloudFetch<{
-      serviceAccounts?: Array<{ id?: number; name?: string }>;
-    }>(this.ctx, `/instances/${instance}/api/serviceaccounts/search`, {
-      query: { query: SERVICE_ACCOUNT_NAME, perpage: 50 },
-    }).catch((err) => {
-      if (statusOf(err) === 403) {
-        throw new Error(
-          "The access policy token cannot create service accounts on this stack. Add the stack-service-accounts:write scope, or edit the stack and paste a service account token.",
-        );
-      }
-      throw err;
-    });
+    const instance = pathEncode(String(stack?.id ?? stackSlug));
+    const search = await this.cloud
+      .get(`/instances/${instance}/api/serviceaccounts/search`, {
+        query: { query: SERVICE_ACCOUNT_NAME, perpage: 50 },
+      })
+      .catch((err) => {
+        if (statusOf(err) === 403) {
+          throw new Error(
+            "The access policy token cannot create service accounts on this stack. Add the stack-service-accounts:write scope, or edit the stack and paste a service account token.",
+          );
+        }
+        throw err;
+      });
     let accountIdOnStack = search.serviceAccounts?.find((s) => s.name === SERVICE_ACCOUNT_NAME)?.id;
     if (accountIdOnStack === undefined) {
-      const created = await cloudFetch<{ id?: number }>(
-        this.ctx,
-        `/instances/${instance}/api/serviceaccounts`,
-        {
-          method: "POST",
-          headers: requestId(),
-          body: JSON.stringify({ name: SERVICE_ACCOUNT_NAME, role: "Admin", isDisabled: false }),
-        },
-      );
+      const created = await this.cloud.post(`/instances/${instance}/api/serviceaccounts`, {
+        headers: requestId(),
+        body: { name: SERVICE_ACCOUNT_NAME, role: "Admin", isDisabled: false },
+      });
       accountIdOnStack = created.id;
     }
     if (accountIdOnStack === undefined) {
       throw new Error("Grafana Cloud did not return the new service account.");
     }
-    const minted = await cloudFetch<{ key?: string }>(
-      this.ctx,
-      `/instances/${instance}/api/serviceaccounts/${accountIdOnStack}/tokens`,
+    const minted = await this.cloud.post(
+      `/instances/${instance}/api/serviceaccounts/${unencodedSegment(String(accountIdOnStack))}/tokens`,
       {
-        method: "POST",
         headers: requestId(),
-        body: JSON.stringify({ name: `infrawrench-${new Date().toISOString().slice(0, 19)}` }),
+        body: { name: `infrawrench-${new Date().toISOString().slice(0, 19)}` },
       },
     );
     if (!minted.key) throw new Error("Grafana Cloud did not return the new token.");

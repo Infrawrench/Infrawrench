@@ -7,24 +7,37 @@ export const PROM_PATH = "/data/metrics/api/v1";
 export const METRICS_WINDOW_MS = 6 * 60 * 60 * 1000;
 const MAX_SERIES = 20;
 
-interface PromResponse {
-  status?: string;
-  error?: string;
-  data?: {
-    resultType?: string;
-    result?: Array<{
-      metric?: Record<string, string>;
-      values?: Array<[number, string]>;
-      value?: [number, string];
-    }>;
-  };
+interface PromSeries {
+  metric?: Record<string, string>;
+  values?: Array<[number, string]>;
+  value?: [number, string];
 }
 
-function check(res: PromResponse): NonNullable<PromResponse["data"]> {
+interface PromResponse<Data> {
+  status?: string;
+  error?: string;
+  data?: Data;
+}
+
+interface RangeData {
+  result?: PromSeries[];
+}
+
+interface ScalarData {
+  resultType: "scalar" | "string";
+  result?: [number, string];
+}
+
+type InstantData = ScalarData | (RangeData & { resultType?: "matrix" | "vector" });
+
+const isScalar = (data: InstantData): data is ScalarData =>
+  data.resultType === "scalar" || data.resultType === "string";
+
+function check<Data>(res: PromResponse<Data>): Data | undefined {
   if (res?.status && res.status !== "success") {
     throw new ChronoApiError(400, `PromQL error: ${res.error ?? res.status}`);
   }
-  return res?.data ?? {};
+  return res?.data;
 }
 
 export function seriesLabel(metric: Record<string, string> | undefined): string {
@@ -47,16 +60,17 @@ export async function queryRange(
   query: string,
   range: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
-  const data = check(
-    await chronoFetch<PromResponse>(ctx, `${PROM_PATH}/query_range`, {
-      query: {
-        query,
-        start: Math.floor(range.startMs / 1000),
-        end: Math.floor(range.endMs / 1000),
-        step: stepFor(range.endMs - range.startMs),
-      },
-    }),
-  );
+  const data: RangeData =
+    check(
+      await chronoFetch<PromResponse<RangeData>>(ctx, `${PROM_PATH}/query_range`, {
+        query: {
+          query,
+          start: Math.floor(range.startMs / 1000),
+          end: Math.floor(range.endMs / 1000),
+          step: stepFor(range.endMs - range.startMs),
+        },
+      }),
+    ) ?? {};
   return (data.result ?? []).slice(0, MAX_SERIES).map((r) => ({
     label: seriesLabel(r.metric),
     points: (r.values ?? [])
@@ -70,11 +84,14 @@ export async function instantQuery(
   ctx: ChronoContext,
   query: string,
 ): Promise<Record<string, unknown>[]> {
-  const data = check(
-    await chronoFetch<PromResponse>(ctx, `${PROM_PATH}/query`, { query: { query } }),
-  );
-  if (data.resultType === "scalar" || data.resultType === "string") {
-    const v = (data.result as unknown as [number, string]) ?? [];
+  const data: InstantData =
+    check(
+      await chronoFetch<PromResponse<InstantData>>(ctx, `${PROM_PATH}/query`, {
+        query: { query },
+      }),
+    ) ?? {};
+  if (isScalar(data)) {
+    const v = data.result ?? [];
     return [{ timestamp: new Date((v[0] ?? 0) * 1000).toISOString(), value: v[1] }];
   }
   return (data.result ?? []).slice(0, 1000).map((r) => {

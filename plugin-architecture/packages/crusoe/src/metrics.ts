@@ -1,5 +1,7 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
-import type { CrusoeApi } from "./api.js";
+import type { ApiResponse } from "@infrawrench/plugin-base";
+import { seg, type CrusoeApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 /**
  * VM metrics from Crusoe's Prometheus-compatible query API
@@ -19,13 +21,7 @@ import type { CrusoeApi } from "./api.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 3 * 3_600_000;
 
-interface PromResponse {
-  status?: string;
-  data?: {
-    resultType?: string;
-    result?: Array<{ metric?: Record<string, string>; values?: Array<[number, string]> }>;
-  };
-}
+type PromResponse = ApiResponse<operations["queryTimeseriesRange"]>;
 
 interface Query {
   label: string;
@@ -95,7 +91,7 @@ export function toSeries(res: PromResponse | undefined, q: Query): MetricSeries 
   const values = res?.data?.result?.[0]?.values;
   if (!values || values.length === 0) return null;
   const points = values
-    .map(([t, v]) => ({ timestamp: Math.round(t * 1000), value: Number(v) }))
+    .map(([t, v]) => ({ timestamp: Math.round(Number(t) * 1000), value: Number(v) }))
     .filter((p) => Number.isFinite(p.value));
   if (points.length === 0) return null;
   return { label: q.label, unit: q.unit, points };
@@ -110,12 +106,11 @@ export async function fetchVmMetrics(
   const endMs = timeRange?.endMs ?? Date.now();
   const startMs = timeRange?.startMs ?? endMs - DEFAULT_METRICS_WINDOW_MS;
   const step = stepSeconds(startMs, endMs);
-  const token = api.monitoringToken;
   const results = await Promise.all(
     VM_QUERIES.map(async (q) => {
       try {
-        const res = await api.request<PromResponse>(
-          `/projects/${projectId}/metrics/timeseries/api/v1/query-range`,
+        const res = await api.metrics.get(
+          `/projects/${seg(projectId)}/metrics/timeseries/api/v1/query-range`,
           {
             query: {
               query: q.promql(vmId),
@@ -123,7 +118,6 @@ export async function fetchVmMetrics(
               end: String(Math.floor(endMs / 1000)),
               step: `${step}s`,
             },
-            ...(token ? { bearerToken: token } : {}),
           },
         );
         return toSeries(res, q);

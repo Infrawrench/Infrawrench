@@ -1,152 +1,33 @@
 /**
- * Raw Nomad API shapes (only what the plugin reads) and their mapping to
- * `ResourceInstance`s. Field names follow the Nomad 2.0 API docs and the Go
- * `api` package's list stubs.
+ * Nomad API shapes, named from the generated types, and their mapping to
+ * `ResourceInstance`s.
  */
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiListItem, ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
 import { joinId, nsToIso } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 export const PLUGIN_ID = "nomad";
 
-export interface JobStub {
-  ID?: string;
-  ParentID?: string;
-  Name?: string;
-  Namespace?: string;
-  Type?: string;
-  Priority?: number;
-  Status?: string;
-  StatusDescription?: string;
-  Datacenters?: string[];
-  NodePool?: string;
-  Stop?: boolean;
-  Periodic?: boolean;
-  ParameterizedJob?: boolean;
-  Version?: number;
-  SubmitTime?: number;
-  JobSummary?: {
-    Summary?: Record<
-      string,
-      {
-        Queued?: number;
-        Complete?: number;
-        Failed?: number;
-        Running?: number;
-        Starting?: number;
-        Lost?: number;
-        Unknown?: number;
-      }
-    >;
-  };
-  TaskGroups?: Array<{ Name?: string; Count?: number }>;
-}
+type Job = ApiResponse<operations["GetJob"]>;
 
-export interface AllocStub {
-  ID?: string;
-  Name?: string;
-  Namespace?: string;
-  JobID?: string;
-  JobVersion?: number;
-  TaskGroup?: string;
-  NodeID?: string;
-  NodeName?: string;
-  ClientStatus?: string;
-  DesiredStatus?: string;
-  DeploymentStatus?: { Healthy?: boolean | null; Canary?: boolean };
-  TaskStates?: Record<string, { State?: string; Restarts?: number; Failed?: boolean }>;
-  CreateTime?: number;
-  ModifyTime?: number;
-}
+/** A list row, or a full job read the same way. Only the full job has its groups and version. */
+export type JobStub = ApiListItem<operations["GetJobs"], null> &
+  Pick<Job, "TaskGroups" | "Version">;
 
-export interface Deployment {
-  ID?: string;
-  Namespace?: string;
-  JobID?: string;
-  JobVersion?: number;
-  Status?: string;
-  StatusDescription?: string;
-  TaskGroups?: Record<
-    string,
-    {
-      Promoted?: boolean;
-      DesiredCanaries?: number;
-      PlacedCanaries?: string[];
-      DesiredTotal?: number;
-      PlacedAllocs?: number;
-      HealthyAllocs?: number;
-      UnhealthyAllocs?: number;
-    }
-  >;
-}
+export type AllocStub = ApiListItem<operations["GetAllocations"], null>;
 
-export interface NodeStub {
-  ID?: string;
-  Name?: string;
-  Datacenter?: string;
-  NodeClass?: string;
-  NodePool?: string;
-  Status?: string;
-  Drain?: boolean;
-  SchedulingEligibility?: string;
-  Address?: string;
-  Version?: string;
-  Drivers?: Record<string, { Healthy?: boolean; Detected?: boolean }>;
-  NodeResources?: {
-    Cpu?: { CpuShares?: number; TotalCpuCores?: number };
-    Memory?: { MemoryMB?: number };
-    Disk?: { DiskMB?: number };
-  };
-}
+export type Deployment = ApiResponse<operations["GetDeployment"]>;
 
-export interface Variable {
-  Namespace?: string;
-  Path?: string;
-  Items?: Record<string, string>;
-  ModifyIndex?: number;
-  ModifyTime?: number;
-}
+export type NodeStub = ApiListItem<operations["GetNodes"], null>;
 
-export interface AclToken {
-  AccessorID?: string;
-  SecretID?: string;
-  Name?: string;
-  Type?: string;
-  Policies?: string[] | null;
-  Roles?: Array<{ ID?: string; Name?: string }> | null;
-  Global?: boolean;
-  CreateTime?: string;
-  ExpirationTime?: string | null;
-}
+export type Variable = ApiResponse<operations["GetVariableQuery"]>;
 
-export interface Volume {
-  ID?: string;
-  Name?: string;
-  Namespace?: string;
-  PluginID?: string;
-  Provider?: string;
-  Schedulable?: boolean;
-  AccessMode?: string;
-  AttachmentMode?: string;
-  ControllersHealthy?: number;
-  ControllersExpected?: number;
-  NodesHealthy?: number;
-  NodesExpected?: number;
-  Capacity?: number;
-  CapacityBytes?: number;
-  State?: string;
-  NodeID?: string;
-}
+export type AclToken = ApiResponse<operations["GetACLToken"]>;
 
-export interface CsiPlugin {
-  ID?: string;
-  Provider?: string;
-  Version?: string;
-  ControllerRequired?: boolean;
-  ControllersHealthy?: number;
-  ControllersExpected?: number;
-  NodesHealthy?: number;
-  NodesExpected?: number;
-}
+/** A CSI volume or a host volume, which share one mapper. */
+export type Volume = ApiResponse<operations["GetVolumeOfType"]>;
+
+export type CsiPlugin = ApiResponse<operations["GetPluginCSI"]>;
 
 type FieldValue = string | number | boolean | undefined | null;
 
@@ -338,7 +219,7 @@ export function mapToken(accountId: string, t: AclToken): ResourceInstance {
   });
 }
 
-export function mapVolume(accountId: string, v: Volume, type: "csi" | "host"): ResourceInstance {
+export function mapVolume(accountId: string, v: Volume, type: string): ResourceInstance {
   const ns = v.Namespace ?? "default";
   return instance(accountId, "nomad-volume", joinId(type, ns, v.ID ?? ""), v.Name || v.ID || "", {
     namespace: ns,

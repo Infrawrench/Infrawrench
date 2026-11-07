@@ -1,0 +1,263 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "v2",
+      "specUrl": "https://circleci.com/api/v2/openapi.json",
+      "paths": {
+        "/context": ["get", "post"],
+        "/context/{context_id}": ["get", "delete"],
+        "/context/{context_id}/environment-variable": ["get"],
+        "/context/{context_id}/environment-variable/{env_var_name}": ["put", "delete"],
+        "/context/{context_id}/restrictions": ["get"],
+        "/insights/time-series/{project-slug}/workflows/{workflow-name}/jobs": ["get"],
+        "/insights/{org-slug}/summary": ["get"],
+        "/insights/{project-slug}/flaky-tests": ["get"],
+        "/insights/{project-slug}/workflows": ["get"],
+        "/insights/{project-slug}/workflows/{workflow-name}": ["get"],
+        "/insights/{project-slug}/workflows/{workflow-name}/jobs": ["get"],
+        "/me": ["get"],
+        "/me/collaborations": ["get"],
+        "/organizations/{org_id}/usage_export_job": ["post"],
+        "/organizations/{org_id}/usage_export_job/{usage_export_job_id}": ["get"],
+        "/pipeline": ["get"],
+        "/pipeline/{pipeline-id}": ["get"],
+        "/pipeline/{pipeline-id}/workflow": ["get"],
+        "/project/{project-slug}": ["get"],
+        "/project/{project-slug}/envvar": ["get", "post"],
+        "/project/{project-slug}/envvar/{name}": ["get", "delete"],
+        "/project/{project-slug}/pipeline": ["post"],
+        "/project/{project-slug}/schedule": ["get", "post"],
+        "/project/{provider}/{organization}/{project}/pipeline/run": ["post"],
+        "/projects/{project_id}/pipeline-definitions": ["get"],
+        "/projects/{project_id}/pipeline-definitions/{pipeline_definition_id}/triggers": [
+          "get",
+          "post"
+        ],
+        "/projects/{project_id}/triggers/{trigger_id}": ["get", "patch", "delete"],
+        "/schedule/{schedule-id}": ["get", "patch", "delete"],
+        "/workflow/{id}/approve/{approval_request_id}": ["post"],
+        "/workflow/{id}/cancel": ["post"],
+        "/workflow/{id}/job": ["get"],
+        "/workflow/{id}/rerun": ["post"]
+      },
+      "patches": [
+        {
+          "pointer": "/paths/~1project~1{project-slug}~1envvar/get/parameters",
+          "value": [
+            {
+              "$ref": "#/components/parameters/page_token"
+            },
+            {
+              "in": "path",
+              "name": "project-slug",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "why": "The response has a `next_page_token` but the document lists no `page-token` to send it back in. The plugin has always sent it."
+        },
+        {
+          "pointer": "/paths/~1workflow~1{id}~1job/get/parameters",
+          "value": [
+            {
+              "$ref": "#/components/parameters/page_token"
+            },
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "why": "The response has a `next_page_token` but the document lists no `page-token` to send it back in. The plugin has always sent it."
+        },
+        {
+          "pointer": "/paths/~1context~1{context_id}~1restrictions/get/parameters",
+          "value": [
+            {
+              "$ref": "#/components/parameters/page_token"
+            }
+          ],
+          "why": "The response has a `next_page_token` but the document lists no `page-token` to send it back in. The plugin has always sent it."
+        },
+        {
+          "pointer": "/paths/~1insights~1{org-slug}~1summary/get/parameters/2/schema",
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "why": "Documented as an object with no properties; its description says a list of project names, and the plugin sends one name as `project-names=x`."
+        },
+        {
+          "pointer": "/components/schemas/pipelineDefinition/required",
+          "value": ["id"],
+          "why": "The document marks nothing required on a pipeline definition; every later call on one needs its id."
+        },
+        {
+          "pointer": "/paths/~1project~1{project-slug}~1envvar/get/responses/200/content/application~1json/schema/properties/items/items/properties/created-at",
+          "value": {
+            "type": "string",
+            "nullable": true
+          },
+          "why": "Documented with no type, and an example that is a string. The plugin shows it as a date."
+        },
+        {
+          "pointer": "/paths/~1project~1{project-slug}~1envvar/post/responses/201/content/application~1json/schema/properties/created-at",
+          "value": {
+            "type": "string",
+            "nullable": true
+          },
+          "why": "Documented with no type, and an example that is a string. The plugin shows it as a date."
+        },
+        {
+          "pointer": "/paths/~1project~1{project-slug}~1envvar~1{name}/get/responses/200/content/application~1json/schema/properties/created-at",
+          "value": {
+            "type": "string",
+            "nullable": true
+          },
+          "why": "Documented with no type, and an example that is a string. The plugin shows it as a date."
+        }
+      ]
+    },
+    {
+      "name": "v3",
+      "specUrl": "https://circleci.com/fullopenapi.json",
+      "pathPrefix": "/api/v3",
+      "paths": {
+        "/projects": ["get"],
+        "/runner/agents": ["get"],
+        "/runner/resource-classes": ["get", "post"],
+        "/runner/resource-classes/{id}": ["get", "delete"],
+        "/runner/resource-classes/{id}/update": ["post"],
+        "/runner/tokens": ["post"]
+      },
+      "patches": [
+        {
+          "pointer": "/paths/~1runner~1resource-classes/get/parameters/4",
+          "value": {
+            "in": "query",
+            "name": "page[cursor]",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "why": "The document gives this list no paging. The plugin has always walked it as it does the other v3 lists, sending `page.next` back if one arrives."
+        },
+        {
+          "pointer": "/paths/~1runner~1resource-classes/get/responses/200/content/application~1json/schema/properties/page",
+          "value": {
+            "type": "object",
+            "properties": {
+              "next": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "why": "The document gives this list no paging. The plugin has always walked it as it does the other v3 lists, sending `page.next` back if one arrives."
+        },
+        {
+          "pointer": "/paths/~1runner~1resource-classes/get/responses/200/content/application~1json/schema/properties/data/items/properties/attributes",
+          "value": {
+            "type": "object",
+            "properties": {
+              "resource_class": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          },
+          "why": "The document only lists `id`. The plugin reads these fields, named after circleci-cli, and keeps every read optional."
+        },
+        {
+          "pointer": "/paths/~1runner~1resource-classes~1{id}/get/responses/200/content/application~1json/schema/properties/data/properties/attributes",
+          "value": {
+            "type": "object",
+            "properties": {
+              "resource_class": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          },
+          "why": "The document only lists `id`. The plugin reads these fields, named after circleci-cli, and keeps every read optional."
+        },
+        {
+          "pointer": "/paths/~1runner~1resource-classes/post/responses/201/content/application~1json/schema/properties/data/properties/attributes",
+          "value": {
+            "type": "object",
+            "properties": {
+              "resource_class": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          },
+          "why": "The document only lists `id`. The plugin reads these fields, named after circleci-cli, and keeps every read optional."
+        },
+        {
+          "pointer": "/paths/~1runner~1agents/get/responses/200/content/application~1json/schema/properties/data/items/properties/attributes",
+          "value": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "is_busy": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": "string"
+              },
+              "first_connected_at": {
+                "type": "string"
+              },
+              "last_connected_at": {
+                "type": "string"
+              }
+            }
+          },
+          "why": "The document only lists `id`. The plugin reads these fields, named after circleci-cli, and keeps every read optional."
+        },
+        {
+          "pointer": "/paths/~1runner~1agents/get/responses/200/content/application~1json/schema/properties/data/items/properties/references",
+          "value": {
+            "type": "object",
+            "properties": {
+              "resource_class": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "attributes": {
+                    "type": "object",
+                    "properties": {
+                      "resource_class": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The document only lists `id`. The plugin reads these fields, named after circleci-cli, and keeps every read optional."
+        }
+      ]
+    }
+  ]
+}

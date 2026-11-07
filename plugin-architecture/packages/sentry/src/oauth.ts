@@ -100,7 +100,7 @@ export async function completeSentryOAuth(
       headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: "application/json" },
     });
     if (!res.ok) return { credentials: { baseUrl: "" } };
-    orgs = (await res.json()) as SentryOrganization[];
+    orgs = await res.json();
   } catch {
     return { credentials: { baseUrl: "" } };
   }

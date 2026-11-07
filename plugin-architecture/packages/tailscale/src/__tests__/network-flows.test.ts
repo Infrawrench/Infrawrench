@@ -1,5 +1,6 @@
 import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { NetworkFlowLog } from "../api.js";
 import { plugin } from "../plugin.js";
 import { flowSeries, flowWindow, formatFlowLogs } from "../network-flows.js";
 
@@ -14,7 +15,7 @@ const device = {
 const peer = { ...device, id: "456", nodeId: "node-2", hostname: "db", addresses: ["100.64.0.2"] };
 
 const START = Date.parse("2026-09-01T00:00:00Z");
-const logs = [
+const logs: NetworkFlowLog[] = [
   {
     nodeId: "node-1",
     start: "2026-09-01T00:00:05Z",

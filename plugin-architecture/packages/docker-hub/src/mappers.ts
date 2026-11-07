@@ -1,152 +1,28 @@
 /**
- * Raw Docker Hub shapes (only the fields the plugin reads) and their mapping
- * to `ResourceInstance`s. Field names follow the Docker Hub API OpenAPI
- * document (docs.docker.com/reference/api/hub/latest.yaml, 2026-10) and, for
- * the routes it does not document, Docker's own `docker/terraform-provider-docker`
- * and `docker/hub-tool` clients.
+ * Raw Docker Hub shapes, generated from the Docker Hub API OpenAPI document
+ * (docs.docker.com/reference/api/hub/latest.yaml; what it leaves out is patched in
+ * `plugingen.json`, from Docker's own `docker/terraform-provider-docker` and
+ * `docker/hub-tool` clients), and their mapping to `ResourceInstance`s.
  */
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiListItem, ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
+import type { components, operations } from "./api-types.gen.js";
 
 export const PLUGIN_ID = "docker-hub";
 
-export interface HubUser {
-  id?: string;
-  username?: string;
-  full_name?: string;
-  company?: string;
-  location?: string;
-  date_joined?: string;
-  profile_url?: string;
-}
+export type HubUser = ApiResponse<operations["getV2User"]>;
+export type HubOrg = ApiResponse<operations["getV2OrgsByOrgName"]>;
 
-export interface HubOrg {
-  id?: string;
-  orgname?: string;
-  full_name?: string;
-  company?: string;
-  location?: string;
-  date_joined?: string;
-  type?: string;
-}
+type RepositoryInfo = ApiResponse<operations["GetRepository"]>;
+/** A repository read on its own, or a list row, which has fewer fields. */
+export type HubRepository = Partial<RepositoryInfo> & Pick<RepositoryInfo, "name" | "namespace">;
 
-export interface HubRepository {
-  name: string;
-  namespace: string;
-  repository_type?: string | null;
-  status?: number;
-  status_description?: string;
-  description?: string | null;
-  full_description?: string | null;
-  is_private?: boolean;
-  star_count?: number;
-  pull_count?: number;
-  last_updated?: string | null;
-  last_modified?: string | null;
-  date_registered?: string;
-  media_types?: Array<string | null>;
-  content_types?: string[];
-  categories?: Array<{ name?: string; slug?: string }>;
-  storage_size?: number | null;
-  immutable_tags_settings?: { enabled?: boolean; rules?: string[] };
-}
-
-export interface HubTagImage {
-  architecture?: string;
-  variant?: string | null;
-  os?: string;
-  digest?: string | null;
-  size?: number;
-  last_pulled?: string | null;
-  last_pushed?: string | null;
-}
-
-export interface HubTag {
-  id?: number;
-  name: string;
-  full_size?: number;
-  last_updated?: string | null;
-  last_updater_username?: string;
-  tag_status?: string;
-  tag_last_pulled?: string | null;
-  tag_last_pushed?: string | null;
-  digest?: string;
-  media_type?: string;
-  images?: HubTagImage[];
-}
-
-export interface HubTeam {
-  id?: number;
-  uuid?: string;
-  name: string;
-  description?: string;
-  member_count?: number;
-  role?: string | null;
-}
-
-export interface HubMember {
-  id?: string;
-  username: string;
-  full_name?: string;
-  email?: string;
-  role?: string;
-  groups?: string[];
-  date_joined?: string;
-  type?: string;
-  is_guest?: boolean;
-  /** Only present when the organization has insights visible. */
-  last_logged_in_at?: string | null;
-  /** Only present when the organization has insights visible. */
-  last_seen_at?: string | null;
-}
-
-export interface HubInvite {
-  id: string;
-  inviter_username?: string;
-  invitee?: string;
-  org?: string;
-  team?: string;
-  created_at?: string;
-}
-
-export interface HubPat {
-  uuid: string;
-  token_label?: string;
-  scopes?: string[];
-  is_active?: boolean;
-  created_at?: string;
-  last_used?: string | null;
-  expires_at?: string | null;
-  generated_by?: string;
-  creator_ip?: string;
-  client_id?: string;
-}
-
-export interface HubOatResource {
-  type: string;
-  path: string;
-  scopes: string[];
-}
-
-export interface HubOat {
-  id: string;
-  label?: string;
-  description?: string;
-  created_by?: string;
-  is_active?: boolean;
-  created_at?: string;
-  expires_at?: string | null;
-  last_used_at?: string | null;
-  resources?: HubOatResource[];
-}
-
-export interface HubAuditLog {
-  account?: string;
-  action?: string;
-  name?: string;
-  actor?: string;
-  timestamp?: string;
-  action_description?: string;
-}
+export type HubTag = ApiResponse<operations["GetRepositoryTag"]>;
+export type HubTeam = ApiResponse<operations["getV2OrgsByOrgNameGroupsByGroupName"]>;
+export type HubMember = ApiListItem<operations["getV2OrgsByOrgNameMembers"], "results">;
+export type HubInvite = ApiListItem<operations["getV2OrgsByOrgNameInvites"], "data">;
+export type HubPat = ApiResponse<operations["getV2AccessTokensByUuid"]>;
+export type HubOatResource = components["schemas"]["orgAccessTokenResource"];
+export type HubOat = ApiResponse<operations["getV2OrgsByOrgNameAccessTokensByAccessTokenId"]>;
 
 function instance(
   accountId: string,

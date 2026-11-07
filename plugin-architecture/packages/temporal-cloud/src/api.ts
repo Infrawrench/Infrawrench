@@ -1,5 +1,12 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  pathEncode,
+  type ApiClient,
+  type ApiResponse,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { components, operations, paths } from "./api-types.gen.js";
 
 /**
  * Temporal Cloud Ops API, HTTP/JSON gateway.
@@ -16,11 +23,17 @@ import { jsonRestFetch } from "@infrawrench/plugin-base";
  * account key. `temporal-cloud-api-version` is optional over HTTP (it defaults
  * to the latest); it is pinned here so a server-side default bump cannot
  * change a response shape under the mappers.
+ *
+ * Typed from that document through `ctx.api`. It leaves out deprecated
+ * operations, so `plugingen.json` adds `GET /cloud/usage` back. OpenMetrics and
+ * the billing report CSVs are not part of it and stay on `fetchText`.
  */
 export const CLOUD_API_BASE = "https://saas-api.tmprl.cloud";
 export const CLOUD_API_VERSION = "v0.22.0";
 export const METRICS_API_BASE = "https://metrics.temporal.io";
 export const CLOUD_UI_BASE = "https://cloud.temporal.io";
+
+export type TemporalApi = ApiClient<paths>;
 
 export interface TemporalContext {
   apiKey: string;
@@ -28,6 +41,8 @@ export interface TemporalContext {
   metricsApiKey: string;
   caCert?: string;
   http?: HttpHostServices;
+  /** The Cloud Ops API. Requests go through the host whenever there is one. */
+  api: TemporalApi;
 }
 
 /** Thrown for any non-2xx answer, carrying the status the callers branch on. */
@@ -40,15 +55,11 @@ export class TemporalApiError extends Error {
   }
 }
 
-const STATUS_IN_MESSAGE = /Temporal Cloud API error (\d{3})/;
-
-export type Query = Record<string, string | number | boolean | string[] | undefined>;
-
-export function buildQuery(query: Query | undefined): string {
+export function buildQuery(query: Record<string, ParamValue> | undefined): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query ?? {})) {
     if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) for (const item of v) params.append(k, item);
+    if (Array.isArray(v)) for (const item of v) params.append(k, String(item));
     else params.set(k, String(v));
   }
   const qs = params.toString();
@@ -56,42 +67,28 @@ export function buildQuery(query: Query | undefined): string {
 }
 
 /**
- * JSON request against the Cloud Ops API. Routed through the host HTTP
- * service whenever there is one: that is the only path that honours bastion
- * egress and a custom CA.
+ * Everything a request needs. An empty query value is left out rather than sent
+ * empty, and an error names the path without its query.
  */
-export async function tcFetch<T>(
-  ctx: TemporalContext,
-  path: string,
-  init?: { method?: string; body?: unknown; query?: Query },
-): Promise<T> {
-  const method = init?.method ?? "GET";
-  try {
-    return await jsonRestFetch<T>({
+export function createTemporalContext(options: Omit<TemporalContext, "api">): TemporalContext {
+  const { apiKey, caCert, http } = options;
+  return {
+    ...options,
+    api: createApiClient<paths>({
       vendor: "Temporal Cloud",
-      url: `${CLOUD_API_BASE}${path}${buildQuery(init?.query)}`,
-      errorPath: path,
+      baseUrl: CLOUD_API_BASE,
       headers: {
         Accept: "application/json",
-        Authorization: `Bearer ${ctx.apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "temporal-cloud-api-version": CLOUD_API_VERSION,
       },
-      init: {
-        method,
-        ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
-      },
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    throw asTemporalError(err);
-  }
-}
-
-function asTemporalError(err: unknown): unknown {
-  const message = err instanceof Error ? err.message : String(err);
-  const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-  return status ? new TemporalApiError(status, message) : err;
+      http,
+      caCert,
+      serializeQuery: (query) => buildQuery(query).slice(1),
+      httpError: ({ status, path, body }) =>
+        new TemporalApiError(status, `Temporal Cloud API error ${status} for ${path}: ${body}`),
+    }),
+  };
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */
@@ -105,27 +102,34 @@ export function isPermissionError(err: unknown): boolean {
   return status === 401 || status === 403;
 }
 
+/** What each page of a Cloud Ops list is asked for. */
+export interface PageQuery {
+  pageSize: number;
+  pageToken?: string;
+}
+
 /**
  * Page through a Cloud Ops list (`pageSize` / `pageToken`, answered with a
- * `nextPageToken`). Hard-stops at `maxPages` so a misbehaving cursor cannot
- * spin forever.
+ * `nextPageToken`), running on past an empty page while there is a token.
+ * Hard-stops at `maxPages` so a misbehaving cursor cannot spin forever.
+ *
+ *   tcPaged((query) => ctx.api.get("/cloud/users", { query }), (page) => page?.users)
+ *
+ * `getAll` is not used: this loop only follows a token that is a non-empty
+ * string, and a list that is not an array fails the walk rather than reading as
+ * empty, because the host prunes what a sync stops seeing.
  */
-export async function tcPaged<T>(
-  ctx: TemporalContext,
-  path: string,
-  key: string,
-  query: Query = {},
+export async function tcPaged<Page extends { nextPageToken?: string }, Row>(
+  fetchPage: (query: PageQuery) => Promise<Page>,
+  rows: (page: Page) => Row[] | undefined,
   maxPages = 50,
-): Promise<T[]> {
-  const out: T[] = [];
+): Promise<Row[]> {
+  const out: Row[] = [];
   let pageToken: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res = await tcFetch<Record<string, unknown>>(ctx, path, {
-      query: { ...query, pageSize: 100, ...(pageToken ? { pageToken } : {}) },
-    });
-    const batch = (res?.[key] as T[] | undefined) ?? [];
-    out.push(...batch);
-    const next = res?.["nextPageToken"];
+    const res = await fetchPage({ pageSize: 100, ...(pageToken ? { pageToken } : {}) });
+    out.push(...(rows(res) ?? []));
+    const next = res?.nextPageToken;
     if (typeof next !== "string" || next === "") break;
     pageToken = next;
   }
@@ -155,15 +159,7 @@ export async function fetchText(
   return { status: res.status, body: await res.text(), headers: out };
 }
 
-export interface AsyncOperation {
-  id?: string;
-  state?: string;
-  checkDuration?: string;
-  operationType?: string;
-  failureReason?: string;
-  startedTime?: string;
-  finishedTime?: string;
-}
+export type AsyncOperation = components["schemas"]["v1AsyncOperation"];
 
 const OPERATION_DONE = new Set(["STATE_FULFILLED"]);
 const OPERATION_FAILED = new Set(["STATE_FAILED", "STATE_CANCELLED", "STATE_REJECTED"]);
@@ -195,9 +191,9 @@ export async function waitForOperation(
     }
     if (Date.now() >= deadline) return op;
     await sleep(pollMs);
-    const res: { asyncOperation?: AsyncOperation } = await tcFetch<{
-      asyncOperation?: AsyncOperation;
-    }>(ctx, `/cloud/operations/${encodeURIComponent(op?.id ?? "")}`);
+    const res: ApiResponse<operations["GetAsyncOperation"]> = await ctx.api.get(
+      `/cloud/operations/${pathEncode(op?.id ?? "")}`,
+    );
     op = res.asyncOperation ?? op;
   }
 }

@@ -1,10 +1,12 @@
 packages:
   - "plugin-architecture/packages/*"
   - "app/packages/*"
+  - "plugingen"
 
 # TypeScript 7 packages depend on this (`"typescript": "catalog:"`). It is
-# tsc-rs installed under the name `typescript` (`@tsc-rs/typescript`). website
-# and mobile do not use the catalog: they alias `typescript` to TypeScript 6.
+# tsc-rs installed under the name `typescript` (`@tsc-rs/typescript`). website,
+# mobile and plugingen do not use the catalog: they alias `typescript` to
+# TypeScript 6.
 catalog:
   typescript: "npm:@tsc-rs/typescript@0.8.0"
   # The plugin contract is written in Effect (plugin-base and every plugin).

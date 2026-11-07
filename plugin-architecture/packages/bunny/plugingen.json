@@ -1,0 +1,307 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "core",
+      "specUrl": "https://core-api-public-docs.b-cdn.net/docs/v3/public.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/EdgeRuleActionType",
+          "value": {
+            "type": "integer"
+          },
+          "why": "Written as a number the plugin works out from its own name list or a form value, and bunny.net validates what arrives, so the plugin does not hold a second copy of this enum."
+        },
+        {
+          "pointer": "/components/schemas/TriggerTypes",
+          "value": {
+            "type": "integer"
+          },
+          "why": "Written as a number the plugin works out from its own name list or a form value, and bunny.net validates what arrives, so the plugin does not hold a second copy of this enum."
+        },
+        {
+          "pointer": "/components/schemas/TriggerMatchingTypes",
+          "value": {
+            "type": "integer"
+          },
+          "why": "Written as a number the plugin works out from its own name list or a form value, and bunny.net validates what arrives, so the plugin does not hold a second copy of this enum."
+        },
+        {
+          "pointer": "/components/schemas/PullZoneType",
+          "value": {
+            "type": "integer"
+          },
+          "why": "Written as a number the plugin works out from its own name list or a form value, and bunny.net validates what arrives, so the plugin does not hold a second copy of this enum."
+        },
+        {
+          "pointer": "/components/schemas/DnsRecordTypes",
+          "value": {
+            "type": "integer"
+          },
+          "why": "Written as a number the plugin works out from its own name list or a form value, and bunny.net validates what arrives, so the plugin does not hold a second copy of this enum."
+        },
+        {
+          "pointer": "/components/schemas/StorageZoneTier",
+          "value": {
+            "type": "integer"
+          },
+          "why": "Written as a number the plugin works out from its own name list or a form value, and bunny.net validates what arrives, so the plugin does not hold a second copy of this enum."
+        },
+        {
+          "pointer": "/paths/~1pullzone/post/responses/201/content",
+          "value": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PullZoneModel"
+              }
+            }
+          },
+          "why": "The document describes no body here, but the plugin maps the created pull zone from the answer."
+        },
+        {
+          "pointer": "/paths/~1dnszone/post/responses/201/content",
+          "value": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DnsZoneModel"
+              }
+            }
+          },
+          "why": "The document describes no body here, but the plugin maps the created zone from the answer."
+        },
+        {
+          "pointer": "/paths/~1statistics/get/parameters/2/schema",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin passes the pull zone id as it holds it, a string from the host's resource id."
+        },
+        {
+          "pointer": "/components/schemas/PullZoneModel/properties/EdgeRules/items",
+          "value": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EdgeRuleV2Model"
+              },
+              {
+                "type": "object",
+                "required": ["Guid"],
+                "properties": {
+                  "Guid": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "why": "The same schema is the addOrUpdate body, which has no guid when creating. A rule stored on a pull zone always has one."
+        },
+        {
+          "pointer": "/components/schemas/PullZoneModel/required",
+          "value": ["Id", "Name"],
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/PullZoneModel/properties/Name",
+          "value": {
+            "type": "string"
+          },
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/HostnameModel/required",
+          "value": ["Value"],
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/HostnameModel/properties/Value",
+          "value": {
+            "type": "string"
+          },
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/StorageZoneModel/required",
+          "value": ["Id", "Name"],
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/StorageZoneModel/properties/Name",
+          "value": {
+            "type": "string"
+          },
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/DnsZoneModel/required",
+          "value": ["Id", "Domain"],
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/DnsZoneModel/properties/Domain",
+          "value": {
+            "type": "string"
+          },
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/VideoLibraryModel/required",
+          "value": ["Id", "Name"],
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/VideoLibraryModel/properties/Name",
+          "value": {
+            "type": "string"
+          },
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/BillingRecordModel/required",
+          "value": ["Amount", "Timestamp"],
+          "why": "The document marks nothing required. A billing record always has its amount and date, and cost rows are built from them."
+        },
+        {
+          "pointer": "/components/schemas/StorageRegionModel/properties/Id",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin reads `Id` where the document says `Code` (#494). Remove this with the fix."
+        },
+        {
+          "pointer": "/components/schemas/StorageRegionModel/required",
+          "value": ["Id", "Name"],
+          "why": "The plugin reads `Id` where the document says `Code` (#494). Remove this with the fix."
+        },
+        {
+          "pointer": "/components/schemas/StorageRegionModel/properties/Name",
+          "value": {
+            "type": "string"
+          },
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        }
+      ],
+      "paths": {
+        "/billing": ["get"],
+        "/dnszone": ["get", "post"],
+        "/dnszone/{id}": ["get", "post", "delete"],
+        "/dnszone/{id}/dnssec": ["post", "delete"],
+        "/dnszone/{id}/statistics": ["get"],
+        "/dnszone/{zoneId}/records": ["put"],
+        "/dnszone/{zoneId}/records/{id}": ["post", "delete"],
+        "/pullzone": ["get", "post"],
+        "/pullzone/loadFreeCertificate": ["get"],
+        "/pullzone/{id}": ["get", "post", "delete"],
+        "/pullzone/{id}/addHostname": ["post"],
+        "/pullzone/{id}/purgeCache": ["post"],
+        "/pullzone/{id}/removeHostname": ["delete"],
+        "/pullzone/{id}/resetSecurityKey": ["post"],
+        "/pullzone/{id}/setForceSSL": ["post"],
+        "/pullzone/{pullZoneId}/edgerules/addOrUpdate": ["post"],
+        "/pullzone/{pullZoneId}/edgerules/{edgeRuleId}": ["delete"],
+        "/pullzone/{pullZoneId}/edgerules/{edgeRuleId}/setEdgeRuleEnabled": ["post"],
+        "/purge": ["post"],
+        "/statistics": ["get"],
+        "/storagezone": ["get", "post"],
+        "/storagezone/regions": ["get"],
+        "/storagezone/{id}": ["get", "post", "delete"],
+        "/storagezone/{id}/resetPassword": ["post"],
+        "/storagezone/{id}/statistics": ["get"],
+        "/videolibrary": ["get", "post"],
+        "/videolibrary/{id}": ["get", "post", "delete"],
+        "/videolibrary/{id}/resetApiKey": ["post"]
+      }
+    },
+    {
+      "name": "compute",
+      "specUrl": "https://core-api-public-docs.b-cdn.net/docs/v3/compute.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/EdgeScriptTypes",
+          "value": {
+            "type": "integer"
+          },
+          "why": "Written as a number the plugin works out from its own name list or a form value, and bunny.net validates what arrives, so the plugin does not hold a second copy of this enum."
+        },
+        {
+          "pointer": "/components/schemas/EdgeScriptModel/required",
+          "value": ["Id", "Name"],
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        },
+        {
+          "pointer": "/components/schemas/EdgeScriptModel/properties/Name",
+          "value": {
+            "type": "string"
+          },
+          "why": "The document marks nothing required and every string nullable. A stored object always has these, and they are what identifies it."
+        }
+      ],
+      "paths": {
+        "/compute/script": ["get", "post"],
+        "/compute/script/{id}": ["get", "post", "delete"],
+        "/compute/script/{id}/publish": ["post"],
+        "/compute/script/{id}/statistics": ["get"]
+      }
+    },
+    {
+      "name": "mc",
+      "specUrl": "https://api-mc.opsbunny.net/docs/public/swagger.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1apps~1{appId}~1statistics/get/parameters/3/required",
+          "value": false,
+          "why": "The document requires `granularity` and the plugin does not send it (#495). Remove this with the fix."
+        },
+        {
+          "pointer": "/components/schemas/AppListItem/required",
+          "value": ["id"],
+          "why": "The document marks nothing required. A listed app always has its id, and the plugin fetches each app by it."
+        }
+      ],
+      "paths": {
+        "/apps": ["get"],
+        "/apps/{appId}": ["get", "delete"],
+        "/apps/{appId}/autoscaling": ["put"],
+        "/apps/{appId}/deploy": ["post"],
+        "/apps/{appId}/restart": ["post"],
+        "/apps/{appId}/statistics": ["get"],
+        "/apps/{appId}/undeploy": ["post"]
+      }
+    },
+    {
+      "name": "storage",
+      "specUrl": "https://docs.bunny.net/docs/api-reference/storage/openapi.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1{storageZoneName}~1{path}~1/get/responses/200/content",
+          "value": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StorageObject"
+                }
+              }
+            }
+          },
+          "why": "The schema is only under `*/*`; `application/json` holds examples and no schema."
+        },
+        {
+          "pointer": "/components/schemas/StorageObject/required",
+          "value": ["ObjectName"],
+          "why": "The document marks nothing required. Every listed object has its name, and keys are built from it."
+        },
+        {
+          "pointer": "/components/schemas/StorageObject/properties/ContentType",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin reads `ContentType` from each listed object, and the document omits it."
+        }
+      ],
+      "paths": {
+        "/{storageZoneName}/{path}/": ["get"]
+      }
+    }
+  ]
+}

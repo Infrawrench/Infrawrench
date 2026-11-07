@@ -38,19 +38,12 @@ import {
   bytesToHex,
   constantTimeEqual,
   hmacSha256,
+  pathEncode,
   rejectedPagingWebhook,
 } from "@infrawrench/plugin-base";
-import type { EventsApiBody, PagerDutyTransport } from "./api.js";
-import { PagerDutyApiError, pdFetch, pdList, sendEvent, statusOf } from "./api.js";
-import type {
-  PdEscalationPolicy,
-  PdIncident,
-  PdIntegration,
-  PdOrchestration,
-  PdSchedule,
-  PdService,
-  PdUser,
-} from "./mappers.js";
+import type { EventsApiBody, PagerDutyApi, PagerDutyEvents } from "./api.js";
+import { PagerDutyApiError, sendEvent, statusOf } from "./api.js";
+import type { PdExpandable, PdIncident, PdIntegration, PdOrchestration } from "./mappers.js";
 import { toPagingIncident } from "./mappers.js";
 
 export const ORCHESTRATION_PREFIX = "orchestration:";
@@ -77,7 +70,8 @@ export const WEBHOOK_EVENTS = [
 const SUMMARY_LIMIT = 1024;
 
 export interface PagingContext {
-  transport: PagerDutyTransport;
+  api: PagerDutyApi;
+  events: PagerDutyEvents;
   /** The account's default `From` user, when configured. */
   fromEmail: string;
   /** Routing keys resolved this client's lifetime, by target id. */
@@ -86,14 +80,13 @@ export interface PagingContext {
 
 export async function listTargets(ctx: PagingContext): Promise<PagingTarget[]> {
   const [services, orchestrations] = await Promise.all([
-    pdList<PdService>(ctx.transport, "/services", "services", {
-      "include[]": ["teams"],
-      sort_by: "name",
+    ctx.api.getAll("/services", "services", {
+      query: { "include[]": ["teams"], sort_by: "name" },
     }),
-    pdList<PdOrchestration>(ctx.transport, "/event_orchestrations", "orchestrations").catch(
+    ctx.api.getAll("/event_orchestrations", "orchestrations").catch(
       // Event orchestration needs AIOps or a newer plan on some accounts;
       // a 403 there must not hide the services.
-      () => [] as PdOrchestration[],
+      (): PdOrchestration[] => [],
     ),
   ]);
   return [
@@ -115,16 +108,14 @@ export async function listTargets(ctx: PagingContext): Promise<PagingTarget[]> {
 
 /** The service's Events API v2 integration key, creating an Infrawrench integration if needed. */
 export async function serviceRoutingKey(
-  transport: PagerDutyTransport,
+  api: PagerDutyApi,
   serviceId: string,
   options: { create: boolean } = { create: true },
 ): Promise<string> {
-  const res = await pdFetch<{ service?: PdService }>(
-    transport,
-    `/services/${encodeURIComponent(serviceId)}`,
-    { query: { "include[]": ["integrations"] } },
-  );
-  const integrations = (res?.service?.integrations ?? []).filter(
+  const id = pathEncode(serviceId);
+  const res = await api.get(`/services/${id}`, { query: { "include[]": ["integrations"] } });
+  const listed: PdIntegration[] = res?.service?.integrations ?? [];
+  const integrations = listed.filter(
     (i) => i.type === EVENTS_V2_TYPE || i.type === `${EVENTS_V2_TYPE}_reference`,
   );
   // Prefer the integration Infrawrench made, so its alerts are labelled as
@@ -136,26 +127,19 @@ export async function serviceRoutingKey(
   for (const candidate of ordered) {
     if (candidate.integration_key) return candidate.integration_key;
     if (!candidate.id) continue;
-    const full = await pdFetch<{ integration?: PdIntegration }>(
-      transport,
-      `/services/${encodeURIComponent(serviceId)}/integrations/${encodeURIComponent(candidate.id)}`,
-    );
+    const full = await api.get(`/services/${id}/integrations/${pathEncode(candidate.id)}`);
     if (full?.integration?.integration_key) return full.integration.integration_key;
   }
   if (!options.create) return "";
-  const created = await pdFetch<{ integration?: PdIntegration }>(
-    transport,
-    `/services/${encodeURIComponent(serviceId)}/integrations`,
-    {
-      body: {
-        integration: {
-          type: EVENTS_V2_TYPE,
-          name: INTEGRATION_NAME,
-          service: { id: serviceId, type: "service_reference" },
-        },
+  const created = await api.post(`/services/${id}/integrations`, {
+    body: {
+      integration: {
+        type: EVENTS_V2_TYPE,
+        name: INTEGRATION_NAME,
+        service: { id: serviceId, type: "service_reference" },
       },
     },
-  );
+  });
   const key = created?.integration?.integration_key;
   if (!key) {
     throw new PagerDutyApiError(
@@ -167,13 +151,10 @@ export async function serviceRoutingKey(
 }
 
 export async function orchestrationRoutingKey(
-  transport: PagerDutyTransport,
+  api: PagerDutyApi,
   orchestrationId: string,
 ): Promise<string> {
-  const res = await pdFetch<{ integrations?: PdOrchestration["integrations"] }>(
-    transport,
-    `/event_orchestrations/${encodeURIComponent(orchestrationId)}/integrations`,
-  );
+  const res = await api.get(`/event_orchestrations/${pathEncode(orchestrationId)}/integrations`);
   const key = res?.integrations?.find((i) => i.parameters?.routing_key)?.parameters?.routing_key;
   if (!key) {
     throw new PagerDutyApiError(404, "That event orchestration has no routing key");
@@ -185,8 +166,8 @@ function routingKeyFor(ctx: PagingContext, targetId: string): Promise<string> {
   const cached = ctx.routingKeys.get(targetId);
   if (cached) return cached;
   const lookup = targetId.startsWith(ORCHESTRATION_PREFIX)
-    ? orchestrationRoutingKey(ctx.transport, targetId.slice(ORCHESTRATION_PREFIX.length))
-    : serviceRoutingKey(ctx.transport, targetId);
+    ? orchestrationRoutingKey(ctx.api, targetId.slice(ORCHESTRATION_PREFIX.length))
+    : serviceRoutingKey(ctx.api, targetId);
   // A failed lookup must not be cached, or one transient error would stick.
   const guarded = lookup.catch((err: unknown) => {
     ctx.routingKeys.delete(targetId);
@@ -239,7 +220,7 @@ export async function sendPagingEvent(
 ): Promise<PagingEventResult> {
   const routingKey = await routingKeyFor(ctx, targetId);
   try {
-    const res = await sendEvent(ctx.transport, buildEventBody(routingKey, event));
+    const res = await sendEvent(ctx.events, buildEventBody(routingKey, event));
     return { dedupKey: res.dedupKey };
   } catch (err) {
     // A deleted integration answers 400 "Invalid routing key": forget the
@@ -251,10 +232,8 @@ export async function sendPagingEvent(
 
 export async function listOnCallSources(ctx: PagingContext): Promise<PagingOnCallSource[]> {
   const [schedules, policies] = await Promise.all([
-    pdList<PdSchedule>(ctx.transport, "/schedules", "schedules"),
-    pdList<PdEscalationPolicy>(ctx.transport, "/escalation_policies", "escalation_policies", {
-      sort_by: "name",
-    }),
+    ctx.api.getAll("/schedules", "schedules"),
+    ctx.api.getAll("/escalation_policies", "escalation_policies", { query: { sort_by: "name" } }),
   ]);
   return [
     ...schedules.map((s) => ({
@@ -270,12 +249,6 @@ export async function listOnCallSources(ctx: PagingContext): Promise<PagingOnCal
   ];
 }
 
-interface PdOnCall {
-  user?: PdUser;
-  escalation_level?: number;
-  end?: string | null;
-}
-
 export async function resolveOnCall(
   ctx: PagingContext,
   sourceId: string,
@@ -285,11 +258,9 @@ export async function resolveOnCall(
   const until = new Date(at.getTime() + 60_000).toISOString();
   if (sourceId.startsWith(SCHEDULE_PREFIX)) {
     const id = sourceId.slice(SCHEDULE_PREFIX.length);
-    const res = await pdFetch<{ users?: PdUser[] }>(
-      ctx.transport,
-      `/schedules/${encodeURIComponent(id)}/users`,
-      { query: { since, until } },
-    );
+    const res = await ctx.api.get(`/schedules/${pathEncode(id)}/users`, {
+      query: { since, until },
+    });
     return (res?.users ?? []).map((u) => ({
       userId: u.id ?? "",
       name: u.name ?? null,
@@ -299,24 +270,22 @@ export async function resolveOnCall(
   }
   if (sourceId.startsWith(POLICY_PREFIX)) {
     const id = sourceId.slice(POLICY_PREFIX.length);
-    const oncalls = await pdList<PdOnCall>(ctx.transport, "/oncalls", "oncalls", {
-      "escalation_policy_ids[]": [id],
-      "include[]": ["users"],
-      since,
-      until,
+    const oncalls = await ctx.api.getAll("/oncalls", "oncalls", {
+      query: { "escalation_policy_ids[]": [id], "include[]": ["users"], since, until },
     });
     const seen = new Set<string>();
     const out: PagingOnCallPerson[] = [];
     for (const oc of [...oncalls].sort(
       (a, b) => (a.escalation_level ?? 1) - (b.escalation_level ?? 1),
     )) {
-      const userId = oc.user?.id ?? "";
+      const user: PdExpandable | undefined = oc.user;
+      const userId = user?.id ?? "";
       if (!userId || seen.has(userId)) continue;
       seen.add(userId);
       out.push({
         userId,
-        name: oc.user?.name ?? oc.user?.summary ?? null,
-        email: oc.user?.email ?? null,
+        name: user?.name ?? user?.summary ?? null,
+        email: user?.email ?? null,
         until: oc.end ?? null,
         level: oc.escalation_level ?? 1,
       });
@@ -326,7 +295,14 @@ export async function resolveOnCall(
   throw new PagerDutyApiError(400, `Unknown on-call source "${sourceId}"`);
 }
 
-const INCIDENT_INCLUDES = ["assignees", "acknowledgers", "services"];
+const INCIDENT_INCLUDES: ("assignees" | "acknowledgers" | "services")[] = [
+  "assignees",
+  "acknowledgers",
+  "services",
+];
+
+/** Incident lists here stop at 500 rows, not the 2000 of every other list. */
+const INCIDENT_MAX_PAGES = 5;
 
 export async function listIncidents(
   ctx: PagingContext,
@@ -336,31 +312,25 @@ export async function listIncidents(
   // whatever its age (so an old one acknowledged today is seen), plus those
   // created in the window, which brings in recently resolved ones.
   const [open, recent] = await Promise.all([
-    pdList<PdIncident>(
-      ctx.transport,
-      "/incidents",
-      "incidents",
-      {
+    ctx.api.getAll("/incidents", "incidents", {
+      query: {
         "statuses[]": ["triggered", "acknowledged"],
         date_range: "all",
         "include[]": INCIDENT_INCLUDES,
       },
-      500,
-    ),
+      maxPages: INCIDENT_MAX_PAGES,
+    }),
     query.includeResolved === false
-      ? Promise.resolve([] as PdIncident[])
-      : pdList<PdIncident>(
-          ctx.transport,
-          "/incidents",
-          "incidents",
-          {
+      ? Promise.resolve<PdIncident[]>([])
+      : ctx.api.getAll("/incidents", "incidents", {
+          query: {
             since: query.since.toISOString(),
             until: new Date().toISOString(),
             "statuses[]": ["resolved"],
             "include[]": INCIDENT_INCLUDES,
           },
-          500,
-        ),
+          maxPages: INCIDENT_MAX_PAGES,
+        }),
   ]);
   const byId = new Map<string, PdIncident>();
   for (const i of [...recent, ...open]) if (i.id) byId.set(i.id, i);
@@ -372,11 +342,9 @@ export async function getIncident(
   incidentId: string,
 ): Promise<PagingIncident | null> {
   try {
-    const res = await pdFetch<{ incident?: PdIncident }>(
-      ctx.transport,
-      `/incidents/${encodeURIComponent(incidentId)}`,
-      { query: { "include[]": INCIDENT_INCLUDES } },
-    );
+    const res = await ctx.api.get(`/incidents/${pathEncode(incidentId)}`, {
+      query: { "include[]": INCIDENT_INCLUDES },
+    });
     return res?.incident ? toPagingIncident(res.incident) : null;
   } catch (err) {
     if (statusOf(err) === 404) return null;
@@ -419,22 +387,18 @@ export async function updateIncident(
   update: PagingIncidentUpdate,
 ): Promise<PagingIncident> {
   const status = update.action === "resolve" ? "resolved" : "acknowledged";
+  const id = pathEncode(incidentId);
   const res = await withFrom(ctx, update.actorEmail, async (from) => {
     if (update.note) {
-      await pdFetch(ctx.transport, `/incidents/${encodeURIComponent(incidentId)}/notes`, {
+      await ctx.api.post(`/incidents/${id}/notes`, {
         body: { note: { content: update.note } },
-        from,
+        headers: { From: from },
       });
     }
-    return pdFetch<{ incident?: PdIncident }>(
-      ctx.transport,
-      `/incidents/${encodeURIComponent(incidentId)}`,
-      {
-        method: "PUT",
-        body: { incident: { type: "incident_reference", status } },
-        from,
-      },
-    );
+    return ctx.api.put(`/incidents/${id}`, {
+      body: { incident: { type: "incident_reference", status } },
+      headers: { From: from },
+    });
   });
   // The PUT answers without the expansions; re-read for assignee emails.
   return (
@@ -447,9 +411,7 @@ export async function registerWebhook(
   ctx: PagingContext,
   url: string,
 ): Promise<PagingWebhookRegistration> {
-  const res = await pdFetch<{
-    webhook_subscription?: { id?: string; delivery_method?: { secret?: string } };
-  }>(ctx.transport, "/webhook_subscriptions", {
+  const res = await ctx.api.post("/webhook_subscriptions", {
     body: {
       webhook_subscription: {
         type: "webhook_subscription",
@@ -474,9 +436,7 @@ export async function registerWebhook(
 
 export async function removeWebhook(ctx: PagingContext, webhookId: string): Promise<void> {
   try {
-    await pdFetch(ctx.transport, `/webhook_subscriptions/${encodeURIComponent(webhookId)}`, {
-      method: "DELETE",
-    });
+    await ctx.api.delete(`/webhook_subscriptions/${pathEncode(webhookId)}`);
   } catch (err) {
     // Already gone is what we wanted.
     if (statusOf(err) !== 404) throw err;
@@ -506,7 +466,7 @@ export async function verifyWebhook(request: PagingWebhookRequest): Promise<Pagi
 
   let envelope: WebhookEnvelope;
   try {
-    envelope = JSON.parse(request.body) as WebhookEnvelope;
+    envelope = JSON.parse(request.body);
   } catch {
     return { valid: true, incidentIds: [], acknowledgedDedupKeys: [], resolvedDedupKeys: [] };
   }

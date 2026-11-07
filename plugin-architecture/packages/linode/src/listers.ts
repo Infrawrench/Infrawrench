@@ -9,8 +9,8 @@
  * healthy resource.
  */
 
-import type { ResourceInstance } from "@infrawrench/plugin-base";
-import type { LinodeApi } from "./api.js";
+import { pathEncode, type ResourceInstance } from "@infrawrench/plugin-base";
+import { allPages, segment, xFilter, type LinodeApi } from "./api.js";
 import type {
   LinodeAccount,
   LinodeBucket,
@@ -84,7 +84,7 @@ export async function mapPooled<T, R>(
   return out;
 }
 
-const tags = (t: string[] | undefined) => (t ?? []).join(", ");
+const tags = (t: readonly string[] | undefined) => (t ?? []).join(", ");
 const str = (v: unknown) => (v == null ? "" : String(v));
 
 /** RFC 1918 / CGNAT private IPv4 test, for splitting a Linode's address list. */
@@ -109,7 +109,7 @@ export function firewallIndex(firewalls: LinodeFirewall[]): Map<string, string[]
 
 async function firewallsOrEmpty(api: LinodeApi): Promise<LinodeFirewall[] | null> {
   try {
-    return await api.all<LinodeFirewall>("/networking/firewalls");
+    return await allPages((query) => api.get("/networking/firewalls", { query }));
   } catch {
     return null;
   }
@@ -159,7 +159,7 @@ export function mapLinode(
 
 export async function listLinodes(api: LinodeApi, accountId: string): Promise<ResourceInstance[]> {
   const [linodes, firewalls] = await Promise.all([
-    api.all<LinodeInstance>("/linode/instances"),
+    allPages((query) => api.get("/linode/instances", { query })),
     firewallsOrEmpty(api),
   ]);
   const index = firewalls ? firewallIndex(firewalls) : null;
@@ -195,7 +195,7 @@ export function mapVolume(v: LinodeVolume, accountId: string): ResourceInstance 
   );
 }
 export async function listVolumes(api: LinodeApi, accountId: string): Promise<ResourceInstance[]> {
-  const volumes = await api.all<LinodeVolume>("/volumes");
+  const volumes = await allPages((query) => api.get("/volumes", { query }));
   return volumes.map((v) => mapVolume(v, accountId));
 }
 
@@ -239,14 +239,16 @@ export async function listNodeBalancers(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const [nbs, firewalls] = await Promise.all([
-    api.all<LinodeNodeBalancer>("/nodebalancers"),
+    allPages((query) => api.get("/nodebalancers", { query })),
     firewallsOrEmpty(api),
   ]);
   const index = firewalls ? firewallIndex(firewalls) : null;
   return mapPooled(nbs, 8, async (nb) => {
     let configs: LinodeNodeBalancerConfig[] | null = null;
     try {
-      configs = await api.all<LinodeNodeBalancerConfig>(`/nodebalancers/${nb.id}/configs`);
+      configs = await allPages((query) =>
+        api.get(`/nodebalancers/${segment(nb.id)}/configs`, { query }),
+      );
     } catch {
       configs = null;
     }
@@ -317,10 +319,15 @@ export function mapLkePool(
 async function clustersWithPools(
   api: LinodeApi,
 ): Promise<Array<{ cluster: LinodeLkeCluster; pools: LinodeLkePool[] | null }>> {
-  const clusters = await api.all<LinodeLkeCluster>("/lke/clusters");
+  const clusters = await allPages((query) => api.get("/lke/clusters", { query }));
   return mapPooled(clusters, 8, async (cluster) => {
     try {
-      return { cluster, pools: await api.all<LinodeLkePool>(`/lke/clusters/${cluster.id}/pools`) };
+      return {
+        cluster,
+        pools: await allPages((query) =>
+          api.get(`/lke/clusters/${segment(cluster.id)}/pools`, { query }),
+        ),
+      };
     } catch {
       return { cluster, pools: null };
     }
@@ -344,6 +351,11 @@ export async function listLkePools(api: LinodeApi, accountId: string): Promise<R
 
 // --- Object Storage ----------------------------------------------------------
 
+interface BucketAccess {
+  acl?: string;
+  cors_enabled?: boolean | null;
+}
+
 export function bucketRegion(b: LinodeBucket): string {
   return str(b.region || b.cluster?.replace(/-\d+$/, ""));
 }
@@ -351,7 +363,7 @@ export function bucketRegion(b: LinodeBucket): string {
 export function mapBucket(
   b: LinodeBucket,
   accountId: string,
-  access: { acl?: string; cors_enabled?: boolean } | null,
+  access: BucketAccess | null,
 ): ResourceInstance {
   const region = bucketRegion(b);
   const fields: Fields = {
@@ -375,12 +387,12 @@ export function mapBucket(
 }
 
 export async function listBuckets(api: LinodeApi, accountId: string): Promise<ResourceInstance[]> {
-  const buckets = await api.all<LinodeBucket>("/object-storage/buckets");
+  const buckets = await allPages((query) => api.get("/object-storage/buckets", { query }));
   return mapPooled(buckets, 8, async (b) => {
-    let access: { acl?: string; cors_enabled?: boolean } | null = null;
+    let access: BucketAccess | null = null;
     try {
       access = await api.get(
-        `/object-storage/buckets/${bucketRegion(b)}/${encodeURIComponent(b.label)}/access`,
+        `/object-storage/buckets/${segment(bucketRegion(b))}/${pathEncode(b.label)}/access`,
       );
     } catch {
       access = null;
@@ -429,7 +441,7 @@ export async function listDatabases(
   api: LinodeApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const dbs = await api.all<LinodeDatabase>("/databases/instances");
+  const dbs = await allPages((query) => api.get("/databases/instances", { query }));
   return dbs.map((d) => mapDatabase(d, accountId));
 }
 
@@ -461,7 +473,7 @@ export async function listFirewalls(
   api: LinodeApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const fws = await api.all<LinodeFirewall>("/networking/firewalls");
+  const fws = await allPages((query) => api.get("/networking/firewalls", { query }));
   return fws.filter((fw) => fw.status !== "deleted").map((fw) => mapFirewall(fw, accountId));
 }
 
@@ -488,7 +500,7 @@ export function mapVpc(v: LinodeVpc, accountId: string): ResourceInstance {
 }
 
 export async function listVpcs(api: LinodeApi, accountId: string): Promise<ResourceInstance[]> {
-  const vpcs = await api.all<LinodeVpc>("/vpcs");
+  const vpcs = await allPages((query) => api.get("/vpcs", { query }));
   return vpcs.map((v) => mapVpc(v, accountId));
 }
 
@@ -520,7 +532,7 @@ export async function listReservedIps(
   api: LinodeApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const ips = await api.all<LinodeReservedIp>("/networking/reserved/ips");
+  const ips = await allPages((query) => api.get("/networking/reserved/ips", { query }));
   return ips.map((ip) => mapReservedIp(ip, accountId));
 }
 
@@ -580,12 +592,14 @@ export function mapDomainRecord(
 async function domainsWithRecords(
   api: LinodeApi,
 ): Promise<Array<{ domain: LinodeDomain; records: LinodeDomainRecord[] | null }>> {
-  const domains = await api.all<LinodeDomain>("/domains");
+  const domains = await allPages((query) => api.get("/domains", { query }));
   return mapPooled(domains, 8, async (domain) => {
     try {
       return {
         domain,
-        records: await api.all<LinodeDomainRecord>(`/domains/${domain.id}/records`),
+        records: await allPages((query) =>
+          api.get(`/domains/${segment(domain.id)}/records`, { query }),
+        ),
       };
     } catch {
       return { domain, records: null };
@@ -637,7 +651,9 @@ export function mapImage(img: LinodeImage, accountId: string): ResourceInstance 
 }
 
 export async function listImages(api: LinodeApi, accountId: string): Promise<ResourceInstance[]> {
-  const images = await api.all<LinodeImage>("/images", { filter: { is_public: false } });
+  const images = await allPages((query) =>
+    api.get("/images", { ...xFilter({ is_public: false }), query }),
+  );
   return images.filter((i) => i.is_public !== true).map((i) => mapImage(i, accountId));
 }
 
@@ -666,9 +682,9 @@ export async function listStackScripts(
   api: LinodeApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const scripts = await api.all<LinodeStackScript>("/linode/stackscripts", {
-    filter: { mine: true },
-  });
+  const scripts = await allPages((query) =>
+    api.get("/linode/stackscripts", { ...xFilter({ mine: true }), query }),
+  );
   return scripts.filter((s) => s.mine !== false).map((s) => mapStackScript(s, accountId));
 }
 
@@ -710,8 +726,8 @@ export function mapAccount(
 
 export async function listAccount(api: LinodeApi, accountId: string): Promise<ResourceInstance[]> {
   const [account, transfer] = await Promise.all([
-    api.get<LinodeAccount>("/account"),
-    api.get<LinodeTransfer>("/account/transfer").catch(() => null),
+    api.get("/account"),
+    api.get("/account/transfer").catch(() => null),
   ]);
   return [mapAccount(account, transfer, accountId)];
 }
@@ -742,8 +758,11 @@ export async function listInvoices(api: LinodeApi, accountId: string): Promise<R
   const since = new Date(Date.UTC(new Date().getUTCFullYear() - 2, new Date().getUTCMonth(), 1))
     .toISOString()
     .slice(0, 19);
-  const invoices = await api.all<LinodeInvoice>("/account/invoices", {
-    filter: { date: { "+gte": since }, "+order_by": "date", "+order": "desc" },
-  });
+  const invoices = await allPages((query) =>
+    api.get("/account/invoices", {
+      ...xFilter({ date: { "+gte": since }, "+order_by": "date", "+order": "desc" }),
+      query,
+    }),
+  );
   return invoices.map((inv) => mapInvoice(inv, accountId));
 }

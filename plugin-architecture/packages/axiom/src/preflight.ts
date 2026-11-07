@@ -11,15 +11,16 @@ import type {
   PreflightDeclaration,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import type { AxiomContext } from "./api.js";
-import { axFetch, isPersonalToken, statusOf } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { AxiomApi, AxiomContext } from "./api.js";
+import { isPersonalToken, managementApi, statusOf } from "./api.js";
 import type { AxOrg } from "./types.js";
 
 const perm = (id: string, label: string) => ({ id, label });
 
 interface Probe {
   capability: PreflightCapability;
-  path: string;
+  call: (api: AxiomApi) => Promise<object>;
 }
 
 const PROBES: Probe[] = [
@@ -34,7 +35,7 @@ const PROBES: Probe[] = [
       ],
       essential: true,
     },
-    path: "/v2/datasets",
+    call: (api) => api.get("/datasets"),
   },
   {
     capability: {
@@ -45,7 +46,7 @@ const PROBES: Probe[] = [
         perm("monitors|update", "Monitors: update"),
       ],
     },
-    path: "/v2/monitors",
+    call: (api) => api.get("/monitors"),
   },
   {
     capability: {
@@ -53,7 +54,7 @@ const PROBES: Probe[] = [
       label: "Notifiers",
       requiredPermissions: [perm("notifiers|read", "Notifiers: read")],
     },
-    path: "/v2/notifiers",
+    call: (api) => api.get("/notifiers"),
   },
   {
     capability: {
@@ -61,7 +62,7 @@ const PROBES: Probe[] = [
       label: "Dashboards",
       requiredPermissions: [perm("dashboards|read", "Dashboards: read")],
     },
-    path: "/v2/dashboards?limit=1",
+    call: (api) => api.get("/dashboards", { query: { limit: 1 } }),
   },
   {
     capability: {
@@ -69,7 +70,7 @@ const PROBES: Probe[] = [
       label: "API tokens",
       requiredPermissions: [perm("apiTokens|read", "API tokens: read")],
     },
-    path: "/v2/tokens",
+    call: (api) => api.get("/tokens"),
   },
   {
     capability: {
@@ -77,7 +78,7 @@ const PROBES: Probe[] = [
       label: "Users",
       requiredPermissions: [perm("users|read", "Users: read")],
     },
-    path: "/v2/users",
+    call: (api) => api.get("/users"),
   },
 ];
 
@@ -94,11 +95,13 @@ export const AXIOM_PREFLIGHT: PreflightDeclaration = {
 };
 
 export async function verifyAxiomCredentials(ctx: AxiomContext): Promise<PreflightResult> {
+  // A probe's error names its whole request, since the dashboards one has a query.
+  const api = managementApi(ctx, "target");
   let org: AxOrg | undefined;
   try {
     org = ctx.orgId
-      ? await axFetch<AxOrg>(ctx, `/v2/orgs/${encodeURIComponent(ctx.orgId)}`)
-      : (await axFetch<AxOrg[]>(ctx, "/v2/orgs"))?.[0];
+      ? await api.get(`/orgs/${pathEncode(ctx.orgId)}`)
+      : (await api.get("/orgs"))?.[0];
   } catch (err) {
     const status = statusOf(err);
     const message =
@@ -121,9 +124,9 @@ export async function verifyAxiomCredentials(ctx: AxiomContext): Promise<Preflig
     };
   }
   const checks: PreflightCapabilityCheck[] = await Promise.all(
-    PROBES.map(async ({ capability, path }): Promise<PreflightCapabilityCheck> => {
+    PROBES.map(async ({ capability, call }): Promise<PreflightCapabilityCheck> => {
       try {
-        await axFetch(ctx, path);
+        await call(api);
         return { capabilityId: capability.id, status: "ok" };
       } catch (err) {
         if (statusOf(err) === 403) {

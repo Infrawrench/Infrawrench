@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CostSetupError } from "@infrawrench/plugin-base";
-import { BasetenApi } from "../api.js";
+import { createBasetenApi } from "../api.js";
 import { chunkRange, fetchBasetenCostData, summaryToRows } from "../cost-data.js";
 import { installFetch, route, state } from "./helpers.js";
 
-const api = () => new BasetenApi("k", "", undefined);
+const api = () => createBasetenApi("k", "", undefined);
 
 const summary = {
   dedicated_usage: {

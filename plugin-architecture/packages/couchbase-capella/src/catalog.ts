@@ -1,4 +1,5 @@
 import type { RegionOption, SelectOption } from "@infrawrench/plugin-base";
+import type { components } from "./api-types.gen.js";
 
 /**
  * Regions and node sizes for operational clusters, from Capella's provider
@@ -181,8 +182,8 @@ export function computeOptions(cloud?: string): SelectOption[] {
   }
   return Array.from(all.entries())
     .sort((a, b) => {
-      const [ac, ar] = a[0].split("/").map(Number) as [number, number];
-      const [bc, br] = b[0].split("/").map(Number) as [number, number];
+      const [ac = 0, ar = 0] = a[0].split("/").map(Number);
+      const [bc = 0, br = 0] = b[0].split("/").map(Number);
       return ac - bc || ar - br;
     })
     .map(([id, providers]) => {
@@ -212,7 +213,10 @@ export const APP_SERVICE_COMPUTE: SelectOption[] = [
 ].map(([cpu, ram]) => ({ id: `${cpu}/${ram}`, label: `${cpu} vCPU / ${ram} GB` }));
 
 /** Default disk per cloud for a new service group. */
-export function defaultDisk(cloud: string, storageGb: number): Record<string, unknown> {
+export function defaultDisk(
+  cloud: string,
+  storageGb: number,
+): NonNullable<components["schemas"]["Node"]["disk"]> {
   if (cloud === "gcp") return { type: "pd-ssd", storage: storageGb };
   if (cloud === "azure") return { type: "P10", autoExpansion: true };
   return { type: "gp3", storage: storageGb, iops: 3000 };

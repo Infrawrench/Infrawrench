@@ -21,22 +21,34 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   joinSubtitle,
-  jsonRestFetch,
   labeledFieldItems,
+  pathEncode,
+  unencodedSegment,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import {
-  formatRegion,
-  regionOptionsFrom,
-  staticRegionOptions,
+  MACHINES_API,
+  createFlyApi,
+  type FlyApi,
+  type FlyApp,
+  type FlyAppSecret,
+  type FlyBody,
+  type FlyCertificate,
+  type FlyCertificateList,
+  type FlyIpAssignment,
+  type FlyMachine,
+  type FlyMachineConfig,
+  type FlyMachineEvent,
   type FlyPlatformRegion,
-} from "./regions.js";
+  type FlyVolume,
+  type FlyVolumeSnapshot,
+} from "./api.js";
+import { formatRegion, regionOptionsFrom, staticRegionOptions } from "./regions.js";
 import {
   MPG_PLANS,
   mapPostgresCluster,
   postgresStatusDot,
   renderPostgresClusterDetail,
-  type FlyPostgresCluster,
 } from "./postgres.js";
 
 /**
@@ -56,7 +68,11 @@ const MACHINE_SIZES: Array<{ id: string; cpuKind: string; cpus: number; memoryMb
 ];
 
 /** Parameterless machine lifecycle routes: `POST /v1/apps/{app}/machines/{id}/{action}`. */
-const MACHINE_ACTIONS = new Set(["start", "stop", "restart", "suspend", "cordon", "uncordon"]);
+const MACHINE_ACTIONS = ["start", "stop", "restart", "suspend", "cordon", "uncordon"] as const;
+
+function isMachineAction(actionId: string): actionId is (typeof MACHINE_ACTIONS)[number] {
+  return MACHINE_ACTIONS.some((action) => action === actionId);
+}
 
 /** `IPAssignmentType` values `POST /ip_assignments` accepts. */
 const IP_TYPES: Array<{ id: string; label: string; description: string }> = [
@@ -96,13 +112,9 @@ interface FlyLogsResponse {
  * Created per account (per API token + org slug) by the host.
  */
 export class FlyClient implements PluginClient {
-  private readonly token: string;
+  private readonly api: FlyApi;
   private readonly orgSlug: string;
   private readonly resourceTypes: ResourceTypeDefinition[];
-  private readonly baseUrl = "https://api.machines.dev";
-
-  private readonly caCert: string;
-  private readonly services: HostServices | undefined;
 
   constructor(
     credentials: Credentials,
@@ -111,30 +123,12 @@ export class FlyClient implements PluginClient {
   ) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Fly plugin: missing apiToken credential");
-    this.token = token;
     this.orgSlug = credentials["orgSlug"] ?? "personal";
     this.resourceTypes = resourceTypes;
-    this.caCert = credentials["caCert"] ?? "";
-    this.services = services;
-  }
-
-  /* ------------------------------------------------------------------ */
-  /*  HTTP helpers                                                       */
-  /* ------------------------------------------------------------------ */
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Fly",
-      url: `${this.baseUrl}${path}`,
-      errorPath: path,
-      headers: { Authorization: `Bearer ${this.token}` },
-      ...(options ? { init: options } : {}),
-      ...(this.services?.http
-        ? {
-            http: this.services.http,
-            ...(this.caCert ? { caCert: this.caCert } : {}),
-          }
-        : {}),
+    this.api = createFlyApi({
+      token,
+      caCert: credentials["caCert"] ?? "",
+      http: services?.http,
     });
   }
 
@@ -148,7 +142,7 @@ export class FlyClient implements PluginClient {
   private async regionOptions(opts: { requireMpg?: boolean } = {}): Promise<RegionOption[]> {
     try {
       if (!this.regionCache) {
-        const data = await this.fetch<{ regions?: FlyPlatformRegion[] }>("/v1/platform/regions");
+        const data = await this.api.get(`/v1/platform/regions`);
         this.regionCache = data.regions ?? [];
       }
       const options = regionOptionsFrom(this.regionCache, opts);
@@ -195,47 +189,45 @@ export class FlyClient implements PluginClient {
       if (typeId === "app") {
         const appName = resourceId.split(":").pop();
         if (!appName) throw new Error("Cannot parse app name from resource ID");
-        const data = await this.fetch<FlyApp>(`/v1/apps/${appName}`);
+        const data = await this.api.get(`/v1/apps/${unencodedSegment(appName)}`);
         return this.mapApp(data, accountId);
       }
 
       if (typeId === "machine") {
         const parts = parseMachineId(resourceId);
-        const data = await this.fetch<FlyMachine>(
-          `/v1/apps/${parts.appName}/machines/${parts.machineId}`,
+        const data = await this.api.get(
+          `/v1/apps/${unencodedSegment(parts.appName)}/machines/${unencodedSegment(parts.machineId)}`,
         );
         return this.mapMachine(data, parts.appName, accountId);
       }
 
       if (typeId === "volume") {
         const parts = parseVolumeId(resourceId);
-        const data = await this.fetch<FlyVolume>(
-          `/v1/apps/${parts.appName}/volumes/${parts.volumeId}`,
+        const data = await this.api.get(
+          `/v1/apps/${unencodedSegment(parts.appName)}/volumes/${unencodedSegment(parts.volumeId)}`,
         );
         return this.mapVolume(data, parts.appName, accountId);
       }
 
       if (typeId === "certificate") {
         const parts = parseAppChildId(resourceId);
-        const data = await this.fetch<FlyCertificate>(
-          `/v1/apps/${parts.appName}/certificates/${encodeURIComponent(parts.childId)}`,
+        const data = await this.api.get(
+          `/v1/apps/${unencodedSegment(parts.appName)}/certificates/${pathEncode(parts.childId)}`,
         );
         return this.mapCertificate(data, parts.appName, accountId);
       }
 
       if (typeId === "app-secret") {
         const parts = parseAppChildId(resourceId);
-        const data = await this.fetch<FlyAppSecret>(
-          `/v1/apps/${parts.appName}/secrets/${encodeURIComponent(parts.childId)}`,
+        const data = await this.api.get(
+          `/v1/apps/${unencodedSegment(parts.appName)}/secrets/${pathEncode(parts.childId)}`,
         );
         return this.mapSecret(data, parts.appName, accountId);
       }
 
       if (typeId === "postgres-cluster") {
         const clusterId = resourceId.split(":").slice(2).join(":");
-        const data = await this.fetch<{ data: FlyPostgresCluster }>(
-          `/v1/postgres/${encodeURIComponent(clusterId)}`,
-        );
+        const data = await this.api.get(`/v1/postgres/${pathEncode(clusterId)}`);
         return mapPostgresCluster(data.data, accountId);
       }
 
@@ -261,8 +253,8 @@ export class FlyClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "machine") {
         const parts = parseMachineId(resourceId);
-        const data = await this.fetch<FlyMachine>(
-          `/v1/apps/${parts.appName}/machines/${parts.machineId}`,
+        const data = await this.api.get(
+          `/v1/apps/${unencodedSegment(parts.appName)}/machines/${unencodedSegment(parts.machineId)}`,
         );
         if (outputKey === "privateIp") return data.private_ip ?? "";
         throw new Error(`Fly plugin: unknown output "${outputKey}" for machine`);
@@ -578,34 +570,29 @@ export class FlyClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (typeId === "app") {
-        const body = {
-          app_name: fields["name"],
-          org_slug: this.orgSlug,
-          ...(fields["network"] ? { network: fields["network"] } : {}),
-        };
-        await this.fetch<{ id: string }>("/v1/apps", {
-          method: "POST",
-          body: JSON.stringify(body),
+        await this.api.post(`/v1/apps`, {
+          body: {
+            app_name: fields["name"],
+            org_slug: this.orgSlug,
+            ...(fields["network"] ? { network: fields["network"] } : {}),
+          },
         });
-        const app = await this.fetch<FlyApp>(`/v1/apps/${fields["name"]}`);
+        const app = await this.api.get(`/v1/apps/${unencodedSegment(String(fields["name"]))}`);
         return this.mapApp(app, accountId);
       }
 
       if (typeId === "postgres-cluster") {
-        const body: Record<string, unknown> = {
+        const body: FlyBody<"Postgres_create"> = {
           org_slug: this.orgSlug,
           region: fields["region"],
           plan: fields["plan"] || "basic",
         };
-        if (fields["name"]) body["name"] = fields["name"];
-        if (fields["pgMajorVersion"]) body["pg_major_version"] = fields["pgMajorVersion"];
-        if (fields["diskSizeGb"]) body["disk_size_gb"] = Number(fields["diskSizeGb"]);
-        if (fields["poolMode"]) body["pool_mode"] = fields["poolMode"];
-        if (fields["postgisEnabled"]) body["postgis_enabled"] = fields["postgisEnabled"] === "true";
-        const data = await this.fetch<{ data: FlyPostgresCluster }>("/v1/postgres", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        if (fields["name"]) body.name = fields["name"];
+        if (fields["pgMajorVersion"]) body.pg_major_version = fields["pgMajorVersion"];
+        if (fields["diskSizeGb"]) body.disk_size_gb = Number(fields["diskSizeGb"]);
+        if (fields["poolMode"]) body.pool_mode = fields["poolMode"];
+        if (fields["postgisEnabled"]) body.postgis_enabled = fields["postgisEnabled"] === "true";
+        const data = await this.api.post(`/v1/postgres`, { body });
         return mapPostgresCluster(data.data, accountId);
       }
 
@@ -614,64 +601,61 @@ export class FlyClient implements PluginClient {
 
       if (typeId === "machine") {
         if (!appName) throw new Error("Fly plugin: appName is required to create a machine");
-        const config: Record<string, unknown> = { image: fields["image"] };
+        const image = fields["image"];
+        const config: FlyMachineConfig = image === undefined ? {} : { image };
         const size = MACHINE_SIZES.find((s) => s.id === fields["size"]);
         if (size) {
           const memory = Number(fields["memoryMb"]);
-          config["guest"] = {
+          config.guest = {
             cpu_kind: size.cpuKind,
             cpus: size.cpus,
             memory_mb: Number.isFinite(memory) && memory > 0 ? memory : size.memoryMb,
           };
         }
-        const body: Record<string, unknown> = { region: fields["region"], config };
-        if (fields["name"]) body["name"] = fields["name"];
+        const body: FlyBody<"Machines_create"> = { region: fields["region"], config };
+        if (fields["name"]) body.name = fields["name"];
 
-        const data = await this.fetch<FlyMachine>(`/v1/apps/${appName}/machines`, {
-          method: "POST",
-          body: JSON.stringify(body),
+        const data = await this.api.post(`/v1/apps/${unencodedSegment(appName)}/machines`, {
+          body,
         });
         return this.mapMachine(data, appName, accountId);
       }
 
       if (typeId === "volume") {
         if (!appName) throw new Error("Fly plugin: appName is required to create a volume");
-        const body: Record<string, unknown> = {
+        const body: FlyBody<"Volumes_create"> = {
           name: fields["name"],
           region: fields["region"],
           size_gb: Number(fields["sizeGb"] || 1),
         };
         if (fields["autoBackupEnabled"]) {
-          body["auto_backup_enabled"] = fields["autoBackupEnabled"] === "true";
+          body.auto_backup_enabled = fields["autoBackupEnabled"] === "true";
         }
         if (fields["snapshotRetention"]) {
-          body["snapshot_retention"] = Number(fields["snapshotRetention"]);
+          body.snapshot_retention = Number(fields["snapshotRetention"]);
         }
-        const data = await this.fetch<Record<string, unknown>>(`/v1/apps/${appName}/volumes`, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        const data = await this.api.post(`/v1/apps/${unencodedSegment(appName)}/volumes`, { body });
         const now = new Date().toISOString();
         return {
-          id: `${accountId}:volume:${appName}/${String(data["id"])}`,
+          id: `${accountId}:volume:${appName}/${String(data.id)}`,
           pluginId: "fly",
           resourceTypeId: "volume",
           accountId,
-          displayName: String(data["name"] ?? fields["name"]),
+          displayName: String(data.name ?? fields["name"]),
           fields: {
-            name: String(data["name"] ?? fields["name"]),
-            state: String(data["state"] ?? "created"),
-            sizeGb: Number(data["size_gb"] ?? fields["sizeGb"]),
-            region: String(data["region"] ?? fields["region"]),
-            encrypted: data["encrypted"] === true,
+            name: String(data.name ?? fields["name"]),
+            state: String(data.state ?? "created"),
+            sizeGb: Number(data.size_gb ?? fields["sizeGb"]),
+            region: String(data.region ?? fields["region"]),
+            encrypted: data.encrypted === true,
             attachedMachineId: "",
             appName,
           },
           resolvedOutputs: {},
           secretStates: [],
-          externalId: `${appName}/${String(data["id"])}`,
+          externalId: `${appName}/${String(data.id)}`,
           parentResourceId: `${accountId}:app:${appName}`,
-          createdAt: String(data["created_at"] ?? now),
+          createdAt: String(data.created_at ?? now),
           updatedAt: now,
         };
       }
@@ -681,24 +665,25 @@ export class FlyClient implements PluginClient {
         if (!appName) throw new Error("Fly plugin: appName is required to create a certificate");
         if (!hostname) throw new Error("Fly plugin: hostname is required to create a certificate");
 
-        const data = await this.fetch<FlyCertificate>(`/v1/apps/${appName}/certificates/acme`, {
-          method: "POST",
-          body: JSON.stringify({ hostname }),
-        });
+        const data = await this.api.post(
+          `/v1/apps/${unencodedSegment(appName)}/certificates/acme`,
+          {
+            body: { hostname },
+          },
+        );
         return this.mapCertificate(data, appName, accountId);
       }
 
       if (typeId === "ip-allocation") {
         if (!appName) throw new Error("Fly plugin: appName is required to assign an IP");
         const type = fields["type"] || "shared_v4";
-        const body: Record<string, unknown> = { type, org_slug: this.orgSlug };
-        if (fields["region"] && type.startsWith("egress")) body["region"] = fields["region"];
-        if (fields["network"] && type === "private_v6") body["network"] = fields["network"];
-        if (fields["serviceName"]) body["service_name"] = fields["serviceName"];
-        const data = await this.fetch<FlyIpAssignment & { ip_pair?: { v4?: string; v6?: string } }>(
-          `/v1/apps/${appName}/ip_assignments`,
-          { method: "POST", body: JSON.stringify(body) },
-        );
+        const body: FlyBody<"App_IPAssignments_create"> = { type, org_slug: this.orgSlug };
+        if (fields["region"] && type.startsWith("egress")) body.region = fields["region"];
+        if (fields["network"] && type === "private_v6") body.network = fields["network"];
+        if (fields["serviceName"]) body.service_name = fields["serviceName"];
+        const data = await this.api.post(`/v1/apps/${unencodedSegment(appName)}/ip_assignments`, {
+          body,
+        });
         // An egress pair comes back as `ip_pair` with `ip` null; the v4 half
         // stands in for the pair (both are listed separately afterwards).
         const ip = data.ip || data.ip_pair?.v4 || data.ip_pair?.v6 || "";
@@ -709,9 +694,9 @@ export class FlyClient implements PluginClient {
         const name = fields["name"];
         if (!appName) throw new Error("Fly plugin: appName is required to create a secret");
         if (!name) throw new Error("Fly plugin: name is required to create a secret");
-        const data = await this.fetch<FlyAppSecret>(
-          `/v1/apps/${appName}/secrets/${encodeURIComponent(name)}`,
-          { method: "POST", body: JSON.stringify({ value: fields["value"] ?? "" }) },
+        const data = await this.api.post(
+          `/v1/apps/${unencodedSegment(appName)}/secrets/${pathEncode(name)}`,
+          { body: { value: fields["value"] ?? "" } },
         );
         return this.mapSecret({ ...data, name: data.name || name }, appName, accountId);
       }
@@ -729,9 +714,10 @@ export class FlyClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "volume") {
         const parts = parseVolumeId(resourceId);
-        const base = `/v1/apps/${parts.appName}/volumes/${parts.volumeId}`;
+        const app = unencodedSegment(parts.appName);
+        const volume = unencodedSegment(parts.volumeId);
         if (fields["sizeGb"] !== undefined && fields["sizeGb"] !== "") {
-          const current = await this.fetch<FlyVolume>(base);
+          const current = await this.api.get(`/v1/apps/${app}/volumes/${volume}`);
           const target = Number(fields["sizeGb"]);
           if (!Number.isFinite(target) || target < (current.size_gb ?? 0)) {
             throw new Error(
@@ -739,21 +725,20 @@ export class FlyClient implements PluginClient {
             );
           }
           if (target > (current.size_gb ?? 0)) {
-            await this.fetch<unknown>(`${base}/extend`, {
-              method: "PUT",
-              body: JSON.stringify({ size_gb: target }),
+            await this.api.put(`/v1/apps/${app}/volumes/${volume}/extend`, {
+              body: { size_gb: target },
             });
           }
         }
-        const settings: Record<string, unknown> = {};
+        const settings: FlyBody<"Volumes_update"> = {};
         if (fields["autoBackupEnabled"] !== undefined) {
-          settings["auto_backup_enabled"] = fields["autoBackupEnabled"] === "true";
+          settings.auto_backup_enabled = fields["autoBackupEnabled"] === "true";
         }
         if (fields["snapshotRetention"] !== undefined && fields["snapshotRetention"] !== "") {
-          settings["snapshot_retention"] = Number(fields["snapshotRetention"]);
+          settings.snapshot_retention = Number(fields["snapshotRetention"]);
         }
         if (Object.keys(settings).length > 0) {
-          await this.fetch<unknown>(base, { method: "PUT", body: JSON.stringify(settings) });
+          await this.api.put(`/v1/apps/${app}/volumes/${volume}`, { body: settings });
         }
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
@@ -761,9 +746,9 @@ export class FlyClient implements PluginClient {
       if (typeId === "app-secret") {
         const parts = parseAppChildId(resourceId);
         if (fields["value"]) {
-          await this.fetch<FlyAppSecret>(
-            `/v1/apps/${parts.appName}/secrets/${encodeURIComponent(parts.childId)}`,
-            { method: "POST", body: JSON.stringify({ value: fields["value"] }) },
+          await this.api.post(
+            `/v1/apps/${unencodedSegment(parts.appName)}/secrets/${pathEncode(parts.childId)}`,
+            { body: { value: fields["value"] } },
           );
         }
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -778,60 +763,53 @@ export class FlyClient implements PluginClient {
       if (typeId === "app") {
         const appName = resourceId.split(":").pop();
         if (!appName) throw new Error("Cannot parse app name");
-        await this.fetch<unknown>(`/v1/apps/${appName}`, { method: "DELETE" });
+        await this.api.delete(`/v1/apps/${unencodedSegment(appName)}`);
         return;
       }
 
       if (typeId === "machine") {
         const parts = parseMachineId(resourceId);
-        await this.fetch<unknown>(`/v1/apps/${parts.appName}/machines/${parts.machineId}`, {
-          method: "DELETE",
-        });
+        await this.api.delete(
+          `/v1/apps/${unencodedSegment(parts.appName)}/machines/${unencodedSegment(parts.machineId)}`,
+        );
         return;
       }
 
       if (typeId === "volume") {
         const parts = parseVolumeId(resourceId);
-        await this.fetch<unknown>(`/v1/apps/${parts.appName}/volumes/${parts.volumeId}`, {
-          method: "DELETE",
-        });
+        await this.api.delete(
+          `/v1/apps/${unencodedSegment(parts.appName)}/volumes/${unencodedSegment(parts.volumeId)}`,
+        );
         return;
       }
 
       if (typeId === "certificate") {
         const parts = parseAppChildId(resourceId);
-        await this.fetch<unknown>(
-          `/v1/apps/${parts.appName}/certificates/${encodeURIComponent(parts.childId)}`,
-          {
-            method: "DELETE",
-          },
+        await this.api.delete(
+          `/v1/apps/${unencodedSegment(parts.appName)}/certificates/${pathEncode(parts.childId)}`,
         );
         return;
       }
 
       if (typeId === "ip-allocation") {
         const parts = parseAppChildId(resourceId);
-        await this.fetch<unknown>(
-          `/v1/apps/${parts.appName}/ip_assignments/${encodeURIComponent(parts.childId)}`,
-          { method: "DELETE" },
+        await this.api.delete(
+          `/v1/apps/${unencodedSegment(parts.appName)}/ip_assignments/${pathEncode(parts.childId)}`,
         );
         return;
       }
 
       if (typeId === "app-secret") {
         const parts = parseAppChildId(resourceId);
-        await this.fetch<unknown>(
-          `/v1/apps/${parts.appName}/secrets/${encodeURIComponent(parts.childId)}`,
-          { method: "DELETE" },
+        await this.api.delete(
+          `/v1/apps/${unencodedSegment(parts.appName)}/secrets/${pathEncode(parts.childId)}`,
         );
         return;
       }
 
       if (typeId === "postgres-cluster") {
         const clusterId = resourceId.split(":").slice(2).join(":");
-        await this.fetch<unknown>(`/v1/postgres/${encodeURIComponent(clusterId)}`, {
-          method: "DELETE",
-        });
+        await this.api.delete(`/v1/postgres/${pathEncode(clusterId)}`);
         return;
       }
 
@@ -846,34 +824,31 @@ export class FlyClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      if (typeId === "machine" && MACHINE_ACTIONS.has(actionId)) {
+      if (typeId === "machine" && isMachineAction(actionId)) {
         const parts = parseMachineId(resourceId);
-        await this.fetch<unknown>(
-          `/v1/apps/${parts.appName}/machines/${parts.machineId}/${actionId}`,
-          { method: "POST" },
+        await this.api.post(
+          `/v1/apps/${unencodedSegment(parts.appName)}/machines/${unencodedSegment(parts.machineId)}/${actionId}`,
         );
         return;
       }
       if (typeId === "volume" && actionId === "snapshot") {
         const parts = parseVolumeId(resourceId);
-        await this.fetch<unknown>(`/v1/apps/${parts.appName}/volumes/${parts.volumeId}/snapshots`, {
-          method: "POST",
-        });
+        await this.api.post(
+          `/v1/apps/${unencodedSegment(parts.appName)}/volumes/${unencodedSegment(parts.volumeId)}/snapshots`,
+        );
         return;
       }
       if (typeId === "certificate" && actionId === "check") {
         const parts = parseAppChildId(resourceId);
-        await this.fetch<unknown>(
-          `/v1/apps/${parts.appName}/certificates/${encodeURIComponent(parts.childId)}/check`,
-          { method: "POST" },
+        await this.api.post(
+          `/v1/apps/${unencodedSegment(parts.appName)}/certificates/${pathEncode(parts.childId)}/check`,
         );
         return;
       }
       if (typeId === "postgres-cluster" && actionId === "backup") {
         const clusterId = resourceId.split(":").slice(2).join(":");
-        await this.fetch<unknown>(`/v1/postgres/${encodeURIComponent(clusterId)}/backups`, {
-          method: "POST",
-          body: JSON.stringify({ type: "full" }),
+        await this.api.post(`/v1/postgres/${pathEncode(clusterId)}/backups`, {
+          body: { type: "full" },
         });
         return;
       }
@@ -894,9 +869,8 @@ export class FlyClient implements PluginClient {
         );
       }
       const appName = resourceId.split(":").pop() ?? "";
-      const data = await this.fetch<{ token?: string }>(`/v1/apps/${appName}/deploy_token`, {
-        method: "POST",
-        body: JSON.stringify({}),
+      const data = await this.api.post(`/v1/apps/${unencodedSegment(appName)}/deploy_token`, {
+        body: {},
       });
       const token = data.token ?? "";
       return {
@@ -942,15 +916,18 @@ export class FlyClient implements PluginClient {
         return { text, containers, activeContainer: "logs" };
       }
       const limit = Math.min(Math.max(params.tailLines ?? 50, 1), 50);
-      const events = await this.fetch<FlyMachineEvent[]>(
-        `/v1/apps/${parts.appName}/machines/${parts.machineId}/events?limit=${limit}`,
+      // By hand: the client joins a query with `&` to a path already holding a `?`,
+      // which an unencoded id can, and this route has always written a second `?`.
+      const eventsPath = `/v1/apps/${parts.appName}/machines/${parts.machineId}/events?limit=${limit}`;
+      const events = await this.api.rest<FlyMachineEvent[]>(
+        `${MACHINES_API}${eventsPath}`,
+        eventsPath,
       );
       const lines = [...(events ?? [])]
         .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
         .map((e) => {
           const ts = e.timestamp ? new Date(e.timestamp).toISOString() : "?";
-          const exit = (e.request as { exit_event?: { exit_code?: number } } | undefined)
-            ?.exit_event;
+          const exit = e.request?.exit_event;
           const exitNote = exit?.exit_code != null ? `  exit_code=${exit.exit_code}` : "";
           return `${ts}  ${e.type ?? "event"}  ${e.status ?? ""}  (${e.source ?? "?"})${exitNote}`;
         });
@@ -968,18 +945,7 @@ export class FlyClient implements PluginClient {
   ): Promise<string> {
     const u = new URL(`https://api.fly.io/api/v1/apps/${encodeURIComponent(appName)}/logs`);
     if (machineId) u.searchParams.set("instance", machineId);
-    const data = await jsonRestFetch<FlyLogsResponse>({
-      vendor: "Fly",
-      url: u.toString(),
-      errorPath: `/api/v1/apps/${appName}/logs`,
-      headers: { Authorization: `Bearer ${this.token}` },
-      ...(this.services?.http
-        ? {
-            http: this.services.http,
-            ...(this.caCert ? { caCert: this.caCert } : {}),
-          }
-        : {}),
-    });
+    const data = await this.api.rest<FlyLogsResponse>(u.toString(), `/api/v1/apps/${appName}/logs`);
     const lines = (data.data ?? [])
       .map((d) => d.attributes ?? {})
       .sort((a, b) => String(a.timestamp ?? "").localeCompare(String(b.timestamp ?? "")))
@@ -1021,24 +987,19 @@ export class FlyClient implements PluginClient {
           );
         }
         // Fetch current machine config so we can preserve image/env/etc.
-        const current = await this.fetch<FlyMachine>(
-          `/v1/apps/${machineParts.appName}/machines/${machineParts.machineId}`,
-        );
-        const config = (current.config ?? {}) as Record<string, unknown>;
-        const existingMounts = Array.isArray(config["mounts"])
-          ? (config["mounts"] as Array<Record<string, unknown>>)
-          : [];
-        if (existingMounts.some((m) => String(m["volume"] ?? "") === volumeParts.volumeId)) {
+        const machinePath =
+          `/v1/apps/${unencodedSegment(machineParts.appName)}/machines/${unencodedSegment(machineParts.machineId)}` as const;
+        const current = await this.api.get(machinePath);
+        const config = current.config ?? {};
+        const existingMounts = Array.isArray(config.mounts) ? config.mounts : [];
+        if (existingMounts.some((m) => String(m.volume ?? "") === volumeParts.volumeId)) {
           return; // already mounted
         }
         const newMounts = [
           ...existingMounts,
           { volume: volumeParts.volumeId, path: `/mnt/${String(volume.fields["name"] ?? "data")}` },
         ];
-        await this.fetch(`/v1/apps/${machineParts.appName}/machines/${machineParts.machineId}`, {
-          method: "POST",
-          body: JSON.stringify({ config: { ...config, mounts: newMounts } }),
-        });
+        await this.api.post(machinePath, { body: { config: { ...config, mounts: newMounts } } });
         return;
       }
       if (sourceTypeId === "postgres-cluster" && targetTypeId === "app") {
@@ -1049,9 +1010,8 @@ export class FlyClient implements PluginClient {
         if (!clusterId || !appName) {
           throw new Error("Cannot determine the Postgres cluster or app to attach");
         }
-        await this.fetch<unknown>(`/v1/postgres/${encodeURIComponent(clusterId)}/attachments`, {
-          method: "POST",
-          body: JSON.stringify({ app_name: appName }),
+        await this.api.post(`/v1/postgres/${pathEncode(clusterId)}/attachments`, {
+          body: { app_name: appName },
         });
         return;
       }
@@ -1070,7 +1030,7 @@ export class FlyClient implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const extra: Record<string, string> = {};
-      const stash = async (key: string, load: () => Promise<unknown[] | undefined>) => {
+      const stash = async (key: string, load: () => Promise<object[] | undefined>) => {
         try {
           const rows = await load();
           if (rows) extra[key] = JSON.stringify(rows);
@@ -1082,25 +1042,25 @@ export class FlyClient implements PluginClient {
       if (resource.resourceTypeId === "volume") {
         const parts = parseVolumeId(resource.id);
         await stash("__snapshots__", () =>
-          this.fetch<FlyVolumeSnapshot[]>(
-            `/v1/apps/${parts.appName}/volumes/${parts.volumeId}/snapshots`,
+          this.api.get(
+            `/v1/apps/${unencodedSegment(parts.appName)}/volumes/${unencodedSegment(parts.volumeId)}/snapshots`,
           ),
         );
       } else if (resource.resourceTypeId === "postgres-cluster") {
-        const base = `/v1/postgres/${encodeURIComponent(resource.externalId ?? "")}`;
+        const cluster = pathEncode(resource.externalId ?? "");
         if (resource.fields["status"] === "ready") {
           await Promise.all([
             stash(
               "__databases__",
-              async () => (await this.fetch<{ data?: unknown[] }>(`${base}/databases`)).data,
+              async () => (await this.api.get(`/v1/postgres/${cluster}/databases`)).data,
             ),
             stash(
               "__users__",
-              async () => (await this.fetch<{ data?: unknown[] }>(`${base}/users`)).data,
+              async () => (await this.api.get(`/v1/postgres/${cluster}/users`)).data,
             ),
             stash(
               "__backups__",
-              async () => (await this.fetch<{ data?: unknown[] }>(`${base}/backups`)).data,
+              async () => (await this.api.get(`/v1/postgres/${cluster}/backups`)).data,
             ),
           ]);
         }
@@ -1236,18 +1196,10 @@ export class FlyClient implements PluginClient {
           u.searchParams.set("start", String(start));
           u.searchParams.set("end", String(end));
           u.searchParams.set("step", step);
-          const data = await jsonRestFetch<PromResp>({
-            vendor: "Fly",
-            url: u.toString(),
-            errorPath: `/prometheus/${this.orgSlug}/api/v1/query_range`,
-            headers: { Authorization: `Bearer ${this.token}` },
-            ...(this.services?.http
-              ? {
-                  http: this.services.http,
-                  ...(this.caCert ? { caCert: this.caCert } : {}),
-                }
-              : {}),
-          });
+          const data = await this.api.rest<PromResp>(
+            u.toString(),
+            `/prometheus/${this.orgSlug}/api/v1/query_range`,
+          );
           // Sum across all returned series (when multiple machines match).
           const points = new Map<number, number>();
           for (const series of data.data?.result ?? []) {
@@ -1288,6 +1240,30 @@ export class FlyClient implements PluginClient {
         resourceTypeId === "machine" ? `,instance="${parseMachineId(resource.id).machineId}"` : "";
       const labels = `app="${appName}"${machineFilter}`;
       // `fly_instance_cpu` counts centiseconds, so its per-second rate / 100 is cores.
+      // Edge (Fly Proxy) series carry no `instance` label, so they only exist at app scope.
+      const edgeQueries: Array<[string, string, string]> =
+        resourceTypeId === "app"
+          ? [
+              [`sum(rate(fly_edge_http_responses_count{${labels}}[1m]))`, "Edge Requests", "req/s"],
+              [
+                `sum(rate(fly_edge_http_responses_count{${labels},status=~"5.."}[1m]))`,
+                "Edge 5xx",
+                "req/s",
+              ],
+              [
+                `histogram_quantile(0.95, sum(rate(fly_edge_http_response_time_seconds_bucket{${labels}}[1m])) by (le))`,
+                "Edge Response Time p95",
+                "s",
+              ],
+              [`sum(rate(fly_edge_data_out{${labels}}[1m]))`, "Edge Data Out", "bytes/s"],
+              [`sum(rate(fly_edge_data_in{${labels}}[1m]))`, "Edge Data In", "bytes/s"],
+              [
+                `sum(rate(fly_edge_tls_handshake_errors{${labels}}[1m]))`,
+                "TLS Handshake Errors",
+                "errors/s",
+              ],
+            ]
+          : [];
       const queries: Array<[string, string, string]> = [
         [
           `sum(rate(fly_instance_cpu{${labels},mode!="idle"}[1m])) by (instance) / 100`,
@@ -1380,30 +1356,7 @@ export class FlyClient implements PluginClient {
           "Open File Descriptors",
           "",
         ],
-        // Edge (Fly Proxy) series carry no `instance` label, so they only
-        // exist at app scope.
-        ...(resourceTypeId === "app"
-          ? ([
-              [`sum(rate(fly_edge_http_responses_count{${labels}}[1m]))`, "Edge Requests", "req/s"],
-              [
-                `sum(rate(fly_edge_http_responses_count{${labels},status=~"5.."}[1m]))`,
-                "Edge 5xx",
-                "req/s",
-              ],
-              [
-                `histogram_quantile(0.95, sum(rate(fly_edge_http_response_time_seconds_bucket{${labels}}[1m])) by (le))`,
-                "Edge Response Time p95",
-                "s",
-              ],
-              [`sum(rate(fly_edge_data_out{${labels}}[1m]))`, "Edge Data Out", "bytes/s"],
-              [`sum(rate(fly_edge_data_in{${labels}}[1m]))`, "Edge Data In", "bytes/s"],
-              [
-                `sum(rate(fly_edge_tls_handshake_errors{${labels}}[1m]))`,
-                "TLS Handshake Errors",
-                "errors/s",
-              ],
-            ] as Array<[string, string, string]>)
-          : []),
+        ...edgeQueries,
       ];
       const series = await Promise.all(queries.map(([q, l, u]) => fetchPromql(q, l, u)));
       return series.filter((s): s is MetricSeries => s != null);
@@ -1743,9 +1696,7 @@ export class FlyClient implements PluginClient {
 
   private async listApps(accountId: string): Promise<ResourceInstance[]> {
     // Without `limit` the endpoint returns every app in one response.
-    const data = await this.fetch<{ apps: FlyApp[]; total_apps: number }>(
-      `/v1/apps?org_slug=${encodeURIComponent(this.orgSlug)}`,
-    );
+    const data = await this.api.get(`/v1/apps`, { query: { org_slug: this.orgSlug } });
     // Older list responses omit `status`; treat a listed app as deployed
     // rather than flagging every row as pending.
     return (data.apps ?? []).map((app) =>
@@ -1773,14 +1724,14 @@ export class FlyClient implements PluginClient {
 
   private async listAllMachines(accountId: string): Promise<ResourceInstance[]> {
     return this.perApp(accountId, async (appName) => {
-      const machines = await this.fetch<FlyMachine[]>(`/v1/apps/${appName}/machines`);
+      const machines = await this.api.get(`/v1/apps/${unencodedSegment(appName)}/machines`);
       return (machines ?? []).map((m) => this.mapMachine(m, appName, accountId));
     });
   }
 
   private async listAllVolumes(accountId: string): Promise<ResourceInstance[]> {
     return this.perApp(accountId, async (appName) => {
-      const volumes = await this.fetch<FlyVolume[]>(`/v1/apps/${appName}/volumes`);
+      const volumes = await this.api.get(`/v1/apps/${unencodedSegment(appName)}/volumes`);
       return (volumes ?? []).map((v) => this.mapVolume(v, appName, accountId));
     });
   }
@@ -1791,10 +1742,10 @@ export class FlyClient implements PluginClient {
       let cursor = "";
       // `limit` caps at 500; follow `next_cursor` for apps with more hostnames.
       for (let page = 0; page < 20; page++) {
+        // By hand for the reason `getLogs` gives, and for the bare array.
         const qs = `limit=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-        const data = await this.fetch<FlyCertificate[] | FlyCertificateListResponse>(
-          `/v1/apps/${appName}/certificates?${qs}`,
-        );
+        const path = `/v1/apps/${appName}/certificates?${qs}`;
+        const data = await this.api.rest<FlyCertificateList>(`${MACHINES_API}${path}`, path);
         if (Array.isArray(data)) {
           certs.push(...data);
           break;
@@ -1811,9 +1762,7 @@ export class FlyClient implements PluginClient {
     appName: string,
     accountId: string,
   ): Promise<ResourceInstance[]> {
-    const data = await this.fetch<{ ips?: FlyIpAssignment[] }>(
-      `/v1/apps/${appName}/ip_assignments`,
-    );
+    const data = await this.api.get(`/v1/apps/${unencodedSegment(appName)}/ip_assignments`);
     return (data.ips ?? []).map((ip) => this.mapIpAllocation(ip, appName, accountId));
   }
 
@@ -1824,15 +1773,13 @@ export class FlyClient implements PluginClient {
   private async listAllSecrets(accountId: string): Promise<ResourceInstance[]> {
     // Values are never requested (`show_secrets` stays off): only names and digests.
     return this.perApp(accountId, async (appName) => {
-      const data = await this.fetch<{ secrets?: FlyAppSecret[] }>(`/v1/apps/${appName}/secrets`);
+      const data = await this.api.get(`/v1/apps/${unencodedSegment(appName)}/secrets`);
       return (data.secrets ?? []).map((sec) => this.mapSecret(sec, appName, accountId));
     });
   }
 
   private async listPostgresClusters(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<{ data?: FlyPostgresCluster[] }>(
-      `/v1/postgres?org_slug=${encodeURIComponent(this.orgSlug)}`,
-    );
+    const data = await this.api.get(`/v1/postgres`, { query: { org_slug: this.orgSlug } });
     return (data.data ?? []).map((c) => mapPostgresCluster(c, accountId));
   }
 
@@ -2131,142 +2078,11 @@ function parseAppChildId(resourceId: string): { appName: string; childId: string
   };
 }
 
-/* ------------------------------------------------------------------ */
-/*  Fly API types                                                       */
-/* ------------------------------------------------------------------ */
-
-interface FlyApp {
-  id: string;
-  name: string;
-  status?: string;
-  organization?: { name: string; slug: string };
-  machine_count?: number;
-  volume_count?: number;
-  network?: string;
-  network_cidr?: string;
-  created_at?: string;
-}
-
-interface FlyMachine {
-  id: string;
-  name: string;
-  state: string;
-  region: string;
-  instance_id?: string;
-  private_ip?: string;
-  cordoned?: boolean;
-  host_status?: string;
-  config?: {
-    image?: string;
-    guest?: { cpu_kind?: string; cpus?: number; memory_mb?: number };
-  };
-  image_ref?: { repository?: string; tag?: string };
-  created_at?: string;
-  updated_at?: string;
-  events?: unknown[];
-}
-
-interface FlyMachineEvent {
-  id?: string;
-  type?: string;
-  status?: string;
-  source?: string;
-  timestamp?: number;
-  request?: unknown;
-}
-
-interface FlyVolume {
-  id: string;
-  name: string;
-  state: string;
-  size_gb: number;
-  region: string;
-  zone?: string;
-  encrypted?: boolean;
-  attached_machine_id?: string;
-  blocks?: number;
-  block_size?: number;
-  blocks_free?: number;
-  bytes_used?: number;
-  bytes_total?: number;
-  host_status?: string;
-  snapshot_retention?: number;
-  auto_backup_enabled?: boolean;
-  created_at?: string;
-}
-
-interface FlyVolumeSnapshot {
-  id?: string;
-  status?: string;
-  size?: number;
-  volume_size?: number;
-  retention_days?: number;
-  created_at?: string;
-}
-
-/**
- * Union of the Machines API's `CertificateSummary` (list) and
- * `CertificateDetail` (get / create / check) shapes.
- */
-interface FlyCertificate {
-  id?: string;
-  hostname?: string;
-  status?: string;
-  configured?: boolean;
-  acme_dns_configured?: boolean;
-  acme_alpn_configured?: boolean;
-  acme_http_configured?: boolean;
-  ownership_txt_configured?: boolean;
-  acme_requested?: boolean;
-  has_custom_certificate?: boolean;
-  has_fly_certificate?: boolean;
-  dns_provider?: string;
-  certificates?: Array<{
-    source?: string;
-    status?: string;
-    issuer?: string;
-    expires_at?: string;
-    created_at?: string;
-    issued?: Array<{ certificate_authority?: string; expires_at?: string; type?: string }>;
-  }>;
-  validation?: {
-    alpn_configured?: boolean;
-    dns_configured?: boolean;
-    http_configured?: boolean;
-    ownership_txt_configured?: boolean;
-  };
-  validation_errors?: Array<{ code?: string; message?: string }>;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface FlyCertificateListResponse {
-  certificates?: FlyCertificate[];
-  next_cursor?: string;
-}
-
-interface FlyIpAssignment {
-  ip?: string | null;
-  region?: string;
-  shared?: boolean;
-  egress?: boolean;
-  service_name?: string;
-  network?: { name?: string; org_slug?: string } | null;
-  created_at?: string;
-}
-
-interface FlyAppSecret {
-  name?: string;
-  digest?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-function parseJsonList<T>(raw: unknown): T[] {
+function parseJsonList<T>(raw: string | number | boolean | undefined): T[] {
   if (typeof raw !== "string" || !raw) return [];
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }

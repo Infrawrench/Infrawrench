@@ -1,0 +1,45 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.replicate.com/openapi.json",
+  "paths": {
+    "/account": ["get"],
+    "/collections": ["get"],
+    "/collections/{collection_slug}": ["get"],
+    "/deployments": ["get", "post"],
+    "/deployments/{deployment_owner}/{deployment_name}": ["get", "patch", "delete"],
+    "/files": ["get"],
+    "/files/{file_id}": ["get", "delete"],
+    "/hardware": ["get"],
+    "/models": ["post"],
+    "/models/{model_owner}/{model_name}": ["get", "patch", "delete"],
+    "/models/{model_owner}/{model_name}/readme": ["get"],
+    "/models/{model_owner}/{model_name}/versions": ["get"],
+    "/models/{model_owner}/{model_name}/versions/{version_id}": ["get"],
+    "/models/{model_owner}/{model_name}/versions/{version_id}/trainings": ["post"],
+    "/predictions": ["get"],
+    "/predictions/{prediction_id}": ["get"],
+    "/predictions/{prediction_id}/cancel": ["post"],
+    "/trainings": ["get"],
+    "/trainings/{training_id}": ["get"],
+    "/trainings/{training_id}/cancel": ["post"]
+  },
+  "patches": [
+    {
+      "pointer": "/components/schemas/schemas_model_response/properties/latest_version",
+      "value": {
+        "oneOf": [{ "$ref": "#/components/schemas/schemas_version_response" }, { "type": "null" }]
+      },
+      "why": "A bare `object` in the document, which generates as an object with no fields. It is a version: the plugin reads its id, created_at and cog_version."
+    },
+    {
+      "pointer": "/components/schemas/schemas_training_request/properties/input",
+      "value": { "type": "object", "additionalProperties": true },
+      "why": "A bare `object` in the document, which generates as an object with no fields. It holds whatever the trainer's `train()` takes, as the user typed it."
+    },
+    {
+      "pointer": "/components/schemas/schemas_training_request/properties/webhook_events_filter/items",
+      "value": { "type": "string" },
+      "why": "The plugin passes what the event picker submitted through as given, so Replicate's own validation answers a bad value."
+    }
+  ]
+}

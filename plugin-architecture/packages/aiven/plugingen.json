@@ -1,0 +1,438 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.aiven.io/doc/openapi.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1project~1{project}~1service~1{service_name}~1connectors~1{connector_name}~1pause/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document gives this POST no body. The plugin has always sent an empty JSON object."
+    },
+    {
+      "pointer": "/paths/~1project~1{project}~1service~1{service_name}~1connectors~1{connector_name}~1resume/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document gives this POST no body. The plugin has always sent an empty JSON object."
+    },
+    {
+      "pointer": "/paths/~1project~1{project}~1service~1{service_name}~1connectors~1{connector_name}~1restart/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document gives this POST no body. The plugin has always sent an empty JSON object."
+    },
+    {
+      "pointer": "/paths/~1project~1{project}~1service~1{service_name}~1connectors~1{connector_name}~1tasks~1{task_id}~1restart/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document gives this POST no body. The plugin has always sent an empty JSON object."
+    },
+    {
+      "pointer": "/paths/~1project~1{project}~1vpcs~1{project_vpc_id}~1peering-connections~1refresh/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document gives this POST no body. The plugin has always sent an empty JSON object."
+    },
+    {
+      "pointer": "/paths/~1billing-group~1{billing_group_id}~1project-assign~1{project}/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document gives this POST no body. The plugin has always sent an empty JSON object."
+    },
+    {
+      "pointer": "/paths/~1project~1{project}~1credits/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                }
+              },
+              "required": ["code"]
+            }
+          }
+        }
+      },
+      "why": "The document leaves out the body of this deprecated route. It takes the credit code, as the billing group route beside it does."
+    },
+    {
+      "pointer": "/components/schemas/ServicePGBouncerCreateRequestBody/properties/pool_mode",
+      "value": {
+        "type": "string"
+      },
+      "why": "The field's text goes through as the user typed it, so the provider's validation error is the one they see."
+    },
+    {
+      "pointer": "/components/schemas/ServicePGBouncerUpdateRequestBody/properties/pool_mode",
+      "value": {
+        "type": "string"
+      },
+      "why": "The field's text goes through as the user typed it, so the provider's validation error is the one they see."
+    },
+    {
+      "pointer": "/components/schemas/ServiceKafkaTopicCreateRequestBody/properties/config/properties/cleanup_policy",
+      "value": {
+        "type": "string"
+      },
+      "why": "The field's text goes through as the user typed it, so the provider's validation error is the one they see."
+    },
+    {
+      "pointer": "/components/schemas/ServiceKafkaTopicUpdateRequestBody/properties/config/properties/cleanup_policy",
+      "value": {
+        "type": "string"
+      },
+      "why": "The field's text goes through as the user typed it, so the provider's validation error is the one they see."
+    },
+    {
+      "pointer": "/components/schemas/ServiceKafkaAclAddRequestBody/properties/permission",
+      "value": {
+        "type": "string"
+      },
+      "why": "The field's text goes through as the user typed it, so the provider's validation error is the one they see."
+    },
+    {
+      "pointer": "/components/schemas/ServiceSchemaRegistrySubjectVersionPostRequestBody/properties/schemaType",
+      "value": {
+        "type": "string"
+      },
+      "why": "The field's text goes through as the user typed it, so the provider's validation error is the one they see."
+    },
+    {
+      "pointer": "/components/schemas/ServiceIntegrationCreateRequestBody/properties/integration_type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The field's text goes through as the user typed it, so the provider's validation error is the one they see."
+    },
+    {
+      "pointer": "/components/schemas/ServiceKafkaConnectEditConnectorRequestBody/required",
+      "value": ["name"],
+      "why": "The plugin sends the configuration the user wrote, which normally holds connector.class. Leaving it out is the provider's validation error to give."
+    },
+    {
+      "pointer": "/components/schemas/ProjectServiceTagsReplaceRequestBody/properties/tags",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It maps tag names to values."
+    },
+    {
+      "pointer": "/components/schemas/ServiceKafkaTopicMessageProduceRequestBody/properties/records/items/properties/key",
+      "value": {},
+      "why": "Documented as an object. With format json any JSON value is a key, and the plugin sends text."
+    },
+    {
+      "pointer": "/components/schemas/ServiceKafkaTopicMessageProduceRequestBody/properties/records/items/properties/value",
+      "value": {},
+      "why": "Documented as an object. With format json any JSON value is a record, and the plugin sends text where the payload is not JSON."
+    },
+    {
+      "pointer": "/components/schemas/ServiceKafkaTopicGetResponse/properties/topic/properties/partitions",
+      "value": {
+        "type": "integer"
+      },
+      "why": "Documented as a list of partitions, which mapTopic passes straight into the numeric `partitions` field (#395). Typed as what that code assumes until that is fixed, so the migration changes nothing."
+    },
+    {
+      "pointer": "/components/schemas/ProjectListResponse/properties/projects/items/properties/tags",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It maps tag names to values."
+    },
+    {
+      "pointer": "/components/schemas/ServiceGetResponse/properties/service/properties/tags",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It maps tag names to values."
+    },
+    {
+      "pointer": "/components/schemas/ServiceGetResponse/properties/service/properties/service_uri_params",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It holds the service_uri parts as text, which is how they are read."
+    },
+    {
+      "pointer": "/components/schemas/ServiceGetResponse/properties/service/properties/user_config",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented as an object with no properties. The plugin reads individual settings from it."
+    },
+    {
+      "pointer": "/components/schemas/ServiceGetResponse/properties/service/properties/metadata",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented as an object with no properties. The plugin reads version keys from it."
+    },
+    {
+      "pointer": "/components/schemas/ServiceListResponse/properties/services/items/properties/tags",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It maps tag names to values."
+    },
+    {
+      "pointer": "/components/schemas/ServiceListResponse/properties/services/items/properties/service_uri_params",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It holds the service_uri parts as text, which is how they are read."
+    },
+    {
+      "pointer": "/components/schemas/ServiceListResponse/properties/services/items/properties/user_config",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented as an object with no properties. The plugin reads individual settings from it."
+    },
+    {
+      "pointer": "/components/schemas/ServiceListResponse/properties/services/items/properties/metadata",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented as an object with no properties. The plugin reads version keys from it."
+    },
+    {
+      "pointer": "/components/schemas/ServiceCreateResponse/properties/service/properties/tags",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It maps tag names to values."
+    },
+    {
+      "pointer": "/components/schemas/ServiceCreateResponse/properties/service/properties/service_uri_params",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It holds the service_uri parts as text, which is how they are read."
+    },
+    {
+      "pointer": "/components/schemas/ServiceCreateResponse/properties/service/properties/user_config",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented as an object with no properties. The plugin reads individual settings from it."
+    },
+    {
+      "pointer": "/components/schemas/ServiceCreateResponse/properties/service/properties/metadata",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented as an object with no properties. The plugin reads version keys from it."
+    },
+    {
+      "pointer": "/components/schemas/ServiceUpdateResponse/properties/service/properties/tags",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It maps tag names to values."
+    },
+    {
+      "pointer": "/components/schemas/ServiceUpdateResponse/properties/service/properties/service_uri_params",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It holds the service_uri parts as text, which is how they are read."
+    },
+    {
+      "pointer": "/components/schemas/ServiceUpdateResponse/properties/service/properties/user_config",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented as an object with no properties. The plugin reads individual settings from it."
+    },
+    {
+      "pointer": "/components/schemas/ServiceUpdateResponse/properties/service/properties/metadata",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented as an object with no properties. The plugin reads version keys from it."
+    },
+    {
+      "pointer": "/components/schemas/BillingGroupInvoiceLinesListResponse/properties/lines/items/properties/tags",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object with no properties. It maps billing tag names to values."
+    },
+    {
+      "pointer": "/components/schemas/ProjectServicePlanListResponse/properties/service_plans/items/properties/regions",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "price_usd": {
+              "type": "string"
+            },
+            "disk_space_mb": {
+              "type": "integer"
+            },
+            "node_memory_mb": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "why": "Documented as an object with no properties. It is keyed by cloud, with each plan's price and size there, which is what the plan picker shows."
+    }
+  ],
+  "paths": {
+    "/billing-group": ["get"],
+    "/billing-group/{billing_group_id}/credits": ["get", "post"],
+    "/billing-group/{billing_group_id}/invoice": ["get"],
+    "/billing-group/{billing_group_id}/invoice/{invoice_number}/lines": ["get"],
+    "/billing-group/{billing_group_id}/project-assign/{project}": ["post"],
+    "/clouds": ["get"],
+    "/project": ["get", "post"],
+    "/project/{project}": ["put", "delete"],
+    "/project/{project}/alerts": ["get"],
+    "/project/{project}/clouds": ["get"],
+    "/project/{project}/credits": ["get", "post"],
+    "/project/{project}/events": ["get"],
+    "/project/{project}/integration": ["post"],
+    "/project/{project}/integration/{integration_id}": ["delete"],
+    "/project/{project}/kms/ca": ["get"],
+    "/project/{project}/service": ["get", "post"],
+    "/project/{project}/service-types": ["get"],
+    "/project/{project}/service-types/{service_type}/plans": ["get"],
+    "/project/{project}/service/{service_name}": ["get", "put", "delete"],
+    "/project/{project}/service/{service_name}/acl": ["post"],
+    "/project/{project}/service/{service_name}/acl/{kafka_acl_id}": ["delete"],
+    "/project/{project}/service/{service_name}/alerts": ["get"],
+    "/project/{project}/service/{service_name}/available-connectors": ["get"],
+    "/project/{project}/service/{service_name}/connection_pool": ["post"],
+    "/project/{project}/service/{service_name}/connection_pool/{pool_name}": ["put", "delete"],
+    "/project/{project}/service/{service_name}/connectors": ["get", "post"],
+    "/project/{project}/service/{service_name}/connectors/{connector_name}": ["put", "delete"],
+    "/project/{project}/service/{service_name}/connectors/{connector_name}/pause": ["post"],
+    "/project/{project}/service/{service_name}/connectors/{connector_name}/restart": ["post"],
+    "/project/{project}/service/{service_name}/connectors/{connector_name}/resume": ["post"],
+    "/project/{project}/service/{service_name}/connectors/{connector_name}/status": ["get"],
+    "/project/{project}/service/{service_name}/connectors/{connector_name}/tasks/{task_id}/restart": [
+      "post"
+    ],
+    "/project/{project}/service/{service_name}/db": ["post"],
+    "/project/{project}/service/{service_name}/db/{dbname}": ["delete"],
+    "/project/{project}/service/{service_name}/kafka/rest/topics/{topic_name}/produce": ["post"],
+    "/project/{project}/service/{service_name}/kafka/schema/subjects": ["get"],
+    "/project/{project}/service/{service_name}/kafka/schema/subjects/{subject_name}": ["delete"],
+    "/project/{project}/service/{service_name}/kafka/schema/subjects/{subject_name}/versions": [
+      "get",
+      "post"
+    ],
+    "/project/{project}/service/{service_name}/kafka/schema/subjects/{subject_name}/versions/{version_id}": [
+      "get"
+    ],
+    "/project/{project}/service/{service_name}/logs": ["post"],
+    "/project/{project}/service/{service_name}/maintenance/start": ["put"],
+    "/project/{project}/service/{service_name}/metrics": ["post"],
+    "/project/{project}/service/{service_name}/tags": ["put"],
+    "/project/{project}/service/{service_name}/topic": ["get", "post"],
+    "/project/{project}/service/{service_name}/topic/{topic_name}": ["get", "put", "delete"],
+    "/project/{project}/service/{service_name}/user": ["post"],
+    "/project/{project}/service/{service_name}/user/{service_username}": ["put", "delete"],
+    "/project/{project}/vpcs": ["get", "post"],
+    "/project/{project}/vpcs/{project_vpc_id}": ["get", "delete"],
+    "/project/{project}/vpcs/{project_vpc_id}/peering-connections": ["post"],
+    "/project/{project}/vpcs/{project_vpc_id}/peering-connections/peer-accounts/{peer_cloud_account}/peer-resource-groups/{peer_resource_group}/peer-vpcs/{peer_vpc}": [
+      "delete"
+    ],
+    "/project/{project}/vpcs/{project_vpc_id}/peering-connections/peer-accounts/{peer_cloud_account}/peer-vpcs/{peer_vpc}": [
+      "delete"
+    ],
+    "/project/{project}/vpcs/{project_vpc_id}/peering-connections/peer-accounts/{peer_cloud_account}/peer-vpcs/{peer_vpc}/peer-regions/{peer_region}": [
+      "delete"
+    ],
+    "/project/{project}/vpcs/{project_vpc_id}/peering-connections/refresh": ["post"]
+  }
+}

@@ -1,15 +1,6 @@
 import type { CreateFieldConfig, CreateResourceConfig } from "@infrawrench/plugin-base";
-import { paged } from "./api.js";
 import type { CockroachClient } from "./client.js";
 import { ROLES } from "./resource-types.js";
-
-interface AvailableRegion {
-  name: string;
-  location: string;
-  provider: "GCP" | "AWS" | "AZURE";
-  serverless: boolean;
-  distance: number;
-}
 
 async function clusterPicker(
   client: CockroachClient,
@@ -62,7 +53,7 @@ export async function getCreateConfig(
     }
     case "crdb-cluster": {
       const [regions, folders] = await Promise.all([
-        paged<AvailableRegion>(client.ctx, "/api/v1/clusters/available-regions", "regions"),
+        client.api.getAll("/api/v1/clusters/available-regions", "regions"),
         client.folders().catch(() => []),
       ]);
       const advanced = { fieldKey: "plan", fieldValue: "ADVANCED" };

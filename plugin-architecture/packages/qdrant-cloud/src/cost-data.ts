@@ -1,6 +1,6 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
-import { isStatus, millicents, type QdrantApi } from "./api.js";
+import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
+import { isStatus, millicents, type QdrantCloudApi } from "./api.js";
 import type { QcMeteringItem } from "./types.js";
 
 /**
@@ -106,7 +106,7 @@ export function aggregateRows(rows: CostRow[]): CostRow[] {
 }
 
 export async function fetchQdrantCostData(
-  api: QdrantApi,
+  api: QdrantCloudApi,
   accountId: string,
   range: CostFetchRange,
 ): Promise<CostRow[]> {
@@ -114,8 +114,8 @@ export async function fetchQdrantCostData(
   for (const { year, month } of monthsBetween(range.fromDate, range.toDate)) {
     let items: QcMeteringItem[];
     try {
-      const res = await api.cloud<{ items?: QcMeteringItem[] }>(
-        `/api/metering/v1/accounts/${encodeURIComponent(accountId)}/meterings/${year}/${month}`,
+      const res = await api.get(
+        `/api/metering/v1/accounts/${pathEncode(accountId)}/meterings/${pathEncode(year)}/${pathEncode(month)}`,
       );
       items = res?.items ?? [];
     } catch (e) {

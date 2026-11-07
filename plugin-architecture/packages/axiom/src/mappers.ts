@@ -59,14 +59,14 @@ export function edgeLabel(id: string | undefined): string {
 }
 
 /** The ingest/query base URL of a dataset's edge deployment. */
-export function datasetEdgeUrl(d: AxDataset, defaultEdge?: string): string {
+export function datasetEdgeUrl(d: Partial<AxDataset>, defaultEdge?: string): string {
   if (d.edgeDeploymentUrl) return d.edgeDeploymentUrl;
   const host = EDGE_DEPLOYMENTS[d.edgeDeployment ?? defaultEdge ?? ""]?.host;
   return host ? `https://${host}` : "";
 }
 
-export function mapOrganization(accountId: string, org: AxOrg): ResourceInstance {
-  const l = org.license ?? {};
+export function mapOrganization(accountId: string, org: Partial<AxOrg>): ResourceInstance {
+  const l: Partial<AxOrg["license"]> = org.license ?? {};
   return instance(
     accountId,
     "organization",
@@ -95,7 +95,7 @@ export function mapOrganization(accountId: string, org: AxOrg): ResourceInstance
 
 export function mapDataset(
   accountId: string,
-  d: AxDataset,
+  d: Partial<AxDataset>,
   defaultEdge?: string,
 ): ResourceInstance {
   const id = d.id ?? d.name ?? "";
@@ -122,7 +122,11 @@ export function mapDataset(
   );
 }
 
-export function mapField(accountId: string, dataset: string, f: AxField): ResourceInstance {
+export function mapField(
+  accountId: string,
+  dataset: string,
+  f: Partial<AxField>,
+): ResourceInstance {
   const name = f.name ?? "";
   return instance(
     accountId,
@@ -141,7 +145,7 @@ export function mapField(accountId: string, dataset: string, f: AxField): Resour
   );
 }
 
-export function mapVirtualField(accountId: string, v: AxVirtualField): ResourceInstance {
+export function mapVirtualField(accountId: string, v: Partial<AxVirtualField>): ResourceInstance {
   return instance(
     accountId,
     "virtual-field",
@@ -161,7 +165,7 @@ export function mapVirtualField(accountId: string, v: AxVirtualField): ResourceI
 
 export function mapMonitor(
   accountId: string,
-  m: AxMonitor,
+  m: Partial<AxMonitor>,
   notifierNames: Map<string, string>,
   state?: string,
 ): ResourceInstance {
@@ -228,7 +232,7 @@ export function redactUrl(target: string): string {
   }
 }
 
-export function mapNotifier(accountId: string, n: AxNotifier): ResourceInstance {
+export function mapNotifier(accountId: string, n: Partial<AxNotifier>): ResourceInstance {
   const { channel, target } = notifierChannel(n.properties);
   return instance(
     accountId,
@@ -247,7 +251,7 @@ export function mapNotifier(accountId: string, n: AxNotifier): ResourceInstance 
   );
 }
 
-export function mapDashboard(accountId: string, d: AxDashboard): ResourceInstance {
+export function mapDashboard(accountId: string, d: Partial<AxDashboard>): ResourceInstance {
   const uid = d.uid ?? d.dashboard?.uid ?? d.id ?? "";
   const url = uid ? `${APP_URL}/dashboards/${encodeURIComponent(uid)}` : "";
   return instance(
@@ -269,7 +273,7 @@ export function mapDashboard(accountId: string, d: AxDashboard): ResourceInstanc
   );
 }
 
-export function mapView(accountId: string, v: AxView): ResourceInstance {
+export function mapView(accountId: string, v: Partial<AxView>): ResourceInstance {
   const id = v.id ?? v.name ?? "";
   return instance(accountId, "view", id, v.name ?? id, {
     name: v.name,
@@ -279,7 +283,7 @@ export function mapView(accountId: string, v: AxView): ResourceInstance {
   });
 }
 
-export function mapStarredQuery(accountId: string, q: AxStarredQuery): ResourceInstance {
+export function mapStarredQuery(accountId: string, q: Partial<AxStarredQuery>): ResourceInstance {
   return instance(accountId, "starred-query", q.id ?? "", q.name ?? q.id ?? "", {
     name: q.name,
     apl: q.query?.apl ?? "",
@@ -288,7 +292,7 @@ export function mapStarredQuery(accountId: string, q: AxStarredQuery): ResourceI
   });
 }
 
-export function mapAnnotation(accountId: string, a: AxAnnotation): ResourceInstance {
+export function mapAnnotation(accountId: string, a: Partial<AxAnnotation>): ResourceInstance {
   const when = a.time ? a.time.slice(0, 16).replace("T", " ") : "";
   return instance(
     accountId,
@@ -314,7 +318,7 @@ export function capabilitiesText(c: AxCapabilities | undefined): string {
     .join(", ");
 }
 
-export function mapToken(accountId: string, t: AxToken): ResourceInstance {
+export function mapToken(accountId: string, t: Partial<AxToken>): ResourceInstance {
   const datasets = Object.entries(t.datasetCapabilities ?? {})
     .map(([ds, caps]) => `${ds} (${capabilitiesText(caps)})`)
     .join("; ");
@@ -334,7 +338,7 @@ export function mapToken(accountId: string, t: AxToken): ResourceInstance {
   );
 }
 
-export function mapUser(accountId: string, u: AxUser): ResourceInstance {
+export function mapUser(accountId: string, u: Partial<AxUser>): ResourceInstance {
   return instance(
     accountId,
     "user",

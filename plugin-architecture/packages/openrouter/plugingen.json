@@ -1,0 +1,71 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://openrouter.ai/openapi.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1keys/post/requestBody/content/application~1json/schema/properties/limit_reset",
+      "value": { "type": ["string", "null"] },
+      "why": "Passed through from a form field; our select offers the valid values and OpenRouter validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1keys~1{hash}/patch/requestBody/content/application~1json/schema/properties/limit_reset",
+      "value": { "type": ["string", "null"] },
+      "why": "Passed through from a form field, as on create. Blank sends null, which the document allows."
+    },
+    {
+      "pointer": "/components/schemas/CreateGuardrailRequest/properties/reset_interval",
+      "value": { "type": ["string", "null"] },
+      "why": "Passed through from a form field; our select offers the valid values and OpenRouter validates whatever else arrives. Responses keep the document's enum."
+    },
+    {
+      "pointer": "/components/schemas/UpdateGuardrailRequest/properties/reset_interval",
+      "value": { "type": ["string", "null"] },
+      "why": "Passed through from a form field, as on create."
+    },
+    {
+      "pointer": "/components/schemas/CreateGuardrailRequest/properties/allowed_data_regions/items",
+      "value": { "type": "string" },
+      "why": "A comma list or picker value split into strings and passed through; OpenRouter validates them. Responses keep the document's enum."
+    },
+    {
+      "pointer": "/components/schemas/UpdateGuardrailRequest/properties/allowed_data_regions/items",
+      "value": { "type": "string" },
+      "why": "Passed through from a form field, as on create."
+    },
+    {
+      "pointer": "/components/schemas/CreateBYOKKeyRequest/properties/provider",
+      "value": { "type": "string" },
+      "why": "Picked from the live GET /providers list, which is the source of truth; the document's slug enum is a long snapshot of it that the plugin does not copy."
+    },
+    {
+      "pointer": "/paths/~1analytics~1query/post/responses/200/content/application~1json/schema/properties/data/properties/data/items",
+      "value": {
+        "type": "object",
+        "additionalProperties": { "type": ["string", "number", "null"] }
+      },
+      "why": "The document says a bare object, which generates Record<string, never>. Each row holds a bucket string and the metrics asked for, as numbers, numeric strings or null."
+    }
+  ],
+  "paths": {
+    "/models": ["get"],
+    "/models/{author}/{slug}/endpoints": ["get"],
+    "/providers": ["get"],
+    "/keys": ["get", "post"],
+    "/keys/{hash}": ["get", "patch", "delete"],
+    "/guardrails": ["get", "post"],
+    "/guardrails/{id}": ["get", "patch", "delete"],
+    "/guardrails/{id}/assignments/keys": ["get", "post"],
+    "/workspaces": ["get", "post"],
+    "/workspaces/{id}": ["get", "patch", "delete"],
+    "/workspaces/{id}/members": ["get"],
+    "/workspaces/{workspace_ref}/budgets": ["get"],
+    "/workspaces/{workspace_ref}/budgets/{interval}": ["put", "delete"],
+    "/byok": ["get", "post"],
+    "/byok/{id}": ["get", "patch", "delete"],
+    "/credits": ["get"],
+    "/activity": ["get"],
+    "/analytics/query": ["post"],
+    "/audio/speech": ["post"],
+    "/audio/transcriptions": ["post"]
+  }
+}

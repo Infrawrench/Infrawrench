@@ -10,6 +10,7 @@ import {
 } from "../idle-findings.js";
 import { datadogRemediationCommands } from "../remediation.js";
 import { plugin } from "../plugin.js";
+import { createDatadogContext } from "../api.js";
 import { DatadogClient } from "../client.js";
 import { makeHttp } from "./helpers.js";
 
@@ -25,10 +26,10 @@ function request(thresholds = { notQueriedDays: 30, minIndexedSeries: 1 }): Idle
 /** One page of `GET /api/v2/metrics` with volumes. */
 function page(metrics: Array<[string, number]>, nextCursor: string | null = null) {
   return {
-    data: metrics.map(([id]) => ({ id, type: "metrics" })),
+    data: metrics.map(([id]) => ({ id, type: "metrics" as const })),
     included: metrics.map(([id, indexed]) => ({
       id,
-      type: "metric_volumes",
+      type: "metric_volumes" as const,
       attributes: { indexed_volume: indexed, ingested_volume: indexed * 2 },
     })),
     meta: { pagination: { next_cursor: nextCursor } },
@@ -137,12 +138,14 @@ describe("unused custom metrics", () => {
 
   it("turns a 403 into an access error naming the scope", async () => {
     const { http } = makeHttp(() => ({ status: 403, body: { errors: ["Forbidden"] } }));
-    const fetchPage = datadogMetricListFetch({
-      apiKey: "k",
-      appKey: "a",
-      site: { id: "us1", label: "US1", apiUrl: "https://api.datadoghq.com" } as never,
-      http: http as never,
-    });
+    const fetchPage = datadogMetricListFetch(
+      createDatadogContext({
+        apiKey: "k",
+        appKey: "a",
+        site: { id: "us1", label: "US1", apiUrl: "https://api.datadoghq.com" } as never,
+        http: http as never,
+      }),
+    );
     await expect(fetchPage({})).rejects.toMatchObject({ name: "IdleFindingAccessError" });
   });
 });

@@ -2,14 +2,22 @@ import type {
   CreateResourceConfig,
   DashboardStat,
   DetailViewSchema,
-  HostServices,
   LogsFetchParams,
   LogsFetchResult,
   ResourceInstance,
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, jsonRestFetch } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type {
+  AgentBlock,
+  AgentConfiguration,
+  AgentVariable,
+  createDeepgramApis,
+  DistributionCredentialEntry,
+  PurchaseOrder,
+  RequestFilters,
+} from "./api.js";
 
 /**
  * The project-scoped Deepgram surfaces added after the original plugin:
@@ -36,10 +44,6 @@ export const EXTRA_TYPES = new Set([
   DISTRIBUTION_CREDENTIAL_TYPE,
 ]);
 
-const BASE_URL = "https://api.deepgram.com";
-/** The Voice Agent API's own host, where the managed think-model list lives. */
-const AGENT_HOST = "https://agent.deepgram.com";
-
 /** `GET /requests` caps `limit` at 1000. */
 const MAX_REQUEST_LINES = 1000;
 const DEFAULT_REQUEST_LINES = 200;
@@ -48,7 +52,7 @@ const DEFAULT_REQUEST_LINES = 200;
  * The Logs tab's "container" dropdown, reused as a filter: each entry maps
  * onto one of the documented `status` / `endpoint` query parameters.
  */
-const REQUEST_FILTERS: Array<{ id: string; params: Record<string, string> }> = [
+const REQUEST_FILTERS: Array<{ id: string; params: RequestFilters }> = [
   { id: "all requests", params: {} },
   { id: "failed", params: { status: "failed" } },
   { id: "listen", params: { endpoint: "listen" } },
@@ -56,88 +60,6 @@ const REQUEST_FILTERS: Array<{ id: string; params: Record<string, string> }> = [
   { id: "agent", params: { endpoint: "agent" } },
   { id: "read", params: { endpoint: "read" } },
 ];
-
-// ---------------------------------------------------------------------------
-// Wire shapes
-// ---------------------------------------------------------------------------
-
-interface AgentProvider {
-  type?: string;
-  model?: string;
-  version?: string;
-}
-
-/** The `agent` block of a Settings message, as stored on a configuration. */
-interface AgentBlock {
-  greeting?: string;
-  listen?: { provider?: AgentProvider };
-  think?: { provider?: AgentProvider; prompt?: string; functions?: unknown[] };
-  speak?: { provider?: AgentProvider } | Array<{ provider?: AgentProvider }>;
-}
-
-interface AgentConfiguration {
-  agent_id: string;
-  /** Returned as an object; the create body sends it as a JSON string. */
-  config?: AgentBlock | string;
-  metadata?: Record<string, string> | null;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface AgentVariable {
-  variable_id: string;
-  key?: string;
-  value?: unknown;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface ThinkModel {
-  id: string;
-  name?: string;
-  provider?: unknown;
-}
-
-interface PurchaseOrder {
-  order_id: string;
-  expiration?: string;
-  created?: string;
-  amount?: number;
-  units?: string;
-  order_type?: string;
-}
-
-interface DistributionCredentialEntry {
-  member?: { member_id?: string; email?: string };
-  distribution_credentials: {
-    distribution_credentials_id: string;
-    provider?: string;
-    scopes?: string[];
-    created?: string;
-    comment?: string;
-  };
-}
-
-interface ProjectRequest {
-  request_id?: string;
-  created?: string;
-  path?: string;
-  api_key_id?: string;
-  code?: number;
-  deployment?: string;
-  response?: {
-    code?: number;
-    completed?: string;
-    deployment?: string;
-    details?: {
-      duration?: number;
-      method?: string;
-      usd?: number;
-      tier?: string;
-      total_audio?: number;
-    };
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -148,10 +70,6 @@ function splitChild(resourceId: string): { projectId: string; childId: string } 
   const slash = external.indexOf("/");
   if (slash < 0) return { projectId: external, childId: "" };
   return { projectId: external.slice(0, slash), childId: external.slice(slash + 1) };
-}
-
-function enc(value: string): string {
-  return encodeURIComponent(value);
 }
 
 /** `key=value` pairs, comma separated: how metadata is shown and edited. */
@@ -173,10 +91,11 @@ export function parseLabels(raw: string | undefined): Record<string, string> {
   return out;
 }
 
+/** The document says only "any" here: a name in its example, an object on older answers. */
 function providerType(provider: unknown): string {
   if (typeof provider === "string") return provider;
   if (provider && typeof provider === "object" && "type" in provider) {
-    return String((provider as { type?: unknown }).type ?? "");
+    return String(provider.type ?? "");
   }
   return "";
 }
@@ -185,7 +104,8 @@ function agentBlock(config: AgentConfiguration["config"]): AgentBlock {
   if (!config) return {};
   if (typeof config === "string") {
     try {
-      return JSON.parse(config) as AgentBlock;
+      const parsed: AgentBlock = JSON.parse(config);
+      return parsed;
     } catch {
       return {};
     }
@@ -193,7 +113,7 @@ function agentBlock(config: AgentConfiguration["config"]): AgentBlock {
   return config;
 }
 
-function describeProvider(provider: AgentProvider | undefined): string {
+function describeProvider(provider: NonNullable<AgentBlock["listen"]>["provider"]): string {
   if (!provider) return "";
   return [provider.type, provider.model].filter(Boolean).join(" · ");
 }
@@ -228,11 +148,7 @@ export function variableKey(raw: string): string {
 // Surface
 // ---------------------------------------------------------------------------
 
-export interface ExtrasDeps {
-  apiKey: string;
-  caCert: string;
-  services: HostServices | undefined;
-}
+type Apis = ReturnType<typeof createDeepgramApis>;
 
 export interface CatalogueOption {
   id: string;
@@ -240,23 +156,12 @@ export interface CatalogueOption {
 }
 
 export class DeepgramExtras {
-  constructor(private readonly deps: ExtrasDeps) {}
+  private readonly api: Apis["api"];
+  private readonly agentApi: Apis["agentApi"];
 
-  private request<T>(url: string, path: string, options?: RequestInit): Promise<T> {
-    const http = this.deps.services?.http;
-    return jsonRestFetch<T>({
-      vendor: "Deepgram",
-      url,
-      errorPath: path,
-      headers: { Authorization: `Token ${this.deps.apiKey}`, Accept: "application/json" },
-      ...(options ? { init: options } : {}),
-      ...(this.deps.caCert ? { caCert: this.deps.caCert } : {}),
-      ...(http ? { http } : {}),
-    });
-  }
-
-  private api<T>(path: string, options?: RequestInit): Promise<T> {
-    return this.request<T>(`${BASE_URL}${path}`, path, options);
+  constructor(apis: Apis) {
+    this.api = apis.api;
+    this.agentApi = apis.agentApi;
   }
 
   // -------------------------------------------------------------------------
@@ -268,28 +173,24 @@ export class DeepgramExtras {
     accountId: string,
     projectId: string,
   ): Promise<ResourceInstance[]> {
-    const p = enc(projectId);
+    const p = pathEncode(projectId);
     switch (typeId) {
       case AGENT_CONFIG_TYPE: {
-        const data = await this.api<{ agents?: AgentConfiguration[] }>(`/v1/projects/${p}/agents`);
+        const data = await this.api.get(`/v1/projects/${p}/agents`);
         return (data.agents ?? []).map((a) => this.mapAgent(accountId, projectId, a));
       }
       case AGENT_VARIABLE_TYPE: {
-        const data = await this.api<{ variables?: AgentVariable[] }>(
-          `/v1/projects/${p}/agent-variables`,
-        );
+        const data = await this.api.get(`/v1/projects/${p}/agent-variables`);
         return (data.variables ?? []).map((v) => this.mapVariable(accountId, projectId, v));
       }
       case PURCHASE_TYPE: {
-        const data = await this.api<{ orders?: PurchaseOrder[] }>(
-          `/v1/projects/${p}/purchases?limit=1000`,
-        );
+        const data = await this.api.get(`/v1/projects/${p}/purchases`, {
+          query: { limit: 1000 },
+        });
         return (data.orders ?? []).map((o) => this.mapPurchase(accountId, projectId, o));
       }
       case DISTRIBUTION_CREDENTIAL_TYPE: {
-        const data = await this.api<{ distribution_credentials?: DistributionCredentialEntry[] }>(
-          `/v1/projects/${p}/self-hosted/distribution/credentials`,
-        );
+        const data = await this.api.get(`/v1/projects/${p}/self-hosted/distribution/credentials`);
         return (data.distribution_credentials ?? []).map((c) =>
           this.mapCredential(accountId, projectId, c),
         );
@@ -301,20 +202,20 @@ export class DeepgramExtras {
 
   async get(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
     const { projectId, childId } = splitChild(resourceId);
-    const p = enc(projectId);
+    const p = pathEncode(projectId);
     if (typeId === AGENT_CONFIG_TYPE) {
-      const agent = await this.api<AgentConfiguration>(`/v1/projects/${p}/agents/${enc(childId)}`);
+      const agent = await this.api.get(`/v1/projects/${p}/agents/${pathEncode(childId)}`);
       return this.mapAgent(accountId, projectId, agent);
     }
     if (typeId === AGENT_VARIABLE_TYPE) {
-      const variable = await this.api<AgentVariable>(
-        `/v1/projects/${p}/agent-variables/${enc(childId)}`,
+      const variable = await this.api.get(
+        `/v1/projects/${p}/agent-variables/${pathEncode(childId)}`,
       );
       return this.mapVariable(accountId, projectId, variable);
     }
     if (typeId === DISTRIBUTION_CREDENTIAL_TYPE) {
-      const credential = await this.api<DistributionCredentialEntry>(
-        `/v1/projects/${p}/self-hosted/distribution/credentials/${enc(childId)}`,
+      const credential = await this.api.get(
+        `/v1/projects/${p}/self-hosted/distribution/credentials/${pathEncode(childId)}`,
       );
       return this.mapCredential(accountId, projectId, credential);
     }
@@ -479,10 +380,7 @@ export class DeepgramExtras {
 
   /** `GET https://agent.deepgram.com/v1/agent/settings/think/models`. */
   async thinkModels(): Promise<CatalogueOption[]> {
-    const data = await this.request<{ models?: ThinkModel[] }>(
-      `${AGENT_HOST}/v1/agent/settings/think/models`,
-      "/v1/agent/settings/think/models",
-    );
+    const data = await this.agentApi.get("/v1/agent/settings/think/models");
     return (data.models ?? [])
       .map((m) => {
         const provider = providerType(m.provider);
@@ -498,7 +396,7 @@ export class DeepgramExtras {
     catalogue: { stt: CatalogueOption[]; tts: CatalogueOption[] },
   ): Promise<CreateResourceConfig> {
     if (typeId === AGENT_CONFIG_TYPE) {
-      const think = await this.thinkModels().catch(() => [] as CatalogueOption[]);
+      const think = await this.thinkModels().catch((): CatalogueOption[] => []);
       const listen = [
         { id: "flux-general-en", label: "Flux (English, conversational turn-taking)" },
         ...catalogue.stt.filter((m) => m.id !== "flux-general-en"),
@@ -608,7 +506,7 @@ export class DeepgramExtras {
     projectId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    const p = enc(projectId);
+    const p = pathEncode(projectId);
 
     if (typeId === AGENT_CONFIG_TYPE) {
       const metadata = parseLabels(fields["labels"]);
@@ -618,7 +516,8 @@ export class DeepgramExtras {
       const advanced = (fields["configJson"] ?? "").trim();
       if (advanced) {
         try {
-          const parsed = JSON.parse(advanced) as Record<string, unknown>;
+          const parsed: { agent?: object | string | number | boolean | null } =
+            JSON.parse(advanced);
           // Accept a whole Settings message too, and keep only its agent block.
           config = JSON.stringify(
             parsed["agent"] && typeof parsed["agent"] === "object" ? parsed["agent"] : parsed,
@@ -632,7 +531,7 @@ export class DeepgramExtras {
         const prompt = (fields["prompt"] ?? "").trim();
         if (!thinkType || !thinkModel) throw new Error("Deepgram plugin: pick an LLM");
         if (!prompt) throw new Error("Deepgram plugin: a prompt is required");
-        const block: Record<string, unknown> = {
+        const block: AgentBlock = {
           listen: {
             provider: {
               type: "deepgram",
@@ -647,15 +546,14 @@ export class DeepgramExtras {
           },
         };
         const greeting = (fields["greeting"] ?? "").trim();
-        if (greeting) block["greeting"] = greeting;
+        if (greeting) block.greeting = greeting;
         config = JSON.stringify(block);
       }
-      const created = await this.api<AgentConfiguration>(`/v1/projects/${p}/agents`, {
-        method: "POST",
-        body: JSON.stringify({
+      const created = await this.api.post(`/v1/projects/${p}/agents`, {
+        body: {
           config,
           ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-        }),
+        },
       });
       return this.mapAgent(accountId, projectId, {
         ...created,
@@ -666,9 +564,8 @@ export class DeepgramExtras {
     if (typeId === AGENT_VARIABLE_TYPE) {
       const key = variableKey(fields["key"] ?? "");
       if (!key || key === "DG_") throw new Error("Deepgram plugin: a variable name is required");
-      const created = await this.api<AgentVariable>(`/v1/projects/${p}/agent-variables`, {
-        method: "POST",
-        body: JSON.stringify({ key, value: readValue(fields["value"] ?? "") }),
+      const created = await this.api.post(`/v1/projects/${p}/agent-variables`, {
+        body: { key, value: readValue(fields["value"] ?? "") },
       });
       return this.mapVariable(accountId, projectId, created);
     }
@@ -683,25 +580,24 @@ export class DeepgramExtras {
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
     const { projectId, childId } = splitChild(resourceId);
-    const p = enc(projectId);
+    const p = pathEncode(projectId);
 
     if (typeId === AGENT_CONFIG_TYPE) {
       // `PUT /agents/{id}` replaces the metadata; the config is immutable.
       if (fields["labels"] === undefined) return this.get(typeId, resourceId, accountId);
       const metadata = parseLabels(fields["labels"]);
-      const updated = await this.api<AgentConfiguration>(
-        `/v1/projects/${p}/agents/${enc(childId)}`,
-        { method: "PUT", body: JSON.stringify({ metadata }) },
-      );
+      const updated = await this.api.put(`/v1/projects/${p}/agents/${pathEncode(childId)}`, {
+        body: { metadata },
+      });
       return this.mapAgent(accountId, projectId, updated);
     }
 
     if (typeId === AGENT_VARIABLE_TYPE) {
       // `PATCH /agent-variables/{id}` takes only the new value.
       if (fields["value"] === undefined) return this.get(typeId, resourceId, accountId);
-      const updated = await this.api<AgentVariable>(
-        `/v1/projects/${p}/agent-variables/${enc(childId)}`,
-        { method: "PATCH", body: JSON.stringify({ value: readValue(fields["value"]) }) },
+      const updated = await this.api.patch(
+        `/v1/projects/${p}/agent-variables/${pathEncode(childId)}`,
+        { body: { value: readValue(fields["value"]) } },
       );
       return this.mapVariable(accountId, projectId, updated);
     }
@@ -711,18 +607,17 @@ export class DeepgramExtras {
 
   async remove(typeId: string, resourceId: string): Promise<void> {
     const { projectId, childId } = splitChild(resourceId);
-    const p = enc(projectId);
-    const c = enc(childId);
-    const path =
-      typeId === AGENT_CONFIG_TYPE
-        ? `/v1/projects/${p}/agents/${c}`
-        : typeId === AGENT_VARIABLE_TYPE
-          ? `/v1/projects/${p}/agent-variables/${c}`
-          : typeId === DISTRIBUTION_CREDENTIAL_TYPE
-            ? `/v1/projects/${p}/self-hosted/distribution/credentials/${c}`
-            : "";
-    if (!path) throw new Error(`Deepgram plugin: cannot delete type "${typeId}"`);
-    await this.api<unknown>(path, { method: "DELETE" });
+    const p = pathEncode(projectId);
+    const c = pathEncode(childId);
+    if (typeId === AGENT_CONFIG_TYPE) {
+      await this.api.delete(`/v1/projects/${p}/agents/${c}`);
+    } else if (typeId === AGENT_VARIABLE_TYPE) {
+      await this.api.delete(`/v1/projects/${p}/agent-variables/${c}`);
+    } else if (typeId === DISTRIBUTION_CREDENTIAL_TYPE) {
+      await this.api.delete(`/v1/projects/${p}/self-hosted/distribution/credentials/${c}`);
+    } else {
+      throw new Error(`Deepgram plugin: cannot delete type "${typeId}"`);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -743,10 +638,9 @@ export class DeepgramExtras {
         params.tailLines && params.tailLines > 0 ? params.tailLines : DEFAULT_REQUEST_LINES,
       ),
     );
-    const query = new URLSearchParams({ limit: String(limit), page: "0", ...filter.params });
-    const data = await this.api<{ requests?: ProjectRequest[] }>(
-      `/v1/projects/${enc(projectId)}/requests?${query.toString()}`,
-    );
+    const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/requests`, {
+      query: { limit, page: 0, ...filter.params },
+    });
     const rows = [...(data.requests ?? [])].sort((a, b) =>
       String(a.created ?? "").localeCompare(String(b.created ?? "")),
     );
@@ -811,7 +705,9 @@ export class DeepgramExtras {
 
   render(resource: ResourceInstance): DetailViewSchema {
     const f = resource.fields;
-    const kv = (items: Array<[string, unknown, boolean?]>) => ({
+    const kv = (
+      items: Array<[string, ResourceInstance["fields"][string] | undefined, boolean?]>,
+    ) => ({
       kind: "key-value-list" as const,
       items: items
         .filter(([, value]) => value !== undefined && value !== "")

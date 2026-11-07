@@ -1,6 +1,7 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { ApiBody, NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -23,22 +24,19 @@ import type {
 } from "@infrawrench/plugin-base";
 import type {
   ConfigurationAuditLog,
-  Contacts,
   Device,
   DnsConfiguration,
   Key,
-  LogStreamConfig,
-  LogStreamStatus,
   NetworkFlowLog,
+  operations,
   PostureIntegration,
   Service,
-  ServiceHost,
-  TailnetSettings,
+  TailscaleApi,
   User,
   UserInvite,
   Webhook,
 } from "./api.js";
-import { BOOLEAN_SETTINGS } from "./api.js";
+import { BOOLEAN_SETTINGS, createTailscaleApi } from "./api.js";
 import { installOnSsh } from "./install.js";
 import {
   joinList,
@@ -56,8 +54,6 @@ import { flowSeries, flowWindow, formatFlowLogs } from "./network-flows.js";
 import { renderDetail, sidebarStatus } from "./render.js";
 import { mapTailscaleSeats, tailscaleSeatPrice } from "./seats.js";
 import { INVITE_ROLES, POSTURE_PROVIDERS, WEBHOOK_EVENTS } from "./resource-types.js";
-
-const API = "https://api.tailscale.com/api/v2";
 
 /** Scopes a trust credential (OAuth client) can carry, from the API's per-route OAuth scopes. */
 const TRUST_CREDENTIAL_SCOPES = [
@@ -129,53 +125,16 @@ function isNotFound(error: unknown): boolean {
 }
 
 export class TailscaleClient implements PluginClient {
-  private readonly tailnet: string;
+  private readonly api: TailscaleApi;
+  private readonly tailnet: NoSlashString;
   private readonly tailnetId: string;
   constructor(
     private readonly credentials: Credentials,
-    private readonly services?: HostServices,
+    services?: HostServices,
   ) {
     this.tailnetId = credentials.tailnet?.trim() || "-";
-    this.tailnet = encodeURIComponent(this.tailnetId);
-  }
-
-  private async request<T>(
-    path: string,
-    method = "GET",
-    body?: unknown,
-    accept?: string,
-  ): Promise<T> {
-    const token = this.credentials.apiKey?.trim() ?? "";
-    const url = `${API}${path}`;
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(accept ? { Accept: accept } : {}),
-    };
-    const payload = body === undefined ? {} : { body: JSON.stringify(body) };
-    try {
-      const response = this.services?.http
-        ? await this.services.http.request({ url, method, headers, ...payload })
-        : await fetch(url, {
-            method,
-            headers,
-            ...payload,
-            signal: AbortSignal.timeout(30_000),
-          }).then(async (r) => ({ status: r.status, body: await r.text() }));
-      if (response.status < 200 || response.status >= 300) {
-        throw new Error(`Tailscale API error ${response.status}: ${response.body}`);
-      }
-      // Several device mutations return 200 with an empty body, not 204.
-      return (response.body.trim() ? JSON.parse(response.body) : undefined) as T;
-    } catch (error) {
-      let message = error instanceof Error ? error.message : String(error);
-      if (token) message = message.replaceAll(token, "[redacted]");
-      throw new Error(message.replace(/tskey-[\w-]+/g, "[redacted]"));
-    }
-  }
-
-  private tailnetPath(suffix: string): string {
-    return `/tailnet/${this.tailnet}${suffix}`;
+    this.tailnet = pathEncode(this.tailnetId);
+    this.api = createTailscaleApi(credentials.apiKey, services?.http);
   }
 
   // ---------------------------------------------------------------------------
@@ -183,9 +142,9 @@ export class TailscaleClient implements PluginClient {
   // ---------------------------------------------------------------------------
 
   private async devices(): Promise<Device[]> {
-    const response = await this.request<{ devices: Device[] }>(
-      this.tailnetPath("/devices?fields=all"),
-    );
+    const response = await this.api.get(`/tailnet/${this.tailnet}/devices`, {
+      query: { fields: "all" },
+    });
     if (!Array.isArray(response.devices))
       throw new Error("Tailscale returned an invalid device list.");
     // The list includes devices shared *into* this tailnet. They are not
@@ -195,53 +154,42 @@ export class TailscaleClient implements PluginClient {
   }
 
   private async users(): Promise<User[]> {
-    return (await this.request<{ users?: User[] }>(this.tailnetPath("/users"))).users ?? [];
+    return (await this.api.get(`/tailnet/${this.tailnet}/users`)).users ?? [];
   }
 
   private async userInvites(): Promise<UserInvite[]> {
-    const response = await this.request<UserInvite[] | null>(this.tailnetPath("/user-invites"));
+    const response = await this.api.get(`/tailnet/${this.tailnet}/user-invites`);
     return Array.isArray(response) ? response : [];
   }
 
   private async keys(): Promise<Key[]> {
     // `all=true` widens the list from the caller's auth keys to every auth
     // key, API access token, OAuth client and federated identity.
-    const response = await this.request<{ keys?: Key[] }>(this.tailnetPath("/keys?all=true"));
+    const response = await this.api.get(`/tailnet/${this.tailnet}/keys`, { query: { all: true } });
     return response.keys ?? [];
   }
 
   private async webhooks(): Promise<Webhook[]> {
-    return (
-      (await this.request<{ webhooks?: Webhook[] }>(this.tailnetPath("/webhooks"))).webhooks ?? []
-    );
+    return (await this.api.get(`/tailnet/${this.tailnet}/webhooks`)).webhooks ?? [];
   }
 
   private async servicesList(): Promise<Service[]> {
-    return (
-      (await this.request<{ vipServices?: Service[] }>(this.tailnetPath("/services")))
-        .vipServices ?? []
-    );
+    return (await this.api.get(`/tailnet/${this.tailnet}/services`)).vipServices ?? [];
   }
 
   private async postureIntegrations(): Promise<PostureIntegration[]> {
-    return (
-      (
-        await this.request<{ integrations?: PostureIntegration[] }>(
-          this.tailnetPath("/posture/integrations"),
-        )
-      ).integrations ?? []
-    );
+    return (await this.api.get(`/tailnet/${this.tailnet}/posture/integrations`)).integrations ?? [];
   }
 
   private async dnsConfiguration(): Promise<DnsConfiguration> {
-    return this.request<DnsConfiguration>(this.tailnetPath("/dns/configuration"));
+    return this.api.get(`/tailnet/${this.tailnet}/dns/configuration`);
   }
 
   private async tailnetSnapshot(accountId: string): Promise<ResourceInstance> {
     const [settings, dns, contacts, devices] = await Promise.allSettled([
-      this.request<TailnetSettings>(this.tailnetPath("/settings")),
+      this.api.get(`/tailnet/${this.tailnet}/settings`),
       this.dnsConfiguration(),
-      this.request<Contacts>(this.tailnetPath("/contacts")),
+      this.api.get(`/tailnet/${this.tailnet}/contacts`),
       this.devices(),
     ]);
     // Settings are the one read the type cannot do without; DNS, contacts and
@@ -270,12 +218,7 @@ export class TailscaleClient implements PluginClient {
    */
   private async knownTags(): Promise<PolicyOption[]> {
     const [policy, devices, services] = await Promise.allSettled([
-      this.request<{ tagOwners?: Record<string, unknown> }>(
-        this.tailnetPath("/acl"),
-        "GET",
-        undefined,
-        "application/json",
-      ),
+      this.api.get(`/tailnet/${this.tailnet}/acl`, { headers: { Accept: "application/json" } }),
       this.devices(),
       this.servicesList(),
     ]);
@@ -339,9 +282,7 @@ export class TailscaleClient implements PluginClient {
         case "key": {
           // Tailnet-scoped route, so a single GET cannot reach another tailnet.
           try {
-            const key = await this.request<Key>(
-              this.tailnetPath(`/keys/${encodeURIComponent(id)}`),
-            );
+            const key = await this.api.get(`/tailnet/${this.tailnet}/keys/${pathEncode(id)}`);
             return mapKey(key, accountId);
           } catch (error) {
             if (isNotFound(error)) throw new Error("Key not found in this tailnet.");
@@ -350,8 +291,8 @@ export class TailscaleClient implements PluginClient {
         }
         case "service": {
           try {
-            const service = await this.request<Service>(
-              this.tailnetPath(`/services/${encodeURIComponent(id)}`),
+            const service = await this.api.get(
+              `/tailnet/${this.tailnet}/services/${pathEncode(id)}`,
             );
             return mapService(service, accountId);
           } catch (error) {
@@ -404,14 +345,12 @@ export class TailscaleClient implements PluginClient {
 
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(resource.externalId ?? "");
+      const id = pathEncode(resource.externalId ?? "");
       const extra: Record<string, string> = {};
       if (resource.resourceTypeId === "device") {
         const [attributes, device] = await Promise.allSettled([
-          this.request<{ attributes?: Record<string, unknown>; expiries?: Record<string, string> }>(
-            `/device/${id}/attributes`,
-          ),
-          this.request<Device>(`/device/${id}?fields=all`),
+          this.api.get(`/device/${id}/attributes`),
+          this.api.get(`/device/${id}`, { query: { fields: "all" } }),
         ]);
         if (attributes.status === "fulfilled")
           extra.__attributes__ = JSON.stringify(attributes.value?.attributes ?? {});
@@ -419,7 +358,7 @@ export class TailscaleClient implements PluginClient {
           extra.__connectivity__ = JSON.stringify(device.value?.clientConnectivity ?? {});
       } else if (resource.resourceTypeId === "service") {
         const [hosts, devices] = await Promise.allSettled([
-          this.request<{ hosts?: ServiceHost[] }>(this.tailnetPath(`/services/${id}/devices`)),
+          this.api.get(`/tailnet/${this.tailnet}/services/${id}/devices`),
           this.devices(),
         ]);
         if (hosts.status === "fulfilled") {
@@ -440,8 +379,8 @@ export class TailscaleClient implements PluginClient {
         const streams = await Promise.all(
           (["configuration", "network"] as const).map(async (logType) => {
             const [config, status] = await Promise.allSettled([
-              this.request<LogStreamConfig>(this.tailnetPath(`/logging/${logType}/stream`)),
-              this.request<LogStreamStatus>(this.tailnetPath(`/logging/${logType}/stream/status`)),
+              this.api.get(`/tailnet/${this.tailnet}/logging/${pathEncode(logType)}/stream`),
+              this.api.get(`/tailnet/${this.tailnet}/logging/${pathEncode(logType)}/stream/status`),
             ]);
             return {
               logType,
@@ -754,11 +693,9 @@ export class TailscaleClient implements PluginClient {
       switch (typeId) {
         case "user-invite": {
           const email = fields.email?.trim();
-          const created = await this.request<UserInvite[]>(
-            this.tailnetPath("/user-invites"),
-            "POST",
-            [{ role: fields.role || "member", ...(email ? { email } : {}) }],
-          );
+          const created = await this.api.post(`/tailnet/${this.tailnet}/user-invites`, {
+            body: [{ role: fields.role || "member", ...(email ? { email } : {}) }],
+          });
           const invite = Array.isArray(created) ? created[0] : undefined;
           if (!invite) throw new Error("Tailscale did not return the new invite.");
           return mapUserInvite(invite, accountId);
@@ -769,7 +706,7 @@ export class TailscaleClient implements PluginClient {
             throw new Error(
               "Use at most 50 letters, numbers, spaces and hyphens in the description.",
             );
-          let body: Record<string, unknown>;
+          let body: ApiBody<operations["createKey"]>;
           if (fields.keyType === "client") {
             const scopes = pickedList(fields.scopes);
             if (scopes.length === 0)
@@ -796,9 +733,8 @@ export class TailscaleClient implements PluginClient {
               expirySeconds: days * 86_400,
             };
           }
-          const key = await this.request<Key>(this.tailnetPath("/keys"), "POST", {
-            ...body,
-            ...(description ? { description } : {}),
+          const key = await this.api.post(`/tailnet/${this.tailnet}/keys`, {
+            body: { ...body, ...(description ? { description } : {}) },
           });
           const created = mapKey(key, accountId);
           // The secret appears on this response only.
@@ -808,10 +744,12 @@ export class TailscaleClient implements PluginClient {
         case "webhook": {
           const subscriptions = pickedList(fields.subscriptions);
           if (subscriptions.length === 0) throw new Error("Choose at least one event.");
-          const webhook = await this.request<Webhook>(this.tailnetPath("/webhooks"), "POST", {
-            endpointUrl: fields.endpointUrl?.trim(),
-            ...(fields.providerType ? { providerType: fields.providerType } : {}),
-            subscriptions,
+          const webhook = await this.api.post(`/tailnet/${this.tailnet}/webhooks`, {
+            body: {
+              endpointUrl: fields.endpointUrl?.trim(),
+              ...(fields.providerType ? { providerType: fields.providerType } : {}),
+              subscriptions,
+            },
           });
           const created = mapWebhook(webhook, accountId);
           if (webhook.secret)
@@ -823,25 +761,22 @@ export class TailscaleClient implements PluginClient {
           if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(bare))
             throw new Error("Use lowercase letters, numbers and hyphens for the Service name.");
           const name = `svc:${bare}`;
-          const service = await this.request<Service>(
-            this.tailnetPath(`/services/${encodeURIComponent(name)}`),
-            "PUT",
-            this.serviceBody(name, fields, []),
+          const service = await this.api.put(
+            `/tailnet/${this.tailnet}/services/${pathEncode(name)}`,
+            { body: this.serviceBody(name, fields, []) },
           );
           return mapService(service ?? { name }, accountId);
         }
         case "posture-integration": {
           const provider = fields.provider ?? "";
           if (!POSTURE_PROVIDERS.includes(provider)) throw new Error("Choose a posture provider.");
-          const integration = await this.request<PostureIntegration>(
-            this.tailnetPath("/posture/integrations"),
-            "POST",
-            {
+          const integration = await this.api.post(`/tailnet/${this.tailnet}/posture/integrations`, {
+            body: {
               provider,
               ...this.postureBody(provider, fields),
               clientSecret: fields.clientSecret ?? "",
             },
-          );
+          });
           return mapPostureIntegration(integration, accountId);
         }
         default:
@@ -855,7 +790,7 @@ export class TailscaleClient implements PluginClient {
     fields: Record<string, string>,
     addrs: string[],
     current?: ResourceInstance,
-  ): Record<string, unknown> {
+  ): ApiBody<operations["updateService"]> {
     const pick = (key: string) => fields[key] ?? String(current?.fields[key] ?? "");
     const ports = pickedList(pick("ports"));
     if (ports.some((port) => !/^(tcp:\d{1,5}(-\d{1,5})?|do-not-validate)$/.test(port)))
@@ -871,7 +806,10 @@ export class TailscaleClient implements PluginClient {
   }
 
   /** The provider-specific identifiers; the API wants blanks for the others. */
-  private postureBody(provider: string, fields: Record<string, string>): Record<string, string> {
+  private postureBody(
+    provider: string,
+    fields: Record<string, string>,
+  ): { cloudId: string; clientId: string; tenantId: string } {
     const cloudId =
       provider === "falcon"
         ? fields.falconCloud
@@ -901,7 +839,7 @@ export class TailscaleClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-      const id = encodeURIComponent(resource.externalId!);
+      const id = pathEncode(resource.externalId!);
       const changed = (key: string) =>
         fields[key] !== undefined && fields[key] !== String(resource.fields[key] ?? "");
       switch (typeId) {
@@ -910,7 +848,7 @@ export class TailscaleClient implements PluginClient {
           break;
         case "user":
           if (changed("role"))
-            await this.request(`/users/${id}/role`, "POST", { role: fields.role });
+            await this.api.post(`/users/${id}/role`, { body: { role: fields.role } });
           break;
         case "webhook":
           if (
@@ -921,25 +859,30 @@ export class TailscaleClient implements PluginClient {
             const unknown = subscriptions.filter((event) => !WEBHOOK_EVENTS.includes(event));
             if (unknown.length) throw new Error(`Unknown webhook events: ${unknown.join(", ")}.`);
             if (subscriptions.length === 0) throw new Error("Keep at least one event.");
-            await this.request(`/webhooks/${id}`, "PATCH", { subscriptions });
+            await this.api.patch(`/webhooks/${id}`, { body: { subscriptions } });
           }
           break;
         case "service": {
           const name = resource.externalId!;
-          await this.request(
-            this.tailnetPath(`/services/${id}`),
-            "PUT",
-            this.serviceBody(name, fields, splitList(String(resource.fields.addresses)), resource),
-          );
+          await this.api.put(`/tailnet/${this.tailnet}/services/${id}`, {
+            body: this.serviceBody(
+              name,
+              fields,
+              splitList(String(resource.fields.addresses)),
+              resource,
+            ),
+          });
           break;
         }
         case "posture-integration": {
-          await this.request(`/posture/integrations/${id}`, "PATCH", {
-            cloudId: fields.cloudId ?? resource.fields.cloudId,
-            clientId: fields.clientId ?? resource.fields.clientId,
-            tenantId: fields.tenantId ?? resource.fields.tenantId,
-            // Omitted keeps the stored secret.
-            ...(fields.clientSecret ? { clientSecret: fields.clientSecret } : {}),
+          await this.api.patch(`/posture/integrations/${id}`, {
+            body: {
+              cloudId: fields.cloudId ?? resource.fields.cloudId,
+              clientId: fields.clientId ?? resource.fields.clientId,
+              tenantId: fields.tenantId ?? resource.fields.tenantId,
+              // Omitted keeps the stored secret.
+              ...(fields.clientSecret ? { clientSecret: fields.clientSecret } : {}),
+            },
           });
           break;
         }
@@ -954,29 +897,31 @@ export class TailscaleClient implements PluginClient {
   }
 
   private async updateDevice(resource: ResourceInstance, fields: Record<string, string>) {
-    const path = `/device/${encodeURIComponent(resource.externalId!)}`;
+    const id = pathEncode(resource.externalId!);
     const current = resource.fields;
     if (fields.name !== undefined && fields.name.trim() !== String(current.name)) {
       const name = fields.name.trim();
       // A base name is one DNS label (63 max); a full name is at most 253.
       if (!name || name.length > 253 || name.split(".").some((label) => label.length > 63))
         throw new Error("Enter a DNS name whose parts are each at most 63 characters.");
-      await this.request(`${path}/name`, "POST", { name });
+      await this.api.post(`/device/${id}/name`, { body: { name } });
     }
     if (fields.tags !== undefined && !sameList(fields.tags, String(current.tags))) {
       const tags = splitList(fields.tags);
       if (tags.some((tag) => !/^tag:[A-Za-z0-9-]+$/.test(tag)))
         throw new Error("Tags look like tag:name (letters, numbers and hyphens).");
-      await this.request(`${path}/tags`, "POST", { tags });
+      await this.api.post(`/device/${id}/tags`, { body: { tags } });
     }
     const keyExpiryDisabled = bool(fields.keyExpiryDisabled);
     if (keyExpiryDisabled !== undefined && keyExpiryDisabled !== current.keyExpiryDisabled)
-      await this.request(`${path}/key`, "POST", { keyExpiryDisabled });
+      await this.api.post(`/device/${id}/key`, { body: { keyExpiryDisabled } });
     if (
       fields.enabledRoutes !== undefined &&
       !sameList(fields.enabledRoutes, String(current.enabledRoutes))
     )
-      await this.request(`${path}/routes`, "POST", { routes: splitList(fields.enabledRoutes) });
+      await this.api.post(`/device/${id}/routes`, {
+        body: { routes: splitList(fields.enabledRoutes) },
+      });
     if (fields.ipv4 !== undefined && fields.ipv4.trim() && fields.ipv4.trim() !== current.ipv4) {
       const ipv4 = fields.ipv4.trim();
       // The tailnet's CGNAT range is 100.64.0.0/10.
@@ -989,7 +934,7 @@ export class TailscaleClient implements PluginClient {
         octets[1]! > 127
       )
         throw new Error("Choose an address inside 100.64.0.0/10.");
-      await this.request(`${path}/ip`, "POST", { ipv4 });
+      await this.api.post(`/device/${id}/ip`, { body: { ipv4 } });
     }
   }
 
@@ -998,7 +943,7 @@ export class TailscaleClient implements PluginClient {
     fields: Record<string, string>,
     changed: (key: string) => boolean,
   ) {
-    const settings: Record<string, unknown> = {};
+    const settings: ApiBody<operations["updateTailnetSettings"]> = {};
     for (const key of BOOLEAN_SETTINGS) {
       if (changed(key)) settings[key] = fields[key] === "true";
     }
@@ -1013,7 +958,7 @@ export class TailscaleClient implements PluginClient {
         fields.usersRoleAllowedToJoinExternalTailnets;
     if (changed("aclsExternalLink")) settings.aclsExternalLink = fields.aclsExternalLink;
     if (Object.keys(settings).length)
-      await this.request(this.tailnetPath("/settings"), "PATCH", settings);
+      await this.api.patch(`/tailnet/${this.tailnet}/settings`, { body: settings });
 
     const dnsChanged =
       changed("magicDNS") ||
@@ -1029,22 +974,26 @@ export class TailscaleClient implements PluginClient {
     const flags = new Map((dns.nameservers ?? []).map((n) => [n.address, n.useWithExitNode]));
     const nameservers =
       fields.nameservers !== undefined
-        ? splitList(fields.nameservers).map((address) => ({
-            address,
-            ...(flags.get(address) !== undefined ? { useWithExitNode: flags.get(address) } : {}),
-          }))
+        ? splitList(fields.nameservers).map((address) => {
+            const useWithExitNode = flags.get(address);
+            return { address, ...(useWithExitNode !== undefined ? { useWithExitNode } : {}) };
+          })
         : (dns.nameservers ?? []);
-    await this.request(this.tailnetPath("/dns/configuration"), "POST", {
-      ...dns,
-      nameservers,
-      searchPaths:
-        fields.searchPaths !== undefined ? splitList(fields.searchPaths) : (dns.searchPaths ?? []),
-      preferences: {
-        ...dns.preferences,
-        ...(changed("magicDNS") ? { magicDNS: fields.magicDNS === "true" } : {}),
-        ...(changed("overrideLocalDNS")
-          ? { overrideLocalDNS: fields.overrideLocalDNS === "true" }
-          : {}),
+    await this.api.post(`/tailnet/${this.tailnet}/dns/configuration`, {
+      body: {
+        ...dns,
+        nameservers,
+        searchPaths:
+          fields.searchPaths !== undefined
+            ? splitList(fields.searchPaths)
+            : (dns.searchPaths ?? []),
+        preferences: {
+          ...dns.preferences,
+          ...(changed("magicDNS") ? { magicDNS: fields.magicDNS === "true" } : {}),
+          ...(changed("overrideLocalDNS")
+            ? { overrideLocalDNS: fields.overrideLocalDNS === "true" }
+            : {}),
+        },
       },
     });
   }
@@ -1060,9 +1009,9 @@ export class TailscaleClient implements PluginClient {
    */
   fetchSeats(_accountId: string, _options: SeatFetchOptions): PluginEffect<SeatRecord[]> {
     return attempt(async () => {
-      const response = await this.request<{ users?: User[] }>(
-        this.tailnetPath("/users?type=member"),
-      );
+      const response = await this.api.get(`/tailnet/${this.tailnet}/users`, {
+        query: { type: "member" },
+      });
       if (!response || !Array.isArray(response.users))
         throw new Error("Tailscale API returned no user list");
       return mapTailscaleSeats(
@@ -1092,7 +1041,7 @@ export class TailscaleClient implements PluginClient {
         );
       if ((user.status ?? "").toLowerCase() === "suspended")
         return { effective: "end-of-cycle", message: "The user was already suspended." };
-      await this.request(`/users/${encodeURIComponent(user.id)}/suspend`, "POST");
+      await this.api.post(`/users/${pathEncode(user.id)}/suspend`);
       return {
         effective: "end-of-cycle",
         message:
@@ -1108,29 +1057,29 @@ export class TailscaleClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-      const id = encodeURIComponent(resource.externalId!);
+      const id = pathEncode(resource.externalId!);
       switch (typeId) {
         case "device":
-          await this.request(`/device/${id}`, "DELETE");
+          await this.api.delete(`/device/${id}`);
           return;
         case "user":
           // Users are deleted with a POST; it also removes their devices.
-          await this.request(`/users/${id}/delete`, "POST");
+          await this.api.post(`/users/${id}/delete`);
           return;
         case "user-invite":
-          await this.request(`/user-invites/${id}`, "DELETE");
+          await this.api.delete(`/user-invites/${id}`);
           return;
         case "key":
-          await this.request(this.tailnetPath(`/keys/${id}`), "DELETE");
+          await this.api.delete(`/tailnet/${this.tailnet}/keys/${id}`);
           return;
         case "webhook":
-          await this.request(`/webhooks/${id}`, "DELETE");
+          await this.api.delete(`/webhooks/${id}`);
           return;
         case "service":
-          await this.request(this.tailnetPath(`/services/${id}`), "DELETE");
+          await this.api.delete(`/tailnet/${this.tailnet}/services/${id}`);
           return;
         case "posture-integration":
-          await this.request(`/posture/integrations/${id}`, "DELETE");
+          await this.api.delete(`/posture/integrations/${id}`);
           return;
         default:
           throw new Error(`Tailscale cannot delete ${typeId} resources.`);
@@ -1145,30 +1094,29 @@ export class TailscaleClient implements PluginClient {
     accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const actions: Record<string, Record<string, [string, unknown?]>> = {
+      const actions: Record<string, Record<string, (id: NoSlashString) => Promise<unknown>>> = {
         device: {
-          approve: ["authorized", { authorized: true }],
-          deauthorize: ["authorized", { authorized: false }],
-          expire: ["expire", {}],
+          approve: (id) =>
+            this.api.post(`/device/${id}/authorized`, { body: { authorized: true } }),
+          deauthorize: (id) =>
+            this.api.post(`/device/${id}/authorized`, { body: { authorized: false } }),
+          expire: (id) => this.api.post(`/device/${id}/expire`, { body: {} }),
         },
-        user: { approve: ["approve"], suspend: ["suspend"], restore: ["restore"] },
-        "user-invite": { resend: ["resend"] },
-        webhook: { test: ["test"] },
+        user: {
+          approve: (id) => this.api.post(`/users/${id}/approve`),
+          suspend: (id) => this.api.post(`/users/${id}/suspend`),
+          restore: (id) => this.api.post(`/users/${id}/restore`),
+        },
+        "user-invite": { resend: (id) => this.api.post(`/user-invites/${id}/resend`) },
+        webhook: { test: (id) => this.api.post(`/webhooks/${id}/test`) },
       };
-      const action = actions[typeId]?.[actionId];
+      const group = actions[typeId];
+      // Own names only: `actionId` comes from the request, and an inherited one
+      // such as `constructor` is callable here.
+      const action = group && Object.hasOwn(group, actionId) ? group[actionId] : undefined;
       if (!action) throw new Error("Unknown Tailscale action.");
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-      const base = {
-        device: "/device",
-        user: "/users",
-        "user-invite": "/user-invites",
-        webhook: "/webhooks",
-      }[typeId as "device" | "user" | "user-invite" | "webhook"];
-      await this.request(
-        `${base}/${encodeURIComponent(resource.externalId!)}/${action[0]}`,
-        "POST",
-        action[1],
-      );
+      await action(pathEncode(resource.externalId!));
     });
   }
 
@@ -1183,23 +1131,17 @@ export class TailscaleClient implements PluginClient {
     return attempt(async () => {
       if (typeId !== "service" || (command !== "approve-host" && command !== "revoke-host"))
         throw new Error("Unknown Tailscale command.");
-      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      const values: { deviceId?: string } = JSON.parse(String(args[0] ?? "{}"));
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const service = pathEncode(resource.externalId!);
       const hosts =
-        (
-          await this.request<{ hosts?: ServiceHost[] }>(
-            this.tailnetPath(`/services/${encodeURIComponent(resource.externalId!)}/devices`),
-          )
-        ).hosts ?? [];
+        (await this.api.get(`/tailnet/${this.tailnet}/services/${service}/devices`)).hosts ?? [];
       // Only act on a device that actually advertises this Service.
       if (!hosts.some((h) => h.stableNodeID === values.deviceId))
         throw new Error("That device does not host this Service.");
-      return this.request(
-        this.tailnetPath(
-          `/services/${encodeURIComponent(resource.externalId!)}/device/${encodeURIComponent(values.deviceId!)}/approved`,
-        ),
-        "POST",
-        { approved: command === "approve-host" },
+      return this.api.post(
+        `/tailnet/${this.tailnet}/services/${service}/device/${pathEncode(values.deviceId!)}/approved`,
+        { body: { approved: command === "approve-host" } },
       );
     });
   }
@@ -1214,10 +1156,7 @@ export class TailscaleClient implements PluginClient {
       if (typeId !== "webhook" || formatId !== "rotate-secret")
         throw new Error("Unknown Tailscale credential format.");
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-      const rotated = await this.request<Webhook>(
-        `/webhooks/${encodeURIComponent(resource.externalId!)}/rotate`,
-        "POST",
-      );
+      const rotated = await this.api.post(`/webhooks/${pathEncode(resource.externalId!)}/rotate`);
       if (!rotated?.secret) throw new Error("Tailscale did not return a new secret.");
       return {
         content: rotated.secret,
@@ -1269,10 +1208,9 @@ export class TailscaleClient implements PluginClient {
       }
       const end = new Date();
       const start = new Date(end.getTime() - 30 * 86_400_000);
-      const query = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
-      const response = await this.request<{ logs?: ConfigurationAuditLog[] }>(
-        this.tailnetPath(`/logging/configuration?${query.toString()}`),
-      );
+      const response = await this.api.get(`/tailnet/${this.tailnet}/logging/configuration`, {
+        query: { start: start.toISOString(), end: end.toISOString() },
+      });
       const lines = (response.logs ?? []).map(formatAuditLog);
       return {
         text: tailText(lines, params.tailLines),
@@ -1284,14 +1222,12 @@ export class TailscaleClient implements PluginClient {
 
   /** Network flow logs for a window, with a hint when the tailnet cannot have them. */
   private async networkFlowLogs(startMs: number, endMs: number): Promise<NetworkFlowLog[]> {
-    const query = new URLSearchParams({
+    const query = {
       start: new Date(startMs).toISOString(),
       end: new Date(endMs).toISOString(),
-    });
+    };
     try {
-      const response = await this.request<{ logs?: NetworkFlowLog[] }>(
-        this.tailnetPath(`/logging/network?${query.toString()}`),
-      );
+      const response = await this.api.get(`/tailnet/${this.tailnet}/logging/network`, { query });
       return response?.logs ?? [];
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1309,7 +1245,7 @@ export class TailscaleClient implements PluginClient {
     const endMs = Date.now();
     const [logs, devices] = await Promise.all([
       this.networkFlowLogs(endMs - FLOW_LOG_TAIL_MS, endMs),
-      this.devices().catch(() => [] as Device[]),
+      this.devices().catch((): Device[] => []),
     ]);
     const names = new Map<string, string>();
     for (const device of devices) {
@@ -1401,24 +1337,26 @@ export class TailscaleClient implements PluginClient {
       return installOnSsh(context, {
         devices: () => this.devices(),
         createKey: () =>
-          this.request<{ id: string; key: string }>(this.tailnetPath("/keys"), "POST", {
-            capabilities: {
-              // Pre-approved: we enroll the server on the account holder's behalf.
-              // https://tailscale.com/kb/1085/auth-keys
-              devices: { create: { reusable: false, ephemeral: false, preauthorized: true } },
+          this.api.post(`/tailnet/${this.tailnet}/keys`, {
+            body: {
+              capabilities: {
+                // Pre-approved: we enroll the server on the account holder's behalf.
+                // https://tailscale.com/kb/1085/auth-keys
+                devices: { create: { reusable: false, ephemeral: false, preauthorized: true } },
+              },
+              expirySeconds: 300,
+              description: "Infrawrench server enrollment",
             },
-            expirySeconds: 300,
-            description: "Infrawrench server enrollment",
           }),
         // https://tailscale.com/kb/1099/device-approval
         approve: async (deviceId) => {
-          await this.request(`/device/${encodeURIComponent(deviceId)}/authorized`, "POST", {
-            authorized: true,
+          await this.api.post(`/device/${pathEncode(deviceId)}/authorized`, {
+            body: { authorized: true },
           });
         },
         revokeKey: async (id) => {
           try {
-            await this.request<void>(this.tailnetPath(`/keys/${encodeURIComponent(id)}`), "DELETE");
+            await this.api.delete(`/tailnet/${this.tailnet}/keys/${pathEncode(id)}`);
           } catch (error) {
             // A consumed one-use key may already have disappeared.
             if (!isNotFound(error)) throw error;
@@ -1433,7 +1371,7 @@ export class TailscaleClient implements PluginClient {
     return attempt(async () => {
       const device = (await this.devices()).find((d) => d.nodeId === ref || d.id === ref);
       if (!device) return;
-      await this.request(`/device/${encodeURIComponent(device.nodeId || device.id)}`, "DELETE");
+      await this.api.delete(`/device/${pathEncode(device.nodeId || device.id)}`);
     });
   }
 }

@@ -6,6 +6,7 @@ import {
   fetchAnyscaleCostData,
   usageRowToCost,
 } from "../cost-data.js";
+import { createAnyscaleApi } from "../api.js";
 import { creditBalances, fetchCredits } from "../credits.js";
 import { makeHttp } from "./helpers.js";
 
@@ -117,10 +118,10 @@ describe("fetchAnyscaleCostData", () => {
       }
       return { status: 404 };
     });
-    const rows = await fetchAnyscaleCostData(
-      { apiKey: "key_1", http },
-      { fromDate: "2026-10-01", toDate: "2026-10-02" },
-    );
+    const rows = await fetchAnyscaleCostData(createAnyscaleApi({ apiKey: "key_1", http }), {
+      fromDate: "2026-10-01",
+      toDate: "2026-10-02",
+    });
     expect(rows.map((r) => [r.date, r.service, r.amount, r.tags?.["hosting"]])).toEqual([
       ["2026-10-01", "Service", 3, "anyscale-hosted"],
       ["2026-10-02", "Workspace", 4, "anyscale-hosted"],
@@ -139,10 +140,10 @@ describe("fetchAnyscaleCostData", () => {
   it("explains the owner requirement on a 403", async () => {
     const { http } = makeHttp(() => ({ status: 403, body: { error: "forbidden" } }));
     await expect(
-      fetchAnyscaleCostData(
-        { apiKey: "k", http },
-        { fromDate: "2026-10-01", toDate: "2026-10-01" },
-      ),
+      fetchAnyscaleCostData(createAnyscaleApi({ apiKey: "k", http }), {
+        fromDate: "2026-10-01",
+        toDate: "2026-10-01",
+      }),
     ).rejects.toBeInstanceOf(CostSetupError);
   });
 });
@@ -188,6 +189,8 @@ describe("credits", () => {
 
   it("raises CreditAccessError for a non-owner key", async () => {
     const { http } = makeHttp(() => ({ status: 403 }));
-    await expect(fetchCredits({ apiKey: "k", http })).rejects.toBeInstanceOf(CreditAccessError);
+    await expect(fetchCredits(createAnyscaleApi({ apiKey: "k", http }))).rejects.toBeInstanceOf(
+      CreditAccessError,
+    );
   });
 });

@@ -31,26 +31,11 @@
  */
 
 import { QuotaAccessError, type QuotaUsage } from "@infrawrench/plugin-base";
+import type { DoApi } from "./api.js";
 
-/** The subset of `GET /v2/account` this module decodes. */
-interface DoAccountResponse {
-  account?: {
-    droplet_limit?: number;
-    /** Reserved IPs, under the pre-rename field name. See the module header. */
-    floating_ip_limit?: number;
-    status?: string;
-    team?: { uuid?: string; name?: string };
-  };
-}
-
-/** The `meta` envelope every DO list endpoint carries. */
-interface DoListMeta {
-  meta?: { total?: number };
-}
-
-/** The client's private `fetch`, bound and passed in (the `DoCostFetchContext` shape). */
+/** The client's API, passed in (the `DoCostFetchContext` shape). */
 export interface DoQuotaContext {
-  fetch<T>(path: string, options?: RequestInit): Promise<T>;
+  api: DoApi;
 }
 
 const DOCS_URL = "https://docs.digitalocean.com/support/why-am-i-receiving-a-limit-error/";
@@ -64,8 +49,11 @@ const DOCS_URL = "https://docs.digitalocean.com/support/why-am-i-receiving-a-lim
  * storing it as zero would draw an empty bar under a limit that may well be
  * full.
  */
-export async function countDoObjects(ctx: DoQuotaContext, path: string): Promise<number | null> {
-  const response = await ctx.fetch<DoListMeta>(`${path}?per_page=1`);
+export async function countDoObjects(
+  ctx: DoQuotaContext,
+  path: "/droplets" | "/reserved_ips",
+): Promise<number | null> {
+  const response = await ctx.api.get(path, { query: { per_page: 1 } });
   const total = response.meta?.total;
   return typeof total === "number" && Number.isFinite(total) ? total : null;
 }
@@ -78,7 +66,7 @@ export async function countDoObjects(ctx: DoQuotaContext, path: string): Promise
  * used, which is a claim; omitting the row is not.
  */
 export async function fetchDoQuotas(ctx: DoQuotaContext): Promise<QuotaUsage[]> {
-  const response = await ctx.fetch<DoAccountResponse>("/account");
+  const response = await ctx.api.get("/account");
   const account = response.account;
   if (!account) {
     throw new QuotaAccessError(

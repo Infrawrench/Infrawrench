@@ -1,6 +1,6 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
-import { consoleUrl, normaliseApiUrl, puPaged, statusOf } from "../api.js";
+import { consoleUrl, createPulumiApi, normaliseApiUrl, statusOf } from "../api.js";
 import { PulumiCloudClient, decodePlaintext, tailLines, unwrapEscValue } from "../client.js";
 import { updateSeries } from "../metrics.js";
 import { plugin } from "../plugin.js";
@@ -53,11 +53,11 @@ describe("api", () => {
         ? { stacks: [{ stackName: "b" }] }
         : { stacks: [{ stackName: "a" }], continuationToken: "next" };
     });
-    const out = await puPaged<{ stackName: string }>(
-      { token: "t", apiUrl: "https://api.pulumi.com", http },
-      "/api/user/stacks",
-      "stacks",
-    );
+    const out = await createPulumiApi({
+      token: "t",
+      apiUrl: "https://api.pulumi.com",
+      http,
+    }).getAll("/api/user/stacks", "stacks");
     expect(out.map((s) => s.stackName)).toEqual(["a", "b"]);
     expect(calls[1]!.url.searchParams.get("continuationToken")).toBe("next");
   });
@@ -67,11 +67,9 @@ describe("api", () => {
       status: 404,
       body: { code: 404, message: "Not Found: stack" },
     }));
-    const err = await puPaged(
-      { token: "t", apiUrl: "https://api.pulumi.com", http },
-      "/x",
-      "y",
-    ).catch((e: unknown) => e);
+    const err = await createPulumiApi({ token: "t", apiUrl: "https://api.pulumi.com", http })
+      .getAll("/api/user/stacks", "stacks")
+      .catch((e: unknown) => e);
     expect(statusOf(err)).toBe(404);
     expect(String((err as Error).message)).toContain("Not Found: stack");
   });
@@ -283,7 +281,7 @@ describe("usage and cost", () => {
       return { summary: [{ year: 2026, month: 10, day: 1, resourceHours: 240 }] };
     });
     const rows = await fetchUsageCost(
-      { token: "t", apiUrl: "https://api.pulumi.com", http },
+      createPulumiApi({ token: "t", apiUrl: "https://api.pulumi.com", http }),
       "acme",
       ratesFor("pro", ""),
       {

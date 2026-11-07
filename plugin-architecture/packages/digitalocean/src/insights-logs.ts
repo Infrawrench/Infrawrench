@@ -9,10 +9,18 @@
  * - DOKS clusters read the cluster's lifecycle status messages
  *   (`GET /v2/kubernetes/clusters/{id}/status_messages`).
  */
-import type { LogsFetchResult, ResourceInstance } from "@infrawrench/plugin-base";
+import {
+  pathEncode,
+  type ApiBody,
+  type ApiListItem,
+  type LogsFetchResult,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
+import type { DoApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 export interface DoLogsContext {
-  fetch<T>(path: string, options?: RequestInit): Promise<T>;
+  api: DoApi;
 }
 
 /** Dropdown entries for the Droplet Logs tab. */
@@ -24,13 +32,8 @@ const DROPLET_LOG_LOOKBACK = "24h";
 /** OpenTelemetry severity number where ERROR starts (ERROR=17..20, FATAL=21..24). */
 const OTEL_SEVERITY_ERROR = 17;
 
-interface InsightsLogRecord {
-  timestamp?: string;
-  severity_text?: string;
-  severity_number?: number;
-  body?: string;
-  service_name?: string;
-}
+type LogsFilter = NonNullable<ApiBody<operations["insights_post_logsSearch"]>["filter"]>;
+type InsightsLogRecord = ApiListItem<operations["insights_post_logsSearch"], "data">;
 
 /** Insights clamps `pagination.limit` to 1000. */
 function clampLimit(tail: number): number {
@@ -46,8 +49,8 @@ export function buildDropletLogSearch(
   dropletId: string,
   view: (typeof DROPLET_LOG_VIEWS)[number],
   tail: number,
-): Record<string, unknown> {
-  const byDroplet = {
+): ApiBody<operations["insights_post_logsSearch"]> {
+  const byDroplet: LogsFilter = {
     or: {
       expressions: [
         {
@@ -67,7 +70,7 @@ export function buildDropletLogSearch(
       ],
     },
   };
-  const filter =
+  const filter: LogsFilter =
     view === "errors"
       ? {
           and: {
@@ -117,14 +120,9 @@ export async function fetchDropletInsightsLogs(
   const tail = params.tailLines ?? 200;
   let records: InsightsLogRecord[];
   try {
-    const resp = await ctx.fetch<{ data?: InsightsLogRecord[] }>(
-      `/insights/query/${encodeURIComponent(region)}/logs/search`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildDropletLogSearch(dropletId, view, tail)),
-      },
-    );
+    const resp = await ctx.api.post(`/insights/query/${pathEncode(region)}/logs/search`, {
+      body: buildDropletLogSearch(dropletId, view, tail),
+    });
     records = resp.data ?? [];
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -154,11 +152,9 @@ export async function fetchDoksStatusMessages(
   params: { tailLines?: number },
 ): Promise<LogsFetchResult> {
   const containers = ["status"];
-  let messages: Array<{ message?: string; timestamp?: string }>;
+  let messages: ApiListItem<operations["kubernetes_get_status_messages"], "messages">[];
   try {
-    const resp = await ctx.fetch<{
-      messages?: Array<{ message?: string; timestamp?: string }> | null;
-    }>(`/kubernetes/clusters/${encodeURIComponent(clusterId)}/status_messages`);
+    const resp = await ctx.api.get(`/kubernetes/clusters/${pathEncode(clusterId)}/status_messages`);
     messages = resp.messages ?? [];
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

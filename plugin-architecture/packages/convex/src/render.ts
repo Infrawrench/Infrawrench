@@ -110,7 +110,7 @@ export function renderDetail(r: ResourceInstance): DetailViewSchema {
       const raw = r.fields["_usage"];
       if (typeof raw === "string") {
         try {
-          const usage = JSON.parse(raw) as CvUsage;
+          const usage: CvUsage = JSON.parse(raw);
           base.sections.push({
             kind: "section",
             title: "Usage",

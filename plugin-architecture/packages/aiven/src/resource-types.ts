@@ -17,7 +17,21 @@ export const T = {
   billingGroup: "aiven-billing-group",
 } as const;
 
-export const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const WEEKDAYS = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+] as const;
+
+export const DAYS: string[] = [...WEEKDAYS];
+
+export function isMaintenanceDay(day: string): day is (typeof WEEKDAYS)[number] {
+  return DAYS.includes(day);
+}
 
 const inProject = { fieldKey: "project", targetTypeId: T.project, label: "in project" };
 const onService = {

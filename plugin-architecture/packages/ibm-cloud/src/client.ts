@@ -13,8 +13,14 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  unencodedSegment,
+  type ApiResponse,
+} from "@infrawrench/plugin-base";
 import { IbmApi, isPermissionGap } from "./api.js";
+import type { operations as DatabaseOperations } from "./api-types.databases.gen.js";
 import { fetchCostData, fetchCredits, monthToDate } from "./billing.js";
 import { createResource, getCreateConfig } from "./create.js";
 import {
@@ -44,22 +50,10 @@ import {
   notFound,
   poolsOf,
   splitRegional,
-  vpcGet,
   xmlValue,
-  type CeApp,
   type ListContext,
-  type ResourceInstanceRc,
 } from "./listers.js";
-import {
-  CONTAINERS,
-  DEFAULT_REGION,
-  RESOURCE_CONTROLLER,
-  VPC_API_VERSION,
-  codeEngineBase,
-  cosEndpoint,
-  databasesBase,
-  vpcBase,
-} from "./regions.js";
+import { DEFAULT_REGION, VPC_QUERY, cosEndpoint } from "./regions.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
@@ -67,17 +61,8 @@ function badRequest(message: string): Error {
   return Object.assign(new Error(message), { status: 400 });
 }
 
-/** VPC collection path per resource type. */
-const VPC_COLLECTIONS: Record<string, string> = {
-  instance: "instances",
-  volume: "volumes",
-  vpc: "vpcs",
-  subnet: "subnets",
-  "security-group": "security_groups",
-  "floating-ip": "floating_ips",
-  "load-balancer": "load_balancers",
-  "ssh-key": "keys",
-};
+/** VPC and Code Engine writes are JSON Merge Patch. */
+const MERGE_PATCH = { "content-type": "application/merge-patch+json" };
 
 const VPC_LISTERS: Record<string, (ctx: ListContext) => Promise<ResourceInstance[]>> = {
   volume: listVolumes,
@@ -89,16 +74,32 @@ const VPC_LISTERS: Record<string, (ctx: ListContext) => Promise<ResourceInstance
   "ssh-key": listKeys,
 };
 
+interface ConnectionHost {
+  hostname?: string;
+  port?: number;
+}
+
 /** Database connection blocks are keyed by protocol; take whichever one is present. */
 function firstHost(
-  connection: Record<string, unknown> | undefined,
-): { hostname?: string; port?: number } | undefined {
+  connection: ApiResponse<DatabaseOperations["getConnection"]>["connection"],
+): ConnectionHost | undefined {
   if (!connection) return undefined;
   for (const value of Object.values(connection)) {
-    const hosts = (value as { hosts?: Array<{ hostname?: string; port?: number }> } | null)?.hosts;
+    const hosts = value && typeof value === "object" && "hosts" in value ? value.hosts : undefined;
     if (hosts?.[0]) return hosts[0];
   }
   return undefined;
+}
+
+const INSTANCE_ACTIONS = ["start", "stop", "stop-force", "reboot"] as const;
+
+function isInstanceAction(action: string): action is (typeof INSTANCE_ACTIONS)[number] {
+  return INSTANCE_ACTIONS.some((known) => known === action);
+}
+
+/** A Code Engine app, from the parts of its external id (`region/project/name`). */
+function appPath(projectId: string | undefined, name: string | undefined) {
+  return `/projects/${unencodedSegment(`${projectId}`)}/apps/${unencodedSegment(`${name}`)}` as const;
 }
 
 function decodeXml(s: string): string {
@@ -207,18 +208,16 @@ export class IbmCloudClient implements PluginClient {
       case "worker-pool":
         return find(await poolsOf(ctx, ext.split("/")[0]!));
       case "code-engine-app": {
-        const [region, projectId, name] = ext.split("/") as [string, string, string];
-        const app = await this.api.get<CeApp>(
-          `${codeEngineBase(region)}/projects/${projectId}/apps/${name}`,
-        );
+        const [region, projectId, name] = ext.split("/");
+        const app = await this.api.codeEngine(`${region}`).get(appPath(projectId, name));
         return mapApp(accountId, region, projectId, app);
       }
       case "code-engine-project":
         return find(await listProjects({ ...ctx, regionHint: splitRegional(ext).region }));
       case "database":
       case "service-instance": {
-        const r = await this.api.get<ResourceInstanceRc>(
-          `${RESOURCE_CONTROLLER}/v2/resource_instances/${encodeURIComponent(ext)}`,
+        const r = await this.api.resourceController.get(
+          `/v2/resource_instances/${pathEncode(ext)}`,
         );
         return typeId === "database" ? databaseResource(ctx, r) : mapServiceInstance(accountId, r);
       }
@@ -236,21 +235,15 @@ export class IbmCloudClient implements PluginClient {
     }
   }
 
-  private async databaseHost(
-    crn: string,
-  ): Promise<{ hostname?: string; port?: number } | undefined> {
-    const r = await this.api.get<ResourceInstanceRc>(
-      `${RESOURCE_CONTROLLER}/v2/resource_instances/${encodeURIComponent(crn)}`,
-    );
-    const base = `${databasesBase(r.region_id ?? DEFAULT_REGION)}/deployments/${encodeURIComponent(crn)}`;
-    const info = await this.api.get<{ deployment?: { admin_usernames?: Record<string, string> } }>(
-      base,
-    );
+  private async databaseHost(crn: string): Promise<ConnectionHost | undefined> {
+    const r = await this.api.resourceController.get(`/v2/resource_instances/${pathEncode(crn)}`);
+    const databases = this.api.databases(r.region_id ?? DEFAULT_REGION);
+    const info = await databases.get(`/deployments/${pathEncode(crn)}`);
     const user = info.deployment?.admin_usernames?.["database"] ?? "admin";
     for (const endpoint of ["public", "private"]) {
-      const conn = await this.api
-        .get<{ connection?: Record<string, unknown> }>(
-          `${base}/users/database/${encodeURIComponent(user)}/connections/${endpoint}`,
+      const conn = await databases
+        .get(
+          `/deployments/${pathEncode(crn)}/users/${pathEncode("database")}/${pathEncode(user)}/connections/${pathEncode(endpoint)}`,
         )
         .catch(() => undefined);
       const host = firstHost(conn?.connection);
@@ -343,8 +336,89 @@ export class IbmCloudClient implements PluginClient {
     });
   }
 
-  private vpcUrl(region: string, path: string): string {
-    return `${vpcBase(region)}${path}?version=${VPC_API_VERSION}&generation=2`;
+  /** Edit a VPC resource: the name of any of them, an instance's profile, a volume's size. */
+  private async patchVpcResource(
+    typeId: string,
+    { region, id }: { region: string; id: string },
+    fields: Record<string, string>,
+  ): Promise<void> {
+    const vpc = this.api.vpc(region);
+    const segment = unencodedSegment(id);
+    const request = { query: VPC_QUERY, headers: MERGE_PATCH };
+    const name = fields["name"] ? { name: fields["name"] } : {};
+    if (typeId === "instance") {
+      const body = {
+        ...name,
+        ...(fields["profile"] ? { profile: { name: fields["profile"] } } : {}),
+      };
+      if (Object.keys(body).length) await vpc.patch(`/instances/${segment}`, { ...request, body });
+      return;
+    }
+    if (typeId === "volume") {
+      const body = {
+        ...name,
+        ...(fields["capacityGb"] ? { capacity: Number(fields["capacityGb"]) } : {}),
+      };
+      if (Object.keys(body).length) await vpc.patch(`/volumes/${segment}`, { ...request, body });
+      return;
+    }
+    if (!fields["name"]) return;
+    const body = { name: fields["name"] };
+    switch (typeId) {
+      case "vpc":
+        await vpc.patch(`/vpcs/${segment}`, { ...request, body });
+        return;
+      case "subnet":
+        await vpc.patch(`/subnets/${segment}`, { ...request, body });
+        return;
+      case "security-group":
+        await vpc.patch(`/security_groups/${segment}`, { ...request, body });
+        return;
+      case "floating-ip":
+        await vpc.patch(`/floating_ips/${segment}`, { ...request, body });
+        return;
+      case "load-balancer":
+        await vpc.patch(`/load_balancers/${segment}`, { ...request, body });
+        return;
+      case "ssh-key":
+        await vpc.patch(`/keys/${segment}`, { ...request, body });
+        return;
+    }
+  }
+
+  private async deleteVpcResource(
+    typeId: string,
+    { region, id }: { region: string; id: string },
+  ): Promise<void> {
+    const vpc = this.api.vpc(region);
+    const segment = unencodedSegment(id);
+    const request = { query: VPC_QUERY };
+    switch (typeId) {
+      case "instance":
+        await vpc.delete(`/instances/${segment}`, request);
+        return;
+      case "volume":
+        await vpc.delete(`/volumes/${segment}`, request);
+        return;
+      case "vpc":
+        await vpc.delete(`/vpcs/${segment}`, request);
+        return;
+      case "subnet":
+        await vpc.delete(`/subnets/${segment}`, request);
+        return;
+      case "security-group":
+        await vpc.delete(`/security_groups/${segment}`, request);
+        return;
+      case "floating-ip":
+        await vpc.delete(`/floating_ips/${segment}`, request);
+        return;
+      case "load-balancer":
+        await vpc.delete(`/load_balancers/${segment}`, request);
+        return;
+      case "ssh-key":
+        await vpc.delete(`/keys/${segment}`, request);
+        return;
+    }
   }
 
   updateResource(
@@ -355,38 +429,19 @@ export class IbmCloudClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      const collection = VPC_COLLECTIONS[typeId];
-      if (collection) {
-        const { region, id } = splitRegional(ext);
-        const body: Record<string, unknown> = {};
-        if (fields["name"]) body["name"] = fields["name"];
-        if (typeId === "instance" && fields["profile"])
-          body["profile"] = { name: fields["profile"] };
-        if (typeId === "volume" && fields["capacityGb"])
-          body["capacity"] = Number(fields["capacityGb"]);
-        if (Object.keys(body).length) {
-          await this.api.request({
-            url: this.vpcUrl(region, `/${collection}/${id}`),
-            method: "PATCH",
-            body,
-            mergePatch: true,
-          });
-        }
+      if (typeId in VPC_LISTERS || typeId === "instance") {
+        await this.patchVpcResource(typeId, splitRegional(ext), fields);
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
       switch (typeId) {
         case "resource-group":
-          await this.api.request({
-            url: `${RESOURCE_CONTROLLER}/v2/resource_groups/${ext}`,
-            method: "PATCH",
+          await this.api.resourceManager.patch(`/v2/resource_groups/${unencodedSegment(ext)}`, {
             body: { name: fields["name"] },
           });
           break;
         case "kubernetes-cluster":
           if (fields["version"]) {
-            await this.api.request({
-              url: `${CONTAINERS}/v2/updateMaster`,
-              method: "POST",
+            await this.api.containers.post("/v2/updateMaster", {
               body: { cluster: ext, version: fields["version"] },
             });
           }
@@ -394,61 +449,60 @@ export class IbmCloudClient implements PluginClient {
         case "worker-pool": {
           const [cluster, pool] = ext.split("/");
           if (fields["sizePerZone"]) {
-            await this.api.request({
-              url: `${CONTAINERS}/v2/resizeWorkerPool`,
-              method: "POST",
+            await this.api.containers.post("/v2/resizeWorkerPool", {
               body: { cluster, workerpool: pool, size: Number(fields["sizePerZone"]) },
             });
           }
           break;
         }
         case "code-engine-app": {
-          const [region, projectId, name] = ext.split("/") as [string, string, string];
-          const url = `${codeEngineBase(region)}/projects/${projectId}/apps/${name}`;
-          const current = await this.api.request<CeApp>({ url });
-          const etag = current.headers["etag"] ?? current.data.entity_tag ?? "*";
-          const body: Record<string, unknown> = {};
-          if (fields["image"]) body["image_reference"] = fields["image"];
-          if (fields["port"]) body["image_port"] = Number(fields["port"]);
-          if (fields["minInstances"]) body["scale_min_instances"] = Number(fields["minInstances"]);
-          if (fields["maxInstances"]) body["scale_max_instances"] = Number(fields["maxInstances"]);
-          if (fields["cpu"]) body["scale_cpu_limit"] = fields["cpu"];
-          if (fields["memory"]) body["scale_memory_limit"] = fields["memory"];
-          await this.api.request({
-            url,
-            method: "PATCH",
-            body,
-            mergePatch: true,
-            headers: { "if-match": etag },
+          const [region, projectId, name] = ext.split("/");
+          const path = appPath(projectId, name);
+          const codeEngine = this.api.codeEngine(`${region}`);
+          const current = await codeEngine.getResponse(path);
+          const etag = current.headers["etag"] ?? current.body.entity_tag ?? "*";
+          await codeEngine.patch(path, {
+            headers: { ...MERGE_PATCH, "if-match": etag },
+            body: {
+              ...(fields["image"] ? { image_reference: fields["image"] } : {}),
+              ...(fields["port"] ? { image_port: Number(fields["port"]) } : {}),
+              ...(fields["minInstances"]
+                ? { scale_min_instances: Number(fields["minInstances"]) }
+                : {}),
+              ...(fields["maxInstances"]
+                ? { scale_max_instances: Number(fields["maxInstances"]) }
+                : {}),
+              ...(fields["cpu"] ? { scale_cpu_limit: fields["cpu"] } : {}),
+              ...(fields["memory"] ? { scale_memory_limit: fields["memory"] } : {}),
+            },
           });
           break;
         }
         case "database": {
           if (fields["name"]) {
-            await this.api.request({
-              url: `${RESOURCE_CONTROLLER}/v2/resource_instances/${encodeURIComponent(ext)}`,
-              method: "PATCH",
+            await this.api.resourceController.patch(`/v2/resource_instances/${pathEncode(ext)}`, {
               body: { name: fields["name"] },
             });
           }
-          const group: Record<string, unknown> = {};
-          if (fields["memoryMb"]) group["memory"] = { allocation_mb: Number(fields["memoryMb"]) };
-          if (fields["diskMb"]) group["disk"] = { allocation_mb: Number(fields["diskMb"]) };
-          if (fields["cpu"]) group["cpu"] = { allocation_count: Number(fields["cpu"]) };
+          const group = {
+            ...(fields["memoryMb"]
+              ? { memory: { allocation_mb: Number(fields["memoryMb"]) } }
+              : {}),
+            ...(fields["diskMb"] ? { disk: { allocation_mb: Number(fields["diskMb"]) } } : {}),
+            ...(fields["cpu"] ? { cpu: { allocation_count: Number(fields["cpu"]) } } : {}),
+          };
           if (Object.keys(group).length) {
             const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-            await this.api.request({
-              url: `${databasesBase(String(current.fields["region"] ?? DEFAULT_REGION))}/deployments/${encodeURIComponent(ext)}/groups/member`,
-              method: "PATCH",
-              body: { group },
-            });
+            await this.api
+              .databases(String(current.fields["region"] ?? DEFAULT_REGION))
+              .patch(`/deployments/${pathEncode(ext)}/groups/${pathEncode("member")}`, {
+                body: { group },
+              });
           }
           break;
         }
         case "service-instance":
-          await this.api.request({
-            url: `${RESOURCE_CONTROLLER}/v2/resource_instances/${encodeURIComponent(ext)}`,
-            method: "PATCH",
+          await this.api.resourceController.patch(`/v2/resource_instances/${pathEncode(ext)}`, {
             body: { name: fields["name"] },
           });
           break;
@@ -462,74 +516,45 @@ export class IbmCloudClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      const collection = VPC_COLLECTIONS[typeId];
-      if (collection) {
-        const { region, id } = splitRegional(ext);
-        await this.api.request({
-          url: this.vpcUrl(region, `/${collection}/${id}`),
-          method: "DELETE",
-          text: true,
-        });
+      if (typeId in VPC_LISTERS || typeId === "instance") {
+        await this.deleteVpcResource(typeId, splitRegional(ext));
         return;
       }
       switch (typeId) {
         case "resource-group":
-          await this.api.request({
-            url: `${RESOURCE_CONTROLLER}/v2/resource_groups/${ext}`,
-            method: "DELETE",
-            text: true,
-          });
+          await this.api.resourceManager.delete(`/v2/resource_groups/${unencodedSegment(ext)}`);
           return;
         case "kubernetes-cluster":
-          await this.api.request({
-            url: `${CONTAINERS}/v1/clusters/${ext}`,
-            method: "DELETE",
-            text: true,
-          });
+          await this.api.containers.delete(`/v1/clusters/${unencodedSegment(ext)}`);
           return;
         case "worker-pool": {
           const [cluster, pool] = ext.split("/");
-          await this.api.request({
-            url: `${CONTAINERS}/v1/clusters/${cluster}/workerpools/${pool}`,
-            method: "DELETE",
-            text: true,
-          });
+          await this.api.containers.delete(
+            `/v1/clusters/${unencodedSegment(`${cluster}`)}/workerpools/${unencodedSegment(`${pool}`)}`,
+          );
           return;
         }
         case "code-engine-project": {
           const { region, id } = splitRegional(ext);
-          await this.api.request({
-            url: `${codeEngineBase(region)}/projects/${id}`,
-            method: "DELETE",
-            text: true,
-          });
+          await this.api.codeEngine(region).delete(`/projects/${unencodedSegment(id)}`);
           return;
         }
         case "code-engine-app": {
           const [region, projectId, name] = ext.split("/");
-          await this.api.request({
-            url: `${codeEngineBase(region!)}/projects/${projectId}/apps/${name}`,
-            method: "DELETE",
-            text: true,
-          });
+          await this.api.codeEngine(`${region}`).delete(appPath(projectId, name));
           return;
         }
         case "cos-bucket": {
           const { region: location, id: bucket } = splitRegional(ext);
-          await this.api.request({
+          await this.api.requestXml({
             url: `https://${cosEndpoint(location)}/${encodeURIComponent(bucket)}`,
             method: "DELETE",
-            text: true,
           });
           return;
         }
         case "database":
         case "service-instance":
-          await this.api.request({
-            url: `${RESOURCE_CONTROLLER}/v2/resource_instances/${encodeURIComponent(ext)}`,
-            method: "DELETE",
-            text: true,
-          });
+          await this.api.resourceController.delete(`/v2/resource_instances/${pathEncode(ext)}`);
           return;
         default:
           throw badRequest(`IBM Cloud plugin: "${typeId}" cannot be deleted`);
@@ -544,13 +569,12 @@ export class IbmCloudClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      if (typeId !== "instance" || !["start", "stop", "stop-force", "reboot"].includes(actionId)) {
+      if (typeId !== "instance" || !isInstanceAction(actionId)) {
         throw badRequest(`IBM Cloud plugin: action "${actionId}" is not supported for "${typeId}"`);
       }
       const { region, id } = splitRegional(externalIdOf(resourceId));
-      await this.api.request({
-        url: this.vpcUrl(region, `/instances/${id}/actions`),
-        method: "POST",
+      await this.api.vpc(region).post(`/instances/${unencodedSegment(id)}/actions`, {
+        query: VPC_QUERY,
         body: {
           type: actionId === "stop-force" ? "stop" : actionId,
           ...(actionId === "stop-force" ? { force: true } : {}),
@@ -572,26 +596,24 @@ export class IbmCloudClient implements PluginClient {
       const source = splitRegional(externalIdOf(sourceResourceId));
       const target = splitRegional(externalIdOf(targetResourceId));
       if (sourceTypeId === "volume") {
-        await this.api.request({
-          url: this.vpcUrl(target.region, `/instances/${target.id}/volume_attachments`),
-          method: "POST",
-          body: { volume: { id: source.id }, delete_volume_on_instance_delete: false },
-        });
+        await this.api
+          .vpc(target.region)
+          .post(`/instances/${unencodedSegment(target.id)}/volume_attachments`, {
+            query: VPC_QUERY,
+            body: { volume: { id: source.id }, delete_volume_on_instance_delete: false },
+          });
         return;
       }
       if (sourceTypeId === "floating-ip") {
-        const instance = await vpcGet<{ primary_network_interface?: { id?: string } }>(
-          this.api,
-          target.region,
-          `/instances/${target.id}`,
-        );
+        const instance = await this.api
+          .vpc(target.region)
+          .get(`/instances/${unencodedSegment(target.id)}`, { query: VPC_QUERY });
         const nic = instance.primary_network_interface?.id;
         if (!nic) throw badRequest("The server has no primary network interface to bind to");
-        await this.api.request({
-          url: this.vpcUrl(source.region, `/floating_ips/${source.id}`),
-          method: "PATCH",
+        await this.api.vpc(source.region).patch(`/floating_ips/${unencodedSegment(source.id)}`, {
+          query: VPC_QUERY,
+          headers: MERGE_PATCH,
           body: { target: { id: nic } },
-          mergePatch: true,
         });
         return;
       }
@@ -629,20 +651,17 @@ export class IbmCloudClient implements PluginClient {
     token: string,
     delimiter: boolean,
   ): Promise<string> {
-    return (
-      await this.api.request<string>({
-        url: this.bucketUrl(bucket),
-        query: {
-          "list-type": 2,
-          prefix,
-          "max-keys": 1000,
-          ...(delimiter ? { delimiter: "/" } : {}),
-          ...(token ? { "continuation-token": token } : {}),
-        },
-        headers: { accept: "application/xml" },
-        text: true,
-      })
-    ).data;
+    return this.api.requestXml({
+      url: this.bucketUrl(bucket),
+      query: {
+        "list-type": 2,
+        prefix,
+        "max-keys": 1000,
+        ...(delimiter ? { delimiter: "/" } : {}),
+        ...(token ? { "continuation-token": token } : {}),
+      },
+      headers: { accept: "application/xml" },
+    });
   }
 
   listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
@@ -681,24 +700,22 @@ export class IbmCloudClient implements PluginClient {
 
   uploadStorageObject(bucket: string, key: string, file: File): PluginEffect<void> {
     return attempt(async () => {
-      await this.api.request({
+      await this.api.requestXml({
         url: this.bucketUrl(bucket, key),
         method: "PUT",
         headers: { "content-type": file.type || "application/octet-stream" },
-        rawBody: new Uint8Array(await file.arrayBuffer()),
-        text: true,
+        body: new Uint8Array(await file.arrayBuffer()),
       });
     });
   }
 
   makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
     return attempt(async () => {
-      await this.api.request({
+      await this.api.requestXml({
         url: this.bucketUrl(bucket, key.endsWith("/") ? key : `${key}/`),
         method: "PUT",
         headers: { "content-type": "application/octet-stream" },
-        rawBody: new Uint8Array(0),
-        text: true,
+        body: new Uint8Array(0),
       });
     });
   }
@@ -717,7 +734,7 @@ export class IbmCloudClient implements PluginClient {
       }
       for (const k of [...new Set(keys)]) {
         await this.api
-          .request({ url: this.bucketUrl(bucket, k), method: "DELETE", text: true })
+          .requestXml({ url: this.bucketUrl(bucket, k), method: "DELETE" })
           .catch((err: unknown) => {
             if (k === key && key.endsWith("/") && !isPermissionGap(err)) return;
             throw err;

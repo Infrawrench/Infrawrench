@@ -56,6 +56,12 @@ export const CODE_ENGINE_REGIONS = new Set([
 
 export const VPC_API_VERSION = "2026-09-24";
 
+/** What every VPC call carries: the date it was written against, and the only generation there is. */
+export const VPC_QUERY: { version: string; generation: 2 } = {
+  version: VPC_API_VERSION,
+  generation: 2,
+};
+
 export const vpcBase = (region: string) => `https://${region}.iaas.cloud.ibm.com/v1`;
 export const codeEngineBase = (region: string) =>
   `https://api.${region}.codeengine.cloud.ibm.com/v2`;

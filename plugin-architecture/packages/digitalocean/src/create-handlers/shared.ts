@@ -12,9 +12,10 @@ import type {
   ResourceInstance,
   ResourceWarning,
 } from "@infrawrench/plugin-base";
+import type { DoApi } from "../api.js";
 
 export interface DoCreateContext {
-  fetch<T>(path: string, options?: RequestInit): Promise<T>;
+  api: DoApi;
   credentials: Record<string, string>;
   /**
    * Origin hostnames (`{bucket}.{region}.digitaloceanspaces.com`) of the
@@ -82,11 +83,7 @@ export async function buildProjectField(
   parentResourceId: string | undefined,
 ): Promise<CreateResourceConfig["fields"]> {
   if (parentResourceId) return [];
-  const projectsData = await ctx
-    .fetch<{
-      projects?: Array<{ id: string; name: string; is_default?: boolean }> | null;
-    }>("/projects")
-    .catch(() => null);
+  const projectsData = await ctx.api.get("/projects").catch(() => null);
   const projects = projectsData?.projects ?? [];
   if (projects.length === 0) return [];
   const options = projects.map((p) => ({

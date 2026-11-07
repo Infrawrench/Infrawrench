@@ -2,13 +2,27 @@ import type {
   CreateResourceConfig,
   DashboardStat,
   DetailViewSchema,
-  HostServices,
   MetricSeries,
   ResourceInstance,
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { pathEncode, type ApiBody } from "@infrawrench/plugin-base";
+import type {
+  Agent,
+  AgentListItem,
+  AssemblyAIApis,
+  AudioFormat,
+  LlmModel,
+  ModelPricing,
+  ModelPricingData,
+  Session,
+  SessionArtifact,
+  WebhookEvent,
+  WebhookSubscription,
+} from "./api.js";
+import type { operations as AgentOperations } from "./api-types.agents.gen.js";
+import type { operations as WebhookOperations } from "./api-types.webhooks.gen.js";
 
 /**
  * AssemblyAI's Voice Agent API and LLM Gateway catalogue: the two surfaces
@@ -37,12 +51,6 @@ export const VOICE_AGENT_TYPES = new Set([
   WEBHOOK_TYPE,
   LLM_MODEL_TYPE,
 ]);
-
-const AGENTS_BASE_URL = "https://agents.assemblyai.com/v1";
-const LLM_GATEWAY_HOSTS: Record<string, string> = {
-  us: "https://llm-gateway.assemblyai.com/v1",
-  eu: "https://llm-gateway.eu.assemblyai.com/v1",
-};
 
 /** `GET /v1/sessions` caps `limit` at 200. */
 const SESSION_PAGE_SIZE = 200;
@@ -75,7 +83,7 @@ export const VOICES: Array<{ id: string; label: string; description: string }> =
 ];
 
 /** `WebhookEvent`, with the boolean field each one is edited through. */
-export const WEBHOOK_EVENTS: Array<{ id: string; field: string; label: string }> = [
+export const WEBHOOK_EVENTS: Array<{ id: WebhookEvent; field: string; label: string }> = [
   { id: "session.started", field: "eventSessionStarted", label: "Session started" },
   { id: "session.completed", field: "eventSessionCompleted", label: "Session completed" },
   { id: "call.connected", field: "eventCallConnected", label: "Call connected" },
@@ -84,117 +92,19 @@ export const WEBHOOK_EVENTS: Array<{ id: string; field: string; label: string }>
 ];
 
 // ---------------------------------------------------------------------------
-// Wire shapes
-// ---------------------------------------------------------------------------
-
-interface AgentSummary {
-  id: string;
-  name?: string;
-  deleted_at?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface AgentTool {
-  id?: string;
-  name?: string;
-  description?: string;
-  http?: { url?: string; http_method?: string };
-  timeout_seconds?: number;
-  execution_mode?: string;
-}
-
-interface AudioFormat {
-  encoding?: string;
-  sample_rate?: number;
-}
-
-interface Agent extends AgentSummary {
-  system_prompt?: string;
-  greeting?: string | null;
-  voice?: { voice_id?: string };
-  input?: { type?: string; format?: AudioFormat; keyterms?: string[] | null } | null;
-  output?: { type?: string; voice?: string; format?: AudioFormat; volume?: number | null } | null;
-  tools?: AgentTool[] | null;
-  llm?: Array<{ base_url?: string; model?: string }> | null;
-  pre_connect_requests?: unknown[] | null;
-}
-
-interface Session {
-  id: string;
-  agent_id?: string | null;
-  status?: string;
-  public_close_reason?: string | null;
-  duration_seconds?: number | null;
-  created_at?: string | null;
-  ended_at?: string | null;
-  artifacts?: Array<{ type?: string; url?: string; content_type?: string }>;
-}
-
-interface SessionPage {
-  sessions?: Session[];
-  has_more?: boolean;
-  response_metadata?: { next_cursor?: string };
-}
-
-interface WebhookSubscription {
-  id: string;
-  agent_id?: string | null;
-  url?: string;
-  events?: string[];
-  enabled?: boolean;
-  secret_version?: number;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WebhookPage {
-  subscriptions?: WebhookSubscription[];
-  has_more?: boolean;
-  response_metadata?: { next_cursor?: string };
-}
-
-interface LlmModel {
-  id: string;
-  name?: string;
-  description?: string;
-  creator?: string;
-  context_length?: number;
-  supported_parameters?: string[];
-  top_provider?: { context_length?: number; max_completion_tokens?: number };
-  pricing?: Record<string, unknown> & { regional_increase_percent?: number };
-  retirement_date?: number | string | null;
-  available_regions?: string[];
-}
-
-interface ModelPrices {
-  prompt?: number;
-  completions?: number;
-  input_cache_read?: number;
-  input_cache_write?: number;
-}
-
-// ---------------------------------------------------------------------------
 // Surface
 // ---------------------------------------------------------------------------
-
-export interface VoiceAgentDeps {
-  apiKey: string;
-  region: string;
-  caCert: string;
-  services: HostServices | undefined;
-}
 
 function externalOf(resourceId: string): string {
   const parts = resourceId.split(":");
   return parts.length > 2 ? parts.slice(2).join(":") : resourceId;
 }
 
-function str(value: unknown): string {
+function str(value: string | null | undefined): string {
   return typeof value === "string" ? value : "";
 }
 
-function num(value: unknown): number | undefined {
+function num(value: string | number | boolean | null | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
@@ -210,27 +120,7 @@ function randomSecret(length = 48): string {
 }
 
 export class VoiceAgentSurface {
-  constructor(private readonly deps: VoiceAgentDeps) {}
-
-  private async request<T>(url: string, path: string, options?: RequestInit): Promise<T> {
-    const http = this.deps.services?.http;
-    return jsonRestFetch<T>({
-      vendor: "AssemblyAI",
-      url,
-      errorPath: path,
-      headers: { authorization: this.deps.apiKey, Accept: "application/json" },
-      ...(options ? { init: options } : {}),
-      ...(http ? { http, ...(this.deps.caCert ? { caCert: this.deps.caCert } : {}) } : {}),
-    });
-  }
-
-  private agents<T>(path: string, options?: RequestInit): Promise<T> {
-    return this.request<T>(`${AGENTS_BASE_URL}${path}`, path, options);
-  }
-
-  private get gatewayUrl(): string {
-    return LLM_GATEWAY_HOSTS[this.deps.region] ?? LLM_GATEWAY_HOSTS["us"]!;
-  }
+  constructor(private readonly api: AssemblyAIApis) {}
 
   // -------------------------------------------------------------------------
   // Reads
@@ -245,7 +135,7 @@ export class VoiceAgentSurface {
       case AGENT_SESSION_TYPE: {
         const [sessions, agents] = await Promise.all([
           this.fetchSessions(),
-          this.fetchAgents().catch(() => [] as AgentSummary[]),
+          this.fetchAgents().catch((): AgentListItem[] => []),
         ]);
         const names = new Map(agents.map((a) => [a.id, a.name ?? a.id]));
         return sessions.map((s) => this.mapSession(accountId, s, names));
@@ -253,16 +143,13 @@ export class VoiceAgentSurface {
       case WEBHOOK_TYPE: {
         const [subs, agents] = await Promise.all([
           this.fetchWebhooks(),
-          this.fetchAgents().catch(() => [] as AgentSummary[]),
+          this.fetchAgents().catch((): AgentListItem[] => []),
         ]);
         const names = new Map(agents.map((a) => [a.id, a.name ?? a.id]));
         return subs.map((s) => this.mapWebhook(accountId, s, names));
       }
       case LLM_MODEL_TYPE: {
-        const data = await this.request<{ data?: LlmModel[] }>(
-          `${this.gatewayUrl}/models`,
-          "/models",
-        );
+        const data = await this.api.llm.get("/models");
         return (data.data ?? []).map((m) => this.mapModel(accountId, m));
       }
       default:
@@ -273,16 +160,16 @@ export class VoiceAgentSurface {
   async get(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
     const id = externalOf(resourceId);
     if (typeId === VOICE_AGENT_TYPE) {
-      const agent = await this.agents<Agent>(`/agents/${encodeURIComponent(id)}`);
+      const agent = await this.api.agents.get(`/agents/${pathEncode(id)}`);
       return this.mapAgent(accountId, agent);
     }
     if (typeId === AGENT_SESSION_TYPE) {
-      const session = await this.agents<Session>(`/sessions/${encodeURIComponent(id)}`);
+      const session = await this.api.agents.get(`/sessions/${pathEncode(id)}`);
       let names = new Map<string, string>();
       if (session.agent_id) {
-        const agent = await this.agents<Agent>(
-          `/agents/${encodeURIComponent(session.agent_id)}`,
-        ).catch(() => undefined);
+        const agent = await this.api.agents
+          .get(`/agents/${pathEncode(session.agent_id)}`)
+          .catch(() => undefined);
         if (agent) names = new Map([[agent.id, agent.name ?? agent.id]]);
       }
       return this.mapSession(accountId, session, names);
@@ -294,8 +181,8 @@ export class VoiceAgentSurface {
   }
 
   /** `GET /v1/agents`: lightweight records, newest first; soft-deleted ones are skipped. */
-  private async fetchAgents(): Promise<AgentSummary[]> {
-    const agents = await this.agents<AgentSummary[]>("/agents");
+  private async fetchAgents(): Promise<AgentListItem[]> {
+    const agents = await this.api.agents.get("/agents");
     return (Array.isArray(agents) ? agents : []).filter((a) => !a.deleted_at);
   }
 
@@ -304,10 +191,13 @@ export class VoiceAgentSurface {
     const out: Session[] = [];
     let cursor = "";
     for (let page = 0; page < MAX_SESSION_PAGES; page++) {
-      const params = new URLSearchParams({ limit: String(SESSION_PAGE_SIZE) });
-      if (cursor) params.set("cursor", cursor);
-      if (agentId) params.set("agent_id", agentId);
-      const data = await this.agents<SessionPage>(`/sessions?${params.toString()}`);
+      const data = await this.api.agents.get("/sessions", {
+        query: {
+          limit: SESSION_PAGE_SIZE,
+          ...(cursor ? { cursor } : {}),
+          ...(agentId ? { agent_id: agentId } : {}),
+        },
+      });
       const batch = data.sessions ?? [];
       out.push(...batch);
       cursor = data.response_metadata?.next_cursor ?? "";
@@ -323,9 +213,9 @@ export class VoiceAgentSurface {
     const out: WebhookSubscription[] = [];
     let cursor = "";
     for (let page = 0; page < MAX_WEBHOOK_PAGES; page++) {
-      const params = new URLSearchParams({ limit: String(WEBHOOK_PAGE_SIZE) });
-      if (cursor) params.set("cursor", cursor);
-      const data = await this.agents<WebhookPage>(`/webhook-subscriptions?${params.toString()}`);
+      const data = await this.api.webhooks.get("/webhook-subscriptions", {
+        query: { limit: WEBHOOK_PAGE_SIZE, ...(cursor ? { cursor } : {}) },
+      });
       out.push(...(data.subscriptions ?? []));
       cursor = data.response_metadata?.next_cursor ?? "";
       if (!data.has_more || !cursor) break;
@@ -454,10 +344,13 @@ export class VoiceAgentSurface {
 
   private mapModel(accountId: string, model: LlmModel): ResourceInstance {
     const now = new Date().toISOString();
-    const pricing = model.pricing ?? {};
-    const tier = (pricing["global"] ??
-      Object.values(pricing).find((v) => typeof v === "object" && v !== null) ??
-      {}) as ModelPrices;
+    const pricing: Partial<ModelPricing> = model.pricing ?? {};
+    const tier: ModelPricingData =
+      pricing.global ??
+      Object.values(pricing).find(
+        (v): v is ModelPricingData => typeof v === "object" && v !== null,
+      ) ??
+      {};
     const retirement = model.retirement_date;
     const retires =
       typeof retirement === "number" && retirement > 0
@@ -539,7 +432,7 @@ export class VoiceAgentSurface {
     }
 
     if (typeId === WEBHOOK_TYPE) {
-      const agents = await this.fetchAgents().catch(() => [] as AgentSummary[]);
+      const agents = await this.fetchAgents().catch((): AgentListItem[] => []);
       return {
         fields: [
           {
@@ -594,22 +487,20 @@ export class VoiceAgentSurface {
       if (!name || !systemPrompt) {
         throw new Error("AssemblyAI plugin: a voice agent needs a name and a system prompt");
       }
-      const body: Record<string, unknown> = {
-        name,
-        system_prompt: systemPrompt,
-        voice: { voice_id: fields["voiceId"] || "alba" },
-      };
       const greeting = (fields["greeting"] ?? "").trim();
-      if (greeting) body["greeting"] = greeting;
       const keyterms = (fields["keyterms"] ?? "")
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean)
         .slice(0, 100);
-      if (keyterms.length > 0) body["input"] = { keyterms };
-      const agent = await this.agents<Agent>("/agents", {
-        method: "POST",
-        body: JSON.stringify(body),
+      const agent = await this.api.agents.post("/agents", {
+        body: {
+          name,
+          system_prompt: systemPrompt,
+          voice: { voice_id: fields["voiceId"] || "alba" },
+          ...(greeting ? { greeting } : {}),
+          ...(keyterms.length > 0 ? { input: { keyterms } } : {}),
+        },
       });
       return this.mapAgent(accountId, agent);
     }
@@ -628,11 +519,14 @@ export class VoiceAgentSurface {
         );
       }
       const secret = provided || randomSecret();
-      const body: Record<string, unknown> = { url, events, secret, enabled: true };
-      if (fields["agentId"]) body["agent_id"] = fields["agentId"];
-      const sub = await this.agents<WebhookSubscription>("/webhook-subscriptions", {
-        method: "POST",
-        body: JSON.stringify(body),
+      const sub = await this.api.webhooks.post("/webhook-subscriptions", {
+        body: {
+          url,
+          events,
+          secret,
+          enabled: true,
+          ...(fields["agentId"] ? { agent_id: fields["agentId"] } : {}),
+        },
       });
       const instance = this.mapWebhook(accountId, sub, new Map());
       // The secret is write-only; this is the only time it can be shown.
@@ -653,29 +547,25 @@ export class VoiceAgentSurface {
 
     if (typeId === VOICE_AGENT_TYPE) {
       // `PUT /v1/agents/{id}`: every field optional, only the ones sent change.
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined && fields["name"].trim())
-        body["name"] = fields["name"].trim();
+      const body: ApiBody<AgentOperations["updateAgent"]> = {};
+      if (fields["name"] !== undefined && fields["name"].trim()) body.name = fields["name"].trim();
       if (fields["systemPrompt"] !== undefined && fields["systemPrompt"].trim()) {
-        body["system_prompt"] = fields["systemPrompt"];
+        body.system_prompt = fields["systemPrompt"];
       }
-      if (fields["voiceId"]) body["voice"] = { voice_id: fields["voiceId"] };
+      if (fields["voiceId"]) body.voice = { voice_id: fields["voiceId"] };
       if (fields["greeting"] !== undefined) {
-        body["greeting"] = fields["greeting"].trim() ? fields["greeting"] : null;
+        body.greeting = fields["greeting"].trim() ? fields["greeting"] : null;
       }
       if (Object.keys(body).length === 0) return this.get(typeId, resourceId, accountId);
-      const agent = await this.agents<Agent>(`/agents/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      });
+      const agent = await this.api.agents.put(`/agents/${pathEncode(id)}`, { body });
       return this.mapAgent(accountId, agent);
     }
 
     if (typeId === WEBHOOK_TYPE) {
       // `PATCH /v1/webhook-subscriptions/{id}`: partial; a new secret rotates it.
-      const body: Record<string, unknown> = {};
-      if (fields["url"]) body["url"] = fields["url"].trim();
-      if (fields["enabled"] !== undefined) body["enabled"] = fields["enabled"] === "true";
+      const body: ApiBody<WebhookOperations["updateWebhookSubscription"]> = {};
+      if (fields["url"]) body.url = fields["url"].trim();
+      if (fields["enabled"] !== undefined) body.enabled = fields["enabled"] === "true";
       if (WEBHOOK_EVENTS.some((e) => fields[e.field] !== undefined)) {
         const current = await this.get(typeId, resourceId, accountId);
         const events = WEBHOOK_EVENTS.filter((e) =>
@@ -686,7 +576,7 @@ export class VoiceAgentSurface {
         if (events.length === 0) {
           throw new Error("AssemblyAI plugin: a webhook subscription needs at least one event");
         }
-        body["events"] = events;
+        body.events = events;
       }
       const secret = (fields["newSecret"] ?? "").trim();
       if (secret) {
@@ -695,13 +585,12 @@ export class VoiceAgentSurface {
             "AssemblyAI plugin: the signing secret must be 32 to 256 characters with no whitespace",
           );
         }
-        body["secret"] = secret;
+        body.secret = secret;
       }
       if (Object.keys(body).length === 0) return this.get(typeId, resourceId, accountId);
-      const sub = await this.agents<WebhookSubscription>(
-        `/webhook-subscriptions/${encodeURIComponent(id)}`,
-        { method: "PATCH", body: JSON.stringify(body) },
-      );
+      const sub = await this.api.webhooks.patch(`/webhook-subscriptions/${pathEncode(id)}`, {
+        body,
+      });
       return this.mapWebhook(accountId, sub, new Map());
     }
 
@@ -709,17 +598,12 @@ export class VoiceAgentSurface {
   }
 
   async remove(typeId: string, resourceId: string): Promise<void> {
-    const id = encodeURIComponent(externalOf(resourceId));
-    const path =
-      typeId === VOICE_AGENT_TYPE
-        ? `/agents/${id}`
-        : typeId === AGENT_SESSION_TYPE
-          ? `/sessions/${id}`
-          : typeId === WEBHOOK_TYPE
-            ? `/webhook-subscriptions/${id}`
-            : "";
-    if (!path) throw new Error(`AssemblyAI plugin: cannot delete type "${typeId}"`);
-    await this.agents<void>(path, { method: "DELETE" });
+    const id = pathEncode(externalOf(resourceId));
+    if (typeId === VOICE_AGENT_TYPE) await this.api.agents.delete(`/agents/${id}`);
+    else if (typeId === AGENT_SESSION_TYPE) await this.api.agents.delete(`/sessions/${id}`);
+    else if (typeId === WEBHOOK_TYPE) {
+      await this.api.webhooks.delete(`/webhook-subscriptions/${id}`);
+    } else throw new Error(`AssemblyAI plugin: cannot delete type "${typeId}"`);
   }
 
   // -------------------------------------------------------------------------
@@ -952,7 +836,7 @@ export class VoiceAgentSurface {
 
   private renderSession(resource: ResourceInstance): DetailViewSchema {
     const f = resource.fields;
-    let artifacts: Array<{ type?: string; url?: string; content_type?: string }> = [];
+    let artifacts: Array<Partial<SessionArtifact>> = [];
     try {
       artifacts = JSON.parse(resource.resolvedOutputs["__artifacts__"] ?? "[]");
     } catch {
@@ -1138,7 +1022,7 @@ export class VoiceAgentSurface {
 }
 
 /** The create form's events picker submits a JSON array; tolerate a CSV too. */
-function parseEvents(raw: string | undefined): string[] {
+function parseEvents(raw: string | undefined): WebhookEvent[] {
   if (!raw) return [];
   let values: unknown;
   try {
@@ -1147,5 +1031,5 @@ function parseEvents(raw: string | undefined): string[] {
     values = raw.split(",");
   }
   const list = Array.isArray(values) ? values.map((v) => String(v).trim()) : [];
-  return list.filter((v) => WEBHOOK_EVENTS.some((e) => e.id === v));
+  return list.filter((v): v is WebhookEvent => WEBHOOK_EVENTS.some((e) => e.id === v));
 }

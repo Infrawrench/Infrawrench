@@ -6,10 +6,10 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
 import type { SupabaseContext } from "./api.js";
-import { sbFetch } from "./api.js";
+import { supabaseApi } from "./api.js";
 import { fetchOrganizations, fetchProjects, isRunning } from "./listers.js";
 import { COMPUTE_SIZES } from "./resource-types.js";
-import type { SbRegion, SbRegionsResponse } from "./types.js";
+import type { SbRegion } from "./types.js";
 
 /** Fallback region names, used only when `available-regions` cannot be read. */
 const REGION_NAMES: Record<string, string> = {
@@ -57,13 +57,9 @@ export async function regionOptions(
 ): Promise<RegionOption[]> {
   if (orgSlug) {
     try {
-      const data = await sbFetch<SbRegionsResponse>(
-        ctx,
-        "GET",
-        "/v1/projects/available-regions",
-        undefined,
-        { organization_slug: orgSlug },
-      );
+      const data = await supabaseApi(ctx).get("/v1/projects/available-regions", {
+        query: { organization_slug: orgSlug },
+      });
       const recommended = new Set((data?.recommendations?.specific ?? []).map((r) => r.code));
       const all: SbRegion[] = data?.all?.specific ?? [];
       if (all.length > 0) {

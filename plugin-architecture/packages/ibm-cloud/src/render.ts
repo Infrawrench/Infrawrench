@@ -118,7 +118,7 @@ function actionsFor(resource: ResourceInstance): ActionNode[] {
 function parseJson<T>(value: unknown): T | undefined {
   if (typeof value !== "string" || !value) return undefined;
   try {
-    return JSON.parse(value) as T;
+    return JSON.parse(value);
   } catch {
     return undefined;
   }

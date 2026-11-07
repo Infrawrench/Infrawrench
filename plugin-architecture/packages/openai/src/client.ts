@@ -15,6 +15,7 @@ import type {
   LogsFetchResult,
   MetricSeries,
   MetricSeriesPoint,
+  NoSlashString,
   PluginClient,
   ResourceInstance,
   ResourceStatus,
@@ -31,11 +32,50 @@ import {
   CostSetupError,
   base64ToBytes,
   bytesToBase64,
-  jsonRestFetch,
   externalIdOf,
   formatBytes,
+  pathEncode,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
+import {
+  ADMIN_KEY_REQUIRED,
+  API_BASE,
+  createOpenAIApi,
+  listPages,
+  listUsagePages,
+  type AdminApiKey,
+  type AuditLogEntry,
+  type AuditLogPage,
+  type AuditLogQuery,
+  type Batch,
+  type Container,
+  type CostQuery,
+  type EvalObject,
+  type FineTuningJob,
+  type Invite,
+  type ListPage,
+  type OpenAIApi,
+  type OpenAIFile,
+  type OpenAIModel,
+  type OrganizationUser,
+  type PageQuery,
+  type Project,
+  type ProjectApiKey,
+  type ProjectRateLimit,
+  type ProjectServiceAccount,
+  type ProjectUser,
+  type RateLimitBody,
+  type ServiceAccountBody,
+  type SpeechBody,
+  type SpendAlert,
+  type SpendAlertBody,
+  type SpendLimit,
+  type UsageBucket,
+  type UsageEndpointName,
+  type UsageFilterQuery,
+  type UsageResult,
+  type VectorStore,
+} from "./api.js";
 import {
   ACCEPTED_AUDIO_TYPES,
   AUTO_LANGUAGE,
@@ -56,289 +96,8 @@ import {
 } from "./speech.js";
 
 const PLUGIN_ID = "openai";
-const API_BASE = "https://api.openai.com/v1";
 
-/**
- * The wall between the two key types is absolute: `/v1/organization/*` is
- * declared `AdminApiKeyAuth` in OpenAI's own API description and answers a
- * project key with 403, while an admin key is refused everywhere on the data
- * plane. Neither degrades, so rather than surfacing a bare 403 from six
- * different call sites, every admin request funnels through one guard that
- * names the missing credential.
- */
-const ADMIN_KEY_REQUIRED =
-  'OpenAI plugin: this needs the account\'s "Admin API key". Organization projects, members, invites, ' +
-  "usage and costs live under /v1/organization/* and only an admin key (sk-admin-…) can reach them; a " +
-  "project key (sk-… / sk-proj-…) gets a 403. Edit this account and paste an admin key " +
-  "from https://platform.openai.com/settings/organization/admin-keys.";
-
-// ---- API response shapes (only the fields this plugin reads) ---------------
-
-interface ListEnvelope<T> {
-  data?: T[];
-  has_more?: boolean;
-  last_id?: string | null;
-}
-
-interface OpenAIModel {
-  id: string;
-  created?: number;
-  owned_by?: string;
-}
-
-interface FineTuningJob {
-  id: string;
-  model?: string;
-  status?: string;
-  fine_tuned_model?: string | null;
-  training_file?: string;
-  validation_file?: string | null;
-  trained_tokens?: number | null;
-  created_at?: number;
-  finished_at?: number | null;
-  estimated_finish?: number | null;
-  seed?: number;
-  error?: { code?: string; message?: string } | null;
-  method?: { type?: string } | null;
-}
-
-interface Batch {
-  id: string;
-  status?: string;
-  endpoint?: string;
-  model?: string;
-  input_file_id?: string;
-  output_file_id?: string;
-  error_file_id?: string;
-  completion_window?: string;
-  created_at?: number;
-  completed_at?: number;
-  expires_at?: number;
-  request_counts?: { total?: number; completed?: number; failed?: number };
-}
-
-interface OpenAIFile {
-  id: string;
-  filename?: string;
-  purpose?: string;
-  bytes?: number;
-  created_at?: number;
-  expires_at?: number;
-}
-
-interface VectorStore {
-  id: string;
-  name?: string;
-  status?: string;
-  usage_bytes?: number;
-  created_at?: number;
-  last_active_at?: number | null;
-  expires_at?: number | null;
-  file_counts?: {
-    total?: number;
-    completed?: number;
-    in_progress?: number;
-    failed?: number;
-    cancelled?: number;
-  };
-}
-
-interface Container {
-  id: string;
-  name?: string;
-  status?: string;
-  created_at?: number;
-  last_active_at?: number;
-  memory_limit?: string;
-  expires_after?: { anchor?: string; minutes?: number };
-  network_policy?: { type?: string; allowed_domains?: string[] };
-}
-
-interface EvalObject {
-  id: string;
-  name?: string;
-  created_at?: number;
-  data_source_config?: { type?: string };
-  testing_criteria?: unknown[];
-}
-
-interface Project {
-  id: string;
-  name?: string | null;
-  status?: string | null;
-  created_at?: number;
-  archived_at?: number | null;
-  residency?: string | null;
-  external_key_id?: string | null;
-}
-
-interface ProjectUser {
-  id: string;
-  name?: string | null;
-  email?: string | null;
-  role?: string;
-  added_at?: number;
-}
-
-interface ProjectServiceAccount {
-  id: string;
-  name?: string;
-  role?: string;
-  created_at?: number;
-}
-
-interface ProjectRateLimit {
-  id: string;
-  model?: string;
-  max_requests_per_1_minute?: number;
-  max_tokens_per_1_minute?: number;
-  max_images_per_1_minute?: number;
-  max_audio_megabytes_per_1_minute?: number;
-  max_requests_per_1_day?: number;
-  batch_1_day_max_input_tokens?: number;
-}
-
-interface SpendLimit {
-  threshold_amount?: number;
-  currency?: string;
-  interval?: string;
-  enforcement?: { status?: string } | null;
-}
-
-interface SpendAlert {
-  id: string;
-  threshold_amount?: number;
-  currency?: string;
-  interval?: string;
-  notification_channel?: {
-    type?: string;
-    recipients?: string[];
-    subject_prefix?: string | null;
-  } | null;
-}
-
-interface AdminApiKey {
-  id: string;
-  name?: string | null;
-  redacted_value?: string;
-  created_at?: number;
-  expires_at?: number | null;
-  last_used_at?: number | null;
-  owner?: { id?: string; name?: string } | null;
-}
-
-interface ServiceAccountApiKeyCreated {
-  id: string;
-  name?: string;
-  value?: string;
-  expires_at?: number | null;
-}
-
-interface ProjectApiKey {
-  id: string;
-  name?: string;
-  redacted_value?: string;
-  created_at?: number;
-  expires_at?: number | null;
-  last_used_at?: number | null;
-  owner_project_access?: string;
-  owner?: {
-    type?: string;
-    user?: { name?: string | null; email?: string | null };
-    service_account?: { name?: string | null };
-  };
-}
-
-interface OrganizationUser {
-  id: string;
-  name?: string | null;
-  email?: string | null;
-  role?: string | null;
-  added_at?: number;
-  is_service_account?: boolean;
-  is_scim_managed?: boolean;
-  api_key_last_used_at?: number | null;
-}
-
-interface Invite {
-  id: string;
-  email?: string;
-  role?: string;
-  status?: string;
-  created_at?: number;
-  expires_at?: number | null;
-  accepted_at?: number | null;
-  projects?: Array<{ id?: string; role?: string }>;
-}
-
-interface ServiceAccountCreateResponse {
-  id: string;
-  name?: string;
-  role?: string;
-  created_at?: number;
-  api_key?: { id?: string; value?: string; name?: string } | null;
-}
-
-interface UsageResult {
-  object?: string;
-  amount?: { value?: number; currency?: string };
-  line_item?: string | null;
-  project_id?: string | null;
-  input_tokens?: number;
-  input_cached_tokens?: number;
-  input_cache_write_tokens?: number;
-  output_tokens?: number;
-  input_audio_tokens?: number;
-  output_audio_tokens?: number;
-  num_model_requests?: number;
-  /** images */
-  images?: number;
-  /** audio_speeches */
-  characters?: number;
-  /** audio_transcriptions */
-  seconds?: number;
-  /** vector_stores */
-  usage_bytes?: number;
-  /** code_interpreter_sessions */
-  num_sessions?: number;
-  /** web_search_calls, file_search_calls */
-  num_requests?: number;
-}
-
-/** One audit log entry; the event payload sits under a key named after `type`. */
-interface AuditLogEntry {
-  id?: string;
-  type?: string;
-  effective_at?: number;
-  project?: { id?: string; name?: string } | null;
-  actor?: {
-    type?: string;
-    session?: {
-      user?: { id?: string; email?: string } | null;
-      ip_address?: string;
-    } | null;
-    api_key?: {
-      id?: string;
-      type?: string;
-      user?: { id?: string; email?: string } | null;
-      service_account?: { id?: string } | null;
-    } | null;
-  } | null;
-  [key: string]: unknown;
-}
-
-interface UsageBucket {
-  start_time?: number;
-  end_time?: number;
-  results?: UsageResult[];
-}
-
-interface UsagePage {
-  data?: UsageBucket[];
-  has_more?: boolean;
-  next_page?: string | null;
-}
-
+/** The reads of a hand-written call: see `sttTranscribe`. */
 interface TranscriptionResponse {
   text?: string;
   language?: string;
@@ -427,7 +186,7 @@ const PROJECT_RESIDENCIES: Array<{ id: string; label: string }> = [
 const ORG_SCOPE = "organization";
 
 /** Dollars as typed into a form → whole cents for the spend APIs. */
-function dollarsToCents(value: unknown, label: string): number {
+function dollarsToCents(value: string | undefined, label: string): number {
   const n = num(value);
   if (n === undefined || n < 0) throw new Error(`OpenAI plugin: ${label} must be a dollar amount`);
   return Math.round(n * 100);
@@ -457,15 +216,6 @@ function dayStartUnix(isoDate: string): number {
   return Math.floor(Date.parse(`${isoDate}T00:00:00Z`) / 1000);
 }
 
-/**
- * The OpenAI SDKs serialise repeated query arrays as `k=a&k=b` (the default
- * `array_format` on `openai-python`'s Querystring) not `k[]=a`. Bracket
- * notation is only used for multipart form bodies.
- */
-function appendAll(params: URLSearchParams, key: string, values: string[]): void {
-  for (const value of values) params.append(key, value);
-}
-
 type UsageFilter = "models" | "project_ids" | "user_ids" | "api_key_ids" | "vector_store_ids";
 
 interface UsageSeriesSpec {
@@ -476,7 +226,7 @@ interface UsageSeriesSpec {
 
 interface UsageEndpoint {
   /** Path under `/v1/organization/usage/`. */
-  path: string;
+  path: UsageEndpointName;
   /** The filters the endpoint accepts. */
   filters: UsageFilter[];
   series: UsageSeriesSpec[];
@@ -602,7 +352,7 @@ function usageSeries(
  * id of what it was done to (the payload sits under a key named after the
  * type).
  */
-function formatAuditLog(entry: AuditLogEntry): string {
+function formatAuditLog(entry: AuditLogEntry & Record<string, unknown>): string {
   const at = entry.effective_at ? new Date(entry.effective_at * 1000).toISOString() : "";
   const type = str(entry.type);
   const actor = entry.actor;
@@ -616,8 +366,7 @@ function formatAuditLog(entry: AuditLogEntry): string {
     str(key?.user?.id) ||
     str(key?.id);
   const payload = entry[type];
-  const target =
-    payload && typeof payload === "object" ? str((payload as { id?: unknown }).id) : "";
+  const target = payload && typeof payload === "object" && "id" in payload ? str(payload.id) : "";
   return [
     at,
     type,
@@ -628,24 +377,6 @@ function formatAuditLog(entry: AuditLogEntry): string {
   ]
     .filter(Boolean)
     .join(" ");
-}
-
-/**
- * OpenAI paginates in four different dialects. The three list-shaped ones
- * relevant here all take an `after` cursor, but only some responses hand back
- * an explicit `last_id`: the admin endpoints (projects, users, invites, project
- * API keys) and vector stores / containers / evals do, while fine-tuning jobs,
- * batches and files do not and require the cursor to be read off the last
- * element. Preferring `last_id` and falling back to `data[-1].id` covers both
- * without silently truncating a long list.
- */
-function nextCursor<T extends { id: string }>(
-  page: ListEnvelope<T>,
-  batch: T[],
-): string | undefined {
-  if (typeof page.last_id === "string" && page.last_id !== "") return page.last_id;
-  const last = batch[batch.length - 1];
-  return last?.id;
 }
 
 const STATUS_COLORS: Record<string, ResourceStatus> = {
@@ -684,97 +415,25 @@ function statusOf(value: unknown): ResourceStatus {
 export class OpenAIClient implements PluginClient {
   private readonly apiKey: string;
   private readonly adminApiKey: string;
-  private readonly caCert: string;
-  private readonly services: HostServices | undefined;
+  /** Data plane: project key. */
+  private readonly data: OpenAIApi;
+  /** Admin plane: admin key, with the missing-credential guard. */
+  private readonly admin: OpenAIApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("OpenAI plugin: missing apiKey credential");
     this.apiKey = apiKey;
     this.adminApiKey = credentials["adminApiKey"] ?? "";
-    this.caCert = credentials["caCert"] ?? "";
-    this.services = services;
+    const http = services?.http;
+    const caCert = credentials["caCert"] ?? "";
+    this.data = createOpenAIApi(this.apiKey, { http, caCert });
+    this.admin = createOpenAIApi(this.adminApiKey, { http, caCert, guard: ADMIN_KEY_REQUIRED });
   }
 
   /** True when the account carries an admin key, so admin sections can render. */
   private get hasAdminKey(): boolean {
     return this.adminApiKey !== "";
-  }
-
-  private async request<T>(path: string, key: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "OpenAI",
-      url: `${API_BASE}${path}`,
-      errorPath: path,
-      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
-      ...(options ? { init: options } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-    });
-  }
-
-  /** Data plane: project key. */
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return this.request<T>(path, this.apiKey, options);
-  }
-
-  /** Admin plane: admin key, with the missing-credential guard. */
-  private async adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
-    if (!this.hasAdminKey) throw new Error(ADMIN_KEY_REQUIRED);
-    return this.request<T>(path, this.adminApiKey, options);
-  }
-
-  private async listAll<T extends { id: string }>(
-    path: string,
-    params: Record<string, string>,
-    opts: { admin?: boolean; pageSize?: number; maxPages?: number } = {},
-  ): Promise<T[]> {
-    const pageSize = opts.pageSize ?? 100;
-    const maxPages = opts.maxPages ?? 20;
-    const out: T[] = [];
-    let after: string | undefined;
-
-    for (let page = 0; page < maxPages; page++) {
-      const qs = new URLSearchParams(params);
-      qs.set("limit", String(pageSize));
-      if (after) qs.set("after", after);
-      const url = `${path}?${qs.toString()}`;
-      const body = opts.admin
-        ? await this.adminFetch<ListEnvelope<T>>(url)
-        : await this.fetch<ListEnvelope<T>>(url);
-      const batch = body.data ?? [];
-      out.push(...batch);
-      if (!body.has_more || batch.length === 0) break;
-      const cursor = nextCursor(body, batch);
-      if (!cursor) break;
-      after = cursor;
-    }
-
-    return out;
-  }
-
-  /**
-   * Usage and cost endpoints don't use the `after` cursor at all: they page
-   * with an opaque `page` token echoed back as `next_page`.
-   */
-  private async listUsageBuckets(
-    path: string,
-    params: URLSearchParams,
-    maxPages = 10,
-  ): Promise<UsageBucket[]> {
-    const out: UsageBucket[] = [];
-    let page: string | undefined;
-
-    for (let i = 0; i < maxPages; i++) {
-      const qs = new URLSearchParams(params);
-      if (page) qs.set("page", page);
-      const body = await this.adminFetch<UsagePage>(`${path}?${qs.toString()}`);
-      out.push(...(body.data ?? []));
-      if (!body.has_more || !body.next_page) break;
-      page = body.next_page;
-    }
-
-    return out;
   }
 
   // ---- Listing -------------------------------------------------------------
@@ -805,21 +464,22 @@ export class OpenAIClient implements PluginClient {
         case "invite":
           return this.listInvites(accountId);
         case "project-user":
-          return this.listPerProject(accountId, "users", (project, u: ProjectUser, now) =>
-            this.mapProjectUser(accountId, project.id, str(project.name), u, now),
+          return this.listPerProject(
+            (id, query) => this.admin.get(`/organization/projects/${id}/users`, { query }),
+            (project, u, now) =>
+              this.mapProjectUser(accountId, project.id, str(project.name), u, now),
           );
         case "project-service-account":
           return this.listPerProject(
-            accountId,
-            "service_accounts",
-            (project, sa: ProjectServiceAccount, now) =>
+            (id, query) =>
+              this.admin.get(`/organization/projects/${id}/service_accounts`, { query }),
+            (project, sa, now) =>
               this.mapProjectServiceAccount(accountId, project.id, str(project.name), sa, now),
           );
         case "project-rate-limit":
           return this.listPerProject(
-            accountId,
-            "rate_limits",
-            (project, rl: ProjectRateLimit, now) =>
+            (id, query) => this.admin.get(`/organization/projects/${id}/rate_limits`, { query }),
+            (project, rl, now) =>
               this.mapProjectRateLimit(accountId, project.id, str(project.name), rl, now),
           );
         case "spend-limit":
@@ -839,7 +499,7 @@ export class OpenAIClient implements PluginClient {
    * (`listModels`). Unpaginated; the whole catalogue arrives in one flat list.
    */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
-    const body = await this.fetch<{ data?: OpenAIModel[] }>("/models");
+    const body = await this.data.get("/models");
     const models = [...(body.data ?? [])].sort((a, b) => a.id.localeCompare(b.id));
     const now = new Date().toISOString();
     return models.map((model) => this.mapModel(accountId, model, now));
@@ -875,7 +535,7 @@ export class OpenAIClient implements PluginClient {
    * no `last_id`, so the cursor comes off the final element.
    */
   private async listFineTuningJobs(accountId: string): Promise<ResourceInstance[]> {
-    const jobs = await this.listAll<FineTuningJob>("/fine_tuning/jobs", {});
+    const jobs = await listPages((query) => this.data.get("/fine_tuning/jobs", { query }));
     const now = new Date().toISOString();
     return jobs.map((job) => this.mapFineTuningJob(accountId, job, now));
   }
@@ -915,7 +575,7 @@ export class OpenAIClient implements PluginClient {
    * (`listBatches`). `limit` caps at 100.
    */
   private async listBatches(accountId: string): Promise<ResourceInstance[]> {
-    const batches = await this.listAll<Batch>("/batches", {});
+    const batches = await listPages((query) => this.data.get("/batches", { query }));
     const now = new Date().toISOString();
     return batches.map((batch) => this.mapBatch(accountId, batch, now));
   }
@@ -957,7 +617,10 @@ export class OpenAIClient implements PluginClient {
    * individual responses small without needing many round-trips.
    */
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {
-    const files = await this.listAll<OpenAIFile>("/files", { order: "desc" }, { pageSize: 1000 });
+    const files = await listPages(
+      (paging) => this.data.get("/files", { query: { order: "desc", ...paging } }),
+      { pageSize: 1000 },
+    );
     const now = new Date().toISOString();
     return files.map((file) => this.mapFile(accountId, file, now));
   }
@@ -987,7 +650,9 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/vector_stores`: verified 2026-07-29 (`listVectorStores`). */
   private async listVectorStores(accountId: string): Promise<ResourceInstance[]> {
-    const stores = await this.listAll<VectorStore>("/vector_stores", { order: "desc" });
+    const stores = await listPages((paging) =>
+      this.data.get("/vector_stores", { query: { order: "desc", ...paging } }),
+    );
     const now = new Date().toISOString();
     return stores.map((store) => this.mapVectorStore(accountId, store, now));
   }
@@ -1022,7 +687,9 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/containers`: verified 2026-07-29 (`ListContainers`). */
   private async listContainers(accountId: string): Promise<ResourceInstance[]> {
-    const containers = await this.listAll<Container>("/containers", { order: "desc" });
+    const containers = await listPages((paging) =>
+      this.data.get("/containers", { query: { order: "desc", ...paging } }),
+    );
     const now = new Date().toISOString();
     return containers.map((container) => this.mapContainer(accountId, container, now));
   }
@@ -1058,7 +725,9 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/evals`: verified 2026-07-29 (`listEvals`). */
   private async listEvals(accountId: string): Promise<ResourceInstance[]> {
-    const evals = await this.listAll<EvalObject>("/evals", { order: "desc" });
+    const evals = await listPages((paging) =>
+      this.data.get("/evals", { query: { order: "desc", ...paging } }),
+    );
     const now = new Date().toISOString();
     return evals.map((item) => this.mapEval(accountId, item, now));
   }
@@ -1097,10 +766,8 @@ export class OpenAIClient implements PluginClient {
   }
 
   private async fetchProjects(): Promise<Project[]> {
-    return this.listAll<Project>(
-      "/organization/projects",
-      { include_archived: "true" },
-      { admin: true },
+    return listPages((paging) =>
+      this.admin.get("/organization/projects", { query: { include_archived: true, ...paging } }),
     );
   }
 
@@ -1139,10 +806,8 @@ export class OpenAIClient implements PluginClient {
 
     const pages = await Promise.all(
       projects.map(async (project) => {
-        const keys = await this.listAll<ProjectApiKey>(
-          `/organization/projects/${encodeURIComponent(project.id)}/api_keys`,
-          {},
-          { admin: true },
+        const keys = await listPages((query) =>
+          this.admin.get(`/organization/projects/${pathEncode(project.id)}/api_keys`, { query }),
         );
         return keys.map((key) =>
           this.mapProjectApiKey(accountId, project.id, str(project.name), key, now),
@@ -1195,9 +860,13 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/organization/users`: verified 2026-07-29 (`list-users`). */
   private async listOrganizationUsers(accountId: string): Promise<ResourceInstance[]> {
-    const users = await this.listAll<OrganizationUser>("/organization/users", {}, { admin: true });
+    const users = await this.fetchOrganizationUsers();
     const now = new Date().toISOString();
     return users.map((user) => this.mapOrganizationUser(accountId, user, now));
+  }
+
+  private fetchOrganizationUsers(): Promise<OrganizationUser[]> {
+    return listPages((query) => this.admin.get("/organization/users", { query }));
   }
 
   private mapOrganizationUser(
@@ -1231,7 +900,7 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/organization/invites`: verified 2026-07-29 (`list-invites`). */
   private async listInvites(accountId: string): Promise<ResourceInstance[]> {
-    const invites = await this.listAll<Invite>("/organization/invites", {}, { admin: true });
+    const invites = await listPages((query) => this.admin.get("/organization/invites", { query }));
     const now = new Date().toISOString();
     return invites.map((invite) => this.mapInvite(accountId, invite, now));
   }
@@ -1266,19 +935,15 @@ export class OpenAIClient implements PluginClient {
    * `rate_limits`) out over every non-archived project.
    */
   private async listPerProject<T extends { id: string }>(
-    accountId: string,
-    collection: "users" | "service_accounts" | "rate_limits",
+    getPage: (projectId: NoSlashString, paging: PageQuery) => Promise<ListPage<T>>,
     map: (project: Project, item: T, now: string) => ResourceInstance,
   ): Promise<ResourceInstance[]> {
     const projects = (await this.fetchProjects()).filter((p) => p.status !== "archived");
     const now = new Date().toISOString();
     const pages = await Promise.all(
       projects.map(async (project) => {
-        const items = await this.listAll<T>(
-          `/organization/projects/${encodeURIComponent(project.id)}/${collection}`,
-          {},
-          { admin: true },
-        );
+        const id = pathEncode(project.id);
+        const items = await listPages((paging) => getPage(id, paging));
         return items.map((item) => map(project, item, now));
       }),
     );
@@ -1398,7 +1063,7 @@ export class OpenAIClient implements PluginClient {
     const rows = await Promise.all(
       scopes.map(async ({ scope, name }) => {
         try {
-          const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope));
+          const limit = await this.admin.get(spendLimitPath(scope));
           return [this.mapSpendLimit(accountId, scope, name, limit, now)];
         } catch (err) {
           if (isNotFound(err)) return [];
@@ -1455,7 +1120,9 @@ export class OpenAIClient implements PluginClient {
     ];
     const rows = await Promise.all(
       scopes.map(async ({ scope, name }) => {
-        const alerts = await this.listAll<SpendAlert>(spendAlertsPath(scope), {}, { admin: true });
+        const alerts = await listPages<SpendAlert>((query) =>
+          this.admin.get(spendAlertsPath(scope), { query }),
+        );
         return alerts.map((alert) => this.mapSpendAlert(accountId, scope, name, alert, now));
       }),
     );
@@ -1496,10 +1163,8 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/organization/admin_api_keys`: verified 2026-10-03 (`admin-api-keys-list`). */
   private async listAdminApiKeys(accountId: string): Promise<ResourceInstance[]> {
-    const keys = await this.listAll<AdminApiKey>(
-      "/organization/admin_api_keys",
-      { order: "desc" },
-      { admin: true },
+    const keys = await listPages((paging) =>
+      this.admin.get("/organization/admin_api_keys", { query: { order: "desc", ...paging } }),
     );
     const now = new Date().toISOString();
     return keys.map((key) => this.mapAdminApiKey(accountId, key, now));
@@ -1539,72 +1204,64 @@ export class OpenAIClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
-      const id = encodeURIComponent(externalId);
+      const id = pathEncode(externalId);
       const now = new Date().toISOString();
 
       switch (typeId) {
         case "model":
-          return this.mapModel(accountId, await this.fetch<OpenAIModel>(`/models/${id}`), now);
+          return this.mapModel(accountId, await this.data.get(`/models/${id}`), now);
         case "fine-tuning-job":
           return this.mapFineTuningJob(
             accountId,
-            await this.fetch<FineTuningJob>(`/fine_tuning/jobs/${id}`),
+            await this.data.get(`/fine_tuning/jobs/${id}`),
             now,
           );
         case "batch":
-          return this.mapBatch(accountId, await this.fetch<Batch>(`/batches/${id}`), now);
+          return this.mapBatch(accountId, await this.data.get(`/batches/${id}`), now);
         case "file":
-          return this.mapFile(accountId, await this.fetch<OpenAIFile>(`/files/${id}`), now);
+          return this.mapFile(accountId, await this.data.get(`/files/${id}`), now);
         case "vector-store":
-          return this.mapVectorStore(
-            accountId,
-            await this.fetch<VectorStore>(`/vector_stores/${id}`),
-            now,
-          );
+          return this.mapVectorStore(accountId, await this.data.get(`/vector_stores/${id}`), now);
         case "container":
-          return this.mapContainer(
-            accountId,
-            await this.fetch<Container>(`/containers/${id}`),
-            now,
-          );
+          return this.mapContainer(accountId, await this.data.get(`/containers/${id}`), now);
         case "eval":
-          return this.mapEval(accountId, await this.fetch<EvalObject>(`/evals/${id}`), now);
+          return this.mapEval(accountId, await this.data.get(`/evals/${id}`), now);
         case "project":
           return this.mapProject(
             accountId,
-            await this.adminFetch<Project>(`/organization/projects/${id}`),
+            await this.admin.get(`/organization/projects/${id}`),
             now,
           );
         case "project-api-key": {
           const { projectId, keyId } = splitApiKeyId(externalId);
           const [key, project] = await Promise.all([
-            this.adminFetch<ProjectApiKey>(
-              `/organization/projects/${encodeURIComponent(projectId)}/api_keys/${encodeURIComponent(keyId)}`,
+            this.admin.get(
+              `/organization/projects/${pathEncode(projectId)}/api_keys/${pathEncode(keyId)}`,
             ),
-            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+            this.admin.get(`/organization/projects/${pathEncode(projectId)}`),
           ]);
           return this.mapProjectApiKey(accountId, projectId, str(project.name), key, now);
         }
         case "organization-user":
           return this.mapOrganizationUser(
             accountId,
-            await this.adminFetch<OrganizationUser>(`/organization/users/${id}`),
+            await this.admin.get(`/organization/users/${id}`),
             now,
           );
         case "invite":
           return this.mapInvite(
             accountId,
-            await this.adminFetch<Invite>(`/organization/invites/${id}`),
+            await this.admin.get(`/organization/invites/${id}`),
             now,
           );
         case "project-user": {
           // GET …/projects/{p}/users/{u}: verified 2026-10-03 (`retrieve-project-user`).
           const { projectId, keyId: userId } = splitApiKeyId(externalId);
           const [user, project] = await Promise.all([
-            this.adminFetch<ProjectUser>(
-              `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+            this.admin.get(
+              `/organization/projects/${pathEncode(projectId)}/users/${pathEncode(userId)}`,
             ),
-            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+            this.admin.get(`/organization/projects/${pathEncode(projectId)}`),
           ]);
           return this.mapProjectUser(accountId, projectId, str(project.name), user, now);
         }
@@ -1613,10 +1270,10 @@ export class OpenAIClient implements PluginClient {
           // (`retrieve-project-service-account`).
           const { projectId, keyId: saId } = splitApiKeyId(externalId);
           const [sa, project] = await Promise.all([
-            this.adminFetch<ProjectServiceAccount>(
-              `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
+            this.admin.get(
+              `/organization/projects/${pathEncode(projectId)}/service_accounts/${pathEncode(saId)}`,
             ),
-            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+            this.admin.get(`/organization/projects/${pathEncode(projectId)}`),
           ]);
           return this.mapProjectServiceAccount(accountId, projectId, str(project.name), sa, now);
         }
@@ -1624,12 +1281,12 @@ export class OpenAIClient implements PluginClient {
           // No single-limit GET exists; read the project's list and pick the row.
           const { projectId, keyId: rlId } = splitApiKeyId(externalId);
           const [limits, project] = await Promise.all([
-            this.listAll<ProjectRateLimit>(
-              `/organization/projects/${encodeURIComponent(projectId)}/rate_limits`,
-              {},
-              { admin: true },
+            listPages((query) =>
+              this.admin.get(`/organization/projects/${pathEncode(projectId)}/rate_limits`, {
+                query,
+              }),
             ),
-            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+            this.admin.get(`/organization/projects/${pathEncode(projectId)}`),
           ]);
           const limit = limits.find((l) => l.id === rlId);
           if (!limit)
@@ -1639,7 +1296,7 @@ export class OpenAIClient implements PluginClient {
         case "spend-limit": {
           const scope = externalId;
           const [limit, name] = await Promise.all([
-            this.adminFetch<SpendLimit>(spendLimitPath(scope)),
+            this.admin.get(spendLimitPath(scope)),
             this.scopeName(scope),
           ]);
           return this.mapSpendLimit(accountId, scope, name, limit, now);
@@ -1647,7 +1304,7 @@ export class OpenAIClient implements PluginClient {
         case "spend-alert": {
           const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
           const [alert, name] = await Promise.all([
-            this.adminFetch<SpendAlert>(`${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`),
+            this.admin.get(`${spendAlertsPath(scope)}/${pathEncode(alertId)}`),
             this.scopeName(scope),
           ]);
           return this.mapSpendAlert(accountId, scope, name, alert, now);
@@ -1655,7 +1312,7 @@ export class OpenAIClient implements PluginClient {
         case "admin-api-key":
           return this.mapAdminApiKey(
             accountId,
-            await this.adminFetch<AdminApiKey>(`/organization/admin_api_keys/${id}`),
+            await this.admin.get(`/organization/admin_api_keys/${id}`),
             now,
           );
         default:
@@ -1667,9 +1324,7 @@ export class OpenAIClient implements PluginClient {
   /** Display name for a spend scope: "Organization" or the project's name. */
   private async scopeName(scope: string): Promise<string> {
     if (scope === ORG_SCOPE) return "Organization";
-    const project = await this.adminFetch<Project>(
-      `/organization/projects/${encodeURIComponent(scope)}`,
-    );
+    const project = await this.admin.get(`/organization/projects/${pathEncode(scope)}`);
     return str(project.name) || scope;
   }
 
@@ -2485,14 +2140,13 @@ export class OpenAIClient implements PluginClient {
       switch (typeId) {
         case "fine-tuning-job": {
           const [models, files] = await Promise.all([
-            this.fetch<{ data?: OpenAIModel[] }>("/models"),
-            this.listAll<OpenAIFile>(
-              "/files",
-              { purpose: "fine-tune", order: "desc" },
-              {
-                pageSize: 1000,
-                maxPages: 3,
-              },
+            this.data.get("/models"),
+            listPages(
+              (paging) =>
+                this.data.get("/files", {
+                  query: { purpose: "fine-tune", order: "desc", ...paging },
+                }),
+              { pageSize: 1000, maxPages: 3 },
             ),
           ]);
           // Only base models can be fine-tuned; a fine-tuned snapshot is `ft:…`.
@@ -2553,9 +2207,9 @@ export class OpenAIClient implements PluginClient {
         }
 
         case "batch": {
-          const files = await this.listAll<OpenAIFile>(
-            "/files",
-            { purpose: "batch", order: "desc" },
+          const files = await listPages(
+            (paging) =>
+              this.data.get("/files", { query: { purpose: "batch", order: "desc", ...paging } }),
             { pageSize: 1000, maxPages: 3 },
           );
           const fileOptions = files.map((f) => ({
@@ -2696,7 +2350,7 @@ export class OpenAIClient implements PluginClient {
         case "project-user": {
           const [projects, users] = await Promise.all([
             this.fetchProjects(),
-            this.listAll<OrganizationUser>("/organization/users", {}, { admin: true }),
+            this.fetchOrganizationUsers(),
           ]);
           const parent = parentProjectId(parentResourceId);
           return {
@@ -2889,30 +2543,26 @@ export class OpenAIClient implements PluginClient {
       switch (typeId) {
         case "fine-tuning-job": {
           // POST /v1/fine_tuning/jobs: verified 2026-07-29 (`createFineTuningJob`).
-          const seed = num(fields["seed"]);
-          const body: Record<string, unknown> = {
-            model: fields["model"],
-            training_file: fields["training_file"],
-            ...(fields["validation_file"] ? { validation_file: fields["validation_file"] } : {}),
-            ...(fields["suffix"] ? { suffix: fields["suffix"] } : {}),
-            ...(seed !== undefined ? { seed } : {}),
-          };
-          const job = await this.fetch<FineTuningJob>("/fine_tuning/jobs", {
-            method: "POST",
-            body: JSON.stringify(body),
+          const job = await this.data.post("/fine_tuning/jobs", {
+            body: {
+              model: fields["model"],
+              training_file: fields["training_file"],
+              validation_file: fields["validation_file"] || undefined,
+              suffix: fields["suffix"] || undefined,
+              seed: num(fields["seed"]),
+            },
           });
           return this.mapFineTuningJob(accountId, job, now);
         }
 
         case "batch": {
           // POST /v1/batches: verified 2026-07-29 (`createBatch`).
-          const batch = await this.fetch<Batch>("/batches", {
-            method: "POST",
-            body: JSON.stringify({
+          const batch = await this.data.post("/batches", {
+            body: {
               input_file_id: fields["input_file_id"],
               endpoint: fields["endpoint"],
               completion_window: fields["completion_window"] || "24h",
-            }),
+            },
           });
           return this.mapBatch(accountId, batch, now);
         }
@@ -2920,15 +2570,13 @@ export class OpenAIClient implements PluginClient {
         case "vector-store": {
           // POST /v1/vector_stores: verified 2026-07-29 (`createVectorStore`).
           const days = num(fields["expires_after_days"]);
-          const store = await this.fetch<VectorStore>("/vector_stores", {
-            method: "POST",
-            body: JSON.stringify({
+          const store = await this.data.post("/vector_stores", {
+            body: {
               name: fields["name"],
-              ...(fields["description"] ? { description: fields["description"] } : {}),
-              ...(days !== undefined && days > 0
-                ? { expires_after: { anchor: "last_active_at", days } }
-                : {}),
-            }),
+              description: fields["description"] || undefined,
+              expires_after:
+                days !== undefined && days > 0 ? { anchor: "last_active_at", days } : undefined,
+            },
           });
           return this.mapVectorStore(accountId, store, now);
         }
@@ -2936,15 +2584,15 @@ export class OpenAIClient implements PluginClient {
         case "container": {
           // POST /v1/containers: verified 2026-07-29 (`CreateContainer`).
           const minutes = num(fields["expires_after_minutes"]);
-          const container = await this.fetch<Container>("/containers", {
-            method: "POST",
-            body: JSON.stringify({
+          const container = await this.data.post("/containers", {
+            body: {
               name: fields["name"],
-              ...(fields["memory_limit"] ? { memory_limit: fields["memory_limit"] } : {}),
-              ...(minutes !== undefined && minutes > 0
-                ? { expires_after: { anchor: "last_active_at", minutes } }
-                : {}),
-            }),
+              memory_limit: fields["memory_limit"] || undefined,
+              expires_after:
+                minutes !== undefined && minutes > 0
+                  ? { anchor: "last_active_at", minutes }
+                  : undefined,
+            },
           });
           return this.mapContainer(accountId, container, now);
         }
@@ -2952,12 +2600,11 @@ export class OpenAIClient implements PluginClient {
         case "project": {
           // POST /v1/organization/projects: verified 2026-10-03 (`create-project`).
           // `residency` replaces the deprecated `geography`.
-          const project = await this.adminFetch<Project>("/organization/projects", {
-            method: "POST",
-            body: JSON.stringify({
+          const project = await this.admin.post("/organization/projects", {
+            body: {
               name: fields["name"],
-              ...(fields["residency"] ? { residency: fields["residency"] } : {}),
-            }),
+              residency: fields["residency"] || undefined,
+            },
           });
           return this.mapProject(accountId, project, now);
         }
@@ -2968,17 +2615,13 @@ export class OpenAIClient implements PluginClient {
           const projectId = str(fields["project_id"]);
           if (!projectId || !fields["user_id"]) throw new Error("Pick a project and a member");
           const [user, project] = await Promise.all([
-            this.adminFetch<ProjectUser>(
-              `/organization/projects/${encodeURIComponent(projectId)}/users`,
-              {
-                method: "POST",
-                body: JSON.stringify({
-                  user_id: fields["user_id"],
-                  role: fields["role"] || "member",
-                }),
+            this.admin.post(`/organization/projects/${pathEncode(projectId)}/users`, {
+              body: {
+                user_id: fields["user_id"],
+                role: fields["role"] || "member",
               },
-            ),
-            this.adminFetch<Project>(`/organization/projects/${encodeURIComponent(projectId)}`),
+            }),
+            this.admin.get(`/organization/projects/${pathEncode(projectId)}`),
           ]);
           return this.mapProjectUser(accountId, projectId, str(project.name), user, now);
         }
@@ -2987,13 +2630,12 @@ export class OpenAIClient implements PluginClient {
           // POST /v1/organization/spend_limit or …/projects/{p}/spend_limit:
           // verified 2026-10-03. Create-or-replace; only USD and month exist.
           const scope = str(fields["scope"]) || ORG_SCOPE;
-          const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope), {
-            method: "POST",
-            body: JSON.stringify({
+          const limit = await this.admin.post(spendLimitPath(scope), {
+            body: {
               threshold_amount: dollarsToCents(fields["amount_usd"], "Monthly limit"),
               currency: "USD",
               interval: "month",
-            }),
+            },
           });
           return this.mapSpendLimit(accountId, scope, await this.scopeName(scope), limit, now);
         }
@@ -3003,14 +2645,11 @@ export class OpenAIClient implements PluginClient {
           // verified 2026-10-03 (`create-organization-spend-alert`,
           // `create-project-spend-alert`).
           const scope = str(fields["scope"]) || ORG_SCOPE;
-          const alert = await this.adminFetch<SpendAlert>(spendAlertsPath(scope), {
-            method: "POST",
-            body: JSON.stringify(
-              spendAlertBody(
-                fields["threshold_usd"],
-                fields["recipients"],
-                fields["subject_prefix"],
-              ),
+          const alert = await this.admin.post(spendAlertsPath(scope), {
+            body: spendAlertBody(
+              fields["threshold_usd"],
+              fields["recipients"],
+              fields["subject_prefix"],
             ),
           });
           return this.mapSpendAlert(accountId, scope, await this.scopeName(scope), alert, now);
@@ -3019,15 +2658,14 @@ export class OpenAIClient implements PluginClient {
         case "invite": {
           // POST /v1/organization/invites: verified 2026-07-29 (`inviteUser`).
           const projectId = fields["project_id"];
-          const invite = await this.adminFetch<Invite>("/organization/invites", {
-            method: "POST",
-            body: JSON.stringify({
+          const invite = await this.admin.post("/organization/invites", {
+            body: {
               email: fields["email"],
               role: fields["role"] || "reader",
-              ...(projectId
-                ? { projects: [{ id: projectId, role: fields["project_role"] || "member" }] }
-                : {}),
-            }),
+              projects: projectId
+                ? [{ id: projectId, role: fields["project_role"] || "member" }]
+                : undefined,
+            },
           });
           return this.mapInvite(accountId, invite, now);
         }
@@ -3046,48 +2684,44 @@ export class OpenAIClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
-      const id = encodeURIComponent(externalId);
+      const id = pathEncode(externalId);
       const now = new Date().toISOString();
 
       switch (typeId) {
         case "vector-store": {
           // POST /v1/vector_stores/{id}: verified 2026-07-29 (`modifyVectorStore`).
-          const store = await this.fetch<VectorStore>(`/vector_stores/${id}`, {
-            method: "POST",
-            body: JSON.stringify({ name: fields["name"] }),
+          const store = await this.data.post(`/vector_stores/${id}`, {
+            body: { name: fields["name"] },
           });
           return this.mapVectorStore(accountId, store, now);
         }
         case "eval": {
           // POST /v1/evals/{id}: verified 2026-07-29 (`updateEval`).
-          const item = await this.fetch<EvalObject>(`/evals/${id}`, {
-            method: "POST",
-            body: JSON.stringify({ name: fields["name"] }),
+          const item = await this.data.post(`/evals/${id}`, {
+            body: { name: fields["name"] },
           });
           return this.mapEval(accountId, item, now);
         }
         case "project": {
           // POST /v1/organization/projects/{id}: verified 2026-07-29 (`modify-project`).
-          const project = await this.adminFetch<Project>(`/organization/projects/${id}`, {
-            method: "POST",
-            body: JSON.stringify({ name: fields["name"] }),
+          const project = await this.admin.post(`/organization/projects/${id}`, {
+            body: { name: fields["name"] },
           });
           return this.mapProject(accountId, project, now);
         }
         case "organization-user": {
           // POST /v1/organization/users/{id}: verified 2026-07-29 (`modify-user`).
-          const user = await this.adminFetch<OrganizationUser>(`/organization/users/${id}`, {
-            method: "POST",
-            body: JSON.stringify({ role: fields["role"] }),
+          const user = await this.admin.post(`/organization/users/${id}`, {
+            body: { role: fields["role"] },
           });
           return this.mapOrganizationUser(accountId, user, now);
         }
         case "project-user": {
           // POST …/projects/{p}/users/{u}: verified 2026-10-03 (`modify-project-user`).
           const { projectId, keyId: userId } = splitApiKeyId(externalId);
-          await this.adminFetch<ProjectUser>(
-            `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
-            { method: "POST", body: JSON.stringify({ role: fields["role"] }) },
+          await this.admin.post(
+            `/organization/projects/${pathEncode(projectId)}/users/${pathEncode(userId)}`,
+            { body: { role: fields["role"] } },
           );
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -3095,13 +2729,12 @@ export class OpenAIClient implements PluginClient {
           // POST …/service_accounts/{id}: verified 2026-10-03
           // (`update-project-service-account`). Only member/owner are settable.
           const { projectId, keyId: saId } = splitApiKeyId(externalId);
-          const body: Record<string, unknown> = {};
-          if (fields["name"]) body["name"] = fields["name"];
-          if (fields["role"] === "member" || fields["role"] === "owner")
-            body["role"] = fields["role"];
-          await this.adminFetch<ProjectServiceAccount>(
-            `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
-            { method: "POST", body: JSON.stringify(body) },
+          const body: ServiceAccountBody = {};
+          if (fields["name"]) body.name = fields["name"];
+          if (fields["role"] === "member" || fields["role"] === "owner") body.role = fields["role"];
+          await this.admin.post(
+            `/organization/projects/${pathEncode(projectId)}/service_accounts/${pathEncode(saId)}`,
+            { body },
           );
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -3109,7 +2742,7 @@ export class OpenAIClient implements PluginClient {
           // POST …/projects/{p}/rate_limits/{id}: verified 2026-10-03
           // (`update-project-rate-limits`). Blank fields are left alone.
           const { projectId, keyId: rlId } = splitApiKeyId(externalId);
-          const body: Record<string, number> = {};
+          const body: RateLimitBody = {};
           for (const [field, apiKey] of RATE_LIMIT_FIELDS) {
             const value = fields[field];
             if (value === undefined || str(value).trim() === "") continue;
@@ -3119,24 +2752,21 @@ export class OpenAIClient implements PluginClient {
             }
             body[apiKey] = n;
           }
-          const updated = await this.adminFetch<ProjectRateLimit>(
-            `/organization/projects/${encodeURIComponent(projectId)}/rate_limits/${encodeURIComponent(rlId)}`,
-            { method: "POST", body: JSON.stringify(body) },
+          const updated = await this.admin.post(
+            `/organization/projects/${pathEncode(projectId)}/rate_limits/${pathEncode(rlId)}`,
+            { body },
           );
-          const project = await this.adminFetch<Project>(
-            `/organization/projects/${encodeURIComponent(projectId)}`,
-          );
+          const project = await this.admin.get(`/organization/projects/${pathEncode(projectId)}`);
           return this.mapProjectRateLimit(accountId, projectId, str(project.name), updated, now);
         }
         case "spend-limit": {
           const scope = externalId;
-          const limit = await this.adminFetch<SpendLimit>(spendLimitPath(scope), {
-            method: "POST",
-            body: JSON.stringify({
+          const limit = await this.admin.post(spendLimitPath(scope), {
+            body: {
               threshold_amount: dollarsToCents(fields["amountUsd"], "Monthly limit"),
               currency: "USD",
               interval: "month",
-            }),
+            },
           });
           return this.mapSpendLimit(accountId, scope, await this.scopeName(scope), limit, now);
         }
@@ -3144,19 +2774,13 @@ export class OpenAIClient implements PluginClient {
           // POST …/spend_alerts/{alert_id}: verified 2026-10-03. The update body
           // is the full create body, so every field is sent.
           const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
-          const alert = await this.adminFetch<SpendAlert>(
-            `${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`,
-            {
-              method: "POST",
-              body: JSON.stringify(
-                spendAlertBody(
-                  fields["thresholdUsd"],
-                  fields["recipients"],
-                  fields["subjectPrefix"],
-                ),
-              ),
-            },
-          );
+          const alert = await this.admin.post(spendAlertPath(scope, alertId), {
+            body: spendAlertBody(
+              fields["thresholdUsd"],
+              fields["recipients"],
+              fields["subjectPrefix"],
+            ),
+          });
           return this.mapSpendAlert(accountId, scope, await this.scopeName(scope), alert, now);
         }
         default:
@@ -3168,51 +2792,49 @@ export class OpenAIClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
-      const id = encodeURIComponent(externalId);
+      const id = pathEncode(externalId);
 
       switch (typeId) {
         case "file":
           // DELETE /v1/files/{file_id}: verified 2026-07-29 (`deleteFile`).
-          await this.fetch(`/files/${id}`, { method: "DELETE" });
+          await this.data.delete(`/files/${id}`);
           return;
         case "vector-store":
           // DELETE /v1/vector_stores/{id}: verified 2026-07-29 (`deleteVectorStore`).
-          await this.fetch(`/vector_stores/${id}`, { method: "DELETE" });
+          await this.data.delete(`/vector_stores/${id}`);
           return;
         case "container":
           // DELETE /v1/containers/{id}: verified 2026-07-29 (`DeleteContainer`).
-          await this.fetch(`/containers/${id}`, { method: "DELETE" });
+          await this.data.delete(`/containers/${id}`);
           return;
         case "eval":
           // DELETE /v1/evals/{id}: verified 2026-07-29 (`deleteEval`).
-          await this.fetch(`/evals/${id}`, { method: "DELETE" });
+          await this.data.delete(`/evals/${id}`);
           return;
         case "invite":
           // DELETE /v1/organization/invites/{id}: verified 2026-07-29 (`delete-invite`).
           // Rejected once the invite has been accepted.
-          await this.adminFetch(`/organization/invites/${id}`, { method: "DELETE" });
+          await this.admin.delete(`/organization/invites/${id}`);
           return;
         case "organization-user":
           // DELETE /v1/organization/users/{id}: verified 2026-07-29 (`delete-user`).
-          await this.adminFetch(`/organization/users/${id}`, { method: "DELETE" });
+          await this.admin.delete(`/organization/users/${id}`);
           return;
         case "project-api-key": {
           // DELETE /v1/organization/projects/{p}/api_keys/{k}: verified 2026-07-29
           // (`delete-project-api-key`). 400s when the key belongs to a service
           // account; the service account has to be removed instead.
           const { projectId, keyId } = splitApiKeyId(externalId);
-          await this.adminFetch(
-            `/organization/projects/${encodeURIComponent(projectId)}/api_keys/${encodeURIComponent(keyId)}`,
-            { method: "DELETE" },
+          await this.admin.delete(
+            `/organization/projects/${pathEncode(projectId)}/api_keys/${pathEncode(keyId)}`,
           );
           return;
         }
         case "project-user": {
           // DELETE …/projects/{p}/users/{u}: verified 2026-10-03 (`delete-project-user`).
           const { projectId, keyId: userId } = splitApiKeyId(externalId);
-          await this.adminFetch(
-            `/organization/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
-            { method: "DELETE" },
+          await this.admin.delete(
+            `/organization/projects/${pathEncode(projectId)}/users/${pathEncode(userId)}`,
           );
           return;
         }
@@ -3220,27 +2842,24 @@ export class OpenAIClient implements PluginClient {
           // DELETE …/service_accounts/{id}: verified 2026-10-03
           // (`delete-project-service-account`). Revokes the account's keys.
           const { projectId, keyId: saId } = splitApiKeyId(externalId);
-          await this.adminFetch(
-            `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}`,
-            { method: "DELETE" },
+          await this.admin.delete(
+            `/organization/projects/${pathEncode(projectId)}/service_accounts/${pathEncode(saId)}`,
           );
           return;
         }
         case "spend-limit":
           // DELETE /v1/organization/spend_limit or …/projects/{p}/spend_limit.
-          await this.adminFetch(spendLimitPath(externalId), { method: "DELETE" });
+          await this.admin.delete(spendLimitPath(externalId));
           return;
         case "spend-alert": {
           const { projectId: scope, keyId: alertId } = splitApiKeyId(externalId);
-          await this.adminFetch(`${spendAlertsPath(scope)}/${encodeURIComponent(alertId)}`, {
-            method: "DELETE",
-          });
+          await this.admin.delete(spendAlertPath(scope, alertId));
           return;
         }
         case "admin-api-key":
           // DELETE /v1/organization/admin_api_keys/{id}: verified 2026-10-03
           // (`admin-api-keys-delete`).
-          await this.adminFetch(`/organization/admin_api_keys/${id}`, { method: "DELETE" });
+          await this.admin.delete(`/organization/admin_api_keys/${id}`);
           return;
         default:
           throw new Error(`OpenAI plugin: cannot delete type "${typeId}"`);
@@ -3260,7 +2879,7 @@ export class OpenAIClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
-      const id = encodeURIComponent(externalId);
+      const id = pathEncode(externalId);
 
       if (typeId === "fine-tuning-job") {
         // POST /v1/fine_tuning/jobs/{id}/{cancel,pause,resume}: verified 2026-07-29.
@@ -3273,14 +2892,14 @@ export class OpenAIClient implements PluginClient {
                 ? "resume"
                 : "";
         if (verb) {
-          await this.fetch(`/fine_tuning/jobs/${id}/${verb}`, { method: "POST" });
+          await this.data.post(`/fine_tuning/jobs/${id}/${verb}`);
           return;
         }
       }
 
       if (typeId === "batch" && actionId === "cancel-batch") {
         // POST /v1/batches/{id}/cancel: verified 2026-07-29 (`cancelBatch`).
-        await this.fetch(`/batches/${id}/cancel`, { method: "POST" });
+        await this.data.post(`/batches/${id}/cancel`);
         return;
       }
 
@@ -3293,13 +2912,13 @@ export class OpenAIClient implements PluginClient {
             `OpenAI plugin: "${externalId}" is a base model. Only fine-tuned models (ft:…) owned by your organization can be deleted.`,
           );
         }
-        await this.fetch(`/models/${id}`, { method: "DELETE" });
+        await this.data.delete(`/models/${id}`);
         return;
       }
 
       if (typeId === "project" && actionId === "archive-project") {
         // POST /v1/organization/projects/{id}/archive: verified 2026-07-29.
-        await this.adminFetch(`/organization/projects/${id}/archive`, { method: "POST" });
+        await this.admin.post(`/organization/projects/${id}/archive`);
         return;
       }
 
@@ -3324,9 +2943,9 @@ export class OpenAIClient implements PluginClient {
         // (`CreateanAPIkeyforaserviceaccount`). The value is returned once.
         const { projectId, keyId: saId } = splitApiKeyId(externalIdOf(resourceId));
         const name = `infrawrench-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}`;
-        const created = await this.adminFetch<ServiceAccountApiKeyCreated>(
-          `/organization/projects/${encodeURIComponent(projectId)}/service_accounts/${encodeURIComponent(saId)}/api_keys`,
-          { method: "POST", body: JSON.stringify({ name }) },
+        const created = await this.admin.post(
+          `/organization/projects/${pathEncode(projectId)}/service_accounts/${pathEncode(saId)}/api_keys`,
+          { body: { name } },
         );
         const value = str(created.value);
         if (!value)
@@ -3351,9 +2970,9 @@ export class OpenAIClient implements PluginClient {
 
       const projectId = externalIdOf(resourceId);
       const name = `infrawrench-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}`;
-      const created = await this.adminFetch<ServiceAccountCreateResponse>(
-        `/organization/projects/${encodeURIComponent(projectId)}/service_accounts`,
-        { method: "POST", body: JSON.stringify({ name }) },
+      const created = await this.admin.post(
+        `/organization/projects/${pathEncode(projectId)}/service_accounts`,
+        { body: { name } },
       );
 
       const value = str(created.api_key?.value);
@@ -3431,13 +3050,15 @@ export class OpenAIClient implements PluginClient {
 
       // `1h` buckets cap at 168, `1d` at 31: pick whichever fits the window.
       const hourly = spanDays <= 7;
-      const params = new URLSearchParams({
-        start_time: String(startTime),
-        end_time: String(endTime),
-        bucket_width: hourly ? "1h" : "1d",
-        limit: String(hourly ? Math.min(168, spanDays * 24) : Math.min(31, spanDays)),
-      });
-      appendAll(params, filter[0], [filter[1]]);
+      const bucketWidth: "1h" | "1d" = hourly ? "1h" : "1d";
+      const filterQuery: UsageFilterQuery = { [filter[0]]: [filter[1]] };
+      const query = {
+        start_time: startTime,
+        end_time: endTime,
+        bucket_width: bucketWidth,
+        limit: hourly ? Math.min(168, spanDays * 24) : Math.min(31, spanDays),
+        ...filterQuery,
+      };
 
       const endpoints = USAGE_ENDPOINTS.filter((endpoint) => endpoint.filters.includes(filter[0]));
       const results = await Promise.all(
@@ -3445,7 +3066,11 @@ export class OpenAIClient implements PluginClient {
           // The completions call (or, for a vector store, the only call) is
           // the tab's baseline and surfaces its error; the rest are extras.
           const primary = endpoint.core === true || endpoints.length === 1;
-          const load = this.listUsageBuckets(`/organization/usage/${endpoint.path}`, params);
+          const load = listUsagePages((paging) =>
+            this.admin.get(`/organization/usage/${endpoint.path}`, {
+              query: { ...query, ...paging },
+            }),
+          );
           const buckets = primary ? await load : await load.catch(() => null);
           return buckets ? usageSeries(endpoint, buckets, primary) : [];
         }),
@@ -3454,15 +3079,13 @@ export class OpenAIClient implements PluginClient {
 
       if (resourceTypeId === "project") {
         // /organization/costs only accepts 1d buckets, limit 1–180.
-        const params = new URLSearchParams({
-          start_time: String(startTime),
-          end_time: String(endTime),
+        const costBuckets = await this.listCosts({
+          start_time: startTime,
+          end_time: endTime,
           bucket_width: "1d",
-          limit: String(Math.min(180, spanDays)),
+          limit: Math.min(180, spanDays),
+          project_ids: [externalId],
         });
-        appendAll(params, "project_ids", [externalId]);
-
-        const costBuckets = await this.listUsageBuckets("/organization/costs", params);
         const points: MetricSeriesPoint[] = costBuckets.map((bucket) => {
           let total = 0;
           for (const result of bucket.results ?? []) total += result.amount?.value ?? 0;
@@ -3494,24 +3117,25 @@ export class OpenAIClient implements PluginClient {
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
-      const query = new URLSearchParams({
-        limit: String(Math.min(Math.max(params.tailLines ?? 100, 1), 100)),
-      });
+      const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 100);
+      let query: AuditLogQuery;
       switch (typeId) {
         case "project":
-          query.append("project_ids[]", externalId);
+          query = { limit, "project_ids[]": [externalId] };
           break;
         case "organization-user":
-          query.append("actor_ids[]", externalId);
+          query = { limit, "actor_ids[]": [externalId] };
           break;
         case "project-service-account":
-          query.append("actor_ids[]", splitApiKeyId(externalId).keyId);
+          query = { limit, "actor_ids[]": [splitApiKeyId(externalId).keyId] };
           break;
         case "project-api-key":
-          query.append(
-            "resource_ids[]",
-            externalId.includes(":") ? splitApiKeyId(externalId).keyId : externalId,
-          );
+          query = {
+            limit,
+            "resource_ids[]": [
+              externalId.includes(":") ? splitApiKeyId(externalId).keyId : externalId,
+            ],
+          };
           break;
         default:
           throw new Error(`OpenAI plugin: no audit log for type "${typeId}"`);
@@ -3524,11 +3148,9 @@ export class OpenAIClient implements PluginClient {
         activeContainer: container,
       });
 
-      let page: ListEnvelope<AuditLogEntry>;
+      let page: AuditLogPage;
       try {
-        page = await this.adminFetch<ListEnvelope<AuditLogEntry>>(
-          `/organization/audit_logs?${query.toString()}`,
-        );
+        page = await this.admin.get("/organization/audit_logs", { query });
       } catch (error) {
         if (error instanceof Error && / 40[03] /.test(error.message)) {
           return wrap([
@@ -3557,6 +3179,13 @@ export class OpenAIClient implements PluginClient {
     });
   }
 
+  private listCosts(query: CostQuery, maxPages?: number): Promise<UsageBucket[]> {
+    return listUsagePages(
+      (paging) => this.admin.get("/organization/costs", { query: { ...query, ...paging } }),
+      maxPages,
+    );
+  }
+
   private async fetchUntaggedCostRows(
     _accountId: string,
     range: CostFetchRange,
@@ -3575,24 +3204,21 @@ export class OpenAIClient implements PluginClient {
     const endTime = dayStartUnix(range.toDate) + 86400; // end_time is exclusive
     const days = Math.max(1, Math.round((endTime - startTime) / 86400));
 
-    const base = new URLSearchParams({
-      start_time: String(startTime),
-      end_time: String(endTime),
+    const base: CostQuery = {
+      start_time: startTime,
+      end_time: endTime,
       bucket_width: "1d",
-      limit: String(Math.min(180, days)),
-    });
+      limit: Math.min(180, days),
+    };
 
     // Grouping turns one lump sum into a per-product breakdown. If the account
     // can't group for any reason, an ungrouped total is still worth having, so
     // fall back rather than losing the whole day's collection.
-    const grouped = new URLSearchParams(base);
-    appendAll(grouped, "group_by", ["line_item", "project_id"]);
-
     let buckets: UsageBucket[];
     try {
-      buckets = await this.listUsageBuckets("/organization/costs", grouped, 20);
+      buckets = await this.listCosts({ ...base, group_by: ["line_item", "project_id"] }, 20);
     } catch {
-      buckets = await this.listUsageBuckets("/organization/costs", base, 20);
+      buckets = await this.listCosts(base, 20);
     }
 
     const rows: CostRow[] = [];
@@ -3633,7 +3259,7 @@ export class OpenAIClient implements PluginClient {
       const model = isTtsModel(requested) ? requested : DEFAULT_TTS_MODEL;
       const voice = payload.voiceId || DEFAULT_VOICE;
 
-      const body: Record<string, unknown> = {
+      const body: SpeechBody = {
         model,
         input: payload.text,
         voice,
@@ -3644,7 +3270,7 @@ export class OpenAIClient implements PluginClient {
       // `instructions` and `stream_format` are both documented as unsupported on
       // tts-1 / tts-1-hd: sending either is a 400, not a silent no-op.
       if (!LEGACY_TTS_MODELS.has(model)) {
-        body["instructions"] = "Speak clearly and naturally at a normal conversational pace.";
+        body.instructions = "Speak clearly and naturally at a normal conversational pace.";
       }
 
       const started = Date.now();
@@ -3750,15 +3376,13 @@ export class OpenAIClient implements PluginClient {
    * (`createSpeech`): JSON goes in, raw `application/octet-stream` audio comes
    * back.
    *
-   * Deliberately not routed through `jsonRestFetch`. That helper JSON-parses
+   * Deliberately not routed through the typed client. That helper JSON-parses
    * every response, and the host HTTP service it delegates to returns bodies as
    * UTF-8 strings: either of which would shred an mp3. This one call therefore
    * uses the global `fetch` and bypasses bastion egress routing and the custom
    * CA credential; every JSON control-plane call still goes through the host.
    */
-  private async ttsBytes(
-    body: Record<string, unknown>,
-  ): Promise<{ bytes: Uint8Array; requestId?: string }> {
+  private async ttsBytes(body: SpeechBody): Promise<{ bytes: Uint8Array; requestId?: string }> {
     const res = await fetch(`${API_BASE}/audio/speech`, {
       method: "POST",
       headers: {
@@ -3784,7 +3408,7 @@ export class OpenAIClient implements PluginClient {
 
   /**
    * POST /v1/audio/transcriptions: verified 2026-07-29 (`createTranscription`).
-   * multipart/form-data, which `jsonRestFetch` cannot express: its host-HTTP
+   * multipart/form-data, which the typed client cannot express: its host-HTTP
    * path stringifies a FormData instead of encoding it. So this call also uses
    * the global `fetch` and bypasses bastion routing.
    *
@@ -3831,7 +3455,8 @@ export class OpenAIClient implements PluginClient {
       );
     }
 
-    return (await res.json()) as TranscriptionResponse;
+    const result: TranscriptionResponse = await res.json();
+    return result;
   }
 }
 
@@ -3847,25 +3472,41 @@ function splitApiKeyId(externalId: string): { projectId: string; keyId: string }
 }
 
 /** Spend limit route for a scope: the organization or one project. */
-function spendLimitPath(scope: string): string {
+function spendLimitPath(
+  scope: string,
+): "/organization/spend_limit" | `/organization/projects/${NoSlashString}/spend_limit` {
   return scope === ORG_SCOPE
     ? "/organization/spend_limit"
-    : `/organization/projects/${encodeURIComponent(scope)}/spend_limit`;
+    : `/organization/projects/${pathEncode(scope)}/spend_limit`;
 }
 
 /** Spend alerts collection route for a scope. */
-function spendAlertsPath(scope: string): string {
+function spendAlertsPath(
+  scope: string,
+): "/organization/spend_alerts" | `/organization/projects/${NoSlashString}/spend_alerts` {
   return scope === ORG_SCOPE
     ? "/organization/spend_alerts"
-    : `/organization/projects/${encodeURIComponent(scope)}/spend_alerts`;
+    : `/organization/projects/${pathEncode(scope)}/spend_alerts`;
+}
+
+/** One spend alert's route for a scope. */
+function spendAlertPath(
+  scope: string,
+  alertId: string,
+):
+  | `/organization/spend_alerts/${NoSlashString}`
+  | `/organization/projects/${NoSlashString}/spend_alerts/${NoSlashString}` {
+  return scope === ORG_SCOPE
+    ? `/organization/spend_alerts/${pathEncode(alertId)}`
+    : `/organization/projects/${pathEncode(scope)}/spend_alerts/${pathEncode(alertId)}`;
 }
 
 /** `CreateSpendAlertBody`: also the full update body. Only USD/month/email exist. */
 function spendAlertBody(
-  thresholdUsd: unknown,
-  recipients: unknown,
-  subjectPrefix: unknown,
-): Record<string, unknown> {
+  thresholdUsd: string | undefined,
+  recipients: string | undefined,
+  subjectPrefix: string | undefined,
+): SpendAlertBody {
   const emails = parseRecipients(recipients);
   if (emails.length === 0)
     throw new Error("OpenAI plugin: a spend alert needs at least one recipient");
@@ -3883,7 +3524,7 @@ function spendAlertBody(
 }
 
 /** Rate-limit form fields and the request keys they write. */
-const RATE_LIMIT_FIELDS: Array<[string, string]> = [
+const RATE_LIMIT_FIELDS: Array<[string, keyof RateLimitBody]> = [
   ["maxRequestsPerMinute", "max_requests_per_1_minute"],
   ["maxTokensPerMinute", "max_tokens_per_1_minute"],
   ["maxImagesPerMinute", "max_images_per_1_minute"],

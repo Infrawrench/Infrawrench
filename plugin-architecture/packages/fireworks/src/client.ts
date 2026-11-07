@@ -21,369 +21,49 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   CostSetupError,
-  jsonRestFetch,
   externalIdOf,
+  pathEncode,
   withAiCostTags,
+  type ApiBody,
 } from "@infrawrench/plugin-base";
+import {
+  createFireworksApi,
+  HOST,
+  MAX_PAGES,
+  PAGE_SIZE,
+  type ApiKey,
+  type AuditLogEntry,
+  type BatchInferenceJob,
+  type Dataset,
+  type DeployedModel,
+  type Deployment,
+  type DpoJob,
+  type EvaluationJob,
+  type Evaluator,
+  type FireworksResponse,
+  type Model,
+  type Money,
+  type Quota,
+  type ReinforcementFineTuningJob,
+  type Router,
+  type Secret,
+  type SupervisedFineTuningJob,
+  type User,
+} from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import {
   formatAuditLogEntry,
   histogramQuantile,
   parsePromText,
   sumSamples,
-  type AuditLogEntry,
   type PromSample,
 } from "./observability.js";
 
-const HOST = "https://api.fireworks.ai";
 /** The account is encoded in the model string on this plane, not in the path. */
 const INFERENCE_BASE = `${HOST}/inference/v1`;
 
-/** `pageSize` is clamped server-side at 200; anything larger is silently coerced. */
-const PAGE_SIZE = 200;
-const MAX_PAGES = 20;
-
 /** `GET /billingUsage` refuses a window wider than 31 days. */
 const MAX_USAGE_WINDOW_DAYS = 31;
-
-// ---------------------------------------------------------------------------
-// Wire shapes: mirrored from https://docs.fireworks.ai/merged.openapi.yaml
-// ---------------------------------------------------------------------------
-
-/** Every control-plane list answers `{<plural>: [], nextPageToken, totalSize}`. */
-type ListEnvelope<K extends string, T> = {
-  [P in K]?: T[];
-} & { nextPageToken?: string; totalSize?: number };
-
-interface GatewayStatus {
-  code?: string;
-  message?: string;
-}
-
-interface ReplicaStats {
-  pendingSchedulingReplicaCount?: number;
-  downloadingModelReplicaCount?: number;
-  initializingReplicaCount?: number;
-  readyReplicaCount?: number;
-  revocableReplicaCount?: number;
-  effectiveReplicaCount?: number;
-}
-
-interface Deployment {
-  name?: string;
-  displayName?: string;
-  description?: string;
-  createTime?: string;
-  expireTime?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  minReplicaCount?: number;
-  maxReplicaCount?: number;
-  desiredReplicaCount?: number;
-  replicaCount?: number;
-  autoscalingPolicy?: {
-    scaleUpWindow?: string;
-    scaleDownWindow?: string;
-    scaleToZeroWindow?: string;
-  } | null;
-  baseModel?: string;
-  acceleratorType?: string;
-  acceleratorCount?: number;
-  precision?: string;
-  region?: string;
-  cluster?: string;
-  replicaStats?: ReplicaStats | null;
-}
-
-interface Model {
-  name?: string;
-  displayName?: string;
-  description?: string;
-  createTime?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  kind?: string;
-  githubUrl?: string;
-  huggingFaceUrl?: string;
-  /** int64: arrives as a JSON string. */
-  baseModelDetails?: { parameterCount?: string; modelType?: string } | null;
-  peftDetails?: { baseModel?: string; r?: number } | null;
-  public?: boolean;
-  contextLength?: number;
-  supportsImageInput?: boolean;
-  supportsTools?: boolean;
-  supportsLora?: boolean;
-  supportsServerless?: boolean;
-  deprecationDate?: { year?: number; month?: number; day?: number } | null;
-}
-
-interface Dataset {
-  name?: string;
-  displayName?: string;
-  createTime?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  /** int64: arrives as a JSON string. */
-  exampleCount?: string | number;
-  estimatedTokenCount?: string | number;
-  averageTurnCount?: number;
-  format?: string;
-  createdBy?: string;
-  userUploaded?: Record<string, never> | null;
-  transformed?: unknown;
-  splitted?: unknown;
-  evaluationResult?: unknown;
-}
-
-interface DeployedModel {
-  name?: string;
-  displayName?: string;
-  createTime?: string;
-  model?: string;
-  deployment?: string;
-  default?: boolean;
-  state?: string;
-  serverless?: boolean;
-  public?: boolean;
-}
-
-interface JobProgress {
-  percent?: number;
-  totalInputRequests?: number;
-  successfullyProcessedRequests?: number;
-  failedRequests?: number;
-  inputTokens?: number;
-  outputTokens?: number;
-}
-
-interface BatchInferenceJob {
-  name?: string;
-  displayName?: string;
-  createTime?: string;
-  expireTime?: string;
-  createdBy?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  model?: string;
-  inputDatasetId?: string;
-  outputDatasetId?: string;
-  jobProgress?: JobProgress | null;
-  /** There is no `completionTime` on this object: the end stamp lives here. */
-  lifecycle?: { validatedTime?: string; runStartTime?: string; endTime?: string } | null;
-}
-
-interface Money {
-  currencyCode?: string;
-  /** int64: arrives as a JSON string. */
-  units?: string;
-  nanos?: number;
-}
-
-interface SupervisedFineTuningJob {
-  name?: string;
-  displayName?: string;
-  createTime?: string;
-  /** Note: `completedTime`, not `completionTime`. */
-  completedTime?: string;
-  dataset?: string;
-  evaluationDataset?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  createdBy?: string;
-  outputModel?: string;
-  baseModel?: string;
-  epochs?: number;
-  learningRate?: number;
-  loraRank?: number;
-  batchSizeSamples?: number;
-  jobProgress?: JobProgress | null;
-  estimatedCost?: Money | null;
-}
-
-interface ApiKey {
-  keyId?: string;
-  displayName?: string;
-  /** Only ever populated on the create response. */
-  key?: string;
-  createTime?: string;
-  secure?: boolean;
-  email?: string;
-  prefix?: string;
-  expireTime?: string;
-}
-
-interface User {
-  name?: string;
-  displayName?: string;
-  email?: string;
-  role?: string;
-  state?: string;
-  serviceAccount?: boolean;
-  permissionPreset?: string;
-  createTime?: string;
-  updateTime?: string;
-}
-
-/** https://docs.fireworks.ai/api-reference/list-routers */
-interface Router {
-  name?: string;
-  displayName?: string;
-  createTime?: string;
-  createdBy?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  deployments?: string[];
-  model?: string;
-  /** Strategy is a oneof: exactly one of these empty marker objects is set. */
-  weightedRandom?: Record<string, never> | null;
-  evenLoad?: Record<string, never> | null;
-  aliases?: string[];
-  autoGenerated?: boolean;
-  public?: boolean;
-}
-
-/** `gatewayBaseTrainingConfig`, shared by DPO and RFT jobs. */
-interface TrainingConfig {
-  outputModel?: string;
-  baseModel?: string;
-  learningRate?: number;
-  loraRank?: number;
-  epochs?: number;
-  batchSizeSamples?: number;
-}
-
-interface LossConfig {
-  method?: string;
-  klBeta?: number;
-}
-
-/** https://docs.fireworks.ai/api-reference/list-dpo-jobs */
-interface DpoJob {
-  name?: string;
-  displayName?: string;
-  createTime?: string;
-  completedTime?: string;
-  dataset?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  createdBy?: string;
-  trainingConfig?: TrainingConfig | null;
-  lossConfig?: LossConfig | null;
-  wandbConfig?: { url?: string } | null;
-}
-
-interface RftJobProgress extends JobProgress {
-  epoch?: number;
-}
-
-/** https://docs.fireworks.ai/api-reference/list-reinforcement-fine-tuning-jobs */
-interface ReinforcementFineTuningJob extends DpoJob {
-  evaluationDataset?: string;
-  evaluator?: string;
-  jobProgress?: RftJobProgress | null;
-  nodeCount?: number;
-}
-
-/** https://docs.fireworks.ai/api-reference/list-evaluators */
-interface Evaluator {
-  name?: string;
-  displayName?: string;
-  description?: string;
-  createTime?: string;
-  createdBy?: string;
-  updateTime?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  entryPoint?: string;
-  commitHash?: string;
-  source?: { type?: string; githubRepositoryName?: string } | null;
-  defaultDataset?: string;
-}
-
-/** https://docs.fireworks.ai/api-reference/list-evaluation-jobs */
-interface EvaluationJob {
-  name?: string;
-  displayName?: string;
-  createTime?: string;
-  createdBy?: string;
-  updateTime?: string;
-  state?: string;
-  status?: GatewayStatus | null;
-  evaluator?: string;
-  inputDataset?: string;
-  outputDataset?: string;
-  metrics?: Record<string, unknown> | null;
-}
-
-interface Secret {
-  name?: string;
-  keyName?: string;
-}
-
-interface Quota {
-  name?: string;
-  /** int64: arrives as a JSON string. */
-  value?: string | number;
-  maxValue?: string | number;
-  usage?: number;
-  updateTime?: string;
-}
-
-interface UsageCostRow {
-  dimensions?: {
-    startTime?: string;
-    model?: string;
-    user?: string;
-    apiKeyId?: string;
-    unknownModel?: boolean;
-  } | null;
-  subtotal?: Money | null;
-}
-
-interface UsageCostsResponse {
-  rows?: UsageCostRow[];
-  nextPageToken?: string;
-  subtotal?: Money | null;
-  attributionCompleteness?: string;
-}
-
-interface ServerlessUsage {
-  modelName?: string;
-  promptTokens?: string | number;
-  completionTokens?: string | number;
-  cachedPromptTokens?: string | number;
-  startTime?: string;
-  endTime?: string;
-  group?: Record<string, string> | null;
-  /**
-   * Nano-USD (1e-9 USD). Deliberately unused: the spec states it is "0 when
-   * absent (not free)" and only one upstream stamps an authoritative cost, so
-   * it under-reports badly. Real money comes from `usageCosts:query`.
-   */
-  costNanoUsd?: number;
-}
-
-interface DedicatedUsage {
-  deploymentId?: string;
-  acceleratorType?: string;
-  /** int64: arrives as a JSON string. */
-  acceleratorSeconds?: string | number;
-  startTime?: string;
-  endTime?: string;
-  baseModel?: string;
-  group?: Record<string, string> | null;
-}
-
-interface BillingUsageResponse {
-  serverlessCosts?: ServerlessUsage[];
-  dedicatedCosts?: DedicatedUsage[];
-  trainingCosts?: Array<{
-    jobId?: string;
-    acceleratorSeconds?: string | number;
-    tokens?: string | number;
-    startTime?: string;
-    endTime?: string;
-  }>;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -587,7 +267,7 @@ function mapEvaluatorState(state: string | undefined): { status: ResourceStatus;
 
 /** Key/value rows for whichever of `keys` the resource actually carries. */
 function kvItems(
-  fields: Record<string, unknown>,
+  fields: ResourceInstance["fields"],
   keys: Array<[label: string, key: string, copyable?: boolean]>,
 ): Array<{ key: string; value: string; copyable?: boolean }> {
   const items: Array<{ key: string; value: string; copyable?: boolean }> = [];
@@ -633,6 +313,9 @@ export class FireworksClient implements PluginClient {
   private readonly accountId: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  private readonly api: ReturnType<typeof createFireworksApi>["api"];
+  private readonly auditApi: ReturnType<typeof createFireworksApi>["auditApi"];
+  private readonly usageApi: ReturnType<typeof createFireworksApi>["usageApi"];
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -647,23 +330,15 @@ export class FireworksClient implements PluginClient {
     this.accountId = accountId;
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
-  }
-
-  /** Control-plane path, always rooted at `/v1/accounts/{account_id}`. */
-  private accountPath(suffix: string): string {
-    return `${HOST}/v1/accounts/${encodeURIComponent(this.accountId)}${suffix}`;
-  }
-
-  private async request<T>(url: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Fireworks",
-      url,
-      errorPath: url.startsWith(HOST) ? url.slice(HOST.length) : url,
-      headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
-      ...(options ? { init: options } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
+    const { api, auditApi, usageApi } = createFireworksApi({
+      apiKey,
+      accountId,
+      caCert: this.caCert,
+      http: services?.http,
     });
+    this.api = api;
+    this.auditApi = auditApi;
+    this.usageApi = usageApi;
   }
 
   /**
@@ -694,30 +369,6 @@ export class FireworksClient implements PluginClient {
     return res.text();
   }
 
-  /**
-   * Walk a `pageSize`/`pageToken` → `nextPageToken` collection. `pageSize` is
-   * pinned to the documented maximum of 200; larger values are coerced anyway.
-   */
-  private async paginate<K extends string, T>(
-    suffix: string,
-    key: K,
-    extraQuery = "",
-  ): Promise<T[]> {
-    const items: T[] = [];
-    let pageToken: string | undefined;
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      const token = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
-      const data = await this.request<ListEnvelope<K, T>>(
-        this.accountPath(`${suffix}?pageSize=${PAGE_SIZE}${extraQuery}${token}`),
-      );
-      const list = data[key];
-      if (Array.isArray(list)) items.push(...list);
-      if (!data.nextPageToken) break;
-      pageToken = data.nextPageToken;
-    }
-    return items;
-  }
-
   // -------------------------------------------------------------------------
   // Listing
   // -------------------------------------------------------------------------
@@ -726,79 +377,67 @@ export class FireworksClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "deployment": {
-          const items = await this.paginate<"deployments", Deployment>(
-            "/deployments",
-            "deployments",
-          );
+          const items = await this.api.getAll("/deployments", "deployments");
           return items.map((item) => this.mapDeployment(item, accountId));
         }
         case "model": {
-          const items = await this.paginate<"models", Model>("/models", "models");
+          const items = await this.api.getAll("/models", "models");
           return items.map((item) => this.mapModel(item, accountId));
         }
         case "dataset": {
-          const items = await this.paginate<"datasets", Dataset>("/datasets", "datasets");
+          const items = await this.api.getAll("/datasets", "datasets");
           return items.map((item) => this.mapDataset(item, accountId));
         }
         case "deployed-model": {
-          const items = await this.paginate<"deployedModels", DeployedModel>(
-            "/deployedModels",
-            "deployedModels",
-          );
+          const items = await this.api.getAll("/deployedModels", "deployedModels");
           return items.map((item) => this.mapDeployedModel(item, accountId));
         }
         case "batch-inference-job": {
-          const items = await this.paginate<"batchInferenceJobs", BatchInferenceJob>(
-            "/batchInferenceJobs",
-            "batchInferenceJobs",
-          );
+          const items = await this.api.getAll("/batchInferenceJobs", "batchInferenceJobs");
           return items.map((item) => this.mapBatchJob(item, accountId));
         }
         case "supervised-fine-tuning-job": {
-          const items = await this.paginate<"supervisedFineTuningJobs", SupervisedFineTuningJob>(
+          const items = await this.api.getAll(
             "/supervisedFineTuningJobs",
             "supervisedFineTuningJobs",
           );
           return items.map((item) => this.mapFineTuningJob(item, accountId));
         }
         case "secret": {
-          const items = await this.paginate<"secrets", Secret>("/secrets", "secrets");
+          const items = await this.api.getAll("/secrets", "secrets");
           return items.map((item) => this.mapSecret(item, accountId));
         }
         case "quota": {
-          const items = await this.paginate<"quotas", Quota>("/quotas", "quotas");
+          const items = await this.api.getAll("/quotas", "quotas");
           return items.map((item) => this.mapQuota(item, accountId));
         }
         case "api-key":
           return this.listApiKeys(accountId);
         case "router": {
-          const items = await this.paginate<"routers", Router>("/routers", "routers");
+          const items = await this.api.getAll("/routers", "routers");
           return items.map((item) => this.mapRouter(item, accountId));
         }
         case "dpo-job": {
-          const items = await this.paginate<"dpoJobs", DpoJob>("/dpoJobs", "dpoJobs");
+          const items = await this.api.getAll("/dpoJobs", "dpoJobs");
           return items.map((item) => this.mapDpoJob(item, accountId));
         }
         case "reinforcement-fine-tuning-job": {
-          const items = await this.paginate<
+          const items = await this.api.getAll(
+            "/reinforcementFineTuningJobs",
             "reinforcementFineTuningJobs",
-            ReinforcementFineTuningJob
-          >("/reinforcementFineTuningJobs", "reinforcementFineTuningJobs");
+          );
           return items.map((item) => this.mapRftJob(item, accountId));
         }
         case "evaluator": {
-          const items = await this.paginate<"evaluators", Evaluator>("/evaluators", "evaluators");
+          const items = await this.api.getAll("/evaluators", "evaluators");
           return items.map((item) => this.mapEvaluator(item, accountId));
         }
         case "evaluation-job": {
-          const items = await this.paginate<"evaluationJobs", EvaluationJob>(
-            "/evaluationJobs",
-            "evaluationJobs",
-          );
+          const items = await this.api.getAll("/evaluationJobs", "evaluationJobs");
           return items.map((item) => this.mapEvaluationJob(item, accountId));
         }
         case "user": {
-          const items = await this.paginate<"users", User>("/users", "users");
+          const items = await this.api.getAll("/users", "users");
           return items.map((item) => this.mapUser(item, accountId));
         }
         default:
@@ -815,9 +454,9 @@ export class FireworksClient implements PluginClient {
    * https://docs.fireworks.ai/api-reference/list-api-keys
    */
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.request<ListEnvelope<"apiKeys", ApiKey>>(
-      this.accountPath(`/users/-/apiKeys?pageSize=${PAGE_SIZE}`),
-    );
+    const data = await this.api.get(`/users/${pathEncode("-")}/apiKeys`, {
+      query: { pageSize: PAGE_SIZE },
+    });
     return (data.apiKeys ?? []).map((key) => this.mapApiKey(key, accountId, "-"));
   }
 
@@ -1244,6 +883,8 @@ export class FireworksClient implements PluginClient {
     const displayName = job.displayName || outputModel || id;
     const createdAt = job.createTime ?? nowIso();
     const progress = job.jobProgress ?? {};
+    const inputTokens = toNumber(progress.inputTokens);
+    const outputTokens = toNumber(progress.outputTokens);
     return {
       id: `${accountId}:reinforcement-fine-tuning-job:${id}`,
       pluginId: "fireworks",
@@ -1258,12 +899,8 @@ export class FireworksClient implements PluginClient {
         ...(job.evaluationDataset ? { evaluationDataset: job.evaluationDataset } : {}),
         ...(progress.percent != null ? { progressPercent: progress.percent } : {}),
         ...(progress.epoch != null ? { epoch: progress.epoch } : {}),
-        ...(toNumber(progress.inputTokens) != null
-          ? { inputTokens: toNumber(progress.inputTokens) as number }
-          : {}),
-        ...(toNumber(progress.outputTokens) != null
-          ? { outputTokens: toNumber(progress.outputTokens) as number }
-          : {}),
+        ...(inputTokens != null ? { inputTokens } : {}),
+        ...(outputTokens != null ? { outputTokens } : {}),
         ...(job.nodeCount != null ? { nodeCount: job.nodeCount } : {}),
         createTime: createdAt,
       },
@@ -1385,84 +1022,42 @@ export class FireworksClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
-      const encoded = encodeURIComponent(externalId);
+      const encoded = pathEncode(externalId);
       switch (typeId) {
         case "deployment":
-          return this.mapDeployment(
-            await this.request<Deployment>(this.accountPath(`/deployments/${encoded}`)),
-            accountId,
-          );
+          return this.mapDeployment(await this.api.get(`/deployments/${encoded}`), accountId);
         case "model":
-          return this.mapModel(
-            await this.request<Model>(this.accountPath(`/models/${encoded}`)),
-            accountId,
-          );
+          return this.mapModel(await this.api.get(`/models/${encoded}`), accountId);
         case "dataset":
-          return this.mapDataset(
-            await this.request<Dataset>(this.accountPath(`/datasets/${encoded}`)),
-            accountId,
-          );
+          return this.mapDataset(await this.api.get(`/datasets/${encoded}`), accountId);
         case "deployed-model":
-          return this.mapDeployedModel(
-            await this.request<DeployedModel>(this.accountPath(`/deployedModels/${encoded}`)),
-            accountId,
-          );
+          return this.mapDeployedModel(await this.api.get(`/deployedModels/${encoded}`), accountId);
         case "batch-inference-job":
-          return this.mapBatchJob(
-            await this.request<BatchInferenceJob>(
-              this.accountPath(`/batchInferenceJobs/${encoded}`),
-            ),
-            accountId,
-          );
+          return this.mapBatchJob(await this.api.get(`/batchInferenceJobs/${encoded}`), accountId);
         case "supervised-fine-tuning-job":
           return this.mapFineTuningJob(
-            await this.request<SupervisedFineTuningJob>(
-              this.accountPath(`/supervisedFineTuningJobs/${encoded}`),
-            ),
+            await this.api.get(`/supervisedFineTuningJobs/${encoded}`),
             accountId,
           );
         case "secret":
-          return this.mapSecret(
-            await this.request<Secret>(this.accountPath(`/secrets/${encoded}`)),
-            accountId,
-          );
+          return this.mapSecret(await this.api.get(`/secrets/${encoded}`), accountId);
         case "quota":
-          return this.mapQuota(
-            await this.request<Quota>(this.accountPath(`/quotas/${encoded}`)),
-            accountId,
-          );
+          return this.mapQuota(await this.api.get(`/quotas/${encoded}`), accountId);
         case "router":
-          return this.mapRouter(
-            await this.request<Router>(this.accountPath(`/routers/${encoded}`)),
-            accountId,
-          );
+          return this.mapRouter(await this.api.get(`/routers/${encoded}`), accountId);
         case "dpo-job":
-          return this.mapDpoJob(
-            await this.request<DpoJob>(this.accountPath(`/dpoJobs/${encoded}`)),
-            accountId,
-          );
+          return this.mapDpoJob(await this.api.get(`/dpoJobs/${encoded}`), accountId);
         case "reinforcement-fine-tuning-job":
           return this.mapRftJob(
-            await this.request<ReinforcementFineTuningJob>(
-              this.accountPath(`/reinforcementFineTuningJobs/${encoded}`),
-            ),
+            await this.api.get(`/reinforcementFineTuningJobs/${encoded}`),
             accountId,
           );
         case "evaluator":
-          return this.mapEvaluator(
-            await this.request<Evaluator>(this.accountPath(`/evaluators/${encoded}`)),
-            accountId,
-          );
+          return this.mapEvaluator(await this.api.get(`/evaluators/${encoded}`), accountId);
         case "evaluation-job":
-          return this.mapEvaluationJob(
-            await this.request<EvaluationJob>(this.accountPath(`/evaluationJobs/${encoded}`)),
-            accountId,
-          );
+          return this.mapEvaluationJob(await this.api.get(`/evaluationJobs/${encoded}`), accountId);
         case "user":
-          return this.mapUser(
-            await this.request<User>(this.accountPath(`/users/${encoded}`)),
-            accountId,
-          );
+          return this.mapUser(await this.api.get(`/users/${encoded}`), accountId);
         default: {
           // API keys have no published get-by-id route over HTTP (the generated
           // spec path for it is malformed) so we re-read the list instead.
@@ -1520,10 +1115,9 @@ export class FireworksClient implements PluginClient {
    * models those deployments serve, so nothing has to be typed from memory.
    */
   private async getRouterCreateConfig(): Promise<CreateResourceConfig> {
-    const deployments = await this.paginate<"deployments", Deployment>(
-      "/deployments",
-      "deployments",
-    ).catch((): Deployment[] => []);
+    const deployments = await this.api
+      .getAll("/deployments", "deployments")
+      .catch((): Deployment[] => []);
     const deploymentOptions = deployments
       .filter((deployment) => Boolean(deployment.name) && deployment.state !== "DELETED")
       .map((deployment) => ({
@@ -1604,7 +1198,7 @@ export class FireworksClient implements PluginClient {
   }
 
   private async getApiKeyCreateConfig(): Promise<CreateResourceConfig> {
-    const users = await this.paginate<"users", User>("/users", "users").catch((): User[] => []);
+    const users = await this.api.getAll("/users", "users").catch((): User[] => []);
     const options = users
       .filter((user) => Boolean(user.name))
       .map((user) => ({
@@ -1687,17 +1281,16 @@ export class FireworksClient implements PluginClient {
     if (deployments.length === 0) {
       throw new Error("Fireworks plugin: pick at least one deployment for the router");
     }
-    const body = {
-      ...(fields["displayName"] ? { displayName: fields["displayName"] } : {}),
-      deployments,
-      ...(fields["model"] ? { model: fields["model"] } : {}),
-      ...strategyBody(fields["strategy"]),
-      public: fields["public"] === "true",
-    };
-    const created = await this.request<Router>(
-      this.accountPath(`/routers?routerId=${encodeURIComponent(routerId)}`),
-      { method: "POST", body: JSON.stringify(body) },
-    );
+    const created = await this.api.post("/routers", {
+      query: { routerId },
+      body: {
+        displayName: fields["displayName"] || undefined,
+        deployments,
+        model: fields["model"] || undefined,
+        ...strategyBody(fields["strategy"]),
+        public: fields["public"] === "true",
+      },
+    });
     return this.mapRouter(created, accountId);
   }
 
@@ -1716,18 +1309,14 @@ export class FireworksClient implements PluginClient {
     if (!serviceAccount && !email) {
       throw new Error("Fireworks plugin: an email is required to invite a user");
     }
-    const body = {
-      role,
-      ...(email ? { email } : {}),
-      ...(fields["displayName"] ? { displayName: fields["displayName"] } : {}),
-      ...(serviceAccount ? { serviceAccount: true } : {}),
-      ...(role === "custom" && fields["permissionPreset"]
-        ? { permissionPreset: fields["permissionPreset"] }
-        : {}),
-    };
-    const created = await this.request<User>(this.accountPath("/users"), {
-      method: "POST",
-      body: JSON.stringify(body),
+    const created = await this.api.post("/users", {
+      body: {
+        role,
+        email: email || undefined,
+        displayName: fields["displayName"] || undefined,
+        serviceAccount: serviceAccount ? true : undefined,
+        permissionPreset: role === "custom" ? fields["permissionPreset"] || undefined : undefined,
+      },
     });
     return this.mapUser(created, accountId);
   }
@@ -1747,13 +1336,12 @@ export class FireworksClient implements PluginClient {
     if (!keyName) throw new Error("Fireworks plugin: a key name is required");
     if (!value) throw new Error("Fireworks plugin: a secret value is required");
     const secretId = secretIdFor(keyName);
-    const created = await this.request<Secret>(this.accountPath("/secrets"), {
-      method: "POST",
-      body: JSON.stringify({
+    const created = await this.api.post("/secrets", {
+      body: {
         name: `accounts/${this.accountId}/secrets/${secretId}`,
         keyName,
         value,
-      }),
+      },
     });
     return this.mapSecret(
       { name: created?.name ?? `accounts/${this.accountId}/secrets/${secretId}`, keyName },
@@ -1767,16 +1355,14 @@ export class FireworksClient implements PluginClient {
   ): Promise<ResourceCreateResult> {
     const userId = fields["userId"] ?? "";
     if (!userId) throw new Error("Fireworks plugin: an owner is required to create an API key");
-    const body = {
-      apiKey: {
-        displayName: fields["displayName"] || "default",
-        ...(fields["expireTime"] ? { expireTime: fields["expireTime"] } : {}),
+    const created = await this.api.post(`/users/${pathEncode(userId)}/apiKeys`, {
+      body: {
+        apiKey: {
+          displayName: fields["displayName"] || "default",
+          ...(fields["expireTime"] ? { expireTime: fields["expireTime"] } : {}),
+        },
       },
-    };
-    const created = await this.request<ApiKey>(
-      this.accountPath(`/users/${encodeURIComponent(userId)}/apiKeys`),
-      { method: "POST", body: JSON.stringify(body) },
-    );
+    });
     const resource = this.mapApiKey(created, accountId, userId);
     return {
       resource,
@@ -1816,7 +1402,7 @@ export class FireworksClient implements PluginClient {
         default:
           throw new Error(`Fireworks plugin: updateResource not supported for type "${typeId}"`);
       }
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
 
       if (fields["replicaCount"] !== undefined) {
         const replicaCount = Number.parseInt(fields["replicaCount"], 10);
@@ -1825,26 +1411,21 @@ export class FireworksClient implements PluginClient {
         }
         // Note the `:scale` suffix: this is a custom method, so it does NOT
         // merge with the patch body below and must be sent on its own.
-        await this.request<unknown>(this.accountPath(`/deployments/${id}:scale`), {
-          method: "PATCH",
-          body: JSON.stringify({ replicaCount }),
-        });
+        await this.api.patch(`/deployments/${id}:scale`, { body: { replicaCount } });
       }
 
-      const patch: Record<string, unknown> = {};
-      if (fields["displayName"]) patch["displayName"] = fields["displayName"];
-      if (fields["minReplicaCount"] !== undefined) {
-        patch["minReplicaCount"] = Number.parseInt(fields["minReplicaCount"], 10);
-      }
-      if (fields["maxReplicaCount"] !== undefined) {
-        patch["maxReplicaCount"] = Number.parseInt(fields["maxReplicaCount"], 10);
-      }
-      if (Object.keys(patch).length) {
-        await this.request<unknown>(this.accountPath(`/deployments/${id}`), {
-          method: "PATCH",
-          body: JSON.stringify(patch),
-        });
-      }
+      const patch: ApiBody<operations["Gateway_UpdateDeployment"]> = {
+        displayName: fields["displayName"] || undefined,
+        minReplicaCount:
+          fields["minReplicaCount"] === undefined
+            ? undefined
+            : Number.parseInt(fields["minReplicaCount"], 10),
+        maxReplicaCount:
+          fields["maxReplicaCount"] === undefined
+            ? undefined
+            : Number.parseInt(fields["maxReplicaCount"], 10),
+      };
+      if (hasValues(patch)) await this.api.patch(`/deployments/${id}`, { body: patch });
 
       return runPluginEffect(this.getResource(typeId, resourceId, accountId));
     });
@@ -1865,9 +1446,7 @@ export class FireworksClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<void> {
     const externalId = externalIdOf(resourceId);
-    const encoded = encodeURIComponent(externalId);
-    const patch: Record<string, unknown> = {};
-    let path = "";
+    const encoded = pathEncode(externalId);
 
     switch (typeId) {
       case "router": {
@@ -1877,27 +1456,41 @@ export class FireworksClient implements PluginClient {
             "Fireworks plugin: this router was generated by Fireworks for a deployment and cannot be edited",
           );
         }
-        // `router.name` must be populated on update.
-        patch["name"] = `accounts/${this.accountId}/routers/${externalId}`;
-        if (fields["displayName"] !== undefined) patch["displayName"] = fields["displayName"];
-        if (fields["public"] !== undefined) patch["public"] = fields["public"] === "true";
-        if (fields["strategy"]) Object.assign(patch, strategyBody(fields["strategy"]));
-        path = `/routers/${encoded}`;
-        break;
-      }
-      case "evaluator":
-        if (fields["displayName"] !== undefined) patch["displayName"] = fields["displayName"];
-        if (fields["description"] !== undefined) patch["description"] = fields["description"];
-        path = `/evaluators/${encoded}`;
-        break;
-      case "user":
-        if (fields["displayName"] !== undefined) patch["displayName"] = fields["displayName"];
-        if (fields["role"]) patch["role"] = fields["role"];
-        if (fields["permissionPreset"] !== undefined) {
-          patch["permissionPreset"] = fields["permissionPreset"];
+        if (
+          fields["displayName"] === undefined &&
+          fields["public"] === undefined &&
+          !fields["strategy"]
+        ) {
+          return;
         }
-        path = `/users/${encoded}`;
-        break;
+        await this.api.patch(`/routers/${encoded}`, {
+          body: {
+            // `router.name` must be populated on update.
+            name: `accounts/${this.accountId}/routers/${externalId}`,
+            displayName: fields["displayName"],
+            public: fields["public"] === undefined ? undefined : fields["public"] === "true",
+            ...(fields["strategy"] ? strategyBody(fields["strategy"]) : {}),
+          },
+        });
+        return;
+      }
+      case "evaluator": {
+        const patch: ApiBody<operations["Gateway_UpdateEvaluator"]> = {
+          displayName: fields["displayName"],
+          description: fields["description"],
+        };
+        if (hasValues(patch)) await this.api.patch(`/evaluators/${encoded}`, { body: patch });
+        return;
+      }
+      case "user": {
+        const patch: ApiBody<operations["Gateway_UpdateUser"]> = {
+          displayName: fields["displayName"],
+          role: fields["role"] || undefined,
+          permissionPreset: fields["permissionPreset"],
+        };
+        if (hasValues(patch)) await this.api.patch(`/users/${encoded}`, { body: patch });
+        return;
+      }
       case "quota": {
         if (fields["value"] === undefined) return;
         const value = Number.parseInt(fields["value"], 10);
@@ -1905,22 +1498,10 @@ export class FireworksClient implements PluginClient {
           throw new Error("Fireworks plugin: the enforced limit must be a non-negative integer");
         }
         // int64 travels as a JSON string.
-        patch["value"] = String(value);
-        path = `/quotas/${encoded}`;
-        break;
+        await this.api.patch(`/quotas/${encoded}`, { body: { value: String(value) } });
+        return;
       }
     }
-
-    if (
-      Object.keys(patch).length === 0 ||
-      (typeId === "router" && Object.keys(patch).length === 1)
-    ) {
-      return;
-    }
-    await this.request<unknown>(this.accountPath(path), {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    });
   }
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
@@ -1928,40 +1509,28 @@ export class FireworksClient implements PluginClient {
       const externalId = externalIdOf(resourceId);
       if (!externalId)
         throw new Error(`Fireworks plugin: cannot parse resource id "${resourceId}"`);
-      const encoded = encodeURIComponent(externalId);
+      const encoded = pathEncode(externalId);
       switch (typeId) {
         case "deployment":
-          await this.request<unknown>(this.accountPath(`/deployments/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/deployments/${encoded}`);
           return;
         case "model":
-          await this.request<unknown>(this.accountPath(`/models/${encoded}`), { method: "DELETE" });
+          await this.api.delete(`/models/${encoded}`);
           return;
         case "dataset":
-          await this.request<unknown>(this.accountPath(`/datasets/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/datasets/${encoded}`);
           return;
         case "deployed-model":
-          await this.request<unknown>(this.accountPath(`/deployedModels/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/deployedModels/${encoded}`);
           return;
         case "secret":
-          await this.request<unknown>(this.accountPath(`/secrets/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/secrets/${encoded}`);
           return;
         case "batch-inference-job":
-          await this.request<unknown>(this.accountPath(`/batchInferenceJobs/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/batchInferenceJobs/${encoded}`);
           return;
         case "supervised-fine-tuning-job":
-          await this.request<unknown>(this.accountPath(`/supervisedFineTuningJobs/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/supervisedFineTuningJobs/${encoded}`);
           return;
         case "router": {
           const current = await runPluginEffect(
@@ -1972,30 +1541,20 @@ export class FireworksClient implements PluginClient {
               "Fireworks plugin: this router was generated by Fireworks for a deployment and is removed with it",
             );
           }
-          await this.request<unknown>(this.accountPath(`/routers/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/routers/${encoded}`);
           return;
         }
         case "dpo-job":
-          await this.request<unknown>(this.accountPath(`/dpoJobs/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/dpoJobs/${encoded}`);
           return;
         case "reinforcement-fine-tuning-job":
-          await this.request<unknown>(this.accountPath(`/reinforcementFineTuningJobs/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/reinforcementFineTuningJobs/${encoded}`);
           return;
         case "evaluator":
-          await this.request<unknown>(this.accountPath(`/evaluators/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/evaluators/${encoded}`);
           return;
         case "evaluation-job":
-          await this.request<unknown>(this.accountPath(`/evaluationJobs/${encoded}`), {
-            method: "DELETE",
-          });
+          await this.api.delete(`/evaluationJobs/${encoded}`);
           return;
         case "api-key": {
           // Deletion is a POST custom verb keyed on `keyId`, not an HTTP DELETE.
@@ -2003,10 +1562,9 @@ export class FireworksClient implements PluginClient {
             this.getResource(typeId, resourceId, _accountId),
           ).catch((): ResourceInstance | null => null);
           const userId = String(resource?.fields["userId"] ?? "-");
-          await this.request<unknown>(
-            this.accountPath(`/users/${encodeURIComponent(userId)}/apiKeys:delete`),
-            { method: "POST", body: JSON.stringify({ keyId: externalId }) },
-          );
+          await this.api.post(`/users/${pathEncode(userId)}/apiKeys:delete`, {
+            body: { keyId: externalId },
+          });
           return;
         }
         default:
@@ -2028,37 +1586,27 @@ export class FireworksClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const encoded = encodeURIComponent(externalIdOf(resourceId));
+      const encoded = pathEncode(externalIdOf(resourceId));
       if (
         typeId === "supervised-fine-tuning-job" &&
         (actionId === "cancel" || actionId === "resume")
       ) {
-        await this.request<unknown>(
-          this.accountPath(`/supervisedFineTuningJobs/${encoded}:${actionId}`),
-          { method: "POST" },
-        );
+        await this.api.post(`/supervisedFineTuningJobs/${encoded}:${actionId}`);
         return;
       }
       if (
         typeId === "reinforcement-fine-tuning-job" &&
         (actionId === "cancel" || actionId === "resume")
       ) {
-        await this.request<unknown>(
-          this.accountPath(`/reinforcementFineTuningJobs/${encoded}:${actionId}`),
-          { method: "POST" },
-        );
+        await this.api.post(`/reinforcementFineTuningJobs/${encoded}:${actionId}`);
         return;
       }
       if (typeId === "dpo-job" && actionId === "resume") {
-        await this.request<unknown>(this.accountPath(`/dpoJobs/${encoded}:resume`), {
-          method: "POST",
-        });
+        await this.api.post(`/dpoJobs/${encoded}:resume`);
         return;
       }
       if (typeId === "deployment" && actionId === "undelete") {
-        await this.request<unknown>(this.accountPath(`/deployments/${encoded}:undelete`), {
-          method: "POST",
-        });
+        await this.api.post(`/deployments/${encoded}:undelete`);
         return;
       }
       throw new Error(`Fireworks plugin: unknown action "${actionId}" for type "${typeId}"`);
@@ -2112,19 +1660,17 @@ export class FireworksClient implements PluginClient {
       let pageToken: string | undefined;
 
       for (let page = 0; page < MAX_PAGES; page += 1) {
-        const body = {
-          startTime: `${windowStart}T00:00:00Z`,
-          endTime: `${windowEndExclusive}T00:00:00Z`,
-          scope,
-          groupBy: ["DAY", "MODEL"],
-          pageSize: 1000,
-          ...(pageToken ? { pageToken } : {}),
-        };
-        let data: UsageCostsResponse;
+        let data: FireworksResponse<"Gateway_QueryUsageCosts">;
         try {
-          data = await this.request<UsageCostsResponse>(this.accountPath("/usageCosts:query"), {
-            method: "POST",
-            body: JSON.stringify(body),
+          data = await this.api.post("/usageCosts:query", {
+            body: {
+              startTime: `${windowStart}T00:00:00Z`,
+              endTime: `${windowEndExclusive}T00:00:00Z`,
+              scope,
+              groupBy: ["DAY", "MODEL"],
+              pageSize: 1000,
+              pageToken: pageToken || undefined,
+            },
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -2189,13 +1735,17 @@ export class FireworksClient implements PluginClient {
 
       const usageType = resourceTypeId === "deployment" ? "DEDICATED_DEPLOYMENT" : "SERVERLESS";
       const groupBy = resourceTypeId === "deployment" ? "deployment_name" : "model_name";
-      const query =
-        `?startTime=${clampedStart}T00:00:00Z&endTime=${addDays(end, 1)}T00:00:00Z` +
-        `&usageType=${usageType}&groupBy=${groupBy}`;
 
-      const data = await this.request<BillingUsageResponse>(
-        this.accountPath(`/billingUsage${query}`),
-      ).catch((): BillingUsageResponse => ({}));
+      const data = await this.usageApi
+        .get("/billingUsage", {
+          query: {
+            startTime: `${clampedStart}T00:00:00Z`,
+            endTime: `${addDays(end, 1)}T00:00:00Z`,
+            usageType,
+            groupBy: [groupBy],
+          },
+        })
+        .catch((): FireworksResponse<"Gateway_GetAccountUsage"> => ({}));
 
       if (resourceTypeId === "deployment") {
         const points = (data.dedicatedCosts ?? [])
@@ -2264,23 +1814,19 @@ export class FireworksClient implements PluginClient {
     params: LogsFetchParams,
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       const tail = params.tailLines && params.tailLines > 0 ? params.tailLines : 500;
       let lines: string[];
       switch (typeId) {
         case "evaluation-job": {
-          const res = await this.request<{ executionLogSignedUri?: string }>(
-            this.accountPath(`/evaluationJobs/${id}:getExecutionLogEndpoint`),
-          );
+          const res = await this.api.get(`/evaluationJobs/${id}:getExecutionLogEndpoint`);
           lines = res.executionLogSignedUri
             ? splitLines(await this.fetchText(res.executionLogSignedUri))
             : ["No execution log yet: the job has not started writing one."];
           break;
         }
         case "evaluator": {
-          const res = await this.request<{ buildLogSignedUri?: string }>(
-            this.accountPath(`/evaluators/${id}:getBuildLogEndpoint`),
-          );
+          const res = await this.api.get(`/evaluators/${id}:getBuildLogEndpoint`);
           lines = res.buildLogSignedUri
             ? splitLines(await this.fetchText(res.buildLogSignedUri))
             : ["No build log yet."];
@@ -2324,17 +1870,20 @@ export class FireworksClient implements PluginClient {
     let pageToken: string | undefined;
     try {
       for (let page = 0; page < 10 && entries.length < want; page += 1) {
-        const qs = new URLSearchParams({ pageSize: "200", filter });
-        if (pageToken) qs.set("pageToken", pageToken);
-        const data = await this.request<{ auditLogs?: AuditLogEntry[]; nextPageToken?: string }>(
-          this.accountPath(`/auditLogs?${qs.toString()}`),
-        );
+        const data = await this.auditApi.get("/auditLogs", {
+          query: {
+            pageSize: 200,
+            filter,
+            // `String`: an unexpected token still goes as one value, not a key per item.
+            ...(pageToken ? { pageToken: String(pageToken) } : {}),
+          },
+        });
         entries.push(...(data.auditLogs ?? []));
         if (!data.nextPageToken) break;
         pageToken = data.nextPageToken;
       }
     } catch (err) {
-      if (/API error 403\b/.test(String((err as Error).message))) {
+      if (/API error 403\b/.test(err instanceof Error ? err.message : String(err))) {
         return [
           "Fireworks refused the audit log request. Audit logs are only available on Enterprise accounts.",
         ];
@@ -2360,7 +1909,8 @@ export class FireworksClient implements PluginClient {
       const deploymentId = resource.externalId ?? externalIdOf(resource.id);
       let text: string;
       try {
-        text = await this.fetchText(this.accountPath("/metrics"));
+        // Not in the document: Prometheus text, from a route only the docs describe.
+        text = await this.fetchText(`${HOST}/v1/accounts/${pathEncode(this.accountId)}/metrics`);
       } catch {
         return resource;
       }
@@ -2743,7 +2293,7 @@ export class FireworksClient implements PluginClient {
     if (!raw) return [];
     let live: LiveDeploymentMetrics;
     try {
-      live = JSON.parse(raw) as LiveDeploymentMetrics;
+      live = JSON.parse(raw);
     } catch {
       return [];
     }
@@ -3569,7 +3119,7 @@ export class FireworksClient implements PluginClient {
     const mapped = mapJobState(String(fields["state"] ?? ""));
     let metrics: Array<{ key: string; value: string }> = [];
     try {
-      const parsed = JSON.parse(String(fields["metrics"] ?? "{}")) as Record<string, unknown>;
+      const parsed: Record<string, number | object> = JSON.parse(String(fields["metrics"] ?? "{}"));
       metrics = Object.entries(parsed).map(([key, value]) => ({
         key,
         value: typeof value === "object" ? JSON.stringify(value) : String(value),
@@ -3683,8 +3233,15 @@ function maxDate(a: string, b: string): string {
 }
 
 /** Strategy oneof for router create/update bodies. */
-function strategyBody(strategy: string | undefined): Record<string, Record<string, never>> {
+function strategyBody(
+  strategy: string | undefined,
+): Pick<ApiBody<operations["Gateway_UpdateRouter"]>, "evenLoad" | "weightedRandom"> {
   return strategy === "evenLoad" ? { evenLoad: {} } : { weightedRandom: {} };
+}
+
+/** Whether a patch has anything to send: `undefined` fields never reach the wire. */
+function hasValues(patch: object): boolean {
+  return Object.values(patch).some((value) => value !== undefined);
 }
 
 /** `policy-picker` submits a JSON array; tolerate a comma list as well. */

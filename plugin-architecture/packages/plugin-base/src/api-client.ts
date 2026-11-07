@@ -1,7 +1,7 @@
 /**
- * A typed client over a provider's OpenAPI document. `paths` comes from
- * `scripts/generate-plugin-api-types.mjs`, and everything else is worked out from
- * it in this one file, so a plugin gets checked paths, query strings, bodies and
+ * A typed client over a provider's OpenAPI document. `paths` comes from plugingen
+ * (the plugin's `plugingen.json`), and everything else is worked out from it in
+ * this one file, so a plugin gets checked paths, query strings, bodies and
  * responses without a cast at any call site:
  *
  *   const api = createApiClient<paths>({ vendor: "Hetzner", baseUrl, headers });
@@ -18,6 +18,8 @@
  *
  *   const links = withLinkPagination(api, { next: nextLinkHeader(), maxPages: 25, foreignLinks: "follow" });
  *   const everyApp = await links.getAll(`/apps`, null);
+ *
+ *   await api.post(`/services`, { form: { FriendlyName: name, Sticky: true } });
  *
  *   const { headers } = await api.getResponse(`/servers`, { query: { per_page: 1 } });
  *   const { body: log } = await api.getText(`/jobs/${pathEncode(id)}/trace`);
@@ -63,17 +65,27 @@ type PathsFor<P, M extends HttpMethod> = {
     keyof P[K]];
 };
 
-type Json<Content> = Content extends { "application/json": infer Body } ? Body : never;
+/** A media type that is JSON whatever it calls itself, such as `application/vnd.api+json`. */
+type JsonMedia =
+  | "text/json"
+  | `application/json;${string}`
+  | `application/${string}+json`
+  | `application/${string}+json;${string}`;
 
-type Operation = {
-  parameters?: { query?: object };
-  requestBody?: { content: object };
-  responses?: object;
-};
+/** The JSON form of a content map: `application/json` where there is one, or any other JSON type. */
+type Json<Content> = Content extends { "application/json": infer Body }
+  ? Body
+  : { [K in keyof Content]: K extends JsonMedia ? Content[K] : never }[keyof Content];
+
+type Form<Content> = Content extends { "application/x-www-form-urlencoded": infer Body }
+  ? Body
+  : never;
 
 type QueryOf<Op> = Op extends { parameters: { query?: infer Q } } ? NonNullable<Q> : never;
 
 type BodyOf<Op> = Op extends { requestBody?: { content: infer C } } ? Json<C> : never;
+
+type FormOf<Op> = Op extends { requestBody?: { content: infer C } } ? Form<C> : never;
 
 /**
  * A request body as a call site may write it. `JSON.stringify` drops `undefined`,
@@ -83,13 +95,16 @@ type BodyOf<Op> = Op extends { requestBody?: { content: infer C } } ? Json<C> : 
  */
 type Writable<Body> = { [K in keyof Body]: Body[K] | undefined };
 
-/** The body an operation takes, as a call site writes it. */
+/** The JSON body an operation takes, as a call site writes it. */
 export type ApiBody<Op> = Writable<BodyOf<Op>>;
+
+/** The form body an operation takes, as a call site writes it. */
+export type ApiForm<Op> = Writable<FormOf<Op>>;
 
 /** The JSON body of an operation's 2xx responses; `undefined` when there is none. */
 export type ApiResponse<Op> = Op extends { responses: infer R }
   ? {
-      [Code in keyof R]: Code extends 200 | 201 | 202 | 203 | 204
+      [Code in keyof R]: `${Code & (string | number)}` extends `2${string}`
         ? R[Code] extends { content: infer C }
           ? Json<C>
           : undefined
@@ -104,14 +119,37 @@ type QueryOption<Op> = [QueryOf<Op>] extends [never]
     ? { query: QueryOf<Op> }
     : { query?: QueryOf<Op> };
 
-/** `body` is only compulsory when the document requires one. */
+/**
+ * The encoding comes from the document: `body` where it documents JSON, `form` where
+ * it documents `application/x-www-form-urlencoded`, either where it documents both.
+ * Each is only compulsory when the document requires a body. A required body in
+ * anything else (multipart, octet-stream, YAML) cannot be written, so the call does
+ * not compile rather than send nothing; those go through `restRequest`.
+ */
 type BodyOption<Op> = [BodyOf<Op>] extends [never]
-  ? object
-  : Op extends { requestBody: object }
-    ? { body: ApiBody<Op> }
-    : { body?: ApiBody<Op> };
+  ? [FormOf<Op>] extends [never]
+    ? Op extends { requestBody: object }
+      ? { body: never }
+      : object
+    : Op extends { requestBody: object }
+      ? { form: ApiForm<Op> }
+      : { form?: ApiForm<Op> }
+  : [FormOf<Op>] extends [never]
+    ? Op extends { requestBody: object }
+      ? { body: ApiBody<Op> }
+      : { body?: ApiBody<Op> }
+    : Op extends { requestBody: object }
+      ? { body: ApiBody<Op>; form?: never } | { form: ApiForm<Op>; body?: never }
+      : { body?: ApiBody<Op>; form?: never } | { form?: ApiForm<Op>; body?: never };
 
-type Options<Op> = QueryOption<Op> & BodyOption<Op> & { signal?: AbortSignal };
+/** What any call can add: a version in `Accept`, an `If-Match`, a way to stop waiting. */
+interface CallOptions {
+  signal?: AbortSignal;
+  /** Merged over the client's, and can replace them. */
+  headers?: Record<string, string>;
+}
+
+type Options<Op> = QueryOption<Op> & BodyOption<Op> & CallOptions;
 
 type Args<Op> = object extends Options<Op> ? [options?: Options<Op>] : [options: Options<Op>];
 
@@ -152,7 +190,13 @@ export interface ApiFailure {
   target: string;
   url: string;
   body: string;
+  /** The next link as the provider wrote it, when following one is what failed. */
+  link?: string;
 }
+
+/** A query or form value: nested objects go as `a[b]=c`, arrays as `a=x&a=y`. */
+export type ParamValue =
+  string | number | boolean | null | undefined | ParamValue[] | { [key: string]: ParamValue };
 
 export interface ApiClientOptions {
   /** Vendor name for error messages, e.g. `"Hetzner"`. */
@@ -174,6 +218,18 @@ export interface ApiClientOptions {
    * a provider that wants `%20`, or to keep an old client's requests identical.
    */
   encodeQuery?: ((value: string) => string) | undefined;
+  /**
+   * Write the call's query yourself, without the leading `?`, for a dialect the
+   * default does not speak, such as indexed arrays (`a[0]=x`). `scopeQuery` still
+   * follows it. `encodeQuery` is enough where only the escaping differs.
+   */
+  serializeQuery?: ((query: Record<string, ParamValue>) => string) | undefined;
+  /**
+   * Write a `form` body yourself, for a dialect the default does not speak. The
+   * default is what {@link ParamValue} says, always form-encoded, whatever
+   * `encodeQuery` does to the query.
+   */
+  serializeForm?: ((form: Record<string, ParamValue>) => string) | undefined;
   /**
    * Build what a non-2xx answer throws, for a plugin whose callers branch on the
    * status. The default is `Error("<vendor> API error <status> for <target>: <body>")`.
@@ -207,13 +263,18 @@ function queryParts(query: object | undefined, encodeText: (value: string) => st
   if (!query) return [];
   const encode = (value: unknown) => encodeText(String(value));
   const parts: string[] = [];
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === null) continue;
-    const name = encode(key);
-    if (!Array.isArray(value)) parts.push(`${name}=${encode(value)}`);
-    else if (isCommaSeparated(value)) parts.push(`${name}=${value.map(encode).join(",")}`);
-    else for (const item of value) parts.push(`${name}=${encode(item)}`);
-  }
+  const add = (name: string, value: unknown) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      if (isCommaSeparated(value)) parts.push(`${encode(name)}=${value.map(encode).join(",")}`);
+      else for (const item of value) add(name, item);
+    } else if (typeof value === "object") {
+      for (const [key, item] of Object.entries(value)) add(`${name}[${key}]`, item);
+    } else {
+      parts.push(`${encode(name)}=${encode(value)}`);
+    }
+  };
+  for (const [key, value] of Object.entries(query)) add(key, value);
   return parts;
 }
 
@@ -221,20 +282,37 @@ function queryParts(query: object | undefined, encodeText: (value: string) => st
 const withQuery = (target: string, parts: string[]) =>
   parts.length === 0 ? target : `${target}${target.includes("?") ? "&" : "?"}${parts.join("&")}`;
 
-interface RequestOptions {
-  query?: object;
+interface RequestOptions extends CallOptions {
+  query?: Record<string, ParamValue>;
   body?: unknown;
-  signal?: AbortSignal;
+  form?: Record<string, ParamValue>;
+  /** `path` is a next link to send as it stands, and this is how the provider wrote it. */
+  link?: string;
 }
 
-/** A next link, which is sent exactly as the provider wrote it. */
+const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
+
 const isAbsoluteUrl = (value: string) => /^https?:\/\//i.test(value);
+
+function parseUrl(value: string): URL | undefined {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+}
 
 /** Build a client for one provider's document. */
 export function createApiClient<P>(options: ApiClientOptions): ApiClient<P> {
   const encode = options.encodeQuery ?? encodeForm;
   const scope = queryParts(options.scopeQuery, encode);
   const { httpError, contentType, emptyBodyIsUndefined, http, caCert, vendor, baseUrl } = options;
+  const { serializeQuery, serializeForm } = options;
+  const ownQuery = (query: Record<string, ParamValue> | undefined): string[] => {
+    if (!query || !serializeQuery) return queryParts(query, encode);
+    const written = serializeQuery(query);
+    return written ? [written] : [];
+  };
   const send = async (
     method: HttpMethod,
     path: string,
@@ -243,13 +321,18 @@ export function createApiClient<P>(options: ApiClientOptions): ApiClient<P> {
   ): Promise<ApiAnswer<unknown>> => {
     const headers =
       typeof options.headers === "function" ? await options.headers() : options.headers;
-    const followed = isAbsoluteUrl(path);
-    const link = followed ? new URL(path) : undefined;
+    const followed = request.link !== undefined;
+    const link = followed ? parseUrl(path) : undefined;
     const target = link
       ? `${link.pathname}${link.search}`
-      : withQuery(path, queryParts(request.query, encode));
+      : followed
+        ? path
+        : withQuery(path, ownQuery(request.query));
     const url = followed ? path : `${baseUrl}${withQuery(target, scope)}`;
     const verb = method.toUpperCase();
+    const encodedForm = request.form
+      ? (serializeForm?.(request.form) ?? queryParts(request.form, encodeForm).join("&"))
+      : undefined;
     const answer = await restRequest<unknown>({
       vendor,
       url,
@@ -258,18 +341,32 @@ export function createApiClient<P>(options: ApiClientOptions): ApiClient<P> {
       headers,
       init: {
         method: verb,
-        ...(request.body !== undefined ? { body: JSON.stringify(request.body) } : {}),
+        ...(encodedForm !== undefined
+          ? { body: encodedForm }
+          : request.body !== undefined
+            ? { body: JSON.stringify(request.body) }
+            : {}),
         ...(request.signal ? { signal: request.signal } : {}),
+        ...(request.headers ? { headers: request.headers } : {}),
       },
       ...(http ? { http } : {}),
       ...(caCert ? { caCert } : {}),
       ...(contentType ? { contentType } : {}),
+      ...(encodedForm !== undefined ? { bodyType: FORM_CONTENT_TYPE } : {}),
       ...(emptyBodyIsUndefined ? { emptyBodyIsUndefined } : {}),
       ...(responseAs ? { responseAs } : {}),
       ...(httpError
         ? {
             httpError: ({ status, body }: { status: number; body: string }) =>
-              httpError({ status, method: verb, path: link?.pathname ?? path, target, url, body }),
+              httpError({
+                status,
+                method: verb,
+                path: link?.pathname ?? path,
+                target,
+                url,
+                body,
+                ...(request.link !== undefined ? { link: request.link } : {}),
+              }),
           }
         : {}),
     });
@@ -322,9 +419,22 @@ type ListItem<Response, Key> = Response extends readonly (infer Item)[]
 /** One item of an operation's list, for naming what a mapper takes. */
 export type ApiListItem<Op, Key extends ListKey<ApiResponse<Op>>> = ListItem<ApiResponse<Op>, Key>;
 
-type ListOptions<Op, Paging extends string> = ([QueryOf<Op>] extends [never]
+/**
+ * What a list call may still put in `query` once the helper owns the paging
+ * parameters. With none left there is no `query` at all: `Omit` would leave `{}`,
+ * which accepts anything. A parameter the document requires stays compulsory.
+ */
+type ListQuery<Op, Paging extends string> = [QueryOf<Op>] extends [never]
   ? object
-  : { query?: Omit<QueryOf<Op>, Paging> }) & { signal?: AbortSignal };
+  : [keyof Omit<QueryOf<Op>, Paging>] extends [never]
+    ? { query?: never }
+    : object extends Omit<QueryOf<Op>, Paging>
+      ? { query?: Omit<QueryOf<Op>, Paging> }
+      : { query: Omit<QueryOf<Op>, Paging> };
+
+type ListOptions<Op, Paging extends string> = ListQuery<Op, Paging> & CallOptions;
+
+type ListArgs<Options> = object extends Options ? [options?: Options] : [options: Options];
 
 type GetAll<P, Paging extends string> = <
   const Path extends keyof PathsFor<P, "get"> & string,
@@ -332,7 +442,7 @@ type GetAll<P, Paging extends string> = <
 >(
   path: Path,
   key: Key,
-  options?: ListOptions<PathsFor<P, "get">[Path], Paging>,
+  ...args: ListArgs<ListOptions<PathsFor<P, "get">[Path], Paging>>
 ) => Promise<ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]>;
 
 /** A client that can also walk a page-numbered list to its end. */
@@ -349,6 +459,8 @@ export interface PageNumberPagination<PageParam extends string, SizeParam extend
   pageSize: number;
   /** The total a page reports, where the provider sends one; saves the last request. */
   total?: (page: Page) => number | null | undefined;
+  /** Send the paging parameters before the caller's query, rather than after it. */
+  pagingFirst?: boolean;
 }
 
 /**
@@ -365,7 +477,7 @@ export function withPagination<
   client: ApiClient<P>,
   pagination: PageNumberPagination<PageParam, SizeParam, Page>,
 ): PaginatedApiClient<P, PageParam | SizeParam> {
-  const { pageParam, sizeParam, pageSize, total } = pagination;
+  const { pageParam, sizeParam, pageSize, total, pagingFirst } = pagination;
   // As in `createApiClient`: `getAll` is what the generic surface promises, and its
   // implementation walks pages of any path, which that surface cannot express.
   const get = client.get as unknown as (
@@ -375,7 +487,8 @@ export function withPagination<
   const getAll = async (path: string, key: string | null, request: RequestOptions = {}) => {
     const items: unknown[] = [];
     for (let page = 1; ; page++) {
-      const query = { ...request.query, [pageParam]: page, [sizeParam]: pageSize };
+      const paging = { [pageParam]: page, [sizeParam]: pageSize };
+      const query = pagingFirst ? { ...paging, ...request.query } : { ...request.query, ...paging };
       const body = await get(path, { ...request, query });
       const batch = key === null ? body : body?.[key];
       if (!Array.isArray(batch) || batch.length === 0) return items;
@@ -443,6 +556,8 @@ export interface CursorPagination<
   /** The query parameter holding the page size, for a provider that takes one. */
   sizeParam?: SizeParam;
   pageSize?: number;
+  /** Send the paging parameters before the caller's query, rather than after it. */
+  pagingFirst?: boolean;
   /** A field that must be truthy for another page to be asked for. */
   hasMore?: HasMore;
   /** Pull the cursor out of what `next` found, such as a `page[after]` in a link. */
@@ -532,12 +647,14 @@ type CursorGetAll<P, D extends CursorDialect> = <
 >(
   path: Path,
   key: Key,
-  options?: ListOptions<PathsFor<P, "get">[Path], D["cursorParam"] | D["sizeParam"]> & {
-    pageSize?: number;
-    maxPages?: number;
-    /** End after a page this says is enough, such as one reaching past a time window. */
-    stopWhen?: (batch: ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]) => boolean;
-  },
+  ...args: ListArgs<
+    ListOptions<PathsFor<P, "get">[Path], D["cursorParam"] | D["sizeParam"]> & {
+      pageSize?: number;
+      maxPages?: number;
+      /** End after a page this says is enough, such as one reaching past a time window. */
+      stopWhen?: (batch: ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]) => boolean;
+    }
+  >
 ) => Promise<ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]>;
 
 /** A client that can also walk a cursor-paged list to its end. */
@@ -608,38 +725,37 @@ export function withCursorPagination<
 type WalkConfig = Omit<CursorPagination, "cursorParam"> & {
   cursorParam?: string;
   foreignLinks?: ForeignLinks;
+  resolveLink?: ResolveLink;
 };
 
 function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
   const { cursorParam, sizeParam, next, hasMore, readCursor, onTruncated, foreignLinks } = config;
+  const { resolveLink, pagingFirst } = config;
   // As in `withPagination`: the implementation walks any path.
   const getResponse = client.getResponse as unknown as (
     path: string,
     request: RequestOptions,
   ) => Promise<ApiAnswer<Record<string, unknown>>>;
   return async (path: string, key: string | null, request: CursorRequest = {}) => {
-    const { pageSize = config.pageSize, maxPages = config.maxPages, query, signal } = request;
+    const { pageSize = config.pageSize, maxPages = config.maxPages, query } = request;
+    const { signal, headers: callHeaders } = request;
     const items: unknown[] = [];
     let cursor = config.firstCursor === undefined ? undefined : String(config.firstCursor);
+    let written: string | undefined;
     let origin: string | undefined;
     for (let page = 0; page < maxPages; page++) {
       // A link already holds every parameter the list needs.
       const link = cursorParam === undefined ? cursor : undefined;
+      const paging = {
+        ...(sizeParam !== undefined && pageSize !== undefined ? { [sizeParam]: pageSize } : {}),
+        ...(cursorParam !== undefined && cursor !== undefined ? { [cursorParam]: cursor } : {}),
+      };
       const { body, headers, url } = await getResponse(link ?? path, {
         ...(link === undefined
-          ? {
-              query: {
-                ...query,
-                ...(sizeParam !== undefined && pageSize !== undefined
-                  ? { [sizeParam]: pageSize }
-                  : {}),
-                ...(cursorParam !== undefined && cursor !== undefined
-                  ? { [cursorParam]: cursor }
-                  : {}),
-              },
-            }
-          : {}),
+          ? { query: pagingFirst ? { ...paging, ...query } : { ...query, ...paging } }
+          : { link: written ?? link }),
         ...(signal ? { signal } : {}),
+        ...(callHeaders ? { headers: callHeaders } : {}),
       });
       origin ??= new URL(url).origin;
       if (config.emptyBodyEndsList && (body === null || body === undefined)) return items;
@@ -660,22 +776,30 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
             ? readField(body, next)
             : readField(list[list.length - 1], next.lastItem);
       if (!found) return items;
-      const following = readCursor ? readCursor(String(found)) : String(found);
+      const value = String(found);
+      const following =
+        cursorParam !== undefined
+          ? readCursor
+            ? readCursor(value)
+            : value
+          : resolveLink
+            ? // What the document calls a string, unvalidated like everything else here.
+              resolveLink(found as string)
+            : isAbsoluteUrl(value)
+              ? value
+              : new URL(value, url).href;
       if (!following) return items;
-      const resolved =
-        cursorParam !== undefined || isAbsoluteUrl(following)
-          ? following
-          : new URL(following, url).href;
-      if (config.stopOnRepeatedCursor && resolved === cursor) return items;
+      if (config.stopOnRepeatedCursor && following === cursor) return items;
       if (cursorParam === undefined && foreignLinks === "refuse") {
-        const target = new URL(resolved).origin;
+        const target = new URL(following).origin;
         if (target !== origin) {
           throw new Error(
             `Refusing to follow the next page of ${path} from ${origin} to ${target}`,
           );
         }
       }
-      cursor = resolved;
+      written = value;
+      cursor = following;
     }
     onTruncated?.({ path, items: items.length, maxPages });
     return items;
@@ -684,6 +808,9 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
 
 /** What to do about a next link to another host, which would carry the credentials there. */
 export type ForeignLinks = "follow" | "refuse";
+
+/** Turn a link as the provider wrote it into the URL to ask for. Empty or null ends the list. */
+export type ResolveLink = (link: string) => string | null | undefined;
 
 export interface LinkPagination<
   SizeParam extends string = string,
@@ -703,6 +830,12 @@ export interface LinkPagination<
    * rather than return part of a list, and a migrator has to say which it wants.
    */
   foreignLinks: ForeignLinks;
+  /**
+   * Replace how a link is read. By default an absolute link is sent as written and
+   * any other resolves against the page it came from, as a browser would, so `//x/y`
+   * is another host. An old loop that wrote `${host}${link}` keeps its URLs with this.
+   */
+  resolveLink?: ResolveLink;
 }
 
 /**

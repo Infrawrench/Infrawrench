@@ -20,12 +20,14 @@ import type {
   PreflightDeclaration,
   PreflightResult,
 } from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
 import type { ConfluentContext } from "./api.js";
-import { TELEMETRY_API, ccFetch, statusOf } from "./api.js";
+import { statusOf } from "./api.js";
+import type { CcOrganization } from "./types.js";
 
 interface CapabilityProbe {
   capability: PreflightCapability;
-  run: (ctx: ConfluentContext) => Promise<unknown>;
+  run: (ctx: ConfluentContext) => Promise<object | undefined>;
   /** The role binding the template asks for, and at which scope. */
   role: string;
 }
@@ -46,7 +48,7 @@ const PROBES: CapabilityProbe[] = [
       requiredPermissions: [perm("Operator", "Operator (organization)")],
     },
     role: "Operator",
-    run: (ctx) => ccFetch(ctx, "/org/v2/environments", { query: { page_size: 1 } }),
+    run: (ctx) => ctx.api.get("/org/v2/environments", { query: { page_size: 1 } }),
   },
   {
     capability: {
@@ -58,7 +60,7 @@ const PROBES: CapabilityProbe[] = [
     },
     role: "BillingAdmin",
     run: (ctx) =>
-      ccFetch(ctx, "/billing/v1/costs", {
+      ctx.api.get("/billing/v1/costs", {
         query: { start_date: day(-5), end_date: day(-4), page_size: 1 },
       }),
   },
@@ -72,15 +74,13 @@ const PROBES: CapabilityProbe[] = [
     },
     role: "MetricsViewer",
     run: (ctx) =>
-      ccFetch(ctx, "/v2/metrics/cloud/query", {
-        base: TELEMETRY_API,
-        method: "POST",
-        body: JSON.stringify({
+      ctx.telemetry.post(`/v2/metrics/${pathEncode("cloud")}/query`, {
+        body: {
           aggregations: [{ metric: "io.confluent.kafka.server/received_bytes" }],
           filter: { op: "EQ", field: "resource.kafka.id", value: "lkc-preflight" },
           granularity: "PT1H",
           intervals: ["now-2h|h/now|h"],
-        }),
+        },
       }),
   },
   {
@@ -91,7 +91,7 @@ const PROBES: CapabilityProbe[] = [
       requiredPermissions: [perm("AccountAdmin", "AccountAdmin (organization)")],
     },
     role: "AccountAdmin",
-    run: (ctx) => ccFetch(ctx, "/iam/v2/service-accounts", { query: { page_size: 1 } }),
+    run: (ctx) => ctx.api.get("/iam/v2/service-accounts", { query: { page_size: 1 } }),
   },
   {
     capability: {
@@ -101,7 +101,7 @@ const PROBES: CapabilityProbe[] = [
       requiredPermissions: [perm("OrganizationAdmin", "OrganizationAdmin (organization)")],
     },
     role: "OrganizationAdmin",
-    run: (ctx) => ccFetch(ctx, "/byok/v1/keys", { query: { page_size: 1 } }),
+    run: (ctx) => ctx.api.get("/byok/v1/keys", { query: { page_size: 1 } }),
   },
 ];
 
@@ -119,11 +119,8 @@ export async function verifyConfluentCredentials(ctx: ConfluentContext): Promise
   // The key alone: the organization list answers for any valid Cloud key.
   let identity: string | undefined;
   try {
-    const orgs = await ccFetch<{ data?: Array<{ display_name?: string; id?: string }> }>(
-      ctx,
-      "/org/v2/organizations",
-    );
-    const org = orgs?.data?.[0];
+    const orgs = await ctx.api.get("/org/v2/organizations");
+    const org: CcOrganization | undefined = orgs?.data?.[0];
     identity = org?.display_name || org?.id || undefined;
   } catch (err) {
     if (statusOf(err) === 401) {

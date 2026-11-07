@@ -19,46 +19,29 @@
  * `/enterprises/{enterprise}/settings/billing` (see `billingBase`).
  */
 
-import type { GitHubContext } from "./api.js";
-import { billingBase, ghFetch } from "./api.js";
+import type { ApiBody, ApiResponse } from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { operations as DotcomOps } from "./api-types.dotcom.gen.js";
+import type { operations as GhecOps } from "./api-types.ghec.gen.js";
+import type { GitHubContext, Sparse } from "./api.js";
+import { billingBase, byOwner, ghUnlisted, ghecApi } from "./api.js";
 
-export interface UsageItem {
-  date?: string;
-  product?: string;
-  sku?: string;
-  quantity?: number;
-  unitType?: string;
-  pricePerUnit?: number;
-  grossAmount?: number;
-  discountAmount?: number;
-  netAmount?: number;
-  organizationName?: string;
-  repositoryName?: string;
-}
+type Row<Answer> = Answer extends { usageItems?: readonly (infer Item)[] } ? Item : never;
 
-export interface SummaryItem {
-  product?: string;
-  sku?: string;
-  model?: string;
-  unitType?: string;
-  pricePerUnit?: number;
-  grossQuantity?: number;
-  grossAmount?: number;
-  discountQuantity?: number;
-  discountAmount?: number;
-  netQuantity?: number;
-  netAmount?: number;
-}
+export type UsageItem = Sparse<
+  | Row<ApiResponse<DotcomOps["billing/get-github-billing-usage-report-org"]>>
+  | Row<ApiResponse<GhecOps["billing/get-github-billing-usage-report-ghe"]>>
+>;
 
-export interface CostCenter {
-  id?: string;
-  name?: string;
-  state?: string;
-  azure_subscription?: string | null;
-  ai_credit_pool_enabled?: boolean;
-  ai_credit_pool_state?: { target_amount?: number | null; current_amount?: number | null };
-  resources?: Array<{ type?: string; name?: string }>;
-}
+/** The bill's summary rows, and the per-model rows of premium requests and AI credits. */
+export type SummaryItem = Sparse<
+  | Row<ApiResponse<DotcomOps["billing/get-github-billing-usage-summary-report-org"]>>
+  | Row<ApiResponse<GhecOps["billing/get-github-billing-usage-summary-report-ghe"]>>
+  | Row<ApiResponse<DotcomOps["billing/get-github-billing-premium-request-usage-report-org"]>>
+  | Row<ApiResponse<GhecOps["billing/get-github-billing-premium-request-usage-report-ghe"]>>
+> & { model?: string };
+
+export type CostCenter = Sparse<ApiResponse<GhecOps["billing/get-cost-center"]>>;
 
 export interface YearMonth {
   year: number;
@@ -100,12 +83,13 @@ export async function fetchUsageItems(
   ym: YearMonth,
   costCenterId?: string,
 ): Promise<UsageItem[]> {
-  const res = await ghFetch<{ usageItems?: UsageItem[] }>(ctx, `${billingBase(ctx.owner)}/usage`, {
-    query: {
-      year: ym.year,
-      month: ym.month,
-      ...(costCenterId && ctx.owner.kind === "enterprise" ? { cost_center_id: costCenterId } : {}),
-    },
+  const query = { year: ym.year, month: ym.month };
+  const res = await byOwner(ctx, {
+    org: (api, org) => api.get(`/organizations/${org}/settings/billing/usage`, { query }),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/settings/billing/usage`, {
+        query: { ...query, ...(costCenterId ? { cost_center_id: costCenterId } : {}) },
+      }),
   });
   return res.usageItems ?? [];
 }
@@ -115,22 +99,24 @@ export async function fetchUsageSummary(
   ym: YearMonth,
   filter: { product?: string; sku?: string; repository?: string; costCenterId?: string } = {},
 ): Promise<SummaryItem[]> {
-  const res = await ghFetch<{ usageItems?: SummaryItem[] }>(
-    ctx,
-    `${billingBase(ctx.owner)}/usage/summary`,
-    {
-      query: {
-        year: ym.year,
-        month: ym.month,
-        product: filter.product,
-        sku: filter.sku,
-        repository: filter.repository,
-        ...(filter.costCenterId && ctx.owner.kind === "enterprise"
-          ? { cost_center_id: filter.costCenterId }
-          : {}),
-      },
-    },
-  );
+  // An empty filter is no filter, rather than `?product=`.
+  const query = {
+    year: ym.year,
+    month: ym.month,
+    ...(filter.product ? { product: filter.product } : {}),
+    ...(filter.sku ? { sku: filter.sku } : {}),
+    ...(filter.repository ? { repository: filter.repository } : {}),
+  };
+  const res = await byOwner(ctx, {
+    org: (api, org) => api.get(`/organizations/${org}/settings/billing/usage/summary`, { query }),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/settings/billing/usage/summary`, {
+        query: {
+          ...query,
+          ...(filter.costCenterId ? { cost_center_id: filter.costCenterId } : {}),
+        },
+      }),
+  });
   return res.usageItems ?? [];
 }
 
@@ -139,30 +125,117 @@ export async function fetchModelUsage(
   kind: "premium_request" | "ai_credit",
   ym: YearMonth,
 ): Promise<SummaryItem[]> {
-  const res = await ghFetch<{ usageItems?: SummaryItem[] }>(
-    ctx,
-    `${billingBase(ctx.owner)}/${kind}/usage`,
-    { query: { year: ym.year, month: ym.month } },
-  );
+  const query = { year: ym.year, month: ym.month };
+  const res = await byOwner(ctx, {
+    org: (api, org) =>
+      kind === "premium_request"
+        ? api.get(`/organizations/${org}/settings/billing/premium_request/usage`, { query })
+        : api.get(`/organizations/${org}/settings/billing/ai_credit/usage`, { query }),
+    enterprise: (api, enterprise) =>
+      kind === "premium_request"
+        ? api.get(`/enterprises/${enterprise}/settings/billing/premium_request/usage`, { query })
+        : api.get(`/enterprises/${enterprise}/settings/billing/ai_credit/usage`, { query }),
+  });
   return res.usageItems ?? [];
 }
 
 /** Enterprise cost centres (active only). Organizations have none. */
 export async function fetchCostCenters(ctx: GitHubContext): Promise<CostCenter[]> {
   if (ctx.owner.kind !== "enterprise") return [];
-  const res = await ghFetch<{ costCenters?: CostCenter[] }>(
-    ctx,
-    `${billingBase(ctx.owner)}/cost-centers`,
-    { query: { state: "active" } },
-  );
+  const enterprise = pathEncode(ctx.owner.slug);
+  const res = await ghecApi(ctx).get(`/enterprises/${enterprise}/settings/billing/cost-centers`, {
+    query: { state: "active" },
+  });
   return (res.costCenters ?? []).filter((c) => c.id && c.state !== "deleted");
 }
 
+/**
+ * Cost centres only exist on enterprises, and no document lists an organization
+ * route for them, but creating and editing one has never checked the owner.
+ */
+function orgCostCenters(ctx: GitHubContext): string {
+  return `${billingBase(ctx.owner)}/cost-centers`;
+}
+
+export type CostCenterMembers = ApiBody<GhecOps["billing/add-resource-to-cost-center"]>;
+
+export function createCostCenter(
+  ctx: GitHubContext,
+  body: ApiBody<GhecOps["billing/create-cost-center"]>,
+): Promise<CostCenter> {
+  return byOwner(ctx, {
+    org: () => ghUnlisted<CostCenter>(ctx, "POST", orgCostCenters(ctx), body),
+    enterprise: (api, enterprise) =>
+      api.post(`/enterprises/${enterprise}/settings/billing/cost-centers`, { body }),
+  });
+}
+
+export function getCostCenter(ctx: GitHubContext, id: string): Promise<CostCenter> {
+  const center = pathEncode(id);
+  return byOwner(ctx, {
+    org: () => ghUnlisted<CostCenter>(ctx, "GET", `${orgCostCenters(ctx)}/${center}`),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`),
+  });
+}
+
+export async function updateCostCenter(
+  ctx: GitHubContext,
+  id: string,
+  body: ApiBody<GhecOps["billing/update-cost-center"]>,
+): Promise<void> {
+  const center = pathEncode(id);
+  await byOwner(ctx, {
+    org: () => ghUnlisted<object>(ctx, "PATCH", `${orgCostCenters(ctx)}/${center}`, body),
+    enterprise: (api, enterprise) =>
+      api.patch(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`, { body }),
+  });
+}
+
+export async function deleteCostCenter(ctx: GitHubContext, id: string): Promise<void> {
+  const center = pathEncode(id);
+  await byOwner(ctx, {
+    org: () => ghUnlisted<object>(ctx, "DELETE", `${orgCostCenters(ctx)}/${center}`),
+    enterprise: (api, enterprise) =>
+      api.delete(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}`),
+  });
+}
+
+export async function addCostCenterMembers(
+  ctx: GitHubContext,
+  id: string,
+  body: CostCenterMembers,
+): Promise<void> {
+  const center = pathEncode(id);
+  await byOwner(ctx, {
+    org: () => ghUnlisted<object>(ctx, "POST", `${orgCostCenters(ctx)}/${center}/resource`, body),
+    enterprise: (api, enterprise) =>
+      api.post(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}/resource`, {
+        body,
+      }),
+  });
+}
+
+export async function removeCostCenterMembers(
+  ctx: GitHubContext,
+  id: string,
+  body: CostCenterMembers,
+): Promise<void> {
+  const center = pathEncode(id);
+  await byOwner(ctx, {
+    org: () => ghUnlisted<object>(ctx, "DELETE", `${orgCostCenters(ctx)}/${center}/resource`, body),
+    enterprise: (api, enterprise) =>
+      api.delete(`/enterprises/${enterprise}/settings/billing/cost-centers/${center}/resource`, {
+        body,
+      }),
+  });
+}
+
 /** One month of dated line items, each tagged with the cost centre it belongs to. */
-export interface TaggedUsageItem extends UsageItem {
+export type TaggedUsageItem = UsageItem & {
   costCenter?: string;
   costCenterId?: string;
-}
+};
 
 /**
  * A month's line items across the whole bill. For an organization that is a

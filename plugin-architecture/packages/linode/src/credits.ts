@@ -54,7 +54,7 @@ export function creditsFromAccount(account: LinodeAccount): CreditBalance[] {
 
 export async function fetchCredits(api: LinodeApi): Promise<CreditBalance[]> {
   try {
-    return creditsFromAccount(await api.get<LinodeAccount>("/account"));
+    return creditsFromAccount(await api.get("/account"));
   } catch (err) {
     const status = statusOf(err);
     if (status === 401 || status === 403) {

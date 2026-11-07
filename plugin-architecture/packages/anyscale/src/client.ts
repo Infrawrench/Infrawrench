@@ -14,9 +14,23 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { AnyscaleContext } from "./api.js";
-import { anyscaleFetch, anyscalePaged, statusOf } from "./api.js";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type {
+  AnyscaleApi,
+  AsBudget,
+  AsCloud,
+  AsCluster,
+  AsComputeConfig,
+  AsCreditRecord,
+  AsCredits,
+  AsJob,
+  AsProject,
+  AsService,
+  AsSessionState,
+  AsUserInfo,
+  AsWorkspace,
+} from "./api.js";
+import { createAnyscaleApi, listPages, statusOf } from "./api.js";
 import {
   fetchAnyscaleCostData,
   fetchTotalUsage,
@@ -50,21 +64,13 @@ import {
   renderAnyscaleDetail,
   renderAnyscaleSidebar,
 } from "./render.js";
-import type {
-  AsBudget,
-  AsCloud,
-  AsCluster,
-  AsComputeConfig,
-  AsCreditRecord,
-  AsCredits,
-  AsJob,
-  AsProject,
-  AsService,
-  AsUserInfo,
-  AsWorkspace,
-} from "./types.js";
 
-const RUNNING_CLUSTER_STATES = ["Running", "Updating", "StartingUp", "AwaitingStartup"];
+const RUNNING_CLUSTER_STATES: AsSessionState[] = [
+  "Running",
+  "Updating",
+  "StartingUp",
+  "AwaitingStartup",
+];
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -73,12 +79,12 @@ function monthStart(now = new Date()): string {
 }
 
 export class AnyscaleClient implements PluginClient {
-  private readonly ctx: AnyscaleContext;
+  private readonly api: AnyscaleApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Anyscale plugin: missing apiKey credential");
-    this.ctx = { apiKey, ...(services?.http ? { http: services.http } : {}) };
+    this.api = createAnyscaleApi({ apiKey, http: services?.http });
   }
 
   // -------------------------------------------------------------------------
@@ -86,67 +92,60 @@ export class AnyscaleClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private userInfo(): Promise<AsUserInfo> {
-    return anyscaleFetch<{ result?: AsUserInfo }>(this.ctx, "/api/v2/userinfo/").then(
-      (r) => r.result ?? {},
-    );
+    return this.api.get("/api/v2/userinfo/").then((r) => r.result ?? {});
   }
 
   private clouds(): Promise<AsCloud[]> {
-    return anyscalePaged<AsCloud>(this.ctx, "/api/v2/clouds/", { count: 1000, maxPages: 5 });
+    return listPages(5, 1000, (query) => this.api.get("/api/v2/clouds/", { query }));
   }
 
   private projects(): Promise<AsProject[]> {
-    return anyscalePaged<AsProject>(this.ctx, "/api/v2/projects/", {
-      query: { include_defaults: true },
-      count: 50,
-      maxPages: 40,
-    });
+    return listPages(40, 50, (query) =>
+      this.api.get("/api/v2/projects/", { query: { include_defaults: true, ...query } }),
+    );
   }
 
   /** Clusters that are up (or coming up), user-visible ones only. */
   private async runningClusters(): Promise<AsCluster[]> {
-    const all = await anyscalePaged<AsCluster>(this.ctx, "/api/v2/decorated_sessions/", {
-      query: { state_filter: RUNNING_CLUSTER_STATES },
-      count: 50,
-      maxPages: 40,
-    });
+    const all = await listPages(40, 50, (query) =>
+      this.api.get("/api/v2/decorated_sessions/", {
+        query: { state_filter: RUNNING_CLUSTER_STATES, ...query },
+      }),
+    );
     return all.filter((c) => !c.is_system_cluster);
   }
 
   private workspaces(): Promise<AsWorkspace[]> {
-    return anyscalePaged<AsWorkspace>(this.ctx, "/api/v2/experimental_workspaces/", {
-      count: 50,
-      maxPages: 40,
-    });
+    return listPages(40, 50, (query) =>
+      this.api.get("/api/v2/experimental_workspaces/", { query }),
+    );
   }
 
   /** Batch jobs only (services are listed from their own route), newest first. */
   private jobs(): Promise<AsJob[]> {
-    return anyscalePaged<AsJob>(this.ctx, "/api/v2/decorated_ha_jobs/", {
-      query: { type_filter: "BATCH_JOB" },
-      count: 100,
-      maxPages: 10,
-    });
+    return listPages(10, 100, (query) =>
+      this.api.get("/api/v2/decorated_ha_jobs/", {
+        query: { type_filter: "BATCH_JOB", ...query },
+      }),
+    );
   }
 
   private services(): Promise<AsService[]> {
-    return anyscalePaged<AsService>(this.ctx, "/api/v2/services-v2/", { count: 50, maxPages: 20 });
+    return listPages(20, 50, (query) => this.api.get("/api/v2/services-v2/", { query }));
   }
 
   /** Latest version of every named, unarchived compute config. */
   private computeConfigs(): Promise<AsComputeConfig[]> {
-    return anyscalePaged<AsComputeConfig>(this.ctx, "/api/v2/compute_templates/search", {
-      body: { include_anonymous: false, archive_status: "NOT_ARCHIVED" },
-      count: 100,
-      maxPages: 20,
-    });
+    return listPages(20, 100, (query) =>
+      this.api.post("/api/v2/compute_templates/search", {
+        query,
+        body: { include_anonymous: false, archive_status: "NOT_ARCHIVED" },
+      }),
+    );
   }
 
   private budgets(): Promise<AsBudget[]> {
-    return anyscalePaged<AsBudget>(this.ctx, "/api/v2/instance_usage_budgets/", {
-      count: 50,
-      maxPages: 20,
-    });
+    return listPages(20, 50, (query) => this.api.get("/api/v2/instance_usage_budgets/", { query }));
   }
 
   // -------------------------------------------------------------------------
@@ -192,7 +191,7 @@ export class AnyscaleClient implements PluginClient {
           return this.scoped(async () => {
             const [projects, clouds] = await Promise.all([
               this.projects(),
-              this.clouds().catch(() => [] as AsCloud[]),
+              this.clouds().catch((): AsCloud[] => []),
             ]);
             const names = new Map(clouds.map((c) => [c.id ?? "", c.name ?? ""]));
             return projects.map((p) => mapProject(accountId, p, names));
@@ -201,8 +200,8 @@ export class AnyscaleClient implements PluginClient {
           return this.scoped(async () => {
             const [workspaces, running, projects] = await Promise.all([
               this.workspaces(),
-              this.runningClusters().catch(() => [] as AsCluster[]),
-              this.projects().catch(() => [] as AsProject[]),
+              this.runningClusters().catch((): AsCluster[] => []),
+              this.projects().catch((): AsProject[] => []),
             ]);
             const clusters = new Map(running.map((c) => [c.id ?? "", c]));
             const projectNames = new Map(projects.map((p) => [p.id ?? "", p.name ?? ""]));
@@ -248,8 +247,8 @@ export class AnyscaleClient implements PluginClient {
     const org = info.organizations?.[0] ?? { name: "Anyscale organization" };
     const now = new Date();
     const [mtd, credits] = await Promise.all([
-      fetchTotalUsage(this.ctx, monthStart(now), isoDay(now)).catch(() => undefined),
-      withBilling ? fetchCredits(this.ctx).catch(() => undefined) : Promise.resolve(undefined),
+      fetchTotalUsage(this.api, monthStart(now), isoDay(now)).catch(() => undefined),
+      withBilling ? fetchCredits(this.api).catch(() => undefined) : Promise.resolve(undefined),
     ]);
     return [
       mapOrganization(accountId, info, org, {
@@ -272,7 +271,7 @@ export class AnyscaleClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(id);
       switch (typeId) {
         case "organization": {
           const [org] = await this.listOrganization(accountId, true);
@@ -280,17 +279,12 @@ export class AnyscaleClient implements PluginClient {
           break;
         }
         case "workspace": {
-          const res = await anyscaleFetch<{ result?: AsWorkspace }>(
-            this.ctx,
-            `/api/v2/experimental_workspaces/${enc}`,
-          );
+          const res = await this.api.get(`/api/v2/experimental_workspaces/${enc}`);
           const w = res.result;
           if (!w) break;
           const cluster = w.cluster_id
-            ? await anyscaleFetch<{ result?: AsCluster }>(
-                this.ctx,
-                `/api/v2/decorated_sessions/${encodeURIComponent(w.cluster_id)}`,
-              )
+            ? await this.api
+                .get(`/api/v2/decorated_sessions/${pathEncode(w.cluster_id)}`)
                 .then((r) => r.result)
                 .catch(() => undefined)
             : undefined;
@@ -301,34 +295,22 @@ export class AnyscaleClient implements PluginClient {
           return mapWorkspace(accountId, w, cluster, names);
         }
         case "job": {
-          const res = await anyscaleFetch<{ result?: AsJob }>(
-            this.ctx,
-            `/api/v2/decorated_ha_jobs/${enc}`,
-          );
+          const res = await this.api.get(`/api/v2/decorated_ha_jobs/${enc}`);
           if (res.result) return mapJob(accountId, res.result);
           break;
         }
         case "service": {
-          const res = await anyscaleFetch<{ result?: AsService }>(
-            this.ctx,
-            `/api/v2/services-v2/${enc}`,
-          );
+          const res = await this.api.get(`/api/v2/services-v2/${enc}`);
           if (res.result) return mapService(accountId, res.result);
           break;
         }
         case "budget": {
-          const res = await anyscaleFetch<{ result?: AsBudget }>(
-            this.ctx,
-            `/api/v2/instance_usage_budgets/${enc}`,
-          );
+          const res = await this.api.get(`/api/v2/instance_usage_budgets/${enc}`);
           if (res.result) return mapBudget(accountId, res.result);
           break;
         }
         case "compute-config": {
-          const res = await anyscaleFetch<{ result?: AsComputeConfig }>(
-            this.ctx,
-            `/api/v2/compute_templates/${enc}`,
-          );
+          const res = await this.api.get(`/api/v2/compute_templates/${enc}`);
           if (res.result) return mapComputeConfig(accountId, res.result);
           break;
         }
@@ -370,10 +352,10 @@ export class AnyscaleClient implements PluginClient {
       if (resource.resourceTypeId === "organization") {
         const from = monthStart(now);
         const [byType, byProject, byUser, credits] = await Promise.all([
-          fetchUsageBreakdown(this.ctx, "cluster_type", from, today).catch(() => undefined),
-          fetchUsageBreakdown(this.ctx, "project", from, today).catch(() => undefined),
-          fetchUsageBreakdown(this.ctx, "user", from, today).catch(() => undefined),
-          fetchCredits(this.ctx).catch(() => undefined),
+          fetchUsageBreakdown(this.api, "cluster_type", from, today).catch(() => undefined),
+          fetchUsageBreakdown(this.api, "project", from, today).catch(() => undefined),
+          fetchUsageBreakdown(this.api, "user", from, today).catch(() => undefined),
+          fetchCredits(this.api).catch(() => undefined),
         ]);
         const extra: Record<string, string> = {};
         if (byType && byProject && byUser) {
@@ -392,7 +374,7 @@ export class AnyscaleClient implements PluginClient {
       if (["workspace", "job", "service"].includes(resource.resourceTypeId)) {
         const id = resource.externalId ?? externalIdOf(resource.id);
         const from = isoDay(new Date(now.getTime() - SPEND_METRICS_WINDOW_MS));
-        const rows = await fetchWorkloadSpend(this.ctx, resource.displayName, from, today).catch(
+        const rows = await fetchWorkloadSpend(this.api, resource.displayName, from, today).catch(
           () => undefined,
         );
         if (!rows) return resource;
@@ -423,7 +405,7 @@ export class AnyscaleClient implements PluginClient {
     return attempt(async () => {
       const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
       const f = r.fields;
-      const usd = (v: unknown) =>
+      const usd = (v: string | number | boolean | undefined) =>
         typeof v === "number" ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—";
       switch (resourceTypeId) {
         case "organization":
@@ -434,10 +416,10 @@ export class AnyscaleClient implements PluginClient {
         case "cloud": {
           const cloudId = String(f["cloudId"] ?? "");
           const series = await utilizationSeries(
-            this.ctx,
+            this.api,
             cloudId,
             rangeOrDefault(undefined, DEFAULT_METRICS_WINDOW_MS),
-          ).catch(() => [] as MetricSeries[]);
+          ).catch((): MetricSeries[] => []);
           const running = await this.runningClusters().catch(() => undefined);
           const count = running?.filter((k) => (k.cloud_id ?? k.cloud?.id) === cloudId).length;
           return [
@@ -495,17 +477,17 @@ export class AnyscaleClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (resourceTypeId) {
         case "organization":
-          return dailySpendSeries(this.ctx, rangeOrDefault(timeRange, SPEND_METRICS_WINDOW_MS));
+          return dailySpendSeries(this.api, rangeOrDefault(timeRange, SPEND_METRICS_WINDOW_MS));
         case "cloud":
           return utilizationSeries(
-            this.ctx,
+            this.api,
             id,
             rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
           );
         case "project": {
           const p = await runPluginEffect(this.getResource("project", resourceId, accountId));
           return utilizationSeries(
-            this.ctx,
+            this.api,
             String(p.fields["cloudId"] ?? ""),
             rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
             id,
@@ -519,13 +501,13 @@ export class AnyscaleClient implements PluginClient {
 
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
-      return fetchAnyscaleCostData(this.ctx, range);
+      return fetchAnyscaleCostData(this.api, range);
     });
   }
 
   fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
-      return creditBalances(await fetchCredits(this.ctx));
+      return creditBalances(await fetchCredits(this.api));
     });
   }
 
@@ -536,7 +518,7 @@ export class AnyscaleClient implements PluginClient {
   getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
       if (typeId === "project") {
-        const clouds = await this.clouds().catch(() => [] as AsCloud[]);
+        const clouds = await this.clouds().catch((): AsCloud[] => []);
         const def = clouds.find((c) => c.is_default) ?? clouds[0];
         return {
           fields: [
@@ -551,8 +533,8 @@ export class AnyscaleClient implements PluginClient {
               options: clouds
                 .filter((c) => c.id)
                 .map((c) => ({
-                  id: c.id as string,
-                  label: c.name ?? (c.id as string),
+                  id: c.id,
+                  label: c.name ?? c.id,
                   description: [c.provider, c.region, c.is_aioa ? "Anyscale-hosted" : ""]
                     .filter(Boolean)
                     .join(" · "),
@@ -570,8 +552,8 @@ export class AnyscaleClient implements PluginClient {
       }
       if (typeId === "budget") {
         const [clouds, projects] = await Promise.all([
-          this.clouds().catch(() => [] as AsCloud[]),
-          this.projects().catch(() => [] as AsProject[]),
+          this.clouds().catch((): AsCloud[] => []),
+          this.projects().catch((): AsProject[] => []),
         ]);
         const cloudName = new Map(clouds.map((c) => [c.id ?? "", c.name ?? c.id ?? ""]));
         return {
@@ -596,16 +578,17 @@ export class AnyscaleClient implements PluginClient {
                 ...clouds
                   .filter((c) => c.id)
                   .map((c) => ({ id: `cloud:${c.id}`, label: `Cloud: ${c.name ?? c.id}` })),
-                ...projects
-                  .filter((p) => p.id && (p.parent_cloud_id ?? p.cloud_id))
-                  .map((p) => {
-                    const cloudId = (p.parent_cloud_id ?? p.cloud_id) as string;
-                    return {
+                ...projects.flatMap((p) => {
+                  const cloudId = p.parent_cloud_id ?? p.cloud_id;
+                  if (!p.id || !cloudId) return [];
+                  return [
+                    {
                       id: `project:${cloudId}:${p.id}`,
                       label: `Project: ${p.name ?? p.id}`,
                       description: cloudName.get(cloudId) ?? cloudId,
-                    };
-                  }),
+                    },
+                  ];
+                }),
               ],
             },
             {
@@ -653,13 +636,12 @@ export class AnyscaleClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "project") {
         const cloudId = (fields["cloudId"] ?? "").trim();
-        const res = await anyscaleFetch<{ result?: AsProject }>(this.ctx, "/api/v2/projects/", {
-          method: "POST",
-          body: JSON.stringify({
+        const res = await this.api.post("/api/v2/projects/", {
+          body: {
             name: (fields["name"] ?? "").trim(),
             description: fields["description"] ?? "",
             ...(cloudId ? { cloud_id: cloudId, parent_cloud_id: cloudId } : {}),
-          }),
+          },
         });
         if (!res.result) throw new Error("Anyscale plugin: project create returned nothing");
         return mapProject(accountId, res.result, new Map());
@@ -672,20 +654,15 @@ export class AnyscaleClient implements PluginClient {
             : kind === "project" && a && b
               ? { cloud_id: a, project_id: b }
               : {};
-        const res = await anyscaleFetch<{ result?: AsBudget }>(
-          this.ctx,
-          "/api/v2/instance_usage_budgets/",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              name: (fields["name"] ?? "").trim(),
-              budget_amount: Number(fields["budgetAmount"] ?? 0),
-              budget_unit: fields["budgetUnit"] || "DOLLARS",
-              evaluation_period: fields["evaluationPeriod"] || "MONTHLY",
-              ...scope,
-            }),
+        const res = await this.api.post("/api/v2/instance_usage_budgets/", {
+          body: {
+            name: (fields["name"] ?? "").trim(),
+            budget_amount: Number(fields["budgetAmount"] ?? 0),
+            budget_unit: fields["budgetUnit"] || "DOLLARS",
+            evaluation_period: fields["evaluationPeriod"] || "MONTHLY",
+            ...scope,
           },
-        );
+        });
         if (!res.result) throw new Error("Anyscale plugin: budget create returned nothing");
         return mapBudget(accountId, res.result);
       }
@@ -703,15 +680,16 @@ export class AnyscaleClient implements PluginClient {
       if (typeId !== "budget") {
         throw new Error(`Anyscale plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-      const res = await anyscaleFetch<{ result?: AsBudget }>(
-        this.ctx,
-        `/api/v2/instance_usage_budgets/${encodeURIComponent(externalIdOf(resourceId))}`,
+      const budgetAmount = fields["budgetAmount"];
+      const evaluationPeriod = fields["evaluationPeriod"];
+      const budgetUnit = fields["budgetUnit"];
+      const res = await this.api.put(
+        `/api/v2/instance_usage_budgets/${pathEncode(externalIdOf(resourceId))}`,
         {
-          method: "PUT",
           query: {
-            budget_amount: fields["budgetAmount"] || undefined,
-            evaluation_period: fields["evaluationPeriod"] || undefined,
-            budget_unit: fields["budgetUnit"] || undefined,
+            ...(budgetAmount ? { budget_amount: budgetAmount } : {}),
+            ...(evaluationPeriod ? { evaluation_period: evaluationPeriod } : {}),
+            ...(budgetUnit ? { budget_unit: budgetUnit } : {}),
           },
         },
       );
@@ -722,22 +700,18 @@ export class AnyscaleClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case "project":
-          await anyscaleFetch<unknown>(this.ctx, `/api/v2/projects/${id}`, { method: "DELETE" });
+          await this.api.delete(`/api/v2/projects/${id}`);
           return;
         case "compute-config":
           // Archiving is Anyscale's delete: every version is hidden and can no
           // longer launch new clusters; clusters already using it keep running.
-          await anyscaleFetch<unknown>(this.ctx, `/api/v2/compute_templates/${id}/archive`, {
-            method: "POST",
-          });
+          await this.api.post(`/api/v2/compute_templates/${id}/archive`);
           return;
         case "budget":
-          await anyscaleFetch<unknown>(this.ctx, `/api/v2/instance_usage_budgets/${id}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/api/v2/instance_usage_budgets/${id}`);
           return;
         default:
           throw new Error(`Anyscale plugin: "${typeId}" cannot be deleted from Infrawrench`);
@@ -757,56 +731,43 @@ export class AnyscaleClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(id);
       if (typeId === "workspace" && (actionId === "start" || actionId === "terminate")) {
         const w = await runPluginEffect(this.getResource("workspace", resourceId, accountId));
         const clusterId = String(w.fields["clusterId"] ?? "");
         if (!clusterId) throw new Error("This workspace has no cluster to start or terminate.");
-        const path = `/api/v2/sessions/${encodeURIComponent(clusterId)}/${actionId === "start" ? "start" : "stop"}`;
+        const session = pathEncode(clusterId);
         // The same options `anyscale workspace_v2 start|terminate` send.
-        const body =
-          actionId === "start"
-            ? {}
-            : {
-                terminate: true,
-                workers_only: false,
-                keep_min_workers: false,
-                take_snapshot: false,
-              };
-        await anyscaleFetch<unknown>(this.ctx, path, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        if (actionId === "start") {
+          await this.api.post(`/api/v2/sessions/${session}/start`, { body: {} });
+        } else {
+          await this.api.post(`/api/v2/sessions/${session}/stop`, {
+            body: {
+              terminate: true,
+              workers_only: false,
+              keep_min_workers: false,
+              take_snapshot: false,
+            },
+          });
+        }
         return;
       }
       if (typeId === "job" && actionId === "terminate") {
-        await anyscaleFetch<unknown>(this.ctx, `/api/v2/decorated_ha_jobs/${enc}/terminate`, {
-          method: "POST",
-        });
+        await this.api.post(`/api/v2/decorated_ha_jobs/${enc}/terminate`);
         return;
       }
       if (typeId === "service" && actionId === "terminate") {
-        await anyscaleFetch<unknown>(this.ctx, `/api/v2/services-v2/${enc}/terminate`, {
-          method: "POST",
-        });
+        await this.api.post(`/api/v2/services-v2/${enc}/terminate`);
         return;
       }
       if (typeId === "service" && actionId === "rollback") {
-        await anyscaleFetch<unknown>(this.ctx, `/api/v2/services-v2/${enc}/rollback`, {
-          method: "POST",
-          body: "{}",
-        });
+        await this.api.post(`/api/v2/services-v2/${enc}/rollback`, { body: {} });
         return;
       }
       if (typeId === "budget" && (actionId === "enable" || actionId === "disable")) {
-        await anyscaleFetch<unknown>(
-          this.ctx,
-          `/api/v2/instance_usage_budgets/${enc}/toggle_is_enabled`,
-          {
-            method: "POST",
-            query: { is_enabled: actionId === "enable" },
-          },
-        );
+        await this.api.post(`/api/v2/instance_usage_budgets/${enc}/toggle_is_enabled`, {
+          query: { is_enabled: actionId === "enable" },
+        });
         return;
       }
       throw new Error(`Anyscale plugin: unknown action "${actionId}" for "${typeId}"`);

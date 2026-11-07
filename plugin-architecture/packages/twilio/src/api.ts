@@ -12,7 +12,17 @@
  * (`twilio/twilio-oai`, `spec/json/twilio_{api_v2010,messaging_v1,verify_v2,pricing_v1}.json`,
  * 2026-10).
  */
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  pathEncode,
+  withLinkPagination,
+  type HttpHostServices,
+  type NoSlashString,
+} from "@infrawrench/plugin-base";
+import type { paths as MessagingPaths } from "./api-types.messaging.gen.js";
+import type { paths as PricingPaths } from "./api-types.pricing.gen.js";
+import type { paths as V2010Paths } from "./api-types.v2010.gen.js";
+import type { paths as VerifyPaths } from "./api-types.verify.gen.js";
 
 export const API_HOST = "https://api.twilio.com";
 export const MESSAGING_HOST = "https://messaging.twilio.com";
@@ -64,23 +74,6 @@ export function isAccessDenied(err: unknown): boolean {
   return s === 401 || s === 403;
 }
 
-export type FormValue = string | number | boolean | undefined;
-
-export interface TwilioRequest {
-  method?: "GET" | "POST" | "DELETE";
-  query?: Record<string, FormValue>;
-  form?: Record<string, FormValue>;
-}
-
-function encode(params: Record<string, FormValue> | undefined): string {
-  const out = new URLSearchParams();
-  for (const [k, v] of Object.entries(params ?? {})) {
-    if (v === undefined) continue;
-    out.append(k, String(v));
-  }
-  return out.toString();
-}
-
 function basicAuth(ctx: TwilioContext): string {
   const raw = `${ctx.username}:${ctx.password}`;
   return `Basic ${btoa(raw)}`;
@@ -90,7 +83,7 @@ function describeError(status: number, body: string, path: string): TwilioApiErr
   let message = body;
   let code: number | undefined;
   try {
-    const parsed = JSON.parse(body) as { message?: string; code?: number };
+    const parsed: { message?: string; code?: number } = JSON.parse(body);
     if (parsed.message) message = parsed.message;
     if (typeof parsed.code === "number") code = parsed.code;
   } catch {
@@ -109,113 +102,72 @@ function describeError(status: number, body: string, path: string): TwilioApiErr
   );
 }
 
-/**
- * One request. `pathOrUrl` is either a path on `host` or an absolute URL
- * (Twilio's paging links are absolute on the v1/v2 APIs and relative on 2010).
- */
-export async function twilioFetch<T>(
-  ctx: TwilioContext,
-  host: string,
-  pathOrUrl: string,
-  req: TwilioRequest = {},
-): Promise<T> {
-  const method = req.method ?? (req.form ? "POST" : "GET");
-  const base = pathOrUrl.startsWith("http") ? pathOrUrl : `${host}${pathOrUrl}`;
-  const qs = encode(req.query);
-  const url = qs ? `${base}${base.includes("?") ? "&" : "?"}${qs}` : base;
-  const headers: Record<string, string> = {
-    Authorization: basicAuth(ctx),
-    Accept: "application/json",
-  };
-  const body = req.form ? encode(req.form) : undefined;
-  if (body !== undefined) headers["Content-Type"] = "application/x-www-form-urlencoded";
-  const label = pathOrUrl.split("?")[0] ?? pathOrUrl;
+function clientFor<P>(ctx: TwilioContext, baseUrl: string) {
+  return createApiClient<P>({
+    vendor: "Twilio",
+    baseUrl,
+    // Per request: a secret `btoa` refuses fails the call, not building the client.
+    headers: () => ({ Authorization: basicAuth(ctx), Accept: "application/json" }),
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    // Names a next link as Twilio wrote it, so an absolute one keeps its host.
+    httpError: ({ status, body, path, link }) => {
+      const named = link ?? path;
+      return describeError(status, body, named.split("?")[0] ?? named);
+    },
+    ...(ctx.http ? { http: ctx.http } : {}),
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+  });
+}
 
-  let status: number;
-  let text: string;
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    status = res.status;
-    text = res.body;
-  } else {
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    status = res.status;
-    text = await res.text();
-  }
-  if (status < 200 || status >= 300) throw describeError(status, text, label);
-  if (status === 204 || !text) return undefined as T;
-  return JSON.parse(text) as T;
+/** Paging links are absolute on the v1/v2 APIs and host-relative on 2010. */
+const onHost = (host: string) => (pathOrUrl: string) =>
+  pathOrUrl.startsWith("http") ? pathOrUrl : `${host}${pathOrUrl}`;
+
+/** A list asks for 1000 a page, may run past an empty page, and stops at 50 pages. */
+const LISTS = {
+  sizeParam: "PageSize",
+  pageSize: 1000,
+  pagingFirst: true,
+  maxPages: 50,
+  continueOnEmptyPage: true,
+  foreignLinks: "follow",
+} as const;
+
+/** The classic API. Lists page through a host-relative `next_page_uri`, null on the last page. */
+export function v2010(ctx: TwilioContext) {
+  const link = onHost(API_HOST);
+  return withLinkPagination(clientFor<V2010Paths>(ctx, API_HOST), {
+    ...LISTS,
+    next: "next_page_uri",
+    resolveLink: (uri) => (typeof uri === "string" ? link(uri) : null),
+  });
+}
+
+/** Messaging services. Lists page through an absolute `meta.next_page_url`. */
+export function messaging(ctx: TwilioContext) {
+  return withLinkPagination(clientFor<MessagingPaths>(ctx, MESSAGING_HOST), {
+    ...LISTS,
+    next: "meta.next_page_url",
+    resolveLink: onHost(MESSAGING_HOST),
+  });
+}
+
+/** Verify services, paged like {@link messaging}. */
+export function verify(ctx: TwilioContext) {
+  return withLinkPagination(clientFor<VerifyPaths>(ctx, VERIFY_HOST), {
+    ...LISTS,
+    next: "meta.next_page_url",
+    resolveLink: onHost(VERIFY_HOST),
+  });
+}
+
+/** Number prices, which are read one country at a time. */
+export function pricing(ctx: TwilioContext) {
+  return clientFor<PricingPaths>(ctx, PRICING_HOST);
 }
 
 /** Path prefix for an account on the 2010 API. */
-export function accountPath(accountSid: string): string {
-  return `/2010-04-01/Accounts/${encodeURIComponent(accountSid)}`;
-}
-
-/**
- * Walk a 2010-API list. The list key differs per resource
- * (`incoming_phone_numbers`, `usage_records`…) and `next_page_uri` is a path
- * relative to `api.twilio.com`, or null on the last page.
- */
-export async function list2010<T>(
-  ctx: TwilioContext,
-  path: string,
-  key: string,
-  query: Record<string, FormValue> = {},
-  maxPages = 50,
-): Promise<T[]> {
-  const out: T[] = [];
-  let next: string | null = path;
-  let first = true;
-  for (let page = 0; page < maxPages && next; page++) {
-    const res: Record<string, unknown> = await twilioFetch<Record<string, unknown>>(
-      ctx,
-      API_HOST,
-      next,
-      first ? { query: { PageSize: 1000, ...query } } : {},
-    );
-    first = false;
-    const items = res[key];
-    if (Array.isArray(items)) out.push(...(items as T[]));
-    const nextUri = res["next_page_uri"];
-    next = typeof nextUri === "string" && nextUri ? nextUri : null;
-  }
-  return out;
-}
-
-/**
- * Walk a v1/v2 product-API list (`messaging`, `verify`): items under `key`,
- * the next page as an absolute `meta.next_page_url`.
- */
-export async function listV1<T>(
-  ctx: TwilioContext,
-  host: string,
-  path: string,
-  key: string,
-  query: Record<string, FormValue> = {},
-  maxPages = 50,
-): Promise<T[]> {
-  const out: T[] = [];
-  let next: string | null = path;
-  let first = true;
-  for (let page = 0; page < maxPages && next; page++) {
-    const res: Record<string, unknown> = await twilioFetch<Record<string, unknown>>(
-      ctx,
-      host,
-      next,
-      first ? { query: { PageSize: 1000, ...query } } : {},
-    );
-    first = false;
-    const items = res[key];
-    if (Array.isArray(items)) out.push(...(items as T[]));
-    const meta = res["meta"] as { next_page_url?: string | null } | undefined;
-    next = meta?.next_page_url ? meta.next_page_url : null;
-  }
-  return out;
+export function accountPath(accountSid: string): `/2010-04-01/Accounts/${NoSlashString}` {
+  return `/2010-04-01/Accounts/${pathEncode(accountSid)}`;
 }

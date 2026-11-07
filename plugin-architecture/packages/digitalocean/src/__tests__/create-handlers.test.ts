@@ -5,6 +5,7 @@ import {
   doGetCreateConfig,
   doCreateResource,
 } from "../create-handlers.js";
+import { fakeApi } from "./fake-api.js";
 
 // ---- catalog responses used by doGetCreateConfig ----
 const REGIONS = {
@@ -103,15 +104,16 @@ function routeFetch(path: string): unknown {
   return {};
 }
 
-function makeCtx(overrides?: Partial<DoCreateContext>): DoCreateContext & {
+function makeCtx(overrides?: Partial<DoCreateContext> & { fetch?: Mock }): DoCreateContext & {
   fetch: Mock;
 } {
-  const fetch = vi.fn(async (path: string) => routeFetch(path)) as Mock;
+  const fetch = overrides?.fetch ?? (vi.fn(async (path: string) => routeFetch(path)) as Mock);
   return {
-    fetch,
     credentials: { apiToken: "tok" },
     ...overrides,
-  } as DoCreateContext & { fetch: Mock };
+    fetch,
+    api: fakeApi(fetch),
+  };
 }
 
 describe("estimateDoDatabaseMonthlyPrice", () => {
@@ -316,7 +318,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
       "droplet",
@@ -374,7 +376,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/droplets") return { droplet: { id: 43, name: "web-2", networks: { v4: [] } } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "droplet", "acc", {
       name: "web-2",
       region: "nyc3",
@@ -402,7 +404,7 @@ describe("doCreateResource — REST create branches", () => {
         return { ssh_keys: [{ id: 1, public_key: "ssh-ed25519 OTHER other" }] };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     await expect(
       doCreateResource(ctx, "droplet", "acc", {
         name: "web-3",
@@ -422,7 +424,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/droplets") return { droplet: { id: 7, name: "w", networks: { v4: [] } } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     await doCreateResource(ctx, "droplet", "acc", {
       name: "w",
       region: "nyc3",
@@ -440,7 +442,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path.endsWith("/resources")) throw new Error("nope");
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
       "droplet",
@@ -466,7 +468,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "doks-cluster", "acc", {
       name: "kube",
       region: "nyc3",
@@ -494,7 +496,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "managed-database", "acc", {
       name: "pgcluster",
       engine: "pg",
@@ -512,7 +514,7 @@ describe("doCreateResource — REST create branches", () => {
         return { user: { name: "infrawrench-x", role: "normal", password: "s3cret" } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
       "db-user",
@@ -537,7 +539,7 @@ describe("doCreateResource — REST create branches", () => {
       }
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     await doCreateResource(
       ctx,
       "db-user",
@@ -552,7 +554,7 @@ describe("doCreateResource — REST create branches", () => {
   });
 
   it("db-user requires a parent cluster", async () => {
-    const ctx = { fetch: vi.fn(), credentials: {} } as unknown as DoCreateContext;
+    const ctx = { api: fakeApi(vi.fn()), credentials: {} } as unknown as DoCreateContext;
     await expect(doCreateResource(ctx, "db-user", "acc", { name: "x" })).rejects.toThrow(
       /must be created from a managed-database/,
     );
@@ -564,7 +566,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/databases/db-1/users") return { user: { name: "u" } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     await expect(
       doCreateResource(ctx, "db-user", "acc", { name: "u" }, "acc:managed-database:db-1"),
     ).rejects.toThrow(/did not return a password/);
@@ -574,7 +576,7 @@ describe("doCreateResource — REST create branches", () => {
     const fetch = vi.fn(async () => ({
       domain: { name: "example.com", ttl: 1800, zone_file: "; zone" },
     })) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "domain", "acc", { name: "example.com" });
     expect(result.resource.id).toBe("acc:domain:example.com");
   });
@@ -583,7 +585,7 @@ describe("doCreateResource — REST create branches", () => {
     const fetch = vi.fn(async () => ({
       domain_record: { id: 33, type: "A", name: "www", data: "1.2.3.4", ttl: 1800 },
     })) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
       "dns-record",
@@ -596,7 +598,7 @@ describe("doCreateResource — REST create branches", () => {
   });
 
   it("dns-record requires a domain name", async () => {
-    const ctx = { fetch: vi.fn(), credentials: {} } as unknown as DoCreateContext;
+    const ctx = { api: fakeApi(vi.fn()), credentials: {} } as unknown as DoCreateContext;
     await expect(
       doCreateResource(ctx, "dns-record", "acc", { type: "A", name: "x", data: "1.1.1.1" }),
     ).rejects.toThrow(/domainName is required/);
@@ -606,7 +608,7 @@ describe("doCreateResource — REST create branches", () => {
     const fetch = vi.fn(async () => ({
       project: { id: "p-9", name: "Proj", purpose: "API", environment: "Production" },
     })) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "project", "acc", {
       name: "Proj",
       purpose: "API",
@@ -628,7 +630,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "container-registry", "acc", { name: "acme" });
     expect(result.resource.id).toBe("acc:container-registry:acme");
     expect(result.resource.externalId).toBe("acme");
@@ -650,7 +652,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/registry") return { registry: { name: "acme", region: "fra1" } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "container-registry", "acc", {
       name: "acme",
       subscriptionTier: "basic",
@@ -674,7 +676,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "volume", "acc", {
       name: "data",
       region: "nyc3",
@@ -693,7 +695,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "nfs-share", "acc", {
       name: "share",
       region: "nyc3",
@@ -720,7 +722,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "gen-ai-agent", "acc", {
       name: "A1",
       region: "tor1",
@@ -732,7 +734,7 @@ describe("doCreateResource — REST create branches", () => {
   });
 
   it("gen-ai-agent throws when no model source is chosen", async () => {
-    const ctx = { fetch: vi.fn(async () => ({})), credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(vi.fn(async () => ({}))), credentials: {} } as DoCreateContext;
     await expect(
       doCreateResource(ctx, "gen-ai-agent", "acc", {
         name: "A",
@@ -748,7 +750,7 @@ describe("doCreateResource — REST create branches", () => {
         return { knowledge_base: { uuid: "kb-1", name: "KB", region: "tor1" } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "gen-ai-knowledge-base", "acc", {
       name: "KB",
       region: "tor1",
@@ -775,7 +777,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "gen-ai-model-router", "acc", {
       name: "R",
       presetSlug: "balanced",
@@ -790,7 +792,7 @@ describe("doCreateResource — REST create branches", () => {
         return { dedicated_inference: { id: "di-1", region: "nyc3", status: "provisioning" } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "dedicated-inference", "acc", {
       name: "infer",
       region: "nyc3",
@@ -807,7 +809,7 @@ describe("doCreateResource — REST create branches", () => {
         return { api_key_info: { uuid: "key-1", name: "k", secret_key: "sk-shh" } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
       "agent-api-key",
@@ -822,7 +824,7 @@ describe("doCreateResource — REST create branches", () => {
   });
 
   it("agent-api-key requires an agent uuid", async () => {
-    const ctx = { fetch: vi.fn(async () => ({})), credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(vi.fn(async () => ({}))), credentials: {} } as DoCreateContext;
     await expect(doCreateResource(ctx, "agent-api-key", "acc", { name: "k" })).rejects.toThrow(
       /Agent UUID is required/,
     );
@@ -844,7 +846,7 @@ describe("doCreateResource — REST create branches", () => {
         };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "vpc", "acc", { name: "prod", region: "nyc3" });
     expect(fetch).toHaveBeenCalledWith(
       "/vpcs",
@@ -869,7 +871,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/vpcs") return { vpc: { id: "vpc-2", name: "seg", region: "fra1" } };
       return {};
     }) as Mock;
-    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(fetch), credentials: {} } as DoCreateContext;
     await doCreateResource(ctx, "vpc", "acc", {
       name: "seg",
       region: "fra1",
@@ -890,7 +892,7 @@ describe("doCreateResource — REST create branches", () => {
   });
 
   it("throws for an unsupported create type", async () => {
-    const ctx = { fetch: vi.fn(async () => ({})), credentials: {} } as DoCreateContext;
+    const ctx = { api: fakeApi(vi.fn(async () => ({}))), credentials: {} } as DoCreateContext;
     await expect(doCreateResource(ctx, "bogus", "acc", {})).rejects.toThrow(
       /createResource not supported/,
     );
@@ -910,7 +912,7 @@ describe("doCreateResource — spaces-bucket via signed S3 (global fetch mocked)
     const okResponse = { ok: true, status: 200, text: async () => "" } as unknown as Response;
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(okResponse);
     const ctx = {
-      fetch: vi.fn(async () => ({})),
+      api: fakeApi(vi.fn(async () => ({}))),
       credentials: { spacesAccessKeyId: "AK", spacesSecretAccessKey: "SK" },
     } as unknown as DoCreateContext;
 
@@ -931,10 +933,13 @@ describe("doCreateResource — spaces-bucket via signed S3 (global fetch mocked)
     const okResponse = { ok: true, status: 200, text: async () => "" } as unknown as Response;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(okResponse);
     const ctx = {
-      fetch: vi.fn(async (path: string) => {
-        if (path === "/spaces/keys") return { key: { access_key: "NEW_AK", secret_key: "NEW_SK" } };
-        return {};
-      }),
+      api: fakeApi(
+        vi.fn(async (path: string) => {
+          if (path === "/spaces/keys")
+            return { key: { access_key: "NEW_AK", secret_key: "NEW_SK" } };
+          return {};
+        }),
+      ),
       credentials: {},
     } as unknown as DoCreateContext;
 
@@ -960,7 +965,7 @@ describe("doCreateResource — spaces-bucket via signed S3 (global fetch mocked)
     } as unknown as Response;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(badResponse);
     const ctx = {
-      fetch: vi.fn(async () => ({})),
+      api: fakeApi(vi.fn(async () => ({}))),
       credentials: { spacesAccessKeyId: "AK", spacesSecretAccessKey: "SK" },
     } as unknown as DoCreateContext;
     await expect(

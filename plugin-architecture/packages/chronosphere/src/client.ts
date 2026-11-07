@@ -13,17 +13,26 @@ import type {
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
-import type { ChronoContext } from "./api.js";
-import { chronoFetch, listConfig, normalizeOrg, statusOf } from "./api.js";
-import type { Obj } from "./mappers.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { ChronoContext, ConfigObjects, ConfigRoutes, ConfigTypeId, Monitor } from "./api.js";
+import { configRoutes, guarded, isConfigType, normalizeOrg, statusOf } from "./api.js";
+import type { components } from "./api-types.gen.js";
 import { instance, mapConfig, parseMatchers } from "./mappers.js";
 import { verifyChronoCredentials } from "./preflight.js";
 import { PROM_PATH, instantQuery, queryRange, rangeOrDefault } from "./prom.js";
 import { BASE_KEY, renderChronoDetail, renderChronoSidebar } from "./render.js";
-import { CONFIG } from "./resource-types.js";
+
+type DropMode = components["schemas"]["configv1DropRuleMode"];
+type RollupMode = components["schemas"]["configv1RollupRuleMode"];
+type Fields = Record<string, string>;
 
 const OPS = ["GT", "GEQ", "LT", "LEQ", "EQ", "NEQ"];
-const str = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
+const DROP_MODES: readonly DropMode[] = ["ENABLED", "DISABLED", "PREVIEW"];
+const ROLLUP_MODES: readonly RollupMode[] = ["ENABLED", "PREVIEW"];
+const isMode = <M extends string>(allowed: readonly M[], mode: string): mode is M =>
+  allowed.some((m) => m === mode);
+const str = (v: string | number | boolean | undefined): string =>
+  v === undefined || v === null ? "" : String(v);
 const csv = (v: string | undefined): string[] =>
   (v ?? "")
     .split(/[,\n]/)
@@ -31,7 +40,7 @@ const csv = (v: string | undefined): string[] =>
     .filter(Boolean);
 
 /** Build a monitor's series conditions from the create form. */
-export function seriesConditions(fields: Record<string, string>): Obj {
+export function seriesConditions(fields: Fields): NonNullable<Monitor["series_conditions"]> {
   const sustain = Number(fields["sustainSecs"] || 0);
   const level = (sev: "warn" | "critical") => {
     const raw = fields[`${sev}Value`];
@@ -50,8 +59,75 @@ export function seriesConditions(fields: Record<string, string>): Obj {
   return { defaults: { ...(warn ? { warn } : {}), ...(critical ? { critical } : {}) } };
 }
 
+/** A config object's read-only fields are not sent back. */
+function withoutTimestamps<O extends { created_at?: string; updated_at?: string }>(o: O): O {
+  const copy = { ...o };
+  delete copy.created_at;
+  delete copy.updated_at;
+  return copy;
+}
+
+const unchanged = <O>(o: O): O => o;
+
+/** What the edit form can change on each type, past the name and description. */
+const EDITS: { [T in ConfigTypeId]: (o: ConfigObjects[T], fields: Fields) => ConfigObjects[T] } = {
+  monitor(o, fields) {
+    const next = { ...o };
+    if (fields["query"]?.trim()) {
+      if (!o.prometheus_query)
+        throw new Error("Only PromQL monitors can have their query edited here.");
+      next.prometheus_query = fields["query"].trim();
+    }
+    if (fields["intervalSecs"]) next.interval_secs = Number(fields["intervalSecs"]);
+    return next;
+  },
+  notifier(o, fields) {
+    return "skipResolved" in fields
+      ? { ...o, skip_resolved: fields["skipResolved"] === "true" }
+      : o;
+  },
+  team(o, fields) {
+    return "userEmails" in fields ? { ...o, user_emails: csv(fields["userEmails"]) } : o;
+  },
+  slo(o, fields) {
+    if (!fields["objective"]) return o;
+    return {
+      ...o,
+      definition: { ...(o.definition ?? {}), objective: Number(fields["objective"]) },
+    };
+  },
+  "recording-rule"(o, fields) {
+    const next = { ...o };
+    if (fields["expr"]?.trim()) next.prometheus_expr = fields["expr"].trim();
+    if (fields["intervalSecs"]) next.interval_secs = Number(fields["intervalSecs"]);
+    return next;
+  },
+  "muting-rule"(o, fields) {
+    return "comment" in fields ? { ...o, comment: fields["comment"] ?? "" } : o;
+  },
+  "notification-policy": unchanged,
+  collection: unchanged,
+  bucket: unchanged,
+  dashboard: unchanged,
+  "rollup-rule": unchanged,
+  "drop-rule": unchanged,
+  "service-account": unchanged,
+  service: unchanged,
+};
+
+/** Every type has a name, and the form sends a description for any of them. */
+function editNameAndDescription<O extends { name?: string }>(o: O, fields: Fields): O {
+  const name = fields["name"]?.trim();
+  return {
+    ...o,
+    ...(name ? { name } : {}),
+    ...("description" in fields ? { description: fields["description"] ?? "" } : {}),
+  };
+}
+
 export class ChronosphereClient implements PluginClient {
   private readonly ctx: ChronoContext;
+  private readonly routes: ConfigRoutes;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const org = normalizeOrg(credentials["org"] ?? "");
@@ -66,57 +142,55 @@ export class ChronosphereClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
+    this.routes = configRoutes(this.ctx);
   }
 
   get context(): ChronoContext {
     return this.ctx;
   }
 
-  private cfg(typeId: string) {
-    const c = CONFIG[typeId];
-    if (!c) throw new Error(`Chronosphere plugin: unknown resource type "${typeId}"`);
-    return c;
+  private configType(typeId: string): ConfigTypeId {
+    if (isConfigType(typeId, this.routes)) return typeId;
+    throw new Error(`Chronosphere plugin: unknown resource type "${typeId}"`);
   }
 
-  private list(typeId: string): Promise<Obj[]> {
-    const c = this.cfg(typeId);
-    return listConfig<Obj>(this.ctx, c.plural, c.listKey);
+  private list<T extends ConfigTypeId>(typeId: T): Promise<ConfigObjects[T][]> {
+    return guarded(this.routes[typeId].list());
   }
 
-  private async read(typeId: string, slug: string): Promise<Obj> {
-    const c = this.cfg(typeId);
-    const res = await chronoFetch<Obj>(
-      this.ctx,
-      `/api/v1/config/${c.plural}/${encodeURIComponent(slug)}`,
-    );
-    return (res?.[c.singular] as Obj) ?? {};
+  private read<T extends ConfigTypeId>(typeId: T, slug: string): Promise<ConfigObjects[T]> {
+    return guarded(this.routes[typeId].read(pathEncode(slug)));
   }
 
-  private async write(typeId: string, slug: string | undefined, body: Obj): Promise<Obj> {
-    const c = this.cfg(typeId);
-    const path = slug
-      ? `/api/v1/config/${c.plural}/${encodeURIComponent(slug)}`
-      : `/api/v1/config/${c.plural}`;
-    const res = await chronoFetch<Obj>(this.ctx, path, {
-      method: slug ? "PUT" : "POST",
-      body: JSON.stringify({ [c.singular]: body }),
-    });
-    return (res?.[c.singular] as Obj) ?? body;
+  private write<T extends ConfigTypeId>(
+    typeId: T,
+    slug: string | undefined,
+    body: ConfigObjects[T],
+  ): Promise<ConfigObjects[T]> {
+    const route = this.routes[typeId];
+    return guarded(slug ? route.update(pathEncode(slug), body) : route.create(body));
   }
 
   /** Read, change, write back: config updates replace the whole object. */
-  private async patch(typeId: string, slug: string, change: (o: Obj) => Obj): Promise<Obj> {
+  private async patch<T extends ConfigTypeId>(
+    typeId: T,
+    slug: string,
+    change: (o: ConfigObjects[T]) => ConfigObjects[T],
+  ): Promise<ConfigObjects[T]> {
     const current = await this.read(typeId, slug);
-    const { created_at: _c, updated_at: _u, ...rest } = current;
-    return this.write(typeId, slug, change({ ...rest, slug }));
+    return this.write(typeId, slug, change({ ...withoutTimestamps(current), slug }));
   }
 
-  private map(accountId: string, typeId: string, o: Obj): ResourceInstance {
+  private map<T extends ConfigTypeId>(
+    accountId: string,
+    typeId: T,
+    o: ConfigObjects[T],
+  ): ResourceInstance {
     return mapConfig(accountId, typeId, o, this.ctx.baseUrl);
   }
 
   private async tenant(accountId: string): Promise<ResourceInstance> {
-    const count = (t: string) =>
+    const count = (t: ConfigTypeId) =>
       this.list(t)
         .then((l) => l.length)
         .catch(() => undefined);
@@ -147,9 +221,10 @@ export class ChronosphereClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "tenant") return [await this.tenant(accountId)];
       try {
-        return (await this.list(typeId))
+        const configType = this.configType(typeId);
+        return (await this.list(configType))
           .filter((o) => o.slug)
-          .map((o) => this.map(accountId, typeId, o));
+          .map((o) => this.map(accountId, configType, o));
       } catch (err) {
         // A token whose account cannot read this one type lists it empty.
         if (statusOf(err) === 403) return [];
@@ -166,7 +241,8 @@ export class ChronosphereClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "tenant") return this.tenant(accountId);
       const slug = externalIdOf(resourceId) || resourceId;
-      return this.map(accountId, typeId, await this.read(typeId, slug));
+      const configType = this.configType(typeId);
+      return this.map(accountId, configType, await this.read(configType, slug));
     });
   }
 
@@ -236,8 +312,8 @@ export class ChronosphereClient implements PluginClient {
   // Create
   // -------------------------------------------------------------------------
 
-  private async options(typeId: string): Promise<Array<{ id: string; label: string }>> {
-    const list = await this.list(typeId).catch(() => [] as Obj[]);
+  private async options(typeId: ConfigTypeId): Promise<Array<{ id: string; label: string }>> {
+    const list = await this.list(typeId).catch(() => []);
     return list
       .filter((o) => o.slug)
       .map((o) => ({ id: String(o.slug), label: String(o.name ?? o.slug) }));
@@ -408,52 +484,68 @@ export class ChronosphereClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const name = (fields["name"] ?? "").trim();
-      let body: Obj;
       switch (typeId) {
         case "monitor":
-          body = {
-            name,
-            ...(fields["description"]?.trim() ? { description: fields["description"].trim() } : {}),
-            collection_slug: fields["collectionSlug"],
-            prometheus_query: (fields["query"] ?? "").trim(),
-            series_conditions: seriesConditions(fields),
-            ...(fields["intervalSecs"] ? { interval_secs: Number(fields["intervalSecs"]) } : {}),
-            ...(fields["notificationPolicySlug"]
-              ? { notification_policy_slug: fields["notificationPolicySlug"] }
-              : {}),
-          };
-          break;
+          return this.map(
+            accountId,
+            typeId,
+            await this.write(typeId, undefined, {
+              name,
+              ...(fields["description"]?.trim()
+                ? { description: fields["description"].trim() }
+                : {}),
+              ...(fields["collectionSlug"] !== undefined
+                ? { collection_slug: fields["collectionSlug"] }
+                : {}),
+              prometheus_query: (fields["query"] ?? "").trim(),
+              series_conditions: seriesConditions(fields),
+              ...(fields["intervalSecs"] ? { interval_secs: Number(fields["intervalSecs"]) } : {}),
+              ...(fields["notificationPolicySlug"]
+                ? { notification_policy_slug: fields["notificationPolicySlug"] }
+                : {}),
+            }),
+          );
         case "collection":
         case "bucket":
-          body = {
-            name,
-            ...(fields["description"]?.trim() ? { description: fields["description"].trim() } : {}),
-            ...(fields["teamSlug"] ? { team_slug: fields["teamSlug"] } : {}),
-            ...(fields["notificationPolicySlug"]
-              ? { notification_policy_slug: fields["notificationPolicySlug"] }
-              : {}),
-          };
-          break;
+          return this.map(
+            accountId,
+            typeId,
+            await this.write(typeId, undefined, {
+              name,
+              ...(fields["description"]?.trim()
+                ? { description: fields["description"].trim() }
+                : {}),
+              ...(fields["teamSlug"] ? { team_slug: fields["teamSlug"] } : {}),
+              ...(fields["notificationPolicySlug"]
+                ? { notification_policy_slug: fields["notificationPolicySlug"] }
+                : {}),
+            }),
+          );
         case "team":
-          body = {
-            name,
-            description: fields["description"] ?? "",
-            user_emails: csv(fields["userEmails"]),
-          };
-          break;
+          return this.map(
+            accountId,
+            typeId,
+            await this.write(typeId, undefined, {
+              name,
+              description: fields["description"] ?? "",
+              user_emails: csv(fields["userEmails"]),
+            }),
+          );
         case "muting-rule":
-          body = {
-            name,
-            label_matchers: parseMatchers(fields["matchers"] ?? ""),
-            starts_at: new Date(fields["startsAt"] ?? "").toISOString(),
-            ends_at: new Date(fields["endsAt"] ?? "").toISOString(),
-            ...(fields["comment"]?.trim() ? { comment: fields["comment"].trim() } : {}),
-          };
-          break;
+          return this.map(
+            accountId,
+            typeId,
+            await this.write(typeId, undefined, {
+              name,
+              label_matchers: parseMatchers(fields["matchers"] ?? ""),
+              starts_at: new Date(fields["startsAt"] ?? "").toISOString(),
+              ends_at: new Date(fields["endsAt"] ?? "").toISOString(),
+              ...(fields["comment"]?.trim() ? { comment: fields["comment"].trim() } : {}),
+            }),
+          );
         default:
           throw new Error(`Chronosphere plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      return this.map(accountId, typeId, await this.write(typeId, undefined, body));
     });
   }
 
@@ -469,42 +561,14 @@ export class ChronosphereClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const slug = externalIdOf(resourceId) || resourceId;
-      const has = (k: string) => k in fields;
-      const updated = await this.patch(typeId, slug, (o) => {
-        const next = { ...o };
-        if (fields["name"]?.trim()) next.name = fields["name"].trim();
-        if (has("description")) next.description = fields["description"] ?? "";
-        switch (typeId) {
-          case "monitor":
-            if (fields["query"]?.trim()) {
-              if (!o.prometheus_query)
-                throw new Error("Only PromQL monitors can have their query edited here.");
-              next.prometheus_query = fields["query"].trim();
-            }
-            if (fields["intervalSecs"]) next.interval_secs = Number(fields["intervalSecs"]);
-            break;
-          case "notifier":
-            if (has("skipResolved")) next.skip_resolved = fields["skipResolved"] === "true";
-            break;
-          case "team":
-            if (has("userEmails")) next.user_emails = csv(fields["userEmails"]);
-            break;
-          case "slo":
-            if (fields["objective"])
-              next.definition = { ...(o.definition ?? {}), objective: Number(fields["objective"]) };
-            break;
-          case "recording-rule":
-            if (fields["expr"]?.trim()) next.prometheus_expr = fields["expr"].trim();
-            if (fields["intervalSecs"]) next.interval_secs = Number(fields["intervalSecs"]);
-            break;
-          case "muting-rule":
-            if (has("comment")) next.comment = fields["comment"] ?? "";
-            break;
-        }
-        return next;
-      });
-      return this.map(accountId, typeId, updated);
+      const configType = this.configType(typeId);
+      return this.map(accountId, configType, await this.edit(configType, slug, fields));
     });
+  }
+
+  private edit<T extends ConfigTypeId>(typeId: T, slug: string, fields: Fields) {
+    const edit: (o: ConfigObjects[T], fields: Fields) => ConfigObjects[T] = EDITS[typeId];
+    return this.patch(typeId, slug, (o) => edit(editNameAndDescription(o, fields), fields));
   }
 
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
@@ -512,22 +576,25 @@ export class ChronosphereClient implements PluginClient {
       if (typeId === "tenant" || typeId === "service") {
         throw new Error(`Chronosphere plugin: "${typeId}" cannot be deleted from Infrawrench`);
       }
-      const c = this.cfg(typeId);
+      const route = this.routes[this.configType(typeId)];
       const slug = externalIdOf(resourceId) || resourceId;
-      await chronoFetch(this.ctx, `/api/v1/config/${c.plural}/${encodeURIComponent(slug)}`, {
-        method: "DELETE",
-      });
+      if (route.delete) await guarded(route.delete(pathEncode(slug)));
     });
   }
 
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
       const slug = externalIdOf(resourceId) || resourceId;
-      if ((typeId === "drop-rule" || typeId === "rollup-rule") && actionId.startsWith("mode-")) {
+      if (typeId === "drop-rule" && actionId.startsWith("mode-")) {
         const mode = actionId.slice(5).toUpperCase();
-        const allowed =
-          typeId === "drop-rule" ? ["ENABLED", "DISABLED", "PREVIEW"] : ["ENABLED", "PREVIEW"];
-        if (!allowed.includes(mode))
+        if (!isMode(DROP_MODES, mode))
+          throw new Error(`Chronosphere plugin: ${typeId} cannot be ${mode}`);
+        await this.patch(typeId, slug, (o) => ({ ...o, mode }));
+        return;
+      }
+      if (typeId === "rollup-rule" && actionId.startsWith("mode-")) {
+        const mode = actionId.slice(5).toUpperCase();
+        if (!isMode(ROLLUP_MODES, mode))
           throw new Error(`Chronosphere plugin: ${typeId} cannot be ${mode}`);
         await this.patch(typeId, slug, (o) => ({ ...o, mode }));
         return;

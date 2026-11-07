@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { doPriceCatalog, doSizeToProduct, fetchDoPriceCatalog } from "../price-catalog.js";
 import { plugin } from "../plugin.js";
 import { DigitalOceanClient } from "../client.js";
+import { fakeApi } from "./fake-api.js";
 
 /** Shapes follow the per-field examples in DO's OpenAPI `size.yml` / `gpu_info.yml`. */
 const BASIC = {
@@ -79,7 +80,7 @@ describe("fetchDoPriceCatalog", () => {
         return Promise.resolve({ sizes: [GPU], meta: { total: 201 } });
       throw new Error(`unexpected path ${path}`);
     });
-    const result = await fetchDoPriceCatalog({ fetch: fetch as never }, { serviceId: "droplets" });
+    const result = await fetchDoPriceCatalog({ api: fakeApi(fetch) }, { serviceId: "droplets" });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(result.products).toHaveLength(201);
     expect(result.truncated).toBeUndefined();
@@ -87,7 +88,7 @@ describe("fetchDoPriceCatalog", () => {
 
   it("returns nothing for a service it does not declare", async () => {
     const fetch = vi.fn();
-    const result = await fetchDoPriceCatalog({ fetch: fetch as never }, { serviceId: "nope" });
+    const result = await fetchDoPriceCatalog({ api: fakeApi(fetch) }, { serviceId: "nope" });
     expect(result.products).toEqual([]);
     expect(fetch).not.toHaveBeenCalled();
   });

@@ -42,11 +42,11 @@ import {
   isValidTimezone,
   localDayOf,
   nextBusinessMetricDay,
+  pathEncode,
   withBusinessMetricTimeout,
   zonedDayStartMs,
 } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
-import { ddFetch } from "./api.js";
 
 /** Points one series may hold per request; Datadog's ceiling is 1,500. */
 export const DD_MAX_POINTS_PER_SERIES = 1440;
@@ -159,6 +159,12 @@ export interface DatadogMetricParams {
   asCount: boolean;
 }
 
+const isSpaceAggregation = (value: string): value is DatadogMetricParams["spaceAggregation"] =>
+  SPACE_AGGREGATIONS.some((known) => known === value);
+
+const isRollupMethod = (value: string): value is DatadogMetricParams["rollup"] =>
+  ROLLUP_METHODS.some((known) => known === value);
+
 export function parseDatadogMetricParams(params: Record<string, string>): DatadogMetricParams {
   const metric = (params["metric"] ?? "").trim();
   if (!metric) throw new Error("Pick a Datadog metric.");
@@ -177,19 +183,19 @@ export function parseDatadogMetricParams(params: Record<string, string>): Datado
   }
 
   const space = (params["spaceAggregation"] ?? "").trim() || "sum";
-  if (!(SPACE_AGGREGATIONS as readonly string[]).includes(space)) {
+  if (!isSpaceAggregation(space)) {
     throw new Error(`"${space}" is not a way to combine sources.`);
   }
   const rollup = (params["rollup"] ?? "").trim() || "sum";
-  if (!(ROLLUP_METHODS as readonly string[]).includes(rollup)) {
+  if (!isRollupMethod(rollup)) {
     throw new Error(`"${rollup}" is not a rollup method.`);
   }
   return {
     metric,
     scope,
     groupBy,
-    spaceAggregation: space as DatadogMetricParams["spaceAggregation"],
-    rollup: rollup as DatadogMetricParams["rollup"],
+    spaceAggregation: space,
+    rollup,
     asCount: (params["valueMode"] ?? "").trim() === "count",
   };
 }
@@ -205,11 +211,9 @@ export function datadogMetricQuery(p: DatadogMetricParams): string {
  * ------------------------------------------------------------------ */
 
 async function metricTags(ctx: DatadogContext, metric: string): Promise<string[]> {
-  const res = await ddFetch<{ data?: { attributes?: { tags?: string[] } } }>(
-    ctx,
-    `/api/v2/metrics/${encodeURIComponent(metric)}/all-tags`,
-    { query: { "window[seconds]": TAG_WINDOW_S } },
-  );
+  const res = await ctx.v2.get(`/api/v2/metrics/${pathEncode(metric)}/all-tags`, {
+    query: { "window[seconds]": TAG_WINDOW_S },
+  });
   return res.data?.attributes?.tags ?? [];
 }
 
@@ -222,7 +226,7 @@ export async function listDatadogMetricSourceOptions(
 ): Promise<BusinessMetricSourceOption[]> {
   switch (fieldKey) {
     case "metric": {
-      const res = await ddFetch<{ metrics?: string[] }>(ctx, "/api/v1/metrics", {
+      const res = await ctx.v1.get("/api/v1/metrics", {
         query: { from: Math.floor(now / 1000) - METRIC_LIST_LOOKBACK_S },
       });
       return [...new Set(res.metrics ?? [])]
@@ -282,17 +286,6 @@ export async function listDatadogMetricSourceOptions(
  * The run.
  * ------------------------------------------------------------------ */
 
-interface DdTimeseriesResponse {
-  data?: {
-    attributes?: {
-      series?: Array<{ group_tags?: string[] | null; query_index?: number }>;
-      times?: number[];
-      values?: Array<Array<number | null>>;
-    };
-  };
-  errors?: string;
-}
-
 /**
  * Bucket width that never straddles a local midnight: an hour, unless one of
  * the window's day boundaries falls off the hour (India's +5:30, Nepal's
@@ -345,10 +338,8 @@ export async function runDatadogMetricSource(
     for (let chunkStart = startMs; chunkStart < endMs; chunkStart += chunkMs) {
       if (range.signal?.aborted) throw new Error("The run was cancelled.");
       const chunkEnd = Math.min(chunkStart + chunkMs, endMs);
-      const res = await ddFetch<DdTimeseriesResponse>(ctx, "/api/v2/query/timeseries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await ctx.v2.post("/api/v2/query/timeseries", {
+        body: {
           data: {
             type: "timeseries_request",
             attributes: {
@@ -358,7 +349,7 @@ export async function runDatadogMetricSource(
               queries: [{ data_source: "metrics", name: "a", query }],
             },
           },
-        }),
+        },
       });
       calls++;
       if (res.errors) throw new Error(`Datadog rejected the query: ${res.errors}`);

@@ -51,9 +51,16 @@
  */
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
-
-const API_BASE = "https://api.elevenlabs.io";
+import { CostSetupError, createApiClient, restRequest } from "@infrawrench/plugin-base";
+import {
+  API_BASE,
+  type CharacterStatsResponse,
+  type ElevenLabsSubscription,
+  type UsageCell,
+  type UsageQueryBody,
+  type UsageQueryResponse,
+} from "./api.js";
+import type { paths } from "./api-types.gen.js";
 
 const USAGE_BY_PRODUCT_PATH = "/v1/workspace/analytics/query/usage-by-product-over-time";
 const CHARACTER_STATS_PATH = "/v1/usage/character-stats";
@@ -84,32 +91,6 @@ export interface ElevenLabsCostContext {
    * fall through to the global `fetch`.
    */
   http: HttpHostServices | undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Wire shapes
-// ---------------------------------------------------------------------------
-
-/** `WorkspaceAnalyticsQueryResponseModel`: the successor's tabular result. */
-interface AnalyticsQueryResponse {
-  columns?: string[] | null;
-  /** ClickHouse-flavoured: String | Float | DateTime | Int | Bool | JSON | Map | Array. */
-  column_types?: Array<string | null> | null;
-  /** `ColumnUnit`: ms | s | min | duration | credits | usd | eur | inr | pln | ratio | rating. */
-  column_units?: Array<string | null> | null;
-  rows?: Array<Array<string | number | boolean | null>> | null;
-}
-
-/** The deprecated endpoint's response: a time axis plus one series per breakdown key. */
-interface CharacterStatsResponse {
-  time?: number[] | null;
-  usage?: Record<string, Array<number | null>> | null;
-}
-
-/** `SubscriptionResponseModel`, only the field this module reads. */
-interface SubscriptionResponse {
-  /** `Currency` enum: usd | eur | inr | pln. */
-  currency?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +133,7 @@ const CURRENCY_UNITS = new Set(["usd", "eur", "inr", "pln"]);
 const FALLBACK_CURRENCY = "USD";
 
 /** Normalize a spec-cased currency ("usd") to the ISO 4217 code CostRow wants. */
-function normalizeCurrency(value: unknown): string {
+function normalizeCurrency(value: UsageCell | undefined): string {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
   if (!/^[A-Za-z]{3}$/.test(trimmed)) return "";
@@ -168,51 +149,63 @@ interface RawResponse {
   body: string;
 }
 
+/** A non-2xx answer on its way back to {@link answered}, which makes it a value again. */
+class RefusedAnswer extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(`ElevenLabs API error ${status}`);
+  }
+}
+
 /**
- * Raw request returning the status instead of throwing on it.
+ * Run a request and hand back its status instead of throwing on it.
  *
- * `jsonRestFetch` would collapse every failure into a message string, and this
- * module has to branch on the exact status: a 404 from the successor means
- * "fall back to the deprecated endpoint", a 403 means "this key lacks workspace
- * analytics", and those lead to completely different behavior. Mirrors
- * `jsonRestFetch`'s dual path so bastion routing and `caCert` still work.
+ * A thrown message would collapse every failure into a string, and this module
+ * has to branch on the exact status: a 404 from the successor means "fall back
+ * to the deprecated endpoint", a 403 means "this key lacks workspace analytics",
+ * and those lead to completely different behavior.
  */
-async function request(
-  ctx: ElevenLabsCostContext,
-  path: string,
-  init?: { method?: string; body?: string },
-): Promise<RawResponse> {
-  const url = `${API_BASE}${path}`;
-  const method = init?.method ?? "GET";
-  const headers: Record<string, string> = {
+async function answered(call: () => Promise<RawResponse>): Promise<RawResponse> {
+  try {
+    const { status, body } = await call();
+    return { status, body };
+  } catch (err) {
+    if (err instanceof RefusedAnswer) return { status: err.status, body: err.body };
+    throw err;
+  }
+}
+
+/** What every request here sends: `Content-Type` too, even on a GET. */
+const transport = (ctx: ElevenLabsCostContext) => ({
+  vendor: "ElevenLabs",
+  headers: {
     "xi-api-key": ctx.apiKey,
     Accept: "application/json",
     "Content-Type": "application/json",
-  };
+  },
+  contentType: "with-body" as const,
+  httpError: ({ status, body }: RawResponse) => new RefusedAnswer(status, body),
+});
 
-  if (ctx.http) {
-    const result = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(init?.body !== undefined ? { body: init.body } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    return { status: result.status, body: result.body };
-  }
-
-  const res = await fetch(url, {
-    method,
-    headers,
-    ...(init?.body !== undefined ? { body: init.body } : {}),
+/**
+ * Bodies stay text, because a body that is not JSON has its own message here and
+ * an empty one reads as `{}`: `getText`, not `get`.
+ */
+const costApi = (ctx: ElevenLabsCostContext) =>
+  createApiClient<paths>({
+    ...transport(ctx),
+    baseUrl: API_BASE,
+    http: ctx.http,
+    caCert: ctx.caCert,
   });
-  return { status: res.status, body: await res.text() };
-}
 
-function parseJson<T>(res: RawResponse, path: string): T {
-  if (!res.body) return {} as T;
+function parseJson<T>(res: RawResponse, path: string): Partial<T> {
+  if (!res.body) return {};
   try {
-    return JSON.parse(res.body) as T;
+    const parsed: T = JSON.parse(res.body);
+    return parsed;
   } catch {
     throw new Error(
       `ElevenLabs API returned a malformed JSON body for ${path}: ${res.body.slice(0, 200)}`,
@@ -255,7 +248,7 @@ function dayStartMs(isoDate: string): number {
  * with a calendar date is sliced directly: parsing it would risk a local-time
  * reinterpretation that shifts the bucket by a day.
  */
-function toIsoDate(value: unknown): string {
+function toIsoDate(value: UsageCell | undefined): string {
   if (typeof value === "number" && Number.isFinite(value)) {
     // Seconds vs milliseconds: 1e11 seconds is year 5138, 1e11 ms is 1973, so
     // anything below the threshold is seconds.
@@ -272,7 +265,7 @@ function toIsoDate(value: unknown): string {
   return "";
 }
 
-function toNumber(value: unknown): number {
+function toNumber(value: UsageCell | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "string") {
     const parsed = Number(value);
@@ -281,7 +274,7 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function toLabel(value: unknown): string {
+function toLabel(value: UsageCell | undefined): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return "";
@@ -360,9 +353,9 @@ function bucketKeyOf(row: CostRow): string {
  */
 async function workspaceCurrency(ctx: ElevenLabsCostContext): Promise<string> {
   try {
-    const res = await request(ctx, SUBSCRIPTION_PATH);
+    const res = await answered(() => costApi(ctx).getText(SUBSCRIPTION_PATH));
     if (res.status < 200 || res.status >= 300) return FALLBACK_CURRENCY;
-    const body = parseJson<SubscriptionResponse>(res, SUBSCRIPTION_PATH);
+    const body = parseJson<ElevenLabsSubscription>(res, SUBSCRIPTION_PATH);
     return normalizeCurrency(body.currency) || FALLBACK_CURRENCY;
   } catch {
     return FALLBACK_CURRENCY;
@@ -404,7 +397,7 @@ interface ColumnPlan {
  * only then by name. Returns `null` when there is no usable money column,
  * which the caller treats as schema drift and falls back on.
  */
-function planColumns(body: AnalyticsQueryResponse): ColumnPlan | null {
+function planColumns(body: Partial<UsageQueryResponse>): ColumnPlan | null {
   const columns = body.columns ?? [];
   const types = body.column_types ?? [];
   const units = body.column_units ?? [];
@@ -462,7 +455,7 @@ async function fetchViaAnalytics(
 ): Promise<CostRow[] | null> {
   // `end_time` is inclusive of the final day: the last bucket must start on
   // `toDate`, so we aim at the last millisecond of it rather than midnight.
-  const payload = {
+  const payload: UsageQueryBody = {
     start_time: dayStartMs(range.fromDate),
     end_time: dayStartMs(range.toDate) + DAY_MS - 1,
     // Whole-day multiple, which the spec says aligns buckets to local midnight:
@@ -474,10 +467,17 @@ async function fetchViaAnalytics(
     time_zone: "UTC",
   };
 
-  const res = await request(ctx, USAGE_BY_PRODUCT_PATH, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  // Not `api.post`: only `getText` keeps a body as text, and that is GET only.
+  const res = await answered(() =>
+    restRequest<string>({
+      ...transport(ctx),
+      url: `${API_BASE}${USAGE_BY_PRODUCT_PATH}`,
+      init: { method: "POST", body: JSON.stringify(payload) },
+      responseAs: "text",
+      ...(ctx.http ? { http: ctx.http } : {}),
+      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+    }),
+  );
 
   if (isMissingEndpoint(res.status)) return null;
   // A narrowly scoped personal key can be refused workspace analytics while
@@ -486,7 +486,7 @@ async function fetchViaAnalytics(
   if (isForbidden(res.status)) return null;
   if (res.status < 200 || res.status >= 300) throw apiError(res, USAGE_BY_PRODUCT_PATH);
 
-  const body = parseJson<AnalyticsQueryResponse>(res, USAGE_BY_PRODUCT_PATH);
+  const body = parseJson<UsageQueryResponse>(res, USAGE_BY_PRODUCT_PATH);
   const plan = planColumns(body);
   if (!plan) return null;
 
@@ -545,26 +545,22 @@ async function fetchViaCharacterStats(
 ): Promise<CostRow[]> {
   const base = {
     // Documented as milliseconds: window start at 00:00:00 and end at 23:59:59.
-    start_unix: String(dayStartMs(range.fromDate)),
-    end_unix: String(dayStartMs(range.toDate) + DAY_MS - 1),
+    start_unix: dayStartMs(range.fromDate),
+    end_unix: dayStartMs(range.toDate) + DAY_MS - 1,
     aggregation_interval: "day",
     // Real money, as opposed to `credits` / `tts_characters` / `minutes_used`.
     metric: "fiat_units_spent",
     breakdown_type: "product_type",
-  };
+  } as const;
 
-  const query = (workspaceWide: boolean): string =>
-    new URLSearchParams(
-      workspaceWide ? { ...base, include_workspace_metrics: "true" } : base,
-    ).toString();
-
-  let path = `${CHARACTER_STATS_PATH}?${query(true)}`;
-  let res = await request(ctx, path);
+  const api = costApi(ctx);
+  let res = await answered(() =>
+    api.getText(CHARACTER_STATS_PATH, { query: { ...base, include_workspace_metrics: true } }),
+  );
   if (isForbidden(res.status)) {
     // Probe failed: this key is not allowed to see workspace-wide totals.
     // Retry scoped to the caller: partial numbers beat none.
-    path = `${CHARACTER_STATS_PATH}?${query(false)}`;
-    res = await request(ctx, path);
+    res = await answered(() => api.getText(CHARACTER_STATS_PATH, { query: base }));
   }
 
   if (isForbidden(res.status)) {

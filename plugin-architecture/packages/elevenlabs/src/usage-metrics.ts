@@ -18,6 +18,7 @@
  */
 
 import type { MetricSeries } from "@infrawrench/plugin-base";
+import type { UsageCell, UsageQueryBody, UsageQueryResponse } from "./api.js";
 
 export const USAGE_QUERY_PATH = "/v1/workspace/analytics/query/usage-by-product-over-time";
 
@@ -27,18 +28,11 @@ const MIN_START_MS = Date.UTC(2020, 0, 1);
 
 export type UsageGroup = "voice_id" | "model";
 
-export interface UsageQueryResponse {
-  columns?: string[];
-  column_types?: string[];
-  column_units?: Array<string | null>;
-  rows?: unknown[][];
-}
-
 /** Request body for one daily, UTC-aligned query grouped by `group`. */
 export function usageQueryBody(
   group: UsageGroup,
   range: { startMs: number; endMs: number },
-): Record<string, unknown> {
+): UsageQueryBody {
   return {
     start_time: Math.max(MIN_START_MS, Math.floor(range.startMs / DAY_MS) * DAY_MS),
     end_time: Math.max(MIN_START_MS, range.endMs),
@@ -130,7 +124,7 @@ function humanise(column: string): string {
  * DateTime cells arrive as ISO strings, possibly zone-less (UTC), or as epoch
  * numbers in seconds or milliseconds.
  */
-function parseStamp(cell: unknown): number | undefined {
+function parseStamp(cell: UsageCell | undefined): number | undefined {
   if (typeof cell === "number" && Number.isFinite(cell)) {
     return cell < 1e12 ? cell * 1000 : cell;
   }

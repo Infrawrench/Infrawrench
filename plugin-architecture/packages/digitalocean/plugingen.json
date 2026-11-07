@@ -1,0 +1,900 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api-engineering.nyc3.cdn.digitaloceanspaces.com/spec-ci/DigitalOcean-public.v2.yaml",
+  "pathPrefix": "/v2",
+  "patches": [
+    {
+      "pointer": "/paths/~1monitoring~1metrics~1droplet~1disk_read",
+      "value": {
+        "get": {
+          "operationId": "monitoring_get_dropletDiskRead",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/parameters_droplet_id"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_start"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_end"
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/droplet_cpu_metric_response"
+            }
+          }
+        }
+      },
+      "why": "Not in the document, which lists no droplet disk series. The plugin asks for it and treats a 404 as no series."
+    },
+    {
+      "pointer": "/paths/~1monitoring~1metrics~1droplet~1disk_write",
+      "value": {
+        "get": {
+          "operationId": "monitoring_get_dropletDiskWrite",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/parameters_droplet_id"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_start"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_end"
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/droplet_cpu_metric_response"
+            }
+          }
+        }
+      },
+      "why": "Not in the document, which lists no droplet disk series. The plugin asks for it and treats a 404 as no series."
+    },
+    {
+      "pointer": "/paths/~1monitoring~1metrics~1database~1{engine}~1cpu_usage",
+      "value": {
+        "get": {
+          "operationId": "monitoring_get_databaseCpuUsage",
+          "parameters": [
+            {
+              "name": "engine",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/components/parameters/db_id"
+            },
+            {
+              "name": "aggregate",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_start"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_end"
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/metric_response"
+            }
+          }
+        }
+      },
+      "why": "The document covers this family for MySQL only, under a literal `mysql`. The plugin asks it of every engine and treats a 404 as no series."
+    },
+    {
+      "pointer": "/paths/~1monitoring~1metrics~1database~1{engine}~1memory_usage",
+      "value": {
+        "get": {
+          "operationId": "monitoring_get_databaseMemoryUsage",
+          "parameters": [
+            {
+              "name": "engine",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/components/parameters/db_id"
+            },
+            {
+              "name": "aggregate",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_start"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_end"
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/metric_response"
+            }
+          }
+        }
+      },
+      "why": "The document covers this family for MySQL only, under a literal `mysql`. The plugin asks it of every engine and treats a 404 as no series."
+    },
+    {
+      "pointer": "/paths/~1monitoring~1metrics~1database~1{engine}~1disk_usage",
+      "value": {
+        "get": {
+          "operationId": "monitoring_get_databaseDiskUsage",
+          "parameters": [
+            {
+              "name": "engine",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/components/parameters/db_id"
+            },
+            {
+              "name": "aggregate",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_start"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_end"
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/metric_response"
+            }
+          }
+        }
+      },
+      "why": "The document covers this family for MySQL only, under a literal `mysql`. The plugin asks it of every engine and treats a 404 as no series."
+    },
+    {
+      "pointer": "/paths/~1monitoring~1metrics~1database~1{engine}~1load",
+      "value": {
+        "get": {
+          "operationId": "monitoring_get_databaseLoad",
+          "parameters": [
+            {
+              "name": "engine",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/components/parameters/db_id"
+            },
+            {
+              "name": "aggregate",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/components/parameters/metric_load"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_start"
+            },
+            {
+              "$ref": "#/components/parameters/metric_timestamp_end"
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/metric_response"
+            }
+          }
+        }
+      },
+      "why": "The document covers this family for MySQL only, under a literal `mysql`. The plugin asks it of every engine and treats a 404 as no series."
+    },
+    {
+      "pointer": "/components/schemas/firewall_rule_base/properties/protocol",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/firewall_rule_base/properties/action",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/alert_updatable/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/alert_updatable/properties/comparison",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/alert_updatable/properties/period",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/check_updatable/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/check_updatable/properties/regions/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin checks these against its own list of probe regions before sending them, and hands a region it read back through unchanged."
+    },
+    {
+      "pointer": "/components/schemas/update_endpoint/properties/ttl",
+      "value": {
+        "type": "number"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/cdn_endpoint/properties/ttl",
+      "value": {
+        "type": "number"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/forwarding_rule/properties/entry_protocol",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/forwarding_rule/properties/target_protocol",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/droplet_backup_policy/properties/plan",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/droplet_backup_policy/properties/weekday",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/droplet_backup_policy/properties/hour",
+      "value": {
+        "type": "number"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/region_slug",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/registry_create/properties/subscription_tier_slug",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/registry_create/properties/region",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/database_cluster/properties/engine",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/project_base/properties/environment",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/apiWebCrawlerDataSource/properties/crawling_option",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/user_settings/properties/acl/items/properties/permission",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/reserved_ip_action_unassign",
+      "value": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["unassign"]
+          }
+        }
+      },
+      "why": "An allOf of the discriminated parent and a `required` generates `Record<string, never>`, which no body can satisfy."
+    },
+    {
+      "pointer": "/paths/~1load_balancers~1{lb_id}~1droplets/post/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "required": ["droplet_ids"],
+        "properties": {
+          "droplet_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "why": "An allOf with a bare `required` generates `Record<string, never>`, which no body can satisfy."
+    },
+    {
+      "pointer": "/paths/~1load_balancers~1{lb_id}~1droplets/delete/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "required": ["droplet_ids"],
+        "properties": {
+          "droplet_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "why": "An allOf with a bare `required` generates `Record<string, never>`, which no body can satisfy."
+    },
+    {
+      "pointer": "/components/responses/sshKeys_new/content/application~1json/schema/required",
+      "value": ["ssh_key"],
+      "why": "The document omits `required` here. The response always carries `ssh_key`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/responses/cluster_create/content/application~1json/schema/required",
+      "value": ["kubernetes_cluster"],
+      "why": "The document omits `required` here. The response always carries `kubernetes_cluster`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/responses/create_domain_response/content/application~1json/schema/required",
+      "value": ["domain"],
+      "why": "The document omits `required` here. The response always carries `domain`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/responses/existing_vpc/content/application~1json/schema/required",
+      "value": ["vpc"],
+      "why": "The document omits `required` here. The response always carries `vpc`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/responses/volume/content/application~1json/schema/required",
+      "value": ["volume"],
+      "why": "The document omits `required` here. The response always carries `volume`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/responses/existing_project/content/application~1json/schema/required",
+      "value": ["project"],
+      "why": "The document omits `required` here. The response always carries `project`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/schemas/kubernetes_region/required",
+      "value": ["name", "slug"],
+      "why": "The document marks nothing required here. The plugin has always used these as picker ids and labels without a fallback."
+    },
+    {
+      "pointer": "/components/schemas/kubernetes_size/required",
+      "value": ["name", "slug"],
+      "why": "The document marks nothing required here. The plugin has always used these as picker ids and labels without a fallback."
+    },
+    {
+      "pointer": "/components/schemas/kubernetes_version/required",
+      "value": ["slug", "kubernetes_version"],
+      "why": "The document marks nothing required here. The plugin has always used these as picker ids and labels without a fallback."
+    },
+    {
+      "pointer": "/components/schemas/genaiapiRegion/required",
+      "value": ["region"],
+      "why": "The document marks nothing required here. The plugin has always used these as picker ids and labels without a fallback."
+    },
+    {
+      "pointer": "/components/schemas/image/required",
+      "value": ["name", "distribution"],
+      "why": "The document marks nothing required here. The plugin has always used these as picker ids and labels without a fallback."
+    },
+    {
+      "pointer": "/components/responses/existing_droplet/content/application~1json/schema/required",
+      "value": ["droplet"],
+      "why": "The document omits `required` here. The response always carries `droplet`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/responses/droplet_create/content/application~1json/schema",
+      "value": {
+        "properties": {
+          "droplet": {
+            "$ref": "#/components/schemas/droplet"
+          }
+        },
+        "required": ["droplet"]
+      },
+      "why": "The plugin creates one Droplet at a time, so only the document's single-Droplet variant can come back."
+    },
+    {
+      "pointer": "/components/schemas/droplet_action/properties/type/enum/15",
+      "value": "change_backup_policy",
+      "why": "The document's own table of action types lists it and `droplet_action_change_backup_policy` sends it, but the enum omits it."
+    },
+    {
+      "pointer": "/components/schemas/database_connection/properties/port",
+      "value": {
+        "type": "string",
+        "readOnly": true
+      },
+      "why": "An integer on the wire. The plugin hands the connection fields on as outputs without converting them, so it treats them all as text."
+    },
+    {
+      "pointer": "/paths/~1domains~1{domain_name}~1records/post/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "data": {
+            "type": "string"
+          },
+          "ttl": {
+            "type": "integer"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        }
+      },
+      "why": "A union on `type`, which comes from a select the plugin does not hold a copy of; DO validates the combination."
+    },
+    {
+      "pointer": "/paths/~1domains~1{domain_name}~1records~1{domain_record_id}/put/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "data": {
+            "type": "string"
+          },
+          "ttl": {
+            "type": "integer"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        }
+      },
+      "why": "`type` is required in the document, and the host sends only the fields that changed."
+    },
+    {
+      "pointer": "/paths/~1dedicated-inferences~1accelerators",
+      "value": {
+        "get": {
+          "operationId": "dedicatedInferences_listAccelerators",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "accelerators": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "slug": {
+                              "type": "string"
+                            },
+                            "model_id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the document, which has accelerators only under one inference and a separate gpu-model-config. Kept because requests must not change."
+    },
+    {
+      "pointer": "/components/responses/action/content/application~1json/schema/required",
+      "value": ["action"],
+      "why": "The document omits `required` here. The response always carries `action`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/responses/created_domain_record/content/application~1json/schema/required",
+      "value": ["domain_record"],
+      "why": "The document omits `required` here. The response always carries `domain_record`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/responses/all_vpcs/content/application~1json/schema/allOf/0/required",
+      "value": ["vpcs"],
+      "why": "The document omits `required` here. The response always carries `vpcs`, and the plugin reads it without a guard."
+    },
+    {
+      "pointer": "/components/schemas/vpc_base/required",
+      "value": ["id"],
+      "why": "The document marks nothing required here. The plugin has always used these as picker ids and labels without a fallback."
+    },
+    {
+      "pointer": "/components/responses/projects_list/content/application~1json/schema/allOf/0/properties/projects/items",
+      "value": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The document marks nothing required on a project, and its shared schema is the request body too. A list row always has these, and the plugin uses them as picker ids and labels."
+    },
+    {
+      "pointer": "/components/responses/database_cluster/content/application~1json/schema/properties/database",
+      "value": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/database_cluster_read"
+          }
+        ],
+        "required": ["connection"]
+      },
+      "why": "Marked optional, and the plugin reads the connection block of a cluster it asked for by id without a guard."
+    },
+    {
+      "pointer": "/components/schemas/kubernetes_node_pool/required",
+      "value": ["name", "count"],
+      "why": "`size` comes straight from a form field, which the host may leave out; DO's own validation answers that."
+    },
+    {
+      "pointer": "/components/schemas/load_balancer_base/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/load_balancer_base/properties/network",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/health_check/properties/protocol",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/vpc_nat_gateway_create/properties/region",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/vpc_nat_gateway_get/properties/region",
+      "value": {
+        "type": "string"
+      },
+      "why": "Comes from a form field or a picker and goes through as typed; DO validates it, and the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/vpc_nat_gateway_create/properties/vpcs/items/required",
+      "value": [],
+      "why": "`vpc_uuid` comes straight from a form field, which the host may leave out; DO's own validation answers that."
+    },
+    {
+      "pointer": "/components/schemas/apiUpdateModelRouterInputPublic/properties/fallback_models/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Documented as an object with no properties, which generates `Record<string, never>`. The create input and the router itself both say these are ids."
+    },
+    {
+      "pointer": "/components/schemas/apiLinkAgentFunctionInputPublic/properties/input_schema",
+      "value": {},
+      "why": "Documented as an object with no properties, which generates `Record<string, never>`. It is any JSON schema the user writes."
+    },
+    {
+      "pointer": "/components/schemas/apiLinkAgentFunctionInputPublic/properties/output_schema",
+      "value": {},
+      "why": "Documented as an object with no properties, which generates `Record<string, never>`. It is any JSON schema the user writes."
+    }
+  ],
+  "paths": {
+    "/account": ["get"],
+    "/account/keys": ["get", "post"],
+    "/actions/{action_id}": ["get"],
+    "/apps": ["get"],
+    "/apps/{app_id}/deployments": ["get", "post"],
+    "/apps/{app_id}/deployments/{deployment_id}/cancel": ["post"],
+    "/apps/{app_id}/logs": ["get"],
+    "/apps/{app_id}/metrics/bandwidth_daily": ["get"],
+    "/apps/{app_id}/restart": ["post"],
+    "/apps/{app_id}/rollback": ["post"],
+    "/apps/{app_id}/rollback/commit": ["post"],
+    "/apps/{app_id}/rollback/revert": ["post"],
+    "/apps/{id}": ["get", "put", "delete"],
+    "/billing/{account_urn}/insights/{start_date}/{end_date}": ["get"],
+    "/cdn/endpoints": ["get", "post"],
+    "/cdn/endpoints/{cdn_id}": ["put", "delete"],
+    "/cdn/endpoints/{cdn_id}/cache": ["delete"],
+    "/certificates": ["get", "post"],
+    "/certificates/{certificate_id}": ["delete"],
+    "/databases": ["get", "post"],
+    "/databases/options": ["get"],
+    "/databases/{database_cluster_uuid}": ["get", "delete"],
+    "/databases/{database_cluster_uuid}/ca": ["get"],
+    "/databases/{database_cluster_uuid}/events": ["get"],
+    "/databases/{database_cluster_uuid}/users": ["get", "post"],
+    "/databases/{database_cluster_uuid}/users/{username}": ["delete"],
+    "/dedicated-inferences": ["get", "post"],
+    "/dedicated-inferences/accelerators": ["get"],
+    "/dedicated-inferences/sizes": ["get"],
+    "/dedicated-inferences/{dedicated_inference_id}": ["delete"],
+    "/domains": ["get", "post"],
+    "/domains/{domain_name}": ["delete"],
+    "/domains/{domain_name}/records": ["get", "post"],
+    "/domains/{domain_name}/records/{domain_record_id}": ["put", "delete"],
+    "/droplets": ["get", "post"],
+    "/droplets/autoscale": ["get"],
+    "/droplets/autoscale/{autoscale_pool_id}": ["get", "put", "delete"],
+    "/droplets/autoscale/{autoscale_pool_id}/dangerous": ["delete"],
+    "/droplets/autoscale/{autoscale_pool_id}/history": ["get"],
+    "/droplets/autoscale/{autoscale_pool_id}/members": ["get"],
+    "/droplets/{droplet_id}": ["get", "delete"],
+    "/droplets/{droplet_id}/actions": ["post"],
+    "/droplets/{droplet_id}/backups": ["get"],
+    "/droplets/{droplet_id}/snapshots": ["get"],
+    "/firewalls": ["get", "post"],
+    "/firewalls/{firewall_id}": ["get", "put", "delete"],
+    "/firewalls/{firewall_id}/droplets": ["post", "delete"],
+    "/firewalls/{firewall_id}/rules": ["post", "delete"],
+    "/firewalls/{firewall_id}/tags": ["post", "delete"],
+    "/functions/namespaces": ["get"],
+    "/gen-ai/agents": ["get", "post"],
+    "/gen-ai/agents/{agent_uuid}/api_keys": ["get", "post"],
+    "/gen-ai/agents/{agent_uuid}/api_keys/{api_key_uuid}": ["delete"],
+    "/gen-ai/agents/{agent_uuid}/api_keys/{api_key_uuid}/regenerate": ["put"],
+    "/gen-ai/agents/{agent_uuid}/functions": ["post"],
+    "/gen-ai/agents/{agent_uuid}/functions/{function_uuid}": ["delete"],
+    "/gen-ai/agents/{agent_uuid}/knowledge_bases/{knowledge_base_uuid}": ["post", "delete"],
+    "/gen-ai/agents/{parent_agent_uuid}/child_agents/{child_agent_uuid}": ["post", "delete"],
+    "/gen-ai/agents/{uuid}": ["get", "put", "delete"],
+    "/gen-ai/agents/{uuid}/deployment_visibility": ["put"],
+    "/gen-ai/agents/{uuid}/usage": ["get"],
+    "/gen-ai/indexing_jobs": ["post"],
+    "/gen-ai/indexing_jobs/{uuid}/cancel": ["put"],
+    "/gen-ai/knowledge_bases": ["get", "post"],
+    "/gen-ai/knowledge_bases/{knowledge_base_uuid}/data_sources": ["get", "post"],
+    "/gen-ai/knowledge_bases/{knowledge_base_uuid}/data_sources/{data_source_uuid}": ["delete"],
+    "/gen-ai/knowledge_bases/{knowledge_base_uuid}/indexing_jobs": ["get"],
+    "/gen-ai/knowledge_bases/{uuid}": ["put", "delete"],
+    "/gen-ai/models": ["get"],
+    "/gen-ai/models/api_keys": ["get"],
+    "/gen-ai/models/api_keys/{api_key_uuid}": ["delete"],
+    "/gen-ai/models/routers": ["get", "post"],
+    "/gen-ai/models/routers/presets": ["get"],
+    "/gen-ai/models/routers/tasks/presets": ["get"],
+    "/gen-ai/models/routers/{uuid}": ["get", "put", "delete"],
+    "/gen-ai/regions": ["get"],
+    "/gen-ai/workspaces": ["get", "post"],
+    "/images": ["get"],
+    "/images/{image_id}": ["delete"],
+    "/insights/query/{region}/logs/search": ["post"],
+    "/kubernetes/clusters": ["get", "post"],
+    "/kubernetes/clusters/{cluster_id}": ["get", "delete"],
+    "/kubernetes/clusters/{cluster_id}/status_messages": ["get"],
+    "/kubernetes/options": ["get"],
+    "/load_balancers": ["get", "post"],
+    "/load_balancers/{lb_id}": ["get", "put", "delete"],
+    "/load_balancers/{lb_id}/droplets": ["post", "delete"],
+    "/load_balancers/{lb_id}/forwarding_rules": ["post", "delete"],
+    "/monitoring/metrics/apps/cpu_percentage": ["get"],
+    "/monitoring/metrics/apps/memory_percentage": ["get"],
+    "/monitoring/metrics/apps/restart_count": ["get"],
+    "/monitoring/metrics/database/mysql/index_vs_sequential_reads": ["get"],
+    "/monitoring/metrics/database/mysql/op_rates": ["get"],
+    "/monitoring/metrics/database/mysql/threads_active": ["get"],
+    "/monitoring/metrics/database/mysql/threads_connected": ["get"],
+    "/monitoring/metrics/database/mysql/threads_created_rate": ["get"],
+    "/monitoring/metrics/database/{engine}/cpu_usage": ["get"],
+    "/monitoring/metrics/database/{engine}/disk_usage": ["get"],
+    "/monitoring/metrics/database/{engine}/load": ["get"],
+    "/monitoring/metrics/database/{engine}/memory_usage": ["get"],
+    "/monitoring/metrics/droplet/bandwidth": ["get"],
+    "/monitoring/metrics/droplet/cpu": ["get"],
+    "/monitoring/metrics/droplet/disk_read": ["get"],
+    "/monitoring/metrics/droplet/disk_write": ["get"],
+    "/monitoring/metrics/droplet/filesystem_free": ["get"],
+    "/monitoring/metrics/droplet/filesystem_size": ["get"],
+    "/monitoring/metrics/droplet/load_1": ["get"],
+    "/monitoring/metrics/droplet/load_15": ["get"],
+    "/monitoring/metrics/droplet/load_5": ["get"],
+    "/monitoring/metrics/droplet/memory_available": ["get"],
+    "/monitoring/metrics/droplet/memory_cached": ["get"],
+    "/monitoring/metrics/droplet/memory_free": ["get"],
+    "/monitoring/metrics/droplet/memory_total": ["get"],
+    "/monitoring/metrics/droplet_autoscale/current_cpu_utilization": ["get"],
+    "/monitoring/metrics/droplet_autoscale/current_instances": ["get"],
+    "/monitoring/metrics/droplet_autoscale/current_memory_utilization": ["get"],
+    "/monitoring/metrics/droplet_autoscale/target_cpu_utilization": ["get"],
+    "/monitoring/metrics/droplet_autoscale/target_instances": ["get"],
+    "/monitoring/metrics/droplet_autoscale/target_memory_utilization": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_connections": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_downtime": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_health_checks": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_http_response_time_50p": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_http_response_time_95p": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_http_response_time_99p": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_http_response_time_avg": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_http_responses": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_http_session_duration_50p": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_http_session_duration_95p": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_http_session_duration_avg": ["get"],
+    "/monitoring/metrics/load_balancer/droplets_queue_size": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_connections_current": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_connections_limit": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_cpu_utilization": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_firewall_dropped_bytes": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_firewall_dropped_packets": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_http_requests_per_second": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_http_responses": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_network_throughput_http": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_network_throughput_tcp": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_network_throughput_udp": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_nlb_tcp_network_throughput": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_nlb_udp_network_throughput": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_tls_connections_current": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_tls_connections_exceeding_rate_limit": ["get"],
+    "/monitoring/metrics/load_balancer/frontend_tls_connections_limit": ["get"],
+    "/nfs": ["get", "post"],
+    "/nfs/{nfs_id}": ["delete"],
+    "/nfs/{nfs_id}/actions": ["post"],
+    "/projects": ["get", "post"],
+    "/projects/{project_id}": ["patch", "delete"],
+    "/projects/{project_id}/resources": ["get", "post"],
+    "/regions": ["get"],
+    "/registry": ["get", "post", "delete"],
+    "/registry/docker-credentials": ["get"],
+    "/registry/subscription": ["get"],
+    "/reserved_ips": ["get", "post"],
+    "/reserved_ips/{reserved_ip}": ["delete"],
+    "/reserved_ips/{reserved_ip}/actions": ["post"],
+    "/sizes": ["get"],
+    "/snapshots": ["get"],
+    "/snapshots/{snapshot_id}": ["delete"],
+    "/spaces/keys": ["post"],
+    "/tags": ["get"],
+    "/uptime/checks": ["get", "post"],
+    "/uptime/checks/{check_id}": ["get", "put", "delete"],
+    "/uptime/checks/{check_id}/alerts": ["get", "post"],
+    "/uptime/checks/{check_id}/alerts/{alert_id}": ["delete"],
+    "/uptime/checks/{check_id}/state": ["get"],
+    "/volumes": ["get", "post"],
+    "/volumes/{volume_id}": ["delete"],
+    "/volumes/{volume_id}/actions": ["post"],
+    "/volumes/{volume_id}/snapshots": ["post"],
+    "/vpc_nat_gateways": ["get", "post"],
+    "/vpc_nat_gateways/{id}": ["get", "put", "delete"],
+    "/vpc_peerings": ["get", "post"],
+    "/vpc_peerings/{vpc_peering_id}": ["patch", "delete"],
+    "/vpcs": ["get", "post"],
+    "/vpcs/{vpc_id}": ["delete"]
+  }
+}

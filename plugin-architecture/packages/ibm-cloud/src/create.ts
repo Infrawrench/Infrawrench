@@ -1,36 +1,29 @@
-import type {
-  CreateFieldConfig,
-  CreateResourceConfig,
-  ImageOption,
-  RegionOption,
-  ResourceInstance,
-  SelectOption,
-  SizeOption,
+import {
+  unencodedSegment,
+  type ApiListItem,
+  type CreateFieldConfig,
+  type CreateResourceConfig,
+  type ImageOption,
+  type RegionOption,
+  type ResourceInstance,
+  type SelectOption,
+  type SizeOption,
 } from "@infrawrench/plugin-base";
 import { mapLimit } from "./api.js";
+import type { components, operations } from "./api-types.vpc.gen.js";
 import {
+  VPC_LIST_QUERY,
   getInstance,
+  listKeysIn,
   makeResource,
   mapApp,
   mapProject,
   resourceGroups,
   resourceInstances,
-  vpcGet,
   vpcList,
-  type CeApp,
   type ListContext,
-  type VpcKey,
 } from "./listers.js";
-import {
-  CODE_ENGINE_REGIONS,
-  RESOURCE_CONTROLLER,
-  VPC_API_VERSION,
-  codeEngineBase,
-  cosEndpoint,
-  crnService,
-  regionInfo,
-  vpcBase,
-} from "./regions.js";
+import { CODE_ENGINE_REGIONS, VPC_QUERY, cosEndpoint, crnService, regionInfo } from "./regions.js";
 
 /**
  * Create forms and handlers. Regions come from the VPC region list, zones
@@ -84,11 +77,9 @@ async function zoneField(ctx: ListContext): Promise<CreateFieldConfig> {
     async (region) =>
       (
         await ctx.api
-          .get<{ zones?: Array<{ name: string }> }>(`${vpcBase(region)}/regions/${region}/zones`, {
-            version: VPC_API_VERSION,
-            generation: 2,
-          })
-          .catch(() => ({ zones: [] as Array<{ name: string }> }))
+          .vpc(region)
+          .get(`/regions/${unencodedSegment(region)}/zones`, { query: VPC_QUERY })
+          .catch(() => ({ zones: [] }))
       ).zones?.map((z) => ({ id: z.name, label: z.name, availableFor: [region] })) ?? [],
   );
   return {
@@ -130,22 +121,23 @@ const picker = (
   ...(description ? { description } : {}),
 });
 
-interface Profile {
-  name: string;
-  family?: string;
-  vcpu_count?: { value?: number };
-  memory?: { value?: number };
-  os_architecture?: { default?: string };
-}
+type Schemas = components["schemas"];
+
+/** Every field of any variant of a union, optional, for reading what only some variants have. */
+type AnyVariant<T> = {
+  [K in T extends T ? keyof T : never]?: T extends { [P in K]?: infer V } ? V : never;
+};
+
+/** An instance profile as the form reads it: a vCPU count or memory size may be a range. */
+type Profile = Omit<Schemas["InstanceProfile"], "vcpu_count" | "memory"> & {
+  vcpu_count?: AnyVariant<Schemas["InstanceProfile"]["vcpu_count"]>;
+  memory?: AnyVariant<Schemas["InstanceProfile"]["memory"]>;
+};
 
 export async function listProfiles(ctx: ListContext): Promise<Profile[]> {
-  const res = await ctx.api.get<{ profiles?: Profile[] }>(
-    `${vpcBase(ctx.inventory.homeRegion)}/instance/profiles`,
-    {
-      version: VPC_API_VERSION,
-      generation: 2,
-    },
-  );
+  const res = await ctx.api
+    .vpc(ctx.inventory.homeRegion)
+    .get("/instance/profiles", { query: VPC_QUERY });
   return res.profiles ?? [];
 }
 
@@ -168,24 +160,16 @@ function profileSizes(profiles: Profile[]): SizeOption[] {
     }));
 }
 
-interface Image {
-  id: string;
-  name: string;
-  status?: string;
-  created_at?: string;
-  operating_system?: {
-    name?: string;
-    display_name?: string;
-    family?: string;
-    architecture?: string;
-  };
-}
+type Image = ApiListItem<operations["list_images"], "images">;
 
 async function publicImages(ctx: ListContext, region: string): Promise<Image[]> {
-  return vpcList<Image>(ctx.api, region, "/images", "images", {
-    visibility: "public",
-    status: "available",
-  });
+  return vpcList(
+    (paging) =>
+      ctx.api.vpc(region).get("/images", {
+        query: { ...VPC_LIST_QUERY, visibility: "public", status: ["available"], ...paging },
+      }),
+    (p) => p.images,
+  );
 }
 
 /** Image picker options: one per public operating system (images are regional and get patched). */
@@ -263,8 +247,8 @@ export async function getCreateConfig(
     case "instance": {
       const [region, profiles, images, rg] = await Promise.all([
         regionField(ctx),
-        listProfiles(ctx).catch(() => [] as Profile[]),
-        imageOptions(ctx).catch(() => [] as ImageOption[]),
+        listProfiles(ctx).catch((): Profile[] => []),
+        imageOptions(ctx).catch((): ImageOption[] => []),
         resourceGroupField(ctx),
       ]);
       const sizes = profileSizes(profiles);
@@ -541,19 +525,6 @@ function required(fields: Record<string, string>, key: string, label = key): str
 const rgRef = (fields: Record<string, string>) =>
   fields["resourceGroupId"] ? { resource_group: { id: fields["resourceGroupId"] } } : {};
 
-function vpcUrl(region: string, path: string): string {
-  return `${vpcBase(region)}${path}?version=${VPC_API_VERSION}&generation=2`;
-}
-
-async function vpcPost<T>(
-  ctx: ListContext,
-  region: string,
-  path: string,
-  body: unknown,
-): Promise<T> {
-  return (await ctx.api.request<T>({ url: vpcUrl(region, path), method: "POST", body })).data;
-}
-
 /** The first two space-separated parts of an OpenSSH key: type and base64 body. */
 export function normaliseKey(key: string): string {
   return key.trim().split(/\s+/).slice(0, 2).join(" ");
@@ -567,16 +538,19 @@ async function ensureKey(
   fields: Record<string, string>,
 ): Promise<string> {
   const wanted = normaliseKey(publicKey);
-  const keys = await vpcList<VpcKey>(ctx.api, region, "/keys", "keys");
+  const keys = await listKeysIn(ctx.api, region);
   const found = keys.find((k) => k.public_key && normaliseKey(k.public_key) === wanted);
   if (found) return found.id;
-  const created = await vpcPost<VpcKey>(ctx, region, "/keys", {
-    name: `${name}-key`
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "-")
-      .slice(0, 63),
-    public_key: wanted,
-    ...rgRef(fields),
+  const created = await ctx.api.vpc(region).post("/keys", {
+    query: VPC_QUERY,
+    body: {
+      name: `${name}-key`
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .slice(0, 63),
+      public_key: wanted,
+      ...rgRef(fields),
+    },
   });
   return created.id;
 }
@@ -605,22 +579,18 @@ export async function createResource(
   switch (typeId) {
     case "resource-group": {
       const accountId = await ctx.api.accountId();
-      const res = (
-        await ctx.api.request<{ id: string }>({
-          url: `${RESOURCE_CONTROLLER}/v2/resource_groups`,
-          method: "POST",
-          body: { name: required(fields, "name", "Name"), account_id: accountId },
-        })
-      ).data;
+      const res = await ctx.api.resourceManager.post("/v2/resource_groups", {
+        body: { name: required(fields, "name", "Name"), account_id: accountId },
+      });
       return eventually(() => get("resource-group", res.id));
     }
     case "instance": {
       const name = required(fields, "name", "Name");
-      const subnet = await vpcGet<{ id: string; zone?: { name?: string }; vpc?: { id?: string } }>(
-        ctx.api,
-        region,
-        `/subnets/${required(fields, "subnetId", "Subnet")}`,
-      );
+      const subnet = await ctx.api
+        .vpc(region)
+        .get(`/subnets/${unencodedSegment(required(fields, "subnetId", "Subnet"))}`, {
+          query: VPC_QUERY,
+        });
       const keyId = await ensureKey(
         ctx,
         region,
@@ -629,11 +599,9 @@ export async function createResource(
         fields,
       );
       const imageId = await resolveImage(ctx, region, required(fields, "image", "Image"));
-      const instance = await vpcPost<{ id: string; primary_network_interface?: { id?: string } }>(
-        ctx,
-        region,
-        "/instances",
-        {
+      const instance = await ctx.api.vpc(region).post("/instances", {
+        query: VPC_QUERY,
+        body: {
           name,
           profile: { name: required(fields, "profile", "Profile") },
           image: { id: imageId },
@@ -650,91 +618,107 @@ export async function createResource(
           },
           ...rgRef(fields),
         },
-      );
+      });
       const nicId = instance.primary_network_interface?.id;
       if (fields["floatingIp"] !== "false" && nicId) {
-        await vpcPost(ctx, region, "/floating_ips", {
-          name: `${name}-ip`.slice(0, 63),
-          target: { id: nicId },
-          ...rgRef(fields),
+        await ctx.api.vpc(region).post("/floating_ips", {
+          query: VPC_QUERY,
+          body: {
+            name: `${name}-ip`.slice(0, 63),
+            target: { id: nicId },
+            ...rgRef(fields),
+          },
         });
       }
       return eventually(() => getInstance(ctx, region, instance.id));
     }
     case "volume": {
-      const res = await vpcPost<{ id: string }>(ctx, region, "/volumes", {
-        name: required(fields, "name", "Name"),
-        capacity: Number(required(fields, "capacityGb", "Capacity")),
-        profile: { name: fields["profile"] || "general-purpose" },
-        zone: { name: required(fields, "zone", "Zone") },
-        ...rgRef(fields),
+      const res = await ctx.api.vpc(region).post("/volumes", {
+        query: VPC_QUERY,
+        body: {
+          name: required(fields, "name", "Name"),
+          capacity: Number(required(fields, "capacityGb", "Capacity")),
+          profile: { name: fields["profile"] || "general-purpose" },
+          zone: { name: required(fields, "zone", "Zone") },
+          ...rgRef(fields),
+        },
       });
       return eventually(() => get("volume", `${region}/${res.id}`));
     }
     case "vpc": {
-      const res = await vpcPost<{ id: string }>(ctx, region, "/vpcs", {
-        name: required(fields, "name", "Name"),
-        ...rgRef(fields),
+      const res = await ctx.api.vpc(region).post("/vpcs", {
+        query: VPC_QUERY,
+        body: {
+          name: required(fields, "name", "Name"),
+          ...rgRef(fields),
+        },
       });
       return eventually(() => get("vpc", `${region}/${res.id}`));
     }
     case "subnet": {
-      const res = await vpcPost<{ id: string }>(ctx, region, "/subnets", {
-        name: required(fields, "name", "Name"),
-        vpc: { id: required(fields, "vpcId", "VPC") },
-        zone: { name: required(fields, "zone", "Zone") },
-        total_ipv4_address_count: Number(fields["ipCount"] || 256),
-        ...rgRef(fields),
+      const res = await ctx.api.vpc(region).post("/subnets", {
+        query: VPC_QUERY,
+        body: {
+          name: required(fields, "name", "Name"),
+          vpc: { id: required(fields, "vpcId", "VPC") },
+          zone: { name: required(fields, "zone", "Zone") },
+          total_ipv4_address_count: Number(fields["ipCount"] || 256),
+          ...rgRef(fields),
+        },
       });
       return eventually(() => get("subnet", `${region}/${res.id}`));
     }
     case "security-group": {
       const ports: Record<string, number[]> = { ssh: [22], web: [22, 80, 443], none: [] };
-      const rules = [
-        { direction: "outbound", protocol: "any", remote: { cidr_block: "0.0.0.0/0" } },
-        ...(ports[fields["rules"] ?? "ssh"] ?? []).map((p) => ({
-          direction: "inbound",
-          protocol: "tcp",
-          port_min: p,
-          port_max: p,
-          remote: { cidr_block: "0.0.0.0/0" },
-        })),
-      ];
-      const res = await vpcPost<{ id: string }>(ctx, region, "/security_groups", {
-        name: required(fields, "name", "Name"),
-        vpc: { id: required(fields, "vpcId", "VPC") },
-        rules,
-        ...rgRef(fields),
+      const res = await ctx.api.vpc(region).post("/security_groups", {
+        query: VPC_QUERY,
+        body: {
+          name: required(fields, "name", "Name"),
+          vpc: { id: required(fields, "vpcId", "VPC") },
+          rules: [
+            { direction: "outbound", protocol: "any", remote: { cidr_block: "0.0.0.0/0" } },
+            ...(ports[fields["rules"] ?? "ssh"] ?? []).map((p) => ({
+              direction: "inbound" as const,
+              protocol: "tcp" as const,
+              port_min: p,
+              port_max: p,
+              remote: { cidr_block: "0.0.0.0/0" },
+            })),
+          ],
+          ...rgRef(fields),
+        },
       });
       return eventually(() => get("security-group", `${region}/${res.id}`));
     }
     case "floating-ip": {
-      const res = await vpcPost<{ id: string }>(ctx, region, "/floating_ips", {
-        name: required(fields, "name", "Name"),
-        zone: { name: required(fields, "zone", "Zone") },
-        ...rgRef(fields),
+      const res = await ctx.api.vpc(region).post("/floating_ips", {
+        query: VPC_QUERY,
+        body: {
+          name: required(fields, "name", "Name"),
+          zone: { name: required(fields, "zone", "Zone") },
+          ...rgRef(fields),
+        },
       });
       return eventually(() => get("floating-ip", `${region}/${res.id}`));
     }
     case "ssh-key": {
-      const res = await vpcPost<{ id: string }>(ctx, region, "/keys", {
-        name: required(fields, "name", "Name"),
-        public_key: normaliseKey(required(fields, "publicKey", "Public key")),
-        ...rgRef(fields),
+      const res = await ctx.api.vpc(region).post("/keys", {
+        query: VPC_QUERY,
+        body: {
+          name: required(fields, "name", "Name"),
+          public_key: normaliseKey(required(fields, "publicKey", "Public key")),
+          ...rgRef(fields),
+        },
       });
       return eventually(() => get("ssh-key", `${region}/${res.id}`));
     }
     case "code-engine-project": {
-      const res = (
-        await ctx.api.request<{ id: string; name: string; status?: string; created_at?: string }>({
-          url: `${codeEngineBase(region)}/projects`,
-          method: "POST",
-          body: {
-            name: required(fields, "name", "Name"),
-            ...(fields["resourceGroupId"] ? { resource_group_id: fields["resourceGroupId"] } : {}),
-          },
-        })
-      ).data;
+      const res = await ctx.api.codeEngine(region).post("/projects", {
+        body: {
+          name: required(fields, "name", "Name"),
+          ...(fields["resourceGroupId"] ? { resource_group_id: fields["resourceGroupId"] } : {}),
+        },
+      });
       return mapProject(ctx.accountId, region, {
         ...res,
         resource_group_id: fields["resourceGroupId"] ?? "",
@@ -745,15 +729,14 @@ export async function createResource(
       let projectId = fields["projectId"] ?? "";
       if (parentResourceId) {
         const ext = parentResourceId.split(":").slice(2).join(":");
-        [appRegion, projectId] = ext.split("/") as [string, string];
+        [appRegion = "", projectId = ""] = ext.split("/");
       }
       if (!appRegion || !projectId)
         throw Object.assign(new Error("Pick a project"), { status: 400 });
       const [cpu, memory] = (fields["resources"] || "1|4G").split("|");
-      const app = (
-        await ctx.api.request<CeApp>({
-          url: `${codeEngineBase(appRegion)}/projects/${projectId}/apps`,
-          method: "POST",
+      const app = await ctx.api
+        .codeEngine(appRegion)
+        .post(`/projects/${unencodedSegment(projectId)}/apps`, {
           body: {
             name: required(fields, "name", "Name"),
             image_reference: required(fields, "image", "Image"),
@@ -763,15 +746,14 @@ export async function createResource(
             scale_min_instances: Number(fields["minInstances"] || 0),
             scale_max_instances: Number(fields["maxInstances"] || 10),
           },
-        })
-      ).data;
+        });
       return mapApp(ctx.accountId, appRegion, projectId, app);
     }
     case "cos-bucket": {
       const name = required(fields, "name", "Bucket name").toLowerCase();
       const location = required(fields, "location", "Location");
       const storageClass = fields["storageClass"] || "smart";
-      await ctx.api.request<string>({
+      await ctx.api.requestXml({
         url: `https://${cosEndpoint(location)}/${encodeURIComponent(name)}`,
         method: "PUT",
         headers: {
@@ -782,8 +764,7 @@ export async function createResource(
           ),
           "content-type": "text/plain",
         },
-        rawBody: `<CreateBucketConfiguration><LocationConstraint>${location}-${storageClass}</LocationConstraint></CreateBucketConfiguration>`,
-        text: true,
+        body: `<CreateBucketConfiguration><LocationConstraint>${location}-${storageClass}</LocationConstraint></CreateBucketConfiguration>`,
       });
       return makeResource(
         ctx.accountId,

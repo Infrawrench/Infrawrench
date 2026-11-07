@@ -61,9 +61,7 @@ export const capellaTerraformExport: TerraformExportCapability = {
         const [p, c] = splitId(ext, 2);
         let groups: CpServiceGroup[] = [];
         try {
-          groups = JSON.parse(
-            fieldString(resource, "serviceGroupsJson") || "[]",
-          ) as CpServiceGroup[];
+          groups = JSON.parse(fieldString(resource, "serviceGroupsJson") || "[]");
         } catch {
           groups = [];
         }

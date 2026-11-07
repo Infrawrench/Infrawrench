@@ -83,7 +83,19 @@ const cluster: CCluster = {
   upgrade_status: "FINALIZED",
   delete_protection: "DISABLED",
   sql_dns: "prod-db.aws-us-east-1.cockroachlabs.cloud",
-  regions: [{ name: "us-east-1", node_count: 3, sql_dns: "x", ui_dns: "y", internal_dns: "z" }],
+  cidr_range: "172.28.0.0/14",
+  creator_id: "u1",
+  labels: {},
+  regions: [
+    {
+      name: "us-east-1",
+      node_count: 3,
+      sql_dns: "x",
+      ui_dns: "y",
+      internal_dns: "z",
+      private_endpoint_dns: "p",
+    },
+  ],
   config: {
     dedicated: {
       machine_type: "m6i.xlarge",
@@ -259,13 +271,7 @@ describe("helpers", () => {
       adjustments: [{ name: "Free credit", amount: { amount: -15, currency: "USD" } }],
       invoice_items: [
         {
-          cluster: {
-            id: "c1",
-            name: "prod-db",
-            regions: cluster.regions,
-            cloud_provider: "AWS",
-            plan: "ADVANCED",
-          },
+          cluster,
           totals: [],
           line_items: [
             {

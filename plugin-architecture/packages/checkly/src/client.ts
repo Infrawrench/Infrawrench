@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiBody, ApiResponse, NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -14,10 +14,11 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf } from "@infrawrench/plugin-base";
-import type { ChecklyContext } from "./api.js";
-import { ckFetch, ckPaged, statusOf } from "./api.js";
-import type { CheckStatus, Obj } from "./mappers.js";
+import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { ChecklyApi } from "./api.js";
+import { ckEntries, ckPaged, createChecklyApi, statusOf } from "./api.js";
+import type { operations } from "./api-types.gen.js";
+import type { Check, CheckStatus } from "./mappers.js";
 import {
   mapChannel,
   mapCheck,
@@ -40,6 +41,11 @@ import { verifyChecklyCredentials } from "./preflight.js";
 import { ANALYTICS_KEY, renderChecklyDetail, renderChecklySidebar } from "./render.js";
 
 const AGENT_KEY_FIELD = "agentKey";
+
+type Json = string | number | boolean | null | undefined | Json[] | { [key: string]: Json };
+/** What a read-back object is sent back as: the server's own shape, so nothing here checks it. */
+type RoundTrip = Record<string, Json>;
+
 const opt = (id: string, label = id) => ({ id, label });
 
 function trimmed(fields: Record<string, string>, key: string): string {
@@ -61,7 +67,7 @@ function csv(v: string | undefined): string[] {
 
 function pickList(raw: string | undefined): string[] {
   try {
-    const parsed = JSON.parse(raw || "[]") as unknown;
+    const parsed: Json = JSON.parse(raw || "[]");
     if (Array.isArray(parsed)) return parsed.map(String);
   } catch {
     // comma-separated fallback
@@ -69,20 +75,27 @@ function pickList(raw: string | undefined): string[] {
   return csv(raw);
 }
 
+/** The fields this plugin changes on a check it read back. */
+type CheckEdit = ApiBody<operations["putV1ChecksId"]>;
+type GroupEdit = ApiBody<operations["putV1CheckgroupsId"]>;
+
 /** Update route per check type; Playwright suites and agentic checks have none of their own. */
-export const UPDATE_PATH: Record<string, string> = {
-  API: "api",
-  BROWSER: "browser",
-  DNS: "dns",
-  GRPC: "grpc",
-  HEARTBEAT: "heartbeat",
-  ICMP: "icmp",
-  MULTI_STEP: "multistep",
-  SSL: "ssl",
-  TCP: "tcp",
-  TRACEROUTE: "traceroute",
-  URL: "url",
-};
+const UPDATE_CHECK = new Map<
+  string,
+  (api: ChecklyApi, id: NoSlashString, body: RoundTrip) => Promise<Check>
+>([
+  ["API", (api, id, body) => api.put(`/v1/checks/api/${id}`, { body })],
+  ["BROWSER", (api, id, body) => api.put(`/v1/checks/browser/${id}`, { body })],
+  ["DNS", (api, id, body) => api.put(`/v1/checks/dns/${id}`, { body })],
+  ["GRPC", (api, id, body) => api.put(`/v1/checks/grpc/${id}`, { body })],
+  ["HEARTBEAT", (api, id, body) => api.put(`/v1/checks/heartbeat/${id}`, { body })],
+  ["ICMP", (api, id, body) => api.put(`/v1/checks/icmp/${id}`, { body })],
+  ["MULTI_STEP", (api, id, body) => api.put(`/v1/checks/multistep/${id}`, { body })],
+  ["SSL", (api, id, body) => api.put(`/v1/checks/ssl/${id}`, { body })],
+  ["TCP", (api, id, body) => api.put(`/v1/checks/tcp/${id}`, { body })],
+  ["TRACEROUTE", (api, id, body) => api.put(`/v1/checks/traceroute/${id}`, { body })],
+  ["URL", (api, id, body) => api.put(`/v1/checks/url/${id}`, { body })],
+]);
 
 /**
  * Keys the per-type `PUT /v1/checks/{type}/{id}` bodies accept (the union
@@ -155,12 +168,25 @@ export const GROUP_WRITABLE = new Set([
   "useGlobalAlertSettings",
 ]);
 
-export function writable(obj: Obj, keys: Set<string>): Obj {
+export function writable(obj: object, keys: Set<string>): RoundTrip {
   return Object.fromEntries(Object.entries(obj).filter(([k, v]) => keys.has(k) && v !== undefined));
 }
 
+/** `keys` of `obj` that hold a value, in the order of `keys`. */
+function present<T extends object>(obj: T, keys: readonly (keyof T)[]): Partial<T> {
+  const out: Partial<T> = {};
+  for (const k of keys) {
+    const value = obj[k];
+    if (value !== undefined && value !== null) out[k] = value;
+  }
+  return out;
+}
+
 /** The alert channel `config` for a new channel of a type. */
-export function channelConfig(type: string, fields: Record<string, string>): Obj {
+export function channelConfig(
+  type: string,
+  fields: Record<string, string>,
+): ApiBody<operations["postV1Alertchannels"]>["config"] {
   const target = trimmed(fields, "target");
   const name = trimmed(fields, "name");
   const secret = trimmed(fields, "secret");
@@ -189,7 +215,7 @@ export function channelConfig(type: string, fields: Record<string, string>): Obj
 }
 
 export class ChecklyClient implements PluginClient {
-  private readonly ctx: ChecklyContext;
+  private readonly api: ChecklyApi;
   private readonly secrets: SecretHostServices | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -198,12 +224,12 @@ export class ChecklyClient implements PluginClient {
     if (!apiKey) throw new Error("Checkly plugin: missing apiKey credential");
     if (!accountId) throw new Error("Checkly plugin: missing accountId credential");
     const caCert = credentials["caCert"] ?? "";
-    this.ctx = {
+    this.api = createChecklyApi({
       apiKey,
       accountId,
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
-    };
+    });
     this.secrets = services?.secrets;
   }
 
@@ -218,10 +244,12 @@ export class ChecklyClient implements PluginClient {
   }
 
   private async statuses(): Promise<Map<string, CheckStatus>> {
-    const list = await ckFetch<CheckStatus[]>(this.ctx, "/v1/check-statuses").catch(
-      () => [] as CheckStatus[],
+    const list = await this.api.get("/v1/check-statuses").catch((): CheckStatus[] => []);
+    return new Map(
+      (list ?? [])
+        .filter((s): s is CheckStatus & { checkId: string } => Boolean(s.checkId))
+        .map((s): [string, CheckStatus] => [s.checkId, s]),
     );
-    return new Map((list ?? []).filter((s) => s.checkId).map((s) => [s.checkId as string, s]));
   }
 
   // -------------------------------------------------------------------------
@@ -233,61 +261,48 @@ export class ChecklyClient implements PluginClient {
       return this.scoped(async () => {
         switch (typeId) {
           case "check": {
-            const [checks, statuses] = await Promise.all([
-              ckPaged<Obj>(this.ctx, "/v1/checks"),
-              this.statuses(),
-            ]);
-            return checks.map((c) => mapCheck(accountId, c, statuses.get(String(c["id"]))));
+            const [checks, statuses] = await Promise.all([this.checks(), this.statuses()]);
+            return checks.map((c) => mapCheck(accountId, c, statuses.get(String(c.id))));
           }
           case "check-group": {
             const [groups, checks] = await Promise.all([
-              ckPaged<Obj>(this.ctx, "/v1/check-groups"),
-              ckPaged<Obj>(this.ctx, "/v1/checks").catch(() => [] as Obj[]),
+              this.groups(),
+              this.checks().catch(() => []),
             ]);
             const counts = new Map<string, number>();
             for (const c of checks) {
-              if (c["groupId"] !== undefined && c["groupId"] !== null) {
-                const g = String(c["groupId"]);
+              if (c.groupId !== undefined && c.groupId !== null) {
+                const g = String(c.groupId);
                 counts.set(g, (counts.get(g) ?? 0) + 1);
               }
             }
-            return groups.map((g) => mapGroup(accountId, g, counts.get(String(g["id"])) ?? 0));
+            return groups.map((g) => mapGroup(accountId, g, counts.get(String(g.id)) ?? 0));
           }
           case "alert-channel":
-            return (await ckPaged<Obj>(this.ctx, "/v1/alert-channels")).map((c) =>
-              mapChannel(accountId, c),
+            return (await ckPaged((query) => this.api.get("/v1/alert-channels", { query }))).map(
+              (c) => mapChannel(accountId, c),
             );
           case "maintenance-window":
-            return (await ckPaged<Obj>(this.ctx, "/v1/maintenance-windows")).map((w) =>
-              mapWindow(accountId, w),
-            );
+            return (
+              await ckPaged((query) => this.api.get("/v1/maintenance-windows", { query }))
+            ).map((w) => mapWindow(accountId, w));
           case "private-location":
-            return ((await ckFetch<Obj[]>(this.ctx, "/v1/private-locations")) ?? []).map((p) =>
+            return ((await this.api.get("/v1/private-locations")) ?? []).map((p) =>
               mapPrivateLocation(accountId, p),
             );
           case "dashboard":
-            return (await ckPaged<Obj>(this.ctx, "/v1/dashboards")).map((d) =>
+            return (await ckPaged((query) => this.api.get("/v1/dashboards", { query }))).map((d) =>
               mapDashboard(accountId, d),
             );
           case "status-page": {
-            const out: Obj[] = [];
-            let nextId: string | undefined;
-            for (let i = 0; i < 20; i++) {
-              const res = await ckFetch<{ entries?: Obj[]; nextId?: string | null }>(
-                this.ctx,
-                "/v3/status-pages",
-                {
-                  query: { limit: 100, ...(nextId ? { nextId } : {}) },
-                },
-              );
-              out.push(...(res.entries ?? []));
-              nextId = res.nextId ?? undefined;
-              if (!nextId) break;
-            }
+            const out = await ckEntries(
+              (cursor) => this.api.get("/v3/status-pages", { query: { limit: 100, ...cursor } }),
+              20,
+            );
             return out.map((p) => mapStatusPage(accountId, p));
           }
           case "variable":
-            return (await ckPaged<Obj>(this.ctx, "/v1/variables")).map((v) =>
+            return (await ckPaged((query) => this.api.get("/v1/variables", { query }))).map((v) =>
               mapVariable(accountId, v),
             );
           default:
@@ -297,8 +312,16 @@ export class ChecklyClient implements PluginClient {
     });
   }
 
-  private async rawCheck(id: string): Promise<Obj> {
-    return ckFetch<Obj>(this.ctx, `/v1/checks/${encodeURIComponent(id)}`);
+  private checks(): Promise<Check[]> {
+    return ckPaged((query) => this.api.get("/v1/checks", { query }));
+  }
+
+  private groups() {
+    return ckPaged((query) => this.api.get("/v1/check-groups", { query }));
+  }
+
+  private rawCheck(id: string) {
+    return this.api.get(`/v1/checks/${pathEncode(id)}`);
   }
 
   getResource(
@@ -307,42 +330,36 @@ export class ChecklyClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case "check": {
           const [c, statuses] = await Promise.all([
             this.rawCheck(externalIdOf(resourceId)),
             this.statuses(),
           ]);
-          return mapCheck(accountId, c, statuses.get(String(c["id"])));
+          return mapCheck(accountId, c, statuses.get(String(c.id)));
         }
         case "check-group": {
           const [g, checks] = await Promise.all([
-            ckFetch<Obj>(this.ctx, `/v1/check-groups/${id}`),
-            ckFetch<Obj[]>(this.ctx, `/v1/check-groups/${id}/checks`, {
-              query: { limit: 100 },
-            }).catch(() => [] as Obj[]),
+            this.api.get(`/v1/check-groups/${id}`),
+            this.api
+              .get(`/v1/check-groups/${id}/checks`, { query: { limit: 100 } })
+              .catch(() => []),
           ]);
           return mapGroup(accountId, g, (checks ?? []).length);
         }
         case "alert-channel":
-          return mapChannel(accountId, await ckFetch<Obj>(this.ctx, `/v1/alert-channels/${id}`));
+          return mapChannel(accountId, await this.api.get(`/v1/alert-channels/${id}`));
         case "maintenance-window":
-          return mapWindow(
-            accountId,
-            await ckFetch<Obj>(this.ctx, `/v1/maintenance-windows/${id}`),
-          );
+          return mapWindow(accountId, await this.api.get(`/v1/maintenance-windows/${id}`));
         case "private-location":
-          return mapPrivateLocation(
-            accountId,
-            await ckFetch<Obj>(this.ctx, `/v1/private-locations/${id}`),
-          );
+          return mapPrivateLocation(accountId, await this.api.get(`/v1/private-locations/${id}`));
         case "dashboard":
-          return mapDashboard(accountId, await ckFetch<Obj>(this.ctx, `/v1/dashboards/${id}`));
+          return mapDashboard(accountId, await this.api.get(`/v1/dashboards/${id}`));
         case "status-page":
-          return mapStatusPage(accountId, await ckFetch<Obj>(this.ctx, `/v3/status-pages/${id}`));
+          return mapStatusPage(accountId, await this.api.get(`/v3/status-pages/${id}`));
         case "variable":
-          return mapVariable(accountId, await ckFetch<Obj>(this.ctx, `/v1/variables/${id}`));
+          return mapVariable(accountId, await this.api.get(`/v1/variables/${id}`));
         default:
           throw new Error(`Checkly plugin: unknown resource type "${typeId}"`);
       }
@@ -377,7 +394,7 @@ export class ChecklyClient implements PluginClient {
     return attempt(async () => {
       if (resource.resourceTypeId !== "check" || !resource.externalId) return resource;
       const analytics = await checkAnalytics(
-        this.ctx,
+        this.api,
         resource.externalId,
         String(resource.fields["checkType"] ?? ""),
       );
@@ -404,8 +421,8 @@ export class ChecklyClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       const range = rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS);
-      if (typeId === "check") return checkResultSeries(this.ctx, id, range);
-      if (typeId === "private-location") return privateLocationSeries(this.ctx, id, range);
+      if (typeId === "check") return checkResultSeries(this.api, id, range);
+      if (typeId === "private-location") return privateLocationSeries(this.api, id, range);
       return [];
     });
   }
@@ -453,21 +470,10 @@ export class ChecklyClient implements PluginClient {
   fetchQuotas(): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
       const today = new Date().toISOString().slice(0, 10);
-      let terms: Array<{
-        id?: string;
-        name?: string;
-        creditBudget?: number;
-        usageStartDate?: string;
-        contractEndDate?: string;
-        packageModel?: string;
-      }>;
+      let terms: ApiResponse<operations["getV2UsageTerms"]>["data"];
       try {
         terms =
-          (
-            await ckFetch<{ data?: typeof terms }>(this.ctx, "/v2/usage/terms", {
-              query: { from: today, to: today },
-            })
-          ).data ?? [];
+          (await this.api.get("/v2/usage/terms", { query: { from: today, to: today } })).data ?? [];
       } catch (err) {
         const status = statusOf(err);
         if (status === 401 || status === 403)
@@ -480,17 +486,13 @@ export class ChecklyClient implements PluginClient {
       for (const term of terms) {
         if (!term.id || term.packageModel !== "credits" || !(Number(term.creditBudget) > 0))
           continue;
-        const summary = await ckFetch<{ totals?: { creditsUsed?: number | null } }>(
-          this.ctx,
-          "/v2/usage/summary",
-          {
-            query: {
-              usageTermsIds: [term.id],
-              ...(term.usageStartDate ? { from: term.usageStartDate.slice(0, 10) } : {}),
-              to: today,
-            },
+        const summary = await this.api.get("/v2/usage/summary", {
+          query: {
+            usageTermsIds: [term.id],
+            ...(term.usageStartDate ? { from: term.usageStartDate.slice(0, 10) } : {}),
+            to: today,
           },
-        );
+        });
         const used = summary.totals?.creditsUsed;
         if (typeof used !== "number") continue;
         out.push({
@@ -508,7 +510,7 @@ export class ChecklyClient implements PluginClient {
 
   verifyCredentials(): PluginEffect<PreflightResult> {
     return attempt(async () => {
-      return verifyChecklyCredentials(this.ctx);
+      return verifyChecklyCredentials(this.api);
     });
   }
 
@@ -517,25 +519,19 @@ export class ChecklyClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async locationOptions() {
-    const locs = await ckFetch<Array<{ region?: string; name?: string }>>(
-      this.ctx,
-      "/v1/locations",
-    ).catch(() => []);
+    const locs = await this.api.get("/v1/locations").catch(() => []);
     return (locs ?? [])
       .filter((l) => l.region)
       .map((l) => ({
-        id: l.region as string,
+        id: l.region,
         label: `${l.name ?? l.region} (${l.region})`,
         category: "Locations",
       }));
   }
 
   private async groupOptions() {
-    const groups = await ckPaged<Obj>(this.ctx, "/v1/check-groups").catch(() => [] as Obj[]);
-    return [
-      opt("", "None"),
-      ...groups.map((g) => opt(String(g["id"]), String(g["name"] ?? g["id"]))),
-    ];
+    const groups = await this.groups().catch(() => []);
+    return [opt("", "None"), ...groups.map((g) => opt(String(g.id), String(g.name ?? g.id)))];
   }
 
   getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
@@ -848,111 +844,21 @@ export class ChecklyClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const post = <T>(path: string, body: unknown, query?: Record<string, string | boolean>) =>
-        ckFetch<T>(this.ctx, path, {
-          method: "POST",
-          body: JSON.stringify(body),
-          ...(query ? { query } : {}),
-        });
       switch (typeId) {
-        case "check": {
-          const type = trimmed(fields, "checkType") || "URL";
-          const locations = pickList(fields["locations"]);
-          const groupId = num(fields["groupId"]);
-          const common: Obj = {
-            name: trimmed(fields, "name"),
-            activated: true,
-            tags: csv(fields["tags"]),
-            ...(groupId !== undefined ? { groupId } : {}),
-          };
-          const sched: Obj = {
-            frequency: num(fields["frequency"]) ?? 10,
-            ...(locations.length ? { locations } : {}),
-          };
-          let path: string;
-          let body: Obj;
-          switch (type) {
-            case "URL":
-              path = "/v1/checks/url";
-              body = {
-                ...common,
-                ...sched,
-                request: { url: trimmed(fields, "url"), method: "GET" },
-              };
-              break;
-            case "API":
-              path = "/v1/checks/api";
-              body = {
-                ...common,
-                ...sched,
-                request: {
-                  url: trimmed(fields, "url"),
-                  method: trimmed(fields, "method") || "GET",
-                  assertions: [
-                    {
-                      source: "STATUS_CODE",
-                      property: "",
-                      comparison: "EQUALS",
-                      target: String(num(fields["expectedStatus"]) ?? 200),
-                      regex: null,
-                    },
-                  ],
-                },
-              };
-              break;
-            case "TCP":
-              path = "/v1/checks/tcp";
-              body = {
-                ...common,
-                ...sched,
-                request: {
-                  hostname: trimmed(fields, "hostname"),
-                  port: num(fields["port"]) ?? 443,
-                },
-              };
-              break;
-            case "ICMP":
-              path = "/v1/checks/icmp";
-              body = { ...common, ...sched, request: { hostname: trimmed(fields, "hostname") } };
-              break;
-            case "DNS":
-              path = "/v1/checks/dns";
-              body = {
-                ...common,
-                ...sched,
-                request: {
-                  query: trimmed(fields, "hostname"),
-                  recordType: trimmed(fields, "recordType") || "A",
-                },
-              };
-              break;
-            case "HEARTBEAT":
-              path = "/v1/checks/heartbeat";
-              body = {
-                ...common,
-                heartbeat: {
-                  period: num(fields["period"]) ?? 60,
-                  periodUnit: "minutes",
-                  grace: num(fields["grace"]) ?? 10,
-                  graceUnit: "minutes",
-                },
-              };
-              break;
-            default:
-              throw new Error(`Checkly plugin: cannot create ${type} checks from Infrawrench`);
-          }
-          return mapCheck(accountId, await post<Obj>(path, body, { autoAssignAlerts: true }));
-        }
+        case "check":
+          return mapCheck(accountId, await this.createCheck(fields));
         case "check-group": {
           const locations = pickList(fields["locations"]);
           return mapGroup(
             accountId,
-            await post<Obj>("/v1/check-groups", {
-              name: trimmed(fields, "name"),
-              activated: true,
-              tags: csv(fields["tags"]),
-              locations: locations.length ? locations : ["us-east-1", "eu-west-1"],
-              concurrency: num(fields["concurrency"]) ?? 3,
+            await this.api.post("/v1/check-groups", {
+              body: {
+                name: trimmed(fields, "name"),
+                activated: true,
+                tags: csv(fields["tags"]),
+                locations: locations.length ? locations : ["us-east-1", "eu-west-1"],
+                concurrency: num(fields["concurrency"]) ?? 3,
+              },
             }),
             0,
           );
@@ -961,13 +867,15 @@ export class ChecklyClient implements PluginClient {
           const type = trimmed(fields, "type") || "EMAIL";
           return mapChannel(
             accountId,
-            await post<Obj>("/v1/alert-channels", {
-              type,
-              config: channelConfig(type, fields),
-              sendFailure: true,
-              sendRecovery: true,
-              sendDegraded: false,
-              autoSubscribe: fields["subscribeAll"] !== "none",
+            await this.api.post("/v1/alert-channels", {
+              body: {
+                type,
+                config: channelConfig(type, fields),
+                sendFailure: true,
+                sendRecovery: true,
+                sendDegraded: false,
+                autoSubscribe: fields["subscribeAll"] !== "none",
+              },
             }),
           );
         }
@@ -975,42 +883,50 @@ export class ChecklyClient implements PluginClient {
           const repeat = trimmed(fields, "repeatUnit");
           return mapWindow(
             accountId,
-            await post<Obj>("/v1/maintenance-windows", {
-              name: trimmed(fields, "name"),
-              startsAt: trimmed(fields, "startsAt"),
-              endsAt: trimmed(fields, "endsAt"),
-              tags: csv(fields["tags"]),
-              repeatUnit: repeat || "DAY",
-              ...(repeat
-                ? { repeatInterval: 1 }
-                : { repeatEndsAt: trimmed(fields, "endsAt").slice(0, 10) }),
+            await this.api.post("/v1/maintenance-windows", {
+              body: {
+                name: trimmed(fields, "name"),
+                startsAt: trimmed(fields, "startsAt"),
+                endsAt: trimmed(fields, "endsAt"),
+                tags: csv(fields["tags"]),
+                repeatUnit: repeat || "DAY",
+                ...(repeat
+                  ? { repeatInterval: 1 }
+                  : { repeatEndsAt: trimmed(fields, "endsAt").slice(0, 10) }),
+              },
             }),
           );
         }
         case "private-location":
           return mapPrivateLocation(
             accountId,
-            await post<Obj>("/v1/private-locations", {
-              name: trimmed(fields, "name"),
-              slugName: trimmed(fields, "slugName"),
+            await this.api.post("/v1/private-locations", {
+              body: {
+                name: trimmed(fields, "name"),
+                slugName: trimmed(fields, "slugName"),
+              },
             }),
           );
         case "dashboard":
           return mapDashboard(
             accountId,
-            await post<Obj>("/v1/dashboards", {
-              header: trimmed(fields, "header"),
-              customUrl: trimmed(fields, "customUrl"),
-              tags: csv(fields["tags"]),
+            await this.api.post("/v1/dashboards", {
+              body: {
+                header: trimmed(fields, "header"),
+                customUrl: trimmed(fields, "customUrl"),
+                tags: csv(fields["tags"]),
+              },
             }),
           );
         case "variable":
           return mapVariable(
             accountId,
-            await post<Obj>("/v1/variables", {
-              key: trimmed(fields, "key"),
-              value: fields["value"] ?? "",
-              secret: fields["secret"] === "true",
+            await this.api.post("/v1/variables", {
+              body: {
+                key: trimmed(fields, "key"),
+                value: fields["value"] ?? "",
+                secret: fields["secret"] === "true",
+              },
             }),
           );
         default:
@@ -1019,36 +935,123 @@ export class ChecklyClient implements PluginClient {
     });
   }
 
+  private createCheck(fields: Record<string, string>): Promise<Check> {
+    const type = trimmed(fields, "checkType") || "URL";
+    const locations = pickList(fields["locations"]);
+    const groupId = num(fields["groupId"]);
+    const common = {
+      name: trimmed(fields, "name"),
+      activated: true,
+      tags: csv(fields["tags"]),
+      ...(groupId !== undefined ? { groupId } : {}),
+    };
+    const sched = {
+      frequency: num(fields["frequency"]) ?? 10,
+      ...(locations.length ? { locations } : {}),
+    };
+    const query = { autoAssignAlerts: true };
+    switch (type) {
+      case "URL":
+        return this.api.post("/v1/checks/url", {
+          query,
+          body: {
+            ...common,
+            ...sched,
+            request: { url: trimmed(fields, "url"), method: "GET" },
+          },
+        });
+      case "API":
+        return this.api.post("/v1/checks/api", {
+          query,
+          body: {
+            ...common,
+            ...sched,
+            request: {
+              url: trimmed(fields, "url"),
+              method: trimmed(fields, "method") || "GET",
+              assertions: [
+                {
+                  source: "STATUS_CODE",
+                  property: "",
+                  comparison: "EQUALS",
+                  target: String(num(fields["expectedStatus"]) ?? 200),
+                  regex: null,
+                },
+              ],
+            },
+          },
+        });
+      case "TCP":
+        return this.api.post("/v1/checks/tcp", {
+          query,
+          body: {
+            ...common,
+            ...sched,
+            request: {
+              hostname: trimmed(fields, "hostname"),
+              port: num(fields["port"]) ?? 443,
+            },
+          },
+        });
+      case "ICMP":
+        return this.api.post("/v1/checks/icmp", {
+          query,
+          body: { ...common, ...sched, request: { hostname: trimmed(fields, "hostname") } },
+        });
+      case "DNS":
+        return this.api.post("/v1/checks/dns", {
+          query,
+          body: {
+            ...common,
+            ...sched,
+            request: {
+              query: trimmed(fields, "hostname"),
+              recordType: trimmed(fields, "recordType") || "A",
+            },
+          },
+        });
+      case "HEARTBEAT":
+        return this.api.post("/v1/checks/heartbeat", {
+          query,
+          body: {
+            ...common,
+            heartbeat: {
+              period: num(fields["period"]) ?? 60,
+              periodUnit: "minutes",
+              grace: num(fields["grace"]) ?? 10,
+              graceUnit: "minutes",
+            },
+          },
+        });
+      default:
+        throw new Error(`Checkly plugin: cannot create ${type} checks from Infrawrench`);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Update
   // -------------------------------------------------------------------------
 
   /** GET the check, apply `change`, PUT it back on its type's route. */
-  private async updateCheck(id: string, change: (c: Obj) => void): Promise<Obj> {
+  private async updateCheck(id: string, change: (c: CheckEdit) => void): Promise<Check> {
     const current = await this.rawCheck(id);
-    const route = UPDATE_PATH[String(current["checkType"] ?? "")];
-    if (!route) {
+    const put = UPDATE_CHECK.get(String(current.checkType ?? ""));
+    if (!put) {
       // Playwright suites and agentic checks: only the deprecated generic route, with just the change.
-      const delta: Obj = {};
+      const delta: CheckEdit = {};
       change(delta);
-      return ckFetch<Obj>(this.ctx, `/v1/checks/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(delta),
-      });
+      return this.api.put(`/v1/checks/${pathEncode(id)}`, { body: delta });
     }
     const body = writable(current, CHECK_WRITABLE);
     change(body);
-    return ckFetch<Obj>(this.ctx, `/v1/checks/${route}/${encodeURIComponent(id)}`, {
-      method: "PUT",
-      body: JSON.stringify(body),
-    });
+    return put(this.api, pathEncode(id), body);
   }
 
-  private async updateGroup(id: string, change: (g: Obj) => void): Promise<Obj> {
-    const path = `/v1/check-groups/${encodeURIComponent(id)}`;
-    const body = writable(await ckFetch<Obj>(this.ctx, path), GROUP_WRITABLE);
+  private async updateGroup(id: string, change: (g: GroupEdit) => void) {
+    const groupId = pathEncode(id);
+    const body = writable(await this.api.get(`/v1/check-groups/${groupId}`), GROUP_WRITABLE);
     change(body);
-    return ckFetch<Obj>(this.ctx, path, { method: "PUT", body: JSON.stringify(body) });
+    return this.api.put(`/v1/check-groups/${groupId}`, { body });
   }
 
   updateResource(
@@ -1059,52 +1062,52 @@ export class ChecklyClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const put = (path: string, body: Obj) =>
-        ckFetch<Obj>(this.ctx, path, { method: "PUT", body: JSON.stringify(body) });
+      const encoded = pathEncode(id);
       switch (typeId) {
         case "check":
           await this.updateCheck(id, (c) => {
-            if ("name" in fields) c["name"] = fields["name"];
-            if ("description" in fields) c["description"] = fields["description"];
+            if ("name" in fields) c.name = fields["name"];
+            if ("description" in fields) c.description = fields["description"];
             if ("frequency" in fields && fields["frequency"] !== "")
-              c["frequency"] = Number(fields["frequency"]);
-            if ("tags" in fields) c["tags"] = csv(fields["tags"]);
+              c.frequency = Number(fields["frequency"]);
+            if ("tags" in fields) c.tags = csv(fields["tags"]);
             if ("degradedResponseTime" in fields)
-              c["degradedResponseTime"] = num(fields["degradedResponseTime"]);
-            if ("maxResponseTime" in fields) c["maxResponseTime"] = num(fields["maxResponseTime"]);
+              c.degradedResponseTime = num(fields["degradedResponseTime"]);
+            if ("maxResponseTime" in fields) c.maxResponseTime = num(fields["maxResponseTime"]);
           });
           break;
         case "check-group":
           await this.updateGroup(id, (g) => {
-            if ("name" in fields) g["name"] = fields["name"];
-            if ("tags" in fields) g["tags"] = csv(fields["tags"]);
-            if ("concurrency" in fields) g["concurrency"] = num(fields["concurrency"]);
+            if ("name" in fields) g.name = fields["name"];
+            if ("tags" in fields) g.tags = csv(fields["tags"]);
+            if ("concurrency" in fields) g.concurrency = num(fields["concurrency"]);
           });
           break;
         case "alert-channel": {
-          const path = `/v1/alert-channels/${encodeURIComponent(id)}`;
-          const current = await ckFetch<Obj>(this.ctx, path);
-          const body: Obj = { type: current["type"], config: current["config"] };
-          for (const k of [
-            "sendFailure",
-            "sendRecovery",
-            "sendDegraded",
-            "sslExpiry",
-            "autoSubscribe",
-          ]) {
-            body[k] = k in fields ? fields[k] === "true" : current[k];
-          }
-          body["sslExpiryThreshold"] =
-            "sslExpiryThreshold" in fields
-              ? num(fields["sslExpiryThreshold"])
-              : current["sslExpiryThreshold"];
-          await put(path, body);
+          const current = await this.api.get(`/v1/alert-channels/${encoded}`);
+          const flag = (
+            k: "sendFailure" | "sendRecovery" | "sendDegraded" | "sslExpiry" | "autoSubscribe",
+          ) => (k in fields ? fields[k] === "true" : current[k]);
+          await this.api.put(`/v1/alert-channels/${encoded}`, {
+            body: {
+              type: current.type,
+              config: current.config,
+              sendFailure: flag("sendFailure"),
+              sendRecovery: flag("sendRecovery"),
+              sendDegraded: flag("sendDegraded"),
+              sslExpiry: flag("sslExpiry"),
+              autoSubscribe: flag("autoSubscribe"),
+              sslExpiryThreshold:
+                "sslExpiryThreshold" in fields
+                  ? num(fields["sslExpiryThreshold"])
+                  : current.sslExpiryThreshold,
+            },
+          });
           break;
         }
         case "maintenance-window": {
-          const path = `/v1/maintenance-windows/${encodeURIComponent(id)}`;
-          const c = await ckFetch<Obj>(this.ctx, path);
-          const keep = [
+          const c = await this.api.get(`/v1/maintenance-windows/${encoded}`);
+          const body = present(c, [
             "name",
             "tags",
             "startsAt",
@@ -1118,73 +1121,74 @@ export class ChecklyClient implements PluginClient {
             "silenceAllAlerts",
             "description",
             "statusPageVisibility",
-          ];
-          const body = Object.fromEntries(
-            keep.filter((k) => c[k] !== undefined && c[k] !== null).map((k) => [k, c[k]]),
-          );
-          if ("name" in fields) body["name"] = fields["name"];
-          if ("tags" in fields) body["tags"] = csv(fields["tags"]);
-          if ("description" in fields) body["description"] = fields["description"];
-          await put(path, body);
+          ]);
+          if ("name" in fields) body.name = fields["name"];
+          if ("tags" in fields) body.tags = csv(fields["tags"]);
+          if ("description" in fields) body.description = fields["description"];
+          await this.api.put(`/v1/maintenance-windows/${encoded}`, { body });
           break;
         }
         case "private-location": {
-          const path = `/v1/private-locations/${encodeURIComponent(id)}`;
-          const c = await ckFetch<Obj>(this.ctx, path);
-          await put(path, {
-            name: "name" in fields ? fields["name"] : c["name"],
-            ...("proxyUrl" in fields
-              ? { proxyUrl: fields["proxyUrl"] }
-              : c["proxyUrl"]
-                ? { proxyUrl: c["proxyUrl"] }
-                : {}),
-            ...(c["icon"] ? { icon: c["icon"] } : {}),
+          const c = await this.api.get(`/v1/private-locations/${encoded}`);
+          await this.api.put(`/v1/private-locations/${encoded}`, {
+            body: {
+              name: "name" in fields ? fields["name"] : c.name,
+              ...("proxyUrl" in fields
+                ? { proxyUrl: fields["proxyUrl"] }
+                : c.proxyUrl
+                  ? { proxyUrl: c.proxyUrl }
+                  : {}),
+              ...(c.icon ? { icon: c.icon } : {}),
+            },
           });
           break;
         }
         case "dashboard": {
-          const body: Obj = {};
-          if ("header" in fields) body["header"] = fields["header"];
-          if ("description" in fields) body["description"] = fields["description"];
-          if ("customUrl" in fields) body["customUrl"] = fields["customUrl"];
-          if ("customDomain" in fields) body["customDomain"] = fields["customDomain"];
-          if ("tags" in fields) body["tags"] = csv(fields["tags"]);
-          if ("refreshRate" in fields) body["refreshRate"] = num(fields["refreshRate"]);
-          const path = `/v1/dashboards/${encodeURIComponent(id)}`;
-          const c = await ckFetch<Obj>(this.ctx, path);
-          await put(path, {
-            header: c["header"],
-            customUrl: c["customUrl"],
-            tags: c["tags"],
-            ...body,
+          const body: ApiBody<operations["putV1DashboardsDashboardid"]> = {};
+          if ("header" in fields) body.header = fields["header"];
+          if ("description" in fields) body.description = fields["description"];
+          if ("customUrl" in fields) body.customUrl = fields["customUrl"];
+          if ("customDomain" in fields) body.customDomain = fields["customDomain"];
+          if ("tags" in fields) body.tags = csv(fields["tags"]);
+          if ("refreshRate" in fields) body.refreshRate = num(fields["refreshRate"]);
+          const c = await this.api.get(`/v1/dashboards/${encoded}`);
+          await this.api.put(`/v1/dashboards/${encoded}`, {
+            body: {
+              header: c.header,
+              customUrl: c.customUrl,
+              tags: c.tags,
+              ...body,
+            },
           });
           break;
         }
         case "status-page": {
-          const path = `/v3/status-pages/${encodeURIComponent(id)}`;
-          const c = await ckFetch<Obj>(this.ctx, path);
-          await put(path, {
-            name: "name" in fields ? fields["name"] : c["name"],
-            url: c["url"],
-            ...("description" in fields
-              ? { description: fields["description"] }
-              : c["description"]
-                ? { description: c["description"] }
-                : {}),
+          const c = await this.api.get(`/v3/status-pages/${encoded}`);
+          await this.api.put(`/v3/status-pages/${encoded}`, {
+            body: {
+              name: "name" in fields ? fields["name"] : c.name,
+              url: c.url,
+              ...("description" in fields
+                ? { description: fields["description"] }
+                : c.description
+                  ? { description: c.description }
+                  : {}),
+            },
           });
           break;
         }
         case "variable": {
-          const path = `/v1/variables/${encodeURIComponent(id)}`;
-          const c = await ckFetch<Obj>(this.ctx, path);
+          const c = await this.api.get(`/v1/variables/${encoded}`);
           const value = fields["value"];
-          if (c["secret"] === true && !value)
+          if (c.secret === true && !value)
             throw new Error("Secret variables are write-only: enter the new value to change it.");
-          await put(path, {
-            key: id,
-            value: value || c["value"],
-            locked: "locked" in fields ? fields["locked"] === "true" : c["locked"],
-            ...(c["secret"] === true ? { secret: true } : {}),
+          await this.api.put(`/v1/variables/${encoded}`, {
+            body: {
+              key: id,
+              value: value || c.value,
+              locked: "locked" in fields ? fields["locked"] === "true" : c.locked,
+              ...(c.secret === true ? { secret: true } : {}),
+            },
           });
           break;
         }
@@ -1197,20 +1201,35 @@ export class ChecklyClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
-      const paths: Record<string, string> = {
-        check: `/v1/checks/${id}`,
-        "check-group": `/v1/check-groups/${id}`,
-        "alert-channel": `/v1/alert-channels/${id}`,
-        "maintenance-window": `/v1/maintenance-windows/${id}`,
-        "private-location": `/v1/private-locations/${id}`,
-        dashboard: `/v1/dashboards/${id}`,
-        "status-page": `/v3/status-pages/${id}`,
-        variable: `/v1/variables/${id}`,
-      };
-      const path = paths[typeId];
-      if (!path) throw new Error(`Checkly plugin: "${typeId}" cannot be deleted from Infrawrench`);
-      await ckFetch<unknown>(this.ctx, path, { method: "DELETE" });
+      const id = pathEncode(externalIdOf(resourceId));
+      switch (typeId) {
+        case "check":
+          await this.api.delete(`/v1/checks/${id}`);
+          return;
+        case "check-group":
+          await this.api.delete(`/v1/check-groups/${id}`);
+          return;
+        case "alert-channel":
+          await this.api.delete(`/v1/alert-channels/${id}`);
+          return;
+        case "maintenance-window":
+          await this.api.delete(`/v1/maintenance-windows/${id}`);
+          return;
+        case "private-location":
+          await this.api.delete(`/v1/private-locations/${id}`);
+          return;
+        case "dashboard":
+          await this.api.delete(`/v1/dashboards/${id}`);
+          return;
+        case "status-page":
+          await this.api.delete(`/v3/status-pages/${id}`);
+          return;
+        case "variable":
+          await this.api.delete(`/v1/variables/${id}`);
+          return;
+        default:
+          throw new Error(`Checkly plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      }
     });
   }
 
@@ -1220,9 +1239,8 @@ export class ChecklyClient implements PluginClient {
 
   private async trigger(checkIds: string[]): Promise<void> {
     if (checkIds.length === 0) throw new Error("Nothing to run.");
-    await ckFetch<unknown>(this.ctx, "/v2/check-sessions/trigger", {
-      method: "POST",
-      body: JSON.stringify({ target: { checkId: checkIds } }),
+    await this.api.post("/v2/check-sessions/trigger", {
+      body: { target: { checkId: checkIds } },
     });
   }
 
@@ -1234,7 +1252,7 @@ export class ChecklyClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const flags: Record<string, [string, boolean]> = {
+      const flags: Record<string, ["activated" | "muted", boolean]> = {
         activate: ["activated", true],
         deactivate: ["activated", false],
         mute: ["muted", true],
@@ -1258,20 +1276,16 @@ export class ChecklyClient implements PluginClient {
           return;
         }
         if (actionId === "run") {
-          const checks = await ckFetch<Obj[]>(
-            this.ctx,
-            `/v1/check-groups/${encodeURIComponent(id)}/checks`,
-            { query: { limit: 100 } },
-          );
-          return this.trigger((checks ?? []).map((c) => String(c["id"])).filter(Boolean));
+          const checks = await this.api.get(`/v1/check-groups/${pathEncode(id)}/checks`, {
+            query: { limit: 100 },
+          });
+          return this.trigger((checks ?? []).map((c) => String(c.id)).filter(Boolean));
         }
       }
       if (typeId === "private-location" && actionId === "generate-key") {
-        const key = await ckFetch<{ rawKey?: string }>(
-          this.ctx,
-          `/v1/private-locations/${encodeURIComponent(id)}/keys`,
-          { method: "POST", body: "{}" },
-        );
+        const key = await this.api.post(`/v1/private-locations/${pathEncode(id)}/keys`, {
+          body: {},
+        });
         if (!key.rawKey) throw new Error("Checkly did not return the new key.");
         if (!this.secrets?.setPlaintext)
           throw new Error(

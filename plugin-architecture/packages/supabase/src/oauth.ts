@@ -29,7 +29,7 @@ import type {
   OAuthDeclaration,
   OAuthTokenSet,
 } from "@infrawrench/plugin-base";
-import { SUPABASE_API } from "./api.js";
+import { SUPABASE_API, type SupabaseResponse } from "./api.js";
 
 export const SUPABASE_OAUTH: OAuthDeclaration = {
   authorizeUrl: `${SUPABASE_API}/v1/oauth/authorize`,
@@ -52,7 +52,7 @@ export async function completeSupabaseOAuth(
       headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: "application/json" },
     });
     if (!res.ok) return {};
-    const orgs = (await res.json()) as Array<{ name?: string }>;
+    const orgs: SupabaseResponse<"v1-list-all-organizations"> = await res.json();
     const names = Array.isArray(orgs)
       ? orgs.map((o) => o.name).filter((n): n is string => !!n)
       : [];

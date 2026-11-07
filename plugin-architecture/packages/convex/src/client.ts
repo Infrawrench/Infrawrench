@@ -14,25 +14,23 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type {
   ConvexContext,
-  CvAccessToken,
-  CvCustomDomain,
-  CvCustomRole,
-  CvDefaultEnvVar,
+  CreateLogStreamBody,
+  CvCreatedLogStream,
   CvDeployKey,
   CvDeployment,
-  CvInvite,
   CvLogStream,
-  CvMember,
   CvProject,
-  CvTokenDetails,
-  CvUsage,
-  CvUsageLimit,
-  DeploymentType,
+  DeploymentApi,
+  ManagementApi,
+  UpdateDeploymentBody,
+  UpdateLogStreamBody,
+  UpdateProjectBody,
+  UsageLimitBody,
 } from "./api.js";
-import { ConvexApiError, deploymentApi, enc, mgmt, paged, statusOf } from "./api.js";
+import { ConvexApiError, deploymentApi, managementApi, paged, statusOf } from "./api.js";
 import { getCreateConfig } from "./create-config.js";
 import { verifyConvexCredentials } from "./preflight.js";
 import {
@@ -73,7 +71,7 @@ function listValue(value: string | undefined): string[] {
   const trimmed = value.trim();
   if (trimmed.startsWith("[")) {
     try {
-      const parsed = JSON.parse(trimmed) as unknown;
+      const parsed: unknown = JSON.parse(trimmed);
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
       /* fall through to comma splitting */
@@ -95,6 +93,7 @@ function isoToMs(value: string | undefined): number | null | undefined {
 
 export class ConvexClient implements PluginClient {
   private readonly ctx: ConvexContext;
+  private readonly api: ManagementApi;
   private teamIdPromise: Promise<number> | undefined;
   private readonly urls = new Map<string, Promise<string>>();
 
@@ -107,6 +106,7 @@ export class ConvexClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
       ...(caCert ? { caCert } : {}),
     };
+    this.api = managementApi(this.ctx);
   }
 
   verifyCredentials(): PluginEffect<PreflightResult> {
@@ -118,7 +118,7 @@ export class ConvexClient implements PluginClient {
   /** The token's team, from `GET /token_details` (team tokens only). */
   teamId(): Promise<number> {
     if (!this.teamIdPromise) {
-      this.teamIdPromise = mgmt<CvTokenDetails>(this.ctx, "GET", "/token_details").then((d) => {
+      this.teamIdPromise = this.api.get("/token_details").then((d) => {
         if (d?.type !== "teamToken" || typeof d.teamId !== "number") {
           throw new ConvexApiError(
             400,
@@ -135,14 +135,13 @@ export class ConvexClient implements PluginClient {
   }
 
   private async projects(): Promise<CvProject[]> {
-    return paged<CvProject>(this.ctx, `/teams/${enc(await this.teamId())}/projects`);
+    const team = pathEncode(await this.teamId());
+    return paged((query) => this.api.get(`/teams/${team}/projects`, { query }));
   }
 
   private async deployments(): Promise<CvDeployment[]> {
-    const all = await paged<CvDeployment>(
-      this.ctx,
-      `/teams/${enc(await this.teamId())}/list_deployments`,
-    );
+    const team = pathEncode(await this.teamId());
+    const all = await paged((query) => this.api.get(`/teams/${team}/list_deployments`, { query }));
     return all.filter((d) => d.kind !== "local");
   }
 
@@ -150,7 +149,7 @@ export class ConvexClient implements PluginClient {
   private deploymentUrl(name: string): Promise<string> {
     let pending = this.urls.get(name);
     if (!pending) {
-      pending = mgmt<CvDeployment>(this.ctx, "GET", `/deployments/${enc(name)}`).then(
+      pending = this.getDeployment(name).then(
         (d) => d?.deploymentUrl ?? `https://${name}.convex.cloud`,
       );
       pending.catch(() => this.urls.delete(name));
@@ -166,8 +165,38 @@ export class ConvexClient implements PluginClient {
     }
   }
 
-  private async dApi<T>(name: string, method: string, path: string, body?: unknown): Promise<T> {
-    return deploymentApi<T>(this.ctx, await this.deploymentUrl(name), method, path, body);
+  private getDeployment(name: string): Promise<CvDeployment> {
+    return this.api.get(`/deployments/${pathEncode(name)}`);
+  }
+
+  /** Make a Deployment API call on a deployment known by name; finding its URL can fail too. */
+  private async onDeployment<T>(
+    name: string,
+    call: (api: DeploymentApi) => Promise<T>,
+  ): Promise<T> {
+    return call(deploymentApi(this.ctx, await this.deploymentUrl(name)));
+  }
+
+  private members(team: string | number) {
+    return paged((query) => this.api.get(`/teams/${pathEncode(team)}/list_members`, { query }));
+  }
+
+  private invites(team: string | number) {
+    return paged((query) =>
+      this.api.get(`/teams/${pathEncode(team)}/list_pending_invites`, { query }),
+    );
+  }
+
+  private customRoles(team: string | number) {
+    return paged((query) =>
+      this.api.get(`/teams/${pathEncode(team)}/list_custom_roles`, { query }),
+    );
+  }
+
+  private accessTokens(team: string | number) {
+    return paged((query) =>
+      this.api.get(`/teams/${pathEncode(team)}/list_access_tokens`, { query }),
+    );
   }
 
   /**
@@ -221,12 +250,10 @@ export class ConvexClient implements PluginClient {
       }
       case "convex-env-var":
         return this.perDeployment(only, async (d) => {
-          const res = await deploymentApi<{ environmentVariables?: Record<string, string> }>(
+          const res = await deploymentApi(
             this.ctx,
             d.deploymentUrl ?? `https://${d.name}.convex.cloud`,
-            "GET",
-            "/list_environment_variables",
-          );
+          ).get("/list_environment_variables");
           return Object.keys(res?.environmentVariables ?? {})
             .sort()
             .map((name) =>
@@ -247,9 +274,10 @@ export class ConvexClient implements PluginClient {
         const projects = await this.projects();
         const lists = await Promise.all(
           projects.map(async (p) => {
-            const vars = await paged<CvDefaultEnvVar>(
-              this.ctx,
-              `/projects/${enc(p.id)}/list_default_environment_variables`,
+            const vars = await paged((query) =>
+              this.api.get(`/projects/${pathEncode(p.id)}/list_default_environment_variables`, {
+                query,
+              }),
             );
             return vars.flatMap((v) =>
               v.deploymentTypes.map((t) =>
@@ -269,24 +297,19 @@ export class ConvexClient implements PluginClient {
       }
       case "convex-deploy-key":
         return this.perDeployment(only, async (d) =>
-          (
-            (await mgmt<CvDeployKey[]>(
-              this.ctx,
-              "GET",
-              `/deployments/${enc(d.name)}/list_deploy_keys`,
-            )) ?? []
-          ).map((k) => toDeployKey(k, d.name, accountId)),
+          ((await this.api.get(`/deployments/${pathEncode(d.name)}/list_deploy_keys`)) ?? []).map(
+            (k) => toDeployKey(k, d.name, accountId),
+          ),
         );
       case "convex-preview-deploy-key": {
         const projects = await this.projects();
         const lists = await Promise.all(
           projects.map(async (p) => {
-            const res = await mgmt<{ items?: CvDeployKey[] }>(
-              this.ctx,
-              "GET",
-              `/projects/${enc(p.id)}/list_preview_deploy_keys`,
-              undefined,
-              { includeManaged: true },
+            const res = await this.api.get(
+              `/projects/${pathEncode(p.id)}/list_preview_deploy_keys`,
+              {
+                query: { includeManaged: true },
+              },
             );
             return (res?.items ?? []).map((k) => toPreviewKey(k, p.id, accountId));
           }),
@@ -296,48 +319,29 @@ export class ConvexClient implements PluginClient {
       case "convex-custom-domain":
         return this.perDeployment(only, async (d) =>
           (
-            (
-              await mgmt<{ domains?: CvCustomDomain[] }>(
-                this.ctx,
-                "GET",
-                `/deployments/${enc(d.name)}/custom_domains`,
-              )
-            )?.domains ?? []
+            (await this.api.get(`/deployments/${pathEncode(d.name)}/custom_domains`))?.domains ?? []
           ).map((cd) => toCustomDomain(cd, accountId)),
         );
       case "convex-log-stream":
         return this.perDeployment(only, async (d) =>
           (
-            (await deploymentApi<CvLogStream[]>(
-              this.ctx,
-              d.deploymentUrl ?? `https://${d.name}.convex.cloud`,
-              "GET",
+            (await deploymentApi(this.ctx, d.deploymentUrl ?? `https://${d.name}.convex.cloud`).get(
               "/list_log_streams",
             )) ?? []
           ).map((s) => toLogStream(s, d.name, accountId)),
         );
       case "convex-usage-limit":
         return this.perDeployment(only, async (d) => {
-          const url = d.deploymentUrl ?? `https://${d.name}.convex.cloud`;
-          const res = await deploymentApi<{ usageLimits?: CvUsageLimit[] }>(
-            this.ctx,
-            url,
-            "GET",
-            "/list_usage_limits",
-          );
+          const api = deploymentApi(this.ctx, d.deploymentUrl ?? `https://${d.name}.convex.cloud`);
+          const res = await api.get("/list_usage_limits");
           const limits = res?.usageLimits ?? [];
           if (limits.length === 0) return [];
-          const usage = await deploymentApi<CvUsage>(
-            this.ctx,
-            url,
-            "GET",
-            "/get_current_usage",
-          ).catch(() => undefined);
+          const usage = await api.get("/get_current_usage").catch(() => undefined);
           return limits.map((l) => toUsageLimit(l, d.name, accountId, usage));
         });
       case "convex-member": {
         const teamId = await this.teamId();
-        const members = await paged<CvMember>(this.ctx, `/teams/${enc(teamId)}/list_members`);
+        const members = await this.members(teamId);
         return members.map((m) =>
           instance(
             accountId,
@@ -356,10 +360,7 @@ export class ConvexClient implements PluginClient {
       }
       case "convex-invite": {
         const teamId = await this.teamId();
-        const invites = await paged<CvInvite>(
-          this.ctx,
-          `/teams/${enc(teamId)}/list_pending_invites`,
-        );
+        const invites = await this.invites(teamId);
         return invites.map((i) =>
           instance(
             accountId,
@@ -373,10 +374,7 @@ export class ConvexClient implements PluginClient {
       }
       case "convex-custom-role": {
         const teamId = await this.teamId();
-        const roles = await paged<CvCustomRole>(
-          this.ctx,
-          `/teams/${enc(teamId)}/list_custom_roles`,
-        );
+        const roles = await this.customRoles(teamId);
         return roles.map((r) =>
           instance(
             accountId,
@@ -396,10 +394,7 @@ export class ConvexClient implements PluginClient {
       }
       case "convex-access-token": {
         const teamId = await this.teamId();
-        const tokens = await paged<CvAccessToken>(
-          this.ctx,
-          `/teams/${enc(teamId)}/list_access_tokens`,
-        );
+        const tokens = await this.accessTokens(teamId);
         return tokens.map((t) =>
           instance(
             accountId,
@@ -425,10 +420,8 @@ export class ConvexClient implements PluginClient {
     const teamId = await this.teamId();
     const [projects, members, invites] = await Promise.all([
       this.projects(),
-      paged<CvMember>(this.ctx, `/teams/${enc(teamId)}/list_members`).catch(() => undefined),
-      paged<CvInvite>(this.ctx, `/teams/${enc(teamId)}/list_pending_invites`).catch(
-        () => undefined,
-      ),
+      this.members(teamId).catch(() => undefined),
+      this.invites(teamId).catch(() => undefined),
     ]);
     const slug = projects[0]?.teamSlug ?? "";
     return instance(accountId, "convex-team", String(teamId), slug || `Team ${teamId}`, {
@@ -453,18 +446,13 @@ export class ConvexClient implements PluginClient {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
       if (typeId === "convex-project") {
-        return toProject(
-          await mgmt<CvProject>(this.ctx, "GET", `/projects/${enc(externalId)}`),
-          accountId,
-        );
+        return toProject(await this.api.get(`/projects/${pathEncode(externalId)}`), accountId);
       }
       if (typeId === "convex-deployment") {
-        const d = await mgmt<CvDeployment>(this.ctx, "GET", `/deployments/${enc(externalId)}`);
-        const project = await mgmt<CvProject>(
-          this.ctx,
-          "GET",
-          `/projects/${enc(d.projectId)}`,
-        ).catch(() => undefined);
+        const d = await this.getDeployment(externalId);
+        const project = await this.api
+          .get(`/projects/${pathEncode(d.projectId)}`)
+          .catch(() => undefined);
         this.remember([d]);
         return toDeployment(d, accountId, project?.slug);
       }
@@ -479,7 +467,7 @@ export class ConvexClient implements PluginClient {
       let all: ResourceInstance[];
       if (deploymentScoped.has(typeId)) {
         const [name] = head(externalId);
-        const d = await mgmt<CvDeployment>(this.ctx, "GET", `/deployments/${enc(name)}`);
+        const d = await this.getDeployment(name);
         all = await this.list(typeId, accountId, [d]);
       } else {
         all = await this.list(typeId, accountId);
@@ -509,24 +497,20 @@ export class ConvexClient implements PluginClient {
         case "convex-project.projectId":
           return externalId;
         case "convex-project.slug":
-          return (await mgmt<CvProject>(this.ctx, "GET", `/projects/${enc(externalId)}`)).slug;
+          return (await this.api.get(`/projects/${pathEncode(externalId)}`)).slug;
         case "convex-deployment.deploymentName":
           return externalId;
         case "convex-deployment.deploymentUrl":
           return this.deploymentUrl(externalId);
         case "convex-deployment.siteUrl": {
-          const urls = await this.dApi<{ convexSiteUrl?: string }>(
-            externalId,
-            "GET",
-            "/get_canonical_urls",
+          const urls = await this.onDeployment(externalId, (api) =>
+            api.get("/get_canonical_urls"),
           ).catch(() => undefined);
           return urls?.convexSiteUrl || siteUrlOf(await this.deploymentUrl(externalId));
         }
         case "convex-env-var.value": {
-          const res = await this.dApi<{ environmentVariables?: Record<string, string> }>(
-            first,
-            "GET",
-            "/list_environment_variables",
+          const res = await this.onDeployment(first, (api) =>
+            api.get("/list_environment_variables"),
           );
           const value = res?.environmentVariables?.[rest];
           if (value === undefined)
@@ -535,14 +519,12 @@ export class ConvexClient implements PluginClient {
         }
         case "convex-default-env-var.value": {
           const [type, name] = head(rest);
-          const vars = await paged<CvDefaultEnvVar>(
-            this.ctx,
-            `/projects/${enc(first)}/list_default_environment_variables`,
-            { name },
+          const vars = await paged((paging) =>
+            this.api.get(`/projects/${pathEncode(first)}/list_default_environment_variables`, {
+              query: { ...(name ? { name } : {}), ...paging },
+            }),
           );
-          const match = vars.find(
-            (v) => v.name === name && v.deploymentTypes.includes(type as DeploymentType),
-          );
+          const match = vars.find((v) => v.name === name && v.deploymentTypes.includes(type));
           if (!match)
             throw new ConvexApiError(404, `Convex plugin: ${name} is not set for ${type}.`);
           return match.value;
@@ -555,8 +537,10 @@ export class ConvexClient implements PluginClient {
             "Convex shows a deploy key only when it is created. Create a new key to get a fresh value.",
           );
         case "convex-log-stream.hmacSecret": {
-          const stream = await this.dApi<CvLogStream>(first, "GET", `/get_log_stream/${enc(rest)}`);
-          const secret = stream?.["hmacSecret"];
+          const stream: CvLogStream = await this.onDeployment(first, (api) =>
+            api.get(`/get_log_stream/${pathEncode(rest)}`),
+          );
+          const secret = stream?.hmacSecret;
           if (typeof secret !== "string")
             throw new Error("Convex plugin: only webhook streams have a secret.");
           return secret;
@@ -573,12 +557,8 @@ export class ConvexClient implements PluginClient {
       if (resource.resourceTypeId !== "convex-deployment") return resource;
       const name = String(resource.externalId ?? "");
       const [usage, urls] = await Promise.all([
-        this.dApi<CvUsage>(name, "GET", "/get_current_usage").catch(() => undefined),
-        this.dApi<{ convexCloudUrl?: string; convexSiteUrl?: string }>(
-          name,
-          "GET",
-          "/get_canonical_urls",
-        ).catch(() => undefined),
+        this.onDeployment(name, (api) => api.get("/get_current_usage")).catch(() => undefined),
+        this.onDeployment(name, (api) => api.get("/get_canonical_urls")).catch(() => undefined),
       ]);
       const fields = { ...resource.fields };
       if (usage) fields["_usage"] = JSON.stringify(usage);
@@ -622,7 +602,9 @@ export class ConvexClient implements PluginClient {
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
       if (resourceTypeId !== "convex-deployment") return [];
-      const usage = await this.dApi<CvUsage>(externalIdOf(resourceId), "GET", "/get_current_usage");
+      const usage = await this.onDeployment(externalIdOf(resourceId), (api) =>
+        api.get("/get_current_usage"),
+      );
       const now = Date.now();
       const series: MetricSeries[] = [];
       for (const [metric, value] of Object.entries(usage?.metrics ?? {})) {
@@ -651,18 +633,11 @@ export class ConvexClient implements PluginClient {
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
       const readings = await this.perDeployment(undefined, async (d) => {
-        const url = d.deploymentUrl ?? `https://${d.name}.convex.cloud`;
+        const api = deploymentApi(this.ctx, d.deploymentUrl ?? `https://${d.name}.convex.cloud`);
         const limits =
-          (
-            await deploymentApi<{ usageLimits?: CvUsageLimit[] }>(
-              this.ctx,
-              url,
-              "GET",
-              "/list_usage_limits",
-            )
-          )?.usageLimits?.filter((l) => l.enabled) ?? [];
+          (await api.get("/list_usage_limits"))?.usageLimits?.filter((l) => l.enabled) ?? [];
         if (limits.length === 0) return [];
-        const usage = await deploymentApi<CvUsage>(this.ctx, url, "GET", "/get_current_usage");
+        const usage = await api.get("/get_current_usage");
         return limits.flatMap((l): QuotaUsage[] => {
           const m = usage?.metrics?.[l.metric];
           if (!m) return [];
@@ -694,7 +669,7 @@ export class ConvexClient implements PluginClient {
           teamId: () => this.teamId(),
           projects: () => this.projects(),
           deployments: () => this.deployments(),
-          ctx: this.ctx,
+          api: this.api,
         },
         typeId,
         parentResourceId,
@@ -715,19 +690,19 @@ export class ConvexClient implements PluginClient {
 
       switch (typeId) {
         case "convex-project": {
-          const created = await mgmt<{ projectId: number }>(
-            this.ctx,
-            "POST",
-            `/teams/${enc(await this.teamId())}/create_project`,
+          const created = await this.api.post(
+            `/teams/${pathEncode(await this.teamId())}/create_project`,
             {
-              projectName: required(fields["name"], "a project name"),
-              ...(fields["deploymentType"] ? { deploymentType: fields["deploymentType"] } : {}),
-              ...(fields["deploymentType"] && fields["region"]
-                ? { deploymentRegion: fields["region"] }
-                : {}),
-              ...(fields["deploymentType"] && fields["class"]
-                ? { deploymentClass: fields["class"] }
-                : {}),
+              body: {
+                projectName: required(fields["name"], "a project name"),
+                ...(fields["deploymentType"] ? { deploymentType: fields["deploymentType"] } : {}),
+                ...(fields["deploymentType"] && fields["region"]
+                  ? { deploymentRegion: fields["region"] }
+                  : {}),
+                ...(fields["deploymentType"] && fields["class"]
+                  ? { deploymentClass: fields["class"] }
+                  : {}),
+              },
             },
           );
           return runPluginEffect(
@@ -735,11 +710,8 @@ export class ConvexClient implements PluginClient {
           );
         }
         case "convex-deployment": {
-          const d = await mgmt<CvDeployment>(
-            this.ctx,
-            "POST",
-            `/projects/${enc(projectId())}/create_deployment`,
-            {
+          const d = await this.api.post(`/projects/${pathEncode(projectId())}/create_deployment`, {
+            body: {
               type: fields["deploymentType"] || "dev",
               ...(fields["region"] ? { region: fields["region"] } : {}),
               ...(fields["class"] ? { class: fields["class"] } : {}),
@@ -749,16 +721,17 @@ export class ConvexClient implements PluginClient {
                 : {}),
               ...(fields["expiresAt"] ? { expiresAt: isoToMs(fields["expiresAt"]) } : {}),
             },
-          );
+          });
           this.remember([d]);
           return toDeployment(d, accountId);
         }
         case "convex-env-var": {
           const name = required(fields["name"], "a name");
           const dep = deploymentName();
-          await this.dApi(dep, "POST", "/update_environment_variables", {
-            changes: [{ name, value: required(fields["value"], "a value") }],
-          });
+          const changes = [{ name, value: required(fields["value"], "a value") }];
+          await this.onDeployment(dep, (api) =>
+            api.post("/update_environment_variables", { body: { changes } }),
+          );
           return instance(
             accountId,
             typeId,
@@ -778,14 +751,9 @@ export class ConvexClient implements PluginClient {
           if (types.length === 0)
             throw new Error("Convex plugin: pick at least one deployment type.");
           const value = required(fields["value"], "a value");
-          await mgmt(
-            this.ctx,
-            "POST",
-            `/projects/${enc(pid)}/update_default_environment_variables`,
-            {
-              changes: types.map((t) => ({ name, deploymentType: t, value })),
-            },
-          );
+          await this.api.post(`/projects/${pathEncode(pid)}/update_default_environment_variables`, {
+            body: { changes: types.map((t) => ({ name, deploymentType: t, value })) },
+          });
           return instance(
             accountId,
             typeId,
@@ -799,22 +767,15 @@ export class ConvexClient implements PluginClient {
           const dep = deploymentName();
           const name = required(fields["name"], "a name");
           const actions = listValue(fields["allowedActions"]);
-          const res = await mgmt<{ deployKey: string }>(
-            this.ctx,
-            "POST",
-            `/deployments/${enc(dep)}/create_deploy_key`,
-            {
+          const res = await this.api.post(`/deployments/${pathEncode(dep)}/create_deploy_key`, {
+            body: {
               name,
               ...(actions.length ? { allowedActions: actions } : {}),
               ...(fields["expiresAt"] ? { expiresAt: isoToMs(fields["expiresAt"]) } : {}),
             },
-          );
+          });
           const keys =
-            (await mgmt<CvDeployKey[]>(
-              this.ctx,
-              "GET",
-              `/deployments/${enc(dep)}/list_deploy_keys`,
-            )) ?? [];
+            (await this.api.get(`/deployments/${pathEncode(dep)}/list_deploy_keys`)) ?? [];
           const key = keys
             .filter((k) => k.name === name)
             .sort((a, b) => b.creationTime - a.creationTime)[0];
@@ -827,17 +788,16 @@ export class ConvexClient implements PluginClient {
         case "convex-preview-deploy-key": {
           const pid = projectId();
           const name = required(fields["name"], "a name");
-          const res = await mgmt<{ previewDeployKey: string }>(
-            this.ctx,
-            "POST",
-            `/projects/${enc(pid)}/create_preview_deploy_key`,
-            { name, ...(fields["expiresAt"] ? { expiresAt: isoToMs(fields["expiresAt"]) } : {}) },
+          const res = await this.api.post(
+            `/projects/${pathEncode(pid)}/create_preview_deploy_key`,
+            {
+              body: {
+                name,
+                ...(fields["expiresAt"] ? { expiresAt: isoToMs(fields["expiresAt"]) } : {}),
+              },
+            },
           );
-          const list = await mgmt<{ items?: CvDeployKey[] }>(
-            this.ctx,
-            "GET",
-            `/projects/${enc(pid)}/list_preview_deploy_keys`,
-          );
+          const list = await this.api.get(`/projects/${pathEncode(pid)}/list_preview_deploy_keys`);
           const key = (list?.items ?? [])
             .filter((k) => k.name === name)
             .sort((a, b) => b.creationTime - a.creationTime)[0];
@@ -852,9 +812,8 @@ export class ConvexClient implements PluginClient {
           const domain = required(fields["domain"], "a domain").toLowerCase();
           const requestDestination =
             fields["requestDestination"] === "convexSite" ? "convexSite" : "convexCloud";
-          await mgmt(this.ctx, "POST", `/deployments/${enc(dep)}/create_custom_domain`, {
-            domain,
-            requestDestination,
+          await this.api.post(`/deployments/${pathEncode(dep)}/create_custom_domain`, {
+            body: { domain, requestDestination },
           });
           return toCustomDomain(
             { domain, deploymentName: dep, requestDestination, creationTime: Date.now() },
@@ -864,17 +823,14 @@ export class ConvexClient implements PluginClient {
         case "convex-log-stream": {
           const dep = deploymentName();
           const body = logStreamBody(fields);
-          const res = await this.dApi<{ id: string; hmacSecret?: string }>(
-            dep,
-            "POST",
-            "/create_log_stream",
-            body,
+          const res: CvCreatedLogStream = await this.onDeployment(dep, (api) =>
+            api.post("/create_log_stream", { body }),
           );
           const created = await runPluginEffect(
             this.getResource(typeId, `${accountId}:${typeId}:${dep}/${res.id}`, accountId),
           ).catch(() =>
-            instance(accountId, typeId, `${dep}/${res.id}`, String(body["logStreamType"]), {
-              streamType: String(body["logStreamType"]),
+            instance(accountId, typeId, `${dep}/${res.id}`, String(body.logStreamType), {
+              streamType: String(body.logStreamType),
               deploymentName: dep,
             }),
           );
@@ -883,20 +839,17 @@ export class ConvexClient implements PluginClient {
         }
         case "convex-usage-limit": {
           const dep = deploymentName();
-          const res = await this.dApi<{ usageLimit: CvUsageLimit }>(
-            dep,
-            "POST",
-            "/create_usage_limit",
-            usageLimitBody(fields),
+          const body = usageLimitBody(fields);
+          const res = await this.onDeployment(dep, (api) =>
+            api.post("/create_usage_limit", { body }),
           );
           return toUsageLimit(res.usageLimit, dep, accountId);
         }
         case "convex-invite": {
           const teamId = await this.teamId();
           const email = required(fields["email"], "an email");
-          await mgmt(this.ctx, "POST", `/teams/${enc(teamId)}/invite_team_member`, {
-            email,
-            role: fields["role"] === "admin" ? "admin" : "developer",
+          await this.api.post(`/teams/${pathEncode(teamId)}/invite_team_member`, {
+            body: { email, role: fields["role"] === "admin" ? "admin" : "developer" },
           });
           return instance(
             accountId,
@@ -915,11 +868,8 @@ export class ConvexClient implements PluginClient {
           const teamId = await this.teamId();
           const actions = listValue(fields["actions"]);
           if (actions.length === 0) throw new Error("Convex plugin: pick at least one permission.");
-          const role = await mgmt<CvCustomRole>(
-            this.ctx,
-            "POST",
-            `/teams/${enc(teamId)}/create_custom_role`,
-            {
+          const role = await this.api.post(`/teams/${pathEncode(teamId)}/create_custom_role`, {
+            body: {
               name: required(fields["name"], "a name"),
               ...(fields["description"] ? { description: fields["description"] } : {}),
               statements: [
@@ -930,7 +880,7 @@ export class ConvexClient implements PluginClient {
                 },
               ],
             },
-          );
+          });
           return instance(
             accountId,
             typeId,
@@ -963,103 +913,100 @@ export class ConvexClient implements PluginClient {
       const [first, rest] = head(externalId);
       switch (typeId) {
         case "convex-project": {
-          const body: Record<string, unknown> = {};
+          const body: UpdateProjectBody = {};
           if (fields["name"]) body["name"] = fields["name"];
           if (fields["slug"]) body["slug"] = fields["slug"];
           return toProject(
-            await mgmt<CvProject>(this.ctx, "PATCH", `/projects/${enc(externalId)}`, body),
+            await this.api.patch(`/projects/${pathEncode(externalId)}`, { body }),
             accountId,
           );
         }
         case "convex-deployment": {
-          const body: Record<string, unknown> = {};
+          const body: UpdateDeploymentBody = {};
           if (fields["deploymentType"]) body["deploymentType"] = fields["deploymentType"];
           if (fields["class"]) body["class"] = fields["class"];
           if (fields["reference"]) body["reference"] = fields["reference"];
-          for (const key of ["isDefault", "dashboardEditConfirmation", "sendLogsToClient"]) {
+          for (const key of [
+            "isDefault",
+            "dashboardEditConfirmation",
+            "sendLogsToClient",
+          ] as const) {
             const v = bool(fields[key]);
             if (v !== undefined) body[key] = v;
           }
           const expires = isoToMs(fields["expiresAt"]);
           if (expires !== undefined) body["expiresAt"] = expires;
-          await mgmt(this.ctx, "PATCH", `/deployments/${enc(externalId)}`, body);
+          await this.api.patch(`/deployments/${pathEncode(externalId)}`, { body });
           break;
         }
         case "convex-env-var":
           if (fields["value"]) {
-            await this.dApi(first, "POST", "/update_environment_variables", {
-              changes: [{ name: rest, value: fields["value"] }],
-            });
+            const changes = [{ name: rest, value: fields["value"] }];
+            await this.onDeployment(first, (api) =>
+              api.post("/update_environment_variables", { body: { changes } }),
+            );
           }
           break;
         case "convex-default-env-var":
           if (fields["value"]) {
             const [type, name] = head(rest);
-            await mgmt(
-              this.ctx,
-              "POST",
-              `/projects/${enc(first)}/update_default_environment_variables`,
-              {
-                changes: [{ name, deploymentType: type, value: fields["value"] }],
-              },
+            await this.api.post(
+              `/projects/${pathEncode(first)}/update_default_environment_variables`,
+              { body: { changes: [{ name, deploymentType: type, value: fields["value"] }] } },
             );
           }
           break;
         case "convex-log-stream": {
-          const current = await this.dApi<CvLogStream>(
-            first,
-            "GET",
-            `/get_log_stream/${enc(rest)}`,
+          const current = await this.onDeployment(first, (api) =>
+            api.get(`/get_log_stream/${pathEncode(rest)}`),
           );
-          const body: Record<string, unknown> = { logStreamType: current.logStreamType };
+          const body: UpdateLogStreamBody = { logStreamType: current.logStreamType };
           if (fields["url"]) body["url"] = fields["url"];
           if (fields["format"]) body["format"] = fields["format"];
           if (fields["service"] !== undefined) body["service"] = fields["service"] || null;
           if (fields["datasetName"]) body["datasetName"] = fields["datasetName"];
-          await this.dApi(first, "POST", `/update_log_stream/${enc(rest)}`, body);
+          await this.onDeployment(first, (api) =>
+            api.post(`/update_log_stream/${pathEncode(rest)}`, { body }),
+          );
           break;
         }
         case "convex-usage-limit": {
           const current = (
-            await this.dApi<{ usageLimits?: CvUsageLimit[] }>(first, "GET", "/list_usage_limits")
+            await this.onDeployment(first, (api) => api.get("/list_usage_limits"))
           )?.usageLimits?.find((l) => l.id === rest);
           if (!current)
             throw new ConvexApiError(404, "Convex plugin: the usage limit no longer exists.");
           // Update replaces the whole config, so unchanged values are carried over.
-          await this.dApi(
-            first,
-            "POST",
-            `/update_usage_limit/${enc(rest)}`,
-            usageLimitBody({
-              metric: fields["metric"] || current.metric,
-              window: fields["window"] || current.window,
-              limitType: fields["limitType"] || current.limitType,
-              limit: fields["limit"] || String(current.limit),
-              enabled: fields["enabled"] || String(current.enabled),
-            }),
+          const body = usageLimitBody({
+            metric: fields["metric"] || current.metric,
+            window: fields["window"] || current.window,
+            limitType: fields["limitType"] || current.limitType,
+            limit: fields["limit"] || String(current.limit),
+            enabled: fields["enabled"] || String(current.enabled),
+          });
+          await this.onDeployment(first, (api) =>
+            api.post(`/update_usage_limit/${pathEncode(rest)}`, { body }),
           );
           break;
         }
         case "convex-member":
           if (fields["role"]) {
-            await mgmt(this.ctx, "POST", `/teams/${enc(first)}/update_team_member_role`, {
-              memberId: Number(rest),
-              role: fields["role"],
+            await this.api.post(`/teams/${pathEncode(first)}/update_team_member_role`, {
+              body: { memberId: Number(rest), role: fields["role"] },
             });
           }
           break;
         case "convex-custom-role": {
-          const roles = await paged<CvCustomRole>(
-            this.ctx,
-            `/teams/${enc(first)}/list_custom_roles`,
-          );
+          const roles = await this.customRoles(first);
           const current = roles.find((r) => String(r.id) === rest);
           if (!current) throw new ConvexApiError(404, "Convex plugin: the role no longer exists.");
-          await mgmt(this.ctx, "POST", `/teams/${enc(first)}/update_custom_role`, {
-            id: current.id,
-            name: fields["name"] || current.name,
-            description: fields["description"] ?? current.description ?? null,
-            statements: current.statements,
+          await this.api.post(`/teams/${pathEncode(first)}/update_custom_role`, {
+            body: {
+              id: current.id,
+              name: fields["name"] || current.name,
+              description: fields["description"] ?? current.description ?? null,
+              statements: current.statements,
+            },
           });
           break;
         }
@@ -1076,81 +1023,81 @@ export class ConvexClient implements PluginClient {
       const [first, rest] = head(externalId);
       switch (typeId) {
         case "convex-project":
-          await mgmt(this.ctx, "POST", `/projects/${enc(externalId)}/delete`);
+          await this.api.post(`/projects/${pathEncode(externalId)}/delete`);
           return;
         case "convex-deployment":
-          await mgmt(this.ctx, "POST", `/deployments/${enc(externalId)}/delete`);
+          await this.api.post(`/deployments/${pathEncode(externalId)}/delete`);
           return;
         case "convex-env-var":
-          await this.dApi(first, "POST", "/update_environment_variables", {
-            changes: [{ name: rest, value: null }],
-          });
+          await this.onDeployment(first, (api) =>
+            api.post("/update_environment_variables", {
+              body: { changes: [{ name: rest, value: null }] },
+            }),
+          );
           return;
         case "convex-default-env-var": {
           const [type, name] = head(rest);
-          await mgmt(
-            this.ctx,
-            "POST",
-            `/projects/${enc(first)}/update_default_environment_variables`,
-            {
-              changes: [{ name, deploymentType: type, value: null }],
-            },
+          await this.api.post(
+            `/projects/${pathEncode(first)}/update_default_environment_variables`,
+            { body: { changes: [{ name, deploymentType: type, value: null }] } },
           );
           return;
         }
         case "convex-deploy-key": {
-          const key = await this.findKeyName(
-            `/deployments/${enc(first)}/list_deploy_keys`,
+          const key = findKeyName(
+            await this.api.get(`/deployments/${pathEncode(first)}/list_deploy_keys`),
             rest,
-            false,
           );
-          await mgmt(this.ctx, "POST", `/deployments/${enc(first)}/delete_deploy_key`, { id: key });
+          await this.api.post(`/deployments/${pathEncode(first)}/delete_deploy_key`, {
+            body: { id: key },
+          });
           return;
         }
         case "convex-preview-deploy-key": {
-          const key = await this.findKeyName(
-            `/projects/${enc(first)}/list_preview_deploy_keys`,
+          const key = findKeyName(
+            await this.api.get(`/projects/${pathEncode(first)}/list_preview_deploy_keys`, {
+              query: { includeManaged: true },
+            }),
             rest,
-            true,
           );
-          await mgmt(this.ctx, "POST", `/projects/${enc(first)}/delete_preview_deploy_key`, {
-            id: key,
+          await this.api.post(`/projects/${pathEncode(first)}/delete_preview_deploy_key`, {
+            body: { id: key },
           });
           return;
         }
         case "convex-custom-domain": {
           const [destination, domain] = head(rest);
-          await mgmt(this.ctx, "POST", `/deployments/${enc(first)}/delete_custom_domain`, {
-            domain,
-            requestDestination: destination,
+          await this.api.post(`/deployments/${pathEncode(first)}/delete_custom_domain`, {
+            body: { domain, requestDestination: destination },
           });
           return;
         }
         case "convex-log-stream":
-          await this.dApi(first, "POST", `/delete_log_stream/${enc(rest)}`);
+          await this.onDeployment(first, (api) =>
+            api.post(`/delete_log_stream/${pathEncode(rest)}`),
+          );
           return;
         case "convex-usage-limit":
-          await this.dApi(first, "POST", `/delete_usage_limit/${enc(rest)}`);
+          await this.onDeployment(first, (api) =>
+            api.post(`/delete_usage_limit/${pathEncode(rest)}`),
+          );
           return;
         case "convex-invite":
-          await mgmt(this.ctx, "POST", `/teams/${enc(first)}/cancel_team_member_invite`, {
-            email: rest,
+          await this.api.post(`/teams/${pathEncode(first)}/cancel_team_member_invite`, {
+            body: { email: rest },
           });
           return;
         case "convex-custom-role":
-          await mgmt(this.ctx, "POST", `/teams/${enc(first)}/delete_custom_role`, {
-            id: Number(rest),
+          await this.api.post(`/teams/${pathEncode(first)}/delete_custom_role`, {
+            body: { id: Number(rest) },
           });
           return;
         case "convex-access-token": {
-          const tokens = await paged<CvAccessToken>(
-            this.ctx,
-            `/teams/${enc(first)}/list_access_tokens`,
-          );
+          const tokens = await this.accessTokens(first);
           const token = tokens.find((t) => String(t.id) === rest);
           if (!token) throw new ConvexApiError(404, "Convex plugin: the token no longer exists.");
-          await mgmt(this.ctx, "POST", `/teams/${enc(first)}/delete_access_token`, {
-            id: token.name,
+          await this.api.post(`/teams/${pathEncode(first)}/delete_access_token`, {
+            body: { id: token.name },
           });
           return;
         }
@@ -1158,21 +1105,6 @@ export class ConvexClient implements PluginClient {
           throw new Error(`Convex plugin: "${typeId}" cannot be deleted.`);
       }
     });
-  }
-
-  /** Deploy keys are deleted by name (or secret); our ids are numeric. */
-  private async findKeyName(path: string, id: string, wrapped: boolean): Promise<string> {
-    const res = await mgmt<CvDeployKey[] | { items?: CvDeployKey[] }>(
-      this.ctx,
-      "GET",
-      path,
-      undefined,
-      wrapped ? { includeManaged: true } : undefined,
-    );
-    const keys = Array.isArray(res) ? res : (res?.items ?? []);
-    const key = keys.find((k) => String(k.id) === id);
-    if (!key) throw new ConvexApiError(404, "Convex plugin: the deploy key no longer exists.");
-    return key.name;
   }
 
   invokeAction(
@@ -1184,32 +1116,31 @@ export class ConvexClient implements PluginClient {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
       if (typeId === "convex-deployment" && (actionId === "pause" || actionId === "unpause")) {
-        await this.dApi(
-          externalId,
-          "POST",
-          actionId === "pause" ? "/pause_deployment" : "/unpause_deployment",
+        await this.onDeployment(externalId, (api) =>
+          actionId === "pause" ? api.post("/pause_deployment") : api.post("/unpause_deployment"),
         );
         return;
       }
       if (typeId === "convex-log-stream" && actionId === "rotate-secret") {
         const [dep, id] = head(externalId);
-        await this.dApi(dep, "POST", `/rotate_webhook_secret/${enc(id)}`);
+        await this.onDeployment(dep, (api) => api.post(`/rotate_webhook_secret/${pathEncode(id)}`));
         return;
       }
       if (typeId === "convex-invite" && actionId === "resend") {
         const [teamId, email] = head(externalId);
-        const invites = await paged<CvInvite>(
-          this.ctx,
-          `/teams/${enc(teamId)}/list_pending_invites`,
-        );
+        const invites = await this.invites(teamId);
         const invite = invites.find((i) => i.email === email);
-        await mgmt(this.ctx, "POST", `/teams/${enc(teamId)}/cancel_team_member_invite`, { email });
-        await mgmt(this.ctx, "POST", `/teams/${enc(teamId)}/invite_team_member`, {
-          email,
-          role: invite?.role ?? "developer",
-          ...(invite?.role === "custom" && invite.customRoles?.length
-            ? { customRoles: invite.customRoles }
-            : {}),
+        await this.api.post(`/teams/${pathEncode(teamId)}/cancel_team_member_invite`, {
+          body: { email },
+        });
+        await this.api.post(`/teams/${pathEncode(teamId)}/invite_team_member`, {
+          body: {
+            email,
+            role: invite?.role ?? "developer",
+            ...(invite?.role === "custom" && invite.customRoles?.length
+              ? { customRoles: invite.customRoles }
+              : {}),
+          },
         });
         return;
       }
@@ -1218,8 +1149,16 @@ export class ConvexClient implements PluginClient {
   }
 }
 
+/** Deploy keys are deleted by name (or secret); our ids are numeric. */
+function findKeyName(res: CvDeployKey[] | { items?: CvDeployKey[] }, id: string): string {
+  const keys = Array.isArray(res) ? res : (res?.items ?? []);
+  const key = keys.find((k) => String(k.id) === id);
+  if (!key) throw new ConvexApiError(404, "Convex plugin: the deploy key no longer exists.");
+  return key.name;
+}
+
 /** Create-form fields → a `create_log_stream` body for the chosen destination. */
-export function logStreamBody(fields: Record<string, string>): Record<string, unknown> {
+export function logStreamBody(fields: Record<string, string>): CreateLogStreamBody {
   const type = fields["streamType"] || "webhook";
   const topics = listValue(fields["topics"]);
   const withTopics = topics.length ? { topics } : {};
@@ -1269,7 +1208,7 @@ export function logStreamBody(fields: Record<string, string>): Record<string, un
   }
 }
 
-export function usageLimitBody(fields: Record<string, string>): Record<string, unknown> {
+export function usageLimitBody(fields: Record<string, string>): UsageLimitBody {
   const limit = Number(required(fields["limit"], "a limit"));
   if (!Number.isInteger(limit) || limit < 1)
     throw new Error("Convex plugin: the limit must be a whole number of at least 1.");

@@ -58,7 +58,7 @@ interface Incident {
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
-  const parsed = JSON.parse(body) as { incidents?: Incident[] };
+  const parsed: { incidents?: Incident[] } = JSON.parse(body);
   if (!parsed || !Array.isArray(parsed.incidents)) {
     throw new Error("SendGrid status feed: expected a Statuspage incidents document");
   }

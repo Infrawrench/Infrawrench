@@ -1,0 +1,162 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "dotcom",
+      "specUrl": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1organizations~1{org}~1settings~1billing~1budgets/post/requestBody/content/application~1json/schema/properties/budget_scope",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's choice goes through as typed and GitHub validates it, so a value outside this enum stays GitHub's error."
+        },
+        {
+          "pointer": "/paths/~1orgs~1{org}~1actions~1hosted-runners/post/requestBody/content/application~1json/schema/properties/image/properties/source",
+          "value": {
+            "type": "string"
+          },
+          "why": "The source comes from the image the user picked and GitHub validates it, so a value outside this enum stays GitHub's error."
+        },
+        {
+          "pointer": "/components/schemas/organization-secret-scanning-alert/required",
+          "value": ["number", "created_at", "secret_type"],
+          "why": "The document marks nothing required here. A finding is identified by these, and every alert has them."
+        },
+        {
+          "pointer": "/components/schemas/nullable-secret-scanning-first-detected-location",
+          "value": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer"
+              },
+              "commit_sha": {
+                "type": "string"
+              }
+            }
+          },
+          "why": "A union of 14 location kinds. Only a file location has what a finding shows, and any other kind is read as having none of it."
+        }
+      ],
+      "paths": {
+        "/user": ["get"],
+        "/user/orgs": ["get"],
+        "/user/installations": ["get"],
+        "/orgs/{org}": ["get"],
+        "/orgs/{org}/members": ["get"],
+        "/orgs/{org}/repos": ["get"],
+        "/orgs/{org}/codespaces": ["get"],
+        "/orgs/{org}/members/{username}/codespaces/{codespace_name}": ["delete"],
+        "/orgs/{org}/members/{username}/codespaces/{codespace_name}/stop": ["post"],
+        "/orgs/{org}/actions/runners": ["get"],
+        "/orgs/{org}/actions/runners/{runner_id}": ["delete"],
+        "/orgs/{org}/actions/runner-groups": ["get"],
+        "/orgs/{org}/actions/cache/usage": ["get"],
+        "/orgs/{org}/actions/cache/usage-by-repository": ["get"],
+        "/orgs/{org}/actions/hosted-runners": ["get", "post"],
+        "/orgs/{org}/actions/hosted-runners/{hosted_runner_id}": ["patch", "delete"],
+        "/orgs/{org}/actions/hosted-runners/images/github-owned": ["get"],
+        "/orgs/{org}/actions/hosted-runners/images/partner": ["get"],
+        "/orgs/{org}/actions/hosted-runners/machine-sizes": ["get"],
+        "/orgs/{org}/copilot/billing": ["get"],
+        "/orgs/{org}/copilot/billing/seats": ["get"],
+        "/orgs/{org}/copilot/billing/selected_users": ["post", "delete"],
+        "/orgs/{org}/copilot/metrics/reports/organization-28-day/latest": ["get"],
+        "/orgs/{org}/dependabot/alerts": ["get"],
+        "/orgs/{org}/secret-scanning/alerts": ["get"],
+        "/organizations/{org}/settings/billing/budgets": ["get", "post"],
+        "/organizations/{org}/settings/billing/budgets/{budget_id}": ["get", "patch", "delete"],
+        "/organizations/{org}/settings/billing/usage": ["get"],
+        "/organizations/{org}/settings/billing/usage/summary": ["get"],
+        "/organizations/{org}/settings/billing/premium_request/usage": ["get"],
+        "/organizations/{org}/settings/billing/ai_credit/usage": ["get"],
+        "/repos/{owner}/{repo}/secret-scanning/alerts/{alert_number}": ["patch"]
+      }
+    },
+    {
+      "name": "repo",
+      "specUrl": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
+      "pathPrefix": "/repos/{owner}/{repo}",
+      "paths": {
+        "/actions/cache/usage": ["get"],
+        "/actions/caches": ["get"],
+        "/actions/caches/{cache_id}": ["delete"]
+      }
+    },
+    {
+      "name": "ghec",
+      "specUrl": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/ghec/ghec.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1enterprises~1{enterprise}~1settings~1billing~1budgets/post/requestBody/content/application~1json/schema/properties/budget_scope",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form's choice goes through as typed and GitHub validates it, so a value outside this enum stays GitHub's error."
+        },
+        {
+          "pointer": "/paths/~1enterprises~1{enterprise}~1actions~1hosted-runners/post/requestBody/content/application~1json/schema/properties/image/properties/source",
+          "value": {
+            "type": "string"
+          },
+          "why": "The source comes from the image the user picked and GitHub validates it, so a value outside this enum stays GitHub's error."
+        },
+        {
+          "pointer": "/paths/~1enterprises~1{enterprise}~1settings~1billing~1cost-centers~1{cost_center_id}/patch/requestBody/content/application~1json/schema",
+          "value": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "ai_credit_pool_enabled": {
+                "type": "boolean"
+              }
+            }
+          },
+          "why": "An anyOf of variants holding only `required` generates `unknown`, which would accept any body at all. The plugin already sends at least one of the two."
+        }
+      ],
+      "paths": {
+        "/enterprises/{enterprise}/actions/runners/{runner_id}": ["delete"],
+        "/enterprises/{enterprise}/actions/runner-groups": ["get"],
+        "/enterprises/{enterprise}/actions/cache/usage": ["get"],
+        "/enterprises/{enterprise}/actions/hosted-runners": ["get", "post"],
+        "/enterprises/{enterprise}/actions/hosted-runners/{hosted_runner_id}": ["patch", "delete"],
+        "/enterprises/{enterprise}/actions/hosted-runners/images/github-owned": ["get"],
+        "/enterprises/{enterprise}/actions/hosted-runners/images/partner": ["get"],
+        "/enterprises/{enterprise}/actions/hosted-runners/machine-sizes": ["get"],
+        "/enterprises/{enterprise}/copilot/billing/seats": ["get"],
+        "/enterprises/{enterprise}/copilot/billing/selected_users": ["post", "delete"],
+        "/enterprises/{enterprise}/copilot/metrics/reports/enterprise-28-day/latest": ["get"],
+        "/enterprises/{enterprise}/dependabot/alerts": ["get"],
+        "/enterprises/{enterprise}/settings/billing/budgets": ["get", "post"],
+        "/enterprises/{enterprise}/settings/billing/budgets/{budget_id}": [
+          "get",
+          "patch",
+          "delete"
+        ],
+        "/enterprises/{enterprise}/settings/billing/cost-centers": ["get", "post"],
+        "/enterprises/{enterprise}/settings/billing/cost-centers/{cost_center_id}": [
+          "get",
+          "patch",
+          "delete"
+        ],
+        "/enterprises/{enterprise}/settings/billing/cost-centers/{cost_center_id}/resource": [
+          "post",
+          "delete"
+        ],
+        "/enterprises/{enterprise}/settings/billing/usage": ["get"],
+        "/enterprises/{enterprise}/settings/billing/usage/summary": ["get"],
+        "/enterprises/{enterprise}/settings/billing/premium_request/usage": ["get"],
+        "/enterprises/{enterprise}/settings/billing/ai_credit/usage": ["get"]
+      }
+    }
+  ]
+}

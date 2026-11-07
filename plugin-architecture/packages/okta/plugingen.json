@@ -1,0 +1,201 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/okta/okta-management-openapi-spec/master/dist/current/management-minimal.yaml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/Application/properties/name",
+      "value": {
+        "type": "string"
+      },
+      "why": "Only the per-sign-on-mode schemas declare it, and every answer is one of them. The base type is what the responses reference."
+    },
+    {
+      "pointer": "/components/schemas/Application/properties/credentials",
+      "value": {
+        "type": "object",
+        "properties": {
+          "oauthClient": {
+            "$ref": "#/components/schemas/ApplicationCredentialsOAuthClient"
+          }
+        }
+      },
+      "why": "Only the per-sign-on-mode schemas declare it. The plugin reads the OAuth client id, and writes the rest back as it came."
+    },
+    {
+      "pointer": "/components/schemas/NetworkZone/properties/gateways",
+      "value": {
+        "type": "array",
+        "nullable": true,
+        "items": {
+          "$ref": "#/components/schemas/NetworkZoneAddress"
+        }
+      },
+      "why": "Only IPNetworkZone declares it. Every route references the base type, so a body holding it would not compile."
+    },
+    {
+      "pointer": "/components/schemas/NetworkZone/properties/proxies",
+      "value": {
+        "type": "array",
+        "nullable": true,
+        "items": {
+          "$ref": "#/components/schemas/NetworkZoneAddress"
+        }
+      },
+      "why": "Only IPNetworkZone declares it. Every route references the base type, so a body holding it would not compile."
+    },
+    {
+      "pointer": "/components/schemas/NetworkZone/properties/locations",
+      "value": {
+        "nullable": true,
+        "oneOf": [
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkZoneLocation"
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "array",
+                "nullable": true,
+                "items": {
+                  "$ref": "#/components/schemas/NetworkZoneLocation"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "why": "DynamicNetworkZone has an array here and EnhancedDynamicNetworkZone has { include, exclude }; the base type every route references has neither."
+    },
+    {
+      "pointer": "/components/schemas/NetworkZone/properties/asns",
+      "value": {
+        "nullable": true,
+        "oneOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "array",
+                "nullable": true,
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "why": "DynamicNetworkZone has an array here and EnhancedDynamicNetworkZone has { include, exclude }; the base type every route references has neither."
+    },
+    {
+      "pointer": "/components/schemas/NetworkZone/properties/usage",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Okta validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/EventHookChannelConfig/required",
+      "value": [],
+      "why": "A form may leave the URL out, and the plugin sends what it was given so that Okta's own validation error reaches the user."
+    },
+    {
+      "pointer": "/components/schemas/DomainRequest/properties/certificateSourceType",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Okta validates whatever else arrives."
+    },
+    {
+      "pointer": "/components/schemas/TrustedOriginScope/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our picker offers the valid values and Okta validates whatever else arrives."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1groups~1{groupId}/get/parameters",
+      "value": [
+        {
+          "name": "expand",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "why": "The plugin sends expand=stats here, which the document only lists on the group list. The request stays as it is until #422 is settled."
+    }
+  ],
+  "paths": {
+    "/api/v1/org": ["get", "post"],
+    "/api/v1/users": ["get", "post"],
+    "/api/v1/users/{id}": ["get", "post", "delete"],
+    "/api/v1/users/{id}/groups": ["get"],
+    "/api/v1/users/{id}/lifecycle/activate": ["post"],
+    "/api/v1/users/{id}/lifecycle/reactivate": ["post"],
+    "/api/v1/users/{id}/lifecycle/deactivate": ["post"],
+    "/api/v1/users/{id}/lifecycle/suspend": ["post"],
+    "/api/v1/users/{id}/lifecycle/unsuspend": ["post"],
+    "/api/v1/users/{id}/lifecycle/unlock": ["post"],
+    "/api/v1/users/{id}/lifecycle/reset_password": ["post"],
+    "/api/v1/users/{id}/lifecycle/expire_password": ["post"],
+    "/api/v1/users/{id}/lifecycle/reset_factors": ["post"],
+    "/api/v1/users/{userId}/sessions": ["delete"],
+    "/api/v1/groups": ["get", "post"],
+    "/api/v1/groups/{groupId}": ["get", "put", "delete"],
+    "/api/v1/groups/{groupId}/users": ["get"],
+    "/api/v1/groups/{groupId}/users/{userId}": ["put", "delete"],
+    "/api/v1/apps": ["get"],
+    "/api/v1/apps/{appId}": ["get", "put", "delete"],
+    "/api/v1/apps/{appId}/users": ["get"],
+    "/api/v1/apps/{appId}/groups": ["get"],
+    "/api/v1/apps/{appId}/groups/{groupId}": ["put", "delete"],
+    "/api/v1/apps/{appId}/lifecycle/activate": ["post"],
+    "/api/v1/apps/{appId}/lifecycle/deactivate": ["post"],
+    "/api/v1/authorizationServers": ["get", "post"],
+    "/api/v1/authorizationServers/{authServerId}": ["get", "put", "delete"],
+    "/api/v1/authorizationServers/{authServerId}/lifecycle/activate": ["post"],
+    "/api/v1/authorizationServers/{authServerId}/lifecycle/deactivate": ["post"],
+    "/api/v1/authorizationServers/{authServerId}/credentials/lifecycle/keyRotate": ["post"],
+    "/api/v1/authorizationServers/{authServerId}/policies": ["get"],
+    "/api/v1/authorizationServers/{authServerId}/scopes": ["get", "post"],
+    "/api/v1/authorizationServers/{authServerId}/scopes/{scopeId}": ["delete"],
+    "/api/v1/policies": ["get"],
+    "/api/v1/policies/{policyId}": ["get", "put", "delete"],
+    "/api/v1/policies/{policyId}/lifecycle/activate": ["post"],
+    "/api/v1/policies/{policyId}/lifecycle/deactivate": ["post"],
+    "/api/v1/policies/{policyId}/rules": ["get"],
+    "/api/v1/policies/{policyId}/rules/{ruleId}/lifecycle/activate": ["post"],
+    "/api/v1/policies/{policyId}/rules/{ruleId}/lifecycle/deactivate": ["post"],
+    "/api/v1/zones": ["get", "post"],
+    "/api/v1/zones/{zoneId}": ["get", "put", "delete"],
+    "/api/v1/zones/{zoneId}/lifecycle/activate": ["post"],
+    "/api/v1/zones/{zoneId}/lifecycle/deactivate": ["post"],
+    "/api/v1/api-tokens": ["get"],
+    "/api/v1/api-tokens/{apiTokenId}": ["get", "delete"],
+    "/api/v1/eventHooks": ["get", "post"],
+    "/api/v1/eventHooks/{eventHookId}": ["get", "put", "delete"],
+    "/api/v1/eventHooks/{eventHookId}/lifecycle/activate": ["post"],
+    "/api/v1/eventHooks/{eventHookId}/lifecycle/deactivate": ["post"],
+    "/api/v1/eventHooks/{eventHookId}/lifecycle/verify": ["post"],
+    "/api/v1/domains": ["get", "post"],
+    "/api/v1/domains/{domainId}": ["get", "delete"],
+    "/api/v1/domains/{domainId}/verify": ["post"],
+    "/api/v1/trustedOrigins": ["get", "post"],
+    "/api/v1/trustedOrigins/{trustedOriginId}": ["get", "put", "delete"],
+    "/api/v1/trustedOrigins/{trustedOriginId}/lifecycle/activate": ["post"],
+    "/api/v1/trustedOrigins/{trustedOriginId}/lifecycle/deactivate": ["post"],
+    "/api/v1/logs": ["get"]
+  }
+}

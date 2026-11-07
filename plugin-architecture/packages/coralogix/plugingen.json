@@ -1,0 +1,124 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "v5",
+      "specUrl": "https://api.eu2.coralogix.com/mgmt/openapi/5/openapi.yaml",
+      "patches": [
+        {
+          "pointer": "/components/schemas/AlertDefProperties/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/components/schemas/E2M/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/components/schemas/EnrichmentType/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/components/schemas/Policy/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/components/schemas/RuleMatcher/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/components/schemas/TestOutgoingWebhookResponse/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/components/schemas/UsageDailyQuery/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/paths/~1dataplans~1policies~1v1/put/requestBody/content/application~1json/schema/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/paths/~1dataplan~1data-usage~1v1~1query/post/requestBody/content/application~1json/schema/oneOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/paths/~1dataplans~1policies~1v1~1all~1forecast-usage/post/requestBody/content/application~1json/schema/allOf",
+          "value": [],
+          "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
+        },
+        {
+          "pointer": "/paths/~1dashboards~1dashboards~1v1~1{dashboard_id}~1default/put/requestBody/content/application~1json/schema/required",
+          "value": [],
+          "why": "The plugin sends an empty body with no requestId, which the document requires. Remove this when it sends one."
+        },
+        {
+          "pointer": "/paths/~1parsing-rules~1limits~1v1/post/requestBody",
+          "value": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document gives this POST no body; the plugin sends an empty JSON object."
+        },
+        {
+          "pointer": "/paths/~1enrichment-rules~1enrichment-rules~1v1/delete/parameters/0/schema/items",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin passes the id through as the text it stored, rather than parsing it to a number first, so a bad id reaches the API unchanged."
+        }
+      ],
+      "paths": {
+        "/aaa/teams/v2": ["get"],
+        "/alerts/alerts/v3": ["get", "put"],
+        "/alerts/alerts/v3/all/events": ["get"],
+        "/alerts/alerts/v3/{id}": ["get", "delete"],
+        "/dashboards/dashboards/v1/catalog/list": ["get"],
+        "/dashboards/dashboards/v1/{dashboard_id}": ["delete"],
+        "/dashboards/dashboards/v1/{dashboard_id}/default": ["put"],
+        "/dashboards/pinned/v1/{dashboard_id}": ["put", "delete"],
+        "/dataplan/data-usage/v1/capabilities": ["get"],
+        "/dataplan/data-usage/v1/query": ["post"],
+        "/dataplan/quota-rules/v1": ["get", "put"],
+        "/dataplans/policies/v1": ["get", "put"],
+        "/dataplans/policies/v1/all/forecast-usage": ["post"],
+        "/dataplans/policies/v1/{id}": ["get", "delete"],
+        "/enrichment-rules/custom-enrichment-rules/v1": ["get"],
+        "/enrichment-rules/custom-enrichment-rules/v1/{id}": ["delete"],
+        "/enrichment-rules/enrichment-rules/v1": ["get", "post", "delete"],
+        "/enrichment-rules/enrichment-rules/v1/limit": ["get"],
+        "/events2metrics/events2metrics/v2": ["get"],
+        "/events2metrics/events2metrics/v2/{id}": ["get", "delete"],
+        "/events2metrics/limits/v2": ["get"],
+        "/integrations/webhooks/v1": ["get"],
+        "/integrations/webhooks/v1/{id}": ["delete"],
+        "/integrations/webhooks/v1/{id}/test": ["get"],
+        "/parsing-rules/limits/v1": ["post"],
+        "/parsing-rules/rule-groups/v1": ["get"],
+        "/parsing-rules/rule-groups/v1/{group_id}": ["get", "put", "delete"]
+      }
+    },
+    {
+      "name": "v4",
+      "specUrl": "https://api.eu2.coralogix.com/mgmt/openapi/4/openapi.yaml",
+      "paths": {
+        "/dataplans/data-usage/v2/daily/processed-gbs": ["post"],
+        "/dataplans/data-usage/v2/daily/units": ["post"],
+        "/dataplans/data-usage/v2/export-status": ["get", "post"]
+      }
+    }
+  ]
+}

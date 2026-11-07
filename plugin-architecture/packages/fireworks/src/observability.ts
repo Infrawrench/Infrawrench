@@ -1,3 +1,5 @@
+import type { AuditLogEntry } from "./api.js";
+
 /**
  * Parsing for Fireworks' two plain-data observability feeds: the Prometheus
  * exposition served for dedicated deployments, and the account audit log.
@@ -100,21 +102,6 @@ export function histogramQuantile(
     prevCount = count;
   }
   return prevBound;
-}
-
-/** `gatewayAuditLogEntry`, from `GET /v1/accounts/{id}/auditLogs`. */
-export interface AuditLogEntry {
-  id?: string;
-  method?: string;
-  principal?: string;
-  status?: { code?: string; message?: string } | null;
-  timestamp?: string;
-  message?: string;
-  resource?: string;
-  isAdminAction?: boolean;
-  userAgent?: string;
-  clientIp?: string;
-  apiKeyId?: string;
 }
 
 /** One audit entry as a log line: time, outcome, who, what, on which resource. */

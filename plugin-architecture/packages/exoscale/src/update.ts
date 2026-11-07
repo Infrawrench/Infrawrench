@@ -7,21 +7,23 @@
 import {
   DEFAULT_ZONE,
   type ExoscaleApi,
+  byId,
   intOr,
   labelsFromText,
   listValue,
+  rawId,
   trailingId,
   zonal,
 } from "./api.js";
 import { recordBody } from "./create.js";
-import { type Json, dbaasPath, str } from "./listers.js";
+import { dbaasPath, str } from "./listers.js";
 
 const has = (f: Record<string, string>, k: string) => Object.prototype.hasOwnProperty.call(f, k);
 
 /** Resolve `family.size` (or an id) to an instance type id. */
 export async function instanceTypeId(api: ExoscaleApi, value: string): Promise<string> {
   if (/^[0-9a-f-]{36}$/i.test(value)) return value;
-  const res = await api.get<{ "instance-types"?: Json[] }>(DEFAULT_ZONE, "/instance-type");
+  const res = await api.at(DEFAULT_ZONE).get("/instance-type");
   const [family, size] = value.includes(".") ? value.split(".") : ["standard", value];
   const t = (res["instance-types"] ?? []).find((x) => x["family"] === family && x["size"] === size);
   if (!t)
@@ -38,110 +40,164 @@ export async function applyUpdate(
   fields: Record<string, string>,
 ): Promise<void> {
   const { zone, id } = zonal(resourceId);
-  const body: Record<string, unknown> = {};
-  const copy = (key: string, target: string, map: (v: string) => unknown = (v) => v) => {
-    if (has(fields, key)) body[target] = map(fields[key] ?? "");
-  };
-  const put = async (path: string, z = zone) => {
-    if (Object.keys(body).length) await api.mutate(z, "PUT", path, body);
-  };
+  const z = api.at(zone);
+  const ref = rawId(id);
+  // A PUT only goes out when the form changed something it carries. Each body writes
+  // its keys out, so the document checks them; an unchanged field is undefined and
+  // is not sent.
+  const edited = (...keys: string[]) => keys.some((k) => has(fields, k));
+  const labels = has(fields, "labels") ? labelsFromText(fields["labels"]) : undefined;
   switch (typeId) {
     case "instance": {
-      copy("name", "name");
-      copy("labels", "labels", labelsFromText);
-      await put(`/instance/${id}`);
+      if (edited("name", "labels"))
+        await z.settle(z.put(`/instance/${ref}`, { body: { name: fields["name"], labels } }));
       if (has(fields, "instanceType") && fields["instanceType"]) {
-        await api.mutate(zone, "PUT", `/instance/${id}:scale`, {
-          "instance-type": { id: await instanceTypeId(api, fields["instanceType"]) },
-        });
+        await z.settle(
+          z.put(`/instance/${ref}:scale`, {
+            body: {
+              "instance-type": byId(await instanceTypeId(api, fields["instanceType"])),
+            },
+          }),
+        );
       }
       if (has(fields, "diskGb"))
-        await api.mutate(zone, "PUT", `/instance/${id}:resize-disk`, {
-          "disk-size": intOr(fields["diskGb"]),
-        });
+        await z.settle(
+          z.put(`/instance/${ref}:resize-disk`, {
+            body: { "disk-size": intOr(fields["diskGb"]) },
+          }),
+        );
       return;
     }
     case "block-storage":
-      copy("name", "name");
-      copy("labels", "labels", labelsFromText);
-      await put(`/block-storage/${id}`);
+      if (edited("name", "labels"))
+        await z.settle(z.put(`/block-storage/${ref}`, { body: { name: fields["name"], labels } }));
       if (has(fields, "sizeGb"))
-        await api.send(zone, "PUT", `/block-storage/${id}:resize-volume`, {
-          size: intOr(fields["sizeGb"]),
+        await z.put(`/block-storage/${ref}:resize-volume`, {
+          body: { size: intOr(fields["sizeGb"]) },
         });
       return;
     case "block-storage-snapshot":
-      copy("name", "name");
-      return put(`/block-storage-snapshot/${id}`);
+      if (edited("name"))
+        await z.settle(z.put(`/block-storage-snapshot/${ref}`, { body: { name: fields["name"] } }));
+      return;
     case "template":
-      copy("name", "name");
-      copy("description", "description");
-      return put(`/template/${id}`);
+      if (edited("name", "description"))
+        await z.settle(
+          z.put(`/template/${ref}`, {
+            body: { name: fields["name"], description: fields["description"] },
+          }),
+        );
+      return;
     case "private-network":
-      copy("name", "name");
-      copy("description", "description");
-      copy("labels", "labels", labelsFromText);
-      return put(`/private-network/${id}`);
+      if (edited("name", "description", "labels"))
+        await z.settle(
+          z.put(`/private-network/${ref}`, {
+            body: { name: fields["name"], description: fields["description"], labels },
+          }),
+        );
+      return;
     case "elastic-ip":
-      copy("description", "description");
-      copy("labels", "labels", labelsFromText);
-      return put(`/elastic-ip/${id}`);
+      if (edited("description", "labels"))
+        await z.settle(
+          z.put(`/elastic-ip/${ref}`, {
+            body: { description: fields["description"], labels },
+          }),
+        );
+      return;
     case "sks-cluster":
-      copy("name", "name");
-      copy("description", "description");
-      copy("autoUpgrade", "auto-upgrade", (v) => v === "true");
-      copy("allowedNetworks", "allowed-networks", listValue);
-      copy("labels", "labels", labelsFromText);
-      return put(`/sks-cluster/${id}`);
+      if (edited("name", "description", "autoUpgrade", "allowedNetworks", "labels"))
+        await z.settle(
+          z.put(`/sks-cluster/${ref}`, {
+            body: {
+              name: fields["name"],
+              description: fields["description"],
+              "auto-upgrade": has(fields, "autoUpgrade")
+                ? fields["autoUpgrade"] === "true"
+                : undefined,
+              "allowed-networks": has(fields, "allowedNetworks")
+                ? listValue(fields["allowedNetworks"])
+                : undefined,
+              labels,
+            },
+          }),
+        );
+      return;
     case "sks-nodepool": {
       const [clusterId, poolId] = id.split("/");
-      copy("name", "name");
-      copy("description", "description");
-      copy("diskGb", "disk-size", (v) => intOr(v));
-      copy("labels", "labels", labelsFromText);
-      await put(`/sks-cluster/${clusterId}/nodepool/${poolId}`);
+      const pool = `/sks-cluster/${rawId(clusterId)}/nodepool/${rawId(poolId)}` as const;
+      if (edited("name", "description", "diskGb", "labels"))
+        await z.settle(
+          z.put(pool, {
+            body: {
+              name: fields["name"],
+              description: fields["description"],
+              "disk-size": intOr(fields["diskGb"]),
+              labels,
+            },
+          }),
+        );
       if (has(fields, "size"))
-        await api.mutate(zone, "PUT", `/sks-cluster/${clusterId}/nodepool/${poolId}:scale`, {
-          size: intOr(fields["size"], 1),
-        });
+        await z.settle(
+          z.put(`${pool}:scale`, {
+            body: { size: intOr(fields["size"], 1) },
+          }),
+        );
       return;
     }
     case "nlb":
-      copy("name", "name");
-      copy("description", "description");
-      copy("labels", "labels", labelsFromText);
-      return put(`/load-balancer/${id}`);
+      if (edited("name", "description", "labels"))
+        await z.settle(
+          z.put(`/load-balancer/${ref}`, {
+            body: { name: fields["name"], description: fields["description"], labels },
+          }),
+        );
+      return;
     case "instance-pool":
-      copy("name", "name");
-      copy("description", "description");
-      copy("labels", "labels", labelsFromText);
-      await put(`/instance-pool/${id}`);
+      if (edited("name", "description", "labels"))
+        await z.settle(
+          z.put(`/instance-pool/${ref}`, {
+            body: { name: fields["name"], description: fields["description"], labels },
+          }),
+        );
       if (has(fields, "size"))
-        await api.mutate(zone, "PUT", `/instance-pool/${id}:scale`, {
-          size: intOr(fields["size"], 1),
-        });
+        await z.settle(
+          z.put(`/instance-pool/${ref}:scale`, {
+            body: { size: intOr(fields["size"], 1) },
+          }),
+        );
       return;
     case "dbaas": {
-      const svc = await api.get<{ "dbaas-services"?: Json[] }>(DEFAULT_ZONE, "/dbaas-service");
+      const svc = await api.at(DEFAULT_ZONE).get("/dbaas-service");
       const type = str((svc["dbaas-services"] ?? []).find((s) => s["name"] === id)?.["type"]);
       if (!type) throw new Error("That database service no longer exists.");
-      copy("plan", "plan");
-      copy("ipFilter", "ip-filter", listValue);
-      copy("terminationProtection", "termination-protection", (v) => v === "true");
-      if (has(fields, "maintenanceDow") || has(fields, "maintenanceTime")) {
-        body["maintenance"] = {
-          dow: fields["maintenanceDow"] || "sunday",
-          time: fields["maintenanceTime"] || "03:00:00",
-        };
+      if (
+        edited("plan", "ipFilter", "terminationProtection", "maintenanceDow", "maintenanceTime")
+      ) {
+        await z.settle(
+          z.put(`/dbaas-${rawId(dbaasPath(type))}/${ref}`, {
+            body: {
+              plan: fields["plan"],
+              "ip-filter": has(fields, "ipFilter") ? listValue(fields["ipFilter"]) : undefined,
+              "termination-protection": has(fields, "terminationProtection")
+                ? fields["terminationProtection"] === "true"
+                : undefined,
+              maintenance:
+                has(fields, "maintenanceDow") || has(fields, "maintenanceTime")
+                  ? {
+                      dow: fields["maintenanceDow"] || "sunday",
+                      time: fields["maintenanceTime"] || "03:00:00",
+                    }
+                  : undefined,
+            },
+          }),
+        );
       }
-      return put(`/dbaas-${dbaasPath(type)}/${id}`);
+      return;
     }
     case "dns-record": {
       const [domainId, recordId] = trailingId(resourceId).split("/");
-      const current = await api.get<Json>(
-        DEFAULT_ZONE,
-        `/dns-domain/${domainId}/record/${recordId}`,
-      );
+      const record = `/dns-domain/${rawId(domainId)}/record/${rawId(recordId)}` as const;
+      const current = await api.at(DEFAULT_ZONE).get(record);
       const merged = {
         type: str(current["type"]),
         name: str(current["name"]),
@@ -150,12 +206,8 @@ export async function applyUpdate(
         priority: str(current["priority"]),
         ...fields,
       };
-      await api.mutate(
-        DEFAULT_ZONE,
-        "PUT",
-        `/dns-domain/${domainId}/record/${recordId}`,
-        recordBody(merged, false),
-      );
+      const dns = api.at(DEFAULT_ZONE);
+      await dns.settle(dns.put(record, { body: recordBody(merged, false) }));
       return;
     }
     default:

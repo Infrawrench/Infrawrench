@@ -7,7 +7,7 @@
  */
 
 import type { MetricSeries } from "@infrawrench/plugin-base";
-import type { ExoscaleApi } from "./api.js";
+import { type ExoscaleApi, rawId } from "./api.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -22,7 +22,10 @@ const CHARTS: Array<[string, string, string]> = [
   ["net_send", "Network Out", "bytes/s"],
 ];
 
-export function periodFor(window: { startMs: number; endMs: number }): string {
+export function periodFor(window: {
+  startMs: number;
+  endMs: number;
+}): "hour" | "day" | "week" | "month" | "year" {
   const span = window.endMs - window.startMs;
   if (span <= 2 * 3600_000) return "hour";
   if (span <= 2 * 86_400_000) return "day";
@@ -56,14 +59,9 @@ export async function fetchDbaasMetrics(
   const now = Date.now();
   const window = timeRange ?? { startMs: now - DEFAULT_METRICS_WINDOW_MS, endMs: now };
   try {
-    const res = await api.send<{ metrics?: Record<string, Chart> }>(
-      zone,
-      "POST",
-      `/dbaas-service-metrics/${name}`,
-      {
-        period: periodFor(window),
-      },
-    );
+    const res = await api.at(zone).post(`/dbaas-service-metrics/${rawId(name)}`, {
+      body: { period: periodFor(window) },
+    });
     return chartSeries(res.metrics ?? {});
   } catch {
     return [];

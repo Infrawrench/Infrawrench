@@ -14,7 +14,7 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { withMetricsCapability } from "@infrawrench/plugin-base";
+import { pathEncode, unencodedSegment, withMetricsCapability } from "@infrawrench/plugin-base";
 import { AlgoliaApi, errorText, isStatus, keyFingerprint } from "./api.js";
 import {
   APPLICATION_EXTERNAL_ID,
@@ -37,13 +37,13 @@ import {
 } from "./render.js";
 import { ACL_LABELS, ACLS } from "./resource-types.js";
 import type {
-  AlAbTest,
+  AlAcl,
   AlApiKey,
+  AlApiKeyBody,
   AlCrawler,
   AlIndex,
-  AlLogEntry,
   AlSettings,
-  AlSource,
+  AlSettingsPatch,
   AlUsagePoint,
 } from "./types.js";
 
@@ -54,9 +54,7 @@ const DAY_MS = 86_400_000;
 
 export const KEY_VALUE_FIELD = "apiKey";
 
-const enc = encodeURIComponent;
-
-function str(v: unknown): string {
+function str(v: string | null | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
 
@@ -71,7 +69,7 @@ function intField(raw: string | undefined, label: string, min: number): number |
 function parseFormArg(raw: string | number | undefined): Record<string, string> {
   if (typeof raw !== "string") return {};
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed: object = JSON.parse(raw);
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed))
       out[k] = typeof v === "string" ? v : JSON.stringify(v);
@@ -86,7 +84,8 @@ export function parseList(raw: string | undefined): string[] {
   const t = (raw ?? "").trim();
   if (t.startsWith("[")) {
     try {
-      return (JSON.parse(t) as unknown[]).map((x) => String(x).trim()).filter(Boolean);
+      const parsed: (string | number)[] = JSON.parse(t);
+      return parsed.map((x) => String(x).trim()).filter(Boolean);
     } catch {
       return [];
     }
@@ -94,29 +93,32 @@ export function parseList(raw: string | undefined): string[] {
   return splitList(t);
 }
 
-export function parseAcl(raw: string | undefined): string[] {
-  const acl = [...new Set(parseList(raw))];
-  const bad = acl.filter((a) => !ACLS.includes(a));
+const isAcl = (value: string): value is AlAcl => ACLS.some((acl) => acl === value);
+
+export function parseAcl(raw: string | undefined): AlAcl[] {
+  const parsed = [...new Set(parseList(raw))];
+  const bad = parsed.filter((a) => !isAcl(a));
   if (bad.length) throw new Error(`Unknown ACL ${bad.join(", ")}. Use any of: ${ACLS.join(", ")}.`);
-  return acl;
+  return parsed.filter(isAcl);
 }
 
-const LIST_SETTINGS: Record<string, string> = {
-  searchableAttributes: "searchableAttributes",
-  customRanking: "customRanking",
-  attributesForFaceting: "attributesForFaceting",
-  attributesToRetrieve: "attributesToRetrieve",
-  unretrievableAttributes: "unretrievableAttributes",
-  queryLanguages: "queryLanguages",
-  indexLanguages: "indexLanguages",
-  replicas: "replicas",
-};
+/** Field and setting share a spelling. */
+const LIST_SETTINGS = [
+  "searchableAttributes",
+  "customRanking",
+  "attributesForFaceting",
+  "attributesToRetrieve",
+  "unretrievableAttributes",
+  "queryLanguages",
+  "indexLanguages",
+  "replicas",
+] as const;
 
 /** Edited fields (form spelling) to an Algolia settings patch. */
-export function settingsPatch(fields: Record<string, string>): AlSettings {
-  const patch: AlSettings = {};
-  for (const [field, setting] of Object.entries(LIST_SETTINGS)) {
-    if (fields[field] !== undefined) patch[setting] = splitList(fields[field]);
+export function settingsPatch(fields: Record<string, string>): AlSettingsPatch {
+  const patch: AlSettingsPatch = {};
+  for (const setting of LIST_SETTINGS) {
+    if (fields[setting] !== undefined) patch[setting] = splitList(fields[setting]);
   }
   const hits = intField(fields["hitsPerPage"], "Hits per page", 1);
   if (hits !== undefined) patch.hitsPerPage = hits;
@@ -237,7 +239,8 @@ export class AlgoliaClient implements PluginClient {
     const value = (async () => {
       const out: AlIndex[] = [];
       for (let page = 0; page < 50; page++) {
-        const res = await this.api.search<{ items?: AlIndex[]; nbPages?: number }>("/1/indexes", {
+        // By hand: `getAll` writes the page after the size, and ends on an empty page.
+        const res = await this.api.search.get("/1/indexes", {
           query: { page, hitsPerPage: 1000 },
         });
         out.push(...(res?.items ?? []));
@@ -258,20 +261,18 @@ export class AlgoliaClient implements PluginClient {
   }
 
   private settings(name: string): Promise<AlSettings> {
-    return this.api.search<AlSettings>(`/1/indexes/${enc(name)}/settings`);
+    return this.api.search.get(`/1/indexes/${pathEncode(name)}/settings`);
   }
 
   private async keys(): Promise<AlApiKey[]> {
-    const res = await this.api.search<{ keys?: AlApiKey[] }>("/1/keys");
+    const res = await this.api.search.get("/1/keys");
     return res?.keys ?? [];
   }
 
   private async keyByFingerprint(fp: string): Promise<AlApiKey> {
     const key = (await this.keys()).find((k) => keyFingerprint(k.value) === fp);
     if (!key) {
-      const err = new Error("Algolia plugin: API key not found") as Error & { status: number };
-      err.status = 404;
-      throw err;
+      throw Object.assign(new Error("Algolia plugin: API key not found"), { status: 404 });
     }
     return key;
   }
@@ -279,9 +280,7 @@ export class AlgoliaClient implements PluginClient {
   /** Clusters the application runs on (Monitoring API key only). */
   private async clusters(): Promise<string[]> {
     if (!this.api.creds.monitoringApiKey) return [];
-    const res = await this.api
-      .monitoring<{ inventory?: Array<{ cluster?: string }> }>("/1/inventory/servers")
-      .catch(() => undefined);
+    const res = await this.api.monitoring.get("/1/inventory/servers").catch(() => undefined);
     return [...new Set((res?.inventory ?? []).map((s) => s.cluster ?? "").filter(Boolean))].sort();
   }
 
@@ -304,7 +303,7 @@ export class AlgoliaClient implements PluginClient {
           return (await this.keys()).map((k) => mapApiKey(k, accountId));
         case "ab-test": {
           try {
-            const res = await this.api.analytics<{ abtests?: AlAbTest[] | null }>("/2/abtests", {
+            const res = await this.api.abTests.get("/2/abtests", {
               query: { limit: 100 },
             });
             return (res?.abtests ?? []).map((t) => mapAbTest(t, accountId));
@@ -316,16 +315,13 @@ export class AlgoliaClient implements PluginClient {
         }
         case "crawler": {
           if (!this.api.hasCrawler) return [];
-          const res = await this.api.crawler<{ items?: Array<{ id: string; name?: string }> }>(
-            "/1/crawlers",
-            {
-              query: { appID: this.api.creds.appId, itemsPerPage: 100 },
-            },
-          );
+          const res = await this.api.crawler.get("/1/crawlers", {
+            query: { appID: this.api.creds.appId, itemsPerPage: 100 },
+          });
           const crawlers = await mapLimit(res?.items ?? [], FAN_OUT, async (c) => {
-            const full = await this.api
-              .crawler<AlCrawler>(`/1/crawlers/${enc(c.id)}`, { query: { withConfig: true } })
-              .catch(() => ({ name: c.name }) as AlCrawler);
+            const full = await this.api.crawler
+              .get(`/1/crawlers/${pathEncode(c.id)}`, { query: { withConfig: true } })
+              .catch((): AlCrawler => (c.name === undefined ? {} : { name: c.name }));
             return mapCrawler(c.id, full, accountId);
           });
           return crawlers;
@@ -339,7 +335,7 @@ export class AlgoliaClient implements PluginClient {
   private async application(accountId: string): Promise<ResourceInstance> {
     const [indexes, keys, clusters] = await Promise.all([
       this.indexes(),
-      this.keys().catch(() => [] as AlApiKey[]),
+      this.keys().catch((): AlApiKey[] => []),
       this.clusters(),
     ]);
     const primaries = indexes.filter((i) => !i.primary);
@@ -377,11 +373,11 @@ export class AlgoliaClient implements PluginClient {
         case "api-key":
           return mapApiKey(await this.keyByFingerprint(id), accountId);
         case "ab-test":
-          return mapAbTest(await this.api.analytics<AlAbTest>(`/2/abtests/${enc(id)}`), accountId);
+          return mapAbTest(await this.api.abTests.get(`/2/abtests/${pathEncode(id)}`), accountId);
         case "crawler":
           return mapCrawler(
             id,
-            await this.api.crawler<AlCrawler>(`/1/crawlers/${enc(id)}`, {
+            await this.api.crawler.get(`/1/crawlers/${pathEncode(id)}`, {
               query: { withConfig: true },
             }),
             accountId,
@@ -421,9 +417,7 @@ export class AlgoliaClient implements PluginClient {
       const end = Date.now();
       const range = { startDate: day(end - 7 * DAY_MS), endDate: day(end) };
       if (resource.resourceTypeId === "application") {
-        const sources = await this.api
-          .search<AlSource[]>("/1/security/sources")
-          .catch(() => [] as AlSource[]);
+        const sources = await this.api.search.get("/1/security/sources").catch(() => []);
         if (sources.length) {
           fields[ENRICH_SOURCES] = JSON.stringify(
             sources.map((s) => ({ source: s.source, description: s.description ?? "" })),
@@ -432,35 +426,27 @@ export class AlgoliaClient implements PluginClient {
         }
       } else if (resource.resourceTypeId === "index") {
         const [syn, rules, top, none, list] = await Promise.all([
-          this.api
-            .search<{ nbHits?: number }>(`/1/indexes/${enc(id)}/synonyms/search`, {
-              method: "POST",
+          this.api.search
+            .post(`/1/indexes/${pathEncode(id)}/synonyms/search`, {
               body: { query: "", hitsPerPage: 1 },
             })
             .catch(() => undefined),
-          this.api
-            .search<{ nbHits?: number }>(`/1/indexes/${enc(id)}/rules/search`, {
-              method: "POST",
+          this.api.search
+            .post(`/1/indexes/${pathEncode(id)}/rules/search`, {
               body: { query: "", hitsPerPage: 1 },
             })
             .catch(() => undefined),
-          this.api
-            .analytics<{ searches?: Array<{ search?: string; count?: number; nbHits?: number }> }>(
-              "/2/searches",
-              {
-                query: { index: id, limit: 10, ...range },
-              },
-            )
+          this.api.analytics
+            .get("/2/searches", {
+              query: { index: id, limit: 10, ...range },
+            })
             .catch(() => undefined),
-          this.api
-            .analytics<{ searches?: Array<{ search?: string; count?: number }> }>(
-              "/2/searches/noResults",
-              {
-                query: { index: id, limit: 10, ...range },
-              },
-            )
+          this.api.analytics
+            .get("/2/searches/noResults", {
+              query: { index: id, limit: 10, ...range },
+            })
             .catch(() => undefined),
-          this.indexes().catch(() => [] as AlIndex[]),
+          this.indexes().catch((): AlIndex[] => []),
         ]);
         if (syn?.nbHits !== undefined) fields["synonymCount"] = syn.nbHits;
         if (rules?.nbHits !== undefined) fields["ruleCount"] = rules.nbHits;
@@ -483,12 +469,9 @@ export class AlgoliaClient implements PluginClient {
         }
         fields[ENRICH_INDEXES] = JSON.stringify(list.map((i) => i.name));
       } else if (resource.resourceTypeId === "crawler") {
-        const stats = await this.api
-          .crawler<{
-            count?: number;
-            data?: Array<{ reason?: string; status?: string; count?: number }>;
-          }>(`/1/crawlers/${enc(id)}/stats/urls`)
-          .catch(() => undefined);
+        const request = this.api.crawler.get(`/1/crawlers/${pathEncode(id)}/stats/urls`);
+        // Missing credentials fail the detail, where a failed request only loses the stats.
+        const stats = await (this.api.hasCrawler ? request.catch(() => undefined) : request);
         if (stats) {
           fields["crawledUrls"] = stats.count ?? 0;
           fields[ENRICH_CRAWL_STATS] = JSON.stringify(
@@ -531,11 +514,10 @@ export class AlgoliaClient implements PluginClient {
       } catch {
         throw new Error("Settings must be a JSON object.");
       }
-      if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+      if (!isSettingsObject(settings)) {
         throw new Error("Settings must be a JSON object.");
       }
-      await this.api.search(`/1/indexes/${enc(externalOf(resourceId))}/settings`, {
-        method: "PUT",
+      await this.api.search.put(`/1/indexes/${pathEncode(externalOf(resourceId))}/settings`, {
         body: settings,
       });
       this.invalidateIndexes();
@@ -545,7 +527,7 @@ export class AlgoliaClient implements PluginClient {
   // ── Create ───────────────────────────────────────────────────────────
 
   private async indexOptions(primaryOnly = false) {
-    const list = await this.indexes().catch(() => [] as AlIndex[]);
+    const list = await this.indexes().catch((): AlIndex[] => []);
     return list
       .filter((i) => !primaryOnly || !i.primary)
       .map((i) => ({ id: i.name, label: i.name, description: `${i.entries ?? 0} records` }));
@@ -714,8 +696,7 @@ export class AlgoliaClient implements PluginClient {
             throw new Error("Enter an index name.");
           const from = str(fields["copyFrom"]);
           if (from) {
-            await this.api.search(`/1/indexes/${enc(from)}/operation`, {
-              method: "POST",
+            await this.api.search.post(`/1/indexes/${pathEncode(from)}/operation`, {
               body: {
                 operation: "copy",
                 destination: name,
@@ -723,8 +704,7 @@ export class AlgoliaClient implements PluginClient {
               },
             });
           } else {
-            await this.api.search(`/1/indexes/${enc(name)}/settings`, {
-              method: "PUT",
+            await this.api.search.put(`/1/indexes/${pathEncode(name)}/settings`, {
               body: settingsPatch({
                 searchableAttributes: fields["searchableAttributes"] ?? "",
                 attributesForFaceting: fields["attributesForFaceting"] ?? "",
@@ -738,10 +718,7 @@ export class AlgoliaClient implements PluginClient {
         case "api-key": {
           const body = this.keyBody(fields);
           if (!body.acl?.length) throw new Error("Pick at least one permission.");
-          const res = await this.api.search<{ key: string; createdAt?: string }>("/1/keys", {
-            method: "POST",
-            body,
-          });
+          const res = await this.api.search.post("/1/keys", { body });
           return mapApiKey(
             { ...body, value: res.key, createdAt: Date.parse(res.createdAt ?? "") || Date.now() },
             accountId,
@@ -756,8 +733,7 @@ export class AlgoliaClient implements PluginClient {
           const endAt = new Date(str(fields["endAt"]));
           if (Number.isNaN(endAt.getTime()) || endAt.getTime() <= Date.now())
             throw new Error("Choose an end date in the future.");
-          const res = await this.api.analytics<{ abTestID: number }>("/2/abtests", {
-            method: "POST",
+          const res = await this.api.abTests.post("/2/abtests", {
             body: {
               name: str(fields["name"]),
               variants: [
@@ -788,8 +764,8 @@ export class AlgoliaClient implements PluginClient {
   }
 
   /** API key body from form fields (create) or edited fields merged over the current key (update). */
-  private keyBody(fields: Record<string, string>, current?: AlApiKey): Omit<AlApiKey, "value"> {
-    const body: Omit<AlApiKey, "value"> = {
+  private keyBody(fields: Record<string, string>, current?: AlApiKey): AlApiKeyBody {
+    const body: AlApiKeyBody = {
       acl: fields["acl"] !== undefined ? parseAcl(fields["acl"]) : (current?.acl ?? []),
     };
     const description =
@@ -840,8 +816,7 @@ export class AlgoliaClient implements PluginClient {
         case "index": {
           const patch = settingsPatch(fields);
           if (Object.keys(patch).length) {
-            await this.api.search(`/1/indexes/${enc(id)}/settings`, {
-              method: "PUT",
+            await this.api.search.put(`/1/indexes/${pathEncode(id)}/settings`, {
               query: { forwardToReplicas: false },
               body: patch,
             });
@@ -853,7 +828,7 @@ export class AlgoliaClient implements PluginClient {
           const current = await this.keyByFingerprint(id);
           const body = this.keyBody(fields, current);
           if (!body.acl?.length) throw new Error("An API key needs at least one permission.");
-          await this.api.search(`/1/keys/${enc(current.value)}`, { method: "PUT", body });
+          await this.api.search.put(`/1/keys/${pathEncode(current.value)}`, { body });
           return mapApiKey({ ...current, ...body }, accountId);
         }
         default:
@@ -869,19 +844,19 @@ export class AlgoliaClient implements PluginClient {
       const id = externalOf(resourceId);
       switch (typeId) {
         case "index":
-          await this.api.search(`/1/indexes/${enc(id)}`, { method: "DELETE" });
+          await this.api.search.delete(`/1/indexes/${pathEncode(id)}`);
           this.invalidateIndexes();
           return;
         case "api-key": {
           const key = await this.keyByFingerprint(id);
-          await this.api.search(`/1/keys/${enc(key.value)}`, { method: "DELETE" });
+          await this.api.search.delete(`/1/keys/${pathEncode(key.value)}`);
           return;
         }
         case "ab-test":
-          await this.api.analytics(`/2/abtests/${enc(id)}`, { method: "DELETE" });
+          await this.api.abTests.delete(`/2/abtests/${pathEncode(id)}`);
           return;
         case "crawler":
-          await this.api.crawler(`/1/crawlers/${enc(id)}`, { method: "DELETE" });
+          await this.api.crawler.delete(`/1/crawlers/${pathEncode(id)}`);
           return;
         default:
           throw new Error(`Algolia plugin: cannot delete "${typeId}"`);
@@ -895,15 +870,18 @@ export class AlgoliaClient implements PluginClient {
     return attempt(async () => {
       const id = externalOf(resourceId);
       if (typeId === "index" && actionId === "clear") {
-        await this.api.search(`/1/indexes/${enc(id)}/clear`, { method: "POST" });
+        await this.api.search.post(`/1/indexes/${pathEncode(id)}/clear`);
         return;
       }
       if (typeId === "ab-test" && actionId === "stop") {
-        await this.api.analytics(`/2/abtests/${enc(id)}/stop`, { method: "POST" });
+        await this.api.abTests.post(`/2/abtests/${pathEncode(id)}/stop`);
         return;
       }
-      if (typeId === "crawler" && ["run", "pause", "reindex"].includes(actionId)) {
-        await this.api.crawler(`/1/crawlers/${enc(id)}/${actionId}`, { method: "POST" });
+      if (
+        typeId === "crawler" &&
+        (actionId === "run" || actionId === "pause" || actionId === "reindex")
+      ) {
+        await this.api.crawler.post(`/1/crawlers/${pathEncode(id)}/${actionId}`);
         return;
       }
       throw new Error(`Algolia plugin: action "${actionId}" is not supported for "${typeId}"`);
@@ -928,8 +906,7 @@ export class AlgoliaClient implements PluginClient {
           command === "copyIndex" && vals["scope"] && vals["scope"] !== "all"
             ? splitList(vals["scope"])
             : undefined;
-        await this.api.search(`/1/indexes/${enc(id)}/operation`, {
-          method: "POST",
+        await this.api.search.post(`/1/indexes/${pathEncode(id)}/operation`, {
           body: {
             operation: command === "copyIndex" ? "copy" : "move",
             destination,
@@ -952,9 +929,9 @@ export class AlgoliaClient implements PluginClient {
     params: LogsFetchParams,
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
-      const types = ["all", "query", "build", "error"];
-      const type = params.container && types.includes(params.container) ? params.container : "all";
-      const res = await this.api.search<{ logs?: AlLogEntry[] }>("/1/logs", {
+      const types = ["all", "query", "build", "error"] as const;
+      const type = types.find((t) => t === params.container) ?? "all";
+      const res = await this.api.search.get("/1/logs", {
         query: {
           length: Math.min(Math.max(params.tailLines ?? 100, 1), 1000),
           type,
@@ -969,7 +946,7 @@ export class AlgoliaClient implements PluginClient {
             `${l.timestamp ?? ""} ${l.method ?? ""} ${l.url ?? ""} ${l.answer_code ?? ""} ${l.processing_time_ms ?? "?"}ms` +
             `${l.index ? ` index=${l.index}` : ""}${l.query_nb_hits ? ` hits=${l.query_nb_hits}` : ""} ip=${l.ip ?? ""}\n`,
         );
-      return { text: lines.join(""), containers: types, activeContainer: type };
+      return { text: lines.join(""), containers: [...types], activeContainer: type };
     });
   }
 
@@ -993,14 +970,13 @@ export class AlgoliaClient implements PluginClient {
       if (resourceTypeId === "application") {
         const [usage, monitoring] = await Promise.all([
           this.api.creds.usageApiKey
-            ? this.api
-                .usage<Record<string, AlUsagePoint[]>>(
-                  `/1/usage/${Object.keys(APP_USAGE).join(",")}`,
-                  { query: usageQuery },
-                )
+            ? this.api.usage
+                .get(`/1/usage/${unencodedSegment(Object.keys(APP_USAGE).join(","))}`, {
+                  query: usageQuery,
+                })
                 .then((r) => usageSeries(r, APP_USAGE))
-                .catch(() => [] as MetricSeries[])
-            : Promise.resolve([] as MetricSeries[]),
+                .catch((): MetricSeries[] => [])
+            : Promise.resolve<MetricSeries[]>([]),
           this.monitoringSeries(),
         ]);
         return [...usage, ...monitoring];
@@ -1009,16 +985,16 @@ export class AlgoliaClient implements PluginClient {
         const index = externalOf(resourceId);
         const [usage, analytics] = await Promise.all([
           this.api.creds.usageApiKey
-            ? this.api
-                .usage<Record<string, AlUsagePoint[]>>(
-                  `/1/usage/${Object.keys(INDEX_USAGE).join(",")}/${enc(index)}`,
+            ? this.api.usage
+                .get(
+                  `/1/usage/${unencodedSegment(Object.keys(INDEX_USAGE).join(","))}/${pathEncode(index)}`,
                   {
                     query: usageQuery,
                   },
                 )
                 .then((r) => usageSeries(r, INDEX_USAGE))
-                .catch(() => [] as MetricSeries[])
-            : Promise.resolve([] as MetricSeries[]),
+                .catch((): MetricSeries[] => [])
+            : Promise.resolve<MetricSeries[]>([]),
           this.analyticsSeries(index, day(start), day(end)),
         ]);
         return [...usage, ...analytics];
@@ -1030,18 +1006,10 @@ export class AlgoliaClient implements PluginClient {
   private async monitoringSeries(): Promise<MetricSeries[]> {
     const clusters = await this.clusters();
     if (!clusters.length) return [];
-    const list = clusters.join(",");
+    const list = unencodedSegment(clusters.join(","));
     const [latency, indexing] = await Promise.all([
-      this.api
-        .monitoring<{ metrics?: { latency?: Record<string, AlUsagePoint[]> } }>(
-          `/1/latency/${list}`,
-        )
-        .catch(() => undefined),
-      this.api
-        .monitoring<{ metrics?: { indexing?: Record<string, AlUsagePoint[]> } }>(
-          `/1/indexing/${list}`,
-        )
-        .catch(() => undefined),
+      this.api.monitoring.get(`/1/latency/${list}`).catch(() => undefined),
+      this.api.monitoring.get(`/1/indexing/${list}`).catch(() => undefined),
     ]);
     const out: MetricSeries[] = [];
     for (const [cluster, pts] of Object.entries(latency?.metrics?.latency ?? {})) {
@@ -1067,14 +1035,13 @@ export class AlgoliaClient implements PluginClient {
     startDate: string,
     endDate: string,
   ): Promise<MetricSeries[]> {
-    const q = { index, startDate, endDate };
-    const get = <T>(path: string) =>
-      this.api.analytics<T>(path, { query: q }).catch(() => undefined);
+    const query = { index, startDate, endDate };
+    const { analytics } = this.api;
     const [searches, users, noResult, ctr] = await Promise.all([
-      get<{ dates?: Array<{ date: string; count: number }> }>("/2/searches/count"),
-      get<{ dates?: Array<{ date: string; count: number }> }>("/2/users/count"),
-      get<{ dates?: Array<{ date: string; rate: number | null }> }>("/2/searches/noResultRate"),
-      get<{ dates?: Array<{ date: string; rate: number | null }> }>("/2/clicks/clickThroughRate"),
+      analytics.get("/2/searches/count", { query }).catch(() => undefined),
+      analytics.get("/2/users/count", { query }).catch(() => undefined),
+      analytics.get("/2/searches/noResultRate", { query }).catch(() => undefined),
+      analytics.get("/2/clicks/clickThroughRate", { query }).catch(() => undefined),
     ]);
     const series = (
       label: string,
@@ -1083,11 +1050,11 @@ export class AlgoliaClient implements PluginClient {
       scale = 1,
     ) => {
       const points = (dates ?? [])
-        .filter((d) => d.value !== null && d.value !== undefined)
-        .map((d) => ({
-          timestamp: Date.parse(`${d.date}T00:00:00Z`),
-          value: (d.value as number) * scale,
-        }))
+        .flatMap(({ date, value }) =>
+          value === null || value === undefined
+            ? []
+            : [{ timestamp: Date.parse(`${date}T00:00:00Z`), value: value * scale }],
+        )
         .filter((p) => Number.isFinite(p.timestamp));
       return points.length ? [{ label, unit, points }] : [];
     };
@@ -1116,6 +1083,11 @@ export class AlgoliaClient implements PluginClient {
       ),
     ];
   }
+}
+
+/** The document leaves every setting optional, so any object is one to Algolia to judge. */
+function isSettingsObject(value: unknown): value is AlSettingsPatch {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {

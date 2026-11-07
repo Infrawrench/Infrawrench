@@ -14,19 +14,21 @@
  */
 
 import type {
+  NoSlashString,
   PolicyTemplate,
   PreflightCapability,
   PreflightCapabilityCheck,
   PreflightDeclaration,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import type { Query, SentryContext } from "./api.js";
-import { sentryFetch, statusOf } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { SentryApi, SentryContext } from "./api.js";
+import { sentryApi, statusOf } from "./api.js";
 
 interface CapabilityProbe {
   capability: PreflightCapability;
-  path: (org: string) => string;
-  query?: () => Query;
+  /** The cheapest read that needs the capability's scopes. Failing is the answer. */
+  probe: (api: SentryApi, org: NoSlashString) => Promise<void>;
 }
 
 const scope = (id: string) => ({ id, label: id });
@@ -40,13 +42,16 @@ const PROBES: CapabilityProbe[] = [
         "Usage per data category and project from the usage stats API, priced into estimated cost.",
       requiredPermissions: [scope("org:read")],
     },
-    path: (org) => `/organizations/${org}/stats_v2/`,
-    query: () => ({
-      field: "sum(quantity)",
-      groupBy: ["category"],
-      statsPeriod: "1d",
-      interval: "1d",
-    }),
+    probe: async (api, org) => {
+      await api.get(`/organizations/${org}/stats_v2/`, {
+        query: {
+          field: "sum(quantity)",
+          groupBy: ["category"],
+          statsPeriod: "1d",
+          interval: "1d",
+        },
+      });
+    },
   },
   {
     capability: {
@@ -57,8 +62,9 @@ const PROBES: CapabilityProbe[] = [
       requiredPermissions: [scope("org:read"), scope("project:read"), scope("project:write")],
       essential: true,
     },
-    path: (org) => `/organizations/${org}/projects/`,
-    query: () => ({ per_page: 1 }),
+    probe: async (api, org) => {
+      await api.get(`/organizations/${org}/projects/`, { query: { per_page: 1 } });
+    },
   },
   {
     capability: {
@@ -67,8 +73,9 @@ const PROBES: CapabilityProbe[] = [
       description: "List teams; create, rename and delete them.",
       requiredPermissions: [scope("team:read"), scope("team:write")],
     },
-    path: (org) => `/organizations/${org}/teams/`,
-    query: () => ({ per_page: 1 }),
+    probe: async (api, org) => {
+      await api.get(`/organizations/${org}/teams/`, { query: { per_page: 1 } });
+    },
   },
   {
     capability: {
@@ -78,8 +85,11 @@ const PROBES: CapabilityProbe[] = [
         "List unresolved issues and chart their events; resolve, archive and reopen them.",
       requiredPermissions: [scope("event:read"), scope("event:write")],
     },
-    path: (org) => `/organizations/${org}/issues/`,
-    query: () => ({ query: "is:unresolved", limit: 1, statsPeriod: "24h" }),
+    probe: async (api, org) => {
+      await api.get(`/organizations/${org}/issues/`, {
+        query: { query: "is:unresolved", limit: 1, statsPeriod: "24h" },
+      });
+    },
   },
   {
     capability: {
@@ -87,8 +97,9 @@ const PROBES: CapabilityProbe[] = [
       label: "Releases",
       requiredPermissions: [scope("project:releases")],
     },
-    path: (org) => `/organizations/${org}/releases/`,
-    query: () => ({ per_page: 1 }),
+    probe: async (api, org) => {
+      await api.get(`/organizations/${org}/releases/`, { query: { per_page: 1 } });
+    },
   },
   {
     capability: {
@@ -97,8 +108,9 @@ const PROBES: CapabilityProbe[] = [
       description: "List alerts and monitors (detectors); enable, disable, rename and delete them.",
       requiredPermissions: [scope("alerts:read"), scope("alerts:write")],
     },
-    path: (org) => `/organizations/${org}/workflows/`,
-    query: () => ({ per_page: 1 }),
+    probe: async (api, org) => {
+      await api.get(`/organizations/${org}/workflows/`, { query: { per_page: 1 } });
+    },
   },
   {
     capability: {
@@ -108,8 +120,9 @@ const PROBES: CapabilityProbe[] = [
         "List cron and uptime monitors and chart check-ins; pause, resume, mute, edit and delete them.",
       requiredPermissions: [scope("alerts:read"), scope("alerts:write"), scope("project:write")],
     },
-    path: (org) => `/organizations/${org}/monitors/`,
-    query: () => ({ per_page: 1 }),
+    probe: async (api, org) => {
+      await api.get(`/organizations/${org}/monitors/`, { query: { per_page: 1 } });
+    },
   },
 ];
 
@@ -136,13 +149,11 @@ export async function verifySentryCredentials(
   ctx: SentryContext,
   org: string,
 ): Promise<PreflightResult> {
-  const slug = encodeURIComponent(org);
+  const api = sentryApi(ctx);
+  const slug = pathEncode(org);
   let identity: string | undefined;
   try {
-    const detail = await sentryFetch<{ name?: string; slug?: string }>(
-      ctx,
-      `/organizations/${slug}/`,
-    );
+    const detail = await api.get(`/organizations/${slug}/`);
     const kind = tokenKind(ctx.token);
     identity = [kind, detail?.name ?? detail?.slug ?? org].filter(Boolean).join(" for ");
   } catch (err) {
@@ -161,7 +172,7 @@ export async function verifySentryCredentials(
   const checks = await Promise.all(
     PROBES.map(async (probe): Promise<PreflightCapabilityCheck> => {
       try {
-        await sentryFetch<unknown>(ctx, probe.path(slug), { query: probe.query?.() ?? {} });
+        await probe.probe(api, slug);
         return { capabilityId: probe.capability.id, status: "ok" };
       } catch (err) {
         const status = statusOf(err);

@@ -13,29 +13,24 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, withAiCostTags } from "@infrawrench/plugin-base";
-import type {
-  ConsumptionDay,
-  DevinAutomation,
-  DevinContext,
-  DevinNote,
-  DevinOrg,
-  DevinPlaybook,
-  DevinSecret,
-  DevinSelf,
-  DevinSession,
-  DevinUser,
-  UsageMetrics,
-} from "./api.js";
+import { externalIdOf, pathEncode, withAiCostTags } from "@infrawrench/plugin-base";
+import type { ConsumptionDay, DevinApi, DevinNote, DevinOrg, DevinSelf } from "./api.js";
 import {
   addDays,
   billingDay,
-  devinFetch,
+  createDevinApi,
   fetchConsumption,
   isPermissionError,
-  orgPath,
-  paginate,
+  listAutomations,
+  listNotes,
+  listPlaybooks,
+  listSecrets,
+  listSessions,
+  listUsers,
+  orgConsumption,
   resolveOrgs,
+  sessionConsumption,
+  userConsumption,
 } from "./api.js";
 import { fetchDevinCostData, splitDay } from "./cost-data.js";
 import type { SessionLookups } from "./mappers.js";
@@ -58,10 +53,13 @@ import { renderDevinDetail, renderDevinSidebar } from "./render.js";
 /** Sessions listed per organization: the most recent, newest first. */
 export const MAX_SESSIONS = 1000;
 const MACRO_PATTERN = /^![A-Za-z0-9_-]+$/;
-const SECRET_TYPES = ["key-value", "cookie", "totp"];
+const SECRET_TYPES = ["key-value", "cookie", "totp"] as const;
 
-const v3beta1Org = (orgId: string, rest = "") =>
-  `/v3beta1/organizations/${encodeURIComponent(orgId)}${rest}`;
+const isSecretType = (value: string): value is (typeof SECRET_TYPES)[number] =>
+  SECRET_TYPES.some((type) => type === value);
+
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
 
 function sumDays(days: ConsumptionDay[]): number {
   return days.reduce((a, d) => a + (Number.isFinite(d.acus) ? d.acus : 0), 0);
@@ -94,10 +92,10 @@ function parseSchema(raw: string | undefined): Record<string, unknown> | null {
   } catch {
     throw new Error("Devin plugin: the structured output schema is not valid JSON.");
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isJsonObject(parsed)) {
     throw new Error("Devin plugin: the structured output schema must be a JSON object.");
   }
-  return parsed as Record<string, unknown>;
+  return parsed;
 }
 
 function checkMacro(raw: string | undefined): string | null {
@@ -112,24 +110,23 @@ function checkMacro(raw: string | undefined): string | null {
 }
 
 export class DevinClient implements PluginClient {
-  private readonly ctx: DevinContext;
+  private readonly api: DevinApi;
   private readonly acuPrice: number;
   private orgCache: Promise<{ self: DevinSelf; orgs: DevinOrg[] }> | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = trimmed(credentials["apiKey"]);
     if (!token) throw new Error("Devin plugin: missing apiKey credential");
-    const caCert = credentials["caCert"] ?? "";
-    this.ctx = {
+    this.api = createDevinApi({
       token,
-      ...(caCert ? { caCert } : {}),
-      ...(services?.http ? { http: services.http } : {}),
-    };
+      caCert: credentials["caCert"] ?? "",
+      http: services?.http,
+    });
     this.acuPrice = parseAcuPrice(credentials);
   }
 
   private resolved(): Promise<{ self: DevinSelf; orgs: DevinOrg[] }> {
-    this.orgCache ??= resolveOrgs(this.ctx).catch((err: unknown) => {
+    this.orgCache ??= resolveOrgs(this.api).catch((err: unknown) => {
       this.orgCache = undefined;
       throw err;
     });
@@ -141,7 +138,7 @@ export class DevinClient implements PluginClient {
   }
 
   private async org(orgId: string): Promise<DevinOrg> {
-    const found = (await this.orgs().catch(() => [] as DevinOrg[])).find((o) => o.org_id === orgId);
+    const found = (await this.orgs().catch((): DevinOrg[] => [])).find((o) => o.org_id === orgId);
     return found ?? { org_id: orgId, name: orgId };
   }
 
@@ -160,8 +157,8 @@ export class DevinClient implements PluginClient {
 
   private async lookups(org: DevinOrg): Promise<SessionLookups> {
     const [users, playbooks] = await Promise.all([
-      paginate<DevinUser>(this.ctx, v3beta1Org(org.org_id, "/members/users")).catch(() => []),
-      paginate<DevinPlaybook>(this.ctx, orgPath(org.org_id, "/playbooks")).catch(() => []),
+      listUsers(this.api, org.org_id).catch(() => []),
+      listPlaybooks(this.api, org.org_id).catch(() => []),
     ]);
     return {
       users: new Map(users.map((u) => [u.user_id, u])),
@@ -181,39 +178,31 @@ export class DevinClient implements PluginClient {
         case "session":
           return this.perOrg(async (org) => {
             const [sessions, lookups] = await Promise.all([
-              paginate<DevinSession>(this.ctx, orgPath(org.org_id, "/sessions"), {}, MAX_SESSIONS),
+              listSessions(this.api, org.org_id, {}, MAX_SESSIONS),
               this.lookups(org),
             ]);
             return sessions.map((s) => mapSession(accountId, org, s, this.acuPrice, lookups));
           });
         case "playbook":
           return this.perOrg(async (org) =>
-            (await paginate<DevinPlaybook>(this.ctx, orgPath(org.org_id, "/playbooks"))).map((p) =>
-              mapPlaybook(accountId, org, p),
-            ),
+            (await listPlaybooks(this.api, org.org_id)).map((p) => mapPlaybook(accountId, org, p)),
           );
         case "knowledge-note":
           return this.perOrg(async (org) =>
-            (await paginate<DevinNote>(this.ctx, orgPath(org.org_id, "/knowledge/notes"))).map(
-              (n) => mapNote(accountId, org, n),
-            ),
+            (await listNotes(this.api, org.org_id)).map((n) => mapNote(accountId, org, n)),
           );
         case "secret":
           return this.perOrg(async (org) =>
-            (await paginate<DevinSecret>(this.ctx, orgPath(org.org_id, "/secrets"))).map((s) =>
-              mapSecret(accountId, org, s),
-            ),
+            (await listSecrets(this.api, org.org_id)).map((s) => mapSecret(accountId, org, s)),
           );
         case "member":
           return this.perOrg(async (org) =>
-            (await paginate<DevinUser>(this.ctx, v3beta1Org(org.org_id, "/members/users"))).map(
-              (u) => mapMember(accountId, org, u),
-            ),
+            (await listUsers(this.api, org.org_id)).map((u) => mapMember(accountId, org, u)),
           );
         case "automation":
           return this.perOrg(async (org) =>
-            (await paginate<DevinAutomation>(this.ctx, orgPath(org.org_id, "/automations"))).map(
-              (a) => mapAutomation(accountId, org, a),
+            (await listAutomations(this.api, org.org_id)).map((a) =>
+              mapAutomation(accountId, org, a),
             ),
           );
         default:
@@ -236,17 +225,18 @@ export class DevinClient implements PluginClient {
       if (typeId === "organization") return this.getOrganization(accountId, externalId);
       const { orgId, id } = parseScopedId(externalId);
       const org = await this.org(orgId);
-      const enc = encodeURIComponent(id);
+      const base = `/v3/organizations/${pathEncode(orgId)}` as const;
+      const enc = pathEncode(id);
       switch (typeId) {
         case "session": {
           const [s, lookups] = await Promise.all([
-            devinFetch<DevinSession>(this.ctx, orgPath(orgId, `/sessions/${enc}`)),
+            this.api.get(`${base}/sessions/${enc}`),
             this.lookups(org),
           ]);
           return mapSession(accountId, org, s, this.acuPrice, lookups);
         }
         case "playbook": {
-          const p = await devinFetch<DevinPlaybook>(this.ctx, orgPath(orgId, `/playbooks/${enc}`));
+          const p = await this.api.get(`${base}/playbooks/${enc}`);
           const r = mapPlaybook(accountId, org, p);
           const stats = await this.playbookStats(orgId, id).catch(() => undefined);
           return stats
@@ -257,26 +247,20 @@ export class DevinClient implements PluginClient {
             : r;
         }
         case "knowledge-note":
-          return mapNote(
-            accountId,
-            org,
-            await devinFetch<DevinNote>(this.ctx, orgPath(orgId, `/knowledge/notes/${enc}`)),
-          );
+          return mapNote(accountId, org, await this.api.get(`${base}/knowledge/notes/${enc}`));
         case "secret": {
-          const all = await paginate<DevinSecret>(this.ctx, orgPath(orgId, "/secrets"));
+          const all = await listSecrets(this.api, orgId);
           const s = all.find((x) => x.secret_id === id);
           if (!s) throw new Error(`Devin plugin: secret ${id} not found`);
           return mapSecret(accountId, org, s);
         }
         case "member": {
-          const u = await devinFetch<DevinUser>(
-            this.ctx,
-            v3beta1Org(orgId, `/members/users/${enc}`),
+          const u = await this.api.get(
+            `/v3beta1/organizations/${pathEncode(orgId)}/members/users/${enc}`,
           );
           const to = today();
           const days = await fetchConsumption(
-            this.ctx,
-            orgPath(orgId, `/consumption/daily/users/${enc}`),
+            userConsumption(this.api, orgId, id),
             addDays(to, -29),
             to,
           ).catch(() => undefined);
@@ -289,11 +273,7 @@ export class DevinClient implements PluginClient {
           );
         }
         case "automation":
-          return mapAutomation(
-            accountId,
-            org,
-            await devinFetch<DevinAutomation>(this.ctx, orgPath(orgId, `/automations/${enc}`)),
-          );
+          return mapAutomation(accountId, org, await this.api.get(`${base}/automations/${enc}`));
         default:
           throw new Error(`Devin plugin: unknown resource type "${typeId}"`);
       }
@@ -305,18 +285,18 @@ export class DevinClient implements PluginClient {
     const to = today();
     const from = `${to.slice(0, 7)}-01`;
     const [days, usage] = await Promise.all([
-      fetchConsumption(this.ctx, orgPath(orgId, "/consumption/daily"), from, to).catch(
-        () => undefined,
-      ),
-      devinFetch<UsageMetrics>(this.ctx, orgPath(orgId, "/metrics/usage"), {
-        query: {
-          time_after: Math.floor(Date.parse(`${from}T08:00:00Z`) / 1000),
-          time_before: Math.ceil(Date.now() / 1000),
-        },
-      }).catch(() => undefined),
+      fetchConsumption(orgConsumption(this.api, orgId), from, to).catch(() => undefined),
+      this.api
+        .get(`/v3/organizations/${pathEncode(orgId)}/metrics/usage`, {
+          query: {
+            time_after: Math.floor(Date.parse(`${from}T08:00:00Z`) / 1000),
+            time_before: Math.ceil(Date.now() / 1000),
+          },
+        })
+        .catch(() => undefined),
     ]);
     if (!days) return mapOrganization(accountId, org);
-    const totals = Object.fromEntries(PRODUCT_KEYS.map((k) => [k, 0])) as Record<string, number>;
+    const totals = Object.fromEntries(PRODUCT_KEYS.map((k) => [k, 0]));
     for (const d of days) {
       const split = splitDay(d);
       for (const k of PRODUCT_KEYS) totals[k]! += split[k];
@@ -355,17 +335,10 @@ export class DevinClient implements PluginClient {
       time_after: Math.floor(Date.now() / 1000) - 30 * 86_400,
       time_before: Math.ceil(Date.now() / 1000),
     };
+    const org = pathEncode(orgId);
     const [sessions, prs] = await Promise.all([
-      devinFetch<{ sessions_created_count?: number }>(
-        this.ctx,
-        orgPath(orgId, "/metrics/sessions"),
-        {
-          query,
-        },
-      ),
-      devinFetch<{ prs_merged_count?: number }>(this.ctx, orgPath(orgId, "/metrics/prs"), {
-        query,
-      }),
+      this.api.get(`/v3/organizations/${org}/metrics/sessions`, { query }),
+      this.api.get(`/v3/organizations/${org}/metrics/prs`, { query }),
     ]);
     return { sessions: sessions?.sessions_created_count, prsMerged: prs?.prs_merged_count };
   }
@@ -405,9 +378,10 @@ export class DevinClient implements PluginClient {
       }
       const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
       const f = r.fields;
-      const money = (v: unknown) =>
+      const money = (v: (typeof f)[string] | undefined) =>
         typeof v === "number" ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}` : "—";
-      const num = (v: unknown) => (typeof v === "number" ? v.toLocaleString("en-US") : "—");
+      const num = (v: (typeof f)[string] | undefined) =>
+        typeof v === "number" ? v.toLocaleString("en-US") : "—";
       if (resourceTypeId === "organization") {
         return [
           { label: "ACUs this month", value: num(f["monthAcus"]) },
@@ -449,27 +423,16 @@ export class DevinClient implements PluginClient {
       const externalId = externalIdOf(resourceId);
       const range = rangeOrDefault(timeRange);
       if (resourceTypeId === "organization") {
-        return orgSeries(this.ctx, externalId, this.acuPrice, range);
+        return orgSeries(this.api, externalId, this.acuPrice, range);
       }
       const { orgId, id } = parseScopedId(externalId);
-      const enc = encodeURIComponent(id);
       switch (resourceTypeId) {
         case "session":
-          return consumptionAt(
-            this.ctx,
-            orgPath(orgId, `/consumption/daily/sessions/${enc}`),
-            this.acuPrice,
-            range,
-          );
+          return consumptionAt(sessionConsumption(this.api, orgId, id), this.acuPrice, range);
         case "member":
-          return consumptionAt(
-            this.ctx,
-            orgPath(orgId, `/consumption/daily/users/${enc}`),
-            this.acuPrice,
-            range,
-          );
+          return consumptionAt(userConsumption(this.api, orgId, id), this.acuPrice, range);
         case "playbook":
-          return playbookSeries(this.ctx, orgId, id, range);
+          return playbookSeries(this.api, orgId, id, range);
         default:
           return [];
       }
@@ -479,7 +442,7 @@ export class DevinClient implements PluginClient {
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostFetchResult> {
     return attempt(async () => {
       const { self, orgs } = await this.resolved();
-      const result = await fetchDevinCostData(this.ctx, orgs, self, this.acuPrice, range);
+      const result = await fetchDevinCostData(this.api, orgs, self, this.acuPrice, range);
       // Normalized AI dimensions (provider level: Devin bills ACUs, not tokens).
       return { ...result, rows: withAiCostTags(result.rows, () => ({ provider: "devin" })) };
     });
@@ -490,7 +453,7 @@ export class DevinClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async orgField(): Promise<CreateResourceConfig["fields"]> {
-    const orgs = await this.orgs().catch(() => [] as DevinOrg[]);
+    const orgs = await this.orgs().catch((): DevinOrg[] => []);
     if (orgs.length <= 1) return [];
     return [
       {
@@ -645,14 +608,14 @@ export class DevinClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const org = await this.targetOrg(fields);
+      const base = `/v3/organizations/${pathEncode(org.org_id)}` as const;
       switch (typeId) {
         case "playbook": {
           const title = trimmed(fields["title"]);
           const body = fields["body"] ?? "";
           if (!title || !body.trim())
             throw new Error("Devin plugin: a playbook needs a title and instructions");
-          const p = await devinFetch<DevinPlaybook>(this.ctx, orgPath(org.org_id, "/playbooks"), {
-            method: "POST",
+          const p = await this.api.post(`${base}/playbooks`, {
             body: {
               title,
               body,
@@ -669,8 +632,7 @@ export class DevinClient implements PluginClient {
           if (!name || !trigger || !body.trim()) {
             throw new Error("Devin plugin: a note needs a name, a trigger and content");
           }
-          const n = await devinFetch<DevinNote>(this.ctx, orgPath(org.org_id, "/knowledge/notes"), {
-            method: "POST",
+          const n = await this.api.post(`${base}/knowledge/notes`, {
             body: { name, trigger, body, pinned_repo: trimmed(fields["pinnedRepo"]) || null },
           });
           return mapNote(accountId, org, n);
@@ -678,12 +640,10 @@ export class DevinClient implements PluginClient {
         case "secret": {
           const key = trimmed(fields["key"]);
           const value = fields["value"] ?? "";
-          const type = SECRET_TYPES.includes(trimmed(fields["secretType"]))
-            ? trimmed(fields["secretType"])
-            : "key-value";
+          const requested = trimmed(fields["secretType"]);
+          const type = isSecretType(requested) ? requested : "key-value";
           if (!key || !value) throw new Error("Devin plugin: a secret needs a name and a value");
-          const s = await devinFetch<DevinSecret>(this.ctx, orgPath(org.org_id, "/secrets"), {
-            method: "POST",
+          const s = await this.api.post(`${base}/secrets`, {
             body: {
               type,
               key,
@@ -708,12 +668,12 @@ export class DevinClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const { orgId, id } = parseScopedId(externalIdOf(resourceId));
-      const enc = encodeURIComponent(id);
+      const base = `/v3/organizations/${pathEncode(orgId)}` as const;
+      const enc = pathEncode(id);
       switch (typeId) {
         case "session": {
           if ("tags" in fields) {
-            await devinFetch(this.ctx, orgPath(orgId, `/sessions/${enc}/tags`), {
-              method: "PUT",
+            await this.api.put(`${base}/sessions/${enc}/tags`, {
               body: { tags: parseTags(fields["tags"]) },
             });
           }
@@ -721,16 +681,12 @@ export class DevinClient implements PluginClient {
         }
         case "playbook": {
           // PUT replaces the playbook, so unchanged fields are sent back as they are.
-          const current = await devinFetch<DevinPlaybook>(
-            this.ctx,
-            orgPath(orgId, `/playbooks/${enc}`),
-          );
+          const current = await this.api.get(`${base}/playbooks/${enc}`);
           const title = "title" in fields ? trimmed(fields["title"]) : (current.title ?? "");
           const body = "body" in fields ? (fields["body"] ?? "") : (current.body ?? "");
           if (!title || !body.trim())
             throw new Error("Devin plugin: a playbook needs a title and instructions");
-          await devinFetch(this.ctx, orgPath(orgId, `/playbooks/${enc}`), {
-            method: "PUT",
+          await this.api.put(`${base}/playbooks/${enc}`, {
             body: {
               title,
               body,
@@ -744,10 +700,7 @@ export class DevinClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "knowledge-note": {
-          const current = await devinFetch<DevinNote>(
-            this.ctx,
-            orgPath(orgId, `/knowledge/notes/${enc}`),
-          );
+          const current = await this.api.get(`${base}/knowledge/notes/${enc}`);
           await this.putNote(orgId, id, current, {
             ...("name" in fields ? { name: trimmed(fields["name"]) } : {}),
             ...("trigger" in fields ? { trigger: trimmed(fields["trigger"]) } : {}),
@@ -776,32 +729,42 @@ export class DevinClient implements PluginClient {
     if (!next.name || !next.trigger || !(next.body ?? "").trim()) {
       throw new Error("Devin plugin: a note needs a name, a trigger and content");
     }
-    await devinFetch(this.ctx, orgPath(orgId, `/knowledge/notes/${encodeURIComponent(noteId)}`), {
-      method: "PUT",
-      body: {
-        name: next.name,
-        trigger: next.trigger,
-        body: next.body,
-        pinned_repo: next.pinned_repo ?? null,
-        folder_id: next.folder_id ?? null,
-        is_enabled: next.is_enabled ?? true,
+    await this.api.put(
+      `/v3/organizations/${pathEncode(orgId)}/knowledge/notes/${pathEncode(noteId)}`,
+      {
+        body: {
+          name: next.name,
+          trigger: next.trigger,
+          body: next.body,
+          pinned_repo: next.pinned_repo ?? null,
+          folder_id: next.folder_id ?? null,
+          is_enabled: next.is_enabled ?? true,
+        },
       },
-    });
+    );
   }
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const { orgId, id } = parseScopedId(externalIdOf(resourceId));
-      const enc = encodeURIComponent(id);
-      const paths: Record<string, string> = {
-        playbook: `/playbooks/${enc}`,
-        "knowledge-note": `/knowledge/notes/${enc}`,
-        secret: `/secrets/${enc}`,
-        automation: `/automations/${enc}`,
-      };
-      const path = paths[typeId];
-      if (!path) throw new Error(`Devin plugin: "${typeId}" cannot be deleted from Infrawrench`);
-      await devinFetch(this.ctx, orgPath(orgId, path), { method: "DELETE" });
+      const base = `/v3/organizations/${pathEncode(orgId)}` as const;
+      const enc = pathEncode(id);
+      switch (typeId) {
+        case "playbook":
+          await this.api.delete(`${base}/playbooks/${enc}`);
+          return;
+        case "knowledge-note":
+          await this.api.delete(`${base}/knowledge/notes/${enc}`);
+          return;
+        case "secret":
+          await this.api.delete(`${base}/secrets/${enc}`);
+          return;
+        case "automation":
+          await this.api.delete(`${base}/automations/${enc}`);
+          return;
+        default:
+          throw new Error(`Devin plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      }
     });
   }
 
@@ -817,31 +780,30 @@ export class DevinClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const { orgId, id } = parseScopedId(externalIdOf(resourceId));
-      const enc = encodeURIComponent(id);
+      const base = `/v3/organizations/${pathEncode(orgId)}` as const;
+      const enc = pathEncode(id);
       if (typeId === "session") {
         if (actionId === "terminate") {
-          await devinFetch(this.ctx, orgPath(orgId, `/sessions/${enc}`), { method: "DELETE" });
+          await this.api.delete(`${base}/sessions/${enc}`);
           return;
         }
-        if (actionId === "archive" || actionId === "unarchive") {
-          await devinFetch(this.ctx, orgPath(orgId, `/sessions/${enc}/${actionId}`), {
-            method: "POST",
-          });
+        if (actionId === "archive") {
+          await this.api.post(`${base}/sessions/${enc}/archive`);
+          return;
+        }
+        if (actionId === "unarchive") {
+          await this.api.post(`${base}/sessions/${enc}/unarchive`);
           return;
         }
       }
       if (typeId === "automation" && (actionId === "enable" || actionId === "disable")) {
-        await devinFetch(this.ctx, orgPath(orgId, `/automations/${enc}`), {
-          method: "PATCH",
+        await this.api.patch(`${base}/automations/${enc}`, {
           body: { enabled: actionId === "enable" },
         });
         return;
       }
       if (typeId === "knowledge-note" && (actionId === "enable" || actionId === "disable")) {
-        const current = await devinFetch<DevinNote>(
-          this.ctx,
-          orgPath(orgId, `/knowledge/notes/${enc}`),
-        );
+        const current = await this.api.get(`${base}/knowledge/notes/${enc}`);
         await this.putNote(orgId, id, current, { is_enabled: actionId === "enable" });
         return;
       }

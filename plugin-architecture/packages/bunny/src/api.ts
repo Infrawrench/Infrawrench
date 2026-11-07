@@ -1,4 +1,15 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  type ApiClientOptions,
+  type ApiResponse,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths as ComputePaths } from "./api-types.compute.gen.js";
+import type { paths as CorePaths } from "./api-types.core.gen.js";
+import type { paths as McPaths } from "./api-types.mc.gen.js";
+import type { paths as StoragePaths } from "./api-types.storage.gen.js";
 
 /**
  * bunny.net transport. Three hosts, one account API key (Account settings →
@@ -33,119 +44,77 @@ export class BunnyApiError extends Error {
 
 export function statusOf(err: unknown): number {
   if (err && typeof err === "object" && "status" in err) {
-    const s = (err as { status: unknown }).status;
-    return typeof s === "number" ? s : 0;
+    return typeof err.status === "number" ? err.status : 0;
   }
   return 0;
 }
 
-type Query = Record<string, string | number | boolean | undefined>;
-
-export interface RawResponse {
-  status: number;
-  body: string;
-}
-
-function withQuery(url: string, query?: Query): string {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {}))
-    if (v !== undefined && v !== "") p.set(k, String(v));
-  const qs = p.toString();
-  return qs ? `${url}${url.includes("?") ? "&" : "?"}${qs}` : url;
+interface ErrorBody {
+  Message?: string;
+  message?: string;
+  ErrorKey?: string;
+  title?: string;
+  detail?: string;
 }
 
 function errorText(body: string): string {
   try {
-    const p = JSON.parse(body) as {
-      Message?: string;
-      message?: string;
-      ErrorKey?: string;
-      title?: string;
-      detail?: string;
-    };
+    const p: ErrorBody = JSON.parse(body);
     return p.Message ?? p.message ?? p.detail ?? p.title ?? p.ErrorKey ?? body.slice(0, 300);
   } catch {
     return body.slice(0, 300);
   }
 }
 
-/** One request through the host HTTP service when there is one, else `fetch`. */
-export async function bunnyRaw(
-  ctx: BunnyContext,
-  url: string,
-  init: {
-    method?: string;
-    query?: Query;
-    json?: unknown;
-    body?: string | Uint8Array;
-    headers?: Record<string, string>;
-    accessKey?: string;
-  } = {},
-): Promise<RawResponse> {
-  const method = init.method ?? "GET";
-  const full = withQuery(url, init.query);
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    AccessKey: init.accessKey ?? ctx.apiKey,
-    ...(init.headers ?? {}),
+function apiError(status: number, url: string, body: string): BunnyApiError {
+  const path = new URL(url).pathname;
+  return new BunnyApiError(status, `bunny.net API error ${status} for ${path}: ${errorText(body)}`);
+}
+
+/** An empty value is left out rather than sent as `x=`. */
+function writeQuery(query: Record<string, ParamValue>): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(query))
+    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+  return p.toString();
+}
+
+/** One client per document: the Core API, Edge Scripting and Magic Containers. */
+export function createBunnyApis(ctx: BunnyContext) {
+  const shared: Omit<ApiClientOptions, "baseUrl"> = {
+    vendor: "bunny.net",
+    headers: { Accept: "application/json", AccessKey: ctx.apiKey },
+    http: ctx.http,
+    caCert: ctx.caCert,
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    serializeQuery: writeQuery,
+    httpError: ({ status, url, body }) => apiError(status, url, body),
   };
-  let body: string | Uint8Array | undefined = init.body;
-  if (init.json !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(init.json);
-  }
-  let status: number;
-  let text: string;
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url: full,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    status = res.status;
-    text = res.body;
-  } else {
-    const res = await fetch(full, {
-      method,
-      headers,
-      ...(body !== undefined ? { body: body as BodyInit } : {}),
-    });
-    status = res.status;
-    text = await res.text();
-  }
-  if (status < 200 || status >= 300) {
-    const path = new URL(full).pathname;
-    throw new BunnyApiError(
-      status,
-      `bunny.net API error ${status} for ${path}: ${errorText(text)}`,
-    );
-  }
-  return { status, body: text };
+  return {
+    core: createApiClient<CorePaths>({ ...shared, baseUrl: API_BASE }),
+    compute: createApiClient<ComputePaths>({ ...shared, baseUrl: API_BASE }),
+    mc: createApiClient<McPaths>({ ...shared, baseUrl: `${API_BASE}/mc` }),
+  };
 }
 
-export async function bunnyFetch<T>(
-  ctx: BunnyContext,
-  path: string,
-  init: { method?: string; query?: Query; json?: unknown } = {},
-): Promise<T> {
-  const res = await bunnyRaw(ctx, `${API_BASE}${path}`, init);
-  return (res.body ? JSON.parse(res.body) : undefined) as T;
-}
+export type BunnyApis = ReturnType<typeof createBunnyApis>;
 
-/** `{Items, CurrentPage, TotalItems, HasMoreItems}` listings. */
-export async function bunnyPaged<T>(
-  ctx: BunnyContext,
-  path: string,
-  query: Query = {},
+/**
+ * `{Items, CurrentPage, TotalItems, HasMoreItems}` listings. A hand loop rather
+ * than `getAll`: an empty page with more to come carries on, an answer that is
+ * the array itself ends the list, and `page` goes before `perPage`.
+ */
+export async function bunnyPaged<Item>(
+  fetchPage: (paging: {
+    page: number;
+    perPage: number;
+  }) => Promise<{ Items?: Item[] | null; HasMoreItems?: boolean } | Item[]>,
   maxPages = 50,
-): Promise<T[]> {
-  const out: T[] = [];
+): Promise<Item[]> {
+  const out: Item[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await bunnyFetch<{ Items?: T[]; HasMoreItems?: boolean } | T[]>(ctx, path, {
-      query: { ...query, page, perPage: 1000 },
-    });
+    const res = await fetchPage({ page, perPage: 1000 });
     if (Array.isArray(res)) return [...out, ...res];
     out.push(...(res?.Items ?? []));
     if (!res?.HasMoreItems) break;
@@ -153,12 +122,21 @@ export async function bunnyPaged<T>(
   return out;
 }
 
-/** Magic Containers' cursor listing (`items`, `cursor`). */
-export async function mcPaged<T>(ctx: BunnyContext, path: string, maxPages = 50): Promise<T[]> {
-  const out: T[] = [];
+type AppList = ApiResponse<McPaths["/apps"]["get"]>;
+
+/**
+ * Magic Containers' cursor listing (`items`, `cursor`). A hand loop rather than
+ * `getAll`, which would read an `items` that is not a list as an empty account,
+ * and the host prunes what a sync stops seeing.
+ */
+export async function mcApps(
+  mc: BunnyApis["mc"],
+  maxPages = 50,
+): Promise<NonNullable<AppList["items"]>> {
+  const out: NonNullable<AppList["items"]> = [];
   let cursor: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res = await bunnyFetch<{ items?: T[]; cursor?: string | null }>(ctx, `/mc${path}`, {
+    const res = await mc.get("/apps", {
       query: { limit: 100, ...(cursor ? { nextCursor: cursor } : {}) },
     });
     out.push(...(res?.items ?? []));
@@ -169,25 +147,89 @@ export async function mcPaged<T>(ctx: BunnyContext, path: string, maxPages = 50)
 }
 
 /**
+ * Edge Storage stays on `restRequest`. Each zone has its own host and password,
+ * a key is any number of segments where the document has `{path}/{fileName}`, the
+ * root listing is `/{zone}/` with no `{path}` at all, and an upload is binary.
+ */
+function storageOptions(ctx: BunnyContext, url: string, accessKey: string) {
+  return {
+    vendor: "bunny.net",
+    url,
+    headers: { Accept: "application/json", AccessKey: accessKey },
+    contentType: "with-body" as const,
+    httpError: ({ status, body }: { status: number; body: string }) => apiError(status, url, body),
+    ...(ctx.http ? { http: ctx.http } : {}),
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+  };
+}
+
+export type StorageListing = ApiResponse<StoragePaths["/{storageZoneName}/{path}/"]["get"]>;
+
+export async function listStorage(
+  ctx: BunnyContext,
+  url: string,
+  accessKey: string,
+): Promise<StorageListing> {
+  const { body } = await restRequest<StorageListing | undefined>({
+    ...storageOptions(ctx, url, accessKey),
+    init: { method: "GET" },
+    emptyBodyIsUndefined: true,
+  });
+  return body === undefined ? [] : body;
+}
+
+/** A write whose answer is not read, so it need not be JSON. */
+export async function writeStorage(
+  ctx: BunnyContext,
+  url: string,
+  accessKey: string,
+  init: { method: "PUT" | "DELETE"; bytes?: Uint8Array<ArrayBuffer> },
+): Promise<void> {
+  await restRequest<string>({
+    ...storageOptions(ctx, url, accessKey),
+    init: {
+      method: init.method,
+      ...(init.bytes
+        ? { body: init.bytes, headers: { "Content-Type": "application/octet-stream" } }
+        : {}),
+    },
+    responseAs: "text",
+  });
+}
+
+type ChartValue = number | string | null;
+
+export interface ChartPoint {
+  timestamp?: ChartValue;
+  x?: ChartValue;
+  date?: ChartValue;
+  time?: ChartValue;
+  value?: ChartValue;
+  y?: ChartValue;
+}
+
+export type Chart = Record<string, number | null> | Array<ChartPoint | null> | null | undefined;
+
+/**
  * Bunny charts are `{ "2026-10-01T00:00:00Z": value, … }`. Magic Containers
  * charts are not described in its spec beyond "object", so arrays of
  * `{x|timestamp|date, y|value}` points are accepted too.
  */
-export function chartPoints(chart: unknown): Array<{ timestamp: number; value: number }> {
+export function chartPoints(chart: Chart): Array<{ timestamp: number; value: number }> {
   const parse = (k: string) =>
     Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(k) || !/T/.test(k) ? k : `${k}Z`);
   let pts: Array<{ timestamp: number; value: number }> = [];
   if (Array.isArray(chart)) {
     pts = chart.map((p) => {
-      const o = (p ?? {}) as Record<string, unknown>;
-      const t = o["timestamp"] ?? o["x"] ?? o["date"] ?? o["time"];
+      const o: ChartPoint = p ?? {};
+      const t = o.timestamp ?? o.x ?? o.date ?? o.time;
       return {
         timestamp: typeof t === "number" ? t : parse(String(t)),
-        value: Number(o["value"] ?? o["y"]),
+        value: Number(o.value ?? o.y),
       };
     });
   } else if (chart && typeof chart === "object") {
-    pts = Object.entries(chart as Record<string, unknown>).map(([k, v]) => ({
+    pts = Object.entries(chart).map(([k, v]) => ({
       timestamp: parse(k),
       value: Number(v),
     }));

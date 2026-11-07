@@ -1,0 +1,403 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/voyage-ai/openapi/main/voyage-openapi.yml",
+  "patches": [
+    {
+      "pointer": "/components/schemas",
+      "value": {
+        "BatchObject": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "object": { "type": "string" },
+            "endpoint": { "type": "string" },
+            "errors": {
+              "type": "object",
+              "nullable": true,
+              "properties": {
+                "object": { "type": "string" },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": { "type": "string" },
+                      "line": { "type": "integer", "nullable": true },
+                      "message": { "type": "string" },
+                      "param": { "type": "string", "nullable": true }
+                    }
+                  }
+                }
+              }
+            },
+            "input_file_id": { "type": "string" },
+            "completion_window": { "type": "string" },
+            "model": { "type": "string" },
+            "status": { "type": "string" },
+            "output_file_id": { "type": "string", "nullable": true },
+            "error_file_id": { "type": "string", "nullable": true },
+            "request_counts": {
+              "type": "object",
+              "properties": {
+                "total": { "type": "integer" },
+                "completed": { "type": "integer" },
+                "failed": { "type": "integer" }
+              }
+            },
+            "metadata": {
+              "type": "object",
+              "nullable": true,
+              "additionalProperties": { "type": "string" }
+            },
+            "created_at": { "type": "string" },
+            "in_progress_at": { "type": "string", "nullable": true },
+            "finalizing_at": { "type": "string", "nullable": true },
+            "completed_at": { "type": "string", "nullable": true },
+            "failed_at": { "type": "string", "nullable": true },
+            "expected_completion_at": { "type": "string", "nullable": true },
+            "cancelling_at": { "type": "string", "nullable": true },
+            "cancelled_at": { "type": "string", "nullable": true }
+          }
+        },
+        "FileObject": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "object": { "type": "string" },
+            "bytes": { "type": "integer" },
+            "created_at": { "type": "string" },
+            "expires_at": { "type": "string" },
+            "filename": { "type": "string" },
+            "purpose": { "type": "string" }
+          }
+        }
+      },
+      "why": "The published document has no batches or files. These come from the schemas embedded in docs.voyageai.com/reference/retrieve-batch.md and retrieve-file.md, with `nullable` where those pages' own examples answer null, and string values on `metadata`, which they describe as key-value pairs and which a bare `type: object` would type as empty."
+    },
+    {
+      "pointer": "/paths/~1files",
+      "value": {
+        "get": {
+          "operationId": "list-files",
+          "parameters": [
+            { "name": "purpose", "in": "query", "required": false, "schema": { "type": "string" } },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": { "type": "integer", "minimum": 1, "maximum": 10000 }
+            },
+            {
+              "name": "order",
+              "in": "query",
+              "required": false,
+              "schema": { "type": "string", "enum": ["asc", "desc"] }
+            },
+            { "name": "after", "in": "query", "required": false, "schema": { "type": "string" } }
+          ],
+          "responses": {
+            "200": {
+              "description": "A page of files",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "object": { "type": "string" },
+                      "data": {
+                        "type": "array",
+                        "items": { "$ref": "#/components/schemas/FileObject" }
+                      },
+                      "first_id": { "type": "string" },
+                      "last_id": { "type": "string" },
+                      "has_more": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the published document; from docs.voyageai.com/reference/list-files.md."
+    },
+    {
+      "pointer": "/paths/~1files~1{file_id}",
+      "value": {
+        "parameters": [
+          { "name": "file_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "get": {
+          "operationId": "retrieve-file",
+          "responses": {
+            "200": {
+              "description": "The file",
+              "content": {
+                "application/json": { "schema": { "$ref": "#/components/schemas/FileObject" } }
+              }
+            }
+          }
+        },
+        "delete": {
+          "operationId": "delete-file",
+          "responses": {
+            "200": {
+              "description": "The file was deleted",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "object": { "type": "string" },
+                      "deleted": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the published document; from docs.voyageai.com/reference/retrieve-file.md and delete-file.md."
+    },
+    {
+      "pointer": "/paths/~1batches",
+      "value": {
+        "get": {
+          "operationId": "list-batches",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": { "type": "integer", "minimum": 1, "maximum": 100 }
+            },
+            { "name": "after", "in": "query", "required": false, "schema": { "type": "string" } }
+          ],
+          "responses": {
+            "200": {
+              "description": "A page of batches",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "object": { "type": "string" },
+                      "data": {
+                        "type": "array",
+                        "items": { "$ref": "#/components/schemas/BatchObject" }
+                      },
+                      "first_id": { "type": "string" },
+                      "last_id": { "type": "string" },
+                      "has_more": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "operationId": "create-batch",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["endpoint", "input_file_id", "completion_window", "request_params"],
+                  "properties": {
+                    "endpoint": { "type": "string" },
+                    "input_file_id": { "type": "string" },
+                    "completion_window": { "type": "string" },
+                    "request_params": {
+                      "type": "object",
+                      "required": ["model"],
+                      "properties": { "model": { "type": "string" } }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "The batch",
+              "content": {
+                "application/json": { "schema": { "$ref": "#/components/schemas/BatchObject" } }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the published document; from docs.voyageai.com/reference/list-batches.md and create-batch.md."
+    },
+    {
+      "pointer": "/paths/~1batches~1{batch_id}",
+      "value": {
+        "parameters": [
+          { "name": "batch_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "get": {
+          "operationId": "retrieve-batch",
+          "responses": {
+            "200": {
+              "description": "The batch",
+              "content": {
+                "application/json": { "schema": { "$ref": "#/components/schemas/BatchObject" } }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the published document; from docs.voyageai.com/reference/retrieve-batch.md."
+    },
+    {
+      "pointer": "/paths/~1batches~1{batch_id}~1cancel",
+      "value": {
+        "parameters": [
+          { "name": "batch_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "post": {
+          "operationId": "cancel-batch",
+          "responses": {
+            "200": {
+              "description": "The batch",
+              "content": {
+                "application/json": { "schema": { "$ref": "#/components/schemas/BatchObject" } }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the published document; from docs.voyageai.com/reference/cancel-batch.md."
+    },
+    {
+      "pointer": "/paths/~1contextualizedembeddings",
+      "value": {
+        "post": {
+          "operationId": "contextualized-embeddings-api",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["inputs", "model"],
+                  "properties": {
+                    "inputs": {
+                      "type": "array",
+                      "items": { "type": "array", "items": { "type": "string" } }
+                    },
+                    "model": { "type": "string" },
+                    "input_type": {
+                      "type": "string",
+                      "enum": ["query", "document", null],
+                      "nullable": true
+                    },
+                    "output_dimension": { "type": "integer", "nullable": true },
+                    "output_dtype": {
+                      "type": "string",
+                      "enum": ["float", "int8", "uint8", "binary", "ubinary"]
+                    },
+                    "encoding_format": {
+                      "type": "string",
+                      "enum": ["base64", null],
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "The chunk embeddings",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "object": { "type": "string" },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "object": { "type": "string" },
+                            "data": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "object": { "type": "string" },
+                                  "embedding": { "type": "array", "items": { "type": "number" } },
+                                  "index": { "type": "integer" }
+                                }
+                              }
+                            },
+                            "index": { "type": "integer" }
+                          }
+                        }
+                      },
+                      "model": { "type": "string" },
+                      "usage": {
+                        "type": "object",
+                        "properties": { "total_tokens": { "type": "integer" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the published document; from docs.voyageai.com/reference/contextualized-embeddings-api.md."
+    },
+    {
+      "pointer": "/paths/~1multimodalembeddings/post/requestBody/content/application~1json/schema/properties/inputs/items",
+      "value": {
+        "type": "object",
+        "required": ["content"],
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": { "type": "string" },
+                "text": { "type": "string" },
+                "image_url": { "type": "string" },
+                "image_base64": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "why": "An array with no `items`, though its description spells out the shape: each input holds `content`, a list of text and image pieces."
+    },
+    {
+      "pointer": "/paths/~1multimodalembeddings/post/responses/200/content/application~1json/schema/properties/data/items/properties/embedding/items",
+      "value": { "type": "number" },
+      "why": "An array with no `items`; its description says floating-point numbers unless `output_encoding` asks for Base64, and the plugin does not ask."
+    }
+  ],
+  "paths": {
+    "/embeddings": ["post"],
+    "/contextualizedembeddings": ["post"],
+    "/multimodalembeddings": ["post"],
+    "/rerank": ["post"],
+    "/files": ["get"],
+    "/files/{file_id}": ["get", "delete"],
+    "/batches": ["get", "post"],
+    "/batches/{batch_id}": ["get"],
+    "/batches/{batch_id}/cancel": ["post"]
+  }
+}

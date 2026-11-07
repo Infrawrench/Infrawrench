@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { CrusoeApi, CrusoeApiError } from "../api.js";
+import { describe, expect, it } from "vitest";
+import { createCrusoeApi, CrusoeApiError, type CrusoeApi } from "../api.js";
 import {
   aggregateRows,
   detectColumns,
@@ -133,19 +133,27 @@ describe("aggregateRows", () => {
   });
 });
 
-function fakeApi(handlers: Record<string, (q: unknown) => string | Error>): CrusoeApi {
-  const api = new CrusoeApi(
+function fakeApi(
+  handlers: Record<string, (q: Record<string, string>) => string | Error>,
+): CrusoeApi {
+  return createCrusoeApi(
     { accessKeyId: "a", secretKey: "c2VjcmV0", monitoringToken: "", caCert: "" },
-    undefined,
+    {
+      http: {
+        request: async ({ url }) => {
+          const { pathname, searchParams } = new URL(url);
+          const h = handlers[pathname.replace(/^\/v1/, "")];
+          if (!h) return { status: 404, headers: {}, body: "{}" };
+          const out = h(Object.fromEntries(searchParams));
+          if (out instanceof CrusoeApiError) {
+            return { status: out.status, headers: {}, body: out.body };
+          }
+          if (out instanceof Error) throw out;
+          return { status: 200, headers: {}, body: out };
+        },
+      },
+    },
   );
-  vi.spyOn(api, "requestText").mockImplementation(async (path, opts) => {
-    const h = handlers[path];
-    if (!h) throw new CrusoeApiError(404, path, "{}");
-    const out = h(opts?.query);
-    if (out instanceof Error) throw out;
-    return out;
-  });
-  return api;
 }
 
 describe("fetchCrusoeCostData", () => {
@@ -168,10 +176,9 @@ describe("fetchCrusoeCostData", () => {
   it("falls back to one request per day when the export has no date column", async () => {
     const days: string[] = [];
     const api = fakeApi({
-      "/organizations/org-1/billing/export-productline": (q) => {
-        const query = q as { start_date: string; end_date: string };
-        if (query.start_date !== query.end_date) return "Product,Cost\na40,9";
-        days.push(query.start_date);
+      "/organizations/org-1/billing/export-productline": (query) => {
+        if (query["start_date"] !== query["end_date"]) return "Product,Cost\na40,9";
+        days.push(query["start_date"] ?? "");
         return "Product,Cost\na40,4";
       },
     });

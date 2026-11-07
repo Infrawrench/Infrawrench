@@ -10,6 +10,8 @@ import type {
   QcHybridEnvironment,
   QcKeyValue,
   QdbCollectionInfo,
+  QdbVectorParams,
+  QdbVectorsConfig,
 } from "./types.js";
 
 export const PLUGIN_ID = "qdrant-cloud";
@@ -330,6 +332,11 @@ export function mapHybridEnvironment(h: QcHybridEnvironment, accountId: string):
   });
 }
 
+/** One unnamed vector carries its size; a map of named vectors can hold one called `size`. */
+function isSingleVector(vectors: QdbVectorsConfig): vectors is QdbVectorParams {
+  return typeof vectors === "object" && "size" in vectors && typeof vectors.size === "number";
+}
+
 export function vectorSummary(info: QdbCollectionInfo): {
   size?: number;
   distance?: string;
@@ -337,15 +344,14 @@ export function vectorSummary(info: QdbCollectionInfo): {
 } {
   const v = info.config?.params?.vectors;
   if (!v) return { named: [] };
-  if (typeof (v as { size?: unknown }).size === "number") {
-    const plain = v as { size?: number; distance?: string };
+  if (isSingleVector(v)) {
     return {
-      ...(plain.size !== undefined ? { size: plain.size } : {}),
-      ...(plain.distance ? { distance: plain.distance } : {}),
+      ...(v.size !== undefined ? { size: v.size } : {}),
+      ...(v.distance ? { distance: v.distance } : {}),
       named: [],
     };
   }
-  const named = Object.entries(v as Record<string, { size?: number; distance?: string }>);
+  const named = Object.entries(v);
   return { named: named.map(([n, p]) => `${n} (${p.size ?? "?"}, ${p.distance ?? "?"})`) };
 }
 

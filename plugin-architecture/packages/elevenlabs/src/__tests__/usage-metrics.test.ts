@@ -1,12 +1,13 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { UsageQueryResponse } from "../api.js";
 import { ElevenLabsClient } from "../client.js";
 import { usageQueryBody, usageSeriesFor } from "../usage-metrics.js";
 
 const ACCOUNT = "acct-1";
 const DAY = Date.UTC(2026, 8, 1);
 
-const TABLE = {
+const TABLE: UsageQueryResponse = {
   columns: ["time", "voice_id", "credits", "fiat_units_spent", "label"],
   column_types: ["DateTime", "String", "Float", "Float", "String"],
   column_units: [null, null, "credits", "usd", null],

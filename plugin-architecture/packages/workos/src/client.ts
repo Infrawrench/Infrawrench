@@ -13,22 +13,41 @@ import type {
   ResourceStatus,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
+import { joinSubtitle, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type {
+  ApiBody,
   CredentialExport,
   LogsFetchParams,
   LogsFetchResult,
   PolicyOption,
 } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
+import {
+  createWorkosApi,
+  cursorOf,
+  MAX_LIST_PAGES,
+  PAGE_SIZE,
+  paginate,
+  type WosApiKey,
+  type WosConnection,
+  type WosDirectory,
+  type WosDirectoryGroup,
+  type WosDirectoryUser,
+  type WosEvent,
+  type WosFeatureFlag,
+  type WosGroup,
+  type WosInvitation,
+  type WosMemberRow,
+  type WosMembership,
+  type WosOrganization,
+  type WosOrganizationDomain,
+  type WosPermission,
+  type WosRole,
+  type WosSession,
+  type WosUser,
+  type WosWebhookEndpoint,
+} from "./api.js";
 import { ORGANIZATION_LOG_EVENTS, ORGANIZATION_METRIC_SERIES, WEBHOOK_EVENTS } from "./events.js";
-
-const BASE_URL = "https://api.workos.com";
-
-/** WorkOS list page size: the API caps `limit` at 100. */
-const PAGE_SIZE = 100;
-
-/** Hard cap on cursor-following so a huge environment can't hang a sync. */
-const MAX_LIST_PAGES = 20;
 
 /** The Metrics tab's default window when the host passes no range. */
 const METRICS_DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
@@ -40,221 +59,10 @@ const EVENTS_MAX_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
 const METRIC_BUCKETS = 48;
 
 // ---------------------------------------------------------------------------
-// WorkOS API shapes: verified against the official OpenAPI spec
-// (https://github.com/workos/openapi-spec, spec/open-api-spec.yaml).
-// ---------------------------------------------------------------------------
-
-/** Standard WorkOS list envelope: `{object: "list", data, list_metadata}`. */
-interface WosList<T> {
-  object?: string;
-  data?: T[];
-  list_metadata?: { before?: string | null; after?: string | null };
-}
-
-interface WosOrganizationDomain {
-  id?: string;
-  organization_id?: string;
-  domain?: string;
-  state?: string;
-  verification_prefix?: string;
-  verification_token?: string;
-  verification_strategy?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosOrganization {
-  id?: string;
-  name?: string;
-  domains?: WosOrganizationDomain[];
-  external_id?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosUser {
-  id?: string;
-  email?: string;
-  email_verified?: boolean;
-  first_name?: string | null;
-  last_name?: string | null;
-  profile_picture_url?: string | null;
-  external_id?: string | null;
-  last_sign_in_at?: string | null;
-  locale?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosMembership {
-  id?: string;
-  user_id?: string;
-  organization_id?: string;
-  organization_name?: string;
-  role?: { slug?: string };
-  roles?: Array<{ slug?: string }>;
-  status?: string;
-  directory_managed?: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosInvitation {
-  id?: string;
-  email?: string;
-  state?: string;
-  role_slug?: string | null;
-  expires_at?: string;
-  accepted_at?: string | null;
-  revoked_at?: string | null;
-  inviter_user_id?: string | null;
-  organization_id?: string | null;
-  accept_invitation_url?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosConnection {
-  id?: string;
-  organization_id?: string;
-  connection_type?: string;
-  name?: string;
-  state?: string;
-  domains?: Array<{ domain?: string }>;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosDirectory {
-  id?: string;
-  organization_id?: string;
-  name?: string;
-  type?: string;
-  state?: string;
-  external_key?: string;
-  /** Aggregate counts of what the directory has synced. */
-  metadata?: { users?: { active?: number; inactive?: number }; groups?: number };
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosDirectoryUser {
-  id?: string;
-  directory_id?: string;
-  organization_id?: string;
-  idp_id?: string;
-  email?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosDirectoryGroup {
-  id?: string;
-  directory_id?: string;
-  organization_id?: string;
-  idp_id?: string;
-  name?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosRole {
-  id?: string;
-  slug?: string;
-  name?: string;
-  description?: string | null;
-  type?: string;
-  resource_type_slug?: string;
-  permissions?: string[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosPermission {
-  id?: string;
-  slug?: string;
-  name?: string;
-  description?: string | null;
-  system?: boolean;
-  resource_type_slug?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosApiKey {
-  id?: string;
-  owner?: { type?: string; id?: string };
-  name?: string;
-  obfuscated_value?: string;
-  /** The full key: only on the create response. */
-  value?: string;
-  last_used_at?: string | null;
-  expires_at?: string | null;
-  permissions?: string[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosFeatureFlag {
-  id?: string;
-  slug?: string;
-  name?: string;
-  description?: string | null;
-  owner?: { email?: string; first_name?: string | null; last_name?: string | null } | null;
-  tags?: string[];
-  enabled?: boolean;
-  default_value?: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosGroup {
-  id?: string;
-  organization_id?: string;
-  name?: string;
-  description?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface WosSession {
-  id?: string;
-  ip_address?: string | null;
-  user_agent?: string | null;
-  organization_id?: string;
-  auth_method?: string;
-  status?: string;
-  impersonator?: { email?: string; reason?: string | null } | null;
-  expires_at?: string;
-  ended_at?: string | null;
-  created_at?: string;
-}
-
-interface WosEvent {
-  id?: string;
-  event?: string;
-  data?: Record<string, unknown>;
-  created_at?: string;
-  context?: { actor?: { id?: string; source?: string; name?: string | null } };
-}
-
-interface WosWebhookEndpoint {
-  id?: string;
-  endpoint_url?: string;
-  secret?: string;
-  status?: string;
-  events?: string[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function str(value: unknown): string {
+function str(value: string | null | undefined): string {
   return typeof value === "string" ? value : "";
 }
 
@@ -271,6 +79,25 @@ function pickedList(value: string | undefined): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+/** A field of an event's `data`, whose shape the document leaves open by event type. */
+function eventText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+const PORTAL_INTENTS = [
+  "sso",
+  "dsync",
+  "domain_verification",
+  "certificate_renewal",
+  "audit_logs",
+  "log_streams",
+  "bring_your_own_key",
+] as const;
+
+function isPortalIntent(value: string): value is (typeof PORTAL_INTENTS)[number] {
+  return PORTAL_INTENTS.some((intent) => intent === value);
 }
 
 /** Split a composite `{organizationId}/{id}` external id. */
@@ -360,9 +187,8 @@ function directoryStateDot(state: string): ResourceStatus {
  * envelope with `after` cursor pagination, capped at `limit=100` per page.
  */
 export class WorkosClient implements PluginClient {
-  private readonly apiKey: string;
-  private readonly caCert: string;
-  private readonly services: HostServices | undefined;
+  private readonly api: ReturnType<typeof createWorkosApi>["api"];
+  private readonly bodiless: ReturnType<typeof createWorkosApi>["bodiless"];
   /**
    * Per-instance cache of the webhook endpoint listing. There is no single-item
    * GET on /webhook_endpoints/{id}, so `getResource` re-lists; without the
@@ -373,96 +199,18 @@ export class WorkosClient implements PluginClient {
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("WorkOS plugin: missing apiKey credential");
-    this.apiKey = apiKey;
-    this.caCert = credentials["caCert"] ?? "";
-    this.services = services;
-  }
-
-  private get authHeaders(): Record<string, string> {
-    return { Authorization: `Bearer ${this.apiKey}` };
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "WorkOS",
-      url: `${BASE_URL}${path}`,
-      errorPath: path,
-      headers: { ...this.authHeaders, Accept: "application/json" },
-      ...(options ? { init: options } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
+    const { api, bodiless } = createWorkosApi({
+      apiKey,
+      caCert: credentials["caCert"] ?? "",
+      http: services?.http,
     });
-  }
-
-  /**
-   * Issue a request whose success response carries no JSON body: WorkOS
-   * DELETEs answer 200/202/204 with an empty body, which `jsonRestFetch`'s
-   * direct-fetch path would try to `JSON.parse`.
-   */
-  private async requestVoid(path: string, method: string): Promise<void> {
-    const url = `${BASE_URL}${path}`;
-    const headers = { ...this.authHeaders, Accept: "application/json" };
-    if (this.services?.http) {
-      const result = await this.services.http.request({
-        url,
-        method,
-        headers,
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      if (result.status < 200 || result.status >= 300) {
-        throw new Error(`WorkOS API error ${result.status} for ${path}: ${result.body}`);
-      }
-      return;
-    }
-
-    // Only the host HTTP service can install a custom trust anchor: silently
-    // falling back to global fetch would issue this DELETE under a different
-    // trust store than every other call in this client.
-    if (this.caCert) {
-      throw new Error(
-        `WorkOS plugin: cannot apply the configured CA certificate for ${path} without the host HTTP service`,
-      );
-    }
-
-    const res = await fetch(url, { method, headers });
-    if (!res.ok) {
-      throw new Error(`WorkOS API error ${res.status} for ${path}: ${await res.text()}`);
-    }
-  }
-
-  /**
-   * Follow the `list_metadata.after` cursor until the API stops returning one
-   * (bounded by MAX_LIST_PAGES). `params` are merged into every page request.
-   */
-  private async paginate<T>(path: string, params: Record<string, string> = {}): Promise<T[]> {
-    const out: T[] = [];
-    let after = "";
-
-    for (let page = 0; page < MAX_LIST_PAGES; page++) {
-      const query = new URLSearchParams({ ...params, limit: String(PAGE_SIZE) });
-      if (after) query.set("after", after);
-      const body = await this.fetch<WosList<T>>(`${path}?${query.toString()}`);
-      const items = body.data ?? [];
-      out.push(...items);
-      after = str(body.list_metadata?.after);
-      if (!after || items.length === 0) break;
-    }
-
-    // A cursor surviving the page cap means the listing is a prefix, not the
-    // whole set. There is no host warning channel for list results, so the
-    // console is the one place this can surface (visible in poller logs).
-    if (after) {
-      console.warn(
-        `WorkOS plugin: list ${path} truncated at ${MAX_LIST_PAGES} pages (${out.length} items); a continuation cursor remains`,
-      );
-    }
-
-    return out;
+    this.api = api;
+    this.bodiless = bodiless;
   }
 
   private async fetchOrganizations(): Promise<WosOrganization[]> {
     // GET /organizations: cursor-paginated list.
-    return this.paginate<WosOrganization>("/organizations");
+    return paginate("/organizations", (path, query) => this.api.get(path, { query }));
   }
 
   /**
@@ -483,11 +231,13 @@ export class WorkosClient implements PluginClient {
     return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
   }
 
+  private async fetchUsers(): Promise<WosUser[]> {
+    return paginate("/user_management/users", (path, query) => this.api.get(path, { query }));
+  }
+
   /** Map user_id → email so memberships can be labelled readably. */
   private async fetchUserEmailMap(): Promise<Map<string, string>> {
-    const users = await this.paginate<WosUser>("/user_management/users").catch(
-      () => [] as WosUser[],
-    );
+    const users = await this.fetchUsers().catch(() => []);
     const map = new Map<string, string>();
     for (const user of users) {
       if (user.id && user.email) map.set(user.id, user.email);
@@ -507,7 +257,7 @@ export class WorkosClient implements PluginClient {
           return orgs.map((org) => this.mapOrganization(accountId, org));
         }
         case "user": {
-          const users = await this.paginate<WosUser>("/user_management/users");
+          const users = await this.fetchUsers();
           return users.map((user) => this.mapUser(accountId, user));
         }
         case "organization-membership": {
@@ -516,9 +266,7 @@ export class WorkosClient implements PluginClient {
           // sweep rather than a lookup per membership.
           const emails = await this.fetchUserEmailMap();
           const memberships = await this.listForEachOrganization((orgId) =>
-            this.paginate<WosMembership>("/user_management/organization_memberships", {
-              organization_id: orgId,
-            }),
+            this.fetchMemberships(orgId),
           );
           return memberships.map((m) =>
             this.mapMembership(accountId, m, emails.get(str(m.user_id))),
@@ -526,39 +274,39 @@ export class WorkosClient implements PluginClient {
         }
         case "invitation": {
           const invitations = await this.listForEachOrganization((orgId) =>
-            this.paginate<WosInvitation>("/user_management/invitations", {
-              organization_id: orgId,
-            }),
+            this.fetchInvitations(orgId),
           );
           return invitations.map((invitation) => this.mapInvitation(accountId, invitation));
         }
         case "connection": {
-          const connections = await this.paginate<WosConnection>("/connections");
+          const connections = await paginate("/connections", (path, query) =>
+            this.api.get(path, { query }),
+          );
           return connections.map((connection) => this.mapConnection(accountId, connection));
         }
         case "directory": {
-          const directories = await this.paginate<WosDirectory>("/directories");
+          const directories = await this.fetchDirectories();
           return directories.map((directory) => this.mapDirectory(accountId, directory));
         }
         case "directory-user": {
           const users = await this.listForEachDirectory((directoryId) =>
-            this.paginate<WosDirectoryUser>("/directory_users", { directory: directoryId }),
+            this.fetchDirectoryUsers(directoryId),
           );
           return users.map((user) => this.mapDirectoryUser(accountId, user));
         }
         case "directory-group": {
           const groups = await this.listForEachDirectory((directoryId) =>
-            this.paginate<WosDirectoryGroup>("/directory_groups", { directory: directoryId }),
+            this.fetchDirectoryGroups(directoryId),
           );
           return groups.map((group) => this.mapDirectoryGroup(accountId, group));
         }
         case "role": {
           // GET /authorization/roles: plain {data} list, no pagination.
-          const body = await this.fetch<WosList<WosRole>>("/authorization/roles");
+          const body = await this.api.get("/authorization/roles");
           return (body.data ?? []).map((role) => this.mapRole(accountId, role));
         }
         case "webhook-endpoint": {
-          const endpoints = await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
+          const endpoints = await this.fetchWebhookEndpoints();
           this.webhookEndpointsCache = endpoints;
           return endpoints.map((endpoint) => this.mapWebhookEndpoint(accountId, endpoint));
         }
@@ -579,8 +327,8 @@ export class WorkosClient implements PluginClient {
         }
         case "organization-role": {
           const roles = await this.listForEachOrganization(async (orgId) => {
-            const body = await this.fetch<WosList<WosRole>>(
-              `/authorization/organizations/${encodeURIComponent(orgId)}/roles`,
+            const body = await this.api.get(
+              `/authorization/organizations/${pathEncode(orgId)}/roles`,
             );
             // The org listing also returns the environment roles it inherits.
             return (body.data ?? [])
@@ -590,24 +338,26 @@ export class WorkosClient implements PluginClient {
           return roles.map(({ role, orgId }) => this.mapOrganizationRole(accountId, orgId, role));
         }
         case "permission": {
-          const permissions = await this.paginate<WosPermission>("/authorization/permissions");
+          const permissions = await this.fetchPermissions();
           return permissions.map((permission) => this.mapPermission(accountId, permission));
         }
         case "organization-api-key": {
           const keys = await this.listForEachOrganization(async (orgId) =>
-            (
-              await this.paginate<WosApiKey>(`/organizations/${encodeURIComponent(orgId)}/api_keys`)
-            ).map((key) => ({ key, orgId })),
+            (await this.fetchApiKeys(orgId)).map((key) => ({ key, orgId })),
           );
           return keys.map(({ key, orgId }) => this.mapApiKey(accountId, orgId, key));
         }
         case "feature-flag": {
-          const flags = await this.paginate<WosFeatureFlag>("/feature-flags");
+          const flags = await paginate("/feature-flags", (path, query) =>
+            this.api.get(path, { query }),
+          );
           return flags.map((flag) => this.mapFeatureFlag(accountId, flag));
         }
         case "group": {
           const groups = await this.listForEachOrganization((orgId) =>
-            this.paginate<WosGroup>(`/organizations/${encodeURIComponent(orgId)}/groups`),
+            paginate(`/organizations/${pathEncode(orgId)}/groups`, (path, query) =>
+              this.api.get(path, { query }),
+            ),
           );
           return groups.map((group) => this.mapGroup(accountId, group));
         }
@@ -617,8 +367,61 @@ export class WorkosClient implements PluginClient {
     });
   }
 
+  private async fetchDirectories(organizationId?: string): Promise<WosDirectory[]> {
+    return paginate("/directories", (path, paging) =>
+      this.api.get(path, {
+        query:
+          organizationId === undefined ? paging : { organization_id: organizationId, ...paging },
+      }),
+    );
+  }
+
+  private async fetchMemberships(organizationId: string): Promise<WosMembership[]> {
+    return paginate("/user_management/organization_memberships", (path, paging) =>
+      this.api.get(path, { query: { organization_id: organizationId, ...paging } }),
+    );
+  }
+
+  private async fetchInvitations(organizationId: string): Promise<WosInvitation[]> {
+    return paginate("/user_management/invitations", (path, paging) =>
+      this.api.get(path, { query: { organization_id: organizationId, ...paging } }),
+    );
+  }
+
+  private async fetchDirectoryUsers(directory: string): Promise<WosDirectoryUser[]> {
+    return paginate("/directory_users", (path, paging) =>
+      this.api.get(path, { query: { directory, ...paging } }),
+    );
+  }
+
+  private async fetchDirectoryGroups(directory: string): Promise<WosDirectoryGroup[]> {
+    return paginate("/directory_groups", (path, paging) =>
+      this.api.get(path, { query: { directory, ...paging } }),
+    );
+  }
+
+  private async fetchWebhookEndpoints(): Promise<WosWebhookEndpoint[]> {
+    return paginate("/webhook_endpoints", (path, query) => this.api.get(path, { query }));
+  }
+
+  private async fetchPermissions(): Promise<WosPermission[]> {
+    return paginate("/authorization/permissions", (path, query) => this.api.get(path, { query }));
+  }
+
+  private async fetchApiKeys(organizationId: string): Promise<WosApiKey[]> {
+    return paginate(`/organizations/${pathEncode(organizationId)}/api_keys`, (path, query) =>
+      this.api.get(path, { query }),
+    );
+  }
+
+  private async fetchSessions(userId: string): Promise<WosSession[]> {
+    return paginate(`/user_management/users/${pathEncode(userId)}/sessions`, (path, query) =>
+      this.api.get(path, { query }),
+    );
+  }
+
   private async listForEachDirectory<T>(load: (directoryId: string) => Promise<T[]>): Promise<T[]> {
-    const directories = await this.paginate<WosDirectory>("/directories");
+    const directories = await this.fetchDirectories();
     const ids = directories.map((d) => str(d.id)).filter(Boolean);
     const settled = await Promise.allSettled(ids.map((id) => load(id)));
     settled.forEach((result, index) => {
@@ -642,54 +445,42 @@ export class WorkosClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "organization": {
-          const org = await this.fetch<WosOrganization>(`/organizations/${encodeURIComponent(id)}`);
+          const org = await this.api.get(`/organizations/${pathEncode(id)}`);
           return this.mapOrganization(accountId, org);
         }
         case "user": {
-          const user = await this.fetch<WosUser>(
-            `/user_management/users/${encodeURIComponent(id)}`,
-          );
+          const user = await this.api.get(`/user_management/users/${pathEncode(id)}`);
           return this.mapUser(accountId, user);
         }
         case "organization-membership": {
-          const membership = await this.fetch<WosMembership>(
-            `/user_management/organization_memberships/${encodeURIComponent(id)}`,
+          const membership = await this.api.get(
+            `/user_management/organization_memberships/${pathEncode(id)}`,
           );
           const email = await this.fetchUserEmail(str(membership.user_id));
           return this.mapMembership(accountId, membership, email);
         }
         case "invitation": {
-          const invitation = await this.fetch<WosInvitation>(
-            `/user_management/invitations/${encodeURIComponent(id)}`,
-          );
+          const invitation = await this.api.get(`/user_management/invitations/${pathEncode(id)}`);
           return this.mapInvitation(accountId, invitation);
         }
         case "connection": {
-          const connection = await this.fetch<WosConnection>(
-            `/connections/${encodeURIComponent(id)}`,
-          );
+          const connection = await this.api.get(`/connections/${pathEncode(id)}`);
           return this.mapConnection(accountId, connection);
         }
         case "directory": {
-          const directory = await this.fetch<WosDirectory>(
-            `/directories/${encodeURIComponent(id)}`,
-          );
+          const directory = await this.api.get(`/directories/${pathEncode(id)}`);
           return this.mapDirectory(accountId, directory);
         }
         case "directory-user": {
-          const user = await this.fetch<WosDirectoryUser>(
-            `/directory_users/${encodeURIComponent(id)}`,
-          );
+          const user = await this.api.get(`/directory_users/${pathEncode(id)}`);
           return this.mapDirectoryUser(accountId, user);
         }
         case "directory-group": {
-          const group = await this.fetch<WosDirectoryGroup>(
-            `/directory_groups/${encodeURIComponent(id)}`,
-          );
+          const group = await this.api.get(`/directory_groups/${pathEncode(id)}`);
           return this.mapDirectoryGroup(accountId, group);
         }
         case "role": {
-          const role = await this.fetch<WosRole>(`/authorization/roles/${encodeURIComponent(id)}`);
+          const role = await this.api.get(`/authorization/roles/${pathEncode(id)}`);
           return this.mapRole(accountId, role);
         }
         case "webhook-endpoint": {
@@ -697,49 +488,42 @@ export class WorkosClient implements PluginClient {
           // GET, so re-list and pick the endpoint out. The list is cached per
           // client instance: resolveOutput funnels through here, and resolving
           // several signingSecret references must not repeat the full sweep.
-          this.webhookEndpointsCache ??=
-            await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
+          this.webhookEndpointsCache ??= await this.fetchWebhookEndpoints();
           const match = this.webhookEndpointsCache.find((endpoint) => endpoint.id === id);
           if (!match) throw new Error(`WorkOS plugin: webhook endpoint "${id}" not found`);
           return this.mapWebhookEndpoint(accountId, match);
         }
         case "organization-domain": {
-          const domain = await this.fetch<WosOrganizationDomain>(
-            `/organization_domains/${encodeURIComponent(id)}`,
-          );
+          const domain = await this.api.get(`/organization_domains/${pathEncode(id)}`);
           return this.mapOrganizationDomain(accountId, domain);
         }
         case "organization-role": {
           const [orgId, slug] = orgScoped(id);
-          const role = await this.fetch<WosRole>(
-            `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
+          const role = await this.api.get(
+            `/authorization/organizations/${pathEncode(orgId)}/roles/${pathEncode(slug)}`,
           );
           return this.mapOrganizationRole(accountId, orgId, role);
         }
         case "permission": {
-          const permission = await this.fetch<WosPermission>(
-            `/authorization/permissions/${encodeURIComponent(id)}`,
-          );
+          const permission = await this.api.get(`/authorization/permissions/${pathEncode(id)}`);
           return this.mapPermission(accountId, permission);
         }
         case "organization-api-key": {
           // No single-key GET: list the owning organization's keys.
           const [orgId, keyId] = orgScoped(id);
-          const keys = await this.paginate<WosApiKey>(
-            `/organizations/${encodeURIComponent(orgId)}/api_keys`,
-          );
+          const keys = await this.fetchApiKeys(orgId);
           const match = keys.find((key) => key.id === keyId);
           if (!match) throw new Error(`WorkOS plugin: API key "${keyId}" not found`);
           return this.mapApiKey(accountId, orgId, match);
         }
         case "feature-flag": {
-          const flag = await this.fetch<WosFeatureFlag>(`/feature-flags/${encodeURIComponent(id)}`);
+          const flag = await this.api.get(`/feature-flags/${pathEncode(id)}`);
           return this.mapFeatureFlag(accountId, flag);
         }
         case "group": {
           const [orgId, groupId] = orgScoped(id);
-          const group = await this.fetch<WosGroup>(
-            `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
+          const group = await this.api.get(
+            `/organizations/${pathEncode(orgId)}/groups/${pathEncode(groupId)}`,
           );
           return this.mapGroup(accountId, group);
         }
@@ -752,9 +536,7 @@ export class WorkosClient implements PluginClient {
   private async fetchUserEmail(userId: string): Promise<string | undefined> {
     if (!userId) return undefined;
     try {
-      const user = await this.fetch<WosUser>(
-        `/user_management/users/${encodeURIComponent(userId)}`,
-      );
+      const user = await this.api.get(`/user_management/users/${pathEncode(userId)}`);
       return str(user.email) || undefined;
     } catch {
       return undefined;
@@ -1252,7 +1034,7 @@ export class WorkosClient implements PluginClient {
     };
   }
 
-  private mapGroup(accountId: string, group: WosGroup): ResourceInstance {
+  private mapGroup(accountId: string, group: Partial<WosGroup>): ResourceInstance {
     const id = str(group.id);
     const orgId = str(group.organization_id);
     const externalId = `${orgId}/${id}`;
@@ -1301,27 +1083,26 @@ export class WorkosClient implements PluginClient {
         timeRange?.startMs ?? endMs - METRICS_DEFAULT_RANGE_MS,
         endMs - EVENTS_MAX_RANGE_MS,
       );
-      const query = new URLSearchParams({
+      const query = {
         organization_id: externalIdOf(resourceId),
         range_start: new Date(startMs).toISOString(),
         range_end: new Date(endMs).toISOString(),
-        order: "desc",
-        limit: String(PAGE_SIZE),
-      });
-      for (const series of ORGANIZATION_METRIC_SERIES) {
-        for (const event of series.events) query.append("events", event);
-      }
+        order: "desc" as const,
+        limit: PAGE_SIZE,
+        events: ORGANIZATION_METRIC_SERIES.flatMap((series) => [...series.events]),
+      };
 
       // Newest first, so a busy organization that outruns the page cap loses
       // its oldest buckets rather than its most recent ones.
       const events: WosEvent[] = [];
       let after = "";
       for (let page = 0; page < MAX_LIST_PAGES; page++) {
-        if (after) query.set("after", after);
-        const body = await this.fetch<WosList<WosEvent>>(`/events?${query.toString()}`);
+        const body = await this.api.get("/events", {
+          query: after ? { ...query, after } : query,
+        });
         const items = body.data ?? [];
         events.push(...items);
-        after = str(body.list_metadata?.after);
+        after = cursorOf(body);
         if (!after || items.length === 0) break;
       }
 
@@ -1371,18 +1152,12 @@ export class WorkosClient implements PluginClient {
 
       if (resourceTypeId === "organization") {
         const [memberships, invitations, connections, directories] = await Promise.all([
-          this.paginate<WosMembership>("/user_management/organization_memberships", {
-            organization_id: id,
-          }).catch(() => [] as WosMembership[]),
-          this.paginate<WosInvitation>("/user_management/invitations", {
-            organization_id: id,
-          }).catch(() => [] as WosInvitation[]),
-          this.paginate<WosConnection>("/connections", { organization_id: id }).catch(
-            () => [] as WosConnection[],
-          ),
-          this.paginate<WosDirectory>("/directories", { organization_id: id }).catch(
-            () => [] as WosDirectory[],
-          ),
+          this.fetchMemberships(id).catch(() => []),
+          this.fetchInvitations(id).catch(() => []),
+          paginate("/connections", (path, paging) =>
+            this.api.get(path, { query: { organization_id: id, ...paging } }),
+          ).catch(() => []),
+          this.fetchDirectories(id).catch(() => []),
         ]);
         const pending = invitations.filter((invitation) => invitation.state === "pending").length;
         return [
@@ -1396,9 +1171,9 @@ export class WorkosClient implements PluginClient {
       if (resourceTypeId === "directory") {
         // The directory carries its own sync counts; page through users and
         // groups only when an older response lacks them.
-        const directory = await this.fetch<WosDirectory>(
-          `/directories/${encodeURIComponent(id)}`,
-        ).catch(() => undefined);
+        const directory = await this.api
+          .get(`/directories/${pathEncode(id)}`)
+          .catch(() => undefined);
         if (directory?.metadata) {
           return [
             { label: "Active Users", value: String(directory.metadata.users?.active ?? 0) },
@@ -1407,12 +1182,8 @@ export class WorkosClient implements PluginClient {
           ];
         }
         const [users, groups] = await Promise.all([
-          this.paginate<WosDirectoryUser>("/directory_users", { directory: id }).catch(
-            () => [] as WosDirectoryUser[],
-          ),
-          this.paginate<WosDirectoryGroup>("/directory_groups", { directory: id }).catch(
-            () => [] as WosDirectoryGroup[],
-          ),
+          this.fetchDirectoryUsers(id).catch(() => []),
+          this.fetchDirectoryGroups(id).catch(() => []),
         ]);
         return [
           { label: "Synced Users", value: String(users.length) },
@@ -1674,7 +1445,7 @@ export class WorkosClient implements PluginClient {
    */
   private async organizationPickerField(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
-    const orgs = await this.fetchOrganizations().catch(() => [] as WosOrganization[]);
+    const orgs = await this.fetchOrganizations().catch(() => []);
     const options = orgs
       .filter((org) => org.id)
       .map((org) => ({ id: str(org.id), label: str(org.name) || str(org.id) }));
@@ -1696,12 +1467,12 @@ export class WorkosClient implements PluginClient {
    * picks a name instead of typing a slug.
    */
   private async rolePickerField(parentResourceId?: string): Promise<CreateFieldConfig> {
-    const path = parentResourceId
-      ? `/authorization/organizations/${encodeURIComponent(this.organizationIdOfParent(parentResourceId))}/roles`
-      : "/authorization/roles";
-    const roles = await this.fetch<WosList<WosRole>>(path)
-      .then((body) => body.data ?? [])
-      .catch(() => [] as WosRole[]);
+    const request = parentResourceId
+      ? this.api.get(
+          `/authorization/organizations/${pathEncode(this.organizationIdOfParent(parentResourceId))}/roles`,
+        )
+      : this.api.get("/authorization/roles");
+    const roles = await request.then((body) => body.data ?? []).catch((): WosRole[] => []);
     const options = roles
       .filter((role) => role.slug)
       .map((role) => ({ id: str(role.slug), label: str(role.name) || str(role.slug) }));
@@ -1726,9 +1497,7 @@ export class WorkosClient implements PluginClient {
 
   /** Every permission in the environment, as policy-picker options. */
   private async permissionOptions(): Promise<PolicyOption[]> {
-    const permissions = await this.paginate<WosPermission>("/authorization/permissions").catch(
-      () => [] as WosPermission[],
-    );
+    const permissions = await this.fetchPermissions().catch(() => []);
     return permissions
       .filter((permission) => permission.slug)
       .map((permission) => ({
@@ -1775,27 +1544,25 @@ export class WorkosClient implements PluginClient {
             .split(",")
             .map((domain) => domain.trim())
             .filter(Boolean);
-          const org = await this.fetch<WosOrganization>("/organizations", {
-            method: "POST",
-            body: JSON.stringify({
+          const org = await this.api.post("/organizations", {
+            body: {
               name: fields["name"],
               ...(domains.length > 0
                 ? { domain_data: domains.map((domain) => ({ domain, state: "pending" })) }
                 : {}),
-            }),
+            },
           });
           return this.mapOrganization(accountId, org);
         }
         case "user": {
-          const user = await this.fetch<WosUser>("/user_management/users", {
-            method: "POST",
-            body: JSON.stringify({
+          const user = await this.api.post("/user_management/users", {
+            body: {
               email: fields["email"],
               ...(fields["firstName"] ? { first_name: fields["firstName"] } : {}),
               ...(fields["lastName"] ? { last_name: fields["lastName"] } : {}),
               ...(fields["password"] ? { password: fields["password"] } : {}),
               ...(fields["emailVerified"] === "true" ? { email_verified: true } : {}),
-            }),
+            },
           });
           return this.mapUser(accountId, user);
         }
@@ -1803,43 +1570,37 @@ export class WorkosClient implements PluginClient {
           const organizationId = this.resolveOrganizationId(fields, parentResourceId);
           const userId = fields["userId"];
           if (!userId) throw new Error("WorkOS plugin: a user is required");
-          const membership = await this.fetch<WosMembership>(
-            "/user_management/organization_memberships",
-            {
-              method: "POST",
-              body: JSON.stringify({
-                user_id: userId,
-                organization_id: organizationId,
-                ...(fields["roleSlug"] ? { role_slug: fields["roleSlug"] } : {}),
-              }),
+          const membership = await this.api.post("/user_management/organization_memberships", {
+            body: {
+              user_id: userId,
+              organization_id: organizationId,
+              ...(fields["roleSlug"] ? { role_slug: fields["roleSlug"] } : {}),
             },
-          );
+          });
           const email = await this.fetchUserEmail(userId);
           return this.mapMembership(accountId, membership, email);
         }
         case "invitation": {
           const organizationId = this.resolveOrganizationId(fields, parentResourceId);
-          const invitation = await this.fetch<WosInvitation>("/user_management/invitations", {
-            method: "POST",
-            body: JSON.stringify({
+          const invitation = await this.api.post("/user_management/invitations", {
+            body: {
               email: fields["email"],
               organization_id: organizationId,
               ...(fields["roleSlug"] ? { role_slug: fields["roleSlug"] } : {}),
               ...(fields["expiresInDays"]
                 ? { expires_in_days: Number(fields["expiresInDays"]) }
                 : {}),
-            }),
+            },
           });
           return this.mapInvitation(accountId, invitation);
         }
         case "role": {
-          const role = await this.fetch<WosRole>("/authorization/roles", {
-            method: "POST",
-            body: JSON.stringify({
+          const role = await this.api.post("/authorization/roles", {
+            body: {
               slug: fields["slug"],
               name: fields["name"],
               ...(fields["description"] ? { description: fields["description"] } : {}),
-            }),
+            },
           });
           return this.mapRole(accountId, role);
         }
@@ -1848,9 +1609,8 @@ export class WorkosClient implements PluginClient {
           if (events.length === 0) {
             throw new Error("WorkOS plugin: at least one event type is required");
           }
-          const endpoint = await this.fetch<WosWebhookEndpoint>("/webhook_endpoints", {
-            method: "POST",
-            body: JSON.stringify({ endpoint_url: fields["endpointUrl"], events }),
+          const endpoint = await this.api.post("/webhook_endpoints", {
+            body: { endpoint_url: fields["endpointUrl"], events },
           });
           return this.mapWebhookEndpoint(accountId, endpoint);
         }
@@ -1858,9 +1618,8 @@ export class WorkosClient implements PluginClient {
           const organizationId = this.resolveOrganizationId(fields, parentResourceId);
           const domain = (fields["domain"] ?? "").trim().toLowerCase();
           if (!domain) throw new Error("WorkOS plugin: a domain is required");
-          const created = await this.fetch<WosOrganizationDomain>("/organization_domains", {
-            method: "POST",
-            body: JSON.stringify({ domain, organization_id: organizationId }),
+          const created = await this.api.post("/organization_domains", {
+            body: { domain, organization_id: organizationId },
           });
           return this.mapOrganizationDomain(accountId, created);
         }
@@ -1872,20 +1631,19 @@ export class WorkosClient implements PluginClient {
               "WorkOS plugin: organization role slugs start with org- and use lowercase letters, numbers, hyphens and underscores",
             );
           }
-          const base = `/authorization/organizations/${encodeURIComponent(organizationId)}/roles`;
-          let role = await this.fetch<WosRole>(base, {
-            method: "POST",
-            body: JSON.stringify({
+          const encodedOrg = pathEncode(organizationId);
+          let role = await this.api.post(`/authorization/organizations/${encodedOrg}/roles`, {
+            body: {
               name: fields["name"],
               ...(slug ? { slug } : {}),
               ...(fields["description"] ? { description: fields["description"] } : {}),
-            }),
+            },
           });
           const permissions = pickedList(fields["permissions"]);
           if (permissions.length > 0) {
-            role = await this.fetch<WosRole>(
-              `${base}/${encodeURIComponent(str(role.slug))}/permissions`,
-              { method: "PUT", body: JSON.stringify({ permissions }) },
+            role = await this.api.put(
+              `/authorization/organizations/${encodedOrg}/roles/${pathEncode(str(role.slug))}/permissions`,
+              { body: { permissions } },
             );
           }
           return this.mapOrganizationRole(accountId, organizationId, role);
@@ -1897,13 +1655,12 @@ export class WorkosClient implements PluginClient {
               "WorkOS plugin: permission slugs use lowercase letters, numbers, hyphens, underscores, colons, periods and asterisks",
             );
           }
-          const permission = await this.fetch<WosPermission>("/authorization/permissions", {
-            method: "POST",
-            body: JSON.stringify({
+          const permission = await this.api.post("/authorization/permissions", {
+            body: {
               slug,
               name: fields["name"],
               ...(fields["description"] ? { description: fields["description"] } : {}),
-            }),
+            },
           });
           return this.mapPermission(accountId, permission);
         }
@@ -1914,17 +1671,13 @@ export class WorkosClient implements PluginClient {
           if (expiresAt && !(Date.parse(expiresAt) > Date.now())) {
             throw new Error("WorkOS plugin: the expiry must be in the future");
           }
-          const key = await this.fetch<WosApiKey>(
-            `/organizations/${encodeURIComponent(organizationId)}/api_keys`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                name: fields["name"],
-                ...(permissions.length > 0 ? { permissions } : {}),
-                ...(expiresAt ? { expires_at: new Date(expiresAt).toISOString() } : {}),
-              }),
+          const key = await this.api.post(`/organizations/${pathEncode(organizationId)}/api_keys`, {
+            body: {
+              name: fields["name"],
+              ...(permissions.length > 0 ? { permissions } : {}),
+              ...(expiresAt ? { expires_at: new Date(expiresAt).toISOString() } : {}),
             },
-          );
+          });
           const created = this.mapApiKey(accountId, organizationId, key);
           // The full value is returned on this response only.
           if (key.value)
@@ -1933,14 +1686,13 @@ export class WorkosClient implements PluginClient {
         }
         case "group": {
           const organizationId = this.resolveOrganizationId(fields, parentResourceId);
-          const group = await this.fetch<WosGroup>(
-            `/organizations/${encodeURIComponent(organizationId)}/groups`,
+          const group: Partial<WosGroup> = await this.api.post(
+            `/organizations/${pathEncode(organizationId)}/groups`,
             {
-              method: "POST",
-              body: JSON.stringify({
+              body: {
                 name: fields["name"],
                 ...(fields["description"] ? { description: fields["description"] } : {}),
-              }),
+              },
             },
           );
           return this.mapGroup(accountId, { organization_id: organizationId, ...group });
@@ -1965,22 +1717,18 @@ export class WorkosClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "organization": {
-          const org = await this.fetch<WosOrganization>(
-            `/organizations/${encodeURIComponent(id)}`,
-            {
-              method: "PUT",
-              body: JSON.stringify({
-                ...(fields["name"] ? { name: fields["name"] } : {}),
-                ...(fields["externalId"] !== undefined
-                  ? { external_id: fields["externalId"].trim() || null }
-                  : {}),
-              }),
+          const org = await this.api.put(`/organizations/${pathEncode(id)}`, {
+            body: {
+              ...(fields["name"] ? { name: fields["name"] } : {}),
+              ...(fields["externalId"] !== undefined
+                ? { external_id: fields["externalId"].trim() || null }
+                : {}),
             },
-          );
+          });
           return this.mapOrganization(accountId, org);
         }
         case "user": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["UserlandUsersController_update[0]"]> = {};
           if (fields["email"]) body["email"] = fields["email"];
           if (fields["firstName"] !== undefined) body["first_name"] = fields["firstName"];
           if (fields["lastName"] !== undefined) body["last_name"] = fields["lastName"];
@@ -1991,37 +1739,30 @@ export class WorkosClient implements PluginClient {
             body["external_id"] = fields["externalId"].trim() || null;
           }
           if (fields["locale"] !== undefined) body["locale"] = fields["locale"].trim() || null;
-          const user = await this.fetch<WosUser>(
-            `/user_management/users/${encodeURIComponent(id)}`,
-            {
-              method: "PUT",
-              body: JSON.stringify(body),
-            },
-          );
+          const user = await this.api.put(`/user_management/users/${pathEncode(id)}`, { body });
           return this.mapUser(accountId, user);
         }
         case "organization-membership": {
-          const membership = await this.fetch<WosMembership>(
-            `/user_management/organization_memberships/${encodeURIComponent(id)}`,
-            { method: "PUT", body: JSON.stringify({ role_slug: fields["role"] }) },
+          const membership = await this.api.put(
+            `/user_management/organization_memberships/${pathEncode(id)}`,
+            { body: { role_slug: fields["role"] } },
           );
           const email = await this.fetchUserEmail(str(membership.user_id));
           return this.mapMembership(accountId, membership, email);
         }
         case "role": {
-          const role = await this.fetch<WosRole>(`/authorization/roles/${encodeURIComponent(id)}`, {
-            method: "PATCH",
-            body: JSON.stringify({
+          const role = await this.api.patch(`/authorization/roles/${pathEncode(id)}`, {
+            body: {
               ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
               ...(fields["description"] !== undefined
                 ? { description: fields["description"] }
                 : {}),
-            }),
+            },
           });
           return this.mapRole(accountId, role);
         }
         case "webhook-endpoint": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["WebhookEndpointsController_update"]> = {};
           if (fields["endpointUrl"] !== undefined) body["endpoint_url"] = fields["endpointUrl"];
           if (fields["status"] !== undefined) body["status"] = fields["status"];
           if (fields["events"] !== undefined) {
@@ -2035,76 +1776,62 @@ export class WorkosClient implements PluginClient {
             }
             body["events"] = events;
           }
-          const endpoint = await this.fetch<WosWebhookEndpoint>(
-            `/webhook_endpoints/${encodeURIComponent(id)}`,
-            { method: "PATCH", body: JSON.stringify(body) },
-          );
+          const endpoint = await this.api.patch(`/webhook_endpoints/${pathEncode(id)}`, { body });
           return this.mapWebhookEndpoint(accountId, endpoint);
         }
         case "connection": {
-          const connection = await this.fetch<WosConnection>(
-            `/connections/${encodeURIComponent(id)}`,
-            {
-              method: "PATCH",
-              body: JSON.stringify({ ...(fields["name"] ? { name: fields["name"] } : {}) }),
-            },
-          );
+          const connection = await this.api.patch(`/connections/${pathEncode(id)}`, {
+            body: { ...(fields["name"] ? { name: fields["name"] } : {}) },
+          });
           return this.mapConnection(accountId, connection);
         }
         case "organization-role": {
           const [orgId, slug] = orgScoped(id);
-          const role = await this.fetch<WosRole>(
-            `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
+          const role = await this.api.patch(
+            `/authorization/organizations/${pathEncode(orgId)}/roles/${pathEncode(slug)}`,
             {
-              method: "PATCH",
-              body: JSON.stringify({
+              body: {
                 ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
                 ...(fields["description"] !== undefined
                   ? { description: fields["description"] || null }
                   : {}),
-              }),
+              },
             },
           );
           return this.mapOrganizationRole(accountId, orgId, role);
         }
         case "permission": {
-          const permission = await this.fetch<WosPermission>(
-            `/authorization/permissions/${encodeURIComponent(id)}`,
-            {
-              method: "PATCH",
-              body: JSON.stringify({
-                ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
-                ...(fields["description"] !== undefined
-                  ? { description: fields["description"] || null }
-                  : {}),
-              }),
+          const permission = await this.api.patch(`/authorization/permissions/${pathEncode(id)}`, {
+            body: {
+              ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
+              ...(fields["description"] !== undefined
+                ? { description: fields["description"] || null }
+                : {}),
             },
-          );
+          });
           return this.mapPermission(accountId, permission);
         }
         case "feature-flag": {
           if (fields["enabled"] !== undefined) {
-            const action = fields["enabled"] === "true" ? "enable" : "disable";
-            const flag = await this.fetch<WosFeatureFlag>(
-              `/feature-flags/${encodeURIComponent(id)}/${action}`,
-              { method: "PUT" },
-            );
+            const flag =
+              fields["enabled"] === "true"
+                ? await this.api.put(`/feature-flags/${pathEncode(id)}/enable`)
+                : await this.api.put(`/feature-flags/${pathEncode(id)}/disable`);
             return this.mapFeatureFlag(accountId, flag);
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "group": {
           const [orgId, groupId] = orgScoped(id);
-          const group = await this.fetch<WosGroup>(
-            `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
+          const group = await this.api.patch(
+            `/organizations/${pathEncode(orgId)}/groups/${pathEncode(groupId)}`,
             {
-              method: "PATCH",
-              body: JSON.stringify({
+              body: {
                 ...(fields["name"] !== undefined ? { name: fields["name"] } : {}),
                 ...(fields["description"] !== undefined
                   ? { description: fields["description"] || null }
                   : {}),
-              }),
+              },
             },
           );
           return this.mapGroup(accountId, group);
@@ -2121,47 +1848,54 @@ export class WorkosClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case "organization":
-          return this.requestVoid(`/organizations/${id}`, "DELETE");
+          await this.bodiless.delete(`/organizations/${id}`);
+          return;
         case "user":
-          return this.requestVoid(`/user_management/users/${id}`, "DELETE");
+          await this.bodiless.delete(`/user_management/users/${id}`);
+          return;
         case "organization-membership":
-          return this.requestVoid(`/user_management/organization_memberships/${id}`, "DELETE");
+          await this.bodiless.delete(`/user_management/organization_memberships/${id}`);
+          return;
         case "invitation":
           // Invitations have no DELETE: revoking is the removal operation.
-          await this.fetch<WosInvitation>(`/user_management/invitations/${id}/revoke`, {
-            method: "POST",
-          });
+          await this.api.post(`/user_management/invitations/${id}/revoke`);
           return;
         case "connection":
-          return this.requestVoid(`/connections/${id}`, "DELETE");
+          await this.bodiless.delete(`/connections/${id}`);
+          return;
         case "directory":
-          return this.requestVoid(`/directories/${id}`, "DELETE");
+          await this.bodiless.delete(`/directories/${id}`);
+          return;
         case "webhook-endpoint":
-          return this.requestVoid(`/webhook_endpoints/${id}`, "DELETE");
+          await this.bodiless.delete(`/webhook_endpoints/${id}`);
+          return;
         case "organization-domain":
-          return this.requestVoid(`/organization_domains/${id}`, "DELETE");
+          await this.bodiless.delete(`/organization_domains/${id}`);
+          return;
         case "permission":
-          return this.requestVoid(`/authorization/permissions/${id}`, "DELETE");
+          await this.bodiless.delete(`/authorization/permissions/${id}`);
+          return;
         case "organization-role": {
           const [orgId, slug] = orgScoped(externalIdOf(resourceId));
-          return this.requestVoid(
-            `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}`,
-            "DELETE",
+          await this.bodiless.delete(
+            `/authorization/organizations/${pathEncode(orgId)}/roles/${pathEncode(slug)}`,
           );
+          return;
         }
         case "organization-api-key": {
           const [, keyId] = orgScoped(externalIdOf(resourceId));
-          return this.requestVoid(`/api_keys/${encodeURIComponent(keyId)}`, "DELETE");
+          await this.bodiless.delete(`/api_keys/${pathEncode(keyId)}`);
+          return;
         }
         case "group": {
           const [orgId, groupId] = orgScoped(externalIdOf(resourceId));
-          return this.requestVoid(
-            `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}`,
-            "DELETE",
+          await this.bodiless.delete(
+            `/organizations/${pathEncode(orgId)}/groups/${pathEncode(groupId)}`,
           );
+          return;
         }
         default:
           throw new Error(`WorkOS plugin: cannot delete resource type "${typeId}"`);
@@ -2176,82 +1910,69 @@ export class WorkosClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
 
       if (typeId === "organization-membership") {
         if (actionId === "deactivate") {
-          await this.fetch<WosMembership>(
-            `/user_management/organization_memberships/${id}/deactivate`,
-            { method: "PUT" },
-          );
+          await this.api.put(`/user_management/organization_memberships/${id}/deactivate`);
           return;
         }
         if (actionId === "reactivate") {
-          await this.fetch<WosMembership>(
-            `/user_management/organization_memberships/${id}/reactivate`,
-            { method: "PUT" },
-          );
+          await this.api.put(`/user_management/organization_memberships/${id}/reactivate`);
           return;
         }
       }
 
       if (typeId === "invitation") {
         if (actionId === "resend") {
-          await this.fetch<WosInvitation>(`/user_management/invitations/${id}/resend`, {
-            method: "POST",
-          });
+          await this.api.post(`/user_management/invitations/${id}/resend`);
           return;
         }
         if (actionId === "revoke") {
-          await this.fetch<WosInvitation>(`/user_management/invitations/${id}/revoke`, {
-            method: "POST",
-          });
+          await this.api.post(`/user_management/invitations/${id}/revoke`);
           return;
         }
       }
 
       if (typeId === "directory" && actionId === "sync") {
         // Queues an asynchronous sync; 202 means accepted, not finished.
-        await this.fetch<{ status?: string }>(`/directories/${id}/sync`, { method: "POST" });
+        await this.api.post(`/directories/${id}/sync`);
         return;
       }
 
       if (typeId === "organization-domain" && actionId === "verify") {
-        await this.fetch<WosOrganizationDomain>(`/organization_domains/${id}/verify`, {
-          method: "POST",
-        });
+        await this.api.post(`/organization_domains/${id}/verify`);
         return;
       }
 
       if (typeId === "organization-api-key" && actionId === "expire") {
         const [, keyId] = orgScoped(externalIdOf(resourceId));
         // No `expires_at` expires the key immediately.
-        await this.fetch<WosApiKey>(`/api_keys/${encodeURIComponent(keyId)}/expire`, {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
+        await this.api.post(`/api_keys/${pathEncode(keyId)}/expire`, { body: {} });
         return;
       }
 
-      if (typeId === "feature-flag" && (actionId === "enable" || actionId === "disable")) {
-        await this.fetch<WosFeatureFlag>(`/feature-flags/${id}/${actionId}`, { method: "PUT" });
+      if (typeId === "feature-flag" && actionId === "enable") {
+        await this.api.put(`/feature-flags/${id}/enable`);
+        return;
+      }
+
+      if (typeId === "feature-flag" && actionId === "disable") {
+        await this.api.put(`/feature-flags/${id}/disable`);
         return;
       }
 
       if (typeId === "user") {
         if (actionId === "send-verification-email") {
-          await this.fetch<unknown>(`/user_management/users/${id}/email_verification/send`, {
-            method: "POST",
-          });
+          await this.api.post(`/user_management/users/${id}/email_verification/send`);
           return;
         }
         if (actionId === "revoke-sessions") {
-          const sessions = await this.paginate<WosSession>(`/user_management/users/${id}/sessions`);
+          const sessions = await this.fetchSessions(externalIdOf(resourceId));
           const active = sessions.filter((session) => session.status === "active" && session.id);
           for (const session of active) {
-            await this.fetch<unknown>("/user_management/sessions/revoke", {
-              method: "POST",
-              body: JSON.stringify({ session_id: session.id }),
+            await this.api.post("/user_management/sessions/revoke", {
+              body: { session_id: session.id },
             });
           }
           return;
@@ -2274,19 +1995,21 @@ export class WorkosClient implements PluginClient {
     args: (string | number)[],
   ): PluginEffect<unknown> {
     return attempt(async () => {
-      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      const values: Record<string, string> = JSON.parse(String(args[0] ?? "{}"));
       const id = externalIdOf(resourceId);
 
       if (command === "set-permissions" && (typeId === "role" || typeId === "organization-role")) {
         const permissions = pickedList(values["permissions"]);
-        const path =
-          typeId === "role"
-            ? `/authorization/roles/${encodeURIComponent(id)}/permissions`
-            : (() => {
-                const [orgId, slug] = orgScoped(id);
-                return `/authorization/organizations/${encodeURIComponent(orgId)}/roles/${encodeURIComponent(slug)}/permissions`;
-              })();
-        return this.fetch<WosRole>(path, { method: "PUT", body: JSON.stringify({ permissions }) });
+        if (typeId === "role") {
+          return this.api.put(`/authorization/roles/${pathEncode(id)}/permissions`, {
+            body: { permissions },
+          });
+        }
+        const [orgId, slug] = orgScoped(id);
+        return this.api.put(
+          `/authorization/organizations/${pathEncode(orgId)}/roles/${pathEncode(slug)}/permissions`,
+          { body: { permissions } },
+        );
       }
 
       if (typeId === "feature-flag" && (command === "add-target" || command === "remove-target")) {
@@ -2295,11 +2018,11 @@ export class WorkosClient implements PluginClient {
         if (!/^(org|user)_[A-Za-z0-9]+$/.test(target)) {
           throw new Error("WorkOS plugin: choose an organization or user to target");
         }
-        const path = `/feature-flags/${encodeURIComponent(id)}/targets/${encodeURIComponent(target)}`;
+        const path = `/feature-flags/${pathEncode(id)}/targets/${pathEncode(target)}` as const;
         if (command === "add-target") {
-          await this.requestVoid(path, "POST");
+          await this.bodiless.post(path);
         } else {
-          await this.requestVoid(path, "DELETE");
+          await this.bodiless.delete(path);
         }
         return { ok: true };
       }
@@ -2308,14 +2031,12 @@ export class WorkosClient implements PluginClient {
         const [orgId, groupId] = orgScoped(id);
         const membershipId = values["membershipId"] ?? "";
         if (!membershipId) throw new Error("WorkOS plugin: choose a member");
-        const base = `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}/organization-memberships`;
+        const base =
+          `/organizations/${pathEncode(orgId)}/groups/${pathEncode(groupId)}/organization-memberships` as const;
         if (command === "add-member") {
-          return this.fetch<WosGroup>(base, {
-            method: "POST",
-            body: JSON.stringify({ organization_membership_id: membershipId }),
-          });
+          return this.api.post(base, { body: { organization_membership_id: membershipId } });
         }
-        await this.requestVoid(`${base}/${encodeURIComponent(membershipId)}`, "DELETE");
+        await this.bodiless.delete(`${base}/${pathEncode(membershipId)}`);
         return { ok: true };
       }
 
@@ -2331,27 +2052,13 @@ export class WorkosClient implements PluginClient {
     formatId: string,
   ): PluginEffect<CredentialExport> {
     return attempt(async () => {
-      const intents = [
-        "sso",
-        "dsync",
-        "domain_verification",
-        "certificate_renewal",
-        "audit_logs",
-        "log_streams",
-        "bring_your_own_key",
-      ];
       const intent = formatId.replace(/^portal-/, "");
-      if (
-        typeId !== "organization" ||
-        !formatId.startsWith("portal-") ||
-        !intents.includes(intent)
-      ) {
+      if (typeId !== "organization" || !formatId.startsWith("portal-") || !isPortalIntent(intent)) {
         throw new Error(`WorkOS plugin: unknown credential format "${formatId}"`);
       }
       const organization = externalIdOf(resourceId);
-      const body = await this.fetch<{ link?: string }>("/portal/generate_link", {
-        method: "POST",
-        body: JSON.stringify({ organization, intent }),
+      const body = await this.api.post("/portal/generate_link", {
+        body: { organization, intent },
       });
       const link = str(body.link);
       if (!link) throw new Error("WorkOS plugin: WorkOS returned no Admin Portal link");
@@ -2384,18 +2091,22 @@ export class WorkosClient implements PluginClient {
       if (typeId !== "organization") throw new Error("WorkOS plugin: only organizations have logs");
       const organizationId = externalIdOf(resourceId);
       const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 100);
-      const query = new URLSearchParams({
-        organization_id: organizationId,
-        limit: String(limit),
-        order: "desc",
+      const body = await this.api.get("/events", {
+        query: {
+          organization_id: organizationId,
+          limit,
+          order: "desc",
+          // `events` is required and repeats per value.
+          events: [...ORGANIZATION_LOG_EVENTS],
+        },
       });
-      // `events` is required and repeats per value.
-      for (const event of ORGANIZATION_LOG_EVENTS) query.append("events", event);
-      const body = await this.fetch<WosList<WosEvent>>(`/events?${query.toString()}`);
       const lines = (body.data ?? []).reverse().map((event) => {
         const data = event.data ?? {};
         const subject =
-          str(data["email"]) || str(data["name"]) || str(data["domain"]) || str(data["id"]);
+          eventText(data["email"]) ||
+          eventText(data["name"]) ||
+          eventText(data["domain"]) ||
+          eventText(data["id"]);
         const actor = event.context?.actor;
         const by = actor ? ` by ${str(actor.name) || str(actor.id)} (${str(actor.source)})` : "";
         return `${str(event.created_at)} ${str(event.event)} ${subject}${by}`.trim();
@@ -2423,8 +2134,8 @@ export class WorkosClient implements PluginClient {
           break;
         case "feature-flag": {
           const [orgs, users] = await Promise.all([
-            this.fetchOrganizations().catch(() => [] as WosOrganization[]),
-            this.paginate<WosUser>("/user_management/users").catch(() => [] as WosUser[]),
+            this.fetchOrganizations().catch(() => []),
+            this.fetchUsers().catch(() => []),
           ]);
           extra["__targets__"] = JSON.stringify([
             ...orgs.map((org) => ({
@@ -2441,15 +2152,14 @@ export class WorkosClient implements PluginClient {
         case "group": {
           const [orgId, groupId] = orgScoped(id);
           const [members, memberships, emails] = await Promise.all([
-            this.paginate<WosMembership>(
-              `/organizations/${encodeURIComponent(orgId)}/groups/${encodeURIComponent(groupId)}/organization-memberships`,
-            ).catch(() => [] as WosMembership[]),
-            this.paginate<WosMembership>("/user_management/organization_memberships", {
-              organization_id: orgId,
-            }).catch(() => [] as WosMembership[]),
+            paginate(
+              `/organizations/${pathEncode(orgId)}/groups/${pathEncode(groupId)}/organization-memberships`,
+              (path, query) => this.api.get(path, { query }),
+            ).catch(() => []),
+            this.fetchMemberships(orgId).catch(() => []),
             this.fetchUserEmailMap(),
           ]);
-          const label = (m: WosMembership) =>
+          const label = (m: WosMemberRow) =>
             emails.get(str(m.user_id)) || str(m.user_id) || str(m.id);
           const memberIds = new Set(members.map((m) => str(m.id)));
           extra["__members__"] = JSON.stringify(
@@ -2463,9 +2173,7 @@ export class WorkosClient implements PluginClient {
           break;
         }
         case "user": {
-          const sessions = await this.paginate<WosSession>(
-            `/user_management/users/${encodeURIComponent(id)}/sessions`,
-          ).catch(() => [] as WosSession[]);
+          const sessions = await this.fetchSessions(id).catch(() => []);
           extra["__sessions__"] = JSON.stringify(sessions.slice(0, 50));
           break;
         }
@@ -2755,7 +2463,8 @@ export class WorkosClient implements PluginClient {
     const raw = resource.resolvedOutputs[key];
     if (!raw) return fallback;
     try {
-      return JSON.parse(raw) as T;
+      const parsed: T = JSON.parse(raw);
+      return parsed;
     } catch {
       return fallback;
     }

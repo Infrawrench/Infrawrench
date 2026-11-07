@@ -4,11 +4,17 @@
  * images, backups, snapshots) and per-product summaries into
  * `resource.resolvedOutputs`, so the renderers themselves stay synchronous.
  */
-import type { ImageOption, ResourceInstance, SizeOption } from "@infrawrench/plugin-base";
+import {
+  unencodedSegment,
+  type ImageOption,
+  type ResourceInstance,
+  type SizeOption,
+} from "@infrawrench/plugin-base";
+import type { DoApi } from "./api.js";
 
 /** The slice of `DigitalOceanClient` the enrichers need. */
 export interface DoEnrichContext {
-  fetch<T>(path: string, options?: RequestInit): Promise<T>;
+  api: DoApi;
   /**
    * Catalog caches keyed by the destination prompt-field consumer. Sizes and
    * distribution images almost never change, so a 30-minute TTL is generous.
@@ -90,59 +96,21 @@ export async function enrichDoDetail(
   // Backup picker can show "Daily backup • Mar 21 (5 GB)" instead of
   // raw numeric ids. Skipped entirely when the droplet has neither.
   const [sizesRes, distrosRes, privateImagesRes, backupsRes, snapshotsRes] = await Promise.all([
-    needSizes
-      ? ctx.fetch<{
-          sizes: Array<{
-            slug: string;
-            memory: number;
-            vcpus: number;
-            disk: number;
-            price_monthly: number;
-            available: boolean;
-            description: string;
-          }>;
-        }>("/sizes?per_page=200")
-      : Promise.resolve(null),
+    needSizes ? ctx.api.get("/sizes", { query: { per_page: 200 } }) : Promise.resolve(null),
     needDistros
-      ? ctx.fetch<{
-          images: Array<{
-            id: number;
-            slug: string | null;
-            name: string;
-            distribution: string;
-            status: string;
-          }>;
-        }>("/images?type=distribution&per_page=200")
+      ? ctx.api.get("/images", { query: { type: "distribution", per_page: 200 } })
       : Promise.resolve(null),
-    ctx
-      .fetch<{
-        images: Array<{ id: number; name: string; status: string; type: string }>;
-      }>("/images?private=true&per_page=200")
+    ctx.api
+      .get("/images", { query: { private: true, per_page: 200 } })
       .catch(() => ({ images: [] })),
     hasBackups && externalId
-      ? ctx
-          .fetch<{
-            backups: Array<{
-              id: number;
-              name: string;
-              created_at: string;
-              size_gigabytes: number;
-              distribution: string;
-            }>;
-          }>(`/droplets/${externalId}/backups`)
+      ? ctx.api
+          .get(`/droplets/${unencodedSegment(externalId)}/backups`)
           .catch(() => ({ backups: [] }))
       : Promise.resolve(null),
     hasSnapshots && externalId
-      ? ctx
-          .fetch<{
-            snapshots: Array<{
-              id: number;
-              name: string;
-              created_at: string;
-              size_gigabytes: number;
-              distribution: string;
-            }>;
-          }>(`/droplets/${externalId}/snapshots`)
+      ? ctx.api
+          .get(`/droplets/${unencodedSegment(externalId)}/snapshots`)
           .catch(() => ({ snapshots: [] }))
       : Promise.resolve(null),
   ]);
@@ -244,16 +212,14 @@ async function enrichReservedIp(
   resource: ResourceInstance,
 ): Promise<ResourceInstance> {
   const region = String(resource.fields["region"] ?? "");
-  const data = await ctx
-    .fetch<{ droplets?: Array<Record<string, unknown>> | null }>("/droplets?per_page=200")
+  const data = await ctx.api
+    .get("/droplets", { query: { per_page: 200 } })
     .catch(() => ({ droplets: [] }));
   const droplets = (data.droplets ?? [])
-    .filter(
-      (d) => !region || String((d["region"] as Record<string, unknown>)?.["slug"] ?? "") === region,
-    )
+    .filter((d) => !region || String(d.region?.slug ?? "") === region)
     .map((d) => ({
-      id: String(d["id"] ?? ""),
-      label: String(d["name"] ?? d["id"] ?? ""),
+      id: String(d.id ?? ""),
+      label: String(d.name ?? d.id ?? ""),
     }))
     .filter((d) => !!d.id)
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -279,66 +245,57 @@ async function enrichGenAiAgent(
   const agentUuid = resource.externalId ?? resource.id.split(":").pop() ?? "";
   if (!agentUuid) return resource;
   const [fullRes, allAgentsRes, allKbsRes, namespacesRes] = await Promise.all([
-    ctx.fetch<{ agent: Record<string, unknown> }>(`/gen-ai/agents/${agentUuid}`).catch(() => null),
-    ctx
-      .fetch<{ agents?: Array<{ uuid?: string; name?: string }> }>("/gen-ai/agents?per_page=200")
-      .catch(() => ({ agents: [] })),
-    ctx
-      .fetch<{
-        knowledge_bases?: Array<{ uuid?: string; name?: string }>;
-      }>("/gen-ai/knowledge_bases?per_page=200")
+    ctx.api.get(`/gen-ai/agents/${unencodedSegment(agentUuid)}`).catch(() => null),
+    ctx.api.get("/gen-ai/agents", { query: { per_page: 200 } }).catch(() => ({ agents: [] })),
+    ctx.api
+      .get("/gen-ai/knowledge_bases", { query: { per_page: 200 } })
       .catch(() => ({ knowledge_bases: [] })),
     // Functions namespaces power the "Add function route" namespace picker.
     // Listing the individual functions within a namespace isn't exposed by
     // the /v2 API (that needs the per-namespace OpenWhisk key), so we only
     // pick the namespace; the function name stays a free-text field.
-    ctx
-      .fetch<{
-        namespaces?: Array<{ namespace?: string; label?: string; region?: string }>;
-      }>("/functions/namespaces")
-      .catch(() => ({ namespaces: [] })),
+    ctx.api.get("/functions/namespaces").catch(() => ({ namespaces: [] })),
   ]);
   const a = fullRes?.agent ?? {};
-  const kbs = Array.isArray(a["knowledge_bases"])
-    ? (a["knowledge_bases"] as Array<Record<string, unknown>>)
-    : [];
-  const functions = Array.isArray(a["functions"])
-    ? (a["functions"] as Array<Record<string, unknown>>)
-    : [];
-  const childAgents = Array.isArray(a["child_agents"])
-    ? (a["child_agents"] as Array<Record<string, unknown>>)
-    : [];
+  const kbs = Array.isArray(a.knowledge_bases) ? a.knowledge_bases : [];
+  // The document names this `name`, not `function_name` (#414).
+  const functions: Array<{
+    uuid?: string;
+    function_name?: string;
+    description?: string;
+    faas_name?: string;
+    faas_namespace?: string;
+  }> = Array.isArray(a.functions) ? a.functions : [];
+  const childAgents = Array.isArray(a.child_agents) ? a.child_agents : [];
   const allAgents = (allAgentsRes.agents ?? []).filter(
     (other) => String(other.uuid ?? "") !== agentUuid,
   );
   const allKbs = allKbsRes.knowledge_bases ?? [];
   // The chatbot identifier + config power the public embed snippet. The
   // identifier lives in `chatbot_identifiers[].agent_chatbot_identifier`.
-  const chatbotIdentifiers = Array.isArray(a["chatbot_identifiers"])
-    ? (a["chatbot_identifiers"] as Array<Record<string, unknown>>)
-    : [];
-  const chatbotId = String(chatbotIdentifiers[0]?.["agent_chatbot_identifier"] ?? "");
-  const chatbot = (a["chatbot"] ?? {}) as Record<string, unknown>;
+  const chatbotIdentifiers = Array.isArray(a.chatbot_identifiers) ? a.chatbot_identifiers : [];
+  const chatbotId = String(chatbotIdentifiers[0]?.agent_chatbot_identifier ?? "");
+  const chatbot: Partial<NonNullable<typeof a.chatbot>> = a.chatbot ?? {};
   return {
     ...resource,
     resolvedOutputs: {
       ...resource.resolvedOutputs,
-      __attachedKbs__: JSON.stringify(kbs.map((k) => ({ uuid: k["uuid"], name: k["name"] }))),
+      __attachedKbs__: JSON.stringify(kbs.map((k) => ({ uuid: k.uuid, name: k.name }))),
       __functions__: JSON.stringify(
         functions.map((f) => ({
-          uuid: f["uuid"],
-          function_name: f["function_name"],
-          description: f["description"],
-          faas_name: f["faas_name"],
-          faas_namespace: f["faas_namespace"],
+          uuid: f.uuid,
+          function_name: f.function_name,
+          description: f.description,
+          faas_name: f.faas_name,
+          faas_namespace: f.faas_namespace,
         })),
       ),
       __childAgents__: JSON.stringify(
         childAgents.map((c) => ({
-          uuid: c["uuid"],
-          name: c["name"],
-          route_name: c["route_name"],
-          if_case: c["if_case"],
+          uuid: c.uuid,
+          name: c.name,
+          route_name: c.route_name,
+          if_case: c.if_case,
         })),
       ),
       __allAgents__: JSON.stringify(allAgents),
@@ -352,12 +309,12 @@ async function enrichGenAiAgent(
       ),
       ...(chatbotId ? { __chatbotId__: chatbotId } : {}),
       __chatbot__: JSON.stringify({
-        name: String(chatbot["name"] ?? a["name"] ?? ""),
-        primary_color: String(chatbot["primary_color"] ?? "#031B4E"),
-        secondary_color: String(chatbot["secondary_color"] ?? "#E5E8ED"),
-        button_background_color: String(chatbot["button_background_color"] ?? "#0061EB"),
-        starting_message: String(chatbot["starting_message"] ?? ""),
-        logo: String(chatbot["logo"] ?? ""),
+        name: String(chatbot.name ?? a.name ?? ""),
+        primary_color: String(chatbot.primary_color ?? "#031B4E"),
+        secondary_color: String(chatbot.secondary_color ?? "#E5E8ED"),
+        button_background_color: String(chatbot.button_background_color ?? "#0061EB"),
+        starting_message: String(chatbot.starting_message ?? ""),
+        logo: String(chatbot.logo ?? ""),
       }),
     },
   };
@@ -374,20 +331,11 @@ async function enrichGenAiModelRouter(
   resource: ResourceInstance,
 ): Promise<ResourceInstance> {
   const [taskRes, modelsRes] = await Promise.all([
-    ctx
-      .fetch<{
-        tasks?: Array<{
-          task_slug?: string;
-          name?: string;
-          models?: string[];
-          selection_policy?: { prefer?: string };
-        }>;
-      }>("/gen-ai/models/routers/tasks/presets?per_page=200")
+    ctx.api
+      .get("/gen-ai/models/routers/tasks/presets", { query: { per_page: 200 } })
       .catch(() => ({ tasks: [] })),
-    ctx
-      .fetch<{
-        models?: Array<{ uuid?: string; name?: string }>;
-      }>("/gen-ai/models?usecases=MODEL_USECASE_SERVERLESS&per_page=200")
+    ctx.api
+      .get("/gen-ai/models", { query: { usecases: ["MODEL_USECASE_SERVERLESS"], per_page: 200 } })
       .catch(() => ({ models: [] })),
   ]);
   const nameById = new Map<string, string>();
@@ -434,60 +382,58 @@ async function enrichGenAiKnowledgeBase(
   const kbUuid = resource.externalId ?? resource.id.split(":").pop() ?? "";
   if (!kbUuid) return resource;
   const [dsRes, jobsRes, buckets] = await Promise.all([
-    ctx
-      .fetch<{
-        knowledge_base_data_sources?: Array<Record<string, unknown>>;
-      }>(`/gen-ai/knowledge_bases/${kbUuid}/data_sources?per_page=100`)
+    ctx.api
+      .written<"genai_list_knowledge_base_data_sources">(
+        `/gen-ai/knowledge_bases/${kbUuid}/data_sources?per_page=100`,
+      )
       .catch(() => ({ knowledge_base_data_sources: [] })),
-    ctx
-      .fetch<{
-        jobs?: Array<Record<string, unknown>>;
-      }>(`/gen-ai/knowledge_bases/${kbUuid}/indexing_jobs`)
+    ctx.api
+      .get(`/gen-ai/knowledge_bases/${unencodedSegment(kbUuid)}/indexing_jobs`)
       .catch(() => ({ jobs: [] })),
     // Best-effort: returns [] when the account has no Spaces keys configured.
-    ctx.listSpacesBuckets(resource.accountId).catch(() => [] as ResourceInstance[]),
+    ctx.listSpacesBuckets(resource.accountId).catch((): ResourceInstance[] => []),
   ]);
 
   // Flatten each data source to the handful of display/identity fields the
   // table needs. DO nests the actual source under one of the *_data_source
   // keys; derive a single type + human summary from whichever is present.
   const dataSources = (dsRes.knowledge_base_data_sources ?? []).map((d) => {
-    const spaces = d["spaces_data_source"] as Record<string, unknown> | undefined;
-    const web = d["web_crawler_data_source"] as Record<string, unknown> | undefined;
-    const file = d["file_upload_data_source"] as Record<string, unknown> | undefined;
-    const lastJob = d["last_datasource_indexing_job"] as Record<string, unknown> | undefined;
+    const spaces = d.spaces_data_source;
+    const web = d.web_crawler_data_source;
+    const file = d.file_upload_data_source;
+    const lastJob = d.last_datasource_indexing_job;
     let type = "Unknown";
     let summary = "";
     if (web) {
       type = "Web crawler";
-      summary = String(web["base_url"] ?? "");
+      summary = String(web.base_url ?? "");
     } else if (spaces) {
       type = "Spaces bucket";
-      const bucket = String(spaces["bucket_name"] ?? "");
-      const path = String(spaces["item_path"] ?? "");
+      const bucket = String(spaces.bucket_name ?? "");
+      const path = String(spaces.item_path ?? "");
       summary = path ? `${bucket}/${path}` : bucket;
     } else if (file) {
       type = "File upload";
-      summary = String(file["original_file_name"] ?? "");
+      summary = String(file.original_file_name ?? "");
     }
     return {
-      uuid: String(d["uuid"] ?? ""),
+      uuid: String(d.uuid ?? ""),
       type,
       summary,
-      status: String(lastJob?.["status"] ?? ""),
-      created_at: String(d["created_at"] ?? ""),
+      status: String(lastJob?.status ?? ""),
+      created_at: String(d.created_at ?? ""),
     };
   });
 
   const indexingJobs = (jobsRes.jobs ?? []).map((j) => ({
-    uuid: String(j["uuid"] ?? ""),
-    status: String(j["status"] ?? ""),
-    phase: String(j["phase"] ?? ""),
-    total_datasources: Number(j["total_datasources"] ?? 0),
-    completed_datasources: Number(j["completed_datasources"] ?? 0),
-    tokens: String(j["total_tokens"] ?? j["tokens"] ?? ""),
-    created_at: String(j["created_at"] ?? ""),
-    finished_at: String(j["finished_at"] ?? ""),
+    uuid: String(j.uuid ?? ""),
+    status: String(j.status ?? ""),
+    phase: String(j.phase ?? ""),
+    total_datasources: Number(j.total_datasources ?? 0),
+    completed_datasources: Number(j.completed_datasources ?? 0),
+    tokens: String(j.total_tokens ?? j.tokens ?? ""),
+    created_at: String(j.created_at ?? ""),
+    finished_at: String(j.finished_at ?? ""),
   }));
 
   const spacesBuckets = buckets.map((b) => ({

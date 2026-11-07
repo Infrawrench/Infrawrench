@@ -1,0 +1,193 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "management",
+      "specUrl": "https://docs.confluent.io/cloud/current/openapi.yaml",
+      "patches": [
+        {
+          "pointer": "/paths/~1connect~1v1~1environments~1{environment_id}~1clusters~1{kafka_cluster_id}~1connectors/get",
+          "value": {
+            "operationId": "listConnectv1ConnectorsWithExpansions",
+            "parameters": [
+              {
+                "name": "environment_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "kafka_cluster_id",
+                "in": "path",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "expand",
+                "in": "query",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Connector.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/connect.v1.ConnectorExpansionMap"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The document keeps this GET under a path key holding its query (`.../connectors?expand=info,status,id`), and its `expand` enum has one value at a time while the plugin sends a comma list. The plain key answers with names only; the plugin always asks for the expansion."
+        },
+        {
+          "pointer": "/components/schemas/connect.v1.ConnectorExpansion/properties/info/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Kafka Connect's `info` carries the connector type, which the plugin falls back to when `status` is absent. The document leaves it out."
+        },
+        {
+          "pointer": "/components/schemas/EnvScopedObjectReference/required",
+          "value": ["id"],
+          "why": "`related` and `resource_name` are readOnly but listed as required, which no request can write. Only `id` is sent."
+        },
+        {
+          "pointer": "/components/schemas/GlobalObjectReference/required",
+          "value": ["id"],
+          "why": "`related` and `resource_name` are readOnly but listed as required, which no request can write. Only `id` is sent."
+        },
+        {
+          "pointer": "/components/schemas/TypedEnvScopedObjectReference/required",
+          "value": ["id"],
+          "why": "`related` and `resource_name` are readOnly but listed as required, which no request can write. Only `id` is sent."
+        },
+        {
+          "pointer": "/components/schemas/TypedGlobalObjectReference/required",
+          "value": ["id"],
+          "why": "`related` and `resource_name` are readOnly but listed as required, which no request can write. Only `id` is sent."
+        },
+        {
+          "pointer": "/paths/~1org~1v2~1environments/post/requestBody/content/application~1json/schema/allOf/1/properties",
+          "value": {
+            "display_name": {
+              "type": "string"
+            }
+          },
+          "why": "An allOf arm that lists `required` with no `properties` generates `Record<string, never>`, which no body can satisfy. Naming the fields keeps them compulsory."
+        },
+        {
+          "pointer": "/paths/~1iam~1v2~1service-accounts/post/requestBody/content/application~1json/schema/allOf/1/properties",
+          "value": {
+            "display_name": {
+              "type": "string"
+            }
+          },
+          "why": "An allOf arm that lists `required` with no `properties` generates `Record<string, never>`, which no body can satisfy. Naming the fields keeps them compulsory."
+        },
+        {
+          "pointer": "/paths/~1iam~1v2~1role-bindings/post/requestBody/content/application~1json/schema/allOf/1/properties",
+          "value": {
+            "principal": {
+              "type": "string"
+            },
+            "role_name": {
+              "type": "string"
+            },
+            "crn_pattern": {
+              "type": "string"
+            }
+          },
+          "why": "An allOf arm that lists `required` with no `properties` generates `Record<string, never>`, which no body can satisfy. Naming the fields keeps them compulsory."
+        },
+        {
+          "pointer": "/paths/~1fcpm~1v2~1compute-pools/post/requestBody/content/application~1json/schema/allOf/1/properties/spec/properties",
+          "value": {
+            "display_name": {
+              "type": "string"
+            },
+            "cloud": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "max_cfu": {
+              "type": "integer"
+            },
+            "environment": {}
+          },
+          "why": "An allOf arm that lists `required` with no `properties` generates `Record<string, never>`, which no body can satisfy. Naming the fields keeps them compulsory."
+        },
+        {
+          "pointer": "/paths/~1iam~1v2~1api-keys/post/requestBody/content/application~1json/schema/allOf/1/properties/spec/properties",
+          "value": {
+            "owner": {}
+          },
+          "why": "An allOf arm that lists `required` with no `properties` generates `Record<string, never>`, which no body can satisfy. Naming the fields keeps them compulsory."
+        }
+      ],
+      "paths": {
+        "/org/v2/environments": ["get", "post"],
+        "/org/v2/environments/{id}": ["get", "patch", "delete"],
+        "/org/v2/organizations": ["get"],
+        "/cmk/v2/clusters": ["get"],
+        "/cmk/v2/clusters/{id}": ["get", "patch", "delete"],
+        "/connect/v1/environments/{environment_id}/clusters/{kafka_cluster_id}/connectors": ["get"],
+        "/connect/v1/environments/{environment_id}/clusters/{kafka_cluster_id}/connectors/{connector_name}": [
+          "delete"
+        ],
+        "/connect/v1/environments/{environment_id}/clusters/{kafka_cluster_id}/connectors/{connector_name}/pause": [
+          "put"
+        ],
+        "/connect/v1/environments/{environment_id}/clusters/{kafka_cluster_id}/connectors/{connector_name}/resume": [
+          "put"
+        ],
+        "/connect/v1/environments/{environment_id}/clusters/{kafka_cluster_id}/connectors/{connector_name}/restart": [
+          "post"
+        ],
+        "/fcpm/v2/compute-pools": ["get", "post"],
+        "/fcpm/v2/compute-pools/{id}": ["get", "patch", "delete"],
+        "/fcpm/v2/regions": ["get"],
+        "/ksqldbcm/v2/clusters": ["get"],
+        "/ksqldbcm/v2/clusters/{id}": ["get", "delete"],
+        "/srcm/v3/clusters": ["get"],
+        "/srcm/v3/clusters/{id}": ["get"],
+        "/iam/v2/service-accounts": ["get", "post"],
+        "/iam/v2/service-accounts/{id}": ["get", "patch", "delete"],
+        "/iam/v2/api-keys": ["get", "post"],
+        "/iam/v2/api-keys/{id}": ["get", "patch", "delete"],
+        "/iam/v2/role-bindings": ["post"],
+        "/networking/v1/networks": ["get"],
+        "/networking/v1/networks/{id}": ["get"],
+        "/networking/v1/peerings": ["get"],
+        "/networking/v1/peerings/{id}": ["get"],
+        "/networking/v1/transit-gateway-attachments": ["get"],
+        "/networking/v1/transit-gateway-attachments/{id}": ["get"],
+        "/networking/v1/private-link-accesses": ["get"],
+        "/networking/v1/private-link-accesses/{id}": ["get"],
+        "/networking/v1/private-link-attachments": ["get"],
+        "/networking/v1/private-link-attachments/{id}": ["get"],
+        "/byok/v1/keys": ["get"],
+        "/billing/v1/costs": ["get"]
+      }
+    },
+    {
+      "name": "telemetry",
+      "specUrl": "https://api.telemetry.confluent.cloud/docs/api.yaml",
+      "paths": {
+        "/v2/metrics/{dataset}/query": ["post"]
+      }
+    }
+  ]
+}

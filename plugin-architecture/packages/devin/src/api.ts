@@ -1,6 +1,12 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
-import type { AcusByProduct } from "./pricing.js";
+import {
+  createApiClient,
+  pathEncode,
+  type ApiClient,
+  type ApiResponse,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { components, operations, paths } from "./api-types.gen.js";
 
 /**
  * Devin API v3 (https://docs.devin.ai/api-reference/overview, OpenAPI at
@@ -23,12 +29,6 @@ export const API_BASE = "https://api.devin.ai";
 export const APP_BASE = "https://app.devin.ai";
 const PAGE_SIZE = 200;
 
-export interface DevinContext {
-  token: string;
-  caCert?: string;
-  http?: HttpHostServices;
-}
-
 export class DevinApiError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -37,8 +37,6 @@ export class DevinApiError extends Error {
     this.status = status;
   }
 }
-
-const STATUS_IN_MESSAGE = /Devin API error (\d{3})/;
 
 export function statusOf(err: unknown): number {
   return err instanceof DevinApiError ? err.status : 0;
@@ -49,66 +47,84 @@ export function isPermissionError(err: unknown): boolean {
   return s === 401 || s === 403;
 }
 
-export type QueryValue = string | number | boolean | undefined | null | readonly string[];
-
 /** Query string with arrays as repeated keys (`tags=a&tags=b`), the form FastAPI reads. */
-export function queryString(query: Record<string, QueryValue>): string {
+function queryString(query: Record<string, ParamValue>): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null) continue;
-    const values = Array.isArray(value) ? value : [value as string | number | boolean];
+    const values = Array.isArray(value) ? value : [value];
     for (const v of values)
       parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`);
   }
-  return parts.length ? `?${parts.join("&")}` : "";
+  return parts.join("&");
 }
 
-export async function devinFetch<T>(
-  ctx: DevinContext,
-  path: string,
-  opts: { method?: string; query?: Record<string, QueryValue>; body?: unknown } = {},
-): Promise<T> {
-  const method = opts.method ?? "GET";
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "Devin",
-      url: `${API_BASE}${path}${queryString(opts.query ?? {})}`,
-      errorPath: path,
-      headers: { Accept: "application/json", Authorization: `Bearer ${ctx.token}` },
-      init: {
-        method,
-        ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
-      },
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) throw new DevinApiError(status, message);
-    throw err;
-  }
+export type DevinApi = ApiClient<paths>;
+
+const STATUS_IN_MESSAGE = /Devin API error (\d{3})/;
+
+/** A failure counts as the status its text names, which is how this plugin has always told them apart. */
+function rethrowWithStatus(err: unknown): never {
+  const message = err instanceof Error ? err.message : String(err);
+  const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
+  if (status) throw new DevinApiError(status, message);
+  throw err;
+}
+
+const withStatus =
+  <Args extends unknown[], Result>(call: (...args: Args) => Promise<Result>) =>
+  (...args: Args): Promise<Result> =>
+    call(...args).catch(rethrowWithStatus);
+
+export function createDevinApi(options: {
+  token: string;
+  caCert: string;
+  http: HttpHostServices | undefined;
+}): DevinApi {
+  const { token, caCert, http } = options;
+  const client = createApiClient<paths>({
+    vendor: "Devin",
+    baseUrl: API_BASE,
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    serializeQuery: queryString,
+    httpError: ({ status, path, body }) =>
+      new Error(`Devin API error ${status} for ${path}: ${body}`),
+    caCert,
+    http,
+  });
+  return Object.assign(client, {
+    get: withStatus(client.get),
+    put: withStatus(client.put),
+    post: withStatus(client.post),
+    delete: withStatus(client.delete),
+    patch: withStatus(client.patch),
+  });
+}
+
+interface Cursor {
+  first: number;
+  after?: string;
 }
 
 interface Page<T> {
-  items?: T[] | null;
+  items?: readonly T[] | null;
   end_cursor?: string | null;
   has_next_page?: boolean;
 }
 
-/** Follow `after` cursors until the last page or `maxItems`. */
-export async function paginate<T>(
-  ctx: DevinContext,
-  path: string,
-  query: Record<string, QueryValue> = {},
+/**
+ * Follow `after` cursors until the last page or `maxItems`. A loop rather than
+ * `getAll`, which cuts by pages where this cuts by items, and reads a page whose
+ * `items` is not a list as empty where this fails.
+ */
+async function paginate<T>(
+  load: (cursor: Cursor) => Promise<Page<T> | undefined>,
   maxItems = 5000,
 ): Promise<T[]> {
   const out: T[] = [];
   let after: string | undefined;
   for (;;) {
-    const page = await devinFetch<Page<T>>(ctx, path, {
-      query: { ...query, first: PAGE_SIZE, after },
-    });
+    const page = await load({ first: PAGE_SIZE, ...(after !== undefined ? { after } : {}) });
     out.push(...(page?.items ?? []));
     if (out.length >= maxItems) return out.slice(0, maxItems);
     if (!page?.has_next_page || !page.end_cursor) return out;
@@ -117,140 +133,79 @@ export async function paginate<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Wire types (the fields this plugin reads)
+// Wire types
 // ---------------------------------------------------------------------------
 
-export interface DevinSelf {
-  principal_type?: string;
+type Schemas = components["schemas"];
+
+/** Every kind of principal, read alike: a field another kind lacks is simply absent. */
+export type DevinSelf = ApiResponse<operations["handle_get_self_v3_self_get"]> & {
   service_user_id?: string;
   service_user_name?: string;
-  user_id?: string;
-  user_name?: string | null;
-  org_id?: string | null;
   devin_sessions_org_id?: string | null;
-}
+};
 
-export interface DevinOrg {
-  org_id: string;
-  name?: string;
-  max_session_acu_limit?: number | null;
-  max_cycle_acu_limit?: number | null;
-  created_at?: number;
-}
+type OrganizationResponse = Schemas["OrganizationResponse"];
 
-export interface DevinSession {
-  session_id: string;
-  url?: string;
-  status?: string;
-  status_detail?: string | null;
-  title?: string | null;
-  tags?: string[];
-  playbook_id?: string | null;
-  user_id?: string | null;
-  service_user_id?: string | null;
-  org_id?: string;
-  created_at?: number;
-  updated_at?: number;
-  is_archived?: boolean;
-  acus_consumed?: number;
-  pull_requests?: Array<{ pr_url: string; pr_state?: string | null }>;
-  parent_session_id?: string | null;
-  child_session_ids?: string[] | null;
-  category?: string | null;
-  subcategory?: string | null;
-  origin?: string | null;
-  automation_id?: string | null;
-  devin_mode?: string | null;
-}
+/** An organization as listed, or as named by a key that cannot list them. */
+export type DevinOrg = Pick<OrganizationResponse, "org_id" | "name"> &
+  Partial<Pick<OrganizationResponse, "max_session_acu_limit" | "max_cycle_acu_limit">>;
 
-export interface DevinPlaybook {
-  playbook_id: string;
-  title?: string;
-  body?: string;
-  macro?: string | null;
-  created_by?: string;
-  updated_by?: string;
-  created_at?: number;
-  updated_at?: number;
-  access_type?: string;
-  structured_output_schema?: Record<string, unknown> | null;
-}
-
-export interface DevinNote {
-  note_id: string;
-  folder_id?: string | null;
-  folder_path?: string;
-  name?: string;
-  body?: string;
-  trigger?: string;
-  is_enabled?: boolean;
-  created_at?: number;
-  updated_at?: number;
-  access_type?: string;
-  macro?: string | null;
-  pinned_repo?: string | null;
-}
-
-export interface DevinSecret {
-  secret_id: string;
-  key?: string | null;
-  note?: string | null;
-  is_sensitive?: boolean;
-  created_by?: string;
-  created_at?: number;
-  secret_type?: string;
-  access_type?: string;
-  updated_at?: number | null;
-  updated_by?: string | null;
-}
-
-export interface DevinUser {
-  user_id: string;
-  email?: string | null;
-  name?: string | null;
-  role_assignments?: Array<{ role?: { role_name?: string }; org_id?: string | null }>;
-}
-
-export interface DevinAutomation {
-  automation_id: string;
-  name?: string;
-  enabled?: boolean;
-  triggers?: Array<{ event_type?: string }>;
-  created_by?: { type?: string; id?: string; name?: string | null };
-  created_at?: number;
-  updated_at?: number;
-  last_invocation?: { fired_at?: number; status?: string } | null;
-  next_run_at?: number | null;
-}
-
-export interface ConsumptionDay {
-  date: number;
-  acus: number;
-  acus_by_product?: AcusByProduct;
-}
-
-export interface Consumption {
-  total_acus?: number;
-  consumption_by_date?: ConsumptionDay[];
-}
-
-export interface UsageMetrics {
-  sessions_count?: number;
-  searches_count?: number;
-  prs_created_count?: number;
-  prs_merged_count?: number;
-}
+export type DevinSession = Schemas["SessionResponse"];
+export type DevinPlaybook = Schemas["PlaybookResponse"];
+export type DevinNote = Schemas["KnowledgeNoteResponse"];
+export type DevinSecret = Schemas["SecretResponse"];
+export type DevinUser = Schemas["User"];
+export type DevinAutomation = Schemas["AutomationResponse"];
+export type ConsumptionDay = Schemas["ConsumptionByDateResponse"];
+export type UsageMetrics = Schemas["UsageMetrics"];
 
 // ---------------------------------------------------------------------------
 // Calls
 // ---------------------------------------------------------------------------
 
-export const orgPath = (orgId: string, rest = "") =>
-  `/v3/organizations/${encodeURIComponent(orgId)}${rest}`;
-
-export function getSelf(ctx: DevinContext): Promise<DevinSelf> {
-  return devinFetch<DevinSelf>(ctx, "/v3/self");
+export function getSelf(api: DevinApi): Promise<DevinSelf> {
+  return api.get("/v3/self");
 }
+
+export const listUsers = (api: DevinApi, orgId: string) =>
+  paginate((cursor) =>
+    api.get(`/v3beta1/organizations/${pathEncode(orgId)}/members/users`, { query: cursor }),
+  );
+
+export const listPlaybooks = (api: DevinApi, orgId: string) =>
+  paginate((cursor) =>
+    api.get(`/v3/organizations/${pathEncode(orgId)}/playbooks`, { query: cursor }),
+  );
+
+export const listNotes = (api: DevinApi, orgId: string) =>
+  paginate((cursor) =>
+    api.get(`/v3/organizations/${pathEncode(orgId)}/knowledge/notes`, { query: cursor }),
+  );
+
+export const listSecrets = (api: DevinApi, orgId: string) =>
+  paginate((cursor) =>
+    api.get(`/v3/organizations/${pathEncode(orgId)}/secrets`, { query: cursor }),
+  );
+
+export const listAutomations = (api: DevinApi, orgId: string) =>
+  paginate((cursor) =>
+    api.get(`/v3/organizations/${pathEncode(orgId)}/automations`, { query: cursor }),
+  );
+
+export const listSessions = (
+  api: DevinApi,
+  orgId: string,
+  filter: { updated_after?: number } = {},
+  maxItems?: number,
+) =>
+  paginate(
+    (cursor) =>
+      api.get(`/v3/organizations/${pathEncode(orgId)}/sessions`, {
+        query: { ...filter, ...cursor },
+      }),
+    maxItems,
+  );
 
 /**
  * The organizations this key works in. An org-scoped service user names its
@@ -258,15 +213,15 @@ export function getSelf(ctx: DevinContext): Promise<DevinSelf> {
  * enterprise. A personal access token tries the enterprise listing too, and
  * falls back to the org its sessions run in.
  */
-export async function resolveOrgs(
-  ctx: DevinContext,
-): Promise<{ self: DevinSelf; orgs: DevinOrg[] }> {
-  const self = await getSelf(ctx);
+export async function resolveOrgs(api: DevinApi): Promise<{ self: DevinSelf; orgs: DevinOrg[] }> {
+  const self = await getSelf(api);
   if (self.org_id && self.principal_type !== "pat_user") {
     return { self, orgs: [{ org_id: self.org_id, name: self.org_id }] };
   }
   try {
-    const orgs = await paginate<DevinOrg>(ctx, "/v3/enterprise/organizations");
+    const orgs = await paginate((cursor) =>
+      api.get("/v3/enterprise/organizations", { query: cursor }),
+    );
     if (orgs.length > 0) return { self, orgs };
   } catch (err) {
     if (!isPermissionError(err) && statusOf(err) !== 404) throw err;
@@ -292,18 +247,50 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** Daily ACUs for `[fromDate, toDate]` (inclusive billing days) at an org-scoped consumption path. */
+/** One of the daily consumption endpoints: an organization, or one person, service user or session in it. */
+export type ConsumptionRead = (query: {
+  time_after: number;
+  time_before: number;
+}) => Promise<Schemas["ConsumptionResponse"]>;
+
+export const orgConsumption =
+  (api: DevinApi, orgId: string): ConsumptionRead =>
+  (query) =>
+    api.get(`/v3/organizations/${pathEncode(orgId)}/consumption/daily`, { query });
+
+export const userConsumption =
+  (api: DevinApi, orgId: string, userId: string): ConsumptionRead =>
+  (query) =>
+    api.get(
+      `/v3/organizations/${pathEncode(orgId)}/consumption/daily/users/${pathEncode(userId)}`,
+      { query },
+    );
+
+export const serviceUserConsumption =
+  (api: DevinApi, orgId: string, serviceUserId: string): ConsumptionRead =>
+  (query) =>
+    api.get(
+      `/v3/organizations/${pathEncode(orgId)}/consumption/daily/service-users/${pathEncode(serviceUserId)}`,
+      { query },
+    );
+
+export const sessionConsumption =
+  (api: DevinApi, orgId: string, sessionId: string): ConsumptionRead =>
+  (query) =>
+    api.get(
+      `/v3/organizations/${pathEncode(orgId)}/consumption/daily/sessions/${pathEncode(sessionId)}`,
+      { query },
+    );
+
+/** Daily ACUs for `[fromDate, toDate]` (inclusive billing days) from a consumption endpoint. */
 export async function fetchConsumption(
-  ctx: DevinContext,
-  path: string,
+  read: ConsumptionRead,
   fromDate: string,
   toDate: string,
 ): Promise<ConsumptionDay[]> {
-  const res = await devinFetch<Consumption>(ctx, path, {
-    query: {
-      time_after: dayStartSeconds(fromDate),
-      time_before: dayStartSeconds(addDays(toDate, 1)),
-    },
+  const res = await read({
+    time_after: dayStartSeconds(fromDate),
+    time_before: dayStartSeconds(addDays(toDate, 1)),
   });
   return (res?.consumption_by_date ?? []).filter((d) => {
     const day = billingDay(d.date);

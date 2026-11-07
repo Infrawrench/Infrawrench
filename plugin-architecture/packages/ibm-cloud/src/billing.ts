@@ -4,9 +4,11 @@ import {
   type CostFetchRange,
   type CostRow,
   type CreditBalance,
+  unencodedSegment,
 } from "@infrawrench/plugin-base";
 import { isPermissionGap, type IbmApi } from "./api.js";
-import { BILLING, crnService } from "./regions.js";
+import type { components } from "./api-types.usage.gen.js";
+import { crnService } from "./regions.js";
 
 /**
  * Usage Reports API v4 (`billing.cloud.ibm.com`). Costs come from
@@ -19,35 +21,21 @@ import { BILLING, crnService } from "./regions.js";
 
 const ACCESS_DOCS = "https://cloud.ibm.com/iam/users";
 
-interface UsageMetric {
-  metric?: string;
-  metric_name?: string;
-  quantity?: number;
-  cost?: number;
-  rated_cost?: number;
-  unit?: string;
-  unit_name?: string;
-  non_chargeable?: boolean;
-}
+type Schemas = components["schemas"];
 
-export interface InstanceUsage {
-  resource_instance_id?: string;
-  resource_instance_name?: string;
-  resource_id?: string;
-  resource_name?: string;
-  resource_group_name?: string;
-  region?: string;
-  currency_code?: string;
-  plan_name?: string;
-  usage?: UsageMetric[];
-  pending?: boolean;
-}
+/** A usage record as the mapper reads it: what a page leaves out reads as nothing. */
+type Sketch<T> = { [K in keyof T]?: T[K] | undefined };
+
+export type InstanceUsage = Sketch<Omit<Schemas["Instance_Usage"], "usage">> & {
+  usage?: Array<Sketch<Schemas["Metric"]>> | undefined;
+};
 
 /** `yyyy-mm` for every month the inclusive range touches. */
 export function monthsIn(range: CostFetchRange): string[] {
   const out: string[] = [];
-  let [y, m] = range.fromDate.slice(0, 7).split("-").map(Number) as [number, number];
-  const [ey, em] = range.toDate.slice(0, 7).split("-").map(Number) as [number, number];
+  // A date with no month reads as NaN, which ends the loop before it starts.
+  let [y = NaN, m = NaN] = range.fromDate.slice(0, 7).split("-").map(Number);
+  const [ey = NaN, em = NaN] = range.toDate.slice(0, 7).split("-").map(Number);
   while (y < ey || (y === ey && m <= em)) {
     out.push(`${y}-${String(m).padStart(2, "0")}`);
     m++;
@@ -88,6 +76,7 @@ export function usageToRows(month: string, records: InstanceUsage[]): CostRow[] 
       if (r.plan_name) tags["plan"] = r.plan_name;
       if (r.resource_group_name) tags["resourceGroup"] = r.resource_group_name;
       if (m.metric_name || m.metric) tags["metric"] = m.metric_name || m.metric || "";
+      const unit = m.unit_name || m.unit;
       if (r.resource_instance_name) tags["instance"] = r.resource_instance_name;
       rows.push({
         date,
@@ -101,7 +90,7 @@ export function usageToRows(month: string, records: InstanceUsage[]): CostRow[] 
         ...(m.quantity !== undefined && Number.isFinite(m.quantity)
           ? { usageAmount: m.quantity }
           : {}),
-        ...(m.unit_name || m.unit ? { usageUnit: m.unit_name || m.unit } : {}),
+        ...(unit ? { usageUnit: unit } : {}),
       });
     }
   }
@@ -114,14 +103,16 @@ export async function fetchCostData(api: IbmApi, range: CostFetchRange): Promise
   for (const month of monthsIn(range)) {
     let start: string | undefined;
     for (let page = 0; page < 500; page++) {
-      let res: { resources?: InstanceUsage[]; next?: { offset?: string } };
+      let res;
       try {
-        res = await api.get(
-          `${BILLING}/v4/accounts/${accountId}/resource_instances/usage/${month}`,
+        res = await api.usage.get(
+          `/v4/accounts/${unencodedSegment(accountId)}/resource_instances/usage/${unencodedSegment(month)}`,
           {
-            _names: true,
-            _limit: 200,
-            ...(start ? { _start: start } : {}),
+            query: {
+              _names: true,
+              _limit: 200,
+              ...(start ? { _start: start } : {}),
+            },
           },
         );
       } catch (err) {
@@ -141,24 +132,15 @@ export async function fetchCostData(api: IbmApi, range: CostFetchRange): Promise
   return rows;
 }
 
-interface Summary {
-  billing_currency_code?: string;
-  resources?: { billable_cost?: number; non_billable_cost?: number };
-  offers?: Array<{
-    offer_id?: string;
-    offer_template?: string;
-    expires_on?: string;
-    credits?: { starting_balance?: number; used?: number; balance?: number };
-  }>;
-}
-
-async function summary(api: IbmApi, month: string): Promise<Summary> {
+async function summary(api: IbmApi, month: string) {
   const accountId = await api.accountId();
-  return api.get<Summary>(`${BILLING}/v4/accounts/${accountId}/summary/${month}`);
+  return api.usage.get(
+    `/v4/accounts/${unencodedSegment(accountId)}/summary/${unencodedSegment(month)}`,
+  );
 }
 
 export async function fetchCredits(api: IbmApi, now = new Date()): Promise<CreditBalance[]> {
-  let s: Summary;
+  let s;
   try {
     s = await summary(api, now.toISOString().slice(0, 7));
   } catch (err) {

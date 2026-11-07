@@ -1,0 +1,149 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://rest.runpod.io/v1/openapi.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/Pod/required",
+      "value": ["id"],
+      "why": "Marks nothing required; a pod always has an id, and everything keys on it."
+    },
+    {
+      "pointer": "/components/schemas/Endpoint/required",
+      "value": ["id"],
+      "why": "Marks nothing required; an endpoint always has an id, and everything keys on it."
+    },
+    {
+      "pointer": "/components/schemas/Template/required",
+      "value": ["id"],
+      "why": "Marks nothing required; a template always has an id, and everything keys on it."
+    },
+    {
+      "pointer": "/components/schemas/NetworkVolume/required",
+      "value": ["id"],
+      "why": "Marks nothing required; a network volume always has an id, and everything keys on it."
+    },
+    {
+      "pointer": "/components/schemas/NetworkVolumes/items/required",
+      "value": ["id"],
+      "why": "The list writes its row out rather than referring to NetworkVolume, and marks nothing required."
+    },
+    {
+      "pointer": "/components/schemas/ContainerRegistryAuth/required",
+      "value": ["id"],
+      "why": "Marks nothing required; a registry credential always has an id, and everything keys on it."
+    },
+    {
+      "pointer": "/paths/~1pods~1{podId}~1restart/post/responses/200",
+      "value": {
+        "description": "The pod is restarting."
+      },
+      "why": "Documents only the 400 and 401, which would type a successful restart as never."
+    },
+    {
+      "pointer": "/components/schemas/Pod/properties/portMappings",
+      "value": {
+        "type": "object",
+        "nullable": true,
+        "additionalProperties": {
+          "type": "integer"
+        }
+      },
+      "why": "Declares `items` on an object, which types every port as never; it is a map of internal to public port."
+    },
+    {
+      "pointer": "/components/schemas/PodCreateInput/properties/env",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Declares `items` on an object, which types every value as never; it is a map of name to value."
+    },
+    {
+      "pointer": "/components/schemas/TemplateCreateInput/properties/env",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Declares `items` on an object, which types every value as never; it is a map of name to value."
+    },
+    {
+      "pointer": "/components/schemas/PodCreateInput/properties/gpuTypeIds/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "A closed list of GPU types that changes as Runpod adds them; the picker's value goes through as typed."
+    },
+    {
+      "pointer": "/components/schemas/PodCreateInput/properties/dataCenterIds/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "A closed list of data centers that changes as Runpod adds them; the picker's value goes through as typed."
+    },
+    {
+      "pointer": "/components/schemas/PodCreateInput/properties/cpuFlavorIds/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "A closed list of CPU flavors that changes as Runpod adds them; the picker's value goes through as typed."
+    },
+    {
+      "pointer": "/components/schemas/EndpointCreateInput/properties/gpuTypeIds/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "A closed list of GPU types that changes as Runpod adds them; the picker's value goes through as typed."
+    },
+    {
+      "pointer": "/components/schemas/EndpointCreateInput/properties/dataCenterIds/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "A closed list of data centers that changes as Runpod adds them; the picker's value goes through as typed."
+    },
+    {
+      "pointer": "/components/schemas/EndpointCreateInput/properties/cpuFlavorIds/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "A closed list of CPU flavors that changes as Runpod adds them; the picker's value goes through as typed."
+    },
+    {
+      "pointer": "/components/schemas/TemplateCreateInput/properties/category",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's value goes through as typed."
+    },
+    {
+      "pointer": "/components/schemas/EndpointUpdateInput/properties/scalerType",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's value goes through as typed."
+    }
+  ],
+  "paths": {
+    "/pods": ["get", "post"],
+    "/pods/{podId}": ["get", "patch", "delete"],
+    "/pods/{podId}/start": ["post"],
+    "/pods/{podId}/stop": ["post"],
+    "/pods/{podId}/restart": ["post"],
+    "/pods/{podId}/reset": ["post"],
+    "/endpoints": ["get", "post"],
+    "/endpoints/{endpointId}": ["get", "patch", "delete"],
+    "/templates": ["get", "post"],
+    "/templates/{templateId}": ["get", "patch", "delete"],
+    "/networkvolumes": ["get", "post"],
+    "/networkvolumes/{networkVolumeId}": ["patch", "delete"],
+    "/containerregistryauth": ["get", "post"],
+    "/containerregistryauth/{containerRegistryAuthId}": ["delete"],
+    "/billing/pods": ["get"],
+    "/billing/endpoints": ["get"],
+    "/billing/networkvolumes": ["get"]
+  }
+}

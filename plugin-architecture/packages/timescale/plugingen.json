@@ -1,0 +1,103 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/timescale/tiger-cli/main/openapi.yaml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/ServiceCreate/properties/environment_tag",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Tiger Cloud validates it, so a value outside this enum stays Tiger Cloud's error."
+    },
+    {
+      "pointer": "/components/schemas/ForkServiceCreate/properties/environment_tag",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Tiger Cloud validates it, so a value outside this enum stays Tiger Cloud's error."
+    },
+    {
+      "pointer": "/components/schemas/ForkServiceCreate/properties/fork_strategy",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Tiger Cloud validates it, so a value outside this enum stays Tiger Cloud's error."
+    },
+    {
+      "pointer": "/components/schemas/SetEnvironmentInput/properties/environment",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and Tiger Cloud validates it, so a value outside this enum stays Tiger Cloud's error."
+    },
+    {
+      "pointer": "/components/schemas/CloudWatchLogsConfig/required",
+      "value": ["credentials"],
+      "why": "A form field the user left empty, or one the read did not return, is left out of the body rather than invented, and Tiger Cloud's own validation error names it."
+    },
+    {
+      "pointer": "/components/schemas/CloudWatchMetricsConfig/allOf/1/required",
+      "value": ["credentials"],
+      "why": "A form field the user left empty, or one the read did not return, is left out of the body rather than invented, and Tiger Cloud's own validation error names it."
+    },
+    {
+      "pointer": "/components/schemas/CloudWatchLogsConfigUpdate/required",
+      "value": ["credentials"],
+      "why": "A form field the user left empty, or one the read did not return, is left out of the body rather than invented, and Tiger Cloud's own validation error names it."
+    },
+    {
+      "pointer": "/components/schemas/CloudWatchMetricsConfigUpdate/allOf/1/required",
+      "value": ["credentials"],
+      "why": "A form field the user left empty, or one the read did not return, is left out of the body rather than invented, and Tiger Cloud's own validation error names it."
+    }
+  ],
+  "paths": {
+    "/projects": ["get"],
+    "/projects/{project_id}/vpcs": ["get", "post"],
+    "/projects/{project_id}/vpcs/{vpc_id}": ["delete"],
+    "/projects/{project_id}/vpcs/{vpc_id}/rename": ["post"],
+    "/projects/{project_id}/vpcs/{vpc_id}/peerings": ["get", "post"],
+    "/projects/{project_id}/vpcs/{vpc_id}/peerings/{peering_id}": ["delete"],
+    "/projects/{project_id}/services": ["get", "post"],
+    "/projects/{project_id}/services/{service_id}": ["get", "delete"],
+    "/projects/{project_id}/services/{service_id}/start": ["post"],
+    "/projects/{project_id}/services/{service_id}/stop": ["post"],
+    "/projects/{project_id}/services/{service_id}/rename": ["post"],
+    "/projects/{project_id}/services/{service_id}/attachToVPC": ["post"],
+    "/projects/{project_id}/services/{service_id}/detachFromVPC": ["post"],
+    "/projects/{project_id}/services/{service_id}/attachToExporter": ["post"],
+    "/projects/{project_id}/services/{service_id}/detachFromExporter": ["post"],
+    "/projects/{project_id}/services/{service_id}/attachToAllowList": ["post"],
+    "/projects/{project_id}/services/{service_id}/detachFromAllowList": ["post"],
+    "/projects/{project_id}/services/{service_id}/resize": ["post"],
+    "/projects/{project_id}/services/{service_id}/enablePooler": ["post"],
+    "/projects/{project_id}/services/{service_id}/disablePooler": ["post"],
+    "/projects/{project_id}/services/{service_id}/enableDataTiering": ["post"],
+    "/projects/{project_id}/services/{service_id}/forkService": ["post"],
+    "/projects/{project_id}/services/{service_id}/updatePassword": ["post"],
+    "/projects/{project_id}/services/{service_id}/setEnvironment": ["post"],
+    "/projects/{project_id}/services/{service_id}/logs": ["get"],
+    "/projects/{project_id}/services/{service_id}/backups": ["get"],
+    "/projects/{project_id}/services/{service_id}/backup-regions": ["get", "post"],
+    "/projects/{project_id}/services/{service_id}/backup-regions/{region_code}": ["delete"],
+    "/projects/{project_id}/services/{service_id}/backup-retention": ["get", "put"],
+    "/projects/{project_id}/services/{service_id}/metrics/series": ["post"],
+    "/projects/{project_id}/services/{service_id}/setHA": ["post"],
+    "/projects/{project_id}/services/{service_id}/replicaSets": ["post"],
+    "/projects/{project_id}/services/{service_id}/replicaSets/{replica_set_id}": ["delete"],
+    "/projects/{project_id}/services/{service_id}/replicaSets/{replica_set_id}/resize": ["post"],
+    "/projects/{project_id}/services/{service_id}/replicaSets/{replica_set_id}/enablePooler": [
+      "post"
+    ],
+    "/projects/{project_id}/services/{service_id}/replicaSets/{replica_set_id}/disablePooler": [
+      "post"
+    ],
+    "/projects/{project_id}/services/{service_id}/replicaSets/{replica_set_id}/setEnvironment": [
+      "post"
+    ],
+    "/projects/{project_id}/exporters": ["get", "post"],
+    "/projects/{project_id}/exporters/{exporter_id}": ["get", "patch", "delete"],
+    "/projects/{project_id}/allow-lists": ["get", "post"],
+    "/projects/{project_id}/allow-lists/{allow_list_id}": ["patch", "delete"]
+  }
+}

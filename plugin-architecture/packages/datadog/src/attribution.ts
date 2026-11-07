@@ -29,24 +29,11 @@
  */
 
 import type { DatadogContext } from "./api.js";
-import { ddFetch } from "./api.js";
+import type { components } from "./api-types.v2.gen.js";
 import { productLabel } from "./products.js";
 
-interface DdAttributionEntry {
-  attributes?: {
-    month?: string;
-    org_name?: string;
-    public_id?: string;
-    tag_config_source?: string;
-    tags?: Record<string, string[] | null> | null;
-    values?: Record<string, number | null> | null;
-  };
-}
-
-interface DdAttributionResponse {
-  data?: DdAttributionEntry[];
-  meta?: { pagination?: { next_record_id?: string | null } };
-}
+type DdAttributionEntry = components["schemas"]["MonthlyCostAttributionBody"];
+type DdAttributionResponse = components["schemas"]["MonthlyCostAttributionResponse"];
 
 export interface CostAttributionRow {
   orgName: string;
@@ -130,7 +117,7 @@ async function page(
   tagKeys: string[],
   cursor?: string,
 ): Promise<DdAttributionResponse> {
-  return ddFetch<DdAttributionResponse>(ctx, "/api/v2/cost_by_tag/monthly_cost_attribution", {
+  return ctx.v2.get("/api/v2/cost_by_tag/monthly_cost_attribution", {
     query: {
       start_month: month,
       end_month: month,

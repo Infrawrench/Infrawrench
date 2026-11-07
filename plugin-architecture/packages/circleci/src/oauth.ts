@@ -24,13 +24,14 @@
  */
 
 import type {
+  ApiResponse,
   OAuthCompletionContext,
   OAuthCompletionResult,
   OAuthDeclaration,
   OAuthTokenSet,
 } from "@infrawrench/plugin-base";
 import { API_BASE, APP_BASE } from "./api.js";
-import type { CircleCollaboration } from "./mappers.js";
+import type { operations } from "./api-types.v2.gen.js";
 
 export const CIRCLECI_OAUTH: OAuthDeclaration = {
   authorizeUrl: `${APP_BASE}/oauth/authorize`,
@@ -106,8 +107,12 @@ export async function completeCircleCIOAuth(
   context: OAuthCompletionContext,
 ): Promise<OAuthCompletionResult> {
   const [me, orgs] = await Promise.all([
-    getJson<{ login?: string; name?: string }>(context, tokens.accessToken, "/me"),
-    getJson<CircleCollaboration[]>(context, tokens.accessToken, "/me/collaborations"),
+    getJson<ApiResponse<operations["getCurrentUser"]>>(context, tokens.accessToken, "/me"),
+    getJson<ApiResponse<operations["getCollaborations"]>>(
+      context,
+      tokens.accessToken,
+      "/me/collaborations",
+    ),
   ]);
   const result: OAuthCompletionResult = {};
   if (Array.isArray(orgs) && orgs.length === 1) {

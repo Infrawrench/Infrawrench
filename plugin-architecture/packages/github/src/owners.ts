@@ -16,7 +16,7 @@
 
 import type { CredentialFieldOption, HostServices } from "@infrawrench/plugin-base";
 import type { GitHubHost } from "./api.js";
-import { formatOwner, ghFetch, ghGraphql, resolveHost } from "./api.js";
+import { dotcomApi, formatOwner, ghGraphql, resolveHost } from "./api.js";
 import type { GhInstallation } from "./oauth.js";
 import { installationOwners, isOAuthConnected } from "./oauth.js";
 
@@ -49,14 +49,14 @@ export async function listOwnerOptions(
     ...(services?.http ? { http: services.http } : {}),
   };
 
+  const api = dotcomApi(ctx);
+
   // A Connect with GitHub token only reaches what the app is installed on,
   // so its installations are the complete and correct list.
   if (isOAuthConnected(credentials)) {
     const installations: GhInstallation[] = [];
     for (let page = 1; page <= 10; page++) {
-      const body = await ghFetch<{ installations?: GhInstallation[] }>(ctx, "/user/installations", {
-        query: { per_page: 100, page },
-      });
+      const body = await api.get("/user/installations", { query: { per_page: 100, page } });
       const batch = body?.installations ?? [];
       installations.push(...batch);
       if (batch.length < 100) break;
@@ -78,9 +78,7 @@ export async function listOwnerOptions(
   const errors: string[] = [];
 
   const [rest, graph] = await Promise.allSettled([
-    ghFetch<Array<{ login?: string; description?: string | null }>>(ctx, "/user/orgs", {
-      query: { per_page: 100 },
-    }),
+    api.get("/user/orgs", { query: { per_page: 100 } }),
     ghGraphql<ViewerOwners>(ctx, OWNERS_QUERY),
   ]);
 

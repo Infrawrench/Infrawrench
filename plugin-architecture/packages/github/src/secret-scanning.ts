@@ -28,27 +28,11 @@ import type {
   LeakedSecretQuery,
   LeakedSecretResolution,
 } from "@infrawrench/plugin-base";
-import { type GitHubContext, ghFetch, ownerBase, statusOf } from "./api.js";
+import { pathEncode, unencodedSegment, type ApiListItem } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.dotcom.gen.js";
+import { type GitHubContext, dotcomApi, ownerSegment, statusOf } from "./api.js";
 
-interface GitHubSecretAlert {
-  number: number;
-  created_at: string;
-  updated_at?: string | null;
-  html_url?: string;
-  state: "open" | "resolved";
-  resolution?: string | null;
-  secret_type: string;
-  secret_type_display_name?: string;
-  secret?: string;
-  validity?: "active" | "inactive" | "unknown";
-  publicly_leaked?: boolean | null;
-  repository?: { full_name?: string };
-  first_location_detected?: {
-    path?: string;
-    start_line?: number;
-    commit_sha?: string;
-  } | null;
-}
+type GitHubSecretAlert = ApiListItem<operations["secret-scanning/list-alerts-for-org"], null>;
 
 /** `owner/repo#12`: the alert number is only unique within a repository. */
 export function alertRef(repo: string, number: number): string {
@@ -95,9 +79,8 @@ export async function listSecretScanningAlerts(
   const maxPages = Math.max(1, Math.ceil(query.limit / 100));
   let truncated = false;
   for (let page = 1; page <= maxPages; page++) {
-    const batch = await ghFetch<GitHubSecretAlert[]>(
-      ctx,
-      `${ownerBase(ctx.owner)}/secret-scanning/alerts`,
+    const batch = await dotcomApi(ctx).get(
+      `/orgs/${ownerSegment(ctx.owner)}/secret-scanning/alerts`,
       {
         query: {
           per_page: 100,
@@ -121,12 +104,12 @@ export async function listSecretScanningAlerts(
   };
 }
 
-const RESOLUTION: Record<LeakedSecretResolution["reason"], string> = {
+const RESOLUTION = {
   revoked: "revoked",
   "false-positive": "false_positive",
   "wont-fix": "wont_fix",
   "used-in-tests": "used_in_tests",
-};
+} as const satisfies Record<LeakedSecretResolution["reason"], string>;
 
 export async function resolveSecretScanningAlert(
   ctx: GitHubContext,
@@ -134,13 +117,12 @@ export async function resolveSecretScanningAlert(
   resolution: LeakedSecretResolution,
 ): Promise<void> {
   const { repo, number } = parseAlertRef(ref);
-  const [owner, name] = repo.split("/") as [string, string];
+  // `parseAlertRef` guarantees both halves.
+  const [owner = "", name = ""] = repo.split("/");
   try {
-    await ghFetch(
-      ctx,
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/secret-scanning/alerts/${number}`,
+    await dotcomApi(ctx).patch(
+      `/repos/${pathEncode(owner)}/${pathEncode(name)}/secret-scanning/alerts/${unencodedSegment(String(number))}`,
       {
-        method: "PATCH",
         body: {
           state: "resolved",
           resolution: RESOLUTION[resolution.reason],

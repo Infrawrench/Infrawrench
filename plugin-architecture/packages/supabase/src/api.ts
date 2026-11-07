@@ -1,4 +1,11 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  type ApiResponse,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type { operations, paths } from "./api-types.management.gen.js";
+import type { paths as storagePaths } from "./api-types.storage.gen.js";
 
 /**
  * Supabase Management API (`https://api.supabase.com/v1`, OpenAPI document at
@@ -12,8 +19,9 @@ import type { HttpHostServices } from "@infrawrench/plugin-base";
  *
  * The Storage API (bucket create/update/delete, object browser) is not part
  * of the Management API: it lives on the project's own gateway at
- * `https://{ref}.supabase.co/storage/v1` and authenticates with one of the
- * project's secret API keys, which this layer reads through the Management
+ * `https://{ref}.supabase.co/storage/v1`, with its own document at
+ * `https://supabase.github.io/storage/api.json`, and authenticates with one of
+ * the project's secret API keys, which this layer reads through the Management
  * API so the user never has to paste one.
  */
 export const SUPABASE_API = "https://api.supabase.com";
@@ -25,6 +33,9 @@ export interface SupabaseContext {
   baseUrl?: string;
   caCert?: string;
 }
+
+/** A Management API operation's response, by its `operationId`. */
+export type SupabaseResponse<Op extends keyof operations> = ApiResponse<operations[Op]>;
 
 /** Thrown for any non-2xx answer, carrying the status the poller classifies on. */
 export class SupabaseApiError extends Error {
@@ -40,88 +51,145 @@ export class SupabaseApiError extends Error {
 export function statusOf(err: unknown): number {
   if (err instanceof SupabaseApiError) return err.status;
   if (typeof err === "object" && err !== null && "status" in err) {
-    const status = (err as { status: unknown }).status;
+    const status = err.status;
     return typeof status === "number" ? status : 0;
   }
   return 0;
 }
 
-export type Query = Record<string, string | number | boolean | undefined>;
-
-export interface RawRequest {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  body?: string | Uint8Array;
-}
-
-export interface RawResponse {
-  status: number;
-  body: string;
-}
-
 /** One HTTP round trip, through the host's HTTP service whenever there is one. */
-export async function rawRequest(ctx: SupabaseContext, req: RawRequest): Promise<RawResponse> {
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url: req.url,
-      method: req.method,
-      headers: req.headers,
-      ...(req.body !== undefined ? { body: req.body } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    return { status: res.status, body: res.body };
-  }
-  const res = await fetch(req.url, {
-    method: req.method,
-    headers: req.headers,
-    ...(req.body !== undefined ? { body: req.body as BodyInit } : {}),
-  });
-  return { status: res.status, body: await res.text() };
-}
-
-function withQuery(url: string, query?: Query): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  }
-  const qs = params.toString();
-  return qs ? `${url}${url.includes("?") ? "&" : "?"}${qs}` : url;
-}
-
-/** JSON request against the Management API. Returns `undefined` for an empty body. */
-export async function sbFetch<T>(
-  ctx: SupabaseContext,
-  method: string,
-  path: string,
-  body?: unknown,
-  query?: Query,
-): Promise<T> {
-  const res = await rawRequest(ctx, {
-    method,
-    url: withQuery(`${ctx.baseUrl ?? SUPABASE_API}${path}`, query),
-    headers: {
-      Authorization: `Bearer ${ctx.token}`,
-      Accept: "application/json",
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+function plainTransport(ctx: SupabaseContext): HttpHostServices {
+  return {
+    async request(req) {
+      if (ctx.http) {
+        return ctx.http.request({
+          url: req.url,
+          method: req.method,
+          headers: req.headers,
+          ...(req.body !== undefined ? { body: req.body } : {}),
+          ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+        });
+      }
+      const res = await fetch(req.url, {
+        method: req.method,
+        headers: req.headers,
+        ...(req.body !== undefined
+          ? { body: typeof req.body === "string" ? req.body : new Uint8Array(req.body) }
+          : {}),
+      });
+      // Nothing in this plugin reads a response header.
+      return { status: res.status, headers: {}, body: await res.text() };
     },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  return parseResponse<T>(res, path);
+  };
 }
 
-/** Multipart (or other raw-body) request against the Management API. */
-export async function sbFetchRaw<T>(
+/**
+ * Several of these endpoints answer a 2xx with a plain word, or a 204 with a body,
+ * and what they said has always come back as it stands rather than failing the
+ * call. The client parses every 2xx and drops a 204's body, so hand it that text
+ * as JSON and the body under a status it reads.
+ */
+function lenientTransport(ctx: SupabaseContext): HttpHostServices {
+  const plain = plainTransport(ctx);
+  return {
+    async request(req) {
+      const res = await plain.request(req);
+      if (res.status < 200 || res.status >= 300 || !res.body) return res;
+      const status = res.status === 204 ? 200 : res.status;
+      try {
+        JSON.parse(res.body);
+        return { ...res, status };
+      } catch {
+        return { ...res, status, body: JSON.stringify(res.body) };
+      }
+    },
+  };
+}
+
+function managementClient(ctx: SupabaseContext, http: HttpHostServices) {
+  return createApiClient<paths>({
+    vendor: "Supabase",
+    baseUrl: ctx.baseUrl ?? SUPABASE_API,
+    headers: { Authorization: `Bearer ${ctx.token}`, Accept: "application/json" },
+    http,
+    contentType: "with-body",
+    httpError: ({ status, path, body }) =>
+      new SupabaseApiError(status, friendlyError(status, path, body)),
+  });
+}
+
+/** JSON requests against the Management API. An empty body reads as `undefined`. */
+export function supabaseApi(ctx: SupabaseContext) {
+  return managementClient(ctx, lenientTransport(ctx));
+}
+
+export type SupabaseApi = ReturnType<typeof supabaseApi>;
+
+/** For `getText`: the Prometheus scrape endpoint answers text/plain. */
+export function supabaseTextApi(ctx: SupabaseContext) {
+  return managementClient(ctx, plainTransport(ctx));
+}
+
+/**
+ * New `sb_secret_…` keys go in the `apikey` header only (the gateway mints the
+ * service-role JWT itself; they are not JWTs and must not be sent as a Bearer
+ * token). A legacy `service_role` key is a JWT and is sent in both headers.
+ */
+function storageHeaders(key: string): Record<string, string> {
+  const headers: Record<string, string> = { apikey: key, Accept: "application/json" };
+  if (key.startsWith("eyJ")) headers["Authorization"] = `Bearer ${key}`;
+  return headers;
+}
+
+/** A project's Storage API, signed with one of its secret API keys. */
+export function supabaseStorageApi(ctx: SupabaseContext, ref: string, key: string) {
+  return createApiClient<storagePaths>({
+    vendor: "Supabase",
+    baseUrl: `${projectUrl(ref)}/storage/v1`,
+    headers: storageHeaders(key),
+    http: lenientTransport(ctx),
+    contentType: "with-body",
+    httpError: ({ status, path, body }) =>
+      new SupabaseApiError(status, friendlyError(status, `storage${path}`, body)),
+  });
+}
+
+/** A POST whose body is not JSON, which the typed clients cannot send. */
+async function postBytes<T>(
   ctx: SupabaseContext,
-  method: string,
-  path: string,
+  request: {
+    url: string;
+    errorPath: string;
+    headers: Record<string, string>;
+    body: Uint8Array;
+  },
+): Promise<T> {
+  const { url, errorPath, headers, body } = request;
+  const { body: answer } = await restRequest<T>({
+    vendor: "Supabase",
+    url,
+    headers,
+    init: { method: "POST", body: new Uint8Array(body) },
+    http: lenientTransport(ctx),
+    contentType: "with-body",
+    httpError: ({ status, body: text }) =>
+      new SupabaseApiError(status, friendlyError(status, errorPath, text)),
+  });
+  return answer;
+}
+
+/** Deploy an Edge Function: multipart, so outside what the Management client can send. */
+export function deployFunctionBundle(
+  ctx: SupabaseContext,
+  path: `/v1/projects/${string}/functions/deploy`,
+  slug: string,
   contentType: string,
   body: Uint8Array,
-  query?: Query,
-): Promise<T> {
-  const res = await rawRequest(ctx, {
-    method,
-    url: withQuery(`${ctx.baseUrl ?? SUPABASE_API}${path}`, query),
+): Promise<SupabaseResponse<"v1-deploy-a-function">> {
+  const query = new URLSearchParams({ slug }).toString();
+  return postBytes(ctx, {
+    url: `${ctx.baseUrl ?? SUPABASE_API}${path}?${query}`,
+    errorPath: path,
     headers: {
       Authorization: `Bearer ${ctx.token}`,
       Accept: "application/json",
@@ -129,43 +197,38 @@ export async function sbFetchRaw<T>(
     },
     body,
   });
-  return parseResponse<T>(res, path);
 }
 
-/** Text request (the Prometheus scrape endpoint answers text/plain). */
-export async function sbFetchText(ctx: SupabaseContext, path: string): Promise<string> {
-  const res = await rawRequest(ctx, {
-    method: "GET",
-    url: `${ctx.baseUrl ?? SUPABASE_API}${path}`,
-    headers: { Authorization: `Bearer ${ctx.token}`, Accept: "text/plain" },
+/** Upload an object: raw bytes, so outside what the Storage client can send. */
+export async function uploadStorageBytes(
+  ctx: SupabaseContext,
+  request: {
+    ref: string;
+    key: string;
+    path: string;
+    errorPath: string;
+    contentType: string;
+    body: Uint8Array;
+  },
+): Promise<void> {
+  const { ref, key, path, errorPath, contentType, body } = request;
+  await postBytes<object>(ctx, {
+    url: `${projectUrl(ref)}/storage/v1${path}`,
+    errorPath,
+    headers: { ...storageHeaders(key), "Content-Type": contentType, "x-upsert": "true" },
+    body,
   });
-  if (res.status < 200 || res.status >= 300) {
-    throw new SupabaseApiError(res.status, friendlyError(res.status, path, res.body));
-  }
-  return res.body;
-}
-
-export function parseResponse<T>(res: RawResponse, path: string): T {
-  if (res.status < 200 || res.status >= 300) {
-    throw new SupabaseApiError(res.status, friendlyError(res.status, path, res.body));
-  }
-  if (!res.body) return undefined as T;
-  try {
-    return JSON.parse(res.body) as T;
-  } catch {
-    return res.body as unknown as T;
-  }
 }
 
 /** Turn an error body into a sentence, keeping Supabase's own `message`. */
 export function friendlyError(status: number, path: string, raw: string): string {
   let detail = "";
   try {
-    const parsed = JSON.parse(raw) as { message?: unknown; error?: unknown; msg?: unknown };
+    const parsed: { message?: unknown; error?: unknown; msg?: unknown } = JSON.parse(raw);
     const candidate = parsed.message ?? parsed.msg ?? parsed.error;
     if (typeof candidate === "string") detail = candidate;
     else if (candidate && typeof candidate === "object" && "message" in candidate) {
-      detail = String((candidate as { message: unknown }).message);
+      detail = String(candidate.message);
     }
   } catch {
     detail = raw.slice(0, 300);
@@ -185,9 +248,4 @@ export function friendlyError(status: number, path: string, raw: string): string
 /** URL of a project's own API gateway. */
 export function projectUrl(ref: string): string {
   return `https://${ref}.supabase.co`;
-}
-
-/** Path-segment encoding. */
-export function enc(s: string): string {
-  return encodeURIComponent(s);
 }

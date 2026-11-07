@@ -5,18 +5,9 @@
  */
 
 import type { ImageOption, ResourceInstance } from "@infrawrench/plugin-base";
-import { type LinodeApi, trailingId } from "./api.js";
+import { type LinodeApi, allPages, segment, trailingId } from "./api.js";
 import { linodeSizeOptions } from "./create.js";
 import type { PriceCatalogCache } from "./pricing.js";
-import type {
-  LinodeAccount,
-  LinodeFirewall,
-  LinodeImage,
-  LinodeInvoiceItem,
-  LinodeNodeBalancerConfig,
-  LinodeTransfer,
-  LinodeVpc,
-} from "./types.js";
 
 async function tryGet<T>(p: Promise<T>): Promise<T | null> {
   try {
@@ -41,29 +32,11 @@ export async function enrichDetail(
     case "linode": {
       const [prices, images, backups, transfer] = await Promise.all([
         tryGet(catalog.get()),
-        tryGet(api.all<LinodeImage>("/images")),
+        tryGet(allPages((query) => api.get("/images", { query }))),
         resource.fields["backupsEnabled"] === true
-          ? tryGet(
-              api.get<{
-                automatic?: Array<{
-                  id: number;
-                  label?: string | null;
-                  created?: string;
-                  status?: string;
-                  available?: boolean;
-                }>;
-                snapshot?: {
-                  current?: {
-                    id: number;
-                    label?: string | null;
-                    created?: string;
-                    available?: boolean;
-                  } | null;
-                };
-              }>(`/linode/instances/${id}/backups`),
-            )
+          ? tryGet(api.get(`/linode/instances/${segment(id)}/backups`))
           : Promise.resolve(null),
-        tryGet(api.get<LinodeTransfer>(`/linode/instances/${id}/transfer`)),
+        tryGet(api.get(`/linode/instances/${segment(id)}/transfer`)),
       ]);
       if (prices) {
         const region = String(resource.fields["region"] ?? "");
@@ -105,21 +78,18 @@ export async function enrichDetail(
     }
     case "nodebalancer": {
       const configs = await tryGet(
-        api.all<LinodeNodeBalancerConfig>(`/nodebalancers/${id}/configs`),
+        allPages((query) => api.get(`/nodebalancers/${segment(id)}/configs`, { query })),
       );
       if (configs) {
         const withNodes = await Promise.all(
           configs.map(async (c) => {
             const nodes =
               (await tryGet(
-                api.all<{
-                  id: number;
-                  label?: string;
-                  address?: string;
-                  status?: string;
-                  weight?: number;
-                  mode?: string;
-                }>(`/nodebalancers/${id}/configs/${c.id}/nodes`),
+                allPages((query) =>
+                  api.get(`/nodebalancers/${segment(id)}/configs/${segment(c.id)}/nodes`, {
+                    query,
+                  }),
+                ),
               )) ?? [];
             return {
               id: c.id,
@@ -144,11 +114,9 @@ export async function enrichDetail(
     }
     case "firewall": {
       const [fw, devices] = await Promise.all([
-        tryGet(api.get<LinodeFirewall>(`/networking/firewalls/${id}`)),
+        tryGet(api.get(`/networking/firewalls/${segment(id)}`)),
         tryGet(
-          api.all<{ id: number; entity?: { id?: number; label?: string; type?: string } }>(
-            `/networking/firewalls/${id}/devices`,
-          ),
+          allPages((query) => api.get(`/networking/firewalls/${segment(id)}/devices`, { query })),
         ),
       ]);
       if (fw?.rules)
@@ -167,7 +135,7 @@ export async function enrichDetail(
       break;
     }
     case "vpc": {
-      const vpc = await tryGet(api.get<LinodeVpc>(`/vpcs/${id}`));
+      const vpc = await tryGet(api.get(`/vpcs/${segment(id)}`));
       if (vpc) {
         put(
           "subnets",
@@ -183,15 +151,20 @@ export async function enrichDetail(
     }
     case "account": {
       const [account, transfer] = await Promise.all([
-        tryGet(api.get<LinodeAccount>("/account")),
-        tryGet(api.get<LinodeTransfer>("/account/transfer")),
+        tryGet(api.get("/account")),
+        tryGet(api.get("/account/transfer")),
       ]);
       if (account) put("promotions", account.active_promotions ?? []);
       if (transfer) put("regionTransfers", transfer.region_transfers ?? []);
       break;
     }
     case "invoice": {
-      put("items", await tryGet(api.all<LinodeInvoiceItem>(`/account/invoices/${id}/items`)));
+      put(
+        "items",
+        await tryGet(
+          allPages((query) => api.get(`/account/invoices/${segment(id)}/items`, { query })),
+        ),
+      );
       break;
     }
     default:

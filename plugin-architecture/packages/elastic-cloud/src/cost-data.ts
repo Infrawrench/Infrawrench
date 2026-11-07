@@ -21,9 +21,9 @@
  */
 
 import type { CostFetchRange, CostRow, CreditBalance } from "@infrawrench/plugin-base";
-import { CostSetupError, CreditAccessError } from "@infrawrench/plugin-base";
+import { CostSetupError, CreditAccessError, pathEncode } from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
-import { billingApi, cloudApi, isPermissionError, statusOf } from "./api.js";
+import { isPermissionError, statusOf } from "./api.js";
 import type { EcCostsOverview, EcInstanceCosts, EcOrganization } from "./types.js";
 
 const DAY_MS = 86_400_000;
@@ -102,7 +102,7 @@ export function completeDays(range: CostFetchRange, nowMs: number): Array<[numbe
 
 /** The organizations the key can see. Most keys see exactly one. */
 export async function listOrganizations(ctx: EcContext): Promise<EcOrganization[]> {
-  const res = await cloudApi<{ organizations?: EcOrganization[] }>(ctx, "/api/v1/organizations");
+  const res = await ctx.cloud.get("/organizations");
   return (res.organizations ?? []).filter((o) => o.id);
 }
 
@@ -208,9 +208,8 @@ export async function fetchElasticCostData(
     const orgId = org.id!;
     const perDay = await mapLimited(days, DAY_CONCURRENCY, async ([from, to]) => {
       try {
-        const body = await billingApi<EcInstanceCosts>(
-          ctx,
-          `/api/v2/billing/organizations/${encodeURIComponent(orgId)}/costs/instances`,
+        const body = await ctx.billing.get(
+          `/api/v2/billing/organizations/${pathEncode(orgId)}/costs/instances`,
           {
             query: {
               from: new Date(from).toISOString(),
@@ -240,7 +239,7 @@ export async function fetchElasticCostData(
  * that reports the hourly rate and the prepaid balance).
  */
 export async function fetchCostsOverview(ctx: EcContext, orgId: string): Promise<EcCostsOverview> {
-  return cloudApi<EcCostsOverview>(ctx, `/api/v1/billing/costs/${encodeURIComponent(orgId)}`);
+  return ctx.cloud.get(`/billing/costs/${pathEncode(orgId)}`);
 }
 
 /**

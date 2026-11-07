@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiBody, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -13,23 +13,20 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf } from "@infrawrench/plugin-base";
-import type { SendGridContext, SendGridRegion, SendGridRequest } from "./api.js";
-import { listOffset, listTemplates, sendgridFetch, statusOf } from "./api.js";
+import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { SendGridApi, SendGridApis, SendGridContext, SendGridRegion } from "./api.js";
+import { createSendGridApis, listTemplates, statusOf } from "./api.js";
+import type { operations as AlertOperations } from "./api-types.alerts.gen.js";
+import type { operations as DomainOperations } from "./api-types.domain-authentication.gen.js";
+import type { operations as SubuserOperations } from "./api-types.subusers.gen.js";
+import type { operations as SuppressionOperations } from "./api-types.suppressions.gen.js";
+import type { operations as VerifiedSenderOperations } from "./api-types.verified-senders.gen.js";
+import type { operations as WebhookOperations } from "./api-types.webhooks.gen.js";
 import type {
   AccountSummary,
-  SgAlert,
   SgApiKey,
-  SgAsmGroup,
-  SgDomain,
-  SgEventWebhook,
   SgIp,
-  SgLink,
-  SgParse,
-  SgReverseDns,
-  SgSubuser,
   SgSubuserCredits,
-  SgTemplate,
   SgVerifiedSender,
 } from "./mappers.js";
 import {
@@ -79,12 +76,9 @@ async function mapLimit<T, R>(
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const out: R[] = new Array(items.length);
-  let next = 0;
+  const queue = Array.from(items).entries();
   async function worker() {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i] as T);
-    }
+    for (const [i, item] of queue) out[i] = await fn(item);
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
@@ -104,7 +98,7 @@ export function parsePromptValues(args: (string | number)[]): Record<string, str
   const first = args[0];
   if (typeof first !== "string" || !first) return {};
   try {
-    const parsed = JSON.parse(first) as Record<string, unknown>;
+    const parsed: Record<string, string | number | boolean | null> | null = JSON.parse(first);
     if (!parsed || typeof parsed !== "object") return {};
     return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v ?? "")]));
   } catch {
@@ -129,7 +123,7 @@ export function parseScopes(raw: string): string[] {
   if (!value) return [];
   if (value.startsWith("[")) {
     try {
-      const parsed = JSON.parse(value) as unknown;
+      const parsed: string[] | object = JSON.parse(value);
       if (Array.isArray(parsed)) return [...new Set(parsed.map(String).filter(Boolean))];
     } catch {
       // fall through to the comma split
@@ -145,22 +139,33 @@ function isUnavailable(err: unknown): boolean {
 }
 
 function toRows(records: ResourceInstance[]): DnsRow[] {
-  return records.map((r) => ({
-    type: String(r.fields["type"] ?? ""),
-    name: String(r.fields["name"] ?? ""),
-    content: String(r.fields["content"] ?? ""),
-    purpose: String(r.fields["purpose"] ?? ""),
-    ...(typeof r.fields["valid"] === "boolean" ? { valid: r.fields["valid"] as boolean } : {}),
-  }));
+  return records.map((r) => {
+    const valid = r.fields["valid"];
+    return {
+      type: String(r.fields["type"] ?? ""),
+      name: String(r.fields["name"] ?? ""),
+      content: String(r.fields["content"] ?? ""),
+      purpose: String(r.fields["purpose"] ?? ""),
+      ...(typeof valid === "boolean" ? { valid } : {}),
+    };
+  });
 }
 
-function stash(r: ResourceInstance, extras: Record<string, unknown>): ResourceInstance {
+function stash(r: ResourceInstance, extras: Record<string, object | undefined>): ResourceInstance {
   const out: Record<string, string> = { ...r.resolvedOutputs };
   for (const [k, v] of Object.entries(extras)) {
     if (v !== undefined) out[k] = JSON.stringify(v);
   }
   return { ...r, resolvedOutputs: out };
 }
+
+/** What the three `validate` endpoints have in common: one result per record. */
+type ValidationAnswer =
+  | {
+      valid?: boolean;
+      validation_results?: Record<string, { valid?: boolean; reason?: string | null } | undefined>;
+    }
+  | undefined;
 
 function notFound(typeId: string, resourceId: string): Error {
   return Object.assign(new Error(`SendGrid plugin: ${typeId} ${resourceId} not found`), {
@@ -170,6 +175,9 @@ function notFound(typeId: string, resourceId: string): Error {
 
 export class SendGridClient implements PluginClient {
   readonly ctx: SendGridContext;
+  private readonly api: SendGridApi;
+  private readonly parent: SendGridApi;
+  private readonly apis: SendGridApis;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
@@ -182,10 +190,9 @@ export class SendGridClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
-  }
-
-  private get<T>(path: string, req: SendGridRequest = {}): Promise<T> {
-    return sendgridFetch<T>(this.ctx, path, req);
+    this.apis = createSendGridApis(this.ctx);
+    this.api = this.apis.api;
+    this.parent = this.apis.parent;
   }
 
   private async scoped(load: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
@@ -201,38 +208,36 @@ export class SendGridClient implements PluginClient {
   // Raw lists (shared by listers, DNS records and pickers)
   // -------------------------------------------------------------------------
 
-  private domains(): Promise<SgDomain[]> {
-    return listOffset<SgDomain>(this.ctx, "/v3/whitelabel/domains");
+  private domains() {
+    return this.api.getAll("/v3/whitelabel/domains", null);
   }
 
-  private async links(): Promise<SgLink[]> {
-    const res = await this.get<SgLink[]>("/v3/whitelabel/links", { query: { limit: 500 } });
+  private async links() {
+    const res = await this.api.get("/v3/whitelabel/links", { query: { limit: 500 } });
     return Array.isArray(res) ? res : [];
   }
 
-  private reverseDns(): Promise<SgReverseDns[]> {
-    return listOffset<SgReverseDns>(this.ctx, "/v3/whitelabel/ips");
+  private reverseDns() {
+    return this.api.getAll("/v3/whitelabel/ips", null);
   }
 
-  private async parses(): Promise<SgParse[]> {
-    const res = await this.get<{ result?: SgParse[] }>("/v3/user/webhooks/parse/settings");
+  private async parses() {
+    const res = await this.api.get("/v3/user/webhooks/parse/settings");
     return res?.result ?? [];
   }
 
   private ips(): Promise<SgIp[]> {
-    return listOffset<SgIp>(this.ctx, "/v3/ips");
+    return this.api.getAll("/v3/ips", null);
   }
 
   private async scopes(): Promise<string[]> {
-    const res = await this.get<{ scopes?: string[] }>("/v3/scopes");
+    const res = await this.api.get("/v3/scopes");
     return res?.scopes ?? [];
   }
 
   private async apiKeyDetail(id: string): Promise<SgApiKey> {
     // The spec wraps the single key in `result: [...]`; the live API answers a bare object.
-    const res = await this.get<SgApiKey & { result?: SgApiKey[] }>(
-      `/v3/api_keys/${encodeURIComponent(id)}`,
-    );
+    const res = await this.api.get(`/v3/api_keys/${pathEncode(id)}`);
     return res?.result?.[0] ?? res;
   }
 
@@ -240,8 +245,8 @@ export class SendGridClient implements PluginClient {
     const out: SgVerifiedSender[] = [];
     let lastSeen: number | undefined;
     for (let page = 0; page < 50; page++) {
-      const res = await this.get<{ results?: SgVerifiedSender[] }>("/v3/verified_senders", {
-        query: { limit: 100, lastSeenID: lastSeen },
+      const res = await this.api.get("/v3/verified_senders", {
+        query: { limit: 100, ...(lastSeen !== undefined ? { lastSeenID: lastSeen } : {}) },
       });
       const items = res?.results ?? [];
       out.push(...items);
@@ -253,9 +258,7 @@ export class SendGridClient implements PluginClient {
   }
 
   private async poolIps(name: string): Promise<string[]> {
-    const res = await this.get<{ ips?: Array<string | { ip?: string }> }>(
-      `/v3/ips/pools/${encodeURIComponent(name)}`,
-    );
+    const res = await this.api.get(`/v3/ips/pools/${pathEncode(name)}`);
     return (res?.ips ?? [])
       .map((ip) => (typeof ip === "string" ? ip : (ip.ip ?? "")))
       .filter(Boolean);
@@ -272,10 +275,10 @@ export class SendGridClient implements PluginClient {
           return [await this.loadAccount(accountId)];
         case "sendgrid-api-key":
           return this.scoped(async () => {
-            const res = await this.get<{ result?: SgApiKey[] }>("/v3/api_keys");
+            const res = await this.api.get("/v3/api_keys");
             const keys = res?.result ?? [];
             const inUse = keyIdOf(this.ctx.apiKey);
-            const detailed = await mapLimit(keys, CONCURRENCY, async (k) =>
+            const detailed = await mapLimit(keys, CONCURRENCY, async (k): Promise<SgApiKey> =>
               k.api_key_id && keys.indexOf(k) < MAX_KEY_SCOPE_READS
                 ? await this.apiKeyDetail(k.api_key_id).catch(() => k)
                 : k,
@@ -313,7 +316,7 @@ export class SendGridClient implements PluginClient {
           return this.scoped(async () => (await this.ips()).map((ip) => mapIp(accountId, ip)));
         case "sendgrid-ip-pool":
           return this.scoped(async () => {
-            const pools = await this.get<Array<{ name?: string }>>("/v3/ips/pools");
+            const pools = await this.api.get("/v3/ips/pools");
             const names = (Array.isArray(pools) ? pools : [])
               .map((p) => p.name ?? "")
               .filter(Boolean);
@@ -325,26 +328,22 @@ export class SendGridClient implements PluginClient {
           // Subusers belong to the parent account; a connection acting as a subuser has none.
           if (this.ctx.onBehalfOf) return [];
           return this.scoped(async () =>
-            (await listOffset<SgSubuser>(this.ctx, "/v3/subusers", {}, { asParent: true })).map(
-              (s) => mapSubuser(accountId, s),
-            ),
+            (await this.parent.getAll("/v3/subusers", null)).map((s) => mapSubuser(accountId, s)),
           );
         case "sendgrid-event-webhook":
           return this.scoped(async () => {
-            const res = await this.get<{ webhooks?: SgEventWebhook[] }>(
-              "/v3/user/webhooks/event/settings/all",
-            );
+            const res = await this.api.get("/v3/user/webhooks/event/settings/all");
             return (res?.webhooks ?? []).map((w) => mapEventWebhook(accountId, w));
           });
         case "sendgrid-inbound-parse":
           return this.scoped(async () => (await this.parses()).map((p) => mapParse(accountId, p)));
         case "sendgrid-template":
           return this.scoped(async () =>
-            (await listTemplates<SgTemplate>(this.ctx)).map((t) => mapTemplate(accountId, t)),
+            (await listTemplates(this.api)).map((t) => mapTemplate(accountId, t)),
           );
         case "sendgrid-unsubscribe-group":
           return this.scoped(async () => {
-            const res = await this.get<SgAsmGroup[]>("/v3/asm/groups");
+            const res = await this.api.get("/v3/asm/groups");
             return (Array.isArray(res) ? res : []).map((g) => mapAsmGroup(accountId, g));
           });
         case "sendgrid-verified-sender":
@@ -353,7 +352,7 @@ export class SendGridClient implements PluginClient {
           );
         case "sendgrid-alert":
           return this.scoped(async () => {
-            const res = await this.get<SgAlert[]>("/v3/alerts");
+            const res = await this.api.get("/v3/alerts");
             return (Array.isArray(res) ? res : []).map((a) => mapAlert(accountId, a));
           });
         default:
@@ -364,11 +363,11 @@ export class SendGridClient implements PluginClient {
 
   private async loadAccount(accountId: string): Promise<ResourceInstance> {
     // The username call doubles as the credential check: a bad key fails here.
-    const user = await this.get<{ username?: string; user_id?: number }>("/v3/user/username");
+    const user = await this.api.get("/v3/user/username");
     const [account, credits, profile] = await Promise.all([
-      this.get<{ type?: string; reputation?: number }>("/v3/user/account").catch(() => undefined),
-      this.get<AccountSummary["credits"]>("/v3/user/credits").catch(() => undefined),
-      this.get<{ company?: string }>("/v3/user/profile").catch(() => undefined),
+      this.api.get("/v3/user/account").catch(() => undefined),
+      this.api.get("/v3/user/credits").catch(() => undefined),
+      this.api.get("/v3/user/profile").catch(() => undefined),
     ]);
     const summary: AccountSummary = {
       username: user?.username ?? this.ctx.onBehalfOf ?? "sendgrid",
@@ -394,22 +393,20 @@ export class SendGridClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(id);
       switch (typeId) {
         case "sendgrid-account": {
           const r = await this.loadAccount(accountId);
           const end = Date.now();
           const [stats, ...lists] = await Promise.all([
-            statDays(this.ctx, { startMs: end - 30 * 86_400_000, endMs: end })
+            statDays(this.apis, { startMs: end - 30 * 86_400_000, endMs: end })
               .then(sumDays)
               .catch(() => undefined),
             ...SUPPRESSION_LISTS.map((l) =>
-              this.get<unknown[]>(l.path, { query: { limit: 50, offset: 0 } }).catch(
-                () => undefined,
-              ),
+              this.api.get(l.path, { query: { limit: 50, offset: 0 } }).catch(() => undefined),
             ),
           ]);
-          const supp: Record<string, unknown> = {};
+          const supp: Record<string, object[]> = {};
           SUPPRESSION_LISTS.forEach((l, i) => {
             const rows = lists[i];
             if (Array.isArray(rows)) supp[l.id] = rows;
@@ -422,52 +419,43 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-api-key":
           return mapApiKey(accountId, await this.apiKeyDetail(id), keyIdOf(this.ctx.apiKey));
         case "sendgrid-domain": {
-          const d = await this.get<SgDomain>(`/v3/whitelabel/domains/${enc}`);
+          const d = await this.api.get(`/v3/whitelabel/domains/${enc}`);
           return stash(mapDomain(accountId, d), {
             [DNS_KEY]: toRows(domainDnsRecords(accountId, d)),
           });
         }
         case "sendgrid-link-branding": {
-          const l = await this.get<SgLink>(`/v3/whitelabel/links/${enc}`);
+          const l = await this.api.get(`/v3/whitelabel/links/${enc}`);
           return stash(mapLink(accountId, l), { [DNS_KEY]: toRows(linkDnsRecords(accountId, l)) });
         }
         case "sendgrid-reverse-dns": {
-          const r = await this.get<SgReverseDns>(`/v3/whitelabel/ips/${enc}`);
+          const r = await this.api.get(`/v3/whitelabel/ips/${enc}`);
           return stash(mapReverseDns(accountId, r), {
             [DNS_KEY]: toRows(reverseDnsRecords(accountId, r)),
           });
         }
         case "sendgrid-ip":
-          return mapIp(accountId, await this.get<SgIp>(`/v3/ips/${enc}`));
+          return mapIp(accountId, await this.api.get(`/v3/ips/${enc}`));
         case "sendgrid-ip-pool": {
           const [ips, all] = await Promise.all([
             this.poolIps(id),
-            this.ips().catch(() => [] as SgIp[]),
+            this.ips().catch((): SgIp[] => []),
           ]);
           const inPool = new Set(ips);
           const available = all.map((i) => i.ip ?? "").filter((ip) => ip && !inPool.has(ip));
           return stash(mapIpPool(accountId, id, ips), { [AVAILABLE_IPS_KEY]: available });
         }
         case "sendgrid-subuser": {
-          const list = await this.get<SgSubuser[]>("/v3/subusers", {
-            query: { username: id },
-            asParent: true,
-          });
+          const list = await this.parent.get("/v3/subusers", { query: { username: id } });
           const s = (Array.isArray(list) ? list : []).find((x) => x.username === id);
           if (!s) throw notFound(typeId, resourceId);
           const end = Date.now();
           const [credits, reps, stats] = await Promise.all([
-            this.get<SgSubuserCredits>(`/v3/subusers/${enc}/credits`, { asParent: true }).catch(
-              () => undefined,
-            ),
-            this.get<Array<{ username?: string; reputation?: number }>>(
-              "/v3/subusers/reputations",
-              {
-                query: { usernames: id },
-                asParent: true,
-              },
-            ).catch(() => undefined),
-            statDays(this.ctx, { startMs: end - 30 * 86_400_000, endMs: end }, id)
+            this.parent.get(`/v3/subusers/${enc}/credits`).catch(() => undefined),
+            this.parent
+              .get("/v3/subusers/reputations", { query: { usernames: id } })
+              .catch(() => undefined),
+            statDays(this.apis, { startMs: end - 30 * 86_400_000, endMs: end }, id)
               .then(sumDays)
               .catch(() => undefined),
           ]);
@@ -483,15 +471,12 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-event-webhook":
           return mapEventWebhook(
             accountId,
-            await this.get<SgEventWebhook>(`/v3/user/webhooks/event/settings/${enc}`),
+            await this.api.get(`/v3/user/webhooks/event/settings/${enc}`),
           );
         case "sendgrid-inbound-parse":
-          return mapParse(
-            accountId,
-            await this.get<SgParse>(`/v3/user/webhooks/parse/settings/${enc}`),
-          );
+          return mapParse(accountId, await this.api.get(`/v3/user/webhooks/parse/settings/${enc}`));
         case "sendgrid-template": {
-          const t = await this.get<SgTemplate>(`/v3/templates/${enc}`);
+          const t = await this.api.get(`/v3/templates/${enc}`);
           return stash(mapTemplate(accountId, t), {
             [VERSIONS_KEY]: (t.versions ?? []).map((v) => ({
               name: v.name,
@@ -503,17 +488,15 @@ export class SendGridClient implements PluginClient {
           });
         }
         case "sendgrid-unsubscribe-group":
-          return mapAsmGroup(accountId, await this.get<SgAsmGroup>(`/v3/asm/groups/${enc}`));
+          return mapAsmGroup(accountId, await this.api.get(`/v3/asm/groups/${enc}`));
         case "sendgrid-verified-sender": {
-          const res = await this.get<{ results?: SgVerifiedSender[] }>("/v3/verified_senders", {
-            query: { id },
-          });
+          const res = await this.api.get("/v3/verified_senders", { query: { id } });
           const s = (res?.results ?? []).find((x) => String(x.id) === id);
           if (!s) throw notFound(typeId, resourceId);
           return mapVerifiedSender(accountId, s);
         }
         case "sendgrid-alert":
-          return mapAlert(accountId, await this.get<SgAlert>(`/v3/alerts/${enc}`));
+          return mapAlert(accountId, await this.api.get(`/v3/alerts/${enc}`));
         default: {
           const all = await runPluginEffect(this.listResources(typeId, accountId));
           const found = all.find((r) => r.id === resourceId || r.externalId === id);
@@ -553,9 +536,9 @@ export class SendGridClient implements PluginClient {
     return attempt(async () => {
       const range = rangeOrDefault(timeRange);
       if (resourceTypeId === "sendgrid-account")
-        return seriesFromDays(await statDays(this.ctx, range));
+        return seriesFromDays(await statDays(this.apis, range));
       if (resourceTypeId === "sendgrid-subuser") {
-        return seriesFromDays(await statDays(this.ctx, range, externalIdOf(resourceId)));
+        return seriesFromDays(await statDays(this.apis, range, externalIdOf(resourceId)));
       }
       return [];
     });
@@ -595,9 +578,9 @@ export class SendGridClient implements PluginClient {
 
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
-      let credits: { total?: number; used?: number; reset_frequency?: string } | undefined;
+      let credits: AccountSummary["credits"];
       try {
-        credits = await this.get("/v3/user/credits");
+        credits = await this.api.get("/v3/user/credits");
       } catch (err) {
         if (statusOf(err) === 403) {
           throw new QuotaAccessError(
@@ -663,7 +646,7 @@ export class SendGridClient implements PluginClient {
       });
       switch (typeId) {
         case "sendgrid-api-key": {
-          const scopes = await this.scopes().catch(() => [] as string[]);
+          const scopes = await this.scopes().catch((): string[] => []);
           return {
             fields: [
               text("name", "Name", { required: true }),
@@ -747,7 +730,7 @@ export class SendGridClient implements PluginClient {
             ],
           };
         case "sendgrid-reverse-dns": {
-          const ips = await this.ips().catch(() => [] as SgIp[]);
+          const ips = await this.ips().catch((): SgIp[] => []);
           return {
             fields: [
               {
@@ -771,7 +754,7 @@ export class SendGridClient implements PluginClient {
             fields: [text("name", "Name", { required: true, description: "Up to 64 characters." })],
           };
         case "sendgrid-subuser": {
-          const ips = await this.ips().catch(() => [] as SgIp[]);
+          const ips = await this.ips().catch((): SgIp[] => []);
           return {
             fields: [
               text("username", "Username", { required: true }),
@@ -955,13 +938,13 @@ export class SendGridClient implements PluginClient {
                 ? parseScopes(fields["scopes"] ?? "")
                 : ["mail.send"];
           if (scopes.length === 0) throw new Error("SendGrid plugin: pick at least one scope");
-          const k = await this.get<SgApiKey>("/v3/api_keys", {
+          const k = await this.api.post("/v3/api_keys", {
             body: { name: trimmed(fields, "name"), scopes },
           });
           return mapApiKey(accountId, k, keyIdOf(this.ctx.apiKey));
         }
         case "sendgrid-domain": {
-          const d = await this.get<SgDomain>("/v3/whitelabel/domains", {
+          const d = await this.api.post("/v3/whitelabel/domains", {
             body: {
               domain: trimmed(fields, "domain"),
               ...(trimmed(fields, "subdomain") ? { subdomain: trimmed(fields, "subdomain") } : {}),
@@ -980,7 +963,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-link-branding":
           return mapLink(
             accountId,
-            await this.get<SgLink>("/v3/whitelabel/links", {
+            await this.api.post("/v3/whitelabel/links", {
               body: {
                 domain: trimmed(fields, "domain"),
                 ...(trimmed(fields, "subdomain")
@@ -995,7 +978,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-reverse-dns":
           return mapReverseDns(
             accountId,
-            await this.get<SgReverseDns>("/v3/whitelabel/ips", {
+            await this.api.post("/v3/whitelabel/ips", {
               body: {
                 ip: trimmed(fields, "ip"),
                 domain: trimmed(fields, "domain"),
@@ -1007,15 +990,14 @@ export class SendGridClient implements PluginClient {
           );
         case "sendgrid-ip-pool": {
           const name = trimmed(fields, "name");
-          await this.get("/v3/ips/pools", { body: { name } });
+          await this.api.post("/v3/ips/pools", { body: { name } });
           return mapIpPool(accountId, name, []);
         }
         case "sendgrid-subuser": {
           const ips = parseScopes(fields["ips"] ?? "");
           if (ips.length === 0)
             throw new Error("SendGrid plugin: a subuser needs at least one dedicated IP");
-          const s = await this.get<SgSubuser & { user_id?: number }>("/v3/subusers", {
-            asParent: true,
+          const s = await this.parent.post("/v3/subusers", {
             body: {
               username: trimmed(fields, "username"),
               email: trimmed(fields, "email"),
@@ -1035,7 +1017,7 @@ export class SendGridClient implements PluginClient {
             throw new Error("SendGrid plugin: the webhook URL must start with https://");
           return mapEventWebhook(
             accountId,
-            await this.get<SgEventWebhook>("/v3/user/webhooks/event/settings", {
+            await this.api.post("/v3/user/webhooks/event/settings", {
               body: {
                 url,
                 enabled: bool(fields["enabled"]) ?? true,
@@ -1050,7 +1032,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-inbound-parse":
           return mapParse(
             accountId,
-            await this.get<SgParse>("/v3/user/webhooks/parse/settings", {
+            await this.api.post("/v3/user/webhooks/parse/settings", {
               body: {
                 hostname: trimmed(fields, "hostname"),
                 url: trimmed(fields, "url"),
@@ -1062,7 +1044,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-template":
           return mapTemplate(
             accountId,
-            await this.get<SgTemplate>("/v3/templates", {
+            await this.api.post("/v3/templates", {
               body: {
                 name: trimmed(fields, "name"),
                 generation: trimmed(fields, "generation") || "dynamic",
@@ -1072,7 +1054,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-unsubscribe-group":
           return mapAsmGroup(
             accountId,
-            await this.get<SgAsmGroup>("/v3/asm/groups", {
+            await this.api.post("/v3/asm/groups", {
               body: {
                 name: trimmed(fields, "name"),
                 description: trimmed(fields, "description"),
@@ -1083,14 +1065,14 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-verified-sender":
           return mapVerifiedSender(
             accountId,
-            await this.get<SgVerifiedSender>("/v3/verified_senders", { body: senderBody(fields) }),
+            await this.api.post("/v3/verified_senders", { body: senderBody(fields) }),
           );
         case "sendgrid-alert": {
           const type = trimmed(fields, "type") || "usage_limit";
           const percentage = Number(trimmed(fields, "percentage") || "80");
           return mapAlert(
             accountId,
-            await this.get<SgAlert>("/v3/alerts", {
+            await this.api.post("/v3/alerts", {
               body: {
                 type,
                 email_to: trimmed(fields, "emailTo"),
@@ -1119,7 +1101,7 @@ export class SendGridClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(id);
       switch (typeId) {
         case "sendgrid-api-key": {
           if ("scopes" in fields) {
@@ -1127,47 +1109,40 @@ export class SendGridClient implements PluginClient {
             const scopes = parseScopes(fields["scopes"] ?? "");
             if (scopes.length === 0)
               throw new Error("SendGrid plugin: a key needs at least one scope");
-            await this.get(`/v3/api_keys/${enc}`, {
-              method: "PUT",
+            await this.api.put(`/v3/api_keys/${enc}`, {
               body: {
                 name: "name" in fields ? trimmed(fields, "name") : (current.name ?? ""),
                 scopes,
               },
             });
           } else if ("name" in fields) {
-            await this.get(`/v3/api_keys/${enc}`, {
-              method: "PATCH",
+            await this.api.patch(`/v3/api_keys/${enc}`, {
               body: { name: trimmed(fields, "name") },
             });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "sendgrid-domain": {
-          const body: Record<string, boolean> = {};
-          if (bool(fields["default"]) !== undefined)
-            body["default"] = bool(fields["default"]) as boolean;
-          if (bool(fields["customSpf"]) !== undefined)
-            body["custom_spf"] = bool(fields["customSpf"]) as boolean;
-          await this.get(`/v3/whitelabel/domains/${enc}`, { method: "PATCH", body });
+          const body: ApiBody<DomainOperations["UpdateAuthenticatedDomain"]> = {};
+          if (bool(fields["default"]) !== undefined) body.default = bool(fields["default"]);
+          if (bool(fields["customSpf"]) !== undefined) body.custom_spf = bool(fields["customSpf"]);
+          await this.api.patch(`/v3/whitelabel/domains/${enc}`, { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "sendgrid-link-branding":
-          await this.get(`/v3/whitelabel/links/${enc}`, {
-            method: "PATCH",
+          await this.api.patch(`/v3/whitelabel/links/${enc}`, {
             body: { default: bool(fields["default"]) ?? false },
           });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         case "sendgrid-ip-pool": {
           const name = trimmed(fields, "name");
           if (!name) return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          await this.get(`/v3/ips/pools/${enc}`, { method: "PUT", body: { name } });
+          await this.api.put(`/v3/ips/pools/${enc}`, { body: { name } });
           return mapIpPool(accountId, name, await this.poolIps(name).catch(() => undefined));
         }
         case "sendgrid-subuser": {
           if (bool(fields["disabled"]) !== undefined) {
-            await this.get(`/v3/subusers/${enc}`, {
-              method: "PATCH",
-              asParent: true,
+            await this.parent.patch(`/v3/subusers/${enc}`, {
               body: { disabled: bool(fields["disabled"]) },
             });
           }
@@ -1176,85 +1151,75 @@ export class SendGridClient implements PluginClient {
             "creditTotal" in fields ||
             "creditResetFrequency" in fields
           ) {
-            const current = await this.get<SgSubuserCredits>(`/v3/subusers/${enc}/credits`, {
-              asParent: true,
-            }).catch(() => ({}) as SgSubuserCredits);
+            const current = await this.parent
+              .get(`/v3/subusers/${enc}/credits`)
+              .catch((): SgSubuserCredits => ({}));
             const type = trimmed(fields, "creditType") || current.type || "unlimited";
-            const body: Record<string, unknown> = { type };
+            const body: ApiBody<SubuserOperations["UpdateSubuserCredit"]> = { type };
             if (type !== "unlimited") {
               const total = Number(trimmed(fields, "creditTotal") || String(current.total ?? ""));
               if (!Number.isFinite(total) || total < 0)
                 throw new Error("SendGrid plugin: credits must be a number of zero or more");
-              body["total"] = total;
+              body.total = total;
             }
             if (type === "recurring") {
-              body["reset_frequency"] =
+              body.reset_frequency =
                 trimmed(fields, "creditResetFrequency") || current.reset_frequency || "monthly";
             }
-            await this.get(`/v3/subusers/${enc}/credits`, { method: "PUT", asParent: true, body });
+            await this.parent.put(`/v3/subusers/${enc}/credits`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "sendgrid-event-webhook": {
-          const body: Record<string, unknown> = { ...eventBody(fields) };
-          if ("url" in fields) body["url"] = trimmed(fields, "url");
-          if ("friendlyName" in fields) body["friendly_name"] = trimmed(fields, "friendlyName");
-          if (bool(fields["enabled"]) !== undefined) body["enabled"] = bool(fields["enabled"]);
+          const body: ApiBody<WebhookOperations["UpdateEventWebhook"]> = { ...eventBody(fields) };
+          if ("url" in fields) body.url = trimmed(fields, "url");
+          if ("friendlyName" in fields) body.friendly_name = trimmed(fields, "friendlyName");
+          if (bool(fields["enabled"]) !== undefined) body.enabled = bool(fields["enabled"]);
           if (Object.keys(body).length > 0) {
-            await this.get(`/v3/user/webhooks/event/settings/${enc}`, { method: "PATCH", body });
+            await this.api.patch(`/v3/user/webhooks/event/settings/${enc}`, { body });
           }
           if (bool(fields["signed"]) !== undefined) {
-            await this.get(`/v3/user/webhooks/event/settings/signed/${enc}`, {
-              method: "PATCH",
+            await this.api.patch(`/v3/user/webhooks/event/settings/signed/${enc}`, {
               body: { enabled: bool(fields["signed"]) },
             });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "sendgrid-inbound-parse": {
-          const body: Record<string, unknown> = {};
-          if ("url" in fields) body["url"] = trimmed(fields, "url");
-          if (bool(fields["spamCheck"]) !== undefined)
-            body["spam_check"] = bool(fields["spamCheck"]);
-          if (bool(fields["sendRaw"]) !== undefined) body["send_raw"] = bool(fields["sendRaw"]);
+          const body: ApiBody<WebhookOperations["UpdateParseSetting"]> = {};
+          if ("url" in fields) body.url = trimmed(fields, "url");
+          if (bool(fields["spamCheck"]) !== undefined) body.spam_check = bool(fields["spamCheck"]);
+          if (bool(fields["sendRaw"]) !== undefined) body.send_raw = bool(fields["sendRaw"]);
           return mapParse(
             accountId,
-            await this.get<SgParse>(`/v3/user/webhooks/parse/settings/${enc}`, {
-              method: "PATCH",
-              body,
-            }),
+            await this.api.patch(`/v3/user/webhooks/parse/settings/${enc}`, { body }),
           );
         }
         case "sendgrid-template":
-          await this.get(`/v3/templates/${enc}`, {
-            method: "PATCH",
+          await this.api.patch(`/v3/templates/${enc}`, {
             body: { name: trimmed(fields, "name") },
           });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         case "sendgrid-unsubscribe-group": {
-          const body: Record<string, unknown> = {};
-          if ("name" in fields) body["name"] = trimmed(fields, "name");
-          if ("description" in fields) body["description"] = trimmed(fields, "description");
-          if (bool(fields["isDefault"]) !== undefined)
-            body["is_default"] = bool(fields["isDefault"]);
-          await this.get(`/v3/asm/groups/${enc}`, { method: "PATCH", body });
+          const body: ApiBody<SuppressionOperations["UpdateAsmGroup"]> = {};
+          if ("name" in fields) body.name = trimmed(fields, "name");
+          if ("description" in fields) body.description = trimmed(fields, "description");
+          if (bool(fields["isDefault"]) !== undefined) body.is_default = bool(fields["isDefault"]);
+          await this.api.patch(`/v3/asm/groups/${enc}`, { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "sendgrid-verified-sender": {
           const body = senderBody(fields, true);
-          await this.get(`/v3/verified_senders/${enc}`, { method: "PATCH", body });
+          await this.api.patch(`/v3/verified_senders/${enc}`, { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "sendgrid-alert": {
-          const body: Record<string, unknown> = {};
-          if ("emailTo" in fields) body["email_to"] = trimmed(fields, "emailTo");
+          const body: ApiBody<AlertOperations["UpdateAlert"]> = {};
+          if ("emailTo" in fields) body.email_to = trimmed(fields, "emailTo");
           if (trimmed(fields, "percentage"))
-            body["percentage"] = Number(trimmed(fields, "percentage"));
-          if (trimmed(fields, "frequency")) body["frequency"] = trimmed(fields, "frequency");
-          return mapAlert(
-            accountId,
-            await this.get<SgAlert>(`/v3/alerts/${enc}`, { method: "PATCH", body }),
-          );
+            body.percentage = Number(trimmed(fields, "percentage"));
+          if (trimmed(fields, "frequency")) body.frequency = trimmed(fields, "frequency");
+          return mapAlert(accountId, await this.api.patch(`/v3/alerts/${enc}`, { body }));
         }
         default:
           throw new Error(`SendGrid plugin: "${typeId}" cannot be edited from Infrawrench`);
@@ -1269,32 +1234,30 @@ export class SendGridClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
-      const paths: Record<string, string> = {
-        "sendgrid-api-key": `/v3/api_keys/${enc}`,
-        "sendgrid-domain": `/v3/whitelabel/domains/${enc}`,
-        "sendgrid-link-branding": `/v3/whitelabel/links/${enc}`,
-        "sendgrid-reverse-dns": `/v3/whitelabel/ips/${enc}`,
-        "sendgrid-ip-pool": `/v3/ips/pools/${enc}`,
-        "sendgrid-subuser": `/v3/subusers/${enc}`,
-        "sendgrid-event-webhook": `/v3/user/webhooks/event/settings/${enc}`,
-        "sendgrid-inbound-parse": `/v3/user/webhooks/parse/settings/${enc}`,
-        "sendgrid-template": `/v3/templates/${enc}`,
-        "sendgrid-unsubscribe-group": `/v3/asm/groups/${enc}`,
-        "sendgrid-verified-sender": `/v3/verified_senders/${enc}`,
-        "sendgrid-alert": `/v3/alerts/${enc}`,
+      const enc = pathEncode(id);
+      const { api, parent } = this;
+      const deletes: Record<string, () => Promise<undefined>> = {
+        "sendgrid-api-key": () => api.delete(`/v3/api_keys/${enc}`),
+        "sendgrid-domain": () => api.delete(`/v3/whitelabel/domains/${enc}`),
+        "sendgrid-link-branding": () => api.delete(`/v3/whitelabel/links/${enc}`),
+        "sendgrid-reverse-dns": () => api.delete(`/v3/whitelabel/ips/${enc}`),
+        "sendgrid-ip-pool": () => api.delete(`/v3/ips/pools/${enc}`),
+        "sendgrid-subuser": () => parent.delete(`/v3/subusers/${enc}`),
+        "sendgrid-event-webhook": () => api.delete(`/v3/user/webhooks/event/settings/${enc}`),
+        "sendgrid-inbound-parse": () => api.delete(`/v3/user/webhooks/parse/settings/${enc}`),
+        "sendgrid-template": () => api.delete(`/v3/templates/${enc}`),
+        "sendgrid-unsubscribe-group": () => api.delete(`/v3/asm/groups/${enc}`),
+        "sendgrid-verified-sender": () => api.delete(`/v3/verified_senders/${enc}`),
+        "sendgrid-alert": () => api.delete(`/v3/alerts/${enc}`),
       };
-      const path = paths[typeId];
-      if (!path) throw new Error(`SendGrid plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      const send = deletes[typeId];
+      if (!send) throw new Error(`SendGrid plugin: "${typeId}" cannot be deleted from Infrawrench`);
       if (typeId === "sendgrid-api-key" && id === keyIdOf(this.ctx.apiKey)) {
         throw new Error(
           "This is the API key this connection signs in with. Change the account's credentials first, then delete it.",
         );
       }
-      await this.get(path, {
-        method: "DELETE",
-        ...(typeId === "sendgrid-subuser" ? { asParent: true } : {}),
-      });
+      await send();
     });
   }
 
@@ -1306,12 +1269,9 @@ export class SendGridClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
-      const validate = async (path: string) => {
-        const res = await this.get<{
-          valid?: boolean;
-          validation_results?: Record<string, { valid?: boolean; reason?: string | null }>;
-        }>(path, { method: "POST" });
+      const enc = pathEncode(id);
+      const validate = async (answer: Promise<ValidationAnswer>) => {
+        const res = await answer;
         if (res?.valid === false) {
           const reasons = Object.entries(res.validation_results ?? {})
             .filter(([, v]) => v?.valid === false)
@@ -1321,11 +1281,11 @@ export class SendGridClient implements PluginClient {
       };
       switch (`${typeId}:${actionId}`) {
         case "sendgrid-domain:validate":
-          return validate(`/v3/whitelabel/domains/${enc}/validate`);
+          return validate(this.api.post(`/v3/whitelabel/domains/${enc}/validate`));
         case "sendgrid-link-branding:validate":
-          return validate(`/v3/whitelabel/links/${enc}/validate`);
+          return validate(this.api.post(`/v3/whitelabel/links/${enc}/validate`));
         case "sendgrid-reverse-dns:validate":
-          return validate(`/v3/whitelabel/ips/${enc}/validate`);
+          return validate(this.api.post(`/v3/whitelabel/ips/${enc}/validate`));
         case "sendgrid-domain:make-default":
         case "sendgrid-link-branding:make-default":
           await runPluginEffect(
@@ -1333,24 +1293,22 @@ export class SendGridClient implements PluginClient {
           );
           return;
         case "sendgrid-ip:start-warmup":
-          await this.get("/v3/ips/warmup", { body: { ip: id } });
+          await this.api.post("/v3/ips/warmup", { body: { ip: id } });
           return;
         case "sendgrid-ip:stop-warmup":
-          await this.get(`/v3/ips/warmup/${enc}`, { method: "DELETE" });
+          await this.api.delete(`/v3/ips/warmup/${enc}`);
           return;
         case "sendgrid-event-webhook:test": {
-          const w = await this.get<SgEventWebhook>(`/v3/user/webhooks/event/settings/${enc}`);
-          await this.get("/v3/user/webhooks/event/test", { body: { id, url: w.url } });
+          const w = await this.api.get(`/v3/user/webhooks/event/settings/${enc}`);
+          await this.api.post("/v3/user/webhooks/event/test", { body: { id, url: w.url } });
           return;
         }
         case "sendgrid-verified-sender:resend":
-          await this.get(`/v3/verified_senders/resend/${enc}`, { method: "POST" });
+          await this.api.post(`/v3/verified_senders/resend/${enc}`);
           return;
         case "sendgrid-subuser:enable":
         case "sendgrid-subuser:disable":
-          await this.get(`/v3/subusers/${enc}`, {
-            method: "PATCH",
-            asParent: true,
+          await this.parent.patch(`/v3/subusers/${enc}`, {
             body: { disabled: actionId === "disable" },
           });
           return;
@@ -1370,7 +1328,7 @@ export class SendGridClient implements PluginClient {
     return attempt(async () => {
       const values = parsePromptValues(args);
       const id = externalIdOf(resourceId);
-      const enc = encodeURIComponent(id);
+      const enc = pathEncode(id);
       const emails = () => {
         const list = parseAddresses(values["emails"] ?? "");
         if (list.length === 0) throw new Error("Enter at least one email address.");
@@ -1382,7 +1340,7 @@ export class SendGridClient implements PluginClient {
         const base = list.id === "unsubscribes" ? "/v3/asm/suppressions/global" : list.path;
         const targets = emails();
         await mapLimit(targets, CONCURRENCY, (e) =>
-          this.get(`${base}/${encodeURIComponent(e)}`, { method: "DELETE" }).catch((err) => {
+          this.api.delete(`${base}/${pathEncode(e)}`).catch((err) => {
             if (statusOf(err) === 404) return undefined;
             throw err;
           }),
@@ -1390,7 +1348,9 @@ export class SendGridClient implements PluginClient {
         return { ok: true, count: targets.length };
       }
       if (typeId === "sendgrid-account" && command === COMMANDS.addGlobalUnsubscribes) {
-        return this.get("/v3/asm/suppressions/global", { body: { recipient_emails: emails() } });
+        return this.api.post("/v3/asm/suppressions/global", {
+          body: { recipient_emails: emails() },
+        });
       }
       if (
         typeId === "sendgrid-ip-pool" &&
@@ -1399,20 +1359,18 @@ export class SendGridClient implements PluginClient {
         const ip = (values["ip"] ?? "").trim();
         if (!ip) throw new Error("Pick an IP.");
         return command === COMMANDS.addPoolIp
-          ? this.get(`/v3/ips/pools/${enc}/ips`, { body: { ip } })
-          : this.get(`/v3/ips/pools/${enc}/ips/${encodeURIComponent(ip)}`, { method: "DELETE" });
+          ? this.api.post(`/v3/ips/pools/${enc}/ips`, { body: { ip } })
+          : this.api.delete(`/v3/ips/pools/${enc}/ips/${pathEncode(ip)}`);
       }
       if (typeId === "sendgrid-unsubscribe-group" && command === COMMANDS.addGroupSuppressions) {
-        return this.get(`/v3/asm/groups/${enc}/suppressions`, {
+        return this.api.post(`/v3/asm/groups/${enc}/suppressions`, {
           body: { recipient_emails: emails() },
         });
       }
       if (typeId === "sendgrid-unsubscribe-group" && command === COMMANDS.removeGroupSuppressions) {
         const targets = emails();
         await mapLimit(targets, CONCURRENCY, (e) =>
-          this.get(`/v3/asm/groups/${enc}/suppressions/${encodeURIComponent(e)}`, {
-            method: "DELETE",
-          }),
+          this.api.delete(`/v3/asm/groups/${enc}/suppressions/${pathEncode(e)}`),
         );
         return { ok: true, count: targets.length };
       }
@@ -1429,7 +1387,7 @@ export class SendGridClient implements PluginClient {
   }
 }
 
-const SENDER_FIELDS: Record<string, string> = {
+const SENDER_FIELDS = {
   nickname: "nickname",
   fromEmail: "from_email",
   fromName: "from_name",
@@ -1441,14 +1399,14 @@ const SENDER_FIELDS: Record<string, string> = {
   state: "state",
   zip: "zip",
   country: "country",
-};
+} as const;
 
 /** Verified-sender form fields → SendGrid body (only the keys present on an edit). */
 export function senderBody(
   fields: Record<string, string>,
   partial = false,
-): Record<string, string> {
-  const body: Record<string, string> = {};
+): ApiBody<VerifiedSenderOperations["CreateVerifiedSender"]> {
+  const body: ApiBody<VerifiedSenderOperations["CreateVerifiedSender"]> = {};
   for (const [key, param] of Object.entries(SENDER_FIELDS)) {
     if (partial && !(key in fields)) continue;
     const v = (fields[key] ?? "").trim();

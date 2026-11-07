@@ -5,8 +5,8 @@ import type {
   CostRow,
 } from "@infrawrench/plugin-base";
 import type { AivenContext } from "./api.js";
-import { aivenFetch, enc } from "./api.js";
-import type { AvBillingGroup, AvInvoice, AvInvoiceLine } from "./types.js";
+import { createAivenApi, enc } from "./api.js";
+import type { AvInvoice, AvInvoiceLine, Loose } from "./types.js";
 
 /**
  * Spend from billing-group invoices (verified 2026-10):
@@ -49,8 +49,8 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /** Spread one line over the UTC days it covers, keeping the days inside the range. */
 export function spreadLine(
-  line: AvInvoiceLine,
-  invoice: AvInvoice,
+  line: Loose<AvInvoiceLine>,
+  invoice: Loose<AvInvoice>,
   range: CostFetchRange,
   now: number = Date.now(),
 ): CostRow[] {
@@ -117,9 +117,8 @@ export async function fetchAivenCostData(
   ctx: AivenContext,
   range: CostFetchRange,
 ): Promise<CostRow[] | CostFetchResult> {
-  const groups =
-    (await aivenFetch<{ billing_groups?: AvBillingGroup[] }>(ctx, "GET", "/billing-group"))
-      ?.billing_groups ?? [];
+  const api = createAivenApi(ctx);
+  const groups = (await api.get("/billing-group"))?.billing_groups ?? [];
   const rows: CostRow[] = [];
   let degraded = false;
   const from = Date.parse(`${range.fromDate}T00:00:00Z`);
@@ -129,13 +128,7 @@ export async function fetchAivenCostData(
     let invoices: AvInvoice[] = [];
     try {
       invoices =
-        (
-          await aivenFetch<{ invoices?: AvInvoice[] }>(
-            ctx,
-            "GET",
-            `/billing-group/${enc(g.billing_group_id)}/invoice`,
-          )
-        )?.invoices ?? [];
+        (await api.get(`/billing-group/${enc(g.billing_group_id)}/invoice`))?.invoices ?? [];
     } catch {
       degraded = true;
       continue;
@@ -149,9 +142,7 @@ export async function fetchAivenCostData(
       try {
         const lines =
           (
-            await aivenFetch<{ lines?: AvInvoiceLine[] }>(
-              ctx,
-              "GET",
+            await api.get(
               `/billing-group/${enc(g.billing_group_id)}/invoice/${enc(inv.invoice_number)}/lines`,
             )
           )?.lines ?? [];

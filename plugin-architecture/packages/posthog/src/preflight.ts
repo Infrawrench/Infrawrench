@@ -12,20 +12,25 @@ import type {
   PreflightDeclaration,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import type { PostHogContext } from "./api.js";
-import { phFetch, statusOf } from "./api.js";
-import type { Obj } from "./mappers.js";
+import { pathEncode, type NoSlashString } from "@infrawrench/plugin-base";
+import type { PostHogApi, PostHogContext } from "./api.js";
+import { statusOf } from "./api.js";
 
 const perm = (id: string) => ({ id, label: id });
 
 interface Probe {
   capability: PreflightCapability;
-  /** Path to probe, given the org id and a project id. */
-  path?: (org: string, project: string) => string;
+  /** Asks for one row of the area, given the org id and a project id. */
+  probe?: (
+    api: PostHogApi,
+    org: NoSlashString,
+    project: NoSlashString,
+  ) => Promise<object | undefined>;
+  /** Nothing can be said about this area without a project to ask about. */
+  needsProject?: boolean;
 }
 
-const project = (route: string) => (_org: string, p: string) =>
-  `/api/projects/${encodeURIComponent(p)}/${route}/`;
+const ONE = { query: { limit: 1 } };
 
 const PROBES: Probe[] = [
   {
@@ -36,7 +41,7 @@ const PROBES: Probe[] = [
       requiredPermissions: [perm("organization:read"), perm("project:read")],
       essential: true,
     },
-    path: (org) => `/api/organizations/${encodeURIComponent(org)}/projects/`,
+    probe: (api, org) => api.get(`/api/organizations/${org}/projects/`, ONE),
   },
   {
     capability: {
@@ -45,7 +50,8 @@ const PROBES: Probe[] = [
       description: "List, create, edit, toggle and delete feature flags.",
       requiredPermissions: [perm("feature_flag:read"), perm("feature_flag:write")],
     },
-    path: project("feature_flags"),
+    needsProject: true,
+    probe: (api, _org, project) => api.get(`/api/projects/${project}/feature_flags/`, ONE),
   },
   {
     capability: {
@@ -54,7 +60,8 @@ const PROBES: Probe[] = [
       description: "List experiments; launch, pause, resume, end and archive them.",
       requiredPermissions: [perm("experiment:read"), perm("experiment:write")],
     },
-    path: project("experiments"),
+    needsProject: true,
+    probe: (api, _org, project) => api.get(`/api/projects/${project}/experiments/`, ONE),
   },
   {
     capability: {
@@ -74,7 +81,8 @@ const PROBES: Probe[] = [
         perm("annotation:write"),
       ],
     },
-    path: project("dashboards"),
+    needsProject: true,
+    probe: (api, _org, project) => api.get(`/api/projects/${project}/dashboards/`, ONE),
   },
   {
     capability: {
@@ -88,7 +96,8 @@ const PROBES: Probe[] = [
         perm("batch_export:write"),
       ],
     },
-    path: project("batch_exports"),
+    needsProject: true,
+    probe: (api, _org, project) => api.get(`/api/projects/${project}/batch_exports/`, ONE),
   },
   {
     capability: {
@@ -105,7 +114,7 @@ const PROBES: Probe[] = [
       description: "List members, change their level, remove them.",
       requiredPermissions: [perm("organization_member:read"), perm("organization_member:write")],
     },
-    path: (org) => `/api/organizations/${encodeURIComponent(org)}/members/`,
+    probe: (api, org) => api.get(`/api/organizations/${org}/members/`, ONE),
   },
   {
     capability: {
@@ -115,7 +124,7 @@ const PROBES: Probe[] = [
         "Daily spend by product and project for Costs, and the billing period on the organization.",
       requiredPermissions: [perm("billing:read")],
     },
-    path: () => "/api/billing/",
+    probe: (api) => api.get("/api/billing/", ONE),
   },
 ];
 
@@ -142,7 +151,7 @@ export function posthogPolicyTemplate(capabilityIds: string[]): PolicyTemplate {
 export async function verifyPostHogCredentials(
   ctx: PostHogContext,
   orgId: () => Promise<string>,
-  projects: () => Promise<Obj[]>,
+  projects: () => Promise<readonly { id?: number }[]>,
 ): Promise<PreflightResult> {
   let org = "";
   let firstProject = "";
@@ -159,17 +168,16 @@ export async function verifyPostHogCredentials(
         if (id === "query") {
           if (!firstProject)
             return { capabilityId: id, status: "unknown", message: "No project to test against." };
-          await phFetch(ctx, `/api/projects/${encodeURIComponent(firstProject)}/query/`, {
-            method: "POST",
-            body: JSON.stringify({ query: { kind: "HogQLQuery", query: "SELECT 1" } }),
+          await ctx.api.post(`/api/projects/${pathEncode(firstProject)}/query/`, {
+            body: { query: { kind: "HogQLQuery", query: "SELECT 1" } },
           });
           return { capabilityId: id, status: "ok" };
         }
-        if (!p.path) return { capabilityId: id, status: "unknown" };
-        if (p.path.length > 1 && !firstProject) {
+        if (!p.probe) return { capabilityId: id, status: "unknown" };
+        if (p.needsProject && !firstProject) {
           return { capabilityId: id, status: "unknown", message: "No project to test against." };
         }
-        await phFetch(ctx, p.path(org || "@current", firstProject), { query: { limit: 1 } });
+        await p.probe(ctx.api, pathEncode(org || "@current"), pathEncode(firstProject));
         return { capabilityId: id, status: "ok" };
       } catch (err) {
         const status = statusOf(err);

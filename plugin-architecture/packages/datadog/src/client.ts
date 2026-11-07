@@ -19,9 +19,9 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
-import { ddFetch, ddPaged, statusOf } from "./api.js";
+import { createDatadogContext, ddPaged, statusOf } from "./api.js";
 import { fetchCostAttribution } from "./attribution.js";
 import {
   listDatadogMetricSourceOptions,
@@ -29,16 +29,14 @@ import {
 } from "./business-metric-source.js";
 import { fetchDatadogCostData, fetchDatadogCostSummary } from "./cost-data.js";
 import type {
-  DdApiKey,
-  DdApplicationKey,
   DdDashboardSummary,
-  DdDowntime,
+  DdDowntimeUpdate,
   DdHost,
   DdMonitor,
+  DdMonitorUpdate,
   DdOrg,
-  DdSlo,
+  DdSloListItem,
   DdSyntheticsTest,
-  DdUser,
   OrgRow,
 } from "./mappers.js";
 import {
@@ -98,13 +96,13 @@ export class DatadogClient implements PluginClient {
     if (!apiKey) throw new Error("Datadog plugin: missing apiKey credential");
     if (!appKey) throw new Error("Datadog plugin: missing appKey credential");
     const caCert = credentials["caCert"] ?? "";
-    this.ctx = {
+    this.ctx = createDatadogContext({
       apiKey,
       appKey,
       site: resolveSite(credentials["site"]),
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
-    };
+    });
   }
 
   get site(): DatadogSite {
@@ -162,18 +160,20 @@ export class DatadogClient implements PluginClient {
           return this.scoped(() => this.listUsers(accountId));
         case "api-key":
           return this.scoped(async () => {
-            const { data, included } = await ddPaged<DdApiKey>(this.ctx, "/api/v2/api_keys", {
-              include: "created_by",
-            });
+            const { data, included } = await ddPaged((page) =>
+              this.ctx.v2.get("/api/v2/api_keys", {
+                query: { include: "created_by", ...page },
+              }),
+            );
             const users = includedUsers(included);
             return data.map((k) => mapApiKey(accountId, k, users));
           });
         case "application-key":
           return this.scoped(async () => {
-            const { data, included } = await ddPaged<DdApplicationKey>(
-              this.ctx,
-              "/api/v2/application_keys",
-              { include: "owned_by" },
+            const { data, included } = await ddPaged((page) =>
+              this.ctx.v2.get("/api/v2/application_keys", {
+                query: { include: "owned_by", ...page },
+              }),
             );
             const users = includedUsers(included);
             return data.map((k) => mapApplicationKey(accountId, k, users));
@@ -187,7 +187,7 @@ export class DatadogClient implements PluginClient {
   private async fetchMonitors(): Promise<DdMonitor[]> {
     const out: DdMonitor[] = [];
     for (let page = 0; page < MAX_MONITOR_PAGES; page++) {
-      const batch = await ddFetch<DdMonitor[]>(this.ctx, "/api/v1/monitor", {
+      const batch = await this.ctx.v1.get("/api/v1/monitor", {
         query: { page, page_size: MONITOR_PAGE, with_downtimes: true },
       });
       out.push(...(batch ?? []));
@@ -197,17 +197,11 @@ export class DatadogClient implements PluginClient {
   }
 
   private async listDowntimes(accountId: string): Promise<ResourceInstance[]> {
-    const res = await ddFetch<{ data?: DdDowntime[]; included?: unknown[] }>(
-      this.ctx,
-      "/api/v2/downtime",
-      { query: { current_only: true, include: "monitor" } },
-    );
+    const res = await this.ctx.v2.get("/api/v2/downtime", {
+      query: { current_only: true, include: "monitor" },
+    });
     const names = new Map<string, string>();
-    for (const inc of (res.included ?? []) as Array<{
-      type?: string;
-      id?: string | number;
-      attributes?: { name?: string };
-    }>) {
+    for (const inc of res.included ?? []) {
       if (inc.type === "monitors" && inc.id !== undefined && inc.attributes?.name) {
         names.set(String(inc.id), inc.attributes.name);
       }
@@ -218,11 +212,9 @@ export class DatadogClient implements PluginClient {
   private async fetchDashboards(): Promise<DdDashboardSummary[]> {
     const out: DdDashboardSummary[] = [];
     for (let page = 0; page < MAX_DASHBOARD_PAGES; page++) {
-      const res = await ddFetch<{ dashboards?: DdDashboardSummary[] }>(
-        this.ctx,
-        "/api/v1/dashboard",
-        { query: { count: DASHBOARD_PAGE, start: page * DASHBOARD_PAGE } },
-      );
+      const res = await this.ctx.v1.get("/api/v1/dashboard", {
+        query: { count: DASHBOARD_PAGE, start: page * DASHBOARD_PAGE },
+      });
       const batch = res.dashboards ?? [];
       out.push(...batch);
       if (batch.length < DASHBOARD_PAGE) break;
@@ -230,10 +222,10 @@ export class DatadogClient implements PluginClient {
     return out;
   }
 
-  private async fetchSlos(): Promise<DdSlo[]> {
-    const out: DdSlo[] = [];
+  private async fetchSlos(): Promise<DdSloListItem[]> {
+    const out: DdSloListItem[] = [];
     for (let page = 0; page < MAX_SLO_PAGES; page++) {
-      const res = await ddFetch<{ data?: DdSlo[] }>(this.ctx, "/api/v1/slo", {
+      const res = await this.ctx.v1.get("/api/v1/slo", {
         query: { limit: SLO_PAGE, offset: page * SLO_PAGE },
       });
       const batch = res.data ?? [];
@@ -246,11 +238,9 @@ export class DatadogClient implements PluginClient {
   private async fetchSyntheticsTests(): Promise<DdSyntheticsTest[]> {
     const out: DdSyntheticsTest[] = [];
     for (let page = 0; page < MAX_SYNTHETICS_PAGES; page++) {
-      const res = await ddFetch<{ tests?: DdSyntheticsTest[] }>(
-        this.ctx,
-        "/api/v1/synthetics/tests",
-        { query: { page_size: SYNTHETICS_PAGE, page_number: page } },
-      );
+      const res = await this.ctx.v1.get("/api/v1/synthetics/tests", {
+        query: { page_size: SYNTHETICS_PAGE, page_number: page },
+      });
       const batch = res.tests ?? [];
       out.push(...batch);
       if (batch.length < SYNTHETICS_PAGE) break;
@@ -261,7 +251,7 @@ export class DatadogClient implements PluginClient {
   private async fetchHosts(filter?: string): Promise<DdHost[]> {
     const out: DdHost[] = [];
     for (let page = 0; page < MAX_HOST_PAGES; page++) {
-      const res = await ddFetch<{ host_list?: DdHost[] }>(this.ctx, "/api/v1/hosts", {
+      const res = await this.ctx.v1.get("/api/v1/hosts", {
         query: {
           count: HOST_PAGE,
           start: page * HOST_PAGE,
@@ -278,9 +268,9 @@ export class DatadogClient implements PluginClient {
   }
 
   private async listUsers(accountId: string): Promise<ResourceInstance[]> {
-    const { data, included } = await ddPaged<DdUser>(this.ctx, "/api/v2/users", {
-      include: "roles",
-    });
+    const { data, included } = await ddPaged((page) =>
+      this.ctx.v2.get("/api/v2/users", { query: { include: "roles", ...page } }),
+    );
     const roles = includedRoles(included);
     return data.map((u) => mapUser(accountId, u, roles));
   }
@@ -295,9 +285,10 @@ export class DatadogClient implements PluginClient {
   private async listOrganizations(accountId: string): Promise<ResourceInstance[]> {
     const [summary, orgs] = await Promise.all([
       fetchDatadogCostSummary(this.ctx).catch(() => []),
-      ddFetch<{ orgs?: DdOrg[] }>(this.ctx, "/api/v1/org")
+      this.ctx.v1
+        .get("/api/v1/org")
         .then((r) => r.orgs ?? [])
-        .catch(() => [] as DdOrg[]),
+        .catch((): DdOrg[] => []),
     ]);
     const rows = new Map<string, OrgRow>();
     for (const o of orgs) {
@@ -341,43 +332,27 @@ export class DatadogClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "monitor": {
-          const m = await ddFetch<DdMonitor>(
-            this.ctx,
-            `/api/v1/monitor/${encodeURIComponent(id)}`,
-            {
-              query: { with_downtimes: true },
-            },
-          );
+          const m = await this.ctx.v1.get(`/api/v1/monitor/${pathEncode(id)}`, {
+            query: { with_downtimes: true },
+          });
           return mapMonitor(accountId, this.site, m);
         }
         case "slo": {
-          const res = await ddFetch<{ data?: DdSlo }>(
-            this.ctx,
-            `/api/v1/slo/${encodeURIComponent(id)}`,
-          );
+          const res = await this.ctx.v1.get(`/api/v1/slo/${pathEncode(id)}`);
           if (res.data) return mapSlo(accountId, this.site, res.data);
           break;
         }
         case "synthetics-test": {
-          const t = await ddFetch<DdSyntheticsTest>(
-            this.ctx,
-            `/api/v1/synthetics/tests/${encodeURIComponent(id)}`,
-          );
+          const t = await this.ctx.v1.get(`/api/v1/synthetics/tests/${pathEncode(id)}`);
           return mapSyntheticsTest(accountId, this.site, t);
         }
         case "downtime": {
-          const res = await ddFetch<{ data?: DdDowntime; included?: unknown[] }>(
-            this.ctx,
-            `/api/v2/downtime/${encodeURIComponent(id)}`,
-            { query: { include: "monitor" } },
-          );
+          const res = await this.ctx.v2.get(`/api/v2/downtime/${pathEncode(id)}`, {
+            query: { include: "monitor" },
+          });
           if (res.data) {
             const names = new Map<string, string>();
-            for (const inc of (res.included ?? []) as Array<{
-              type?: string;
-              id?: string | number;
-              attributes?: { name?: string };
-            }>) {
+            for (const inc of res.included ?? []) {
               if (inc.type === "monitors" && inc.id !== undefined && inc.attributes?.name) {
                 names.set(String(inc.id), inc.attributes.name);
               }
@@ -387,10 +362,7 @@ export class DatadogClient implements PluginClient {
           break;
         }
         case "user": {
-          const res = await ddFetch<{ data?: DdUser; included?: unknown[] }>(
-            this.ctx,
-            `/api/v2/users/${encodeURIComponent(id)}`,
-          );
+          const res = await this.ctx.v2.get(`/api/v2/users/${pathEncode(id)}`);
           if (res.data) return mapUser(accountId, res.data, includedRoles(res.included ?? []));
           break;
         }
@@ -603,7 +575,7 @@ export class DatadogClient implements PluginClient {
       if (typeId !== "downtime") {
         throw new Error(`Datadog plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      const monitors = await this.fetchMonitors().catch(() => [] as DdMonitor[]);
+      const monitors = await this.fetchMonitors().catch((): DdMonitor[] => []);
       return {
         fields: [
           {
@@ -675,35 +647,29 @@ export class DatadogClient implements PluginClient {
       const monitorId = (fields["monitorId"] ?? "").trim();
       const start = (fields["start"] ?? "").trim();
       const end = (fields["end"] ?? "").trim();
-      const res = await ddFetch<{ data?: DdDowntime; included?: unknown[] }>(
-        this.ctx,
-        "/api/v2/downtime",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            data: {
-              type: "downtime",
-              attributes: {
-                scope: (fields["scope"] ?? "").trim() || "*",
-                ...(fields["message"] ? { message: fields["message"] } : {}),
-                monitor_identifier: monitorId
-                  ? { monitor_id: Number(monitorId) }
-                  : { monitor_tags: ["*"] },
-                ...(start || end
-                  ? { schedule: { ...(start ? { start } : {}), ...(end ? { end } : {}) } }
-                  : {}),
-              },
+      const res = await this.ctx.v2.post("/api/v2/downtime", {
+        body: {
+          data: {
+            type: "downtime",
+            attributes: {
+              scope: (fields["scope"] ?? "").trim() || "*",
+              ...(fields["message"] ? { message: fields["message"] } : {}),
+              monitor_identifier: monitorId
+                ? { monitor_id: Number(monitorId) }
+                : { monitor_tags: ["*"] },
+              ...(start || end
+                ? { schedule: { ...(start ? { start } : {}), ...(end ? { end } : {}) } }
+                : {}),
             },
-          }),
+          },
         },
-      );
+      });
       if (!res.data) throw new Error("Datadog plugin: downtime create returned no data");
       const names = new Map<string, string>();
       if (monitorId) {
-        const m = await ddFetch<DdMonitor>(
-          this.ctx,
-          `/api/v1/monitor/${encodeURIComponent(monitorId)}`,
-        ).catch(() => undefined);
+        const m = await this.ctx.v1
+          .get(`/api/v1/monitor/${pathEncode(monitorId)}`)
+          .catch(() => undefined);
         if (m?.name) names.set(monitorId, m.name);
       }
       return mapDowntime(accountId, res.data, names);
@@ -719,7 +685,7 @@ export class DatadogClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       if (typeId === "monitor") {
-        const body: Record<string, unknown> = {};
+        const body: DdMonitorUpdate = {};
         if ("name" in fields) body["name"] = fields["name"];
         if ("message" in fields) body["message"] = fields["message"];
         if ("priority" in fields) {
@@ -731,19 +697,15 @@ export class DatadogClient implements PluginClient {
             .map((t) => t.trim())
             .filter(Boolean);
         }
-        const m = await ddFetch<DdMonitor>(this.ctx, `/api/v1/monitor/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          body: JSON.stringify(body),
-        });
+        const m = await this.ctx.v1.put(`/api/v1/monitor/${pathEncode(id)}`, { body });
         return mapMonitor(accountId, this.site, m);
       }
       if (typeId === "downtime") {
-        const attributes: Record<string, unknown> = {};
+        const attributes: DdDowntimeUpdate = {};
         if ("scope" in fields) attributes["scope"] = (fields["scope"] ?? "").trim() || "*";
         if ("message" in fields) attributes["message"] = fields["message"] ?? "";
-        await ddFetch<unknown>(this.ctx, `/api/v2/downtime/${encodeURIComponent(id)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ data: { id, type: "downtime", attributes } }),
+        await this.ctx.v2.patch(`/api/v2/downtime/${pathEncode(id)}`, {
+          body: { data: { id, type: "downtime", attributes } },
         });
         return runPluginEffect(this.getResource("downtime", resourceId, accountId));
       }
@@ -753,32 +715,31 @@ export class DatadogClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       switch (typeId) {
         case "monitor":
-          await ddFetch<unknown>(this.ctx, `/api/v1/monitor/${id}`, { method: "DELETE" });
+          await this.ctx.v1.delete(`/api/v1/monitor/${id}`);
           return;
         case "downtime":
           // Datadog keeps canceled downtimes for reference; DELETE cancels.
-          await ddFetch<unknown>(this.ctx, `/api/v2/downtime/${id}`, { method: "DELETE" });
+          await this.ctx.v2.delete(`/api/v2/downtime/${id}`);
           return;
         case "dashboard":
-          await ddFetch<unknown>(this.ctx, `/api/v1/dashboard/${id}`, { method: "DELETE" });
+          await this.ctx.v1.delete(`/api/v1/dashboard/${id}`);
           return;
         case "slo":
-          await ddFetch<unknown>(this.ctx, `/api/v1/slo/${id}`, { method: "DELETE" });
+          await this.ctx.v1.delete(`/api/v1/slo/${id}`);
           return;
         case "synthetics-test":
-          await ddFetch<unknown>(this.ctx, "/api/v1/synthetics/tests/delete", {
-            method: "POST",
-            body: JSON.stringify({ public_ids: [externalIdOf(resourceId)] }),
+          await this.ctx.v1.post("/api/v1/synthetics/tests/delete", {
+            body: { public_ids: [externalIdOf(resourceId)] },
           });
           return;
         case "api-key":
-          await ddFetch<unknown>(this.ctx, `/api/v2/api_keys/${id}`, { method: "DELETE" });
+          await this.ctx.v2.delete(`/api/v2/api_keys/${id}`);
           return;
         case "application-key":
-          await ddFetch<unknown>(this.ctx, `/api/v2/application_keys/${id}`, { method: "DELETE" });
+          await this.ctx.v2.delete(`/api/v2/application_keys/${id}`);
           return;
         default:
           throw new Error(`Datadog plugin: "${typeId}" cannot be deleted from Infrawrench`);
@@ -801,9 +762,8 @@ export class DatadogClient implements PluginClient {
       if (typeId === "monitor" && MONITOR_ACTIONS.has(actionId)) {
         if (actionId === "unmute") return this.unmuteMonitor(id);
         const hours = actionId === "mute-1h" ? 1 : actionId === "mute-1d" ? 24 : 0;
-        await ddFetch<unknown>(this.ctx, "/api/v2/downtime", {
-          method: "POST",
-          body: JSON.stringify({
+        await this.ctx.v2.post("/api/v2/downtime", {
+          body: {
             data: {
               type: "downtime",
               attributes: {
@@ -815,42 +775,37 @@ export class DatadogClient implements PluginClient {
                   : {}),
               },
             },
-          }),
+          },
         });
         return;
       }
       if (typeId === "synthetics-test") {
         if (actionId === "pause" || actionId === "resume") {
-          await ddFetch<unknown>(
-            this.ctx,
-            `/api/v1/synthetics/tests/${encodeURIComponent(id)}/status`,
-            {
-              method: "PUT",
-              body: JSON.stringify({ new_status: actionId === "pause" ? "paused" : "live" }),
-            },
-          );
+          await this.ctx.v1.put(`/api/v1/synthetics/tests/${pathEncode(id)}/status`, {
+            body: { new_status: actionId === "pause" ? "paused" : "live" },
+          });
           return;
         }
         if (actionId === "run") {
-          await ddFetch<unknown>(this.ctx, "/api/v1/synthetics/tests/trigger", {
-            method: "POST",
-            body: JSON.stringify({ tests: [{ public_id: id }] }),
+          await this.ctx.v1.post("/api/v1/synthetics/tests/trigger", {
+            body: { tests: [{ public_id: id }] },
           });
           return;
         }
       }
-      if (typeId === "host" && (actionId === "mute" || actionId === "unmute")) {
-        await ddFetch<unknown>(this.ctx, `/api/v1/host/${encodeURIComponent(id)}/${actionId}`, {
-          method: "POST",
-          body: actionId === "mute" ? JSON.stringify({ message: "Muted from Infrawrench." }) : "{}",
+      if (typeId === "host" && actionId === "mute") {
+        await this.ctx.v1.post(`/api/v1/host/${pathEncode(id)}/mute`, {
+          body: { message: "Muted from Infrawrench." },
         });
+        return;
+      }
+      if (typeId === "host" && actionId === "unmute") {
+        await this.ctx.v1.post(`/api/v1/host/${pathEncode(id)}/unmute`, { body: {} });
         return;
       }
       if (typeId === "user" && actionId === "disable") {
         // DELETE /api/v2/users/{id} disables the user; Datadog keeps the record.
-        await ddFetch<unknown>(this.ctx, `/api/v2/users/${encodeURIComponent(id)}`, {
-          method: "DELETE",
-        });
+        await this.ctx.v2.delete(`/api/v2/users/${pathEncode(id)}`);
         return;
       }
       throw new Error(`Datadog plugin: unknown action "${actionId}" for "${typeId}"`);
@@ -859,7 +814,7 @@ export class DatadogClient implements PluginClient {
 
   /** Cancel every current downtime that targets this monitor by id. */
   private async unmuteMonitor(monitorId: string): Promise<void> {
-    const res = await ddFetch<{ data?: DdDowntime[] }>(this.ctx, "/api/v2/downtime", {
+    const res = await this.ctx.v2.get("/api/v2/downtime", {
       query: { current_only: true },
     });
     const targets = (res.data ?? []).filter(
@@ -872,9 +827,7 @@ export class DatadogClient implements PluginClient {
     }
     for (const d of targets) {
       if (!d.id) continue;
-      await ddFetch<unknown>(this.ctx, `/api/v2/downtime/${encodeURIComponent(d.id)}`, {
-        method: "DELETE",
-      });
+      await this.ctx.v2.delete(`/api/v2/downtime/${pathEncode(d.id)}`);
     }
   }
 

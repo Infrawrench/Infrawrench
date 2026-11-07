@@ -4,6 +4,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { DigitalOceanClient } from "../client.js";
 import { fetchDoMetricSeries, type DoMetricContext } from "../metric-series.js";
 import { buildDropletLogSearch } from "../insights-logs.js";
+import { fakeApi } from "./fake-api.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -44,10 +45,10 @@ afterEach(() => vi.restoreAllMocks());
 describe("managed-database metrics", () => {
   function ctx(engine: string, seen: string[]): DoMetricContext {
     return {
-      async fetch<T>(path: string): Promise<T> {
+      api: fakeApi(async (path) => {
         seen.push(path);
-        return prom("1") as T;
-      },
+        return prom("1");
+      }),
       async getResource(): Promise<ResourceInstance> {
         return {
           id: `${ACC}:managed-database:db-1`,

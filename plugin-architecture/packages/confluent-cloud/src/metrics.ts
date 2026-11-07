@@ -16,9 +16,9 @@
  * - The key's owner needs MetricsViewer (or OrganizationAdmin).
  */
 
-import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
+import { pathEncode, type MetricSeries, type MetricSeriesPoint } from "@infrawrench/plugin-base";
 import type { ConfluentContext } from "./api.js";
-import { TELEMETRY_API, ccFetch } from "./api.js";
+import type { components } from "./api-types.telemetry.gen.js";
 
 export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -63,14 +63,13 @@ function iso(ms: number): string {
   return new Date(Math.floor(ms / 60_000) * 60_000).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-export type Filter =
-  { op: "EQ"; field: string; value: string } | { op: "OR" | "AND"; filters: Filter[] };
+export type Filter = components["schemas"]["Filter"];
 
 /** `resource.kafka.id = a OR … `: the API wants an explicit resource filter. */
 export function anyOf(field: string, values: string[]): Filter {
   const unique = [...new Set(values.filter(Boolean))];
   if (unique.length === 1) return { op: "EQ", field, value: unique[0]! };
-  return { op: "OR", filters: unique.map((value) => ({ op: "EQ" as const, field, value })) };
+  return { op: "OR", filters: unique.map((value): Filter => ({ op: "EQ", field, value })) };
 }
 
 export interface QueryRequest {
@@ -83,20 +82,20 @@ export interface QueryRequest {
   limit?: number;
 }
 
+/** One row as it is read: a point, whose labels the document cannot name, maybe a partial one. */
 interface FlatPoint {
   timestamp?: string;
   value?: number;
   [label: string]: unknown;
 }
 
-interface QueryResponse {
-  data?: Array<FlatPoint & { points?: FlatPoint[] }>;
-  meta?: { pagination?: { next_page_token?: string } };
+function isPoints(value: unknown): value is FlatPoint[] {
+  return Array.isArray(value);
 }
 
 /** One query, flat format: `{ timestamp, value, <group labels> }[]`. */
 export async function queryMetric(ctx: ConfluentContext, req: QueryRequest): Promise<FlatPoint[]> {
-  const body = {
+  const body: components["schemas"]["QueryRequest"] = {
     aggregations: [{ metric: req.metric, ...(req.agg ? { agg: req.agg } : {}) }],
     filter: req.filter,
     granularity: req.granularity,
@@ -105,16 +104,12 @@ export async function queryMetric(ctx: ConfluentContext, req: QueryRequest): Pro
     ...(req.limit ? { limit: req.limit } : {}),
     format: "FLAT",
   };
-  const res = await ccFetch<QueryResponse>(ctx, "/v2/metrics/cloud/query", {
-    base: TELEMETRY_API,
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  const res = await ctx.telemetry.post(`/v2/metrics/${pathEncode("cloud")}/query`, { body });
   const out: FlatPoint[] = [];
   for (const row of res?.data ?? []) {
-    if (Array.isArray(row.points)) {
+    const { points, ...labels } = row;
+    if (isPoints(points)) {
       // Grouped format, should the API ever ignore `format: FLAT`.
-      const { points, ...labels } = row;
       for (const p of points) out.push({ ...labels, ...p });
     } else {
       out.push(row);
@@ -507,7 +502,7 @@ export async function fetchConnectorUsage(
   const [received, sent] = await Promise.all([
     totalsBy(ctx, "io.confluent.kafka.connect/received_records", "SUM", field, connectorIds, week),
     totalsBy(ctx, "io.confluent.kafka.connect/sent_records", "SUM", field, connectorIds, week),
-  ]).catch(() => [null, null] as const);
+  ]).catch((): [null, null] => [null, null]);
   if (!received || !sent) return result;
   // Sink connectors receive from Kafka; source connectors send to it.
   result.recordsIn = sumByLabel(received, field);

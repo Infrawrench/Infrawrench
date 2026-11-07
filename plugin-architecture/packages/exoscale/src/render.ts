@@ -17,13 +17,15 @@ import type {
   TableNode,
 } from "@infrawrench/plugin-base";
 import { joinSubtitle, labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
-import type { Json } from "./listers.js";
+import type { Schemas } from "./api.js";
+import type { DbaasService } from "./listers.js";
 
 export function parseStash<T>(r: ResourceInstance, key: string): T | null {
   const raw = r.resolvedOutputs[`__${key}__`];
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as T;
+    const parsed: T = JSON.parse(raw);
+    return parsed;
   } catch {
     return null;
   }
@@ -310,7 +312,7 @@ function instanceParts(r: ResourceInstance): Parts {
 }
 
 function securityGroupParts(r: ResourceInstance): Parts {
-  const rules = parseStash<Json[]>(r, "rules") ?? [];
+  const rules = parseStash<Schemas["security-group-rule"][]>(r, "rules") ?? [];
   return {
     actions: [
       prompt(
@@ -388,7 +390,7 @@ function securityGroupParts(r: ResourceInstance): Parts {
               dir: s(ru["flow-direction"]),
               proto: s(ru["protocol"]).toUpperCase(),
               ports: start ? (end && end !== start ? `${start}-${end}` : start) : "all",
-              source: s(ru["network"]) || s((ru["security-group"] as Json | undefined)?.["name"]),
+              source: s(ru["network"]) || s(ru["security-group"]?.["name"]),
               description: s(ru["description"]),
               remove: prompt("Remove", "remove-rule", [hidden("ruleId", s(ru["id"]))], {
                 description: "Remove this rule?",
@@ -404,7 +406,7 @@ function securityGroupParts(r: ResourceInstance): Parts {
 }
 
 function nlbParts(r: ResourceInstance): Parts {
-  const services = parseStash<Json[]>(r, "services") ?? [];
+  const services = parseStash<Schemas["load-balancer-service"][]>(r, "services") ?? [];
   const pools = parseStash<Array<{ id: string; label: string }>>(r, "pools") ?? [];
   return {
     actions: [
@@ -570,7 +572,7 @@ function simpleActions(r: ResourceInstance): ActionNode[] {
       ];
     }
     case "dbaas": {
-      const users = parseStash<Json[]>(r, "users") ?? [];
+      const users = parseStash<NonNullable<DbaasService["users"]>>(r, "users") ?? [];
       return [
         action("Start maintenance", "maintenance", {
           confirm: "Apply pending maintenance now? Expect a brief interruption.",
@@ -610,7 +612,7 @@ export function renderDetail(
   if (resource.resourceTypeId === "security-group") parts = securityGroupParts(resource);
   if (resource.resourceTypeId === "nlb") parts = nlbParts(resource);
   if (resource.resourceTypeId === "dbaas") {
-    const backups = parseStash<Json[]>(resource, "backups") ?? [];
+    const backups = parseStash<Schemas["dbaas-service-backup"][]>(resource, "backups") ?? [];
     if (backups.length) {
       parts.sections.push(
         section("Backups", [

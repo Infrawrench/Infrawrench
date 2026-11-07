@@ -1,139 +1,26 @@
 /**
- * Twilio response shapes (the fields this plugin reads, verified against
- * `twilio/twilio-oai` 2026-10) and their mapping to `ResourceInstance`s.
+ * Twilio response shapes, from `twilio/twilio-oai`, and their mapping to
+ * `ResourceInstance`s.
  */
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { components as MessagingComponents } from "./api-types.messaging.gen.js";
+import type { components as V2010Components } from "./api-types.v2010.gen.js";
+import type { components as VerifyComponents } from "./api-types.verify.gen.js";
 
 export const PLUGIN_ID = "twilio";
 
-export interface TwAccount {
-  sid?: string;
-  friendly_name?: string | null;
-  owner_account_sid?: string | null;
-  status?: string | null;
-  type?: string | null;
-  date_created?: string | null;
-  date_updated?: string | null;
-}
+type V2010 = V2010Components["schemas"];
 
-export interface TwBalance {
-  account_sid?: string;
-  balance?: string | null;
-  currency?: string | null;
-}
-
-export interface TwUsageRecord {
-  account_sid?: string;
-  category?: string | null;
-  description?: string | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  count?: string | null;
-  count_unit?: string | null;
-  usage?: string | null;
-  usage_unit?: string | null;
-  price?: number | string | null;
-  price_unit?: string | null;
-}
-
-export interface TwPhoneNumber {
-  sid?: string;
-  account_sid?: string;
-  phone_number?: string | null;
-  friendly_name?: string | null;
-  capabilities?: { voice?: boolean; sms?: boolean; mms?: boolean; fax?: boolean } | null;
-  type?: string | null;
-  origin?: string | null;
-  status?: string | null;
-  voice_url?: string | null;
-  voice_method?: string | null;
-  voice_fallback_url?: string | null;
-  voice_application_sid?: string | null;
-  sms_url?: string | null;
-  sms_method?: string | null;
-  sms_fallback_url?: string | null;
-  sms_application_sid?: string | null;
-  status_callback?: string | null;
-  trunk_sid?: string | null;
-  emergency_status?: string | null;
-  address_requirements?: string | null;
-  date_created?: string | null;
-}
-
-export interface TwMessagingService {
-  sid?: string;
-  account_sid?: string;
-  friendly_name?: string | null;
-  inbound_request_url?: string | null;
-  inbound_method?: string | null;
-  fallback_url?: string | null;
-  status_callback?: string | null;
-  sticky_sender?: boolean | null;
-  mms_converter?: boolean | null;
-  smart_encoding?: boolean | null;
-  fallback_to_long_code?: boolean | null;
-  area_code_geomatch?: boolean | null;
-  validity_period?: number | null;
-  usecase?: string | null;
-  us_app_to_person_registered?: boolean | null;
-  use_inbound_webhook_on_number?: boolean | null;
-  date_created?: string | null;
-  date_updated?: string | null;
-}
-
-export interface TwVerifyService {
-  sid?: string;
-  friendly_name?: string | null;
-  code_length?: number | null;
-  lookup_enabled?: boolean | null;
-  psd2_enabled?: boolean | null;
-  skip_sms_to_landlines?: boolean | null;
-  dtmf_input_required?: boolean | null;
-  do_not_share_warning_enabled?: boolean | null;
-  custom_code_enabled?: boolean | null;
-  default_template_sid?: string | null;
-  date_created?: string | null;
-  date_updated?: string | null;
-}
-
-export interface TwApplication {
-  sid?: string;
-  account_sid?: string;
-  friendly_name?: string | null;
-  voice_url?: string | null;
-  voice_method?: string | null;
-  voice_fallback_url?: string | null;
-  sms_url?: string | null;
-  sms_method?: string | null;
-  sms_fallback_url?: string | null;
-  status_callback?: string | null;
-  sms_status_callback?: string | null;
-  date_created?: string | null;
-}
-
-export interface TwUsageTrigger {
-  sid?: string;
-  account_sid?: string;
-  friendly_name?: string | null;
-  usage_category?: string | null;
-  trigger_by?: string | null;
-  trigger_value?: string | null;
-  current_value?: string | null;
-  recurring?: string | null;
-  callback_url?: string | null;
-  callback_method?: string | null;
-  date_fired?: string | null;
-  date_created?: string | null;
-  date_updated?: string | null;
-}
-
-export interface TwKey {
-  sid?: string;
-  friendly_name?: string | null;
-  date_created?: string | null;
-  date_updated?: string | null;
-  secret?: string;
-}
+export type TwAccount = V2010["api.v2010.account"];
+export type TwBalance = V2010["api.v2010.account.balance"];
+export type TwUsageRecord = V2010["api.v2010.account.usage.usage_record"];
+export type TwPhoneNumber = V2010["api.v2010.account.incoming_phone_number"];
+export type TwApplication = V2010["api.v2010.account.application"];
+export type TwUsageTrigger = V2010["api.v2010.account.usage.usage_trigger"];
+/** A key as `POST /Keys.json` answers it, the only time the secret is there. */
+export type TwKey = V2010["api.v2010.account.new_key"];
+export type TwMessagingService = MessagingComponents["schemas"]["messaging.v1.service"];
+export type TwVerifyService = VerifyComponents["schemas"]["verify.v2.service"];
 
 type FieldValue = string | number | boolean | null | undefined;
 

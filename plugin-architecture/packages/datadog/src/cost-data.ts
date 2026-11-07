@@ -51,36 +51,18 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
-import { ddFetch, isPermissionError, statusOf } from "./api.js";
+import type { components } from "./api-types.v2.gen.js";
+import { isPermissionError, statusOf } from "./api.js";
 import { productLabel } from "./products.js";
 
 /** One `charges[]` entry. */
-export interface DdCharge {
-  charge_type?: string;
-  cost?: number;
-  product_name?: string;
-}
+export type DdCharge = components["schemas"]["ChargebackBreakdown"];
 
+type DdEstimatedResponse = components["schemas"]["CostByOrgResponse"];
+type DdProjectedResponse = components["schemas"]["ProjectedCostResponse"];
 /** One entry of a `CostByOrgResponse` / `ProjectedCostResponse`. */
-export interface DdCostEntry {
-  id?: string;
-  type?: string;
-  attributes?: {
-    account_name?: string;
-    account_public_id?: string;
-    org_name?: string;
-    public_id?: string;
-    region?: string;
-    date?: string;
-    total_cost?: number;
-    projected_total_cost?: number;
-    charges?: DdCharge[];
-  };
-}
-
-export interface DdCostResponse {
-  data?: DdCostEntry[];
-}
+export type DdCostEntry =
+  components["schemas"]["CostByOrg"] | components["schemas"]["ProjectedCost"];
 
 const COST_HELP = {
   label: "Datadog application key permissions",
@@ -99,7 +81,7 @@ function monthStart(date: string): string {
 
 /** First day of the month after `date`'s month. */
 function nextMonthStart(date: string): string {
-  const [y, m] = date.split("-").map(Number) as [number, number];
+  const [y = NaN, m = NaN] = date.split("-").map(Number);
   return utcDate(Date.UTC(y, m, 1));
 }
 
@@ -110,7 +92,7 @@ function monthEnd(date: string): string {
 
 /** First day of the month before `date`'s month. */
 function previousMonthStart(date: string): string {
-  const [y, m] = date.split("-").map(Number) as [number, number];
+  const [y = NaN, m = NaN] = date.split("-").map(Number);
   return utcDate(Date.UTC(y, m - 2, 1));
 }
 
@@ -209,14 +191,16 @@ async function estimatedMonth(
   end: string,
   range: CostFetchRange,
 ): Promise<CostRow[]> {
-  const res = await ddFetch<DdCostResponse>(ctx, "/api/v2/usage/estimated_cost", {
-    query: {
-      view: "sub-org",
-      start_date: start,
-      end_date: end,
-      cost_aggregation: "cumulative",
-    },
-  }).catch((err) => wrapCostError(err, "estimated cost"));
+  const res = await ctx.v2
+    .get("/api/v2/usage/estimated_cost", {
+      query: {
+        view: "sub-org",
+        start_date: start,
+        end_date: end,
+        cost_aggregation: "cumulative",
+      },
+    })
+    .catch((err) => wrapCostError(err, "estimated cost"));
 
   // org → date → entry (a later entry for the same day wins: re-estimates).
   const byOrg = new Map<string, Map<string, DdCostEntry>>();
@@ -260,13 +244,15 @@ async function historicalMonths(
   firstMonth: string,
   lastMonth: string,
 ): Promise<CostRow[]> {
-  const res = await ddFetch<DdCostResponse>(ctx, "/api/v2/usage/historical_cost", {
-    query: {
-      view: "sub-org",
-      start_month: firstMonth.slice(0, 7),
-      end_month: lastMonth.slice(0, 7),
-    },
-  }).catch((err) => wrapCostError(err, "historical cost"));
+  const res = await ctx.v2
+    .get("/api/v2/usage/historical_cost", {
+      query: {
+        view: "sub-org",
+        start_month: firstMonth.slice(0, 7),
+        end_month: lastMonth.slice(0, 7),
+      },
+    })
+    .catch((err) => wrapCostError(err, "historical cost"));
 
   const rows: CostRow[] = [];
   for (const entry of res.data ?? []) {
@@ -367,12 +353,16 @@ export async function fetchDatadogCostSummary(
   ctx: DatadogContext,
 ): Promise<DatadogOrgCostSummary[]> {
   const [estimated, projected] = await Promise.all([
-    ddFetch<DdCostResponse>(ctx, "/api/v2/usage/estimated_cost", {
-      query: { view: "sub-org", start_month: utcDate(Date.now()).slice(0, 7) },
-    }).catch(() => ({ data: [] }) as DdCostResponse),
-    ddFetch<DdCostResponse>(ctx, "/api/v2/usage/projected_cost", {
-      query: { view: "sub-org" },
-    }).catch(() => ({ data: [] }) as DdCostResponse),
+    ctx.v2
+      .get("/api/v2/usage/estimated_cost", {
+        query: { view: "sub-org", start_month: utcDate(Date.now()).slice(0, 7) },
+      })
+      .catch((): DdEstimatedResponse => ({ data: [] })),
+    ctx.v2
+      .get("/api/v2/usage/projected_cost", {
+        query: { view: "sub-org" },
+      })
+      .catch((): DdProjectedResponse => ({ data: [] })),
   ]);
 
   const orgs = new Map<string, DatadogOrgCostSummary>();
@@ -396,7 +386,7 @@ export async function fetchDatadogCostSummary(
 
   // A month query can still return one entry per day on some accounts; keep
   // the latest date per org, which is the month-to-date figure.
-  const latest = new Map<string, DdCostEntry>();
+  const latest = new Map<string, components["schemas"]["CostByOrg"]>();
   for (const entry of estimated.data ?? []) {
     const key = orgKey(entry);
     const prev = latest.get(key);

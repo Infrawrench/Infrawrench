@@ -12,8 +12,9 @@ import type {
   SelectOption,
   SizeOption,
 } from "@infrawrench/plugin-base";
-import { dnsContentField } from "@infrawrench/plugin-base";
-import { type LinodeApi, splitList, trailingId } from "./api.js";
+import { dnsContentField, type ApiBody } from "@infrawrench/plugin-base";
+import { type LinodeApi, allPages, segment, splitList, trailingId } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import {
   mapBucket,
   mapDatabase,
@@ -38,22 +39,7 @@ import {
   regionalPrice,
 } from "./pricing.js";
 import { regionOptions } from "./regions.js";
-import type {
-  LinodeBucket,
-  LinodeDatabase,
-  LinodeDomain,
-  LinodeDomainRecord,
-  LinodeFirewall,
-  LinodeImage,
-  LinodeInstance,
-  LinodeLkeCluster,
-  LinodeLkePool,
-  LinodeNodeBalancer,
-  LinodeReservedIp,
-  LinodeStackScript,
-  LinodeVolume,
-  LinodeVpc,
-} from "./types.js";
+import type { LinodeDomain, LinodeFirewallRule, LinodeImage } from "./types.js";
 
 export interface CreateContext {
   api: LinodeApi;
@@ -82,7 +68,9 @@ export function linodeSizeOptions(
 }
 
 async function imageOptions(api: LinodeApi): Promise<ImageOption[]> {
-  const images = await api.all<LinodeImage>("/images").catch(() => [] as LinodeImage[]);
+  const images = await allPages((query) => api.get("/images", { query })).catch(
+    (): LinodeImage[] => [],
+  );
   return images
     .filter((i) => i.status === "available" && !i.deprecated)
     .map((i) => ({
@@ -281,7 +269,7 @@ export async function getCreateConfig(
       const [regions, catalog, versions] = await Promise.all([
         regionOptions(api, "Kubernetes"),
         ctx.catalog.get(),
-        api.all<{ id: string }>("/lke/versions").catch(() => [] as Array<{ id: string }>),
+        allPages((query) => api.get("/lke/versions", { query })).catch(() => []),
       ]);
       const versionOptions: SelectOption[] = versions.map((v) => ({ id: v.id, label: v.id }));
       const sizes = linodeSizeOptions(catalog, { excludeGpu: true });
@@ -429,9 +417,7 @@ export async function getCreateConfig(
       const [regions, catalog, engines] = await Promise.all([
         regionOptions(api, "Managed Databases"),
         ctx.catalog.get(),
-        api
-          .all<{ id: string; engine?: string; version?: string }>("/databases/engines")
-          .catch(() => []),
+        allPages((query) => api.get("/databases/engines", { query })).catch(() => []),
       ]);
       const engineOptions: SelectOption[] = engines
         .map((e) => ({
@@ -579,7 +565,9 @@ export async function getCreateConfig(
     case "domain-record": {
       const fields: CreateFieldConfig[] = [];
       if (!parentResourceId) {
-        const domains = await api.all<LinodeDomain>("/domains").catch(() => [] as LinodeDomain[]);
+        const domains = await allPages((query) => api.get("/domains", { query })).catch(
+          (): LinodeDomain[] => [],
+        );
         fields.push({
           key: "domainId",
           label: "Domain",
@@ -779,11 +767,13 @@ export async function getCreateConfig(
   }
 }
 
-const intOr = (v: string | undefined, d?: number): number | undefined => {
+function intOr(v: string | undefined, d: number): number;
+function intOr(v: string | undefined): number | undefined;
+function intOr(v: string | undefined, d?: number): number | undefined {
   if (v === undefined || v === "") return d;
   const n = Math.floor(Number(v));
   return Number.isFinite(n) ? n : d;
-};
+}
 
 /** A JSON array (policy-picker) or comma list into strings. */
 export function listValue(v: string | undefined): string[] {
@@ -791,7 +781,7 @@ export function listValue(v: string | undefined): string[] {
   const t = v.trim();
   if (t.startsWith("[")) {
     try {
-      const parsed = JSON.parse(t) as unknown;
+      const parsed: unknown = JSON.parse(t);
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
       // fall through
@@ -800,9 +790,11 @@ export function listValue(v: string | undefined): string[] {
   return splitList(t);
 }
 
-export function firewallRulesFromForm(fields: Record<string, string>) {
+type FirewallRules = NonNullable<ApiBody<operations["post-firewalls"]>["rules"]>;
+
+export function firewallRulesFromForm(fields: Record<string, string>): FirewallRules {
   const anywhere = { ipv4: ["0.0.0.0/0"], ipv6: ["::/0"] };
-  const inbound: Array<Record<string, unknown>> = [];
+  const inbound: LinodeFirewallRule[] = [];
   if (fields["allowSsh"] !== "false")
     inbound.push({
       label: "allow-ssh",
@@ -842,50 +834,63 @@ export async function createResource(
     case "linode": {
       const keys = fields["sshPublicKey"] ? [fields["sshPublicKey"].trim()] : [];
       const firewallId = intOr(fields["firewallId"]);
-      const created = await api.send<LinodeInstance>("POST", "/linode/instances", {
-        label: fields["label"],
-        region: fields["region"],
-        type: fields["type"],
-        image: fields["image"],
-        root_pass: fields["rootPass"] || randomRootPassword(),
-        ...(keys.length ? { authorized_keys: keys } : {}),
-        backups_enabled: fields["backupsEnabled"] === "true",
-        private_ip: fields["privateIp"] === "true",
-        ...(firewallId ? { firewall_id: firewallId } : {}),
-        ...(tags.length ? { tags } : {}),
+      const created = await api.post("/linode/instances", {
+        body: {
+          label: fields["label"],
+          region: fields["region"],
+          type: fields["type"],
+          image: fields["image"],
+          root_pass: fields["rootPass"] || randomRootPassword(),
+          ...(keys.length ? { authorized_keys: keys } : {}),
+          backups_enabled: fields["backupsEnabled"] === "true",
+          private_ip: fields["privateIp"] === "true",
+          ...(firewallId ? { firewall_id: firewallId } : {}),
+          ...(tags.length ? { tags } : {}),
+        },
       });
       return mapLinode(created, accountId, firewallId ? [String(firewallId)] : []);
     }
     case "volume": {
       const linodeId = intOr(fields["linodeId"]);
-      const created = await api.send<LinodeVolume>("POST", "/volumes", {
-        label: fields["label"],
-        size: intOr(fields["sizeGb"], 20),
-        ...(linodeId ? { linode_id: linodeId } : { region: fields["region"] }),
-        encryption: fields["encryption"] === "false" ? "disabled" : "enabled",
-        ...(tags.length ? { tags } : {}),
+      const created = await api.post("/volumes", {
+        body: {
+          label: fields["label"],
+          size: intOr(fields["sizeGb"], 20),
+          ...(linodeId ? { linode_id: linodeId } : { region: fields["region"] }),
+          encryption: fields["encryption"] === "false" ? "disabled" : "enabled",
+          ...(tags.length ? { tags } : {}),
+        },
       });
       return mapVolume(created, accountId);
     }
     case "nodebalancer": {
       const firewallId = intOr(fields["firewallId"]);
-      const created = await api.send<LinodeNodeBalancer>("POST", "/nodebalancers", {
-        region: fields["region"],
-        ...(fields["label"] ? { label: fields["label"] } : {}),
-        client_conn_throttle: intOr(fields["clientConnThrottle"], 0),
-        ...(firewallId ? { firewall_id: firewallId } : {}),
-        ...(tags.length ? { tags } : {}),
+      const created = await api.post("/nodebalancers", {
+        body: {
+          region: fields["region"],
+          ...(fields["label"] ? { label: fields["label"] } : {}),
+          client_conn_throttle: intOr(fields["clientConnThrottle"], 0),
+          ...(firewallId ? { firewall_id: firewallId } : {}),
+          ...(tags.length ? { tags } : {}),
+        },
       });
       return mapNodeBalancer(created, accountId, [], firewallId ? [String(firewallId)] : []);
     }
     case "lke-cluster": {
-      const created = await api.send<LinodeLkeCluster>("POST", "/lke/clusters", {
-        label: fields["label"],
-        region: fields["region"],
-        k8s_version: fields["k8sVersion"],
-        control_plane: { high_availability: fields["highAvailability"] === "true" },
-        node_pools: [{ type: fields["nodeType"], count: intOr(fields["nodeCount"], 3) }],
-        ...(tags.length ? { tags } : {}),
+      const created = await api.post("/lke/clusters", {
+        body: {
+          label: fields["label"],
+          region: fields["region"],
+          k8s_version: fields["k8sVersion"],
+          control_plane: { high_availability: fields["highAvailability"] === "true" },
+          node_pools: [
+            {
+              ...(fields["nodeType"] !== undefined ? { type: fields["nodeType"] } : {}),
+              count: intOr(fields["nodeCount"], 3),
+            },
+          ],
+          ...(tags.length ? { tags } : {}),
+        },
       });
       return mapLkeCluster(created, accountId, [
         { id: 0, type: fields["nodeType"] ?? "", count: intOr(fields["nodeCount"], 3) ?? 3 },
@@ -896,28 +901,32 @@ export async function createResource(
         fields["clusterId"] || (parentResourceId ? trailingId(parentResourceId) : "");
       if (!clusterId) throw new Error("Pick the cluster to add the node pool to.");
       const autoscale = fields["autoscalerEnabled"] === "true";
-      const pool = await api.send<LinodeLkePool>("POST", `/lke/clusters/${clusterId}/pools`, {
-        type: fields["type"],
-        count: intOr(fields["count"], 3),
-        ...(autoscale
-          ? {
-              autoscaler: {
-                enabled: true,
-                min: intOr(fields["autoscalerMin"], 1),
-                max: intOr(fields["autoscalerMax"], 5),
-              },
-            }
-          : {}),
+      const pool = await api.post(`/lke/clusters/${segment(clusterId)}/pools`, {
+        body: {
+          type: fields["type"],
+          count: intOr(fields["count"], 3),
+          ...(autoscale
+            ? {
+                autoscaler: {
+                  enabled: true,
+                  min: intOr(fields["autoscalerMin"], 1),
+                  max: intOr(fields["autoscalerMax"], 5),
+                },
+              }
+            : {}),
+        },
       });
-      const cluster = await api.get<LinodeLkeCluster>(`/lke/clusters/${clusterId}`);
+      const cluster = await api.get(`/lke/clusters/${segment(clusterId)}`);
       return mapLkePool(pool, cluster, accountId);
     }
     case "bucket": {
-      const created = await api.send<LinodeBucket>("POST", "/object-storage/buckets", {
-        label: fields["name"],
-        region: fields["region"],
-        acl: fields["acl"] || "private",
-        cors_enabled: fields["corsEnabled"] !== "false",
+      const created = await api.post("/object-storage/buckets", {
+        body: {
+          label: fields["name"],
+          region: fields["region"],
+          acl: fields["acl"] || "private",
+          cors_enabled: fields["corsEnabled"] !== "false",
+        },
       });
       return mapBucket(created, accountId, {
         acl: fields["acl"] || "private",
@@ -927,89 +936,98 @@ export async function createResource(
     case "database": {
       const engineVersion = fields["engineVersion"] ?? "";
       const engine = engineVersion.split("/")[0] === "postgresql" ? "postgresql" : "mysql";
-      const created = await api.send<LinodeDatabase>("POST", `/databases/${engine}/instances`, {
-        label: fields["label"],
-        engine: engineVersion,
-        region: fields["region"],
-        type: fields["type"],
-        cluster_size: intOr(fields["clusterSize"], 1),
-        allow_list: listValue(fields["allowList"]),
+      const created = await api.post(`/databases/${segment(engine)}/instances`, {
+        body: {
+          label: fields["label"],
+          engine: engineVersion,
+          region: fields["region"],
+          type: fields["type"],
+          cluster_size: intOr(fields["clusterSize"], 1),
+          allow_list: listValue(fields["allowList"]),
+        },
       });
       return mapDatabase({ ...created, engine: created.engine ?? engine }, accountId);
     }
     case "firewall": {
-      const created = await api.send<LinodeFirewall>("POST", "/networking/firewalls", {
-        label: fields["label"],
-        rules: firewallRulesFromForm(fields),
-        ...(tags.length ? { tags } : {}),
+      const created = await api.post("/networking/firewalls", {
+        body: {
+          label: fields["label"],
+          rules: firewallRulesFromForm(fields),
+          ...(tags.length ? { tags } : {}),
+        },
       });
       return mapFirewall(created, accountId);
     }
     case "domain": {
-      const created = await api.send<LinodeDomain>("POST", "/domains", {
-        domain: fields["domain"],
-        type: fields["type"] || "master",
-        ...(fields["soaEmail"] ? { soa_email: fields["soaEmail"] } : {}),
-        ...(fields["type"] === "slave" ? { master_ips: listValue(fields["masterIps"]) } : {}),
-        ...(tags.length ? { tags } : {}),
+      const created = await api.post("/domains", {
+        body: {
+          domain: fields["domain"],
+          type: fields["type"] || "master",
+          ...(fields["soaEmail"] ? { soa_email: fields["soaEmail"] } : {}),
+          ...(fields["type"] === "slave" ? { master_ips: listValue(fields["masterIps"]) } : {}),
+          ...(tags.length ? { tags } : {}),
+        },
       });
       return mapDomain(created, accountId, 0);
     }
     case "domain-record": {
       const domainId = fields["domainId"] || (parentResourceId ? trailingId(parentResourceId) : "");
       if (!domainId) throw new Error("Pick the domain to add the record to.");
-      const domain = await api.get<LinodeDomain>(`/domains/${domainId}`);
-      const record = await api.send<LinodeDomainRecord>(
-        "POST",
-        `/domains/${domainId}/records`,
-        recordBody(fields),
-      );
+      const domain = await api.get(`/domains/${segment(domainId)}`);
+      const record = await api.post(`/domains/${segment(domainId)}/records`, {
+        body: recordBody(fields),
+      });
       return mapDomainRecord(record, domain, accountId);
     }
     case "vpc": {
       const subnet = fields["subnetIpv4"]?.trim();
-      const created = await api.send<LinodeVpc>("POST", "/vpcs", {
-        label: fields["label"],
-        region: fields["region"],
-        ...(fields["description"] ? { description: fields["description"] } : {}),
-        ...(subnet
-          ? { subnets: [{ label: fields["subnetLabel"] || "default", ipv4: subnet }] }
-          : {}),
+      const created = await api.post("/vpcs", {
+        body: {
+          label: fields["label"],
+          region: fields["region"],
+          ...(fields["description"] ? { description: fields["description"] } : {}),
+          ...(subnet
+            ? { subnets: [{ label: fields["subnetLabel"] || "default", ipv4: subnet }] }
+            : {}),
+        },
       });
       return mapVpc(created, accountId);
     }
     case "image": {
       const linodeId = intOr(fields["linodeId"]);
       if (!linodeId) throw new Error("Pick the Linode to capture.");
-      const disks = await api.all<{ id: number; filesystem?: string; size?: number }>(
-        `/linode/instances/${linodeId}/disks`,
+      const disks = await allPages((query) =>
+        api.get(`/linode/instances/${segment(linodeId)}/disks`, { query }),
       );
       const disk = [...disks]
         .filter((d) => d.filesystem !== "swap")
         .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))[0];
       if (!disk) throw new Error("That Linode has no disk that can be captured.");
-      const created = await api.send<LinodeImage>("POST", "/images", {
-        disk_id: disk.id,
-        ...(fields["label"] ? { label: fields["label"] } : {}),
-        ...(fields["description"] ? { description: fields["description"] } : {}),
-        cloud_init: fields["cloudInit"] !== "false",
+      const created = await api.post("/images", {
+        body: {
+          disk_id: disk.id,
+          ...(fields["label"] ? { label: fields["label"] } : {}),
+          ...(fields["description"] ? { description: fields["description"] } : {}),
+          cloud_init: fields["cloudInit"] !== "false",
+        },
       });
       return mapImage(created, accountId);
     }
     case "stackscript": {
-      const created = await api.send<LinodeStackScript>("POST", "/linode/stackscripts", {
-        label: fields["label"],
-        description: fields["description"] ?? "",
-        images: listValue(fields["images"]),
-        script: fields["script"],
-        is_public: fields["isPublic"] === "true",
+      const created = await api.post("/linode/stackscripts", {
+        body: {
+          label: fields["label"],
+          description: fields["description"] ?? "",
+          images: listValue(fields["images"]),
+          script: fields["script"],
+          is_public: fields["isPublic"] === "true",
+        },
       });
       return mapStackScript(created, accountId);
     }
     case "reserved-ip": {
-      const created = await api.send<LinodeReservedIp>("POST", "/networking/reserved/ips", {
-        region: fields["region"],
-        ...(tags.length ? { tags } : {}),
+      const created = await api.post("/networking/reserved/ips", {
+        body: { region: fields["region"], ...(tags.length ? { tags } : {}) },
       });
       return mapReservedIp(created, accountId);
     }
@@ -1019,23 +1037,25 @@ export async function createResource(
 }
 
 /** Form fields to a domain record body; `@` means the apex, which Linode spells as "". */
-export function recordBody(fields: Record<string, string>): Record<string, unknown> {
+export function recordBody(
+  fields: Record<string, string>,
+): ApiBody<operations["post-domain-record"]> {
   const type = fields["type"] ?? "A";
   const name = (fields["name"] ?? "").trim();
-  const body: Record<string, unknown> = {
+  const body: ApiBody<operations["post-domain-record"]> = {
     type,
     name: name === "@" ? "" : name,
     target: fields["target"] ?? "",
   };
   const ttl = intOr(fields["ttlSec"]);
-  if (ttl !== undefined) body["ttl_sec"] = ttl;
-  if (type === "MX" || type === "SRV") body["priority"] = intOr(fields["priority"], 10);
+  if (ttl !== undefined) body.ttl_sec = ttl;
+  if (type === "MX" || type === "SRV") body.priority = intOr(fields["priority"], 10);
   if (type === "SRV") {
-    body["weight"] = intOr(fields["weight"], 0);
-    body["port"] = intOr(fields["port"], 0);
-    if (fields["service"]) body["service"] = fields["service"];
-    if (fields["protocol"]) body["protocol"] = fields["protocol"];
+    body.weight = intOr(fields["weight"], 0);
+    body.port = intOr(fields["port"], 0);
+    if (fields["service"]) body.service = fields["service"];
+    if (fields["protocol"]) body.protocol = fields["protocol"];
   }
-  if (type === "CAA") body["tag"] = fields["tag"] || "issue";
+  if (type === "CAA") body.tag = fields["tag"] || "issue";
   return body;
 }

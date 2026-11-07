@@ -1,0 +1,163 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "cloud",
+      "specUrl": "https://raw.githubusercontent.com/influxdata/openapi/master/contracts/ref/cloud.yml",
+      "patches": [
+        {
+          "pointer": "/components/schemas/Check",
+          "value": {
+            "$ref": "#/components/schemas/CheckDiscriminator"
+          },
+          "why": "Written as an allOf of one union, which the generator reads as `type: \"Check\"` and only the keys every member shares. The API answers the members of CheckDiscriminator."
+        },
+        {
+          "pointer": "/components/schemas/NotificationRule",
+          "value": {
+            "$ref": "#/components/schemas/NotificationRuleDiscriminator"
+          },
+          "why": "Written as an allOf of one union, which the generator reads as `type: \"NotificationRule\"` and only the keys every member shares. The API answers the members of NotificationRuleDiscriminator."
+        },
+        {
+          "pointer": "/components/schemas/NotificationEndpoint",
+          "value": {
+            "$ref": "#/components/schemas/NotificationEndpointDiscriminator"
+          },
+          "why": "Written as an allOf of one union, which the generator reads as `type: \"NotificationEndpoint\"` and only the keys every member shares. The API answers the members of NotificationEndpointDiscriminator."
+        },
+        {
+          "pointer": "/components/schemas/TaskStatusType",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin sends what the edit form holds, as typed, and the provider's error is the message for a bad value."
+        },
+        {
+          "pointer": "/components/schemas/AuthorizationUpdateRequest/properties/status",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin sends what the edit form holds, as typed, and the provider's error is the message for a bad value."
+        },
+        {
+          "pointer": "/components/schemas/CheckPatch/properties/status",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin sends what the edit form holds, as typed, and the provider's error is the message for a bad value."
+        },
+        {
+          "pointer": "/components/schemas/NotificationRuleUpdate/properties/status",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin sends what the edit form holds, as typed, and the provider's error is the message for a bad value."
+        },
+        {
+          "pointer": "/components/schemas/NotificationEndpointUpdate/properties/status",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin sends what the edit form holds, as typed, and the provider's error is the message for a bad value."
+        },
+        {
+          "pointer": "/components/schemas/Permission/properties/action",
+          "value": {
+            "type": "string"
+          },
+          "why": "The token form's permission picker sends `type:action` pairs as text and the plugin passes them on."
+        },
+        {
+          "pointer": "/components/schemas/Resource/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "The token form's permission picker sends `type:action` pairs as text and the plugin passes them on."
+        },
+        {
+          "pointer": "/components/schemas/Bucket/required",
+          "value": ["id", "name", "retentionRules"],
+          "why": "The document leaves `id` optional on a bucket; every answer carries one and it is what identifies the resource."
+        },
+        {
+          "pointer": "/components/schemas/Organization/required",
+          "value": ["id", "name"],
+          "why": "The document leaves `id` optional on an organization; every answer carries one and it is what identifies the resource."
+        },
+        {
+          "pointer": "/components/schemas/CheckBase/required",
+          "value": ["id", "name", "orgID", "query"],
+          "why": "The document leaves `id` optional on a check; every answer carries one and it is what identifies the resource."
+        },
+        {
+          "pointer": "/components/schemas/NotificationRuleBase/required",
+          "value": ["id", "endpointID", "name", "orgID", "status", "statusRules"],
+          "why": "The document leaves `id` optional on a notification rule; every answer carries one and it is what identifies the resource."
+        },
+        {
+          "pointer": "/components/schemas/NotificationEndpointBase/required",
+          "value": ["id", "name", "type"],
+          "why": "The document leaves `id` optional on a notification endpoint; every answer carries one and it is what identifies the resource."
+        },
+        {
+          "pointer": "/components/schemas/Authorization/allOf/1/required",
+          "value": ["id"],
+          "why": "The document leaves `id` optional on an authorization; every answer carries one and it is what identifies the resource."
+        },
+        {
+          "pointer": "/components/schemas/Dashboard/allOf/1/required",
+          "value": ["id"],
+          "why": "The document leaves `id` optional on a dashboard; every answer carries one and it is what identifies the resource."
+        },
+        {
+          "pointer": "/components/schemas/DashboardWithViewProperties/allOf/1/required",
+          "value": ["id"],
+          "why": "The document leaves `id` optional on a dashboard; every answer carries one and it is what identifies the resource."
+        },
+        {
+          "pointer": "/components/schemas/Telegraf/allOf/1/required",
+          "value": ["id"],
+          "why": "The document leaves `id` optional on a Telegraf configuration; every answer carries one and it is what identifies the resource."
+        }
+      ],
+      "paths": {
+        "/api/v2/authorizations": ["get", "post"],
+        "/api/v2/authorizations/{authID}": ["patch", "delete"],
+        "/api/v2/buckets": ["get", "post"],
+        "/api/v2/buckets/{bucketID}": ["patch", "delete"],
+        "/api/v2/checks": ["get"],
+        "/api/v2/checks/{checkID}": ["patch", "delete"],
+        "/api/v2/dashboards": ["get", "post"],
+        "/api/v2/dashboards/{dashboardID}": ["patch", "delete"],
+        "/api/v2/notificationEndpoints": ["get"],
+        "/api/v2/notificationEndpoints/{endpointID}": ["patch", "delete"],
+        "/api/v2/notificationRules": ["get"],
+        "/api/v2/notificationRules/{ruleID}": ["patch", "delete"],
+        "/api/v2/orgs": ["get"],
+        "/api/v2/orgs/{orgID}": ["get"],
+        "/api/v2/orgs/{orgID}/limits": ["get"],
+        "/api/v2/orgs/{orgID}/usage": ["get"],
+        "/api/v2/query": ["post"],
+        "/api/v2/tasks": ["get", "post"],
+        "/api/v2/tasks/{taskID}": ["get", "patch", "delete"],
+        "/api/v2/tasks/{taskID}/logs": ["get"],
+        "/api/v2/tasks/{taskID}/runs": ["post"],
+        "/api/v2/telegrafs": ["get"],
+        "/api/v2/telegrafs/{telegrafID}": ["delete"],
+        "/query": ["get"]
+      }
+    },
+    {
+      "name": "dedicated",
+      "specUrl": "https://raw.githubusercontent.com/influxdata/docs-v2/master/api-docs/influxdb3/cloud-dedicated/management/openapi.yml",
+      "pathPrefix": "/accounts/{accountId}/clusters/{clusterId}",
+      "paths": {
+        "/databases": ["get", "post"],
+        "/databases/{databaseName}": ["patch", "delete"],
+        "/tokens": ["get", "post"],
+        "/tokens/{tokenId}": ["patch", "delete"]
+      }
+    }
+  ]
+}

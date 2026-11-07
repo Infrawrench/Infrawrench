@@ -16,7 +16,14 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { buildCostEstimate, CreditAccessError, QuotaAccessError } from "@infrawrench/plugin-base";
+import {
+  buildCostEstimate,
+  CreditAccessError,
+  pathEncode,
+  QuotaAccessError,
+  type ApiBody,
+} from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
 import { isStatus, RunpodApi } from "./api.js";
 import { fetchRunpodCostData } from "./cost-data.js";
 import { ANY, buildCreateConfig, NONE } from "./create-config.js";
@@ -50,7 +57,7 @@ import type {
 const CACHE_TTL_MS = 60_000;
 const HOURS_PER_MONTH = 730;
 
-function str(v: unknown): string {
+function str(v: string | null | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
 
@@ -140,10 +147,37 @@ const UPDATE_PUBKEY = `mutation RunpodUpdatePubKey($input: UpdateUserSettingsInp
   updateUserSettings(input: $input) { id }
 }`;
 
-interface Cached<T> {
-  at: number;
-  value: Promise<T>;
+/** One answer kept for {@link CACHE_TTL_MS}; a failure is not kept. */
+class Cached<T> {
+  private entry: { at: number; value: Promise<T> } | undefined;
+
+  get(load: () => Promise<T>): Promise<T> {
+    const current = this.entry;
+    if (current && Date.now() - current.at < CACHE_TTL_MS) return current.value;
+    const value = load();
+    const entry = { at: Date.now(), value };
+    value.catch(() => {
+      this.entry = undefined;
+    });
+    this.entry = entry;
+    return value;
+  }
 }
+
+const POD_ACTIONS = ["start", "stop", "restart", "reset"] as const;
+
+function isPodAction(action: string): action is (typeof POD_ACTIONS)[number] {
+  return POD_ACTIONS.some((known) => known === action);
+}
+
+/** The Serverless fields an edit sends as whole numbers, in the order they go. */
+const ENDPOINT_NUMBERS = [
+  "workersMin",
+  "workersMax",
+  "idleTimeout",
+  "scalerValue",
+  "executionTimeoutMs",
+] as const;
 
 /**
  * Runpod plugin client. One per account (API key). A Runpod key belongs to a
@@ -153,8 +187,8 @@ interface Cached<T> {
 export class RunpodClient implements PluginClient {
   readonly api: RunpodApi;
   private readonly resourceTypes: ResourceTypeDefinition[];
-  private gpuCache: Cached<RpGpuType[]> | undefined;
-  private dcCache: Cached<RpDataCenter[]> | undefined;
+  private readonly gpuCache = new Cached<RpGpuType[]>();
+  private readonly dcCache = new Cached<RpDataCenter[]>();
 
   constructor(
     credentials: Credentials,
@@ -171,19 +205,18 @@ export class RunpodClient implements PluginClient {
 
   readonly listRaw = {
     pods: () =>
-      this.api.rest<RpPod[]>("/pods", {
+      this.api.rest.get("/pods", {
         query: { includeMachine: true, includeNetworkVolume: true },
       }),
-    endpoints: () =>
-      this.api.rest<RpEndpoint[]>("/endpoints", { query: { includeTemplate: true } }),
-    templates: () => this.api.rest<RpTemplate[]>("/templates"),
-    networkVolumes: () => this.api.rest<RpNetworkVolume[]>("/networkvolumes"),
-    registryAuths: () => this.api.rest<RpRegistryAuth[]>("/containerregistryauth"),
+    endpoints: () => this.api.rest.get("/endpoints", { query: { includeTemplate: true } }),
+    templates: () => this.api.rest.get("/templates"),
+    networkVolumes: () => this.api.rest.get("/networkvolumes"),
+    registryAuths: () => this.api.rest.get("/containerregistryauth"),
   };
 
   /** Own templates plus Runpod's official ones, for the pod create form. */
   async templatesForPicker(): Promise<RpTemplate[]> {
-    const all = await this.api.rest<RpTemplate[]>("/templates", {
+    const all = await this.api.rest.get("/templates", {
       query: { includeRunpodTemplates: true },
     });
     return [...(all ?? [])].sort(
@@ -191,29 +224,15 @@ export class RunpodClient implements PluginClient {
     );
   }
 
-  private cached<T>(slot: "gpu" | "dc", load: () => Promise<T>): Promise<T> {
-    const current = (slot === "gpu" ? this.gpuCache : this.dcCache) as Cached<T> | undefined;
-    if (current && Date.now() - current.at < CACHE_TTL_MS) return current.value;
-    const value = load();
-    const entry = { at: Date.now(), value } as Cached<unknown>;
-    value.catch(() => {
-      if (slot === "gpu") this.gpuCache = undefined;
-      else this.dcCache = undefined;
-    });
-    if (slot === "gpu") this.gpuCache = entry as Cached<RpGpuType[]>;
-    else this.dcCache = entry as Cached<RpDataCenter[]>;
-    return value;
-  }
-
   gpuTypes(): Promise<RpGpuType[]> {
-    return this.cached("gpu", async () => {
+    return this.gpuCache.get(async () => {
       const res = await this.api.graphql<{ gpuTypes?: RpGpuType[] }>(GPU_TYPES_QUERY);
       return (res?.gpuTypes ?? []).filter((g) => g.id && (g.secureCloud || g.communityCloud));
     });
   }
 
   dataCenters(): Promise<RpDataCenter[]> {
-    return this.cached("dc", async () => {
+    return this.dcCache.get(async () => {
       const res = await this.api.graphql<{ dataCenters?: RpDataCenter[] }>(DATA_CENTERS_QUERY);
       return res?.dataCenters ?? [];
     });
@@ -260,8 +279,8 @@ export class RunpodClient implements PluginClient {
         case "network-volume": {
           const [volumes, pods, endpoints] = await Promise.all([
             this.listRaw.networkVolumes(),
-            this.listRaw.pods().catch(() => [] as RpPod[]),
-            this.listRaw.endpoints().catch(() => [] as RpEndpoint[]),
+            this.listRaw.pods().catch((): RpPod[] => []),
+            this.listRaw.endpoints().catch((): RpEndpoint[] => []),
           ]);
           const users = volumeUsers(pods ?? [], endpoints ?? []);
           return (volumes ?? []).map((v) => mapNetworkVolume(v, accountId, users));
@@ -286,7 +305,9 @@ export class RunpodClient implements PluginClient {
   }
 
   private async writePubKey(lines: string[]): Promise<void> {
-    await this.api.graphql(UPDATE_PUBKEY, { input: { pubKey: joinSshKeys(lines) } });
+    await this.api.graphql<{ updateUserSettings?: { id?: string } | null }>(UPDATE_PUBKEY, {
+      input: { pubKey: joinSshKeys(lines) },
+    });
   }
 
   private async listSshKeys(accountId: string): Promise<ResourceInstance[]> {
@@ -313,7 +334,7 @@ export class RunpodClient implements PluginClient {
       switch (typeId) {
         case "pod": {
           const [pod, extras] = await Promise.all([
-            this.api.rest<RpPod>(`/pods/${encodeURIComponent(id)}`, {
+            this.api.rest.get(`/pods/${pathEncode(id)}`, {
               query: { includeMachine: true, includeNetworkVolume: true },
             }),
             this.podExtras(),
@@ -322,7 +343,7 @@ export class RunpodClient implements PluginClient {
         }
         case "serverless-endpoint": {
           const [endpoint, health] = await Promise.all([
-            this.api.rest<RpEndpoint>(`/endpoints/${encodeURIComponent(id)}`, {
+            this.api.rest.get(`/endpoints/${pathEncode(id)}`, {
               query: { includeTemplate: true },
             }),
             this.endpointHealth(id),
@@ -330,17 +351,14 @@ export class RunpodClient implements PluginClient {
           return mapEndpoint(endpoint, accountId, health);
         }
         case "template":
-          return mapTemplate(
-            await this.api.rest<RpTemplate>(`/templates/${encodeURIComponent(id)}`),
-            accountId,
-          );
+          return mapTemplate(await this.api.rest.get(`/templates/${pathEncode(id)}`), accountId);
         default: {
           const all = await runPluginEffect(this.listResources(typeId, accountId));
           const found = all.find((r) => r.id === resourceId || r.externalId === id);
           if (!found) {
-            const err = new Error(`Runpod plugin: resource ${typeId}/${id} not found`);
-            (err as Error & { status: number }).status = 404;
-            throw err;
+            throw Object.assign(new Error(`Runpod plugin: resource ${typeId}/${id} not found`), {
+              status: 404,
+            });
           }
           return found;
         }
@@ -378,7 +396,7 @@ export class RunpodClient implements PluginClient {
       switch (typeId) {
         case "pod": {
           const body = this.podCreateBody(fields);
-          const pod = await this.api.rest<RpPod>("/pods", { method: "POST", body });
+          const pod = await this.api.rest.post("/pods", { body });
           return mapPod(pod, accountId, undefined);
         }
         case "serverless-endpoint": {
@@ -386,7 +404,7 @@ export class RunpodClient implements PluginClient {
           const dc = picked(fields["dataCenterId"]);
           const volume = picked(fields["networkVolumeId"]);
           const gpu = str(fields["gpuTypeId"]);
-          const body: Record<string, unknown> = {
+          const body: ApiBody<operations["CreateEndpoint"]> = {
             name,
             templateId: str(fields["templateId"]),
             computeType: cpu ? "CPU" : "GPU",
@@ -398,22 +416,21 @@ export class RunpodClient implements PluginClient {
             ...(volume ? { networkVolumeId: volume } : {}),
           };
           if (cpu) {
-            body["cpuFlavorIds"] = [str(fields["cpuFlavorId"]) || "cpu3c"];
-            body["vcpuCount"] = int(fields["vcpuCount"], 2);
+            body.cpuFlavorIds = [str(fields["cpuFlavorId"]) || "cpu3c"];
+            body.vcpuCount = int(fields["vcpuCount"], 2);
           } else {
-            if (gpu) body["gpuTypeIds"] = [gpu];
-            body["gpuCount"] = int(fields["gpuCount"], 1);
+            if (gpu) body.gpuTypeIds = [gpu];
+            body.gpuCount = int(fields["gpuCount"], 1);
           }
-          if (!body["templateId"]) throw new Error("Runpod plugin: choose a Serverless template");
-          const endpoint = await this.api.rest<RpEndpoint>("/endpoints", { method: "POST", body });
+          if (!body.templateId) throw new Error("Runpod plugin: choose a Serverless template");
+          const endpoint = await this.api.rest.post("/endpoints", { body });
           return mapEndpoint(endpoint, accountId, undefined);
         }
         case "template": {
           const auth = picked(fields["containerRegistryAuthId"]);
           const start = startCommandArgs(str(fields["startCommand"]));
           const env = parseEnv(fields["env"]);
-          const template = await this.api.rest<RpTemplate>("/templates", {
-            method: "POST",
+          const template = await this.api.rest.post("/templates", {
             body: {
               name,
               imageName: str(fields["imageName"]),
@@ -432,8 +449,7 @@ export class RunpodClient implements PluginClient {
           return mapTemplate(template, accountId);
         }
         case "network-volume": {
-          const volume = await this.api.rest<RpNetworkVolume>("/networkvolumes", {
-            method: "POST",
+          const volume = await this.api.rest.post("/networkvolumes", {
             body: {
               name,
               dataCenterId: str(fields["dataCenterId"]),
@@ -443,8 +459,7 @@ export class RunpodClient implements PluginClient {
           return mapNetworkVolume(volume, accountId, new Map());
         }
         case "container-registry-auth": {
-          const auth = await this.api.rest<RpRegistryAuth>("/containerregistryauth", {
-            method: "POST",
+          const auth = await this.api.rest.post("/containerregistryauth", {
             body: {
               name,
               username: str(fields["username"]),
@@ -475,7 +490,7 @@ export class RunpodClient implements PluginClient {
     });
   }
 
-  podCreateBody(fields: Record<string, string>): Record<string, unknown> {
+  podCreateBody(fields: Record<string, string>): ApiBody<operations["CreatePod"]> {
     const cpu = str(fields["computeType"]) === "CPU";
     const template = picked(fields["templateId"]);
     const image = str(fields["imageName"]);
@@ -488,7 +503,7 @@ export class RunpodClient implements PluginClient {
     const env = parseEnv(fields["env"]);
     const sshKey = str(fields["sshPublicKey"]);
     if (sshKey && !env["PUBLIC_KEY"]) env["PUBLIC_KEY"] = sshKey;
-    const body: Record<string, unknown> = {
+    const body: ApiBody<operations["CreatePod"]> = {
       name: str(fields["name"]) || "my pod",
       computeType: cpu ? "CPU" : "GPU",
       cloudType: str(fields["cloudType"]) === "COMMUNITY" ? "COMMUNITY" : "SECURE",
@@ -504,15 +519,15 @@ export class RunpodClient implements PluginClient {
       ...(Object.keys(env).length ? { env } : {}),
     };
     const ports = splitList(fields["ports"]);
-    if (ports.length) body["ports"] = ports;
+    if (ports.length) body.ports = ports;
     if (cpu) {
-      body["cpuFlavorIds"] = [str(fields["cpuFlavorId"]) || "cpu3c"];
-      body["vcpuCount"] = int(fields["vcpuCount"], 2);
+      body.cpuFlavorIds = [str(fields["cpuFlavorId"]) || "cpu3c"];
+      body.vcpuCount = int(fields["vcpuCount"], 2);
     } else {
       const gpu = str(fields["gpuTypeId"]);
       if (!gpu) throw new Error("Runpod plugin: choose a GPU type");
-      body["gpuTypeIds"] = [gpu];
-      body["gpuCount"] = int(fields["gpuCount"], 1);
+      body.gpuTypeIds = [gpu];
+      body.gpuCount = int(fields["gpuCount"], 1);
     }
     return body;
   }
@@ -524,58 +539,58 @@ export class RunpodClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalOf(resourceId));
-      const body: Record<string, unknown> = {};
+      const id = pathEncode(externalOf(resourceId));
       const has = (k: string) => fields[k] !== undefined;
       switch (typeId) {
-        case "pod":
-          if (has("name")) body["name"] = str(fields["name"]);
-          if (has("imageName")) body["imageName"] = str(fields["imageName"]);
-          if (has("containerDiskGb")) body["containerDiskInGb"] = int(fields["containerDiskGb"]);
-          if (has("volumeGb")) body["volumeInGb"] = int(fields["volumeGb"]);
-          if (has("volumeMountPath")) body["volumeMountPath"] = str(fields["volumeMountPath"]);
-          if (has("ports")) body["ports"] = splitList(fields["ports"]);
-          if (has("locked")) body["locked"] = fields["locked"] === "true";
+        case "pod": {
+          const body: ApiBody<operations["UpdatePod"]> = {};
+          if (has("name")) body.name = str(fields["name"]);
+          if (has("imageName")) body.imageName = str(fields["imageName"]);
+          if (has("containerDiskGb")) body.containerDiskInGb = int(fields["containerDiskGb"]);
+          if (has("volumeGb")) body.volumeInGb = int(fields["volumeGb"]);
+          if (has("volumeMountPath")) body.volumeMountPath = str(fields["volumeMountPath"]);
+          if (has("ports")) body.ports = splitList(fields["ports"]);
+          if (has("locked")) body.locked = fields["locked"] === "true";
           if (Object.keys(body).length) {
-            await this.api.rest(`/pods/${id}`, { method: "PATCH", body });
+            await this.api.rest.patch(`/pods/${id}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-        case "serverless-endpoint":
-          if (has("name")) body["name"] = str(fields["name"]);
-          for (const k of [
-            "workersMin",
-            "workersMax",
-            "idleTimeout",
-            "scalerValue",
-            "executionTimeoutMs",
-          ]) {
+        }
+        case "serverless-endpoint": {
+          const body: ApiBody<operations["UpdateEndpoint"]> = {};
+          if (has("name")) body.name = str(fields["name"]);
+          for (const k of ENDPOINT_NUMBERS) {
             if (has(k)) body[k] = int(fields[k]);
           }
           if (has("scalerType") && str(fields["scalerType"])) {
-            body["scalerType"] = str(fields["scalerType"]);
+            body.scalerType = str(fields["scalerType"]);
           }
-          if (has("flashboot")) body["flashboot"] = fields["flashboot"] === "true";
+          if (has("flashboot")) body.flashboot = fields["flashboot"] === "true";
           if (Object.keys(body).length) {
-            await this.api.rest(`/endpoints/${id}`, { method: "PATCH", body });
+            await this.api.rest.patch(`/endpoints/${id}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-        case "template":
-          if (has("name")) body["name"] = str(fields["name"]);
-          if (has("imageName")) body["imageName"] = str(fields["imageName"]);
-          if (has("containerDiskGb")) body["containerDiskInGb"] = int(fields["containerDiskGb"]);
-          if (has("volumeGb")) body["volumeInGb"] = int(fields["volumeGb"]);
-          if (has("volumeMountPath")) body["volumeMountPath"] = str(fields["volumeMountPath"]);
-          if (has("ports")) body["ports"] = splitList(fields["ports"]);
+        }
+        case "template": {
+          const body: ApiBody<operations["UpdateTemplate"]> = {};
+          if (has("name")) body.name = str(fields["name"]);
+          if (has("imageName")) body.imageName = str(fields["imageName"]);
+          if (has("containerDiskGb")) body.containerDiskInGb = int(fields["containerDiskGb"]);
+          if (has("volumeGb")) body.volumeInGb = int(fields["volumeGb"]);
+          if (has("volumeMountPath")) body.volumeMountPath = str(fields["volumeMountPath"]);
+          if (has("ports")) body.ports = splitList(fields["ports"]);
           if (has("startCommand"))
-            body["dockerStartCmd"] = startCommandArgs(str(fields["startCommand"]));
-          if (has("isPublic")) body["isPublic"] = fields["isPublic"] === "true";
-          if (has("readme")) body["readme"] = fields["readme"] ?? "";
+            body.dockerStartCmd = startCommandArgs(str(fields["startCommand"]));
+          if (has("isPublic")) body.isPublic = fields["isPublic"] === "true";
+          if (has("readme")) body.readme = fields["readme"] ?? "";
           if (Object.keys(body).length) {
-            await this.api.rest(`/templates/${id}`, { method: "PATCH", body });
+            await this.api.rest.patch(`/templates/${id}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
         case "network-volume": {
-          if (has("name")) body["name"] = str(fields["name"]);
+          const body: ApiBody<operations["UpdateNetworkVolume"]> = {};
+          if (has("name")) body.name = str(fields["name"]);
           if (has("sizeGb")) {
             const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
             const size = int(fields["sizeGb"]);
@@ -583,10 +598,10 @@ export class RunpodClient implements PluginClient {
             if (size !== undefined && size < now) {
               throw new Error("Runpod plugin: a network volume can only grow, never shrink");
             }
-            if (size !== undefined && size !== now) body["size"] = size;
+            if (size !== undefined && size !== now) body.size = size;
           }
           if (Object.keys(body).length) {
-            await this.api.rest(`/networkvolumes/${id}`, { method: "PATCH", body });
+            await this.api.rest.patch(`/networkvolumes/${id}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -599,22 +614,22 @@ export class RunpodClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const raw = externalOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       switch (typeId) {
         case "pod":
-          await this.api.rest(`/pods/${id}`, { method: "DELETE" });
+          await this.api.rest.delete(`/pods/${id}`);
           return;
         case "serverless-endpoint":
-          await this.api.rest(`/endpoints/${id}`, { method: "DELETE" });
+          await this.api.rest.delete(`/endpoints/${id}`);
           return;
         case "template":
-          await this.api.rest(`/templates/${id}`, { method: "DELETE" });
+          await this.api.rest.delete(`/templates/${id}`);
           return;
         case "network-volume":
-          await this.api.rest(`/networkvolumes/${id}`, { method: "DELETE" });
+          await this.api.rest.delete(`/networkvolumes/${id}`);
           return;
         case "container-registry-auth":
-          await this.api.rest(`/containerregistryauth/${id}`, { method: "DELETE" });
+          await this.api.rest.delete(`/containerregistryauth/${id}`);
           return;
         case "ssh-key": {
           const keys = parseSshKeys(await this.readPubKey());
@@ -638,17 +653,14 @@ export class RunpodClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalOf(resourceId));
+      const id = pathEncode(externalOf(resourceId));
       if (typeId === "pod") {
-        if (["start", "stop", "restart", "reset"].includes(actionId)) {
-          await this.api.rest(`/pods/${id}/${actionId}`, { method: "POST" });
+        if (isPodAction(actionId)) {
+          await this.api.rest.post(`/pods/${id}/${actionId}`);
           return;
         }
         if (actionId === "lock" || actionId === "unlock") {
-          await this.api.rest(`/pods/${id}`, {
-            method: "PATCH",
-            body: { locked: actionId === "lock" },
-          });
+          await this.api.rest.patch(`/pods/${id}`, { body: { locked: actionId === "lock" } });
           return;
         }
       }
@@ -667,9 +679,7 @@ export class RunpodClient implements PluginClient {
       if (typeId !== "pod") return null;
       const gpuId = str(fields["gpuTypeId"]);
       if (!gpuId || str(fields["computeType"]) === "CPU") return null;
-      const gpu = (await this.gpuTypes().catch(() => [] as RpGpuType[])).find(
-        (g) => g.id === gpuId,
-      );
+      const gpu = (await this.gpuTypes().catch((): RpGpuType[] => [])).find((g) => g.id === gpuId);
       if (!gpu) return null;
       const community = str(fields["cloudType"]) === "COMMUNITY";
       const spot = str(fields["pricing"]) === "spot";
@@ -719,8 +729,8 @@ export class RunpodClient implements PluginClient {
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
       const [pods, endpoints] = await Promise.all([
-        this.listRaw.pods().catch(() => [] as RpPod[]),
-        this.listRaw.endpoints().catch(() => [] as RpEndpoint[]),
+        this.listRaw.pods().catch((): RpPod[] => []),
+        this.listRaw.endpoints().catch((): RpEndpoint[] => []),
       ]);
       const regions = new Map<string, string>();
       const names = new Map<string, string>();
@@ -826,7 +836,7 @@ export class RunpodClient implements PluginClient {
         });
       }
       if (typeof me.maxServerlessConcurrency === "number" && me.maxServerlessConcurrency > 0) {
-        const endpoints = await this.listRaw.endpoints().catch(() => [] as RpEndpoint[]);
+        const endpoints = await this.listRaw.endpoints().catch((): RpEndpoint[] => []);
         const used = (endpoints ?? []).reduce((sum, e) => sum + (e.workersMax ?? 0), 0);
         out.push({
           id: "serverless-workers",

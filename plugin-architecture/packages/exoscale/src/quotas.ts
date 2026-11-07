@@ -7,11 +7,9 @@
 
 import type { QuotaUsage } from "@infrawrench/plugin-base";
 import { QuotaAccessError } from "@infrawrench/plugin-base";
-import { DEFAULT_ZONE, type ExoscaleApi, statusOf } from "./api.js";
+import { DEFAULT_ZONE, type ExoscaleApi, type Schemas, statusOf } from "./api.js";
 
-export function quotasFrom(
-  list: Array<{ resource?: string; usage?: number; limit?: number }>,
-): QuotaUsage[] {
+export function quotasFrom(list: Schemas["quota"][]): QuotaUsage[] {
   return list
     .filter((q) => q.resource && Number(q.limit) > 0)
     .map((q) => ({
@@ -26,9 +24,7 @@ export function quotasFrom(
 
 export async function fetchQuotas(api: ExoscaleApi): Promise<QuotaUsage[]> {
   try {
-    const res = await api.get<{
-      quotas?: Array<{ resource?: string; usage?: number; limit?: number }>;
-    }>(DEFAULT_ZONE, "/quota");
+    const res = await api.at(DEFAULT_ZONE).get("/quota");
     return quotasFrom(res.quotas ?? []);
   } catch (err) {
     const s = statusOf(err);

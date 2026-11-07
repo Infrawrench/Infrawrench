@@ -1,216 +1,28 @@
-/** bunny.net API models (subset), field names from the published OpenAPI specs (2026-10). */
+import type { ApiBody, ApiResponse } from "@infrawrench/plugin-base";
+import type { operations as computeOperations } from "./api-types.compute.gen.js";
+import type { components, operations } from "./api-types.core.gen.js";
+import type { operations as mcOperations } from "./api-types.mc.gen.js";
 
-export interface Hostname {
-  Id: number;
-  Value: string;
-  ForceSSL?: boolean;
-  IsSystemHostname?: boolean;
-  IsManagedHostname?: boolean;
-  HasCertificate?: boolean;
-}
+/** bunny.net API models, from the published OpenAPI documents (see `plugingen.json`). */
 
-export interface EdgeTrigger {
-  Type: number;
-  PatternMatches?: string[];
-  PatternMatchingType?: number;
-  Parameter1?: string | null;
-}
+export type PullZone = ApiResponse<operations["PullZonePublic_Index"]>;
+export type Hostname = components["schemas"]["HostnameModel"];
+/** An edge rule as stored on a pull zone, which always has its guid. */
+export type EdgeRule = NonNullable<PullZone["EdgeRules"]>[number];
+/** An edge rule as written, which has no guid until bunny.net gives it one. */
+export type EdgeRuleBody = components["schemas"]["EdgeRuleV2Model"];
+export type StorageZone = ApiResponse<operations["StorageZonePublic_Index"]>;
+export type DnsZone = ApiResponse<operations["DnsZonePublic_Index2"]>;
+export type DnsRecord = NonNullable<DnsZone["Records"]>[number];
+export type VideoLibrary = components["schemas"]["VideoLibraryModel"];
+export type EdgeScript = ApiResponse<
+  computeOperations["GetEdgeScriptByIdEndpoint_GetEdgeScriptById"]
+>;
+export type ContainerApp = ApiResponse<mcOperations["GetApplication"]>;
+export type Billing = ApiResponse<operations["GetBillingDetailsEndpoint_GetBillingDetails"]>;
 
-export interface EdgeRule {
-  Guid: string;
-  ActionType: number;
-  ActionParameter1?: string | null;
-  ActionParameter2?: string | null;
-  ActionParameter3?: string | null;
-  Triggers?: EdgeTrigger[];
-  ExtraActions?: Array<{
-    ActionType: number;
-    ActionParameter1?: string | null;
-    ActionParameter2?: string | null;
-  }>;
-  TriggerMatchingType?: number;
-  Description?: string | null;
-  Enabled?: boolean;
-  OrderIndex?: number;
-  ReadOnly?: boolean;
-}
-
-export interface PullZone {
-  Id: number;
-  Name: string;
-  OriginUrl?: string | null;
-  OriginType?: number;
-  Enabled?: boolean;
-  Suspended?: boolean;
-  Hostnames?: Hostname[];
-  StorageZoneId?: number;
-  EdgeScriptId?: number;
-  MagicContainersAppId?: string | null;
-  Type?: number;
-  CnameDomain?: string | null;
-  MonthlyBandwidthUsed?: number;
-  MonthlyBandwidthLimit?: number;
-  MonthlyCharges?: number;
-  EdgeRules?: EdgeRule[];
-  EnableOriginShield?: boolean;
-  OriginShieldZoneCode?: string | null;
-  EnableLogging?: boolean;
-  IgnoreQueryStrings?: boolean;
-  CacheControlMaxAgeOverride?: number;
-  CacheControlPublicMaxAgeOverride?: number;
-  BlockedCountries?: string[];
-  AllowedReferrers?: string[];
-  BlockedReferrers?: string[];
-  BlockedIps?: string[];
-  EnableGeoZoneUS?: boolean;
-  EnableGeoZoneEU?: boolean;
-  EnableGeoZoneASIA?: boolean;
-  EnableGeoZoneSA?: boolean;
-  EnableGeoZoneAF?: boolean;
-  ZoneSecurityEnabled?: boolean;
-  ZoneSecurityKey?: string | null;
-  VerifyOriginSSL?: boolean;
-  AddHostHeader?: boolean;
-  OriginHostHeader?: string | null;
-  EnableTLS1?: boolean;
-  EnableTLS1_1?: boolean;
-  EnableSmartCache?: boolean;
-  EnableWebPVary?: boolean;
-  OptimizerEnabled?: boolean;
-  DisableCookies?: boolean;
-  VideoLibraryId?: number;
-  DnsZoneId?: number;
-}
-
-export interface StorageZone {
-  Id: number;
-  Name: string;
-  Password?: string;
-  ReadOnlyPassword?: string;
-  DateModified?: string;
-  Deleted?: boolean;
-  StorageUsed?: number;
-  FilesStored?: number;
-  Region?: string;
-  ReplicationRegions?: string[];
-  PullZones?: Array<{ Id: number; Name: string }>;
-  Rewrite404To200?: boolean;
-  Custom404FilePath?: string | null;
-  StorageHostname?: string;
-  S3Hostname?: string | null;
-  ZoneTier?: number;
-}
-
-export interface DnsRecord {
-  Id: number;
-  Type: number;
-  Ttl?: number;
-  Value?: string | null;
-  Name?: string | null;
-  Weight?: number;
-  Priority?: number;
-  Port?: number;
-  Flags?: number;
-  Tag?: string | null;
-  Accelerated?: boolean;
-  AcceleratedPullZoneId?: number;
-  LinkName?: string | null;
-  MonitorType?: number;
-  MonitorStatus?: number;
-  Disabled?: boolean;
-  Comment?: string | null;
-}
-
-export interface DnsZone {
-  Id: number;
-  Domain: string;
-  Records?: DnsRecord[];
-  DateModified?: string;
-  DateCreated?: string;
-  NameserversDetected?: boolean;
-  CustomNameserversEnabled?: boolean;
-  Nameserver1?: string;
-  Nameserver2?: string;
-  SoaEmail?: string;
-  LoggingEnabled?: boolean;
-  DnsSecEnabled?: boolean;
-}
-
-export interface VideoLibrary {
-  Id: number;
-  Name: string;
-  VideoCount?: number;
-  TrafficUsage?: number;
-  StorageUsage?: number;
-  DateCreated?: string;
-  ReplicationRegions?: string[];
-  ApiKey?: string;
-  ReadOnlyApiKey?: string;
-  PullZoneId?: number;
-  StorageZoneId?: number;
-  EnabledResolutions?: string;
-  WebhookUrl?: string | null;
-  EnableMP4Fallback?: boolean;
-  KeepOriginalFiles?: boolean;
-  AllowDirectPlay?: boolean;
-  EnableTranscribing?: boolean;
-  PlayerTokenAuthenticationEnabled?: boolean;
-  EnableDRM?: boolean;
-  BlockNoneReferrer?: boolean;
-}
-
-export interface EdgeScript {
-  Id: number;
-  Name: string;
-  LastModified?: string;
-  ScriptType?: number;
-  CurrentReleaseId?: number;
-  LinkedPullZones?: Array<{ Id: number; PullZoneName: string; DefaultHostname?: string }>;
-  DefaultHostname?: string | null;
-  SystemHostname?: string | null;
-  MonthlyCost?: number;
-  MonthlyRequestCount?: number;
-  MonthlyCpuTime?: number;
-  Deleted?: boolean;
-}
-
-export interface ContainerApp {
-  id: string;
-  name: string;
-  description?: string;
-  status?: string;
-  runtimeType?: string;
-  displayEndpoint?: { id?: string; address?: string; type?: string } | null;
-  regionSettings?: {
-    allowedRegionIds?: string[];
-    requiredRegionIds?: string[];
-    maxAllowedRegions?: number;
-  } | null;
-  containerTemplates?: Array<{
-    id?: string;
-    name?: string;
-    image?: string;
-    imageName?: string;
-    imageTag?: string;
-  }>;
-  containerInstances?: Array<{ id?: string }>;
-  autoScaling?: { min?: number; max?: number } | null;
-}
-
-export interface Billing {
-  Balance?: number;
-  ThisMonthCharges?: number;
-  CouponBalance?: number;
-  AvailableBalance?: number;
-  BillingRecords?: Array<{
-    Id: number;
-    Amount: number;
-    Timestamp: string;
-    Type: number;
-    InvoiceAvailable?: boolean;
-  }>;
-  [key: string]: unknown;
-}
+export type PullZoneUpdate = ApiBody<operations["PullZonePublic_UpdatePullZone"]>;
+export type DnsRecordBody = ApiBody<operations["DnsZonePublic_AddRecord"]>;
 
 export const DNS_RECORD_TYPES = [
   "A",

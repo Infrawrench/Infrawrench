@@ -2,6 +2,7 @@ import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import { utf8ToBase64 } from "@infrawrench/plugin-base";
 import { T } from "./resource-types.js";
 import type {
+  AvAcl,
   AvBillingGroup,
   AvComponent,
   AvConnector,
@@ -13,7 +14,10 @@ import type {
   AvService,
   AvServiceUser,
   AvTopic,
+  AvTopicDetail,
   AvVpc,
+  ChartCell,
+  Loose,
 } from "./types.js";
 
 type FieldValue = string | number | boolean | undefined | null;
@@ -50,6 +54,8 @@ export function instance(
 }
 
 /** Split `a/b/c` external ids; the last part may itself contain slashes (Kafka topic names cannot). */
+export function parts(externalId: string, count: 2): [string, string];
+export function parts(externalId: string, count: 3): [string, string, string];
 export function parts(externalId: string, count: number): string[] {
   const segs = externalId.split("/");
   if (segs.length < count) throw new Error(`Aiven plugin: malformed resource id "${externalId}"`);
@@ -67,7 +73,7 @@ const num = (s: string | undefined): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
-export function mapProject(accountId: string, p: AvProject): ResourceInstance {
+export function mapProject(accountId: string, p: Loose<AvProject>): ResourceInstance {
   const name = p.project_name ?? "";
   return instance(accountId, T.project, name, name, {
     name,
@@ -87,7 +93,7 @@ export function mapProject(accountId: string, p: AvProject): ResourceInstance {
 }
 
 /** The Kafka SASL endpoint, when SASL is enabled on the service. */
-export function kafkaSaslComponent(svc: AvService): AvComponent | undefined {
+export function kafkaSaslComponent(svc: Loose<AvService>): Loose<AvComponent> | undefined {
   return (svc.components ?? []).find(
     (c) =>
       c.component === "kafka" &&
@@ -96,10 +102,10 @@ export function kafkaSaslComponent(svc: AvService): AvComponent | undefined {
   );
 }
 
-export function serviceVersion(svc: AvService): string | undefined {
+export function serviceVersion(svc: Loose<AvService>): string | undefined {
   const uc = svc.user_config ?? {};
-  for (const key of Object.keys(uc)) {
-    if (/_version$/.test(key) && typeof uc[key] === "string") return uc[key] as string;
+  for (const [key, value] of Object.entries(uc)) {
+    if (/_version$/.test(key) && typeof value === "string") return value;
   }
   const meta = svc.metadata ?? {};
   for (const key of [
@@ -109,12 +115,17 @@ export function serviceVersion(svc: AvService): string | undefined {
     "kafka_version",
     "opensearch_version",
   ]) {
-    if (typeof meta[key] === "string") return meta[key] as string;
+    const value = meta[key];
+    if (typeof value === "string") return value;
   }
   return undefined;
 }
 
-export function mapService(accountId: string, project: string, svc: AvService): ResourceInstance {
+export function mapService(
+  accountId: string,
+  project: string,
+  svc: Loose<AvService>,
+): ResourceInstance {
   const name = svc.service_name ?? "";
   const params = svc.service_uri_params ?? {};
   const sasl = svc.service_type === "kafka" ? kafkaSaslComponent(svc) : undefined;
@@ -158,7 +169,7 @@ export function mapService(accountId: string, project: string, svc: AvService): 
  * certificates; with SASL on, a `kafka://` URL in the Kafka plugin's format
  * (SCRAM-SHA-256, TLS, CA inlined as base64 `ssl_ca`) is built instead.
  */
-export function serviceConnectionString(svc: AvService, caPem: string | undefined): string {
+export function serviceConnectionString(svc: Loose<AvService>, caPem: string | undefined): string {
   if (svc.service_type === "kafka") {
     const sasl = kafkaSaslComponent(svc);
     if (!sasl?.host) return "";
@@ -179,7 +190,7 @@ export function mapUser(
   accountId: string,
   project: string,
   service: string,
-  u: AvServiceUser,
+  u: Loose<AvServiceUser>,
   serviceType?: string,
 ): ResourceInstance {
   const username = u.username ?? "";
@@ -223,7 +234,7 @@ export function mapPool(
   accountId: string,
   project: string,
   service: string,
-  p: AvPool,
+  p: Loose<AvPool>,
 ): ResourceInstance {
   const name = p.pool_name ?? "";
   return instance(
@@ -248,7 +259,7 @@ export function mapTopic(
   accountId: string,
   project: string,
   service: string,
-  t: AvTopic,
+  t: Loose<AvTopic> | Loose<AvTopicDetail>,
 ): ResourceInstance {
   const name = t.topic_name ?? "";
   return instance(
@@ -276,7 +287,7 @@ export function mapAcl(
   accountId: string,
   project: string,
   service: string,
-  a: { id?: string; permission?: string; topic?: string; username?: string },
+  a: Loose<AvAcl>,
 ): ResourceInstance {
   const id = a.id ?? "";
   return instance(
@@ -299,7 +310,7 @@ export function mapConnector(
   accountId: string,
   project: string,
   service: string,
-  c: AvConnector,
+  c: Loose<AvConnector>,
   state?: string,
 ): ResourceInstance {
   const name = c.name ?? "";
@@ -341,7 +352,7 @@ export function mapSubject(
 export function mapIntegration(
   accountId: string,
   project: string,
-  i: AvIntegration,
+  i: Loose<AvIntegration>,
 ): ResourceInstance {
   const id = i.service_integration_id ?? "";
   const source = i.source_service ?? i.source_endpoint;
@@ -363,7 +374,7 @@ export function mapIntegration(
   );
 }
 
-export function mapVpc(accountId: string, project: string, v: AvVpc): ResourceInstance {
+export function mapVpc(accountId: string, project: string, v: Loose<AvVpc>): ResourceInstance {
   const id = v.project_vpc_id ?? "";
   return instance(
     accountId,
@@ -383,7 +394,7 @@ export function mapVpc(accountId: string, project: string, v: AvVpc): ResourceIn
 }
 
 /** Peering ids: `{project}/{vpcId}/{account}/{vpc}[/{region or resource group}]`. */
-export function peeringId(project: string, vpcId: string, p: AvPeering): string {
+export function peeringId(project: string, vpcId: string, p: Loose<AvPeering>): string {
   const extra = p.peer_resource_group
     ? `rg:${p.peer_resource_group}`
     : p.peer_region
@@ -402,7 +413,7 @@ export function mapPeering(
   accountId: string,
   project: string,
   vpcId: string,
-  p: AvPeering,
+  p: Loose<AvPeering>,
 ): ResourceInstance {
   return instance(
     accountId,
@@ -425,7 +436,7 @@ export function mapPeering(
   );
 }
 
-export function mapBillingGroup(accountId: string, b: AvBillingGroup): ResourceInstance {
+export function mapBillingGroup(accountId: string, b: Loose<AvBillingGroup>): ResourceInstance {
   const id = b.billing_group_id ?? "";
   return instance(accountId, T.billingGroup, id, b.billing_group_name ?? id, {
     name: b.billing_group_name,
@@ -440,15 +451,13 @@ export function mapBillingGroup(accountId: string, b: AvBillingGroup): ResourceI
   });
 }
 
-function cellValue(cell: unknown): unknown {
-  if (cell && typeof cell === "object" && "v" in (cell as Record<string, unknown>)) {
-    return (cell as { v?: unknown }).v;
-  }
+function cellValue(cell: ChartCell): ChartCell {
+  if (cell && typeof cell === "object" && "v" in cell) return cell.v;
   return cell;
 }
 
 /** Google Charts timestamps: ISO strings, epoch numbers or `Date(y,m,d,h,mi,s)` (month 0-based). */
-export function parseChartTime(raw: unknown): number {
+export function parseChartTime(raw: ChartCell): number {
   if (typeof raw === "number") return raw < 1e12 ? raw * 1000 : raw;
   if (typeof raw !== "string") return NaN;
   const m = /^Date\((\d+),(\d+),(\d+)(?:,(\d+))?(?:,(\d+))?(?:,(\d+))?\)$/.exec(

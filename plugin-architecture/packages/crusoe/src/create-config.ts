@@ -7,9 +7,10 @@ import type {
   SelectOption,
   SizeOption,
 } from "@infrawrench/plugin-base";
+import { seg } from "./api.js";
 import type { CrusoeClient } from "./client.js";
 import { externalOf } from "./mappers.js";
-import type { CrusoeImage, CrusoeKubeVersions, CrusoeVmType } from "./types.js";
+import type { CrusoeImage, CrusoeVmType } from "./types.js";
 
 /**
  * Live create forms. Every id a user would otherwise have to know (project,
@@ -142,7 +143,7 @@ async function kubeVersions(
 ): Promise<{ cluster: SelectOption[]; nodePool: SelectOption[] }> {
   if (!projectId) return { cluster: [], nodePool: [] };
   const res = await client.api
-    .request<CrusoeKubeVersions>(`/projects/${projectId}/kubernetes/versions`)
+    .get(`/projects/${seg(projectId)}/kubernetes/versions`)
     .catch(() => undefined);
   const opt = (name: string | undefined, tags: string[] | undefined): SelectOption | null =>
     name
@@ -188,7 +189,7 @@ export async function buildCreateConfig(
       const [location, size, images] = await Promise.all([
         locationField(client),
         sizeField(client, projectId),
-        client.api.request<{ items?: CrusoeImage[] }>("/compute/images").catch(() => undefined),
+        client.api.get("/compute/images").catch(() => undefined),
       ]);
       return withProject([
         text("name", "Name", { placeholder: "my-gpu-vm" }),

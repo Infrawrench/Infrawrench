@@ -1,4 +1,4 @@
-import type { DatadogContext } from "../api.js";
+import { createDatadogContext, type DatadogContext } from "../api.js";
 import { resolveSite } from "../sites.js";
 
 export interface Reply {
@@ -39,5 +39,10 @@ export function makeHttp(route: (url: URL, method: string, body: unknown) => Rep
 }
 
 export function ctxWith(http: ReturnType<typeof makeHttp>["http"], site = "us1"): DatadogContext {
-  return { apiKey: "api-key", appKey: "app-key", site: resolveSite(site), http };
+  return createDatadogContext({
+    apiKey: "api-key",
+    appKey: "app-key",
+    site: resolveSite(site),
+    http,
+  });
 }

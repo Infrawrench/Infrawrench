@@ -8,10 +8,12 @@
  * (`specification/resources/<product>/models/*_create.yml`).
  */
 import type {
+  ApiBody,
   CreateFieldConfig,
   CreateResourceConfig,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
+import type { operations } from "../api-types.gen.js";
 import { regionDisplay } from "../constants.js";
 import {
   mapCdnEndpoint,
@@ -24,10 +26,7 @@ import {
 } from "../service-listers.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
 
-type Json = Record<string, unknown>;
 type Option = { id: string; label: string };
-
-const JSON_HEADERS = { "Content-Type": "application/json" };
 
 /** Probe regions DO Uptime runs checks from (`check_updatable.regions`). */
 export const UPTIME_REGIONS: Option[] = [
@@ -47,9 +46,7 @@ export const CDN_TTL_OPTIONS: Option[] = [
 ];
 
 async function regionOptions(ctx: DoCreateContext) {
-  const data = await ctx.fetch<{
-    regions: Array<{ slug: string; name: string; available: boolean }>;
-  }>("/regions");
+  const data = await ctx.api.get("/regions");
   return (data.regions ?? [])
     .filter((r) => r.available)
     .map((r) => {
@@ -64,14 +61,14 @@ async function regionOptions(ctx: DoCreateContext) {
 
 /** Droplets as `name (region)` options, sorted by label. */
 export async function dropletOptions(ctx: DoCreateContext, region?: string): Promise<Option[]> {
-  const data = await ctx
-    .fetch<{ droplets?: Json[] | null }>("/droplets?per_page=200")
-    .catch(() => ({ droplets: [] as Json[] }));
+  const data = await ctx.api
+    .get("/droplets", { query: { per_page: 200 } })
+    .catch(() => ({ droplets: [] }));
   return (data.droplets ?? [])
     .map((d) => {
-      const slug = String((d["region"] as Json | undefined)?.["slug"] ?? "");
-      const name = String(d["name"] ?? d["id"] ?? "");
-      return { id: String(d["id"] ?? ""), label: slug ? `${name} (${slug})` : name, slug };
+      const slug = String(d.region?.slug ?? "");
+      const name = String(d.name ?? d.id ?? "");
+      return { id: String(d.id ?? ""), label: slug ? `${name} (${slug})` : name, slug };
     })
     .filter((d) => !!d.id && (!region || d.slug === region))
     .map(({ id, label }) => ({ id, label }))
@@ -79,38 +76,34 @@ export async function dropletOptions(ctx: DoCreateContext, region?: string): Pro
 }
 
 export async function vpcOptions(ctx: DoCreateContext): Promise<Option[]> {
-  const data = await ctx
-    .fetch<{ vpcs?: Json[] | null }>("/vpcs?per_page=200")
-    .catch(() => ({ vpcs: [] as Json[] }));
+  const data = await ctx.api.get("/vpcs", { query: { per_page: 200 } }).catch(() => ({ vpcs: [] }));
   return (data.vpcs ?? [])
     .map((v) => ({
-      id: String(v["id"] ?? ""),
-      label: `${String(v["name"] ?? v["id"])} (${String(v["region"] ?? "")}${v["default"] === true ? ", default" : ""})`,
+      id: String(v.id ?? ""),
+      label: `${String(v.name ?? v.id)} (${String(v.region ?? "")}${v.default === true ? ", default" : ""})`,
     }))
     .filter((v) => !!v.id)
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 export async function tagOptions(ctx: DoCreateContext): Promise<Option[]> {
-  const data = await ctx
-    .fetch<{ tags?: Json[] | null }>("/tags?per_page=200")
-    .catch(() => ({ tags: [] as Json[] }));
+  const data = await ctx.api.get("/tags", { query: { per_page: 200 } }).catch(() => ({ tags: [] }));
   return (data.tags ?? [])
-    .map((t) => String(t["name"] ?? ""))
+    .map((t) => String(t.name ?? ""))
     .filter(Boolean)
     .map((name) => ({ id: name, label: name }));
 }
 
 export async function certificateOptions(ctx: DoCreateContext): Promise<Option[]> {
-  const data = await ctx
-    .fetch<{ certificates?: Json[] | null }>("/certificates?per_page=200")
-    .catch(() => ({ certificates: [] as Json[] }));
+  const data = await ctx.api
+    .get("/certificates", { query: { per_page: 200 } })
+    .catch(() => ({ certificates: [] }));
   return (data.certificates ?? [])
     .map((c) => {
-      const names = Array.isArray(c["dns_names"]) ? (c["dns_names"] as unknown[]).join(", ") : "";
+      const names = Array.isArray(c.dns_names) ? c.dns_names.join(", ") : "";
       return {
-        id: String(c["id"] ?? ""),
-        label: names ? `${String(c["name"] ?? "")} (${names})` : String(c["name"] ?? ""),
+        id: String(c.id ?? ""),
+        label: names ? `${String(c.name ?? "")} (${names})` : String(c.name ?? ""),
       };
     })
     .filter((c) => !!c.id);
@@ -412,11 +405,11 @@ export async function servicesGetCreateConfig(
   }
 
   if (typeId === "certificate") {
-    const domainsData = await ctx
-      .fetch<{ domains?: Json[] | null }>("/domains?per_page=200")
-      .catch(() => ({ domains: [] as Json[] }));
+    const domainsData = await ctx.api
+      .get("/domains", { query: { per_page: 200 } })
+      .catch(() => ({ domains: [] }));
     const domains = (domainsData.domains ?? [])
-      .map((d) => String(d["name"] ?? ""))
+      .map((d) => String(d.name ?? ""))
       .filter(Boolean)
       .map((name) => ({ id: name, label: name }));
     return {
@@ -688,7 +681,7 @@ export function buildInboundRules(rowsJson: string | undefined, sourcesRaw: stri
   let rows: Array<{ ports?: string; protocol?: string }> = [];
   try {
     const parsed: unknown = JSON.parse(rowsJson || "[]");
-    if (Array.isArray(parsed)) rows = parsed as typeof rows;
+    if (Array.isArray(parsed)) rows = parsed;
   } catch {
     rows = [];
   }
@@ -716,70 +709,64 @@ export async function servicesCreateResource(args: DoCreateArgs): Promise<Resour
 
   if (typeId === "load-balancer") {
     const entryProtocol = fields["entryProtocol"] || "http";
-    const rule: Json = {
+    if (TLS_ENTRY.includes(entryProtocol) && !fields["certificateId"]) {
+      throw new Error(
+        `An ${entryProtocol.toUpperCase()} entry rule needs a certificate. Create one under Certificates first.`,
+      );
+    }
+    const rule = {
       entry_protocol: entryProtocol,
       entry_port: intOr(fields["entryPort"], 80),
       target_protocol: fields["targetProtocol"] || "http",
       target_port: intOr(fields["targetPort"], 80),
+      ...(TLS_ENTRY.includes(entryProtocol) ? { certificate_id: fields["certificateId"] } : {}),
     };
-    if (TLS_ENTRY.includes(entryProtocol)) {
-      if (!fields["certificateId"]) {
-        throw new Error(
-          `An ${entryProtocol.toUpperCase()} entry rule needs a certificate. Create one under Certificates first.`,
-        );
-      }
-      rule["certificate_id"] = fields["certificateId"];
-    }
     const healthProtocol = fields["healthCheckProtocol"] || "http";
-    const body: Json = {
-      name: fields["name"],
-      region: fields["region"],
-      type: fields["lbType"] || "REGIONAL",
-      network: fields["network"] || "EXTERNAL",
-      size_unit: intOr(fields["sizeUnit"], 1),
-      forwarding_rules: [rule],
-      health_check: {
-        protocol: healthProtocol,
-        port: intOr(fields["healthCheckPort"], 80),
-        ...(healthProtocol === "tcp" ? {} : { path: fields["healthCheckPath"] || "/" }),
-      },
-      redirect_http_to_https: fields["redirectHttpToHttps"] === "true",
-      ...(fields["vpcUuid"] ? { vpc_uuid: fields["vpcUuid"] } : {}),
-      ...(parentExternalId ? { project_id: parentExternalId } : {}),
-    };
     // droplet_ids and tag are mutually exclusive in the create schema.
-    if (fields["targetMode"] === "tag") {
-      if (!fields["tag"]) throw new Error("Pick the tag whose Droplets the load balancer targets.");
-      body["tag"] = fields["tag"];
-    } else {
-      body["droplet_ids"] = parseIdList(fields["dropletIds"]).map(Number).filter(Number.isFinite);
+    if (fields["targetMode"] === "tag" && !fields["tag"]) {
+      throw new Error("Pick the tag whose Droplets the load balancer targets.");
     }
-    const data = await ctx.fetch<{ load_balancer: Json }>("/load_balancers", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
+    const data = await ctx.api.post("/load_balancers", {
+      body: {
+        name: fields["name"],
+        region: fields["region"],
+        type: fields["lbType"] || "REGIONAL",
+        network: fields["network"] || "EXTERNAL",
+        size_unit: intOr(fields["sizeUnit"], 1),
+        forwarding_rules: [rule],
+        health_check: {
+          protocol: healthProtocol,
+          port: intOr(fields["healthCheckPort"], 80),
+          ...(healthProtocol === "tcp" ? {} : { path: fields["healthCheckPath"] || "/" }),
+        },
+        redirect_http_to_https: fields["redirectHttpToHttps"] === "true",
+        ...(fields["vpcUuid"] ? { vpc_uuid: fields["vpcUuid"] } : {}),
+        ...(parentExternalId ? { project_id: parentExternalId } : {}),
+        ...(fields["targetMode"] === "tag"
+          ? { tag: fields["tag"] }
+          : {
+              droplet_ids: parseIdList(fields["dropletIds"]).map(Number).filter(Number.isFinite),
+            }),
+      },
     });
     return mapLoadBalancer(data.load_balancer ?? {}, accountId);
   }
 
   if (typeId === "firewall") {
-    const body: Json = {
-      name: fields["name"],
-      inbound_rules: buildInboundRules(fields["inboundRules"], fields["inboundSources"]),
-      outbound_rules: fields["outbound"] === "none" ? [] : ALLOW_ALL_OUTBOUND,
-      droplet_ids: parseIdList(fields["dropletIds"]).map(Number).filter(Number.isFinite),
-      tags: parseIdList(fields["tags"]),
-    };
-    const data = await ctx.fetch<{ firewall: Json }>("/firewalls", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
+    const data = await ctx.api.post("/firewalls", {
+      body: {
+        name: fields["name"],
+        inbound_rules: buildInboundRules(fields["inboundRules"], fields["inboundSources"]),
+        outbound_rules: fields["outbound"] === "none" ? [] : ALLOW_ALL_OUTBOUND,
+        droplet_ids: parseIdList(fields["dropletIds"]).map(Number).filter(Number.isFinite),
+        tags: parseIdList(fields["tags"]),
+      },
     });
     return mapFirewall(data.firewall ?? {}, accountId);
   }
 
   if (typeId === "certificate") {
-    let body: Json;
+    let body: ApiBody<operations["certificates_create"]>;
     if (fields["type"] === "custom") {
       if (!fields["leafCertificate"] || !fields["privateKey"]) {
         throw new Error("A custom certificate needs both the certificate and its private key.");
@@ -803,11 +790,7 @@ export async function servicesCreateResource(args: DoCreateArgs): Promise<Resour
         dns_names: [...new Set([domain, ...extras])],
       };
     }
-    const data = await ctx.fetch<{ certificate: Json }>("/certificates", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
-    });
+    const data = await ctx.api.post("/certificates", { body });
     return mapCertificate(data.certificate ?? {}, accountId);
   }
 
@@ -816,57 +799,51 @@ export async function servicesCreateResource(args: DoCreateArgs): Promise<Resour
     if (customDomain && !fields["certificateId"]) {
       throw new Error("A custom domain needs a certificate that covers it.");
     }
-    const body: Json = {
-      origin: (fields["origin"] ?? "").trim(),
-      ttl: intOr(fields["ttl"], 3600),
-      ...(customDomain ? { custom_domain: customDomain } : {}),
-      ...(customDomain && fields["certificateId"]
-        ? { certificate_id: fields["certificateId"] }
-        : {}),
-    };
-    const data = await ctx.fetch<{ endpoint: Json }>("/cdn/endpoints", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
+    const data = await ctx.api.post("/cdn/endpoints", {
+      body: {
+        origin: (fields["origin"] ?? "").trim(),
+        ttl: intOr(fields["ttl"], 3600),
+        ...(customDomain ? { custom_domain: customDomain } : {}),
+        ...(customDomain && fields["certificateId"]
+          ? { certificate_id: fields["certificateId"] }
+          : {}),
+      },
     });
     return mapCdnEndpoint(data.endpoint ?? {}, accountId);
   }
 
   if (typeId === "uptime-check") {
     const regions = parseIdList(fields["regions"]);
-    const body: Json = {
-      name: fields["name"],
-      type: fields["type"] || "https",
-      target: (fields["target"] ?? "").trim(),
-      regions: regions.length > 0 ? regions : ["us_east", "eu_west"],
-      enabled: true,
-    };
-    const data = await ctx.fetch<{ check: Json }>("/uptime/checks", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
+    const data = await ctx.api.post("/uptime/checks", {
+      body: {
+        name: fields["name"],
+        type: fields["type"] || "https",
+        target: (fields["target"] ?? "").trim(),
+        regions: regions.length > 0 ? regions : ["us_east", "eu_west"],
+        enabled: true,
+      },
     });
     return mapUptimeCheck(data.check ?? {}, accountId);
   }
 
   if (typeId === "vpc-nat-gateway") {
-    const body: Json = {
-      name: fields["name"],
-      type: "PUBLIC",
-      region: fields["region"],
-      size: intOr(fields["size"], 1),
-      vpcs: [
-        { vpc_uuid: fields["vpcUuid"], default_gateway: fields["defaultGateway"] !== "false" },
-      ],
-      udp_timeout_seconds: intOr(fields["udpTimeoutSeconds"], 30),
-      icmp_timeout_seconds: intOr(fields["icmpTimeoutSeconds"], 30),
-      tcp_timeout_seconds: intOr(fields["tcpTimeoutSeconds"], 30),
-      ...(parentExternalId ? { project_id: parentExternalId } : {}),
-    };
-    const data = await ctx.fetch<{ vpc_nat_gateway: Json }>("/vpc_nat_gateways", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
+    const data = await ctx.api.post("/vpc_nat_gateways", {
+      body: {
+        name: fields["name"],
+        type: "PUBLIC",
+        region: fields["region"],
+        size: intOr(fields["size"], 1),
+        vpcs: [
+          {
+            ...(fields["vpcUuid"] !== undefined ? { vpc_uuid: fields["vpcUuid"] } : {}),
+            default_gateway: fields["defaultGateway"] !== "false",
+          },
+        ],
+        udp_timeout_seconds: intOr(fields["udpTimeoutSeconds"], 30),
+        icmp_timeout_seconds: intOr(fields["icmpTimeoutSeconds"], 30),
+        tcp_timeout_seconds: intOr(fields["tcpTimeoutSeconds"], 30),
+        ...(parentExternalId ? { project_id: parentExternalId } : {}),
+      },
     });
     return mapVpcNatGateway(data.vpc_nat_gateway ?? {}, accountId);
   }
@@ -875,10 +852,8 @@ export async function servicesCreateResource(args: DoCreateArgs): Promise<Resour
     const a = fields["vpcA"] ?? "";
     const b = fields["vpcB"] ?? "";
     if (!a || !b || a === b) throw new Error("Pick two different VPCs to peer.");
-    const data = await ctx.fetch<{ vpc_peering: Json }>("/vpc_peerings", {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ name: fields["name"], vpc_ids: [a, b] }),
+    const data = await ctx.api.post("/vpc_peerings", {
+      body: { name: fields["name"], vpc_ids: [a, b] },
     });
     return mapVpcPeering(data.vpc_peering ?? {}, accountId);
   }

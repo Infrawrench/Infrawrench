@@ -1,6 +1,7 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
+import { pathEncode, type ApiBody } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DetailViewSchema,
@@ -11,7 +12,8 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { PaperspaceApi } from "./api.js";
+import { createPaperspaceApi, listAll, type PaperspaceApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import { buildCreateConfig, NONE } from "./create-config.js";
 import {
   externalOf,
@@ -28,25 +30,13 @@ import {
 } from "./mappers.js";
 import { fetchDeploymentMetrics } from "./metrics.js";
 import { renderPaperspaceDetail, renderPaperspaceSidebarItem } from "./render.js";
-import type {
-  PDeployment,
-  PMachine,
-  PMachineEvent,
-  PNetwork,
-  POsTemplate,
-  PProject,
-  PPublicIp,
-  PRegistry,
-  PSharedDrive,
-  PSnapshot,
-  PStartupScript,
-} from "./types.js";
+import type { PMachineEvent } from "./types.js";
 
 const EVENT_POLL_MS = 2_000;
 const EVENT_TIMEOUT_MS = 90_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function str(v: unknown): string {
+function str(v: string | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
 
@@ -66,20 +56,6 @@ function num(v: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-/** Collection path per type. */
-const PATHS: Record<string, string> = {
-  project: "/projects",
-  machine: "/machines",
-  "shared-drive": "/shared-drives",
-  snapshot: "/snapshots",
-  "custom-template": "/custom-templates",
-  "private-network": "/private-networks",
-  "public-ip": "/public-ips",
-  "startup-script": "/startup-scripts",
-  deployment: "/deployments",
-  "container-registry": "/container-registries",
-};
-
 /**
  * Paperspace plugin client. One per account (API key); keys are team-scoped,
  * so every listing is the team's.
@@ -95,22 +71,22 @@ export class PaperspaceClient implements PluginClient {
   ) {
     const apiKey = str(credentials["apiKey"]);
     if (!apiKey) throw new Error("Paperspace plugin: missing apiKey credential");
-    this.api = new PaperspaceApi(apiKey, credentials["caCert"] ?? "", services);
+    this.api = createPaperspaceApi(apiKey, credentials["caCert"] ?? "", services);
     this.resourceTypes = resourceTypes;
   }
 
   readonly raw = {
-    projects: () => this.api.listAll<PProject>("/projects"),
-    machines: () => this.api.listAll<PMachine>("/machines"),
-    sharedDrives: () => this.api.listAll<PSharedDrive>("/shared-drives"),
-    snapshots: () => this.api.listAll<PSnapshot>("/snapshots"),
-    customTemplates: () => this.api.listAll<POsTemplate>("/custom-templates"),
-    osTemplates: () => this.api.listAll<POsTemplate>("/os-templates"),
-    networks: () => this.api.listAll<PNetwork>("/private-networks"),
-    publicIps: () => this.api.listAll<PPublicIp>("/public-ips"),
-    startupScripts: () => this.api.listAll<PStartupScript>("/startup-scripts"),
-    deployments: () => this.api.listAll<PDeployment>("/deployments"),
-    registries: () => this.api.listAll<PRegistry>("/container-registries"),
+    projects: () => listAll((query) => this.api.get("/projects", { query })),
+    machines: () => listAll((query) => this.api.get("/machines", { query })),
+    sharedDrives: () => listAll((query) => this.api.get("/shared-drives", { query })),
+    snapshots: () => listAll((query) => this.api.get("/snapshots", { query })),
+    customTemplates: () => listAll((query) => this.api.get("/custom-templates", { query })),
+    osTemplates: () => listAll((query) => this.api.get("/os-templates", { query })),
+    networks: () => listAll((query) => this.api.get("/private-networks", { query })),
+    publicIps: () => listAll((query) => this.api.get("/public-ips", { query })),
+    startupScripts: () => listAll((query) => this.api.get("/startup-scripts", { query })),
+    deployments: () => listAll((query) => this.api.get("/deployments", { query })),
+    registries: () => listAll((query) => this.api.get("/container-registries", { query })),
   };
 
   /**
@@ -124,9 +100,7 @@ export class PaperspaceClient implements PluginClient {
     const deadline = Date.now() + EVENT_TIMEOUT_MS;
     while ((current.state === "new" || current.state === "in progress") && Date.now() < deadline) {
       await sleep(EVENT_POLL_MS);
-      current = await this.api.request<PMachineEvent>(
-        `/machine-events/${encodeURIComponent(event.id)}`,
-      );
+      current = await this.api.get(`/machine-events/${pathEncode(event.id)}`);
     }
     if (current.state === "error") {
       throw new Error(
@@ -172,48 +146,40 @@ export class PaperspaceClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalOf(resourceId);
-      if (typeId === "public-ip") {
-        const found = (await this.raw.publicIps()).find((p) => p.ip === id);
-        if (!found) {
-          const err = new Error(`Paperspace plugin: public IP ${id} not found`);
-          (err as Error & { status: number }).status = 404;
-          throw err;
+      const raw = externalOf(resourceId);
+      const id = pathEncode(raw);
+      switch (typeId) {
+        case "project":
+          return mapProject(await this.api.get(`/projects/${id}`), accountId);
+        case "machine":
+          return mapMachine(await this.api.get(`/machines/${id}`), accountId);
+        case "shared-drive":
+          return mapSharedDrive(await this.api.get(`/shared-drives/${id}`), accountId);
+        case "snapshot":
+          return mapSnapshot(await this.api.get(`/snapshots/${id}`), accountId);
+        case "custom-template":
+          return mapCustomTemplate(await this.api.get(`/custom-templates/${id}`), accountId);
+        case "private-network":
+          return mapNetwork(await this.api.get(`/private-networks/${id}`), accountId);
+        case "public-ip": {
+          const found = (await this.raw.publicIps()).find((p) => p.ip === raw);
+          if (!found) {
+            throw Object.assign(new Error(`Paperspace plugin: public IP ${raw} not found`), {
+              status: 404,
+            });
+          }
+          return mapPublicIp(found, accountId);
         }
-        return mapPublicIp(found, accountId);
+        case "startup-script":
+          return mapStartupScript(await this.api.get(`/startup-scripts/${id}`), accountId);
+        case "deployment":
+          return mapDeployment(await this.api.get(`/deployments/${id}`), accountId);
+        case "container-registry":
+          return mapRegistry(await this.api.get(`/container-registries/${id}`), accountId);
+        default:
+          throw new Error(`Paperspace plugin: unknown resource type "${typeId}"`);
       }
-      const path = PATHS[typeId];
-      if (!path) throw new Error(`Paperspace plugin: unknown resource type "${typeId}"`);
-      const item = await this.api.request<unknown>(`${path}/${encodeURIComponent(id)}`);
-      return this.mapOne(typeId, item, accountId);
     });
-  }
-
-  private mapOne(typeId: string, item: unknown, accountId: string): ResourceInstance {
-    switch (typeId) {
-      case "project":
-        return mapProject(item as PProject, accountId);
-      case "machine":
-        return mapMachine(item as PMachine, accountId);
-      case "shared-drive":
-        return mapSharedDrive(item as PSharedDrive, accountId);
-      case "snapshot":
-        return mapSnapshot(item as PSnapshot, accountId);
-      case "custom-template":
-        return mapCustomTemplate(item as POsTemplate, accountId);
-      case "private-network":
-        return mapNetwork(item as PNetwork, accountId);
-      case "public-ip":
-        return mapPublicIp(item as PPublicIp, accountId);
-      case "startup-script":
-        return mapStartupScript(item as PStartupScript, accountId);
-      case "deployment":
-        return mapDeployment(item as PDeployment, accountId);
-      case "container-registry":
-        return mapRegistry(item as PRegistry, accountId);
-      default:
-        throw new Error(`Paperspace plugin: unknown resource type "${typeId}"`);
-    }
   }
 
   resolveOutput(
@@ -224,9 +190,7 @@ export class PaperspaceClient implements PluginClient {
   ): PluginEffect<string> {
     return attempt(async () => {
       if (typeId === "shared-drive" && outputKey === "password") {
-        const d = await this.api.request<PSharedDrive>(
-          `/shared-drives/${encodeURIComponent(externalOf(resourceId))}`,
-        );
+        const d = await this.api.get(`/shared-drives/${pathEncode(externalOf(resourceId))}`);
         return d?.password ?? "";
       }
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -242,7 +206,7 @@ export class PaperspaceClient implements PluginClient {
     });
   }
 
-  machineBody(fields: Record<string, string>): Record<string, unknown> {
+  machineBody(fields: Record<string, string>): ApiBody<operations["machines-create"]> {
     const network = picked(fields["networkId"]);
     const script = picked(fields["startupScriptId"]);
     const autoShutdown = bool(fields["autoShutdownEnabled"]) ?? false;
@@ -270,51 +234,43 @@ export class PaperspaceClient implements PluginClient {
       const name = str(fields["name"]);
       switch (typeId) {
         case "project":
-          return mapProject(
-            await this.api.request<PProject>("/projects", { method: "POST", body: { name } }),
-            accountId,
-          );
+          return mapProject(await this.api.post("/projects", { body: { name } }), accountId);
         case "machine": {
-          const res = await this.api.request<{ data?: PMachine; event?: PMachineEvent }>(
-            "/machines",
-            {
-              method: "POST",
-              body: this.machineBody(fields),
-            },
-          );
+          const res = await this.api.post("/machines", { body: this.machineBody(fields) });
           if (!res?.data) throw new Error("Paperspace plugin: machine create returned no machine");
           return mapMachine(res.data, accountId);
         }
         case "shared-drive": {
           const networkId = str(fields["networkId"]);
-          const networks = await this.raw.networks().catch(() => [] as PNetwork[]);
+          const networks = await this.raw.networks().catch(() => []);
           const region = networks.find((n) => n.id === networkId)?.region;
           if (!region) throw new Error("Paperspace plugin: choose a private network");
           return mapSharedDrive(
-            await this.api.request<PSharedDrive>("/shared-drives", {
-              method: "POST",
+            await this.api.post("/shared-drives", {
               body: { name, size: num(fields["size"]) ?? 100, region, networkId },
             }),
             accountId,
           );
         }
-        case "snapshot":
-        case "custom-template": {
-          const res = await this.api.request<{
-            data?: PSnapshot | POsTemplate;
-            event?: PMachineEvent;
-          }>(PATHS[typeId]!, {
-            method: "POST",
+        case "snapshot": {
+          const res = await this.api.post("/snapshots", {
             body: { name, machineId: str(fields["machineId"]) },
           });
           await this.awaitEvent(res?.event);
           if (!res?.data) throw new Error(`Paperspace plugin: ${typeId} create returned nothing`);
-          return this.mapOne(typeId, res.data, accountId);
+          return mapSnapshot(res.data, accountId);
+        }
+        case "custom-template": {
+          const res = await this.api.post("/custom-templates", {
+            body: { name, machineId: str(fields["machineId"]) },
+          });
+          await this.awaitEvent(res?.event);
+          if (!res?.data) throw new Error(`Paperspace plugin: ${typeId} create returned nothing`);
+          return mapCustomTemplate(res.data, accountId);
         }
         case "private-network":
           return mapNetwork(
-            await this.api.request<PNetwork>("/private-networks", {
-              method: "POST",
+            await this.api.post("/private-networks", {
               body: {
                 name,
                 region: str(fields["region"]),
@@ -325,16 +281,12 @@ export class PaperspaceClient implements PluginClient {
           );
         case "public-ip":
           return mapPublicIp(
-            await this.api.request<PPublicIp>("/public-ips", {
-              method: "POST",
-              body: { region: str(fields["region"]) },
-            }),
+            await this.api.post("/public-ips", { body: { region: str(fields["region"]) } }),
             accountId,
           );
         case "startup-script":
           return mapStartupScript(
-            await this.api.request<PStartupScript>("/startup-scripts", {
-              method: "POST",
+            await this.api.post("/startup-scripts", {
               body: {
                 name,
                 script: fields["script"] ?? "",
@@ -345,8 +297,7 @@ export class PaperspaceClient implements PluginClient {
           );
         case "container-registry":
           return mapRegistry(
-            await this.api.request<PRegistry>("/container-registries", {
-              method: "POST",
+            await this.api.post("/container-registries", {
               body: {
                 name,
                 kind: str(fields["kind"]) || "other",
@@ -371,73 +322,126 @@ export class PaperspaceClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalOf(resourceId));
-      const body: Record<string, unknown> = {};
+      const id = pathEncode(externalOf(resourceId));
       const has = (k: string) => fields[k] !== undefined;
-      if (has("name")) body["name"] = str(fields["name"]);
+      const reread = () => runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      // Sent whenever the form holds the field, even empty.
+      const renamed = has("name") ? { name: str(fields["name"]) } : undefined;
       switch (typeId) {
         case "machine": {
+          const body: ApiBody<operations["machines-update"]> = { ...renamed };
           if (has("machineType") && str(fields["machineType"]))
-            body["machineType"] = str(fields["machineType"]);
+            body.machineType = str(fields["machineType"]);
           if (has("publicIpType") && str(fields["publicIpType"]))
-            body["publicIpType"] = str(fields["publicIpType"]);
-          for (const k of ["autoShutdownEnabled", "autoShutdownForce", "autoSnapshotEnabled"]) {
+            body.publicIpType = str(fields["publicIpType"]);
+          for (const k of [
+            "autoShutdownEnabled",
+            "autoShutdownForce",
+            "autoSnapshotEnabled",
+          ] as const) {
             if (has(k)) body[k] = bool(fields[k]) ?? false;
           }
-          for (const k of ["autoShutdownTimeout", "autoSnapshotSaveCount"]) {
+          for (const k of ["autoShutdownTimeout", "autoSnapshotSaveCount"] as const) {
             const v = num(fields[k]);
             if (v !== undefined && v > 0) body[k] = v;
           }
           if (has("autoSnapshotFrequency") && str(fields["autoSnapshotFrequency"])) {
-            body["autoSnapshotFrequency"] = str(fields["autoSnapshotFrequency"]);
+            body.autoSnapshotFrequency = str(fields["autoSnapshotFrequency"]);
           }
-          const res = await this.api.request<{ data?: PMachine; event?: PMachineEvent }>(
-            `/machines/${id}`,
-            {
-              method: "PUT",
-              body,
-            },
-          );
+          const res = await this.api.put(`/machines/${id}`, { body });
           await this.awaitEvent(res?.event);
-          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          return reread();
         }
-        case "startup-script":
-          if (str(fields["script"])) body["script"] = fields["script"];
-          if (has("enabled")) body["isEnabled"] = bool(fields["enabled"]) ?? true;
-          if (has("runOnce")) body["isRunOnce"] = bool(fields["runOnce"]) ?? false;
-          break;
-        case "container-registry":
-          for (const k of ["kind", "url", "namespace", "username"]) {
+        case "startup-script": {
+          const body: ApiBody<operations["startupScripts-update"]> = { ...renamed };
+          if (str(fields["script"])) body.script = fields["script"];
+          if (has("enabled")) body.isEnabled = bool(fields["enabled"]) ?? true;
+          if (has("runOnce")) body.isRunOnce = bool(fields["runOnce"]) ?? false;
+          if (Object.keys(body).length === 0) return reread();
+          return mapStartupScript(
+            await this.api.put(`/startup-scripts/${id}`, { body }),
+            accountId,
+          );
+        }
+        case "container-registry": {
+          const body: ApiBody<operations["containerRegistries-update"]> = { ...renamed };
+          for (const k of ["kind", "url", "namespace", "username"] as const) {
             if (has(k) && str(fields[k])) body[k] = str(fields[k]);
           }
-          if (fields["password"]) body["password"] = fields["password"];
-          break;
+          if (fields["password"]) body.password = fields["password"];
+          if (Object.keys(body).length === 0) return reread();
+          return mapRegistry(
+            await this.api.put(`/container-registries/${id}`, { body }),
+            accountId,
+          );
+        }
         case "project":
+          if (!renamed) return reread();
+          return mapProject(await this.api.put(`/projects/${id}`, { body: renamed }), accountId);
         case "shared-drive":
+          if (!renamed) return reread();
+          return mapSharedDrive(
+            await this.api.put(`/shared-drives/${id}`, { body: renamed }),
+            accountId,
+          );
         case "snapshot":
+          if (!renamed) return reread();
+          return mapSnapshot(await this.api.put(`/snapshots/${id}`, { body: renamed }), accountId);
         case "custom-template":
+          if (!renamed) return reread();
+          return mapCustomTemplate(
+            await this.api.put(`/custom-templates/${id}`, { body: renamed }),
+            accountId,
+          );
         case "private-network":
-          break;
+          if (!renamed) return reread();
+          return mapNetwork(
+            await this.api.put(`/private-networks/${id}`, { body: renamed }),
+            accountId,
+          );
         default:
           throw new Error(`Paperspace plugin: cannot update "${typeId}"`);
       }
-      if (Object.keys(body).length === 0)
-        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-      return this.mapOne(
-        typeId,
-        await this.api.request<unknown>(`${PATHS[typeId]}/${id}`, { method: "PUT", body }),
-        accountId,
-      );
     });
   }
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const path = PATHS[typeId];
-      if (!path) throw new Error(`Paperspace plugin: cannot delete "${typeId}"`);
-      await this.api.request(`${path}/${encodeURIComponent(externalOf(resourceId))}`, {
-        method: "DELETE",
-      });
+      const id = pathEncode(externalOf(resourceId));
+      switch (typeId) {
+        case "project":
+          await this.api.delete(`/projects/${id}`);
+          return;
+        case "machine":
+          await this.api.delete(`/machines/${id}`);
+          return;
+        case "shared-drive":
+          await this.api.delete(`/shared-drives/${id}`);
+          return;
+        case "snapshot":
+          await this.api.delete(`/snapshots/${id}`);
+          return;
+        case "custom-template":
+          await this.api.delete(`/custom-templates/${id}`);
+          return;
+        case "private-network":
+          await this.api.delete(`/private-networks/${id}`);
+          return;
+        case "public-ip":
+          await this.api.delete(`/public-ips/${id}`);
+          return;
+        case "startup-script":
+          await this.api.delete(`/startup-scripts/${id}`);
+          return;
+        case "deployment":
+          await this.api.delete(`/deployments/${id}`);
+          return;
+        case "container-registry":
+          await this.api.delete(`/container-registries/${id}`);
+          return;
+        default:
+          throw new Error(`Paperspace plugin: cannot delete "${typeId}"`);
+      }
     });
   }
 
@@ -449,42 +453,39 @@ export class PaperspaceClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const raw = externalOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       switch (`${typeId}:${actionId}`) {
         case "machine:start":
+          await this.api.patch(`/machines/${id}/start`);
+          return;
         case "machine:stop":
+          await this.api.patch(`/machines/${id}/stop`);
+          return;
         case "machine:restart":
-          await this.api.request(`/machines/${id}/${actionId}`, { method: "PATCH" });
+          await this.api.patch(`/machines/${id}/restart`);
           return;
         case "machine:snapshot": {
           const m = await runPluginEffect(this.getResource("machine", resourceId, accountId));
           const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-          await this.api.request("/snapshots", {
-            method: "POST",
+          await this.api.post("/snapshots", {
             body: { name: `${String(m.fields["name"] || raw)}-${stamp}`, machineId: raw },
           });
           return;
         }
         case "snapshot:restore":
-          await this.api.request(`/snapshots/${id}/restore`, {
-            method: "POST",
+          await this.api.post(`/snapshots/${id}/restore`, {
             body: { createSnapshotBeforeRestore: true },
           });
           return;
         case "startup-script:unassign-all": {
-          const s = await this.api.request<PStartupScript>(`/startup-scripts/${id}`);
+          const s = await this.api.get(`/startup-scripts/${id}`);
           for (const machineId of s?.assignedMachineIds ?? []) {
-            await this.api.request(`/startup-scripts/${id}/unassign`, {
-              method: "POST",
-              body: { machineId },
-            });
+            await this.api.post(`/startup-scripts/${id}/unassign`, { body: { machineId } });
           }
           return;
         }
         case "container-registry:test-connection": {
-          const res = await this.api.request<{ success?: boolean; error?: string }>(
-            `/container-registries/${id}/test-connection`,
-          );
+          const res = await this.api.get(`/container-registries/${id}/test-connection`);
           if (!res?.success) {
             throw new Error(
               `Paperspace could not reach the registry: ${res?.error ?? "unknown error"}`,
@@ -512,16 +513,13 @@ export class PaperspaceClient implements PluginClient {
         throw new Error(`Paperspace plugin: cannot attach ${sourceTypeId} to ${targetTypeId}`);
       }
       const machineId = externalOf(targetResourceId);
-      const source = encodeURIComponent(externalOf(sourceResourceId));
+      const source = pathEncode(externalOf(sourceResourceId));
       if (sourceTypeId === "public-ip") {
-        await this.api.request(`/public-ips/${source}`, { method: "PUT", body: { machineId } });
+        await this.api.put(`/public-ips/${source}`, { body: { machineId } });
         return;
       }
       if (sourceTypeId === "startup-script") {
-        await this.api.request(`/startup-scripts/${source}/assign`, {
-          method: "POST",
-          body: { machineId },
-        });
+        await this.api.post(`/startup-scripts/${source}/assign`, { body: { machineId } });
         return;
       }
       throw new Error(`Paperspace plugin: cannot attach ${sourceTypeId} to ${targetTypeId}`);

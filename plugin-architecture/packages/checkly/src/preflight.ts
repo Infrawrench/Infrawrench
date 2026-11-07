@@ -9,12 +9,15 @@ import type {
   PreflightDeclaration,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import type { ChecklyContext } from "./api.js";
-import { ckFetch, statusOf } from "./api.js";
+import type { ChecklyApi } from "./api.js";
+import { statusOf } from "./api.js";
 
 const perm = (id: string, label: string) => ({ id, label });
 
-const PROBES: Array<{ capability: PreflightCapability; path: string }> = [
+const PROBES: Array<{
+  capability: PreflightCapability;
+  probe: (api: ChecklyApi) => Promise<object | undefined>;
+}> = [
   {
     capability: {
       id: "resources",
@@ -24,7 +27,7 @@ const PROBES: Array<{ capability: PreflightCapability; path: string }> = [
       ],
       essential: true,
     },
-    path: "/v1/checks?limit=1",
+    probe: (api) => api.get("/v1/checks", { query: { limit: 1 } }),
   },
   {
     capability: {
@@ -32,7 +35,7 @@ const PROBES: Array<{ capability: PreflightCapability; path: string }> = [
       label: "Alert channels and maintenance windows",
       requiredPermissions: [perm("Read & Write", "Read & Write role")],
     },
-    path: "/v1/alert-channels?limit=1",
+    probe: (api) => api.get("/v1/alert-channels", { query: { limit: 1 } }),
   },
   {
     capability: {
@@ -41,7 +44,7 @@ const PROBES: Array<{ capability: PreflightCapability; path: string }> = [
       description: "Charts on the Metrics tab and 7-day availability.",
       requiredPermissions: [perm("Read only", "Read only role or higher")],
     },
-    path: "/v1/check-statuses",
+    probe: (api) => api.get("/v1/check-statuses"),
   },
   {
     capability: {
@@ -49,7 +52,7 @@ const PROBES: Array<{ capability: PreflightCapability; path: string }> = [
       label: "Private locations",
       requiredPermissions: [perm("Admin", "Admin role to manage agent keys")],
     },
-    path: "/v1/private-locations",
+    probe: (api) => api.get("/v1/private-locations"),
   },
 ];
 
@@ -57,26 +60,18 @@ export const CHECKLY_PREFLIGHT: PreflightDeclaration = {
   capabilities: PROBES.map((p) => p.capability),
 };
 
-export async function verifyChecklyCredentials(ctx: ChecklyContext): Promise<PreflightResult> {
+export async function verifyChecklyCredentials(api: ChecklyApi): Promise<PreflightResult> {
   let identity: string | undefined;
   try {
-    const me = await ckFetch<{ id?: string; name?: string; planDisplayName?: string }>(
-      ctx,
-      "/v1/accounts/me",
-    );
+    const me = await api.get("/v1/accounts/me");
     identity = [me.name, me.planDisplayName].filter(Boolean).join(", ") || me.id;
   } catch {
     identity = undefined;
   }
   const checks = await Promise.all(
-    PROBES.map(async ({ capability, path }): Promise<PreflightCapabilityCheck> => {
-      const [p, qs] = path.split("?");
+    PROBES.map(async ({ capability, probe }): Promise<PreflightCapabilityCheck> => {
       try {
-        await ckFetch(
-          ctx,
-          p ?? path,
-          qs ? { query: Object.fromEntries(new URLSearchParams(qs)) } : undefined,
-        );
+        await probe(api);
         return { capabilityId: capability.id, status: "ok" };
       } catch (err) {
         const status = statusOf(err);

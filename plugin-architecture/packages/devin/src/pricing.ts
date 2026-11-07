@@ -44,7 +44,13 @@ export const PRODUCT_LABELS = {
 } as const;
 
 export type ProductKey = keyof typeof PRODUCT_LABELS;
-export const PRODUCT_KEYS = Object.keys(PRODUCT_LABELS) as ProductKey[];
+export const PRODUCT_KEYS: readonly ProductKey[] = [
+  "devin",
+  "automation",
+  "cascade",
+  "terminal",
+  "review",
+];
 
 /** ACUs per product for one day. Devin returns null for buckets it cannot break out. */
 export type AcusByProduct = Partial<Record<ProductKey, number | null>>;

@@ -7,10 +7,9 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { listOffset } from "./api.js";
+import { createSendGridApis } from "./api.js";
 import { SendGridClient, resolveRegion } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import type { SgSubuser } from "./mappers.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
@@ -91,16 +90,14 @@ async function listCredentialOptions(
   const apiKey = (credentials["apiKey"] ?? "").trim();
   if (!apiKey) throw new Error("Enter the API key first.");
   const caCert = credentials["caCert"] ?? "";
-  const subusers = await listOffset<SgSubuser>(
-    {
-      apiKey,
-      region: resolveRegion(credentials["region"]),
-      onBehalfOf: "",
-      ...(caCert ? { caCert } : {}),
-      ...(services?.http ? { http: services.http } : {}),
-    },
-    "/v3/subusers",
-  );
+  const { api } = createSendGridApis({
+    apiKey,
+    region: resolveRegion(credentials["region"]),
+    onBehalfOf: "",
+    ...(caCert ? { caCert } : {}),
+    ...(services?.http ? { http: services.http } : {}),
+  });
+  const subusers = await api.getAll("/v3/subusers", null);
   return subusers
     .filter((s) => s.username)
     .map((s) => ({

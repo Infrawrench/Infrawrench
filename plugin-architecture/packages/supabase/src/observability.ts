@@ -5,8 +5,10 @@ import type {
   QuotaUsage,
 } from "@infrawrench/plugin-base";
 import type { SupabaseContext } from "./api.js";
-import { enc, sbFetch, sbFetchText } from "./api.js";
-import type { SbApiCounts, SbDiskUtil, SbProject } from "./types.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { supabaseApi, supabaseTextApi, type SupabaseResponse } from "./api.js";
+import type { operations } from "./api-types.management.gen.js";
+import type { SbProject } from "./types.js";
 
 /**
  * Metrics, logs and quotas.
@@ -23,7 +25,11 @@ import type { SbApiCounts, SbDiskUtil, SbProject } from "./types.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 3_600_000;
 
-const INTERVALS: Array<[number, string]> = [
+type UsageInterval = NonNullable<
+  NonNullable<operations["v1-get-project-usage-api-count"]["parameters"]["query"]>["interval"]
+>;
+
+const INTERVALS: Array<[number, UsageInterval]> = [
   [15 * 60_000, "15min"],
   [30 * 60_000, "30min"],
   [3_600_000, "1hr"],
@@ -34,7 +40,7 @@ const INTERVALS: Array<[number, string]> = [
 ];
 
 /** The smallest window the API offers that covers the requested range. */
-export function intervalFor(rangeMs: number): string {
+export function intervalFor(rangeMs: number): UsageInterval {
   for (const [ms, label] of INTERVALS) if (rangeMs <= ms) return label;
   return "7day";
 }
@@ -45,18 +51,29 @@ export async function fetchProjectMetrics(
   timeRange?: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
   const rangeMs = timeRange ? timeRange.endMs - timeRange.startMs : DEFAULT_METRICS_WINDOW_MS;
-  const base = `/v1/projects/${enc(ref)}`;
+  const base = `/v1/projects/${pathEncode(ref)}` as const;
+  const api = supabaseApi(ctx);
   const [counts, disk, scrape] = await Promise.all([
-    sbFetch<SbApiCounts>(ctx, "GET", `${base}/analytics/endpoints/usage.api-counts`, undefined, {
-      interval: intervalFor(rangeMs),
-    }).catch(() => undefined),
-    sbFetch<SbDiskUtil>(ctx, "GET", `${base}/config/disk/util`).catch(() => undefined),
-    sbFetchText(ctx, `${base}/analytics/endpoints/metrics`).catch(() => ""),
+    api
+      .get(`${base}/analytics/endpoints/usage.api-counts`, {
+        query: { interval: intervalFor(rangeMs) },
+      })
+      .catch(() => undefined),
+    api.get(`${base}/config/disk/util`).catch(() => undefined),
+    supabaseTextApi(ctx)
+      .getText(`${base}/analytics/endpoints/metrics`, { headers: { Accept: "text/plain" } })
+      .then(({ body }) => body)
+      .catch(() => ""),
   ]);
 
   const series: MetricSeries[] = [];
   const rows = counts?.result ?? [];
-  const requestSeries: Array<[string, keyof NonNullable<SbApiCounts["result"]>[number]]> = [
+  const requestSeries: Array<
+    [
+      string,
+      keyof NonNullable<SupabaseResponse<"v1-get-project-usage-api-count">["result"]>[number],
+    ]
+  > = [
     ["REST requests", "total_rest_requests"],
     ["Auth requests", "total_auth_requests"],
     ["Storage requests", "total_storage_requests"],
@@ -166,12 +183,9 @@ export async function fetchFunctionMetrics(
         : rangeMs <= 3 * 3_600_000
           ? "3hr"
           : "1day";
-  const data = await sbFetch<{ result?: Array<Record<string, unknown>> }>(
-    ctx,
-    "GET",
-    `/v1/projects/${enc(ref)}/analytics/endpoints/functions.combined-stats`,
-    undefined,
-    { interval, function_id: functionId },
+  const data = await supabaseApi(ctx).get(
+    `/v1/projects/${pathEncode(ref)}/analytics/endpoints/functions.combined-stats`,
+    { query: { interval, function_id: functionId } },
   );
   const rows = data?.result ?? [];
   const byLabel = new Map<string, MetricSeries>();
@@ -228,12 +242,15 @@ async function queryLogs(
 ): Promise<Array<Record<string, unknown>>> {
   const end = new Date();
   const start = new Date(end.getTime() - 24 * 3_600_000 + 60_000);
-  const data = await sbFetch<{ result?: Array<Record<string, unknown>>; error?: unknown }>(
-    ctx,
-    "GET",
-    `/v1/projects/${enc(ref)}/analytics/endpoints/logs`,
-    undefined,
-    { sql, iso_timestamp_start: start.toISOString(), iso_timestamp_end: end.toISOString() },
+  const data = await supabaseApi(ctx).get(
+    `/v1/projects/${pathEncode(ref)}/analytics/endpoints/logs`,
+    {
+      query: {
+        sql,
+        iso_timestamp_start: start.toISOString(),
+        iso_timestamp_end: end.toISOString(),
+      },
+    },
   );
   if (data?.error) {
     const message =
@@ -314,11 +331,7 @@ export async function fetchDiskQuotas(
   );
   const readings = await Promise.all(
     running.map(async (p) => {
-      const util = await sbFetch<SbDiskUtil>(
-        ctx,
-        "GET",
-        `/v1/projects/${enc(p.ref)}/config/disk/util`,
-      );
+      const util = await supabaseApi(ctx).get(`/v1/projects/${pathEncode(p.ref)}/config/disk/util`);
       const m = util?.metrics;
       if (!m || !(m.fs_size_bytes > 0)) return null;
       const reading: QuotaUsage = {

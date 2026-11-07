@@ -173,7 +173,7 @@ export function toBucket(b: SbStorageBucket, ref: string, accountId: string): Re
       createdAt: b.created_at,
       updatedAt: b.updated_at,
     }),
-    { parentTypeId: "supabase-project", parentExternalId: ref, createdAt: b.created_at },
+    { parentTypeId: "supabase-project", parentExternalId: ref, createdAt: b.created_at ?? "" },
   );
 }
 

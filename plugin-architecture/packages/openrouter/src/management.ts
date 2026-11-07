@@ -15,81 +15,18 @@ import type {
   SectionNode,
   SelectOption,
 } from "@infrawrench/plugin-base";
+import type {
+  OrByokCredential,
+  OrByokUpdate,
+  OrGuardrail,
+  OrGuardrailKeyAssignment,
+  OrGuardrailUpdate,
+  OrWorkspace,
+  OrWorkspaceBudgets,
+  OrWorkspaceUpdate,
+} from "./api.js";
 
 const DASH = "—";
-
-// ---------------------------------------------------------------- API shapes
-
-export interface OrGuardrail {
-  id: string;
-  name: string;
-  description?: string | null;
-  workspace_id?: string | null;
-  limit_usd?: number | null;
-  reset_interval?: "daily" | "weekly" | "monthly" | null;
-  include_byok_in_budgets?: boolean;
-  allowed_providers?: string[] | null;
-  ignored_providers?: string[] | null;
-  allowed_models?: string[] | null;
-  ignored_models?: string[] | null;
-  allowed_data_regions?: string[] | null;
-  content_filters?: unknown[] | null;
-  content_filter_builtins?: Array<{ slug?: string; action?: string }> | null;
-  enforce_zdr?: boolean | null;
-  enable_paid_model_training?: boolean | null;
-  enable_free_model_training?: boolean | null;
-  enable_free_model_publication?: boolean | null;
-  created_at?: string;
-  updated_at?: string | null;
-}
-
-export interface OrGuardrailKeyAssignment {
-  key_hash: string;
-  key_name?: string;
-  key_label?: string;
-}
-
-export interface OrWorkspace {
-  id: string;
-  name: string;
-  slug?: string;
-  description?: string | null;
-  default_text_model?: string | null;
-  default_image_model?: string | null;
-  default_provider_sort?: string | null;
-  default_guardrail_id?: string | null;
-  include_byok_in_budgets?: boolean;
-  io_logging_sampling_rate?: number;
-  is_observability_io_logging_enabled?: boolean;
-  is_observability_broadcast_enabled?: boolean;
-  is_data_discount_logging_enabled?: boolean;
-  created_at?: string;
-  updated_at?: string | null;
-}
-
-export interface OrWorkspaceBudget {
-  id?: string;
-  limit_usd: number;
-  /** `null` is the one-time "lifetime" budget. */
-  reset_interval?: "daily" | "weekly" | "monthly" | null;
-}
-
-export interface OrByokCredential {
-  id: string;
-  provider: string;
-  label?: string;
-  name?: string | null;
-  workspace_id?: string | null;
-  disabled?: boolean;
-  is_fallback?: boolean;
-  is_byok_only?: boolean;
-  is_required?: boolean;
-  declared_zdr?: boolean | null;
-  allowed_models?: string[] | null;
-  allowed_api_key_hashes?: string[] | null;
-  sort_order?: number;
-  created_at?: string;
-}
 
 /** Workspace budget intervals, as the `{interval}` path segment takes them. */
 export const BUDGET_INTERVALS = ["daily", "weekly", "monthly", "lifetime"] as const;
@@ -217,7 +154,7 @@ export function mapGuardrail(
 export function mapWorkspace(
   accountId: string,
   w: OrWorkspace,
-  budgets?: { data?: OrWorkspaceBudget[]; include_byok_in_budgets?: boolean },
+  budgets?: OrWorkspaceBudgets,
   memberCount?: number,
 ): ResourceInstance {
   const budget = (interval: BudgetInterval): number => {
@@ -300,75 +237,81 @@ function money(value: string | undefined): number | null {
  * POST /guardrails and PATCH /guardrails/{id}. Only keys present in `fields`
  * are sent, so a PATCH carries just what the user changed.
  */
-export function guardrailBody(fields: Record<string, string>): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  if (fields["name"] !== undefined) body["name"] = fields["name"];
-  if (fields["description"] !== undefined) body["description"] = fields["description"] || null;
-  if (fields["limitUsd"] !== undefined) body["limit_usd"] = money(fields["limitUsd"]);
+export function guardrailBody(fields: Record<string, string>): OrGuardrailUpdate {
+  const body: OrGuardrailUpdate = {};
+  if (fields["name"] !== undefined) body.name = fields["name"];
+  if (fields["description"] !== undefined) body.description = fields["description"] || null;
+  if (fields["limitUsd"] !== undefined) body.limit_usd = money(fields["limitUsd"]);
   if (fields["resetInterval"] !== undefined) {
-    body["reset_interval"] =
+    body.reset_interval =
       fields["resetInterval"] === "never" || fields["resetInterval"] === ""
         ? null
         : fields["resetInterval"];
   }
   if (fields["includeByokInBudgets"] !== undefined) {
-    body["include_byok_in_budgets"] = bool(fields["includeByokInBudgets"]);
+    body.include_byok_in_budgets = bool(fields["includeByokInBudgets"]);
   }
-  const lists: Array<[string, string]> = [
-    ["allowedProviders", "allowed_providers"],
-    ["ignoredProviders", "ignored_providers"],
-    ["allowedModels", "allowed_models"],
-    ["ignoredModels", "ignored_models"],
-    ["allowedDataRegions", "allowed_data_regions"],
-  ];
-  for (const [key, wire] of lists) {
-    if (fields[key] !== undefined) body[wire] = parseList(fields[key]);
+  if (fields["allowedProviders"] !== undefined) {
+    body.allowed_providers = parseList(fields["allowedProviders"]);
   }
-  const flags: Array<[string, string]> = [
-    ["enforceZdr", "enforce_zdr"],
-    ["enablePaidModelTraining", "enable_paid_model_training"],
-    ["enableFreeModelTraining", "enable_free_model_training"],
-    ["enableFreeModelPublication", "enable_free_model_publication"],
-  ];
-  for (const [key, wire] of flags) {
-    if (fields[key] !== undefined) body[wire] = bool(fields[key]);
+  if (fields["ignoredProviders"] !== undefined) {
+    body.ignored_providers = parseList(fields["ignoredProviders"]);
+  }
+  if (fields["allowedModels"] !== undefined) {
+    body.allowed_models = parseList(fields["allowedModels"]);
+  }
+  if (fields["ignoredModels"] !== undefined) {
+    body.ignored_models = parseList(fields["ignoredModels"]);
+  }
+  if (fields["allowedDataRegions"] !== undefined) {
+    body.allowed_data_regions = parseList(fields["allowedDataRegions"]);
+  }
+  if (fields["enforceZdr"] !== undefined) body.enforce_zdr = bool(fields["enforceZdr"]);
+  if (fields["enablePaidModelTraining"] !== undefined) {
+    body.enable_paid_model_training = bool(fields["enablePaidModelTraining"]);
+  }
+  if (fields["enableFreeModelTraining"] !== undefined) {
+    body.enable_free_model_training = bool(fields["enableFreeModelTraining"]);
+  }
+  if (fields["enableFreeModelPublication"] !== undefined) {
+    body.enable_free_model_publication = bool(fields["enableFreeModelPublication"]);
   }
   return body;
 }
 
 /** POST /workspaces and PATCH /workspaces/{id}: workspace settings, not budgets. */
-export function workspaceBody(fields: Record<string, string>): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  if (fields["name"] !== undefined) body["name"] = fields["name"];
-  if (fields["slug"] !== undefined) body["slug"] = fields["slug"];
-  if (fields["description"] !== undefined) body["description"] = fields["description"] || null;
+export function workspaceBody(fields: Record<string, string>): OrWorkspaceUpdate {
+  const body: OrWorkspaceUpdate = {};
+  if (fields["name"] !== undefined) body.name = fields["name"];
+  if (fields["slug"] !== undefined) body.slug = fields["slug"];
+  if (fields["description"] !== undefined) body.description = fields["description"] || null;
   if (fields["defaultTextModel"] !== undefined) {
-    body["default_text_model"] = fields["defaultTextModel"] || null;
+    body.default_text_model = fields["defaultTextModel"] || null;
   }
   if (fields["defaultImageModel"] !== undefined) {
-    body["default_image_model"] = fields["defaultImageModel"] || null;
+    body.default_image_model = fields["defaultImageModel"] || null;
   }
   if (fields["defaultProviderSort"] !== undefined) {
-    body["default_provider_sort"] =
+    body.default_provider_sort =
       fields["defaultProviderSort"] === "default" || fields["defaultProviderSort"] === ""
         ? null
         : fields["defaultProviderSort"];
   }
   if (fields["ioLoggingEnabled"] !== undefined) {
-    body["is_observability_io_logging_enabled"] = bool(fields["ioLoggingEnabled"]);
+    body.is_observability_io_logging_enabled = bool(fields["ioLoggingEnabled"]);
   }
   if (fields["ioLoggingSamplingRate"] !== undefined && fields["ioLoggingSamplingRate"] !== "") {
     const rate = Number(fields["ioLoggingSamplingRate"]);
     if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
       throw new Error("OpenRouter plugin: the I/O logging sampling rate must be between 0 and 1");
     }
-    body["io_logging_sampling_rate"] = rate;
+    body.io_logging_sampling_rate = rate;
   }
   if (fields["broadcastEnabled"] !== undefined) {
-    body["is_observability_broadcast_enabled"] = bool(fields["broadcastEnabled"]);
+    body.is_observability_broadcast_enabled = bool(fields["broadcastEnabled"]);
   }
   if (fields["dataDiscountLoggingEnabled"] !== undefined) {
-    body["is_data_discount_logging_enabled"] = bool(fields["dataDiscountLoggingEnabled"]);
+    body.is_data_discount_logging_enabled = bool(fields["dataDiscountLoggingEnabled"]);
   }
   return body;
 }
@@ -392,26 +335,17 @@ export function workspaceBudgetChanges(
   return out;
 }
 
-/** POST /byok and PATCH /byok/{id}. `provider` and `workspace_id` are create-only. */
-export function byokBody(fields: Record<string, string>, create: boolean): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  if (create) {
-    body["provider"] = fields["provider"];
-    if (fields["workspaceId"]) body["workspace_id"] = fields["workspaceId"];
-  }
-  if (fields["key"]) body["key"] = fields["key"];
-  if (fields["name"] !== undefined) body["name"] = fields["name"] || null;
-  const flags: Array<[string, string]> = [
-    ["disabled", "disabled"],
-    ["isFallback", "is_fallback"],
-    ["isByokOnly", "is_byok_only"],
-    ["isRequired", "is_required"],
-  ];
-  for (const [key, wire] of flags) {
-    if (fields[key] !== undefined) body[wire] = bool(fields[key]);
-  }
+/** PATCH /byok/{id}, and POST /byok after its create-only `provider` and `workspace_id`. */
+export function byokBody(fields: Record<string, string>): OrByokUpdate {
+  const body: OrByokUpdate = {};
+  if (fields["key"]) body.key = fields["key"];
+  if (fields["name"] !== undefined) body.name = fields["name"] || null;
+  if (fields["disabled"] !== undefined) body.disabled = bool(fields["disabled"]);
+  if (fields["isFallback"] !== undefined) body.is_fallback = bool(fields["isFallback"]);
+  if (fields["isByokOnly"] !== undefined) body.is_byok_only = bool(fields["isByokOnly"]);
+  if (fields["isRequired"] !== undefined) body.is_required = bool(fields["isRequired"]);
   if (fields["allowedModels"] !== undefined) {
-    body["allowed_models"] = parseList(fields["allowedModels"]);
+    body.allowed_models = parseList(fields["allowedModels"]);
   }
   return body;
 }
@@ -660,16 +594,19 @@ export function byokCreateConfig(sources: PickerSources): CreateResourceConfig {
 
 // --------------------------------------------------------------- detail views
 
-function text(value: unknown, fallback = DASH): string {
+/** A resource field, or an API value on its way to being shown like one. */
+type FieldValue = ResourceInstance["fields"][string] | null | undefined;
+
+function text(value: FieldValue, fallback = DASH): string {
   const s = value === undefined || value === null ? "" : String(value);
   return s || fallback;
 }
 
-function yes(value: unknown): string {
+function yes(value: FieldValue): string {
   return value === true ? "Yes" : "No";
 }
 
-function usd(value: unknown): string {
+function usd(value: FieldValue): string {
   const n = Number(value ?? 0);
   return n > 0 ? `$${n.toFixed(2)}` : "none";
 }
@@ -932,7 +869,7 @@ export function renderByokDetail(resource: ResourceInstance): DetailViewSchema {
   };
 }
 
-function joinParts(prefix: string, value: unknown): string {
+function joinParts(prefix: string, value: FieldValue): string {
   const s = value === undefined || value === null ? "" : String(value);
   return s ? `${prefix} · ${s}` : prefix;
 }
