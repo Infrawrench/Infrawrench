@@ -19,6 +19,7 @@ import {
   assertBusinessMetricSql,
   bindBusinessMetricSqlRange,
   joinSubtitle,
+  reportUnreadListPart,
   rowsToBusinessMetricPoints,
   withBusinessMetricTimeout,
 } from "@infrawrench/plugin-base";
@@ -34,6 +35,18 @@ function sqlStringLiteral(value: string): string {
 
 function tableDisplayName(schemaName: string, tableName: string): string {
   return schemaName === "public" ? tableName : `${schemaName}.${tableName}`;
+}
+
+/**
+ * Whether this login may not read a catalog, SQLSTATE 42501, as opposed to a failed read.
+ * The desktop's IPC keeps only the message, so `code` is not always there. A login
+ * without CONNECT on its own database gets the same code, and that is one to report.
+ */
+function isCatalogRefused(err: unknown): boolean {
+  const message = String(err);
+  if (/permission denied for database/i.test(message)) return false;
+  const code = typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
+  return code === "42501" || /permission denied for (table|view|relation|schema)/i.test(message);
 }
 
 /**
@@ -479,8 +492,10 @@ export class PostgresClient implements PluginClient {
           createdAt: now,
           updatedAt: now,
         }));
-      } catch {
-        // Fall through to URL parsing
+      } catch (err) {
+        if (!isCatalogRefused(err)) throw err;
+        // Shows only the database the login connects to, which says nothing about the rest.
+        reportUnreadListPart({ idPrefixes: [""] });
       }
     }
 
@@ -526,8 +541,10 @@ export class PostgresClient implements PluginClient {
           createdAt: now,
           updatedAt: now,
         }));
-      } catch {
-        // Fall through to the default public schema placeholder.
+      } catch (err) {
+        if (!isCatalogRefused(err)) throw err;
+        // Shows only the default schema, which says nothing about the rest.
+        reportUnreadListPart({ idPrefixes: [""] });
       }
     }
 

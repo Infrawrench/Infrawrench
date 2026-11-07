@@ -1,9 +1,22 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import type { HostServices, ResourceInstance, SqlHostServices } from "@infrawrench/plugin-base";
+import { afterEach, describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import type {
+  HostServices,
+  ResourceInstance,
+  SqlHostServices,
+  UnreadListPart,
+} from "@infrawrench/plugin-base";
 import { PostgresClient } from "../client.js";
 
 const CS = "postgresql://user:pass@db.example.com:5432/appdb";
+
+const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+
+function trackUnread(): UnreadListPart[] {
+  const seen: UnreadListPart[] = [];
+  Reflect.set(globalThis, UNREAD_HOOK, (part: UnreadListPart) => seen.push(part));
+  return seen;
+}
 
 function makeSql(): SqlHostServices & {
   query: Mock;
@@ -73,15 +86,6 @@ describe("PostgresClient", () => {
       expect(sql.query).toHaveBeenCalledWith(expect.stringContaining("pg_catalog.pg_database"));
     });
 
-    it("falls back to URL parsing when sql query throws", async () => {
-      sql.query.mockRejectedValue(new Error("boom"));
-      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
-      const res = await c.listResources("pg-database", "acct");
-      expect(res).toHaveLength(1);
-      expect(res[0]!.displayName).toBe("appdb");
-      expect(res[0]!.fields["host"]).toBe("db.example.com");
-    });
-
     it("falls back when no sql service (URL parse)", async () => {
       const c = hostClient(new PostgresClient({ connectionString: CS }));
       const res = await c.listResources("pg-database", "acct");
@@ -124,14 +128,6 @@ describe("PostgresClient", () => {
       );
     });
 
-    it("falls back to public schema when schema query throws", async () => {
-      sql.query.mockRejectedValue(new Error("boom"));
-      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
-      const res = await c.listResources("pg-schema", "acct");
-      expect(res.map((schema) => schema.displayName)).toEqual(["public"]);
-      expect(res[0]!.fields).toMatchObject({ name: "public", database: "appdb" });
-    });
-
     it("falls back to public schema when no sql service", async () => {
       const c = hostClient(new PostgresClient({ connectionString: CS }));
       const res = await c.listResources("pg-schema", "acct");
@@ -141,6 +137,60 @@ describe("PostgresClient", () => {
     it("throws on unknown type", async () => {
       const c = hostClient(new PostgresClient({ connectionString: CS }));
       await expect(c.listResources("nope", "acct")).rejects.toThrow(/unknown resource type/);
+    });
+
+    describe.each(["pg-database", "pg-schema"])("a failed catalog read of %s", (typeId) => {
+      afterEach(() => {
+        Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      });
+
+      const client = () => hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
+
+      it.each([
+        [
+          "a dropped connection",
+          Object.assign(new Error("Connection terminated"), { code: "ECONNRESET" }),
+        ],
+        [
+          "a wrong password",
+          Object.assign(new Error("password authentication failed"), { code: "28P01" }),
+        ],
+        [
+          "a login without CONNECT on its database",
+          Object.assign(new Error('permission denied for database "appdb"'), { code: "42501" }),
+        ],
+        ["any other failure", new Error("boom")],
+      ])("throws on %s, so no stored row is pruned", async (_name, error) => {
+        const unread = trackUnread();
+        sql.query.mockRejectedValue(error);
+        await expect(client().listResources(typeId, "acct")).rejects.toBe(error);
+        expect(unread).toEqual([]);
+      });
+
+      it("throws when the answer is not a list of rows", async () => {
+        sql.query.mockResolvedValue(null);
+        await expect(client().listResources(typeId, "acct")).rejects.toThrow();
+      });
+
+      it.each([
+        [
+          "the driver's error, whatever language the server speaks",
+          Object.assign(new Error("Keine Berechtigung"), { code: "42501" }),
+        ],
+        [
+          "the message alone, which is all the desktop's IPC keeps",
+          new Error(
+            "Error invoking remote method 'plugin_sql_query': error: permission denied for table pg_database",
+          ),
+        ],
+      ])("keeps the stored rows when refused, read from %s", async (_name, error) => {
+        const unread = trackUnread();
+        sql.query.mockRejectedValue(error);
+        const res = await client().listResources(typeId, "acct");
+        expect(res).toHaveLength(1);
+        expect(res[0]!.fields).toMatchObject({ database: "appdb", host: "db.example.com" });
+        expect(unread).toEqual([{ idPrefixes: [""] }]);
+      });
     });
   });
 
