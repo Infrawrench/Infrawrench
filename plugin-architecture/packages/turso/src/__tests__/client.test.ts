@@ -1,31 +1,6 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const api = {
-  databases: {
-    list: vi.fn(),
-    create: vi.fn(),
-    delete: vi.fn(),
-    createToken: vi.fn(),
-  },
-  groups: {
-    list: vi.fn(),
-    create: vi.fn(),
-    delete: vi.fn(),
-  },
-  locations: {
-    list: vi.fn(),
-  },
-};
-
-type CreateClientArgs = Parameters<(typeof import("@tursodatabase/api"))["createClient"]>;
-
-const createClient = vi.fn((..._args: CreateClientArgs) => api);
-
-vi.mock("@tursodatabase/api", () => ({
-  createClient: (...args: CreateClientArgs) => createClient(...args),
-}));
-
 import { TursoClient } from "../client.js";
 
 const ACCOUNT = "acct1";
@@ -81,11 +56,6 @@ describe("constructor", () => {
     expect(() => hostClient(new TursoClient({ apiToken: "t" }))).toThrow(
       /missing organizationName/,
     );
-  });
-
-  it("constructs api client with org+token", () => {
-    makeClient();
-    expect(createClient).toHaveBeenCalledWith({ org: "myorg", token: "tok" });
   });
 });
 
@@ -259,7 +229,7 @@ describe("getResource", () => {
 
 describe("resolveOutput", () => {
   it("resolves database connection string with token", async () => {
-    api.databases.createToken.mockResolvedValue({ jwt: "abc def" });
+    routeFetch({ [`POST ${DB_PATH}/mydb/auth/tokens`]: { jwt: "abc def" } });
     const client = makeClient();
     const cs = await client.resolveOutput(
       "turso-database",
@@ -267,7 +237,6 @@ describe("resolveOutput", () => {
       "connectionString",
       ACCOUNT,
     );
-    expect(api.databases.createToken).toHaveBeenCalledWith("mydb");
     expect(cs).toBe("libsql://mydb-myorg.turso.io?authToken=abc%20def");
   });
 
@@ -809,10 +778,14 @@ describe("getCreateConfig", () => {
   });
 
   it("group config offers Turso's live locations", async () => {
-    api.locations.list.mockResolvedValue([
-      { code: "aws-us-east-1", description: "AWS US East (Virginia)" },
-      { code: "aws-eu-west-1", description: "AWS EU West (Ireland)" },
-    ]);
+    routeFetch({
+      "GET /v1/locations": {
+        locations: {
+          "aws-us-east-1": "AWS US East (Virginia)",
+          "aws-eu-west-1": "AWS EU West (Ireland)",
+        },
+      },
+    });
     const client = makeClient();
     const cfg = await client.getCreateConfig("turso-group");
     expect(cfg.fields.map((f) => f.key)).toEqual(["name", "location", "extensions"]);
@@ -822,7 +795,7 @@ describe("getCreateConfig", () => {
   });
 
   it("group config falls back to the static table", async () => {
-    api.locations.list.mockRejectedValue(new Error("offline"));
+    routeFetch({});
     const client = makeClient();
     const cfg = await client.getCreateConfig("turso-group");
     const location = cfg.fields.find((f) => f.key === "location");
@@ -948,15 +921,19 @@ describe("createResource", () => {
 
 describe("deleteResource", () => {
   it("deletes database", async () => {
+    const spy = routeFetch({ [`DELETE ${DB_PATH}/mydb`]: { database: "mydb" } });
     const client = makeClient();
     await client.deleteResource("turso-database", "acct1:turso-database:mydb", ACCOUNT);
-    expect(api.databases.delete).toHaveBeenCalledWith("mydb");
+    expect(spy).toHaveBeenCalledOnce();
   });
 
   it("deletes group", async () => {
+    const spy = routeFetch({
+      "DELETE /v1/organizations/myorg/groups/g1": { group: { name: "g1" } },
+    });
     const client = makeClient();
     await client.deleteResource("turso-group", "acct1:turso-group:g1", ACCOUNT);
-    expect(api.groups.delete).toHaveBeenCalledWith("g1");
+    expect(spy).toHaveBeenCalledOnce();
   });
 
   it("throws for unknown type", async () => {

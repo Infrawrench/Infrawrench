@@ -15,14 +15,11 @@ import type {
   QuotaUsage,
   SectionNode,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
+import { joinSubtitle, jsonRestFetch, requireListPage } from "@infrawrench/plugin-base";
 import { fetchTursoCostData } from "./cost-data.js";
 import { fetchTursoQuotas } from "./quotas.js";
 import { fetchDatabaseUsageSeries, mapLimit, TURSO_METRICS_CAPABILITY } from "./metrics.js";
-import { createClient as createTursoApiClient } from "@tursodatabase/api";
 import type { DatabaseInstance, Location, OrganizationMember } from "@tursodatabase/api";
-
-type TursoApiClient = ReturnType<typeof createTursoApiClient>;
 
 /** `GET /v2/organizations/{org}/invites` item (v1 invites were retired in April 2026). */
 interface TursoInvite {
@@ -151,7 +148,6 @@ export class TursoClient implements PluginClient {
   private readonly orgName: string;
   private readonly token: string;
   private readonly services: HostServices | undefined;
-  private readonly api: TursoApiClient;
 
   constructor(credentials: Credentials, _services?: HostServices) {
     const token = credentials["apiToken"];
@@ -162,8 +158,6 @@ export class TursoClient implements PluginClient {
     if (!org) throw new Error("Turso plugin: missing organizationName credential");
     this.orgName = org;
     this.services = _services;
-
-    this.api = createTursoApiClient({ org, token });
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -516,7 +510,7 @@ export class TursoClient implements PluginClient {
       if (typeId === "turso-group") {
         // Ask Turso which locations it offers today rather than trusting the
         // static table: new groups can only be placed in the current set.
-        const live = await this.api.locations.list().catch(() => [] as Location[]);
+        const live = await this.fetchLocations().catch(() => [] as Location[]);
         const codes =
           live.length > 0
             ? live.map((l) => ({ id: String(l.code), description: l.description }))
@@ -699,11 +693,15 @@ export class TursoClient implements PluginClient {
     return attempt(async () => {
       const externalId = resourceId.split(":").slice(2).join(":");
       if (typeId === "turso-database") {
-        await this.api.databases.delete(externalId);
+        await this.fetch(`${this.orgPath}/databases/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
         return;
       }
       if (typeId === "turso-group") {
-        await this.api.groups.delete(externalId);
+        await this.fetch(`${this.orgPath}/groups/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
         return;
       }
       if (typeId === "turso-api-token") {
@@ -860,7 +858,13 @@ export class TursoClient implements PluginClient {
   ): Promise<string> {
     const dbName = resourceId.split(":").slice(2).join(":");
 
-    const tokenData = await this.api.databases.createToken(dbName);
+    const tokenData = await this.fetch<{ jwt: string }>(
+      `${this.orgPath}/databases/${encodeURIComponent(dbName)}/auth/tokens`,
+      {
+        method: "POST",
+        body: JSON.stringify({ permissions: { read_attach: { databases: [] } } }),
+      },
+    );
 
     const hostname = `${dbName}-${this.orgName}.turso.io`;
     return `libsql://${hostname}?authToken=${encodeURIComponent(tokenData.jwt)}`;
@@ -950,12 +954,18 @@ export class TursoClient implements PluginClient {
     };
   }
 
+  private async fetchDatabaseInstances(database: string): Promise<DatabaseInstance[]> {
+    const path = `${this.orgPath}/databases/${encodeURIComponent(database)}/instances`;
+    const body = await this.fetch<{ instances?: DatabaseInstance[] }>(path);
+    return requireListPage(body.instances, { vendor: "Turso", path, key: "instances" });
+  }
+
   private async listDatabaseInstances(accountId: string): Promise<ResourceInstance[]> {
     const databases = await this.fetchDatabases();
     const instanceGroups = await Promise.all(
       databases.map(async (db) => ({
         database: db.Name,
-        instances: await this.api.databases.listInstances(db.Name),
+        instances: await this.fetchDatabaseInstances(db.Name),
       })),
     );
     const now = new Date().toISOString();
@@ -993,8 +1003,17 @@ export class TursoClient implements PluginClient {
     };
   }
 
+  private async fetchLocations(): Promise<Location[]> {
+    const path = "/v1/locations";
+    const body = await this.fetch<{ locations?: Record<string, string> | null }>(path);
+    const rows = body.locations && Object.entries(body.locations);
+    return requireListPage(rows, { vendor: "Turso", path, key: "locations" }).map(
+      ([code, description]) => ({ code, description }),
+    );
+  }
+
   private async listLocations(accountId: string): Promise<ResourceInstance[]> {
-    const locations = await this.api.locations.list();
+    const locations = await this.fetchLocations();
     const now = new Date().toISOString();
 
     return locations.map((location) => this.mapLocation(accountId, location, now));
@@ -1056,7 +1075,9 @@ export class TursoClient implements PluginClient {
   }
 
   private async listOrganizationMembers(accountId: string): Promise<ResourceInstance[]> {
-    const members = await this.api.organizations.members();
+    const path = `${this.orgPath}/members`;
+    const body = await this.fetch<{ members?: OrganizationMember[] }>(path);
+    const members = requireListPage(body.members, { vendor: "Turso", path, key: "members" });
     const now = new Date().toISOString();
 
     return members.map((member) => this.mapOrganizationMember(accountId, member, now));
