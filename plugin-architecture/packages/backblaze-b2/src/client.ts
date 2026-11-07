@@ -156,14 +156,22 @@ export class BackblazeB2Client implements PluginClient {
     }
     const value = (async () => {
       const s = await this.api.getSession();
-      const res = await this.api.call<{ buckets?: B2Bucket[] }>("b2_list_buckets", {
-        body: { accountId: s.accountId },
-      });
-      return requireListPage(res?.buckets, {
-        vendor: VENDOR,
-        path: "b2_list_buckets",
-        key: "buckets",
-      }).sort((a, b) => a.bucketName.localeCompare(b.bucketName));
+      // B2 denies the all-buckets form to a key restricted to buckets, so ask for each by id.
+      const asks = s.allowedBuckets?.map((b) => ({ bucketId: b.id })) ?? [{}];
+      const out: B2Bucket[] = [];
+      for (const ask of asks) {
+        const res = await this.api.call<{ buckets?: B2Bucket[] }>("b2_list_buckets", {
+          body: { accountId: s.accountId, ...ask },
+        });
+        out.push(
+          ...requireListPage(res?.buckets, {
+            vendor: VENDOR,
+            path: "b2_list_buckets",
+            key: "buckets",
+          }),
+        );
+      }
+      return out.sort((a, b) => a.bucketName.localeCompare(b.bucketName));
     })();
     this.bucketsCache = { at: Date.now(), value };
     value.catch(() => {

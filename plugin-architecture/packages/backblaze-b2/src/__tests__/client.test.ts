@@ -486,6 +486,70 @@ describe("lists that cannot say they have every row", () => {
   });
 });
 
+describe("asking for buckets", () => {
+  const restrictedAuth = {
+    status: 200,
+    body: {
+      ...AUTH,
+      apiInfo: {
+        storageApi: {
+          ...AUTH.apiInfo.storageApi,
+          allowed: {
+            buckets: [
+              { id: "b1", name: "photos-bucket" },
+              { id: "b2", name: "two" },
+            ],
+            capabilities: ["listBuckets"],
+            namePrefix: null,
+          },
+        },
+      },
+    },
+  };
+
+  it("asks for each allowed bucket by id when the key is restricted", async () => {
+    const { c, calls } = client(
+      (_url, _m, body) => {
+        const id = (body as { bucketId?: string }).bucketId;
+        // B2 denies the all-buckets form to a restricted key.
+        if (!id) return { status: 401, body: { status: 401, code: "unauthorized", message: "no" } };
+        return {
+          body: {
+            buckets: id === "b1" ? [BUCKET] : [{ ...BUCKET, bucketId: "b2", bucketName: "two" }],
+          },
+        };
+      },
+      undefined,
+      () => restrictedAuth,
+    );
+    const rows = await c.listResources("bucket", "a1");
+    expect(rows.map((r) => r.externalId)).toEqual(["b1", "b2"]);
+    expect(calls.filter((x) => x.url.pathname.endsWith("b2_list_buckets"))).toHaveLength(2);
+  });
+
+  it("reads an allowed bucket that no longer exists as gone", async () => {
+    const { c } = client(
+      (_url, _m, body) =>
+        (body as { bucketId?: string }).bucketId === "b1"
+          ? { body: { buckets: [BUCKET] } }
+          : { body: { buckets: [] } },
+      undefined,
+      () => restrictedAuth,
+    );
+    const rows = await c.listResources("bucket", "a1");
+    expect(rows.map((r) => r.externalId)).toEqual(["b1"]);
+  });
+
+  it("asks for every bucket with one call when the key is not restricted", async () => {
+    const { c, calls } = client(() => ({ body: { buckets: [BUCKET] } }));
+    await c.listResources("bucket", "a1");
+    const reads = calls.filter((x) => x.url.pathname.endsWith("b2_list_buckets"));
+    expect(reads).toHaveLength(1);
+    expect(reads[0]!.body).toMatchObject({ accountId: "acct1" });
+    expect(reads[0]!.body).not.toHaveProperty("bucketId");
+  });
+});
+
 describe("deleting from the file browser", () => {
   it("deletes nothing and throws when a folder has more versions than it reads", async () => {
     const { c, calls } = client((url) => {
