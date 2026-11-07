@@ -1,6 +1,7 @@
 import {
   createApiClient,
   pathEncode,
+  requireListPage,
   type ApiBody,
   type ApiListItem,
   type ApiResponse,
@@ -176,6 +177,18 @@ export function createGatewayApi(ctx: XataContext, host: string, connectionStrin
   return createClient(ctx, `https://${host}`, { "Connection-String": connectionString });
 }
 
+/**
+ * The list in an answer with no paging. Xata's document requires each of these keys,
+ * so a 2xx without one is not an empty list, and a sync would prune on it.
+ */
+export function listOf<K extends string, T>(
+  page: { readonly [P in K]?: readonly T[] | null } | null | undefined,
+  path: string,
+  key: K,
+): T[] {
+  return requireListPage(page?.[key], { vendor: "Xata", path, key, page });
+}
+
 /** A missing part of a composite id has always gone out as the text `undefined`. */
 export function enc(s: string | undefined): NoSlashString {
   return pathEncode(String(s));
@@ -211,3 +224,4 @@ export type XUpcomingInvoice = ApiResponse<operations["getBillingUpcomingInvoice
 export type XPgParameter = Schemas["PostgresConfigParameter"];
 export type XMetricName = Schemas["BranchMetricName"];
 export type XLogEntry = Schemas["LogEntry"];
+export type XMember = Schemas["OrganizationMember"];

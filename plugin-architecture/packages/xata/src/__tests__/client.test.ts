@@ -608,3 +608,79 @@ describe("long lists", () => {
     expect(served).toBe(100);
   });
 });
+
+describe("a 2xx that holds no list", () => {
+  const O = `${API}/organizations/org1`;
+  const orgs = on("GET", `${API}/organizations`, { organizations: [org] });
+  const projects = on("GET", `${O}/projects`, { projects: [project] });
+
+  const cases: Array<[string, string, Route[]]> = [
+    ["organizations", "xata-organization", [on("GET", `${API}/organizations`, { orgs: [org] })]],
+    ["projects", "xata-project", [orgs, on("GET", `${O}/projects`, { items: [project] })]],
+    [
+      "branches",
+      "xata-branch",
+      [orgs, projects, on("GET", `${O}/projects/p1/branches`, { message: "wrapped error" })],
+    ],
+    [
+      "branches under a project's count",
+      "xata-project",
+      [orgs, projects, on("GET", `${O}/projects/p1/branches`, { message: "wrapped error" })],
+    ],
+    ["backups", "xata-backup", [orgs, projects, on("GET", `${O}/projects/p1/backups`, {})]],
+    ["api keys", "xata-api-key", [orgs, on("GET", `${O}/api-keys`, { keys: null })]],
+    ["members", "xata-member", [orgs, on("GET", `${O}/members`, { members: "none" })]],
+    ["invitations", "xata-invitation", [orgs, on("GET", `${O}/invitations`, {})]],
+  ];
+
+  it.each(cases)("rejects a bad %s page", async (_what, typeId, routes) => {
+    const { client } = fake(routes);
+    await expect(client.listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects an empty body", async () => {
+    const services: HostServices = {
+      http: { request: async () => ({ status: 200, headers: {}, body: "" }) },
+    };
+    const client = hostClient(new XataClient({ apiKey: "xau_k" }, services));
+    await expect(client.listResources("xata-project", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a body that is not JSON", async () => {
+    const services: HostServices = {
+      http: { request: async () => ({ status: 200, headers: {}, body: "<html>" }) },
+    };
+    const client = hostClient(new XataClient({ apiKey: "xau_k" }, services));
+    await expect(client.listResources("xata-project", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a bad invoice page rather than reporting no cost", async () => {
+    const { client } = fake([orgs, on("GET", `${O}/billing/invoices`, { invoices: [] })]);
+    await expect(
+      client.fetchCostData(ACCOUNT, { fromDate: "2026-08-01", toDate: "2026-10-31" }),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("reads an empty array as none", async () => {
+    const { client } = fake([
+      orgs,
+      projects,
+      on("GET", `${O}/projects/p1/branches`, { branches: [] }),
+      on("GET", `${O}/projects/p1/backups`, { backups: [] }),
+    ]);
+    expect(await client.listResources("xata-branch", ACCOUNT)).toEqual([]);
+    expect(await client.listResources("xata-backup", ACCOUNT)).toEqual([]);
+  });
+
+  it("does not read a bad page as an empty quota count", async () => {
+    const { client } = fake([
+      orgs,
+      on("GET", `${O}/projects`, { projects: [] }),
+      on("GET", `${O}/limits`, {}),
+      on("GET", `${O}/membership-limits`, {}),
+      on("GET", `${O}/invitations`, { invitations: [] }),
+      on("GET", `${O}/members`, { people: [] }),
+    ]);
+    await expect(client.fetchQuotas(ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});

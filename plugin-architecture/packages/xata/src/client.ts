@@ -35,6 +35,7 @@ import type {
   XBranchSummary,
   XCredentials,
   XLogEntry,
+  XMember,
   XMetricName,
   XOrg,
   XPgParameter,
@@ -46,6 +47,7 @@ import {
   createGatewayApi,
   createXataApi,
   enc,
+  listOf,
   statusOf,
   withInvitationPages,
   withInvoicePages,
@@ -200,18 +202,26 @@ export class XataClient implements PluginClient {
   }
 
   async orgs(): Promise<XOrg[]> {
-    return (await this.api.get("/organizations"))?.organizations ?? [];
+    const path = "/organizations";
+    return listOf(await this.api.get(path), path, "organizations");
   }
 
   async projects(org: string): Promise<XProject[]> {
-    return (await this.api.get(`${this.orgPath(org)}/projects`))?.projects ?? [];
+    const path = `${this.orgPath(org)}/projects` as const;
+    return listOf(await this.api.get(path), path, "projects");
   }
 
   async branchSummaries(
     org: string | undefined,
     project: string | undefined,
   ): Promise<XBranchSummary[]> {
-    return (await this.api.get(`${this.projectPath(org, project)}/branches`))?.branches ?? [];
+    const path = `${this.projectPath(org, project)}/branches` as const;
+    return listOf(await this.api.get(path), path, "branches");
+  }
+
+  private async members(org: string): Promise<XMember[]> {
+    const path = `${this.orgPath(org)}/members` as const;
+    return listOf(await this.api.get(path), path, "members");
   }
 
   private async allProjects(): Promise<Array<{ org: string; project: XProject }>> {
@@ -270,8 +280,8 @@ export class XataClient implements PluginClient {
           const all = await this.allProjects();
           const lists = await Promise.all(
             all.map(async ({ org, project }) => {
-              const backups =
-                (await this.api.get(`${this.projectPath(org, project.id)}/backups`))?.backups ?? [];
+              const path = `${this.projectPath(org, project.id)}/backups` as const;
+              const backups = listOf(await this.api.get(path), path, "backups");
               return backups.map((b) => backupResource(org, project.id, b, accountId));
             }),
           );
@@ -280,11 +290,12 @@ export class XataClient implements PluginClient {
         case "xata-api-key": {
           const orgs = await this.orgs();
           const lists = await Promise.all(
-            orgs.map(async (o) =>
-              ((await this.api.get(`${this.orgPath(o.id)}/api-keys`))?.keys ?? []).map((k) =>
+            orgs.map(async (o) => {
+              const path = `${this.orgPath(o.id)}/api-keys` as const;
+              return listOf(await this.api.get(path), path, "keys").map((k) =>
                 apiKeyResource(o.id, k, accountId),
-              ),
-            ),
+              );
+            }),
           );
           return lists.flat();
         }
@@ -292,7 +303,7 @@ export class XataClient implements PluginClient {
           const orgs = await this.orgs();
           const lists = await Promise.all(
             orgs.map(async (o) =>
-              ((await this.api.get(`${this.orgPath(o.id)}/members`))?.members ?? []).map((m) =>
+              (await this.members(o.id)).map((m) =>
                 instance(
                   accountId,
                   typeId,
@@ -1007,7 +1018,7 @@ export class XataClient implements PluginClient {
             this.api.get(`${this.orgPath(o.id)}/limits`),
             this.api.get(`${this.orgPath(o.id)}/membership-limits`),
             this.projects(o.id),
-            this.api.get(`${this.orgPath(o.id)}/members`),
+            this.members(o.id),
             this.invitationPages.getAll(`${this.orgPath(o.id)}/invitations`, "invitations", {
               query: { status: "pending" },
             }),
@@ -1034,12 +1045,7 @@ export class XataClient implements PluginClient {
           };
           add("projects", `Projects (${o.name})`, projects.length, limits?.maxProjects);
           add("branches", `Active branches (${o.name})`, totalBranches, limits?.maxBranchesPerOrg);
-          add(
-            "members",
-            `Members (${o.name})`,
-            members?.members?.length ?? 0,
-            membership?.maxMembers,
-          );
+          add("members", `Members (${o.name})`, members.length, membership?.maxMembers);
           add("invites", `Pending invitations (${o.name})`, invites.length, membership?.maxInvites);
           for (const x of perProject) {
             add(
