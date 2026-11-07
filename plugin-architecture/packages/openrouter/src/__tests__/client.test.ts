@@ -345,6 +345,7 @@ describe("getResource", () => {
           },
         });
       }
+      if (url.includes("output_modalities=all")) return jsonResponse({ data: [], total_count: 0 });
       throw new Error(`unrouted: ${url}`);
     });
 
@@ -365,6 +366,7 @@ describe("getResource", () => {
           },
         });
       }
+      if (url.includes("output_modalities=all")) return jsonResponse({ data: [], total_count: 0 });
       if (url.includes("output_modalities=speech")) {
         return jsonResponse({
           data: [{ id: "x-ai/grok-voice-tts-1.0", supported_voices: ["eve", "ara"] }],
@@ -384,6 +386,101 @@ describe("getResource", () => {
     const speech = JSON.parse(resource.resolvedOutputs["__speech__"] ?? "{}");
     expect(speech.tts?.[0]?.supported_voices).toEqual(["eve", "ara"]);
     expect(speech.stt?.[0]?.id).toBe("openai/whisper-large-v3");
+  });
+
+  describe("a model's own fields", () => {
+    const catalogueRow = {
+      id: "openai/gpt-4",
+      name: "GPT-4",
+      canonical_slug: "openai/gpt-4-0613",
+      context_length: 8192,
+      architecture: { modality: "text->text", output_modalities: ["text"], tokenizer: "GPT" },
+      pricing: { prompt: "0.00003", completion: "0.00006", image: "0.01", web_search: "0.02" },
+      top_provider: { context_length: 8192, max_completion_tokens: 4096, is_moderated: true },
+      supported_parameters: ["tools", "seed"],
+      supported_voices: null,
+      knowledge_cutoff: "2023-04",
+      expiration_date: "2027-01-01",
+      hugging_face_id: "openai/gpt-4",
+    };
+    const detail = {
+      id: "openai/gpt-4",
+      name: "GPT-4",
+      created: 1_700_000_000,
+      description: "A model.",
+      architecture: { modality: "text->text", output_modalities: ["text"] },
+      endpoints: [{ name: "OpenAI | openai/gpt-4", provider_name: "OpenAI" }],
+    };
+
+    function route(rows: unknown[]) {
+      installFetch((url) => {
+        if (url.endsWith("/models/openai/gpt-4/endpoints")) return jsonResponse({ data: detail });
+        if (url.includes("output_modalities=all")) {
+          return jsonResponse({ data: rows, total_count: rows.length });
+        }
+        throw new Error(`unrouted: ${url}`);
+      });
+    }
+
+    it("come from the catalogue, which is the only route that has them", async () => {
+      route([{ id: "another/model" }, catalogueRow]);
+      const resource = await client().getResource(
+        "model",
+        `${ACCOUNT}:model:openai/gpt-4`,
+        ACCOUNT,
+      );
+      expect(resource.fields).toMatchObject({
+        canonicalSlug: "openai/gpt-4-0613",
+        contextLength: 8192,
+        imagePrice: 0.01,
+        webSearchPrice: 0.02,
+        supportedParameters: "tools, seed",
+        knowledgeCutoff: "2023-04",
+        expirationDate: "2027-01-01",
+        huggingFaceId: "openai/gpt-4",
+        topProviderMaxCompletionTokens: 4096,
+        isModerated: true,
+      });
+      expect(resource.fields["promptPricePerMillion"]).toBeCloseTo(30);
+      expect(resource.fields["completionPricePerMillion"]).toBeCloseTo(60);
+      expect(JSON.parse(resource.resolvedOutputs["__endpoints__"] ?? "[]")).toHaveLength(1);
+    });
+
+    it("reach the dashboard stats", async () => {
+      route([catalogueRow]);
+      const stats = await client().fetchDashboardStats(
+        "model",
+        `${ACCOUNT}:model:openai/gpt-4`,
+        ACCOUNT,
+      );
+      expect(stats).toEqual([
+        { label: "Context", value: (8192).toLocaleString() },
+        { label: "Prompt", value: "$30.00/M" },
+        { label: "Completion", value: "$60.00/M" },
+      ]);
+    });
+
+    it("fall back to the detail answer for a model the catalogue leaves out", async () => {
+      route([{ id: "another/model" }]);
+      const resource = await client().getResource(
+        "model",
+        `${ACCOUNT}:model:openai/gpt-4`,
+        ACCOUNT,
+      );
+      expect(resource.fields["description"]).toBe("A model.");
+      expect(resource.fields["contextLength"]).toBe(0);
+    });
+
+    it("are not replaced with zeros when the catalogue cannot be read", async () => {
+      installFetch((url) =>
+        url.endsWith("/endpoints")
+          ? jsonResponse({ data: detail })
+          : jsonResponse({ error: "busy" }, 503),
+      );
+      await expect(
+        client().getResource("model", `${ACCOUNT}:model:openai/gpt-4`, ACCOUNT),
+      ).rejects.toThrow("503");
+    });
   });
 
   it("splits a model-endpoint id back into model and endpoint name", async () => {

@@ -558,18 +558,22 @@ export class OpenRouterClient implements PluginClient {
         const [author, ...rest] = externalId.split("/");
         const slug = rest.join("/");
         if (author && slug) {
-          const data = await this.api.get(
-            `/models/${pathEncode(author)}/${pathEncode(slug)}/endpoints`,
-          );
+          // The endpoints answer holds only the model's name, description and
+          // architecture: pricing, context length and the rest are on the catalogue row.
+          const [data, catalogue] = await Promise.all([
+            this.api.get(`/models/${pathEncode(author)}/${pathEncode(slug)}/endpoints`),
+            this.fetchAllModels(),
+          ]);
           if (data.data) {
-            const resource = this.mapModel(accountId, now, data.data);
+            const model = catalogue.find((m) => m.id === externalId) ?? data.data;
+            const resource = this.mapModel(accountId, now, model);
             // `renderDetail` is synchronous, so anything it needs from an extra
             // call is stashed here. Same pattern as Cloudflare Queues'
             // `__consumers__`.
             const stash: Record<string, string> = {
               __endpoints__: JSON.stringify(data.data.endpoints ?? []),
             };
-            if (isAudioModel(data.data)) {
+            if (isAudioModel(model)) {
               try {
                 const speech = await this.speechCatalogue();
                 stash["__speech__"] = JSON.stringify(speech);
